@@ -25,8 +25,10 @@ describe("RouteRegistry", () => {
     renderWorkbench(["/"]);
 
     expect(await screen.findByRole("navigation", { name: "主导航" })).toBeInTheDocument();
-    expect(screen.getByText("管理层驾驶舱")).toBeInTheDocument();
-    expect(await screen.findByText("今日窗口概况")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "管理层驾驶舱" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("经营总览")).toBeInTheDocument();
   });
 
   it("renders a placeholder workbench page for non-dashboard entries", async () => {

@@ -3,4 +3,11 @@ data_input/
 frontend/node_modules/
 frontend/dist/
 frontend/playwright-*.png
+frontend/*.d.ts
+frontend/*.js
+frontend/*.js.map
+frontend/*.tsbuildinfo
+__pycache__/
+*.pyc
+*.pyo
 *.log

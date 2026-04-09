@@ -8,13 +8,10 @@ import {
   TeamOutlined,
   FundOutlined,
 } from "@ant-design/icons";
-import { Layout, Typography } from "antd";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import { workbenchNavigation } from "../mocks/navigation";
-
-const { Sider, Header, Content } = Layout;
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -31,22 +28,22 @@ export function WorkbenchShell() {
   const location = useLocation();
 
   return (
-    <Layout
+    <div
       style={{
         minHeight: "100vh",
-        background: "transparent",
+        display: "grid",
+        gridTemplateColumns: "264px minmax(0, 1fr)",
+        gap: 18,
+        padding: 18,
       }}
     >
-      <Sider
-        width={264}
-        breakpoint="lg"
-        collapsedWidth={84}
+      <aside
         style={{
-          margin: 18,
           border: "1px solid #d7dfea",
           borderRadius: 28,
           overflow: "hidden",
           boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+          background: "#fbfcfe",
         }}
       >
         <div
@@ -73,7 +70,7 @@ export function WorkbenchShell() {
             M
           </div>
           <div>
-            <Typography.Text
+            <span
               style={{
                 display: "block",
                 color: "#162033",
@@ -83,15 +80,15 @@ export function WorkbenchShell() {
               }}
             >
               MOSS
-            </Typography.Text>
-            <Typography.Text
+            </span>
+            <span
               style={{
                 color: "#8090a8",
                 fontSize: 12,
               }}
             >
               Workbench Shell
-            </Typography.Text>
+            </span>
           </div>
         </div>
 
@@ -131,29 +128,30 @@ export function WorkbenchShell() {
             );
           })}
         </nav>
-      </Sider>
+      </aside>
 
-      <Layout
+      <div
         style={{
-          background: "transparent",
-          padding: "18px 18px 18px 0",
+          display: "grid",
+          gridTemplateRows: "84px minmax(0, 1fr)",
+          gap: 18,
         }}
       >
-        <Header
+        <header
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 24px",
             height: 84,
-            background: "#fbfcfe",
             border: "1px solid #d7dfea",
             borderRadius: 28,
             boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+            background: "#fbfcfe",
           }}
         >
           <div>
-            <Typography.Text
+            <span
               style={{
                 display: "block",
                 color: "#8090a8",
@@ -163,9 +161,8 @@ export function WorkbenchShell() {
               }}
             >
               management workspace
-            </Typography.Text>
-            <Typography.Title
-              level={4}
+            </span>
+            <div
               style={{
                 margin: "6px 0 0",
                 fontSize: 22,
@@ -173,10 +170,10 @@ export function WorkbenchShell() {
               }}
             >
               前端壳层阶段
-            </Typography.Title>
+            </div>
           </div>
           <div style={{ textAlign: "right" }}>
-            <Typography.Text
+            <span
               style={{
                 display: "block",
                 color: "#162033",
@@ -184,30 +181,29 @@ export function WorkbenchShell() {
               }}
             >
               数据日期 2026-04-09
-            </Typography.Text>
-            <Typography.Text
+            </span>
+            <span
               style={{
                 color: "#5c6b82",
               }}
             >
               health / result_meta 协议对接预留
-            </Typography.Text>
+            </span>
           </div>
-        </Header>
+        </header>
 
-        <Content
+        <main
           style={{
-            marginTop: 18,
             padding: 28,
-            background: "#fbfcfe",
             border: "1px solid #d7dfea",
             borderRadius: 28,
             boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+            background: "#fbfcfe",
           }}
         >
           <Outlet />
-        </Content>
-      </Layout>
-    </Layout>
+        </main>
+      </div>
+    </div>
   );
 }

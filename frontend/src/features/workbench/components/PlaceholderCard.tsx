@@ -1,5 +1,3 @@
-import { Card, Typography } from "antd";
-
 type PlaceholderCardProps = {
   title: string;
   value: string;
@@ -12,14 +10,17 @@ export function PlaceholderCard({
   detail,
 }: PlaceholderCardProps) {
   return (
-    <Card
-      variant="borderless"
+    <div
       style={{
         minHeight: 170,
+        padding: 24,
+        borderRadius: 18,
+        background: "#fbfcfe",
+        border: "1px solid #e4ebf5",
         boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
       }}
     >
-      <Typography.Text
+      <div
         style={{
           color: "#6c7b91",
           fontSize: 13,
@@ -27,9 +28,8 @@ export function PlaceholderCard({
         }}
       >
         {title}
-      </Typography.Text>
-      <Typography.Title
-        level={3}
+      </div>
+      <div
         style={{
           marginTop: 14,
           marginBottom: 10,
@@ -39,8 +39,8 @@ export function PlaceholderCard({
         }}
       >
         {value}
-      </Typography.Title>
-      <Typography.Paragraph
+      </div>
+      <p
         style={{
           marginBottom: 0,
           color: "#5c6b82",
@@ -48,7 +48,7 @@ export function PlaceholderCard({
         }}
       >
         {detail}
-      </Typography.Paragraph>
-    </Card>
+      </p>
+    </div>
   );
 }

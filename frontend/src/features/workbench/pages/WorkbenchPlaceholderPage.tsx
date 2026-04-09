@@ -1,11 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, List, Typography } from "antd";
 import { useLocation } from "react-router-dom";
 
-import { apiClient } from "../../../api/client";
+import { useApiClient } from "../../../api/client";
 import { workbenchNavigation } from "../../../mocks/navigation";
 
-export function WorkbenchPlaceholderPage() {
+export default function WorkbenchPlaceholderPage() {
+  const client = useApiClient();
   const location = useLocation();
   const section =
     workbenchNavigation.find((item) => item.path === location.pathname) ??
@@ -13,15 +13,14 @@ export function WorkbenchPlaceholderPage() {
 
   const { data } = useQuery({
     queryKey: ["workbench-placeholder", section.key],
-    queryFn: () => apiClient.getPlaceholderSnapshot(section.key),
+    queryFn: () => client.getPlaceholderSnapshot(section.key),
   });
 
   const snapshot = data?.result;
 
   return (
     <section>
-      <Typography.Title
-        level={2}
+      <h1
         style={{
           marginTop: 0,
           marginBottom: 10,
@@ -31,8 +30,8 @@ export function WorkbenchPlaceholderPage() {
         }}
       >
         {snapshot?.title ?? section.label}
-      </Typography.Title>
-      <Typography.Paragraph
+      </h1>
+      <p
         style={{
           marginBottom: 24,
           color: "#5c6b82",
@@ -40,21 +39,25 @@ export function WorkbenchPlaceholderPage() {
         }}
       >
         {snapshot?.summary}
-      </Typography.Paragraph>
+      </p>
 
-      <Card
-        variant="borderless"
+      <div
         style={{
+          padding: 24,
+          borderRadius: 20,
+          background: "#fbfcfe",
+          border: "1px solid #e4ebf5",
           boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
         }}
       >
-        <List
-          dataSource={snapshot?.highlights ?? []}
-          renderItem={(item) => (
-            <List.Item style={{ color: "#5c6b82" }}>{item}</List.Item>
-          )}
-        />
-      </Card>
+        <ul style={{ margin: 0, paddingLeft: 18, color: "#5c6b82" }}>
+          {(snapshot?.highlights ?? []).map((item) => (
+            <li key={item} style={{ marginBottom: 10 }}>
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
