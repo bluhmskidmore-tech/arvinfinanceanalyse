@@ -1,0 +1,18 @@
+export const shellTokens = {
+  colorBgApp: "#f4f6f9",
+  colorBgSurface: "#fbfcfe",
+  colorBgMuted: "#eef2f7",
+  colorBorder: "#d7dfea",
+  colorBorderStrong: "#c1cddd",
+  colorTextPrimary: "#162033",
+  colorTextSecondary: "#5c6b82",
+  colorTextMuted: "#8090a8",
+  colorAccent: "#1f5eff",
+  colorAccentSoft: "#dfe8ff",
+  colorSuccess: "#2f8f63",
+  colorWarning: "#cc7a1a",
+  colorDanger: "#b74c45",
+  shadowPanel: "0 18px 40px rgba(19, 37, 70, 0.08)",
+  radiusPanel: 22,
+  radiusCard: 18,
+} as const;

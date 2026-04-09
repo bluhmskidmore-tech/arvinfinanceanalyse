@@ -1,0 +1,6 @@
+.omx/
+data_input/
+frontend/node_modules/
+frontend/dist/
+frontend/playwright-*.png
+*.log
