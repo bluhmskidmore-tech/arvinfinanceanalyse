@@ -9,215 +9,195 @@ import type {
 } from "../api/contracts";
 
 export const overviewPayload: OverviewPayload = {
-  title: "经营总览",
+  title: "经营总览（演示）",
   metrics: [
     {
       id: "aum",
-      label: "资产规模",
-      value: "1,023.47 亿",
-      delta: "+2.35%",
-      tone: "positive",
-      detail: "较上月保持温和扩张，当前页面仅展示受控摘要值。",
+      label: "示例指标一",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
     },
     {
       id: "yield",
-      label: "年内收益",
-      value: "+12.63 亿",
-      delta: "+8.72%",
-      tone: "positive",
-      detail: "收益口径后续由正式后端替换，前端只消费结果。",
+      label: "示例指标二",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
     },
     {
       id: "goal",
-      label: "目标完成率",
-      value: "63.1%",
-      delta: "目标 20.00 亿",
+      label: "示例指标三",
+      value: "—",
+      delta: "—",
       tone: "neutral",
-      detail: "保留目标追踪入口，不在浏览器端推导正式口径。",
+      detail: "静态演示字段，不代表任何业务口径。",
     },
     {
       id: "risk",
-      label: "风险预算使用率",
-      value: "68.7%",
-      delta: "+3.6pp",
-      tone: "warning",
-      detail: "展示受控风险摘要，为后续风险页预留数据入口。",
+      label: "示例指标四",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
     },
   ],
 };
 
 export const summaryPayload: SummaryPayload = {
-  title: "本周管理摘要",
+  title: "管理摘要（演示）",
   narrative:
-    "本周组合收益延续修复，收益主要来自久期与票息贡献。风险端仍需关注信用集中度与流动性预留，当前页面不在前端拼接正式分析口径。",
+    "以下为前端壳层占位文案，用于展示排版与异步状态，请勿当作分析结论或正式口径。",
   points: [
     {
       id: "income",
-      label: "收益",
-      tone: "positive",
-      text: "利率下行仍是收益主驱动，票息贡献保持稳定。",
+      label: "要点一",
+      tone: "neutral",
+      text: "演示：后续替换为后端返回的摘要条目。",
     },
     {
       id: "risk",
-      label: "风险",
-      tone: "warning",
-      text: "信用集中度抬升，需继续压实预警边界。",
+      label: "要点二",
+      tone: "neutral",
+      text: "演示：后续替换为后端返回的摘要条目。",
     },
     {
       id: "action",
-      label: "建议",
+      label: "要点三",
       tone: "neutral",
-      text: "保留流动性缓冲，避免在高波动窗口放大仓位。",
+      text: "演示：后续替换为后端返回的摘要条目。",
     },
   ],
 };
 
 export const pnlAttributionPayload: PnlAttributionPayload = {
-  title: "收益归因",
-  total: "12.63 亿",
+  title: "收益归因（演示）",
+  total: "—",
   segments: [
-    { id: "carry", label: "Carry", amount: 5.21, display_amount: "+5.21 亿", tone: "positive" },
-    { id: "roll", label: "Roll-down", amount: 2.18, display_amount: "+2.18 亿", tone: "positive" },
-    { id: "credit", label: "信用利差", amount: 1.42, display_amount: "+1.42 亿", tone: "positive" },
-    { id: "trading", label: "交易损益", amount: -0.85, display_amount: "-0.85 亿", tone: "negative" },
-    { id: "other", label: "其他", amount: 0.67, display_amount: "+0.67 亿", tone: "neutral" },
+    { id: "a", label: "分段 A", amount: 0, display_amount: "—", tone: "neutral" },
+    { id: "b", label: "分段 B", amount: 0, display_amount: "—", tone: "neutral" },
+    { id: "c", label: "分段 C", amount: 0, display_amount: "—", tone: "neutral" },
   ],
 };
 
 export const riskOverviewPayload: RiskOverviewPayload = {
-  title: "风险全景",
+  title: "风险全景（演示）",
   signals: [
     {
       id: "duration",
-      label: "久期风险",
-      value: "32.1%",
+      label: "示例信号一",
+      value: "—",
       status: "stable",
-      detail: "久期暴露仍处于本周可接受区间。",
+      detail: "演示占位，不代表监控结果。",
     },
     {
       id: "leverage",
-      label: "杠杆风险",
-      value: "54.3%",
+      label: "示例信号二",
+      value: "—",
       status: "watch",
-      detail: "杠杆使用率上行，需结合资金窗口观察。",
+      detail: "演示占位，不代表监控结果。",
     },
     {
       id: "credit",
-      label: "信用集中度",
-      value: "78.9%",
+      label: "示例信号三",
+      value: "—",
       status: "warning",
-      detail: "集中度已逼近预警阈值。",
-    },
-    {
-      id: "liquidity",
-      label: "流动性风险",
-      value: "41.2%",
-      status: "stable",
-      detail: "流动性缓冲仍具备调节空间。",
+      detail: "演示占位，不代表监控结果。",
     },
   ],
 };
 
 export const contributionPayload: ContributionPayload = {
-  title: "团队 / 账户 / 策略贡献",
+  title: "贡献列表（演示）",
   rows: [
     {
       id: "rates",
-      name: "利率组",
-      owner: "按团队",
-      contribution: "+4.21 亿",
-      completion: 65,
-      status: "核心拉动",
+      name: "示例行一",
+      owner: "演示",
+      contribution: "—",
+      completion: 0,
+      status: "占位",
     },
     {
       id: "credit",
-      name: "信用组",
-      owner: "按团队",
-      contribution: "+2.18 亿",
-      completion: 58,
-      status: "稳定贡献",
-    },
-    {
-      id: "trading",
-      name: "交易组",
-      owner: "按团队",
-      contribution: "+0.32 亿",
-      completion: 31,
-      status: "波动偏大",
+      name: "示例行二",
+      owner: "演示",
+      contribution: "—",
+      completion: 0,
+      status: "占位",
     },
   ],
 };
 
 export const alertsPayload: AlertsPayload = {
-  title: "预警与事件",
+  title: "预警与事件（演示）",
   items: [
     {
       id: "a1",
-      severity: "high",
-      title: "久期敞口接近上限",
-      occurred_at: "10:15",
-      detail: "账户 B 久期 6.82，接近上限 7.00。",
+      severity: "low",
+      title: "示例事件一",
+      occurred_at: "—",
+      detail: "演示占位，非真实告警。",
     },
     {
       id: "a2",
-      severity: "medium",
-      title: "信用集中度预警",
-      occurred_at: "09:48",
-      detail: "城投敞口 23.5%，接近阈值 25%。",
-    },
-    {
-      id: "a3",
-      severity: "medium",
-      title: "杠杆使用率上升",
-      occurred_at: "09:30",
-      detail: "当前 1.82x，较上周上升 0.06x。",
+      severity: "low",
+      title: "示例事件二",
+      occurred_at: "—",
+      detail: "演示占位，非真实告警。",
     },
   ],
 };
 
+const placeholderSummary =
+  "此工作台为壳层占位：路由与布局已就绪，业务页面与契约字段后续接入。";
+
 export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   dashboard: {
     title: "管理层驾驶舱",
-    summary: "当前主页面已经切换为可连接真实后端 endpoint 的执行舱。",
+    summary:
+      "首页演示：可切换数据源适配器并消费后端契约；展示层只渲染返回结果，不推导业务口径。",
     highlights: [
-      "概览与摘要采用独立 query。",
-      "归因、风险、贡献和预警具备空态与错误态。",
-      "其余工作台仍保持薄占位，避免越界到厚业务页面。",
+      "独立查询与 loading / empty / error / 重试。",
+      "懒加载分区降低首屏体积。",
+      "其余菜单项保持薄占位页面。",
     ],
   },
   "operations-analysis": {
     title: "经营分析",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["经营摘要", "收益结构", "业务观察"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "risk-overview": {
     title: "风险总览",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["风险热区", "风险趋势", "治理提示"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "team-performance": {
     title: "团队绩效",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["团队贡献", "账户视角", "策略视角"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "decision-matters": {
     title: "决策事项",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["待决策队列", "事项状态", "办理建议"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "bond-analysis": {
     title: "债券分析",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["券种观察", "久期视角", "估值要点"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "platform-config": {
     title: "中台配置",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["口径治理", "权限配置", "契约维护"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
   "market-data": {
     title: "市场数据",
-    summary: "该工作台将在后续阶段接入真实薄页面。",
-    highlights: ["利率曲线", "宏观日历", "市场快照"],
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
   },
 };

@@ -4,6 +4,7 @@ export type WorkbenchSection = {
   path: string;
   icon: string;
   description: string;
+  navigationVisibility?: "primary" | "hidden";
 };
 
 export const workbenchNavigation: WorkbenchSection[] = [
@@ -36,11 +37,11 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "团队贡献入口",
   },
   {
-    key: "decision-matters",
-    label: "决策事项",
-    path: "/decision-matters",
+    key: "news-events",
+    label: "新闻事件",
+    path: "/news-events",
     icon: "decision",
-    description: "待决策事项入口",
+    description: "Choice 新闻事件与回调异常入口",
   },
   {
     key: "bond-analysis",
@@ -48,6 +49,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/bond-analysis",
     icon: "bond",
     description: "债券工作台入口",
+  },
+  {
+    key: "product-category-pnl",
+    label: "产品损益",
+    path: "/product-category-pnl",
+    icon: "analysis",
+    description: "产品类别损益与场景分析入口",
   },
   {
     key: "platform-config",
@@ -63,4 +71,16 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "market",
     description: "市场观察入口",
   },
+  {
+    key: "agent",
+    label: "Agent Workbench",
+    path: "/agent",
+    icon: "agent",
+    description: "Hidden analytical workbench route for agent-facing news and evidence surfaces.",
+    navigationVisibility: "hidden",
+  },
 ];
+
+export const primaryWorkbenchNavigation = workbenchNavigation.filter(
+  (section) => section.navigationVisibility !== "hidden",
+);

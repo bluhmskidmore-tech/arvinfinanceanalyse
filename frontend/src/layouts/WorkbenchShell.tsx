@@ -11,7 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { workbenchNavigation } from "../mocks/navigation";
+import { primaryWorkbenchNavigation } from "../mocks/navigation";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -87,7 +87,7 @@ export function WorkbenchShell() {
                 fontSize: 12,
               }}
             >
-              Workbench Shell
+              工作台壳层
             </span>
           </div>
         </div>
@@ -100,7 +100,7 @@ export function WorkbenchShell() {
             padding: 16,
           }}
         >
-          {workbenchNavigation.map((item) => {
+          {primaryWorkbenchNavigation.map((item) => {
             const active = location.pathname === item.path;
 
             return (
@@ -160,7 +160,7 @@ export function WorkbenchShell() {
                 letterSpacing: "0.08em",
               }}
             >
-              management workspace
+              管理工作台
             </span>
             <div
               style={{
@@ -169,7 +169,7 @@ export function WorkbenchShell() {
                 fontWeight: 600,
               }}
             >
-              前端壳层阶段
+              前端壳层（演示）
             </div>
           </div>
           <div style={{ textAlign: "right" }}>
@@ -187,7 +187,7 @@ export function WorkbenchShell() {
                 color: "#5c6b82",
               }}
             >
-              health / result_meta 协议对接预留
+              健康检查与 result_meta 字段预留
             </span>
           </div>
         </header>

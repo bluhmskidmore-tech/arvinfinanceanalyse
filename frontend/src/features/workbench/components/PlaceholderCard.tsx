@@ -2,17 +2,38 @@ type PlaceholderCardProps = {
   title: string;
   value: string;
   detail: string;
+  /** 列表型要点使用 text，大数字演示使用 metric（默认） */
+  valueVariant?: "metric" | "text";
 };
 
 export function PlaceholderCard({
   title,
   value,
   detail,
+  valueVariant = "metric",
 }: PlaceholderCardProps) {
+  const valueStyle =
+    valueVariant === "text"
+      ? {
+          marginTop: 10,
+          marginBottom: 8,
+          fontSize: 16,
+          fontWeight: 600,
+          color: "#162033",
+          lineHeight: 1.5,
+        }
+      : {
+          marginTop: 14,
+          marginBottom: 10,
+          fontSize: 28,
+          fontWeight: 600,
+          color: "#162033",
+        };
+
   return (
     <div
       style={{
-        minHeight: 170,
+        minHeight: valueVariant === "text" ? 140 : 170,
         padding: 24,
         borderRadius: 18,
         background: "#fbfcfe",
@@ -29,15 +50,7 @@ export function PlaceholderCard({
       >
         {title}
       </div>
-      <div
-        style={{
-          marginTop: 14,
-          marginBottom: 10,
-          fontSize: 28,
-          fontWeight: 600,
-          color: "#162033",
-        }}
-      >
+      <div style={valueStyle}>
         {value}
       </div>
       <p

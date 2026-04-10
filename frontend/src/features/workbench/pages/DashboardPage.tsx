@@ -99,7 +99,7 @@ export default function DashboardPage() {
               lineHeight: 1.75,
             }}
           >
-            当前前端通过可切换 data-source adapter 消费执行舱 endpoint。展示层只呈现受控结果，保留 loading、empty、error 与 retry 状态，不在浏览器端构造正式分析口径。
+            数据源可在 mock 与真实 API 间切换；本页仅演示布局与异步状态（载入、空态、失败、重试），不承载正式分析口径。
           </p>
         </div>
         <span
@@ -114,7 +114,7 @@ export default function DashboardPage() {
             letterSpacing: "0.04em",
           }}
         >
-          {client.mode === "real" ? "real-api mode" : "mock mode"}
+          {client.mode === "real" ? "真实 API" : "本地演示数据"}
         </span>
       </div>
 
