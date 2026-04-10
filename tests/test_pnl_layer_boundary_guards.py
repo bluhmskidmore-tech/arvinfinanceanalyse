@@ -64,12 +64,13 @@ def test_pnl_core_module_file_exists():
     assert PNL_CORE_FILE.is_file(), f"Missing formal PnL core module: {PNL_CORE_FILE}"
 
 
-def test_api_services_repositories_do_not_import_core_finance_pnl():
+def test_api_and_repositories_do_not_import_core_finance_pnl():
+    """Thin layers must not reach formal PnL math via `core_finance.pnl` (or `core_finance` as `pnl`)."""
     violations: list[str] = []
     for base in FORBIDDEN_IMPORT_ROOTS:
         for path in _py_files_under(base):
             violations.extend(_violations_for_imports(path))
-    assert not violations, "PnL core_finance imports leaked into thin layers:\n" + "\n".join(violations)
+    assert not violations, "PnL core_finance.pnl imports leaked into API/repositories:\n" + "\n".join(violations)
 
 
 def test_pnl_private_helpers_are_not_redefined_outside_core_pnl_module():
