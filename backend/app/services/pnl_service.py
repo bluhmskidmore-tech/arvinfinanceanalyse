@@ -34,6 +34,12 @@ PNL_CACHE_VERSION = "cv_pnl_dates_data_v1"
 PNL_JOB_NAME = "pnl_materialize"
 PENDING_SOURCE_VERSION = "sv_pnl_pending"
 TWOPLACES = Decimal("0.01")
+SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
+SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
+
+
+class PnlRefreshServiceError(RuntimeError):
+    pass
 
 
 def pnl_phase1_disabled_payload() -> dict[str, object]:
@@ -49,15 +55,18 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
     run_id = _build_run_id()
     GovernanceRepository(base_dir=settings.governance_path).append(
         CACHE_BUILD_RUN_STREAM,
-        CacheBuildRunRecord(
-            run_id=run_id,
-            job_name=PNL_JOB_NAME,
-            status="queued",
-            cache_key=CACHE_KEY,
-            lock=PNL_MATERIALIZE_LOCK.key,
-            source_version=PENDING_SOURCE_VERSION,
-            vendor_version="vv_none",
-        ).model_dump(),
+        {
+            **CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=PNL_JOB_NAME,
+                status="queued",
+                cache_key=CACHE_KEY,
+                lock=PNL_MATERIALIZE_LOCK.key,
+                source_version=PENDING_SOURCE_VERSION,
+                vendor_version="vv_none",
+            ).model_dump(),
+            "report_date": refresh_input.report_date,
+        },
     )
 
     actor_kwargs = {
@@ -79,13 +88,29 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
             "cache_key": CACHE_KEY,
             "report_date": refresh_input.report_date,
         }
-    except Exception:
-        payload = PnlMaterializePayload.model_validate(materialize_pnl_facts.fn(**actor_kwargs))
-        return {
-            **payload.model_dump(mode="json"),
-            "job_name": PNL_JOB_NAME,
-            "trigger_mode": "sync-fallback",
-        }
+    except Exception as exc:
+        if _should_use_sync_fallback(settings, exc):
+            try:
+                payload = PnlMaterializePayload.model_validate(
+                    materialize_pnl_facts.fn(**actor_kwargs)
+                )
+            except Exception as fallback_exc:
+                raise PnlRefreshServiceError(
+                    "Pnl refresh failed during sync fallback."
+                ) from fallback_exc
+            return {
+                **payload.model_dump(mode="json"),
+                "job_name": PNL_JOB_NAME,
+                "trigger_mode": "sync-fallback",
+            }
+
+        _record_dispatch_failure(
+            settings=settings,
+            run_id=run_id,
+            report_date=refresh_input.report_date,
+            error_message="Pnl refresh queue dispatch failed.",
+        )
+        raise PnlRefreshServiceError("Pnl refresh queue dispatch failed.") from exc
 
 
 def pnl_import_status(settings: Settings, *, run_id: str | None = None) -> dict[str, object]:
@@ -225,3 +250,35 @@ def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
         for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
         if str(record.get("cache_key")) == CACHE_KEY and str(record.get("job_name")) == PNL_JOB_NAME
     ]
+
+
+def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:
+    if str(settings.environment).lower() == "production":
+        return False
+    if isinstance(exc, SAFE_SYNC_FALLBACK_EXCEPTIONS):
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in SAFE_SYNC_FALLBACK_MESSAGES)
+
+
+def _record_dispatch_failure(
+    *,
+    settings: Settings,
+    run_id: str,
+    report_date: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": PNL_JOB_NAME,
+            "status": "failed",
+            "cache_key": CACHE_KEY,
+            "lock": PNL_MATERIALIZE_LOCK.key,
+            "source_version": "sv_pnl_failed",
+            "vendor_version": "vv_none",
+            "report_date": report_date,
+            "error_message": error_message,
+        },
+    )

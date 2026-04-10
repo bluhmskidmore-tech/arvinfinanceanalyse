@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { SourcePreviewColumn, SourcePreviewSummary } from "../api/contracts";
 import SourcePreviewPage from "../features/source-preview/pages/SourcePreviewPage";
@@ -897,5 +898,35 @@ describe("SourcePreviewPage", () => {
       );
       expect(screen.getByText("Source preview refresh queue dispatch failed.")).toBeInTheDocument();
     });
+  });
+
+  it("preserves the last known refresh state when polling times out", async () => {
+    const user = userEvent.setup();
+    const pollingSpy = vi
+      .spyOn(pollingModule, "runPollingTask")
+      .mockImplementation(async (options) => {
+        options.onUpdate?.({
+          status: "running",
+          run_id: "source_preview_refresh:timeout-run",
+        } as never);
+        throw new Error("任务轮询超时");
+      });
+
+    renderPage(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("source-preview-refresh-button");
+    await user.click(screen.getByTestId("source-preview-refresh-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("source-preview-refresh-run-id")).toHaveTextContent(
+        "source_preview_refresh:timeout-run",
+      );
+      expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
+        "最近结果：running",
+      );
+      expect(screen.getByText("任务轮询超时")).toBeInTheDocument();
+    });
+
+    pollingSpy.mockRestore();
   });
 });

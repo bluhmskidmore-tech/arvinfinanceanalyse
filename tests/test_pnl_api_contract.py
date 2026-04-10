@@ -237,6 +237,42 @@ def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_pnl_refresh_returns_503_when_send_error_is_not_safe_for_sync_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir = _configure_refresh_sources(tmp_path, monkeypatch)
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    fallback_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("unexpected broker failure")),
+    )
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "fn",
+        lambda **kwargs: fallback_calls.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/api/data/refresh_pnl")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Pnl refresh queue dispatch failed."
+    assert fallback_calls == []
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "pnl_materialize"][-1]
+    assert latest["status"] == "failed"
+    assert latest["error_message"] == "Pnl refresh queue dispatch failed."
+    get_settings.cache_clear()
+
+
 def test_pnl_refresh_report_date_queues_exact_requested_month(tmp_path, monkeypatch):
     _configure_refresh_sources(tmp_path, monkeypatch)
     _copy_fi_refresh_source(tmp_path, month_key="202601")

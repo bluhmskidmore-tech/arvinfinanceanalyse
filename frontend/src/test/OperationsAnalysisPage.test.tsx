@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
+import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, SourcePreviewPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
@@ -323,5 +324,35 @@ describe("OperationsAnalysisPage", () => {
       );
       expect(screen.getByText("Pnl refresh worker failed.")).toBeInTheDocument();
     });
+  });
+
+  it("preserves the last known pnl refresh state when polling times out", async () => {
+    const user = userEvent.setup();
+    const pollingSpy = vi
+      .spyOn(pollingModule, "runPollingTask")
+      .mockImplementation(async (options) => {
+        options.onUpdate?.({
+          status: "running",
+          run_id: "pnl_materialize:timeout-run",
+        } as never);
+        throw new Error("任务轮询超时");
+      });
+
+    renderPage(createApiClient({ mode: "mock" }));
+
+    await screen.findByRole("heading", { name: "经营分析入口" });
+    await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-pnl-refresh-run-id")).toHaveTextContent(
+        "pnl_materialize:timeout-run",
+      );
+      expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
+        "最近结果：running",
+      );
+      expect(screen.getByText("任务轮询超时")).toBeInTheDocument();
+    });
+
+    pollingSpy.mockRestore();
   });
 });

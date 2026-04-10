@@ -44,6 +44,20 @@ function summarizeNewsPayload(event: {
   return "Empty callback envelope.";
 }
 
+function buildPnlRefreshStatusText(payload: {
+  status: string;
+  report_date?: string;
+  source_version?: string;
+}) {
+  return [
+    `最近结果：${payload.status}`,
+    payload.report_date ? `报告日 ${payload.report_date}` : null,
+    payload.source_version ? `source ${payload.source_version}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export default function OperationsAnalysisPage() {
   const client = useApiClient();
   const [isPnlRefreshing, setIsPnlRefreshing] = useState(false);
@@ -108,17 +122,11 @@ export default function OperationsAnalysisPage() {
       const payload = await runPollingTask({
         start: () => client.refreshFormalPnl(),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
+        onUpdate: (nextPayload) => {
+          setLastPnlRefreshRunId(nextPayload.run_id);
+          setLastPnlRefreshStatus(buildPnlRefreshStatusText(nextPayload));
+        },
       });
-      setLastPnlRefreshRunId(payload.run_id);
-      setLastPnlRefreshStatus(
-        [
-          `最近结果：${payload.status}`,
-          payload.report_date ? `报告日 ${payload.report_date}` : null,
-          payload.source_version ? `source ${payload.source_version}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
       if (payload.status !== "completed") {
         throw new Error(payload.error_message ?? payload.detail ?? `PnL 刷新未完成：${payload.status}`);
       }

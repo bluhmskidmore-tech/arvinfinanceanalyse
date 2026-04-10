@@ -80,6 +80,20 @@ function totalPages(totalRows: number, pageSize: number) {
   return Math.max(1, Math.ceil(totalRows / pageSize));
 }
 
+function buildRefreshStatusText(payload: {
+  status: string;
+  ingest_batch_id?: string | null;
+  preview_sources?: string[];
+}) {
+  return [
+    `最近结果：${payload.status}`,
+    payload.ingest_batch_id ? `批次 ${payload.ingest_batch_id}` : null,
+    payload.preview_sources?.length ? payload.preview_sources.join(" / ") : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 function GenericPreviewTable({
   columns,
   rows,
@@ -265,17 +279,11 @@ export default function SourcePreviewPage() {
       const payload = await runPollingTask({
         start: () => client.refreshSourcePreview(),
         getStatus: (runId) => client.getSourcePreviewRefreshStatus(runId),
+        onUpdate: (nextPayload) => {
+          setLastRefreshRunId(nextPayload.run_id);
+          setLastRefreshStatus(buildRefreshStatusText(nextPayload));
+        },
       });
-      setLastRefreshRunId(payload.run_id);
-      setLastRefreshStatus(
-        [
-          `最近结果：${payload.status}`,
-          payload.ingest_batch_id ? `批次 ${payload.ingest_batch_id}` : null,
-          payload.preview_sources?.length ? payload.preview_sources.join(" / ") : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-      );
       if (payload.status !== "completed") {
         throw new Error(
           payload.error_message ?? payload.detail ?? `数据源预览刷新未完成：${payload.status}`,
