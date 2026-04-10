@@ -29,14 +29,24 @@
 ### 3.1 基础公式
 
 ```text
-total_pnl = interest_income_514 + fair_value_change_516 + capital_gain_517 + manual_adjustment
+standardized_total_pnl = interest_income_514 + fair_value_change_516 + capital_gain_517 + manual_adjustment
 ```
+
+`standardized_total_pnl` 只是标准化组件汇总，不直接等于 formal-recognized `total_pnl`；formal-recognized `total_pnl` 由 3.3 的归属矩阵判定。
 
 ### 3.2 会计口径
 
 - `H / AC`：正式利润只保留利息与相关 realized 项，不将公允价值波动计入当期利润
 - `A / FVOCI`：公允价值波动进入 OCI，不进入 formal PnL；分析口径可单列展示
 - `T / FVTPL`：公允价值变动计入当期损益
+
+### 3.3 Formal 归属矩阵
+
+- `AC`：`514` 计入 formal；`516` 不计入 formal `total_pnl`；`517` 仅限 realized 且符合 formal 事件；`manual_adjustment` 仅限已批准 formal adjustment。
+- `FVOCI`：`514` 计入 formal；`516` 不计入 formal `total_pnl`；`517` 仅计入已实现损益；OCI 变化不进 formal `total_pnl`。
+- `FVTPL`：`514`、`516` 可进入 formal `total_pnl`；`517` 仍需满足 realized component / formal event semantics 才能进入 formal `total_pnl`；`manual_adjustment` 同样要求已批准。
+- `manual_adjustment` 的批准判定必须来自治理/审批状态字段（如 `approval_status` / `governance_status`），不得由自由文本解释；未批准 adjustment 不进入 formal `total_pnl`。
+- 当前 `backend/app/core_finance/pnl.py` 仍是 `standardization/materialize start-pack`，不等于完整 formal engine。
 
 ## 4. 516 规则
 

@@ -1,7 +1,8 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
+import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../components/PlaceholderCard";
@@ -45,6 +46,10 @@ function summarizeNewsPayload(event: {
 
 export default function OperationsAnalysisPage() {
   const client = useApiClient();
+  const [isPnlRefreshing, setIsPnlRefreshing] = useState(false);
+  const [pnlRefreshError, setPnlRefreshError] = useState<string | null>(null);
+  const [lastPnlRefreshRunId, setLastPnlRefreshRunId] = useState<string | null>(null);
+  const [lastPnlRefreshStatus, setLastPnlRefreshStatus] = useState<string | null>(null);
   const sourceQuery = useQuery({
     queryKey: ["operations-entry", "source-preview", client.mode],
     queryFn: () => client.getSourceFoundation(),
@@ -95,6 +100,34 @@ export default function OperationsAnalysisPage() {
       .map((point) => point.trade_date)
       .sort((left, right) => right.localeCompare(left))[0];
   }, [macroLatest]);
+
+  async function handlePnlRefresh() {
+    setIsPnlRefreshing(true);
+    setPnlRefreshError(null);
+    try {
+      const payload = await runPollingTask({
+        start: () => client.refreshFormalPnl(),
+        getStatus: (runId) => client.getFormalPnlImportStatus(runId),
+      });
+      if (payload.status !== "completed") {
+        throw new Error(payload.detail ?? `PnL 刷新未完成：${payload.status}`);
+      }
+      setLastPnlRefreshRunId(payload.run_id);
+      setLastPnlRefreshStatus(
+        [
+          `最近结果：${payload.status}`,
+          payload.report_date ? `报告日 ${payload.report_date}` : null,
+          payload.source_version ? `source ${payload.source_version}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    } catch (error) {
+      setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 表失败");
+    } finally {
+      setIsPnlRefreshing(false);
+    }
+  }
 
   return (
     <section>
@@ -294,6 +327,66 @@ export default function OperationsAnalysisPage() {
             ))}
           </div>
         </AsyncSection>
+
+        <section
+          style={{
+            padding: 24,
+            borderRadius: 20,
+            background: "#fbfcfe",
+            border: "1px solid #e4ebf5",
+            boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+            <div>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>正式损益刷新</h2>
+              <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+            手动触发正式损益物化任务。该入口只负责发起刷新与显示任务状态，不在当前页面渲染正式损益结果表。
+              </p>
+              {lastPnlRefreshRunId ? (
+                <p
+                  data-testid="operations-entry-pnl-refresh-run-id"
+                  style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
+                >
+                  最近刷新任务：{lastPnlRefreshRunId}
+                </p>
+              ) : null}
+              {lastPnlRefreshStatus ? (
+                <p
+                  data-testid="operations-entry-pnl-refresh-status"
+                  style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
+                >
+                  {lastPnlRefreshStatus}
+                </p>
+              ) : null}
+              {pnlRefreshError ? (
+                <p style={{ marginTop: 8, marginBottom: 0, color: "#b42318", fontSize: 12 }}>
+                  {pnlRefreshError}
+                </p>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              data-testid="operations-entry-pnl-refresh-button"
+              onClick={() => void handlePnlRefresh()}
+              disabled={isPnlRefreshing}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: "1px solid #162033",
+                background: "#fbfcfe",
+                color: "#162033",
+                fontWeight: 600,
+                cursor: isPnlRefreshing ? "progress" : "pointer",
+                opacity: isPnlRefreshing ? 0.7 : 1,
+              }}
+            >
+            {isPnlRefreshing ? "刷新中..." : "刷新正式损益表"}
+            </button>
+          </div>
+        </section>
       </div>
     </section>
   );

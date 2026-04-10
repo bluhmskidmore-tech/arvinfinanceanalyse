@@ -21,3 +21,5 @@ def test_result_meta_schema_defines_governance_fields():
         "formal_use_allowed",
         "generated_at",
     } <= fields
+    assert "result_kind" in fields
+    assert "scenario_flag" in fields

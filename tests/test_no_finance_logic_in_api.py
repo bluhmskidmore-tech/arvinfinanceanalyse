@@ -31,3 +31,9 @@ def test_api_layer_does_not_contain_finance_formula_tokens():
                 violations.append(f"{path}: {token}")
 
     assert not violations, "Finance logic leaked into API layer:\n" + "\n".join(violations)
+
+
+def test_finance_token_guard_has_expected_coverage():
+    """Sanity check: the denylist stays meaningful as new terms are added upstream."""
+    assert len(FORBIDDEN_TOKENS) >= 6
+    assert all(isinstance(t, str) and t.strip() for t in FORBIDDEN_TOKENS)

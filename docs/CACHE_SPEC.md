@@ -9,6 +9,25 @@
 - DuckDB 在请求链路中只读，写入只允许经由 `backend/app/tasks/` / worker。
 - Scenario 与 Formal 在缓存、表、结果元数据上严格隔离。
 
+## 1.1 文档归属
+
+- 本文是 outward `result_meta` / cache semantics 的唯一规范文档。
+- 本文拥有以下语义：
+  - `basis`
+  - `formal_use_allowed`
+  - `scenario_flag`
+  - cache key
+  - cache identity
+  - cache namespace
+- 本文不定义 `zqtz_bond_daily_snapshot`、`tyw_interbank_daily_snapshot` 的表身份、字段清单、canonical grain、lineage 或直接消费者。
+- snapshot 表结构与语义以 [data_contracts.md](data_contracts.md) 为准；若其他文档需要描述 outward read/cache 行为，应引用本文而不是另写真值表。
+
+## 1.2 与 Snapshot 标准表的关系
+
+- `zqtz_bond_daily_snapshot` 与 `tyw_interbank_daily_snapshot` 属于 canonical standardized storage，不是“analytical cache”。
+- 若未来存在 snapshot read API，该 API 的 outward envelope 才携带 `basis / formal_use_allowed / scenario_flag`；这些语义不反向定义底层 snapshot 表身份。
+- snapshot 不得复用 formal result 的 cache identity，也不得因为 analytical envelope 而被重写成 analytical output。
+
 ## 2. 分层
 
 ### L0 前端查询缓存
@@ -99,6 +118,9 @@ risk:summary:2026-03-28:formal:asset:CNY:sv_2a90:rv_20260409:fh_01ef
 ### 键组成说明
 
 - `domain`：bonds / interbank / pnl / risk / bridge / fx / agent
+- `basis` 必须参与 key 且只能取 `formal` / `scenario` / `analytical`
+- `filter_hash` 只表示同一 basis 内的过滤条件；scenario / analytical 的 profile hash 不得复用 formal 的 hash
+- `cache_version` 必须是 basis-scoped，同一 `source_version` / `rule_version` 下不同 basis 也要生成不同 `cache_version`
 - `view`：monthly_avg / summary / overview / cube
 - `date_or_month`：报告日或报告月
 - `basis`：formal / analytical / scenario
@@ -110,12 +132,15 @@ risk:summary:2026-03-28:formal:asset:CNY:sv_2a90:rv_20260409:fh_01ef
 
 ## 4. result_meta 要求
 
+本节只定义 outward response / cache 语义，不定义底层 standardized snapshot 表身份。
+
 所有缓存命中的正式结果必须携带：
 
 ```json
 {
   "basis": "formal",
   "formal_use_allowed": true,
+  "scenario_flag": false,
   "source_version": "sv_xxx",
   "rule_version": "rv_xxx",
   "cache_version": "cv_xxx",
@@ -130,9 +155,37 @@ Scenario 结果必须为：
 ```json
 {
   "basis": "scenario",
-  "formal_use_allowed": false
+  "formal_use_allowed": false,
+  "scenario_flag": true,
+  "source_version": "sv_xxx",
+  "rule_version": "rv_xxx",
+  "cache_version": "cv_scenario_xxx",
+  "cache_hit": true,
+  "generated_at": "2026-04-09T12:00:00+08:00",
+  "trace_id": "..."
 }
 ```
+
+Analytical 结果必须为：
+
+```json
+{
+  "basis": "analytical",
+  "formal_use_allowed": false,
+  "scenario_flag": false,
+  "source_version": "sv_xxx",
+  "rule_version": "rv_xxx",
+  "cache_version": "cv_analytical_xxx",
+  "cache_hit": true,
+  "generated_at": "2026-04-09T12:00:00+08:00",
+  "trace_id": "..."
+}
+```
+
+- `result_meta.basis` 必须与 cache key 中的 basis 一致。
+- `formal_use_allowed` 只能在 `basis=formal` 时为 `true`。
+- `scenario_flag` 必须在 formal / scenario / analytical 三种 basis 下都显式出现；其中仅 `basis=scenario` 时为 `true`，formal / analytical 必须为 `false`。
+- `cache_version` 必须把 basis 和 basis-specific profile hash 算进去，不能跨 basis 复用。
 
 ## 5. 失效规则
 
@@ -182,8 +235,8 @@ Scenario 结果必须为：
 ### Key 命名
 
 - `moss:resp:{cache_key}`：响应缓存
-- `moss:lock:{domain}:{view}:{date_or_month}`：单飞锁
-- `moss:meta:latest_cache_version:{domain}`：最新缓存版本
+- `moss:lock:{basis}:{domain}:{view}:{date_or_month}`：单飞锁
+- `moss:meta:latest_cache_version:{basis}:{domain}`：最新缓存版本
 - `moss:job:{job_id}`：任务状态
 
 ### Value 结构
@@ -268,3 +321,5 @@ Scenario 结果必须为：
 - 人工调整只失效相关域
 - 同参数重复请求命中缓存
 - DuckDB 写入只发生在 worker 路径
+- `basis=analytical` 不得与 `formal_use_allowed=true` 合法共存
+- 非 formal 结果不得复用 formal cache identity

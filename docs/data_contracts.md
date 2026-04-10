@@ -27,11 +27,29 @@
 - 形成正式分析事实表
 - 供 service / core_finance 使用
 
+### 文档归属
+
+- 本文是标准化表与事实表结构语义的唯一契约文档；对外 `result_meta` / cache semantics 不在本文定义。
+- 对 `zqtz_bond_daily_snapshot` 与 `tyw_interbank_daily_snapshot`，本文是以下内容的唯一 normative owner：
+  - 表层级归属
+  - canonical grain
+  - hard-required lineage
+  - 直接允许 / 禁止消费者
+  - `required now / deferred enrichment / formal-only derived later`
+- `basis / formal_use_allowed / scenario_flag` 属于对外读面与缓存语义，由 [CACHE_SPEC.md](CACHE_SPEC.md) 统一定义；本文只引用，不重复维护独立真值表。
+- 若其他文档需要引用 snapshot 合同，应按本文引用，不应再维护第二套字段、主键、lineage 或消费者规则清单。
+
 ## 4. 标准表清单
 
 ### 4.1 zqtz_bond_daily_snapshot
 
 用途：债券逐日快照。
+
+层级归属：
+- 属于 `Standardized`
+- 属于 canonical standardized storage
+- 不是 analytical output
+- 不是 formal fact
 
 关键字段：
 - `report_date` date
@@ -57,6 +75,50 @@
 - `is_issuance_like` boolean
 - `source_version` varchar
 
+hard-required lineage：
+- `source_version`
+- `rule_version`
+- `ingest_batch_id`
+- `trace_id`
+
+canonical grain：
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_code)`
+
+first-wave required now：
+- `report_date`
+- `instrument_code`
+- `portfolio_name`
+- `cost_center`
+- `currency_code`
+- `market_value_native`
+- `amortized_cost_native`
+- `accrued_interest_native`
+- `is_issuance_like`
+
+deferred enrichment：
+- `issuer_name`
+- `industry_name`
+- `rating`
+- `next_call_date`
+- `overdue_days`
+
+formal-only derived later：
+- `invest_type_std`
+- `accounting_basis`
+- `position_scope`
+- `currency_basis`
+
+直接允许消费者：
+- 未来 `core_finance` 输入
+- 治理 / 数据质量校验
+- 未来受治理的 snapshot read API
+
+直接禁止消费者：
+- `executive.*`
+- workbench read model
+- formal-facing service adapter
+- 任何把该表直接重标成 formal result 的服务路径
+
 单位约定：
 - 金额字段为原币金额
 - `ytm_value`、`coupon_rate` 统一为小数口径
@@ -64,6 +126,12 @@
 ### 4.2 tyw_interbank_daily_snapshot
 
 用途：同业/资金逐日快照。
+
+层级归属：
+- 属于 `Standardized`
+- 属于 canonical standardized storage
+- 不是 analytical output
+- 不是 formal fact
 
 关键字段：
 - `report_date`
@@ -80,6 +148,49 @@
 - `maturity_date`
 - `pledged_bond_code`
 - `source_version`
+
+hard-required lineage：
+- `source_version`
+- `rule_version`
+- `ingest_batch_id`
+- `trace_id`
+
+canonical grain：
+- `(report_date, position_id)`
+
+first-wave required now：
+- `report_date`
+- `position_id`
+- `product_type`
+- `position_side`
+- `counterparty_name`
+- `currency_code`
+- `principal_native`
+- `accrued_interest_native`
+- `maturity_date`
+
+deferred enrichment：
+- `account_type`
+- `special_account_type`
+- `pledged_bond_code`
+- `funding_cost_rate`
+
+formal-only derived later：
+- `invest_type_std`
+- `accounting_basis`
+- `position_scope`
+- `currency_basis`
+
+直接允许消费者：
+- 未来 `core_finance` 输入
+- 治理 / 数据质量校验
+- 未来受治理的 snapshot read API
+
+直接禁止消费者：
+- `executive.*`
+- workbench read model
+- formal-facing service adapter
+- 任何把该表直接重标成 formal result 的服务路径
 
 ### 4.3 fi_pnl_record
 
@@ -100,9 +211,17 @@
 - `currency_basis`   # CNY / CNX
 - `source_version`
 
+- 对外 `basis / formal_use_allowed / scenario_flag` 语义以 [CACHE_SPEC.md](CACHE_SPEC.md) 为准；本文不单独维护独立真值表。
+- `fi_pnl_record` 只承载 formal-scoped rows，scenario / analytical 结果不得写入该表，也不得复用它的 key 语义。
+
 规则：
 - `invest_type_std` 由正式映射规则生成
-- `total_pnl = 514 + 516 + 517 + manual_adjustment`
+- `fi_pnl_record.total_pnl` 仅表示 standardized total = `514 + 516 + 517 + manual_adjustment`，不直接等于 formal-recognized total；formal-recognized total 由 `fact_formal_pnl_fi.total_pnl` 表示。
+
+- `fi_pnl_record` 的 canonical grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)`
+- `fair_value_change_516` 是 standardized component，不天然等于 formal-recognized pnl
+- `capital_gain_517` 是 standardized realized component，是否进入 formal 取决于 `accounting_basis` 与 event semantics
+- `manual_adjustment` 只有在治理/审批状态字段（如 `approval_status` / `governance_status`）为 approved 时才可进入 formal total；未批准 adjustment 不进入 formal total_pnl。
 
 ### 4.4 nonstd_journal_entry
 
@@ -124,6 +243,8 @@
 规则：
 - 若源只有金额 + 借贷标识，必须在标准化阶段合成 `signed_amount`
 - 正式计算只使用 `signed_amount`
+
+- `nonstd_journal_entry` 是 standardized ledger grain，不是 formal fact grain。
 
 ### 4.5 ledger_daily_pnl
 
@@ -191,6 +312,21 @@
 - `fact_risk_tensor_daily`
 - `fact_formal_analytical_bridge_daily`
 
+- `fact_formal_pnl_fi` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)`
+- `fact_nonstd_pnl_bridge` grain = `(report_date, bond_code, portfolio_name, cost_center)`
+- `fact_nonstd_pnl_bridge` 是 bridge / aggregation fact，不是 raw ledger 明细。
+
+### 4.8 Preview / Snapshot / Formal 三层关系
+
+用途：定义 `zqtz / tyw` 在仓库中的三层位置关系，避免把 preview、snapshot、formal 写成同一层。
+
+规则：
+- preview surface 只用于解释、审阅、规则命中与 trace，下游不直接当作 canonical input。
+- `zqtz_bond_daily_snapshot` 与 `tyw_interbank_daily_snapshot` 属于 standardized canonical storage，是后续正式计算的输入边界，不是 analytical output。
+- formal facts 才属于正式结果域；snapshot 不得被直接重标成 formal result。
+- 对外 `basis / formal_use_allowed / scenario_flag`、cache identity、cache namespace 语义由 [CACHE_SPEC.md](CACHE_SPEC.md) 统一定义。
+- 若未来存在 snapshot read API，API envelope 可以带 outward `basis / result_meta` 语义，但这不改变 snapshot 表本身的层级归属。
+
 ## 6. 主键建议
 
 ### bond snapshot 主键
@@ -223,7 +359,6 @@
 - `repricing_bucket`
 - `rating_bucket`
 - `position_side`
-- `formal_use_allowed`
 
 ## 8. 缺失值规则
 

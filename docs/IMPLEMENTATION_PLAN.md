@@ -97,7 +97,23 @@
 
 ## 当前执行要求
 
-当前只执行 `Phase 1`。
+当前默认只执行 `Phase 1`。
+
+执行口径解释如下：
+
+- `Phase 1 closeout` 仍按 `Phase 1` 处理，只用于完成已打开的骨架、预览、占位、验证与治理收口。
+- `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 文档是计划材料，不是自动执行授权。
+- 只有 dated execution update 才能对被点名工作流临时 lifted stop line；该 lifted stop line 也只作用于该工作流。
+- 当前有效 scoped override（2026-04-09）仅限 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md` 所定义的 macro-data stream。
+- 上述 macro-data override 不放开通用 `Phase 2` 正式计算，不放开 Agent MVP，不放开无关工作流的 next slice，也不放开 broad frontend rollout。
+- `zqtz / tyw` 当前允许进行 docs-only 的 snapshot contract alignment / PRD / test-spec 收敛；这仍属于 `Phase 1` planning / closeout，不代表 `Phase 2` 已放开。
+
+Agent 补充约束：
+
+- 当前仅允许保留 Agent skeleton 预留
+- `POST /api/agent/query` 可作为 disabled stub 存在，但不得开放真实查询能力
+- `/agent` 可作为 hidden placeholder route 存在，但不得包装为已上线 Agent 工作台
+- Agent closeout 完成后暂停，等待系统 `Phase 2` + `Phase 3` 前置能力完成，再进入真实 Agent Phase 4A / 4B
 
 完成后必须输出：
 

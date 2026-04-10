@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
@@ -232,6 +233,56 @@ describe("OperationsAnalysisPage", () => {
         limit: 3,
         offset: 0,
       });
+    });
+  });
+
+  it("polls formal pnl refresh status and shows the latest run id", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "pnl_materialize:test-run",
+      job_name: "pnl_materialize",
+      trigger_mode: "async",
+      cache_key: "pnl.phase2.materialize",
+      report_date: "2026-02-28",
+    }));
+    const statusSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "running",
+        run_id: "pnl_materialize:test-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "async",
+        cache_key: "pnl.phase2.materialize",
+      })
+      .mockResolvedValueOnce({
+        status: "completed",
+        run_id: "pnl_materialize:test-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "terminal",
+        cache_key: "pnl.phase2.materialize",
+        source_version: "sv_pnl_test",
+      });
+
+    renderPage({
+      ...base,
+      refreshFormalPnl: refreshSpy,
+      getFormalPnlImportStatus: statusSpy,
+    });
+
+    await screen.findByRole("heading", { name: "经营分析入口" });
+    await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(statusSpy).toHaveBeenCalledWith("pnl_materialize:test-run");
+      expect(screen.getByTestId("operations-entry-pnl-refresh-run-id")).toHaveTextContent(
+        "pnl_materialize:test-run",
+      );
+      expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
+        "最近结果：completed",
+      );
     });
   });
 });

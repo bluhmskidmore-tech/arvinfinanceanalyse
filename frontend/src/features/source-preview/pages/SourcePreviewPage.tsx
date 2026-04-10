@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import type { SourcePreviewColumn } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -148,6 +149,10 @@ function GenericPreviewTable({
 
 export default function SourcePreviewPage() {
   const client = useApiClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
+  const [lastRefreshStatus, setLastRefreshStatus] = useState<string | null>(null);
   const previewQuery = useQuery({
     queryKey: ["source-preview", client.mode],
     queryFn: () => client.getSourceFoundation(),
@@ -253,31 +258,123 @@ export default function SourcePreviewPage() {
     setTracesOffset(0);
   }
 
+  async function handleRefresh() {
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const payload = await runPollingTask({
+        start: () => client.refreshSourcePreview(),
+        getStatus: (runId) => client.getSourcePreviewRefreshStatus(runId),
+      });
+      if (payload.status !== "completed") {
+        throw new Error(payload.detail ?? `数据源预览刷新未完成：${payload.status}`);
+      }
+      setLastRefreshRunId(payload.run_id);
+      setHistoryOffset(0);
+      setRowsOffset(0);
+      setTracesOffset(0);
+      setLastRefreshStatus(
+        [
+          `最近结果：${payload.status}`,
+          payload.ingest_batch_id ? `批次 ${payload.ingest_batch_id}` : null,
+          payload.preview_sources?.length ? payload.preview_sources.join(" / ") : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      );
+      await Promise.all([
+        previewQuery.refetch(),
+        historyQuery.refetch(),
+        rowsQuery.refetch(),
+        tracesQuery.refetch(),
+      ]);
+    } catch (error) {
+      setRefreshError(
+        error instanceof Error ? error.message : "数据源预览刷新失败",
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   return (
     <section>
-      <h1
+      <div
         style={{
-          marginTop: 0,
-          marginBottom: 10,
-          fontSize: 32,
-          fontWeight: 600,
-          letterSpacing: "-0.03em",
-        }}
-      >
-        数据源规则预览
-      </h1>
-      <p
-        style={{
-          marginTop: 0,
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
           marginBottom: 24,
-          color: "#5c6b82",
-          fontSize: 15,
-          lineHeight: 1.75,
         }}
       >
-        汇总查看 ZQTZ、TYW 等数据源的规则命中与人工复核提示。下钻结果以真实 preview
-        API 返回为准。
-      </p>
+        <div>
+          <h1
+            style={{
+              marginTop: 0,
+              marginBottom: 10,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            数据源规则预览
+          </h1>
+          <p
+            style={{
+              marginTop: 0,
+              marginBottom: 0,
+              color: "#5c6b82",
+              fontSize: 15,
+              lineHeight: 1.75,
+            }}
+          >
+            汇总查看 ZQTZ、TYW 等数据源的规则命中与人工复核提示。下钻结果以真实 preview
+            API 返回为准。
+          </p>
+          {lastRefreshRunId ? (
+            <p
+              data-testid="source-preview-refresh-run-id"
+              style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
+            >
+              最近刷新任务：{lastRefreshRunId}
+            </p>
+          ) : null}
+          {lastRefreshStatus ? (
+            <p
+              data-testid="source-preview-refresh-status"
+              style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
+            >
+              {lastRefreshStatus}
+            </p>
+          ) : null}
+          {refreshError ? (
+            <p
+              style={{ marginTop: 8, marginBottom: 0, color: "#b42318", fontSize: 12 }}
+            >
+              {refreshError}
+            </p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          data-testid="source-preview-refresh-button"
+          onClick={() => void handleRefresh()}
+          disabled={isRefreshing}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 12,
+            border: "1px solid #162033",
+            background: "#fbfcfe",
+            color: "#162033",
+            fontWeight: 600,
+            cursor: isRefreshing ? "progress" : "pointer",
+            opacity: isRefreshing ? 0.7 : 1,
+          }}
+        >
+          {isRefreshing ? "刷新中..." : "刷新数据源预览"}
+        </button>
+      </div>
 
       <section style={sectionShell}>
         <div style={sectionHeaderRow}>

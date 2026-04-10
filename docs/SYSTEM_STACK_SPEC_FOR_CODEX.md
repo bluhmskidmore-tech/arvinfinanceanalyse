@@ -57,6 +57,9 @@ repo/
     data_contracts.md
     CACHE_SPEC.md
     acceptance_tests.md
+    pnl/
+      README.md
+      appendix-pnl-fixture-matrix.md
     CODEX_HANDOFF.md
   backend/
     app/

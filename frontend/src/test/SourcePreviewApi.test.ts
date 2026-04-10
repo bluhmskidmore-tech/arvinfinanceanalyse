@@ -26,6 +26,8 @@ function createMockClient(): ApiClient {
     getAlerts: vi.fn(),
     getPlaceholderSnapshot: vi.fn(),
     getSourceFoundation: vi.fn(),
+    refreshSourcePreview: vi.fn(),
+    getSourcePreviewRefreshStatus: vi.fn(),
     getSourceFoundationHistory: vi.fn(async () => ({ result_meta: {} as never, result: {} as never })),
     getSourceFoundationRows: vi.fn(async () => ({ result_meta: {} as never, result: {} as never })),
     getSourceFoundationTraces: vi.fn(async () => ({ result_meta: {} as never, result: {} as never })),

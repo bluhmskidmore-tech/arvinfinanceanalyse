@@ -78,6 +78,8 @@
 - 文件：FI 损益、非标 `514 / 516 / 517`、日均、FX 中间价
 - 外部：Choice、AkShare
 
+PnL 文件类源的 `data_input` 布局与回归测试对照：`docs/pnl/appendix-pnl-fixture-matrix.md`。
+
 ## 6. 目标目录
 
 ```text
@@ -94,6 +96,9 @@ repo/
     calc_rules.md
     data_contracts.md
     acceptance_tests.md
+    pnl/
+      README.md
+      appendix-pnl-fixture-matrix.md
   backend/
     app/
       api/
@@ -146,7 +151,7 @@ repo/
 
 ## 9. 当前执行边界
 
-当前只允许执行 `Phase 1`：
+默认只允许执行 `Phase 1`：
 
 - repo 骨架
 - FastAPI 可启动
@@ -157,7 +162,33 @@ repo/
 - 基础 `tasks/worker` 框架
 - smoke tests
 
-完成后停止，不得跨到 Phase 2。
+默认边界解释如下：
+
+- `Phase 1 closeout` 仍属于 `Phase 1`，只用于收口已经打开的骨架、预览、占位、验证和治理欠账。
+- `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 文档是计划，不是执行权限来源。
+- 只有 dated execution update 才能对被点名工作流临时 lifted stop line；该 lifted stop line 不代表仓库整体进入 `Phase 2`。
+- 当前有效 scoped override（2026-04-09）仅限 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md` 所定义的 macro-data stream。
+- 当前代码库中已经落下的 thin slice / start pack 仍按各自边界解释；它们不自动构成“全仓进入 Phase 2”的证据。
+- 最新的“当前代码状态 vs 当前阶段边界”摘要见 `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`。
+
+完成默认边界内工作后停止，不得把默认边界误读成已放开通用 `Phase 2`。
+
+## 9.1 Agent Phase 1 当前状态
+
+当前 Agent 仅完成 `Phase 1 skeleton`，不具备真实查询能力。
+
+已存在的占位语义：
+
+- `POST /api/agent/query` 已注册，但固定返回 `503 disabled stub`
+- `/agent` 路由可访问，但在主导航中保持隐藏
+- Agent 页面内容来自本地 typed fixture，不走真实 Agent API data flow
+
+以上都属于 Agent-ready foundation，不代表 Agent 已上线。
+
+后续约束：
+
+- closeout 完成后，暂停 Agent 实现工作
+- 只有当系统 `Phase 2` 正式计算层与 `Phase 3` 证据 / lineage 前置完成后，才允许恢复 Agent Phase 4A / 4B 实施
 
 ## 10. 每轮必须交付
 

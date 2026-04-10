@@ -31,6 +31,8 @@ def ready() -> dict[str, object]:
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
             bucket=settings.minio_bucket,
+            mode=settings.object_store_mode,
+            local_archive_path=str(settings.local_archive_path),
         ).healthcheck(),
     }
     overall = "ok" if all(item["ok"] for item in checks.values()) else "degraded"

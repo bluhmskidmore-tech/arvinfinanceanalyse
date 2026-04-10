@@ -1,0 +1,499 @@
+from __future__ import annotations
+
+import dramatiq
+import duckdb
+import hashlib
+import json
+from pathlib import Path
+
+from backend.app.config.choice_runtime import _init_runtime
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.choice_adapter import VendorAdapter
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    CACHE_MANIFEST_STREAM,
+    VENDOR_SNAPSHOT_MANIFEST_STREAM,
+    VENDOR_VERSION_REGISTRY_STREAM,
+    GovernanceRepository,
+)
+from backend.app.repositories.object_store_repo import ObjectStoreRepository
+from backend.app.schemas.macro_vendor import (
+    ChoiceMacroBatchConfig,
+    ChoiceMacroCatalogAsset,
+    ChoiceMacroSeriesConfig,
+    ChoiceMacroSnapshot,
+)
+from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
+from backend.app.tasks.build_runs import BuildRunRecord
+
+
+CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
+RULE_VERSION = "rv_choice_macro_thin_slice_v1"
+
+
+@dramatiq.actor
+def refresh_choice_macro_snapshot(
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+) -> dict[str, object]:
+    _init_runtime()
+    settings = get_settings()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+    governance_path = Path(governance_dir or settings.governance_path)
+    repo = GovernanceRepository(base_dir=governance_path)
+    object_store = ObjectStoreRepository(
+        endpoint=settings.minio_endpoint,
+        access_key=settings.minio_access_key,
+        secret_key=settings.minio_secret_key,
+        bucket=settings.minio_bucket,
+        mode=settings.object_store_mode,
+        local_archive_path=str(settings.local_archive_path),
+    )
+
+    run = BuildRunRecord(
+        job_name="choice_macro_refresh",
+        status="running",
+        cache_key="choice_macro.latest",
+    )
+    run_id = f"{run.job_name}:{run.created_at}"
+    source_version = "sv_choice_macro_pending"
+    vendor_version = "vv_none"
+
+    try:
+        batches = load_choice_macro_batches(settings)
+        series_registry = _build_choice_series_registry(batches)
+
+        adapter = VendorAdapter()
+        batch_snapshots: list[ChoiceMacroSnapshot] = []
+        for batch in batches:
+            try:
+                snapshot = adapter.fetch_macro_snapshot(
+                    series=batch.series,
+                    timeout_seconds=settings.choice_timeout_seconds,
+                    request_options=batch.request_options,
+                )
+            except RuntimeError as exc:
+                if "no data" in str(exc).lower():
+                    continue
+                raise
+            batch_snapshots.append(snapshot)
+        snapshot = merge_choice_macro_snapshots(batch_snapshots)
+        vendor_version = snapshot.vendor_version
+        source_version = _build_source_version(snapshot.raw_payload)
+
+        archived = object_store.archive_bytes(
+            payload=json.dumps(snapshot.raw_payload, ensure_ascii=False).encode("utf-8"),
+            source_name="choice-macro",
+            source_key=f"choice/macro/{snapshot.vendor_version}.json",
+            ingest_batch_id=run_id.replace(":", "_"),
+        )
+        vendor_snapshot_manifest = object_store.build_vendor_snapshot_manifest(
+            vendor_name=snapshot.vendor_name,
+            vendor_version=snapshot.vendor_version,
+            archived_path=str(archived["archived_path"]),
+            snapshot_kind="macro",
+            capture_mode="live",
+        )
+        vendor_version_registry = {
+            "vendor_name": snapshot.vendor_name,
+            "vendor_version": snapshot.vendor_version,
+            "source_version": source_version,
+            "run_id": run_id,
+            "registered_at": run.created_at,
+        }
+
+        with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+            conn = duckdb.connect(str(duckdb_file), read_only=False)
+            try:
+                _ensure_tables(conn)
+                conn.execute("begin transaction")
+                conn.execute("delete from choice_market_snapshot")
+                conn.execute("delete from fact_choice_macro_daily")
+                conn.execute("delete from phase1_macro_vendor_catalog")
+
+                for point in snapshot.series:
+                    registry_entry = series_registry.get(
+                        point.series_id,
+                        {
+                            "vendor_series_code": point.vendor_series_code,
+                            "batch_id": "",
+                            "catalog_version": None,
+                            "theme": "unknown",
+                            "is_core": False,
+                            "tags_json": "[]",
+                            "request_options": "",
+                        },
+                    )
+                    conn.execute(
+                        """
+                        insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            point.series_id,
+                            point.series_name,
+                            point.vendor_series_code,
+                            point.vendor_name,
+                            point.trade_date,
+                            point.value_numeric,
+                            point.frequency,
+                            point.unit,
+                            source_version,
+                            point.vendor_version,
+                            RULE_VERSION,
+                            run_id,
+                        ],
+                    )
+                    conn.execute(
+                        """
+                        insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            point.series_id,
+                            point.series_name,
+                            point.trade_date,
+                            point.value_numeric,
+                            point.frequency,
+                            point.unit,
+                            source_version,
+                            point.vendor_version,
+                            RULE_VERSION,
+                            "ok",
+                            run_id,
+                        ],
+                    )
+                    conn.execute(
+                        """
+                        insert into phase1_macro_vendor_catalog (
+                          series_id,
+                          series_name,
+                          vendor_name,
+                          vendor_version,
+                          frequency,
+                          unit,
+                          vendor_series_code,
+                          batch_id,
+                          catalog_version,
+                          theme,
+                          is_core,
+                          tags_json,
+                          request_options
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            point.series_id,
+                            point.series_name,
+                            point.vendor_name,
+                            point.vendor_version,
+                            point.frequency,
+                            point.unit,
+                            str(registry_entry["vendor_series_code"]),
+                            str(registry_entry["batch_id"]),
+                            registry_entry["catalog_version"],
+                            str(registry_entry["theme"]),
+                            bool(registry_entry["is_core"]),
+                            str(registry_entry["tags_json"]),
+                            str(registry_entry["request_options"]),
+                        ],
+                    )
+                conn.execute("commit")
+            except Exception:
+                conn.execute("rollback")
+                raise
+            finally:
+                conn.close()
+
+        repo.append_many_atomic(
+            [
+                (
+                    VENDOR_SNAPSHOT_MANIFEST_STREAM,
+                    vendor_snapshot_manifest,
+                ),
+                (
+                    VENDOR_VERSION_REGISTRY_STREAM,
+                    vendor_version_registry,
+                ),
+                (
+                    CACHE_MANIFEST_STREAM,
+                    CacheManifestRecord(
+                        cache_key=run.cache_key,
+                        source_version=source_version,
+                        vendor_version=snapshot.vendor_version,
+                        rule_version=RULE_VERSION,
+                    ).model_dump(),
+                ),
+                (
+                    CACHE_BUILD_RUN_STREAM,
+                    CacheBuildRunRecord(
+                        run_id=run_id,
+                        job_name=run.job_name,
+                        status="completed",
+                        cache_key=run.cache_key,
+                        lock=CHOICE_MACRO_LOCK.key,
+                        source_version=source_version,
+                        vendor_version=snapshot.vendor_version,
+                    ).model_dump(),
+                ),
+            ]
+        )
+    except Exception as exc:
+        failed_run = CacheBuildRunRecord(
+            run_id=run_id,
+            job_name=run.job_name,
+            status="failed",
+            cache_key=run.cache_key,
+            lock=CHOICE_MACRO_LOCK.key,
+            source_version=source_version,
+            vendor_version=vendor_version,
+        )
+        try:
+            repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
+        except Exception as append_error:
+            raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
+        raise exc
+
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "series_count": len(snapshot.series),
+        "vendor_version": snapshot.vendor_version,
+        "source_version": source_version,
+        "cache_key": run.cache_key,
+    }
+
+
+def _build_source_version(raw_payload: dict[str, object]) -> str:
+    digest = hashlib.sha256(
+        json.dumps(raw_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"sv_choice_macro_{digest}"
+
+
+def load_choice_macro_batches(settings) -> list[ChoiceMacroBatchConfig]:
+    catalog_path = _resolve_choice_macro_catalog_path(settings)
+    if catalog_path is not None and catalog_path.exists():
+        return load_choice_macro_batches_from_catalog(catalog_path)
+
+    if settings.choice_macro_commands_file:
+        return load_choice_macro_batches_from_file(Path(settings.choice_macro_commands_file))
+
+    series = [
+        ChoiceMacroSeriesConfig(**item)
+        for item in json.loads(settings.choice_macro_series_json or "[]")
+    ]
+    return [
+        ChoiceMacroBatchConfig(
+            batch_id="default",
+            request_options="IsPublishDate=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
+            series=series,
+        )
+    ]
+
+
+def load_choice_macro_batches_from_catalog(path: Path) -> list[ChoiceMacroBatchConfig]:
+    asset = ChoiceMacroCatalogAsset.model_validate_json(path.read_text(encoding="utf-8"))
+    return [
+        ChoiceMacroBatchConfig(
+            batch_id=batch.batch_id,
+            request_options=_serialize_choice_request_options(batch.request_options),
+            series=batch.series,
+            catalog_version=asset.catalog_version,
+        )
+        for batch in asset.batches
+    ]
+
+
+def load_choice_macro_batches_from_file(path: Path) -> list[ChoiceMacroBatchConfig]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    batches: list[ChoiceMacroBatchConfig] = []
+    current_metadata: dict[str, str] = {}
+    current_batch_id = ""
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            current_batch_id, current_metadata = _parse_choice_batch_comment(line)
+            continue
+        if line.startswith("data=c.edb("):
+            codes, options = _parse_choice_edb_command(line)
+            batches.append(
+                ChoiceMacroBatchConfig(
+                    batch_id=current_batch_id or f"batch{len(batches)+1}",
+                    request_options=options,
+                    series=[
+                        ChoiceMacroSeriesConfig(
+                            series_id=code,
+                            series_name=current_metadata.get(code, code),
+                            vendor_series_code=code,
+                            frequency="unknown",
+                            unit="unknown",
+                            theme="unknown",
+                            is_core=False,
+                            tags=[],
+                        )
+                        for code in codes
+                    ],
+                )
+            )
+    return batches
+
+
+def _parse_choice_batch_comment(line: str) -> tuple[str, dict[str, str]]:
+    content = line.lstrip("#").strip()
+    if " " not in content:
+        return content, {}
+    batch_id, remainder = content.split(" ", 1)
+    mapping: dict[str, str] = {}
+    for part in remainder.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        code, _, name = item.partition(" ")
+        mapping[code.strip()] = name.strip() or code.strip()
+    return batch_id.strip(), mapping
+
+
+def _parse_choice_edb_command(line: str) -> tuple[list[str], str]:
+    prefix = 'data=c.edb("'
+    mid = '", "'
+    suffix = '")'
+    codes_part = line[len(prefix):]
+    codes_text, _, options_text = codes_part.partition(mid)
+    options = options_text[:-len(suffix)] if options_text.endswith(suffix) else options_text
+    codes = [code.strip() for code in codes_text.split(",") if code.strip()]
+    return codes, options
+
+
+def _resolve_choice_macro_catalog_path(settings) -> Path | None:
+    if not getattr(settings, "choice_macro_catalog_file", ""):
+        return None
+    return Path(settings.choice_macro_catalog_file)
+
+
+def _serialize_choice_request_options(options: dict[str, object]) -> str:
+    return ",".join(
+        f"{key}={_serialize_choice_request_option_value(value)}"
+        for key, value in options.items()
+    )
+
+
+def _serialize_choice_request_option_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
+def _build_choice_series_registry(
+    batches: list[ChoiceMacroBatchConfig],
+) -> dict[str, dict[str, object]]:
+    registry: dict[str, dict[str, object]] = {}
+    for batch in batches:
+        for series in batch.series:
+            registry[series.series_id] = {
+                "vendor_series_code": series.vendor_series_code,
+                "batch_id": batch.batch_id,
+                "catalog_version": batch.catalog_version,
+                "theme": series.theme,
+                "is_core": series.is_core,
+                "tags_json": json.dumps(series.tags, ensure_ascii=False, separators=(",", ":")),
+                "request_options": batch.request_options,
+            }
+    return registry
+
+
+def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> ChoiceMacroSnapshot:
+    if not snapshots:
+        raise ValueError("No Choice macro snapshots were fetched.")
+    if len(snapshots) == 1:
+        return snapshots[0]
+
+    series = []
+    raw_batches = []
+    vendor_versions = []
+    captured_at = snapshots[0].captured_at
+    for snapshot in snapshots:
+        series.extend(
+            [
+                point.model_dump(mode="json") if hasattr(point, "model_dump") else point
+                for point in snapshot.series
+            ]
+        )
+        raw_batches.append(snapshot.raw_payload)
+        vendor_versions.append(snapshot.vendor_version)
+        if snapshot.captured_at > captured_at:
+            captured_at = snapshot.captured_at
+
+    vendor_version = vendor_versions[0] if len(set(vendor_versions)) == 1 else "__".join(vendor_versions)
+    return ChoiceMacroSnapshot(
+        vendor_name="choice",
+        vendor_version=vendor_version,
+        captured_at=captured_at,
+        series=series,
+        raw_payload={"batches": raw_batches},
+    )
+
+
+def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        """
+        create table if not exists choice_market_snapshot (
+          series_id varchar,
+          series_name varchar,
+          vendor_series_code varchar,
+          vendor_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          run_id varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists fact_choice_macro_daily (
+          series_id varchar,
+          series_name varchar,
+          trade_date varchar,
+          value_numeric double,
+          frequency varchar,
+          unit varchar,
+          source_version varchar,
+          vendor_version varchar,
+          rule_version varchar,
+          quality_flag varchar,
+          run_id varchar
+        )
+        """
+    )
+    conn.execute(
+        """
+        create table if not exists phase1_macro_vendor_catalog (
+          series_id varchar,
+          series_name varchar,
+          vendor_name varchar,
+          vendor_version varchar,
+          frequency varchar,
+          unit varchar,
+          vendor_series_code varchar,
+          batch_id varchar,
+          catalog_version varchar,
+          theme varchar,
+          is_core boolean,
+          tags_json varchar,
+          request_options varchar
+        )
+        """
+    )
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists vendor_series_code varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists batch_id varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists catalog_version varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists theme varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists is_core boolean")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists tags_json varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists request_options varchar")

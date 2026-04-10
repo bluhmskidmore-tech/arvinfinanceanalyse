@@ -345,6 +345,133 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to trigger source preview refresh", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "queued",
+        run_id: "source_preview_refresh:test-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "async",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.refreshSourcePreview();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/preview/source-foundation/refresh",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch source preview refresh status", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        run_id: "source_preview_refresh:test-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "terminal",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+        source_version: "sv_preview_test",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getSourcePreviewRefreshStatus("source_preview_refresh:test-run");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/preview/source-foundation/refresh-status?run_id=source_preview_refresh%3Atest-run",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to trigger formal pnl refresh", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "queued",
+        run_id: "pnl_materialize:test-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "async",
+        cache_key: "pnl.phase2.materialize",
+        report_date: "2026-02-28",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.refreshFormalPnl();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/data/refresh_pnl",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch formal pnl refresh status by run id", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        status: "completed",
+        run_id: "pnl_materialize:test-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "terminal",
+        cache_key: "pnl.phase2.materialize",
+        source_version: "sv_pnl_test",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFormalPnlImportStatus("pnl_materialize:test-run");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/data/import_status/pnl?run_id=pnl_materialize%3Atest-run",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("filters and paginates Choice news events in mock mode", async () => {
     const client = createApiClient({ mode: "mock" });
 

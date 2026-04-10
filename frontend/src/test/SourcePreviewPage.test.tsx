@@ -708,4 +708,155 @@ describe("SourcePreviewPage", () => {
     expect(within(tracesTable).getByRole("columnheader", { name: "字段名" })).toBeInTheDocument();
     expect(within(tracesTable).getByRole("cell", { name: "业务种类1" })).toBeInTheDocument();
   });
+
+  it("polls source preview refresh status and shows the latest run id", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const sourceFoundationSpy = vi.fn(async () => ({
+      result_meta: buildMeta("preview.source-foundation", "sv_foundation"),
+      result: {
+        sources: [
+          {
+            ingest_batch_id: "batch-1",
+            batch_created_at: "2026-04-10T09:00:00Z",
+            source_family: "zqtz",
+            report_date: "2025-12-31",
+            source_file: "ZQTZSHOW-20251231.xls",
+            total_rows: 1,
+            manual_review_count: 0,
+            source_version: "sv_z_1",
+            rule_version: "rv_preview",
+            group_counts: { bond: 1 },
+            preview_mode: "tabular",
+          },
+        ],
+      },
+    }));
+    const historySpy = vi.fn(async ({ limit, offset }: { limit: number; offset: number }) => ({
+      result_meta: buildMeta("preview.source-foundation.history", "sv_hist"),
+      result: {
+        limit,
+        offset,
+        total_rows: 1,
+        rows: [
+          {
+            ingest_batch_id: "batch-1",
+            batch_created_at: "2026-04-10T09:00:00Z",
+            source_family: "zqtz",
+            report_date: "2025-12-31",
+            source_file: "ZQTZSHOW-20251231.xls",
+            total_rows: 1,
+            manual_review_count: 0,
+            source_version: "sv_z_1",
+            rule_version: "rv_preview",
+            group_counts: {},
+            preview_mode: "tabular",
+          },
+        ],
+      },
+    }));
+    const rowsSpy = vi.fn(
+      async ({
+        sourceFamily,
+        ingestBatchId,
+        limit,
+        offset,
+      }: {
+        sourceFamily: string;
+        ingestBatchId: string;
+        limit: number;
+        offset: number;
+      }) => ({
+        result_meta: buildMeta(`preview.${sourceFamily}.rows`, "sv_rows"),
+        result: {
+          source_family: sourceFamily,
+          ingest_batch_id: ingestBatchId,
+          limit,
+          offset,
+          total_rows: 1,
+          columns: [buildColumn("row_locator", "行号", "number")],
+          rows: [{ row_locator: 1 }],
+        },
+      }),
+    );
+    const tracesSpy = vi.fn(
+      async ({
+        sourceFamily,
+        ingestBatchId,
+        limit,
+        offset,
+      }: {
+        sourceFamily: string;
+        ingestBatchId: string;
+        limit: number;
+        offset: number;
+      }) => ({
+        result_meta: buildMeta(`preview.${sourceFamily}.traces`, "sv_traces"),
+        result: {
+          source_family: sourceFamily,
+          ingest_batch_id: ingestBatchId,
+          limit,
+          offset,
+          total_rows: 1,
+          columns: [buildColumn("trace_step", "轨迹步骤", "number")],
+          rows: [{ trace_step: 1 }],
+        },
+      }),
+    );
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "source_preview_refresh:test-run",
+      job_name: "source_preview_refresh",
+      trigger_mode: "async",
+      cache_key: "source_preview.foundation",
+      preview_sources: ["zqtz", "tyw"],
+    }));
+    const statusSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "running",
+        run_id: "source_preview_refresh:test-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "async",
+        cache_key: "source_preview.foundation",
+      })
+      .mockResolvedValueOnce({
+        status: "completed",
+        run_id: "source_preview_refresh:test-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "terminal",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+        ingest_batch_id: "ib_preview_refresh",
+        source_version: "sv_preview_refresh",
+      });
+
+    renderPage({
+      ...base,
+      getSourceFoundation: sourceFoundationSpy,
+      getSourceFoundationHistory: historySpy,
+      getSourceFoundationRows: rowsSpy,
+      getSourceFoundationTraces: tracesSpy,
+      refreshSourcePreview: refreshSpy,
+      getSourcePreviewRefreshStatus: statusSpy,
+    });
+
+    await screen.findByTestId("source-preview-rows-table");
+    await user.click(screen.getByTestId("source-preview-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(statusSpy).toHaveBeenCalledWith("source_preview_refresh:test-run");
+      expect(sourceFoundationSpy).toHaveBeenCalledTimes(2);
+      expect(historySpy).toHaveBeenCalledTimes(2);
+      expect(rowsSpy).toHaveBeenCalledTimes(2);
+      expect(tracesSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("source-preview-refresh-run-id")).toHaveTextContent(
+        "source_preview_refresh:test-run",
+      );
+      expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
+        "最近结果：completed",
+      );
+    });
+  });
 });

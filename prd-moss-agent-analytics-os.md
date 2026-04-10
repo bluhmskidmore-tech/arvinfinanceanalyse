@@ -89,6 +89,7 @@
 
 **Follow-ups**
 
+- PnL 源数据回归与测试对照表：`docs/pnl/appendix-pnl-fixture-matrix.md`
 - 定义 `result_meta` 契约
 - 定义 `core_finance` 模块边界
 - 定义 `Choice` / `AkShare` 外部适配器边界
@@ -160,6 +161,8 @@
 - 日均
 - FX 中间价
 
+PnL 源文件的 fixture 布局、`source_family` 与现有测试门禁对照见 `docs/pnl/appendix-pnl-fixture-matrix.md`（不替代本章口径）。
+
 外部源：
 
 - `Choice`
@@ -187,6 +190,9 @@ repo/
     CACHE_SPEC.md
     acceptance_tests.md
     CODEX_HANDOFF.md
+    pnl/
+      README.md
+      appendix-pnl-fixture-matrix.md
   backend/
     app/
       api/
@@ -698,7 +704,24 @@ Choice / AkShare 断连导致热路径页面整体雪崩。
 
 ## 17. 首轮实施边界
 
-如果进入真正编码阶段，第一轮只做 `Phase 1`，并且输出：
+如果进入真正编码阶段，默认第一轮只做 `Phase 1`。
+
+边界解释如下：
+
+- `Phase 1 closeout` 仍属于 `Phase 1`；它只用于收口已经打开的骨架、预览、占位、验证和治理欠账，不自动视为 `Phase 2`。
+- `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等文档属于计划与候选执行面，不是权限来源。
+- 上述计划文档只有在以下两种情况下才可执行：
+  - 明确仍在 `Phase 1 closeout` 边界内；
+  - 被 dated execution update 明确授权为 scoped override。
+- scoped override 只对被点名的工作流生效，不代表仓库整体进入下一阶段。
+
+当前有效 scoped override（2026-04-09）如下：
+
+- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`
+- 该 override 仅放开 macro-data stream 的 `Choice-first` 薄切片、live fetch、raw archival / vendor lineage / DuckDB normalization，以及一个 DuckDB-backed query surface
+- 该 override 不放开通用 `Phase 2` 正式计算，不放开 Agent MVP / Phase 4A / 4B，不放开无关工作流的 next slice，也不放开 broad frontend rollout
+
+默认输出要求如下：
 
 - 变更文件清单
 - 测试结果

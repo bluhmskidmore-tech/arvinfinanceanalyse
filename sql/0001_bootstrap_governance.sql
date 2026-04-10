@@ -16,3 +16,12 @@ create table if not exists cache_manifest (
   rule_version text not null,
   created_at timestamptz default now()
 );
+
+create table if not exists cache_build_run (
+  run_id text not null,
+  job_name text not null,
+  status text not null,
+  cache_key text not null,
+  lock text not null,
+  created_at timestamptz default now()
+);

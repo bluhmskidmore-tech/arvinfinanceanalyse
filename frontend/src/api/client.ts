@@ -13,6 +13,7 @@ import type {
   ChoiceNewsEventsPayload,
   ContributionPayload,
   FormalPnlDisabledResponse,
+  FormalPnlRefreshPayload,
   HealthResponse,
   MacroVendorPayload,
   OverviewPayload,
@@ -30,6 +31,7 @@ import type {
   ResultMeta,
   RiskOverviewPayload,
   SourcePreviewHistoryPayload,
+  SourcePreviewRefreshPayload,
   SourcePreviewRowsPayload,
   SourcePreviewTracesPayload,
   SourcePreviewColumn,
@@ -57,14 +59,16 @@ export type ApiClient = {
   getFormalPnlDates: () => Promise<FormalPnlDisabledResponse>;
   getFormalPnlData: (date: string) => Promise<FormalPnlDisabledResponse>;
   getFormalPnlOverview: (reportDate: string) => Promise<FormalPnlDisabledResponse>;
-  refreshFormalPnl: () => Promise<FormalPnlDisabledResponse>;
-  getFormalPnlImportStatus: () => Promise<FormalPnlDisabledResponse>;
+  refreshFormalPnl: () => Promise<FormalPnlRefreshPayload>;
+  getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
   getPlaceholderSnapshot: (key: string) => Promise<ApiEnvelope<PlaceholderSnapshot>>;
   getSourceFoundation: () => Promise<ApiEnvelope<SourcePreviewPayload>>;
+  refreshSourcePreview: () => Promise<SourcePreviewRefreshPayload>;
+  getSourcePreviewRefreshStatus: (runId: string) => Promise<SourcePreviewRefreshPayload>;
   getSourceFoundationHistory: (options: {
     sourceFamily?: string;
     limit: number;
@@ -1173,11 +1177,26 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async refreshFormalPnl() {
       await delay();
-      return buildPhase1PnlDisabledResponse();
+      return {
+        status: "queued",
+        run_id: "pnl_materialize:mock-run",
+        job_name: "pnl_materialize",
+        trigger_mode: "async",
+        cache_key: "pnl.phase2.materialize",
+        report_date: "2026-02-28",
+      };
     },
-    async getFormalPnlImportStatus() {
+    async getFormalPnlImportStatus(runId?: string) {
       await delay();
-      return buildPhase1PnlDisabledResponse();
+      return {
+        status: runId ? "completed" : "idle",
+        run_id: runId ?? "pnl_materialize:mock-run",
+        job_name: "pnl_materialize",
+        trigger_mode: runId ? "terminal" : "idle",
+        cache_key: "pnl.phase2.materialize",
+        report_date: "2026-02-28",
+        source_version: "sv_mock_dashboard_v2",
+      };
     },
     async getPnlAttribution() {
       await delay();
@@ -1207,6 +1226,30 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return buildMockApiEnvelope("preview.source-foundation", {
         sources: MOCK_SOURCE_FOUNDATION_SUMMARIES,
       });
+    },
+    async refreshSourcePreview() {
+      await delay();
+      return {
+        status: "queued",
+        run_id: "source_preview_refresh:mock-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "async",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+      };
+    },
+    async getSourcePreviewRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "source_preview_refresh",
+        trigger_mode: "terminal",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+        ingest_batch_id: "ib_mock_preview",
+        source_version: "sv_mock_preview_refresh",
+      };
     },
     async getSourceFoundationHistory({ sourceFamily, limit, offset }) {
       await delay();
@@ -1558,11 +1601,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}`,
       ),
     refreshFormalPnl: () =>
-      requestPhase1Disabled(fetchImpl, baseUrl, "/api/data/refresh_pnl", {
+      requestActionJson<FormalPnlRefreshPayload>(fetchImpl, baseUrl, "/api/data/refresh_pnl", {
         method: "POST",
       }),
-    getFormalPnlImportStatus: () =>
-      requestPhase1Disabled(fetchImpl, baseUrl, "/api/data/import_status/pnl"),
+    getFormalPnlImportStatus: (runId?: string) =>
+      requestActionJson<FormalPnlRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        runId
+          ? `/api/data/import_status/pnl?run_id=${encodeURIComponent(runId)}`
+          : "/api/data/import_status/pnl",
+      ),
     getPnlAttribution: () =>
       requestJson<PnlAttributionPayload>(
         fetchImpl,
@@ -1589,6 +1638,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         "/ui/preview/source-foundation",
+      ),
+    refreshSourcePreview: () =>
+      requestActionJson<SourcePreviewRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/preview/source-foundation/refresh",
+        {
+          method: "POST",
+        },
+      ),
+    getSourcePreviewRefreshStatus: (runId: string) =>
+      requestActionJson<SourcePreviewRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/preview/source-foundation/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
     getSourceFoundationHistory: ({ sourceFamily, limit, offset }) => {
       const params = new URLSearchParams();

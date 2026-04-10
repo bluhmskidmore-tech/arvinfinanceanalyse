@@ -42,6 +42,14 @@
 - 输入 `金额=100, 借贷标识=贷` → ETL 后 `signed_amount` 正确
 - 正式层不得再次根据借贷标识翻转
 
+### 3.2A Formal PnL 语义
+- AC 的 516 不进入 formal total_pnl
+- FVOCI 的 516 不进入 formal total_pnl
+- FVTPL 的 516 进入 formal total_pnl
+- 517 仅在 formal-recognized realized component / formal event 成立时进入 total_pnl
+- manual_adjustment 仅在治理/审批状态字段为 approved 时进入 total_pnl，且判定不得依赖自由文本
+- 当前 start-pack 若仍输出 standardized totals，则必须被标注为 start-pack behavior，不得宣称 formal semantics complete
+
 ### 3.3 发行类债券排除
 - `position_scope=asset` 排除发行类债券
 - `position_scope=liability` 仅保留发行类债券
@@ -57,6 +65,124 @@
 - `observed`、`locf`、`calendar_zero` 三种 basis 结果可区分
 - Formal 与 Analytical basis 不混淆
 - 输出 `coverage_ratio` 与 `missing_dates`
+
+### 3.6 Formal / Scenario / Analytical 隔离
+- `basis=formal` 的结果必须同时满足 `formal_use_allowed=true` 且 `scenario_flag=false`
+- `basis=scenario` 的结果必须同时满足 `formal_use_allowed=false` 且 `scenario_flag=true`
+- `basis=analytical` 的结果必须同时满足 `formal_use_allowed=false` 且 `scenario_flag=false`
+- Scenario 结果不得写入 `fact_formal_pnl_fi`、`fact_nonstd_pnl_bridge` 或任何 `fact_formal_*` 表
+- Analytical 结果不得冒充 `fact_formal_*`，也不得把 `formal_use_allowed=true` 当作默认值
+- `fact_formal_*`、`fact_scenario_*`、`fact_analytical_*` 不能共用同一个物化缓存或同一个表名空间
+- 同一 `source_version` / `rule_version` / 过滤条件下，不同 `basis` 必须生成不同的 `cache_key` 和 `cache_version`
+- `approval_status` 或同级治理字段必须是 `manual_adjustment` 的 approved 来源，自由文本不算通过
+- `517` 的 realized 语义必须来自枚举化 event semantics，不允许把 FVTPL 解释成无条件放行
+- 如果设计只依赖强逻辑隔离而不拆 formal-only 事实表与 cache namespace，则判定不通过
+
+### 3.6B ZQTZ / TYW 文档合同对齐
+
+本节只做 assertion by reference，不单独维护第二套 snapshot 合同。
+
+- `zqtz_bond_daily_snapshot` 与 `tyw_interbank_daily_snapshot` 的结构、canonical grain、hard-required lineage、直接允许 / 禁止消费者，以 [data_contracts.md](data_contracts.md) 为准。
+- `basis / formal_use_allowed / scenario_flag` 与 cache identity，以 [CACHE_SPEC.md](CACHE_SPEC.md) 为准。
+- 若 [data_contracts.md](data_contracts.md) 之外出现独立 snapshot 字段清单、主键清单或 lineage 清单，则判定不通过。
+- 若 [CACHE_SPEC.md](CACHE_SPEC.md) 之外出现独立 `basis / formal_use_allowed / scenario_flag` 真值表，则判定不通过。
+- [CURRENT_BOUNDARY_HANDOFF_2026-04-10.md](CURRENT_BOUNDARY_HANDOFF_2026-04-10.md) 与 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 只允许保留 docs-only / non-authorization 语言；若复述 snapshot 结构合同，则判定不通过。
+- 本轮仅验证 docs-only contract alignment，不宣称：
+  - snapshot 已 materialized
+  - formal compute 已放开
+  - workbench 已可直接消费 snapshot
+
+### 3.6A Gate A 测试矩阵与文件级测试设计
+
+本节是 `Task 2A-3` 的测试设计，不构成实现授权。
+
+#### Unit tests：规则函数 / 归属矩阵 / 元数据判定
+- 目标：验证单条记录或单个规则函数在不依赖完整 materialize 流程时即可判断正确。
+- 重点覆盖：
+  - H/A/T 到 formal 归属规则：`AC / FVOCI / FVTPL` 对 `514 / 516 / 517 / manual_adjustment` 的 recognized matrix。
+  - `516 signed_amount` 与 `formal recognized total_pnl` 的区分：允许 `fi_pnl_record` 保留 standardized total，但不允许把 standardized total 直接当作 formal total。
+  - `517 realized / formal event semantics`：仅枚举化 realized component / formal event 可进入 formal total。
+  - `approval_status` 对 `manual_adjustment` 的 gating：只接受治理字段的 approved，不接受自由文本。
+  - `basis / formal_use_allowed / scenario_flag` 一致性：三种 basis 下字段必须显式且组合固定。
+- 建议复用：
+  - `tests/test_pnl_phase2_start_pack.py`
+  - `tests/test_pnl_core_finance_contract.py`
+  - `tests/test_result_meta_required.py`
+- 建议新增：
+  - `tests/test_pnl_formal_semantics_contract.py`
+  - `tests/test_result_meta_basis_contract.py`
+- 建议文件级断言：
+  - `test_pnl_phase2_start_pack.py` 继续只验证 standardized layer，不宣称 formal semantics complete。
+  - `test_pnl_formal_semantics_contract.py` 新增 matrix-style case：`AC/FVOCI/FVTPL x 514/516/517/manual_adjustment`。
+  - `test_pnl_formal_semantics_contract.py` 新增 `517` negative cases：event 未枚举、仅凭 `FVTPL` 标签、无 realized path 时不得进入 formal total。
+  - `test_pnl_formal_semantics_contract.py` 新增 `manual_adjustment` negative cases：`approval_status != approved` 或仅有自由文本说明时不得进入 formal total。
+  - `test_result_meta_basis_contract.py` 明确三种 basis 的 `scenario_flag` 必须显式出现，且 `formal/scenario/analytical` 分别为 `false/true/false`。
+
+#### Integration tests：materialize / service / cache / lineage 一致性
+- 目标：验证跨 task、fact、service、cache、result_meta 的链路一致，不只看单点规则。
+- 重点覆盖：
+  - `fi_pnl_record -> fact_formal_pnl_fi` 时，formal recognized total 与 standardized total 不混淆。
+  - `fact_nonstd_pnl_bridge` 保持 bridge grain，不被 scenario / analytical 结果污染。
+  - `basis / formal_use_allowed / scenario_flag` 在 materialize、service response、cache manifest 中一致。
+  - formal / scenario / analytical cache isolation：主 `cache_key`、lock key、latest cache version key 都必须带 `basis`。
+  - manifest / lineage / meta fields consistency：`trace_id`、`source_version`、`rule_version`、`cache_version`、`basis`、`scenario_flag`、`formal_use_allowed` 不能互相矛盾。
+- 建议复用：
+  - `tests/test_pnl_materialize_flow.py`
+  - `tests/test_pnl_api_contract.py`
+  - `tests/test_analysis_service_adapters.py`
+  - `tests/test_preview_lineage_rule_trace.py`
+  - `tests/test_result_meta_on_all_ui_endpoints.py`
+- 建议新增：
+  - `tests/test_pnl_basis_isolation_flow.py`
+  - `tests/test_cache_basis_isolation.py`
+  - `tests/test_lineage_manifest_consistency.py`
+- 建议文件级断言：
+  - `test_pnl_materialize_flow.py` 扩展 formal fact 断言：`fact_formal_pnl_fi.total_pnl` 代表 recognized total，不回填 standardized total。
+  - `test_pnl_api_contract.py` 扩展 `result_meta`：formal / scenario / analytical 三种响应均显式返回 `basis / scenario_flag / formal_use_allowed`。
+  - `test_analysis_service_adapters.py` 扩展 scenario 读路径：scenario overlay 不得把结果写回 formal fact 命名空间。
+  - `test_cache_basis_isolation.py` 新增缓存隔离断言：同一 `source_version/rule_version/filter_hash` 下，不同 basis 生成不同 `cache_key`、`moss:lock:*`、`moss:meta:latest_cache_version:*`。
+  - `test_lineage_manifest_consistency.py` 新增 lineage 断言：manifest、response meta、缓存元信息中的 `basis` 和版本字段必须一致。
+
+#### Regression tests：保护 start-pack 边界与既有 API 合同
+- 目标：在引入 formal semantics / isolation / lineage 规则后，不破坏现有 Phase 1 与 start-pack 合同。
+- 重点覆盖：
+  - 现有 `pnl_materialize -> pnl_service` 链路继续可运行。
+  - 已存在的 standardized behavior 若仍保留，必须被标注为 start-pack behavior，而不是冒充 formal complete。
+  - 现有 UI/API 必须继续返回 `result_meta`，且新增字段不会破坏旧合同必填项。
+- 建议复用：
+  - `tests/test_pnl_phase1_boundaries.py`
+  - `tests/test_pnl_api_contract.py`
+  - `tests/test_result_meta_required.py`
+  - `tests/test_result_meta_on_all_ui_endpoints.py`
+- 建议新增：
+  - `tests/test_pnl_start_pack_regression.py`
+  - `tests/test_result_meta_regression.py`
+- 建议文件级断言：
+  - `test_pnl_start_pack_regression.py` 明确 start-pack 可继续输出 standardized total，但文档/响应不得把它宣称为 formal semantics complete。
+  - `test_result_meta_regression.py` 确认新增 `basis / scenario_flag / formal_use_allowed` 后，旧的 `trace_id / source_version / rule_version / cache_version` 必填合同不回退。
+
+#### 现有测试复用建议汇总
+- `tests/test_pnl_phase2_start_pack.py`：复用为 standardized layer 回归，不承担完整 formal semantics 验证。
+- `tests/test_pnl_core_finance_contract.py`：复用为 core_finance 导出面和 contract smoke。
+- `tests/test_pnl_materialize_flow.py`：复用为 formal fact 与 materialize integration 入口。
+- `tests/test_pnl_api_contract.py`：复用为 `result_meta` 与 API response contract 入口。
+- `tests/test_analysis_service_adapters.py`：复用为 scenario read-path / overlay 入口。
+- `tests/test_preview_lineage_rule_trace.py`：复用为 lineage / rule trace 扩展点。
+- `tests/test_result_meta_required.py` 与 `tests/test_result_meta_on_all_ui_endpoints.py`：复用为 meta 必填项与跨 endpoint 回归。
+
+#### 新增测试文件建议汇总
+- `tests/test_pnl_formal_semantics_contract.py`
+- `tests/test_result_meta_basis_contract.py`
+- `tests/test_pnl_basis_isolation_flow.py`
+- `tests/test_cache_basis_isolation.py`
+- `tests/test_lineage_manifest_consistency.py`
+- `tests/test_pnl_start_pack_regression.py`
+- `tests/test_result_meta_regression.py`
+
+#### 执行边界
+- 本节只定义 Gate A 的测试矩阵、文件建议和断言边界。
+- 本节不授权新增生产实现，不授权修改 `core_finance`、`services`、`tasks`、`cache` 代码。
+- 真正进入编码前，必须先按本节矩阵把测试归属和 fixtures 策略拆成可执行任务单。
 
 ## 4. Phase 3：分析深钻验收
 

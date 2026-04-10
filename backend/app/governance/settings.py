@@ -1,4 +1,6 @@
+from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,10 +12,23 @@ class Settings(BaseSettings):
     postgres_dsn: str = "postgresql://moss:moss@localhost:5432/moss"
     redis_dsn: str = "redis://localhost:6379/0"
     duckdb_path: str = "data/moss.duckdb"
+    governance_path: Path = Path("data/governance")
+    object_store_mode: str = "local"
+    local_archive_path: Path = Path("data/archive")
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "moss-artifacts"
+    choice_macro_url: str = ""
+    choice_username: str = ""
+    choice_password: str = ""
+    choice_macro_series_json: str = "[]"
+    choice_macro_catalog_file: str = "config/choice_macro_catalog.json"
+    choice_macro_commands_file: str = ""
+    choice_news_topics_file: str = "config/choice_news_topics.json"
+    choice_timeout_seconds: float = 10.0
+    product_category_source_dir: Path = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    ftp_rate_pct: Decimal = Decimal("1.75")
 
 
 @lru_cache(maxsize=1)

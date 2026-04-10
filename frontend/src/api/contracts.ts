@@ -79,6 +79,23 @@ export type FormalPnlDisabledResponse = {
   detail: string;
 };
 
+export type FormalPnlRefreshPayload = {
+  status: string;
+  run_id: string;
+  job_name: string;
+  trigger_mode: string;
+  cache_key?: string;
+  report_date?: string;
+  source_version?: string;
+  vendor_version?: string;
+  rule_version?: string;
+  lock?: string;
+  formal_fi_rows?: number;
+  nonstd_bridge_rows?: number;
+  detail?: string | null;
+  error_message?: string | null;
+};
+
 export type RiskSignal = {
   id: string;
   label: string;
@@ -189,6 +206,23 @@ export type SourcePreviewTracesPayload = {
   total_rows: number;
   columns: SourcePreviewColumn[];
   rows: SourcePreviewTraceRow[];
+};
+
+export type SourcePreviewRefreshPayload = {
+  status: string;
+  run_id: string;
+  job_name: string;
+  trigger_mode: string;
+  cache_key?: string;
+  preview_sources?: string[];
+  ingest_batch_id?: string | null;
+  report_dates?: string[];
+  source_version?: string;
+  vendor_version?: string;
+  rule_version?: string;
+  lock?: string;
+  detail?: string | null;
+  error_message?: string | null;
 };
 
 export type MacroVendorSeries = {
