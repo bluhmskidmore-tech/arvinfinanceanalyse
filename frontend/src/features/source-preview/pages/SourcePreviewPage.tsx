@@ -266,13 +266,7 @@ export default function SourcePreviewPage() {
         start: () => client.refreshSourcePreview(),
         getStatus: (runId) => client.getSourcePreviewRefreshStatus(runId),
       });
-      if (payload.status !== "completed") {
-        throw new Error(payload.detail ?? `数据源预览刷新未完成：${payload.status}`);
-      }
       setLastRefreshRunId(payload.run_id);
-      setHistoryOffset(0);
-      setRowsOffset(0);
-      setTracesOffset(0);
       setLastRefreshStatus(
         [
           `最近结果：${payload.status}`,
@@ -282,6 +276,14 @@ export default function SourcePreviewPage() {
           .filter(Boolean)
           .join(" · "),
       );
+      if (payload.status !== "completed") {
+        throw new Error(
+          payload.error_message ?? payload.detail ?? `数据源预览刷新未完成：${payload.status}`,
+        );
+      }
+      setHistoryOffset(0);
+      setRowsOffset(0);
+      setTracesOffset(0);
       await Promise.all([
         previewQuery.refetch(),
         historyQuery.refetch(),

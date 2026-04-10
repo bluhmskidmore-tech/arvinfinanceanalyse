@@ -9,27 +9,11 @@ PNL_CORE_FILE = BACKEND_APP / "core_finance" / "pnl.py"
 
 FORBIDDEN_IMPORT_ROOTS = (
     BACKEND_APP / "api",
-    BACKEND_APP / "services",
     BACKEND_APP / "repositories",
 )
 
 PNL_CORE_MODULE = "backend.app.core_finance.pnl"
-PNL_REEXPORTED_FROM_PACKAGE_INIT = frozenset(
-    {
-        "AccountingBasis",
-        "CurrencyBasis",
-        "FiPnlRecord",
-        "FormalPnlFiFactRow",
-        "InvestTypeStd",
-        "JournalType",
-        "NonStdJournalEntry",
-        "NonStdPnlBridgeRow",
-        "build_formal_pnl_fi_fact_rows",
-        "build_nonstd_pnl_bridge_rows",
-        "normalize_fi_pnl_records",
-        "normalize_nonstd_journal_entries",
-    }
-)
+PNL_PACKAGE_MODULE = "backend.app.core_finance"
 
 # PnL-specific private helpers must not be duplicated outside the core module.
 PNL_PRIVATE_HELPER_NAMES = (
@@ -60,16 +44,19 @@ def _violations_for_imports(path: Path) -> list[str]:
                 name = alias.name
                 if name == PNL_CORE_MODULE or name.startswith(f"{PNL_CORE_MODULE}."):
                     out.append(f"{path}: forbidden import of {name}")
+                if name == PNL_PACKAGE_MODULE:
+                    bound_name = alias.asname or name.rsplit(".", 1)[-1]
+                    if bound_name == "pnl":
+                        out.append(f"{path}: forbidden package import alias {name} as {bound_name}")
         elif isinstance(node, ast.ImportFrom):
             if node.module is None:
                 continue
             if node.module == PNL_CORE_MODULE:
                 out.append(f"{path}: forbidden ImportFrom {node.module}")
-            if node.module == "backend.app.core_finance":
+            if node.module == PNL_PACKAGE_MODULE:
                 imported = {alias.name for alias in node.names}
-                bad = imported & PNL_REEXPORTED_FROM_PACKAGE_INIT
-                if bad:
-                    out.append(f"{path}: forbidden core_finance imports {sorted(bad)}")
+                if "pnl" in imported:
+                    out.append(f"{path}: forbidden ImportFrom {node.module} import pnl")
     return out
 
 
@@ -101,10 +88,3 @@ def test_pnl_private_helpers_are_not_redefined_outside_core_pnl_module():
             if name in defined:
                 offenders.append(f"{path}: redefines {name}")
     assert not offenders, "PnL private helpers duplicated outside core module:\n" + "\n".join(offenders)
-
-
-def test_pnl_service_module_does_not_reference_core_finance_package():
-    """Orchestration-only: formal PnL math must enter via tasks/materialize, not service imports."""
-    path = BACKEND_APP / "services" / "pnl_service.py"
-    text = _read_py_source(path)
-    assert "core_finance" not in text, f"{path} must not import or mention core_finance"

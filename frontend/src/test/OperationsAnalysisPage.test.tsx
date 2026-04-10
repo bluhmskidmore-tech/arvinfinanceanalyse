@@ -285,4 +285,43 @@ describe("OperationsAnalysisPage", () => {
       );
     });
   });
+
+  it("shows backend failure detail and preserves the run id when pnl refresh fails", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "pnl_materialize:failed-run",
+      job_name: "pnl_materialize",
+      trigger_mode: "async",
+      cache_key: "pnl.phase2.materialize",
+    }));
+    const statusSpy = vi.fn(async () => ({
+      status: "failed",
+      run_id: "pnl_materialize:failed-run",
+      job_name: "pnl_materialize",
+      trigger_mode: "terminal",
+      cache_key: "pnl.phase2.materialize",
+      error_message: "Pnl refresh worker failed.",
+    }));
+
+    renderPage({
+      ...base,
+      refreshFormalPnl: refreshSpy,
+      getFormalPnlImportStatus: statusSpy,
+    });
+
+    await screen.findByRole("heading", { name: "经营分析入口" });
+    await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-pnl-refresh-run-id")).toHaveTextContent(
+        "pnl_materialize:failed-run",
+      );
+      expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
+        "最近结果：failed",
+      );
+      expect(screen.getByText("Pnl refresh worker failed.")).toBeInTheDocument();
+    });
+  });
 });

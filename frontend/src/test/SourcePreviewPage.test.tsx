@@ -859,4 +859,43 @@ describe("SourcePreviewPage", () => {
       );
     });
   });
+
+  it("shows backend failure detail and preserves the run id when source preview refresh fails", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "source_preview_refresh:failed-run",
+      job_name: "source_preview_refresh",
+      trigger_mode: "async",
+      cache_key: "source_preview.foundation",
+    }));
+    const statusSpy = vi.fn(async () => ({
+      status: "failed",
+      run_id: "source_preview_refresh:failed-run",
+      job_name: "source_preview_refresh",
+      trigger_mode: "terminal",
+      cache_key: "source_preview.foundation",
+      error_message: "Source preview refresh queue dispatch failed.",
+    }));
+
+    renderPage({
+      ...base,
+      refreshSourcePreview: refreshSpy,
+      getSourcePreviewRefreshStatus: statusSpy,
+    });
+
+    await screen.findByTestId("source-preview-refresh-button");
+    await user.click(screen.getByTestId("source-preview-refresh-button"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("source-preview-refresh-run-id")).toHaveTextContent(
+        "source_preview_refresh:failed-run",
+      );
+      expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
+        "最近结果：failed",
+      );
+      expect(screen.getByText("Source preview refresh queue dispatch failed.")).toBeInTheDocument();
+    });
+  });
 });

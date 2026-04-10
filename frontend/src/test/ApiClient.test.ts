@@ -409,6 +409,25 @@ describe("createApiClient", () => {
     );
   });
 
+  it("surfaces backend detail for failed action requests", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({
+        detail: "Source preview refresh already in progress.",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.refreshSourcePreview()).rejects.toThrow(
+      "Source preview refresh already in progress.",
+    );
+  });
+
   it("uses real mode to trigger formal pnl refresh", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

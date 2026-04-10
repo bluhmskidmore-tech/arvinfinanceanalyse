@@ -109,9 +109,6 @@ export default function OperationsAnalysisPage() {
         start: () => client.refreshFormalPnl(),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
       });
-      if (payload.status !== "completed") {
-        throw new Error(payload.detail ?? `PnL 刷新未完成：${payload.status}`);
-      }
       setLastPnlRefreshRunId(payload.run_id);
       setLastPnlRefreshStatus(
         [
@@ -122,6 +119,9 @@ export default function OperationsAnalysisPage() {
           .filter(Boolean)
           .join(" · "),
       );
+      if (payload.status !== "completed") {
+        throw new Error(payload.error_message ?? payload.detail ?? `PnL 刷新未完成：${payload.status}`);
+      }
     } catch (error) {
       setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 表失败");
     } finally {

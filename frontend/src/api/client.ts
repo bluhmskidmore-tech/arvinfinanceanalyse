@@ -1068,7 +1068,18 @@ const requestActionJson = async <T>(
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${path} (${response.status})`);
+    let detail: string | undefined;
+    try {
+      const payload = (await response.json()) as { detail?: unknown; error_message?: unknown };
+      if (typeof payload.error_message === "string" && payload.error_message.trim()) {
+        detail = payload.error_message;
+      } else if (typeof payload.detail === "string" && payload.detail.trim()) {
+        detail = payload.detail;
+      }
+    } catch {
+      detail = undefined;
+    }
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
 
   return (await response.json()) as T;
