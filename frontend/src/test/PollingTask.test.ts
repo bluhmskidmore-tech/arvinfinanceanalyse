@@ -84,4 +84,25 @@ describe("runPollingTask", () => {
       run_id: "job:queued",
     });
   });
+
+  it("throws a timeout error that includes the last run id and status", async () => {
+    const start = vi.fn(async () => ({
+      status: "queued",
+      run_id: "job:stuck",
+    }));
+    const getStatus = vi.fn(async () => ({
+      status: "running",
+      run_id: "job:stuck",
+    }));
+
+    await expect(
+      runPollingTask({
+        start,
+        getStatus,
+        intervalMs: 0,
+        maxAttempts: 2,
+      }),
+    ).rejects.toThrow(/任务轮询超时 \(run_id: job:stuck, 最后状态: running\)/);
+    expect(getStatus).toHaveBeenCalled();
+  });
 });

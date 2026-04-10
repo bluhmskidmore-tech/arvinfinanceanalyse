@@ -1035,6 +1035,39 @@ const parseEnvMode = (): DataSourceMode => {
 
 const parseBaseUrl = () => normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
+function extractApiErrorDetail(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const body = payload as Record<string, unknown>;
+  const errMsg = body.error_message;
+  if (typeof errMsg === "string" && errMsg.trim()) {
+    return errMsg;
+  }
+  const detail = body.detail;
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (item && typeof item === "object" && "msg" in item) {
+        return String((item as { msg: unknown }).msg);
+      }
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return String(item);
+      }
+    });
+    const joined = parts.filter((p) => p.trim()).join("; ");
+    return joined || undefined;
+  }
+  return undefined;
+}
+
 const requestJson = async <T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -1070,12 +1103,7 @@ const requestActionJson = async <T>(
   if (!response.ok) {
     let detail: string | undefined;
     try {
-      const payload = (await response.json()) as { detail?: unknown; error_message?: unknown };
-      if (typeof payload.error_message === "string" && payload.error_message.trim()) {
-        detail = payload.error_message;
-      } else if (typeof payload.detail === "string" && payload.detail.trim()) {
-        detail = payload.detail;
-      }
+      detail = extractApiErrorDetail(await response.json());
     } catch {
       detail = undefined;
     }

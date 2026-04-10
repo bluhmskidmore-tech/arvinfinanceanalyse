@@ -856,7 +856,7 @@ describe("SourcePreviewPage", () => {
         "source_preview_refresh:test-run",
       );
       expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
-        "最近结果：completed",
+        /最近结果：completed/,
       );
     });
   });
@@ -896,7 +896,9 @@ describe("SourcePreviewPage", () => {
       expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
         "最近结果：failed",
       );
-      expect(screen.getByText("Source preview refresh queue dispatch failed.")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Source preview refresh queue dispatch failed\./),
+      ).toBeInTheDocument();
     });
   });
 
@@ -924,7 +926,7 @@ describe("SourcePreviewPage", () => {
       expect(screen.getByTestId("source-preview-refresh-status")).toHaveTextContent(
         "最近结果：running",
       );
-      expect(screen.getByText("任务轮询超时")).toBeInTheDocument();
+      expect(screen.getByText(/任务轮询超时/)).toBeInTheDocument();
     });
 
     pollingSpy.mockRestore();

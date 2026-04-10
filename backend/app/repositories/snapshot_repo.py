@@ -1,0 +1,208 @@
+"""DuckDB DDL and replace-safe writers for standardized zqtz / tyw snapshot tables."""
+
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any
+
+import duckdb
+
+ZQTZ_TABLE = "zqtz_bond_daily_snapshot"
+TYW_TABLE = "tyw_interbank_daily_snapshot"
+
+
+def ensure_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    conn.execute(
+        f"""
+        create table if not exists {ZQTZ_TABLE} (
+          report_date date,
+          instrument_code varchar,
+          instrument_name varchar,
+          portfolio_name varchar,
+          cost_center varchar,
+          account_category varchar,
+          asset_class varchar,
+          bond_type varchar,
+          issuer_name varchar,
+          industry_name varchar,
+          rating varchar,
+          currency_code varchar,
+          market_value_native decimal(24,8),
+          amortized_cost_native decimal(24, 8),
+          accrued_interest_native decimal(24, 8),
+          ytm_value decimal(18, 8),
+          coupon_rate decimal(18, 8),
+          maturity_date date,
+          next_call_date date,
+          overdue_days integer,
+          is_issuance_like boolean,
+          source_version varchar,
+          rule_version varchar,
+          ingest_batch_id varchar,
+          trace_id varchar
+        )
+        """
+    )
+    conn.execute(
+        f"""
+        create table if not exists {TYW_TABLE} (
+          report_date date,
+          position_id varchar,
+          product_type varchar,
+          position_side varchar,
+          counterparty_name varchar,
+          account_type varchar,
+          special_account_type varchar,
+          currency_code varchar,
+          principal_native decimal(24, 8),
+          accrued_interest_native decimal(24, 8),
+          funding_cost_rate decimal(18, 8),
+          maturity_date date,
+          pledged_bond_code varchar,
+          source_version varchar,
+          rule_version varchar,
+          ingest_batch_id varchar,
+          trace_id varchar
+        )
+        """
+    )
+
+
+def delete_zqtz_snapshots_for_batches(conn: duckdb.DuckDBPyConnection, ingest_batch_ids: list[str]) -> None:
+    if not ingest_batch_ids:
+        return
+    placeholders = ",".join(["?"] * len(ingest_batch_ids))
+    conn.execute(
+        f"delete from {ZQTZ_TABLE} where ingest_batch_id in ({placeholders})",
+        ingest_batch_ids,
+    )
+
+
+def delete_tyw_snapshots_for_batches(conn: duckdb.DuckDBPyConnection, ingest_batch_ids: list[str]) -> None:
+    if not ingest_batch_ids:
+        return
+    placeholders = ",".join(["?"] * len(ingest_batch_ids))
+    conn.execute(
+        f"delete from {TYW_TABLE} where ingest_batch_id in ({placeholders})",
+        ingest_batch_ids,
+    )
+
+
+def _sql_value(value: object) -> object:
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def replace_zqtz_snapshot_rows(
+    conn: duckdb.DuckDBPyConnection,
+    rows: list[dict[str, Any]],
+    *,
+    ingest_batch_ids: list[str],
+) -> int:
+    delete_zqtz_snapshots_for_batches(conn, ingest_batch_ids)
+    if not rows:
+        return 0
+    conn.executemany(
+        f"""
+        insert into {ZQTZ_TABLE} values (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        """,
+        [
+            (
+                _sql_value(r["report_date"]),
+                r["instrument_code"],
+                r["instrument_name"],
+                r["portfolio_name"],
+                r["cost_center"],
+                r["account_category"],
+                r["asset_class"],
+                r["bond_type"],
+                r["issuer_name"],
+                r["industry_name"],
+                r["rating"],
+                r["currency_code"],
+                _sql_value(r["market_value_native"]),
+                _sql_value(r["amortized_cost_native"]),
+                _sql_value(r["accrued_interest_native"]),
+                _sql_value(r["ytm_value"]),
+                _sql_value(r["coupon_rate"]),
+                _sql_value(r["maturity_date"]),
+                _sql_value(r["next_call_date"]),
+                r["overdue_days"],
+                r["is_issuance_like"],
+                r["source_version"],
+                r["rule_version"],
+                r["ingest_batch_id"],
+                r["trace_id"],
+            )
+            for r in rows
+        ],
+    )
+    return len(rows)
+
+
+def replace_tyw_snapshot_rows(
+    conn: duckdb.DuckDBPyConnection,
+    rows: list[dict[str, Any]],
+    *,
+    ingest_batch_ids: list[str],
+) -> int:
+    delete_tyw_snapshots_for_batches(conn, ingest_batch_ids)
+    if not rows:
+        return 0
+    conn.executemany(
+        f"""
+        insert into {TYW_TABLE} values (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+        """,
+        [
+            (
+                _sql_value(r["report_date"]),
+                r["position_id"],
+                r["product_type"],
+                r["position_side"],
+                r["counterparty_name"],
+                r["account_type"],
+                r["special_account_type"],
+                r["currency_code"],
+                _sql_value(r["principal_native"]),
+                _sql_value(r["accrued_interest_native"]),
+                _sql_value(r["funding_cost_rate"]),
+                _sql_value(r["maturity_date"]),
+                r["pledged_bond_code"],
+                r["source_version"],
+                r["rule_version"],
+                r["ingest_batch_id"],
+                r["trace_id"],
+            )
+            for r in rows
+        ],
+    )
+    return len(rows)
+
+
+def zqtz_grain_key(row: dict[str, Any]) -> tuple[object, ...]:
+    return (
+        row["report_date"],
+        row["instrument_code"],
+        row["portfolio_name"],
+        row["cost_center"],
+        row["currency_code"],
+    )
+
+
+def tyw_grain_key(row: dict[str, Any]) -> tuple[object, ...]:
+    return (row["report_date"], row["position_id"])
+
+
+def merge_rows_by_grain(
+    rows_in_order: list[dict[str, Any]],
+    grain_fn,
+) -> list[dict[str, Any]]:
+    merged: dict[tuple[object, ...], dict[str, Any]] = {}
+    for row in rows_in_order:
+        merged[grain_fn(row)] = row
+    return list(merged.values())

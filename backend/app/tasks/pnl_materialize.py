@@ -138,23 +138,34 @@ def _materialize_pnl_facts(
                 )
 
             conn.execute("commit")
-        except Exception:
+        except Exception as exc:
             conn.execute("rollback")
-            repo.append(
-                CACHE_BUILD_RUN_STREAM,
-                CacheBuildRunRecord(
-                    run_id=run_id,
-                    job_name=run.job_name,
-                    status="failed",
-                    cache_key=CACHE_KEY,
-                    lock=PNL_MATERIALIZE_LOCK.key,
-                    source_version=source_version,
-                    vendor_version="vv_none",
-                ).model_dump(),
-            )
+            failed_record = CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=run.job_name,
+                status="failed",
+                cache_key=CACHE_KEY,
+                lock=PNL_MATERIALIZE_LOCK.key,
+                source_version=source_version,
+                vendor_version="vv_none",
+            ).model_dump()
+            failed_record["error_message"] = str(exc)
+            failed_record["report_date"] = report_date
+            repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
             raise
         finally:
             conn.close()
+
+    completed_run = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name=run.job_name,
+        status="completed",
+        cache_key=CACHE_KEY,
+        lock=PNL_MATERIALIZE_LOCK.key,
+        source_version=source_version,
+        vendor_version="vv_none",
+    ).model_dump()
+    completed_run["report_date"] = report_date
 
     repo.append_many_atomic(
         [
@@ -169,15 +180,7 @@ def _materialize_pnl_facts(
             ),
             (
                 CACHE_BUILD_RUN_STREAM,
-                CacheBuildRunRecord(
-                    run_id=run_id,
-                    job_name=run.job_name,
-                    status="completed",
-                    cache_key=CACHE_KEY,
-                    lock=PNL_MATERIALIZE_LOCK.key,
-                    source_version=source_version,
-                    vendor_version="vv_none",
-                ).model_dump(),
+                completed_run,
             ),
         ]
     )

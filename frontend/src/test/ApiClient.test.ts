@@ -428,6 +428,25 @@ describe("createApiClient", () => {
     );
   });
 
+  it("surfaces FastAPI validation detail arrays for failed action requests", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      json: async () => ({
+        detail: [
+          { loc: ["query", "report_date"], msg: "invalid date", type: "value_error" },
+        ],
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.refreshFormalPnl()).rejects.toThrow("invalid date");
+  });
+
   it("uses real mode to trigger formal pnl refresh", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

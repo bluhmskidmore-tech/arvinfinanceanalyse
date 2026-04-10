@@ -80,4 +80,14 @@ describe("sourcePreviewApi", () => {
       offset: 40,
     });
   });
+
+  it("uses separate TanStack Query key namespaces for history, rows, and traces", () => {
+    const client = createMockClient();
+    const history = buildSourcePreviewHistoryQuery(client, "zqtz", 8);
+    const rows = buildSourcePreviewRowsQuery(client, "zqtz", "ib-1", 8);
+    const traces = buildSourcePreviewTracesQuery(client, "zqtz", "ib-1", 8);
+    expect(history.queryKey[0]).toBe("source-preview-history");
+    expect(rows.queryKey[0]).toBe("source-preview-rows");
+    expect(traces.queryKey[0]).toBe("source-preview-traces");
+  });
 });

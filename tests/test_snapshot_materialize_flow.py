@@ -1,0 +1,135 @@
+"""End-to-end: ingest + archive manifests, then materialize standardized snapshots from archives."""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import duckdb
+
+from backend.app.governance.settings import get_settings
+from tests.helpers import ROOT, load_module
+
+
+def _load_tasks():
+    ingest_mod = sys.modules.get("backend.app.tasks.ingest")
+    if ingest_mod is None:
+        ingest_mod = load_module("backend.app.tasks.ingest", "backend/app/tasks/ingest.py")
+    snap_mod = sys.modules.get("backend.app.tasks.snapshot_materialize")
+    if snap_mod is None:
+        snap_mod = load_module(
+            "backend.app.tasks.snapshot_materialize",
+            "backend/app/tasks/snapshot_materialize.py",
+        )
+    return ingest_mod, snap_mod
+
+
+def test_snapshot_tables_materialize_from_manifest_archives(tmp_path, monkeypatch):
+    ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    ingest_mod.ingest_demo_manifest.fn()
+    result = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert result["status"] == "completed"
+    assert result["zqtz_rows"] > 0
+    assert result["tyw_rows"] > 0
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        zcols = [r[1] for r in conn.execute("pragma table_info('zqtz_bond_daily_snapshot')").fetchall()]
+        assert "source_version" in zcols
+        assert "rule_version" in zcols
+        assert "ingest_batch_id" in zcols
+        assert "trace_id" in zcols
+
+        tcols = [r[1] for r in conn.execute("pragma table_info('tyw_interbank_daily_snapshot')").fetchall()]
+        assert "source_version" in tcols
+        assert "rule_version" in tcols
+        assert "ingest_batch_id" in tcols
+        assert "trace_id" in tcols
+
+        zrow = conn.execute(
+            """
+            select report_date, instrument_code, portfolio_name, cost_center, currency_code,
+                   source_version, rule_version, ingest_batch_id, trace_id
+            from zqtz_bond_daily_snapshot
+            limit 1
+            """
+        ).fetchone()
+        assert zrow is not None
+        assert all(zrow)
+
+        trow = conn.execute(
+            """
+            select report_date, position_id, source_version, rule_version, ingest_batch_id, trace_id
+            from tyw_interbank_daily_snapshot
+            limit 1
+            """
+        ).fetchone()
+        assert trow is not None
+        assert all(trow)
+    finally:
+        conn.close()
+
+    get_settings.cache_clear()
+
+
+def test_snapshot_materialize_respects_report_date_filter(tmp_path, monkeypatch):
+    ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    ingest_mod.ingest_demo_manifest.fn()
+    full = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    assert full["zqtz_rows"] > 0
+
+    filtered = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+    )
+    assert filtered["zqtz_rows"] == full["zqtz_rows"]
+
+    empty_scope = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2099-01-01",
+    )
+    assert empty_scope["zqtz_rows"] == 0
+    assert empty_scope["tyw_rows"] == 0
+
+    get_settings.cache_clear()

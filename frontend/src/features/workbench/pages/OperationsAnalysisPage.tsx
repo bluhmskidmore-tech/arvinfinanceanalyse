@@ -46,11 +46,17 @@ function summarizeNewsPayload(event: {
 
 function buildPnlRefreshStatusText(payload: {
   status: string;
+  job_name?: string;
+  trigger_mode?: string;
+  cache_key?: string;
   report_date?: string;
   source_version?: string;
 }) {
   return [
     `最近结果：${payload.status}`,
+    payload.job_name ? `任务 ${payload.job_name}` : null,
+    payload.trigger_mode ? `触发 ${payload.trigger_mode}` : null,
+    payload.cache_key ? `cache ${payload.cache_key}` : null,
     payload.report_date ? `报告日 ${payload.report_date}` : null,
     payload.source_version ? `source ${payload.source_version}` : null,
   ]
@@ -128,7 +134,10 @@ export default function OperationsAnalysisPage() {
         },
       });
       if (payload.status !== "completed") {
-        throw new Error(payload.error_message ?? payload.detail ?? `PnL 刷新未完成：${payload.status}`);
+        const hint =
+          payload.error_message ?? payload.detail ?? `PnL 刷新未完成：${payload.status}`;
+        const rid = payload.run_id ? ` run_id: ${payload.run_id}` : "";
+        throw new Error(`${hint}${rid}`);
       }
     } catch (error) {
       setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 表失败");
@@ -349,9 +358,9 @@ export default function OperationsAnalysisPage() {
         >
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
             <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>正式损益刷新</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>PnL 表刷新</h2>
               <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
-            手动触发正式损益物化任务。该入口只负责发起刷新与显示任务状态，不在当前页面渲染正式损益结果表。
+ 手动触发正式损益（PnL）物化任务，与数据源预览刷新相互独立。该入口只负责发起刷新与显示任务状态，不在当前页面渲染正式损益大表。
               </p>
               {lastPnlRefreshRunId ? (
                 <p
@@ -391,7 +400,7 @@ export default function OperationsAnalysisPage() {
                 opacity: isPnlRefreshing ? 0.7 : 1,
               }}
             >
-            {isPnlRefreshing ? "刷新中..." : "刷新正式损益表"}
+            {isPnlRefreshing ? "刷新中..." : "刷新 PnL 表"}
             </button>
           </div>
         </section>

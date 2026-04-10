@@ -82,13 +82,23 @@ function totalPages(totalRows: number, pageSize: number) {
 
 function buildRefreshStatusText(payload: {
   status: string;
+  job_name?: string;
+  trigger_mode?: string;
+  cache_key?: string;
   ingest_batch_id?: string | null;
   preview_sources?: string[];
+  report_dates?: string[];
+  source_version?: string;
 }) {
   return [
     `最近结果：${payload.status}`,
+    payload.job_name ? `任务 ${payload.job_name}` : null,
+    payload.trigger_mode ? `触发 ${payload.trigger_mode}` : null,
+    payload.cache_key ? `cache ${payload.cache_key}` : null,
     payload.ingest_batch_id ? `批次 ${payload.ingest_batch_id}` : null,
     payload.preview_sources?.length ? payload.preview_sources.join(" / ") : null,
+    payload.report_dates?.length ? `报告日 ${payload.report_dates.join(", ")}` : null,
+    payload.source_version ? `source ${payload.source_version}` : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -285,9 +295,12 @@ export default function SourcePreviewPage() {
         },
       });
       if (payload.status !== "completed") {
-        throw new Error(
-          payload.error_message ?? payload.detail ?? `数据源预览刷新未完成：${payload.status}`,
-        );
+        const hint =
+          payload.error_message ??
+          payload.detail ??
+          `数据源预览刷新未完成：${payload.status}`;
+        const rid = payload.run_id ? ` run_id: ${payload.run_id}` : "";
+        throw new Error(`${hint}${rid}`);
       }
       setHistoryOffset(0);
       setRowsOffset(0);

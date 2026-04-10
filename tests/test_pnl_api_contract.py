@@ -223,8 +223,12 @@ def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeyp
 
     status_response = client.get("/api/data/import_status/pnl")
     assert status_response.status_code == 200
-    assert status_response.json()["status"] == "completed"
-    assert status_response.json()["run_id"] == refresh_payload["run_id"]
+    status_payload = status_response.json()
+    assert status_payload["status"] == "completed"
+    assert status_payload["run_id"] == refresh_payload["run_id"]
+    assert status_payload["report_date"] == "2026-02-28"
+    assert status_payload["cache_key"] == "pnl.phase2.materialize"
+    assert status_payload["job_name"] == "pnl_materialize"
 
     dates_response = client.get("/api/pnl/dates")
     assert dates_response.status_code == 200
@@ -403,7 +407,14 @@ def test_pnl_import_status_run_id_returns_latest_matching_completed_record_witho
 def test_pnl_import_status_run_id_returns_failed_terminal_record(tmp_path, monkeypatch):
     governance_dir = _configure_import_status_env(tmp_path, monkeypatch)
     _append_pnl_build_run(governance_dir, run_id="run-failed", status="queued", source_version="sv_q")
-    _append_pnl_build_run(governance_dir, run_id="run-failed", status="failed", source_version="sv_failed")
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-failed",
+        status="failed",
+        source_version="sv_failed",
+        error_message="duckdb transaction rolled back",
+        report_date="2026-01-31",
+    )
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/data/import_status/pnl", params={"run_id": "run-failed"})
@@ -414,6 +425,10 @@ def test_pnl_import_status_run_id_returns_failed_terminal_record(tmp_path, monke
     assert payload["status"] == "failed"
     assert payload["source_version"] == "sv_failed"
     assert payload["trigger_mode"] == "terminal"
+    assert payload["error_message"] == "duckdb transaction rolled back"
+    assert payload["report_date"] == "2026-01-31"
+    assert payload["cache_key"] == "pnl.phase2.materialize"
+    assert payload["job_name"] == "pnl_materialize"
     get_settings.cache_clear()
 
 
@@ -665,19 +680,27 @@ def _configure_import_status_env(tmp_path, monkeypatch):
     return governance_dir
 
 
-def _append_pnl_build_run(governance_dir, *, run_id: str, status: str, source_version: str):
-    GovernanceRepository(base_dir=governance_dir).append(
-        CACHE_BUILD_RUN_STREAM,
-        CacheBuildRunRecord(
-            run_id=run_id,
-            job_name="pnl_materialize",
-            status=status,
-            cache_key="pnl.phase2.materialize",
-            lock="lock:duckdb:pnl-materialize",
-            source_version=source_version,
-            vendor_version="vv_none",
-        ).model_dump(),
-    )
+def _append_pnl_build_run(
+    governance_dir,
+    *,
+    run_id: str,
+    status: str,
+    source_version: str,
+    **extra: object,
+):
+    record = CacheBuildRunRecord(
+        run_id=run_id,
+        job_name="pnl_materialize",
+        status=status,
+        cache_key="pnl.phase2.materialize",
+        lock="lock:duckdb:pnl-materialize",
+        source_version=source_version,
+        vendor_version="vv_none",
+    ).model_dump()
+    for key, value in extra.items():
+        if value is not None:
+            record[key] = value
+    GovernanceRepository(base_dir=governance_dir).append(CACHE_BUILD_RUN_STREAM, record)
 
 
 def _write_nonstd_refresh_workbook(path: Path, *, include_prior_month_row: bool = False) -> None:

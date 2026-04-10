@@ -11,6 +11,8 @@ from backend.app.governance.locks import LockDefinition, acquire_lock
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
 CACHE_MANIFEST_STREAM = "cache_manifest"
 SOURCE_MANIFEST_STREAM = "source_manifest"
+SNAPSHOT_BUILD_RUN_STREAM = "snapshot_build_run"
+SNAPSHOT_MANIFEST_STREAM = "snapshot_manifest"
 VENDOR_SNAPSHOT_MANIFEST_STREAM = "vendor_snapshot_manifest"
 VENDOR_VERSION_REGISTRY_STREAM = "vendor_version_registry"
 

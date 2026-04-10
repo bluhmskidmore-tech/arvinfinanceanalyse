@@ -62,6 +62,21 @@ def test_source_preview_api_registers_manual_refresh_routes():
     assert "/ui/preview/source-foundation/refresh-status" in paths
 
 
+def test_source_preview_refresh_status_idle_lists_zqtz_tyw_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/ui/preview/source-foundation/refresh-status")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "idle"
+    assert body["job_name"] == "source_preview_refresh"
+    assert body["cache_key"] == "source_preview.foundation"
+    assert body["preview_sources"] == ["zqtz", "tyw"]
+    get_settings.cache_clear()
+
+
 def test_materialize_task_persists_source_preview_summary_rows(tmp_path, monkeypatch):
     ingest_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_module is None:

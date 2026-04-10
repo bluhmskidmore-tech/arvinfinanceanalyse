@@ -107,6 +107,7 @@
 - 当前有效 scoped override（2026-04-09）仅限 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md` 所定义的 macro-data stream。
 - 上述 macro-data override 不放开通用 `Phase 2` 正式计算，不放开 Agent MVP，不放开无关工作流的 next slice，也不放开 broad frontend rollout。
 - `zqtz / tyw` 当前允许进行 docs-only 的 snapshot contract alignment / PRD / test-spec 收敛；这仍属于 `Phase 1` planning / closeout，不代表 `Phase 2` 已放开。
+- 若存在 dated execution update 明确放开 `zqtz / tyw` snapshot materialization，该放开也只作用于该标准快照切片，不构成通用 `Phase 2` cutover。
 
 Agent 补充约束：
 

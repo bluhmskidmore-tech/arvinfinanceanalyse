@@ -2,7 +2,7 @@ import { getJobPollingConfig } from "./config";
 
 export type PollingTaskPayload = {
   status: string;
-  run_id: string;
+  run_id?: string;
   detail?: string | null;
   error_message?: string | null;
 };
@@ -36,7 +36,11 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
   }
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    payload = await getStatus(payload.run_id);
+    const runId = payload.run_id;
+    if (!runId) {
+      throw new Error(`任务轮询缺少 run_id（最后状态：${payload.status}）`);
+    }
+    payload = await getStatus(runId);
     onUpdate?.(payload);
     if (isTerminal(payload.status)) {
       return payload;
@@ -44,5 +48,6 @@ export async function runPollingTask<TPayload extends PollingTaskPayload>(
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
 
-  throw new Error("任务轮询超时");
+  const rid = payload.run_id ?? "—";
+  throw new Error(`任务轮询超时 (run_id: ${rid}, 最后状态: ${payload.status})`);
 }

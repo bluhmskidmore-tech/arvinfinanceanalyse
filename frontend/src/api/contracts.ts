@@ -81,7 +81,7 @@ export type FormalPnlDisabledResponse = {
 
 export type FormalPnlRefreshPayload = {
   status: string;
-  run_id: string;
+  run_id?: string;
   job_name: string;
   trigger_mode: string;
   cache_key?: string;
@@ -210,7 +210,7 @@ export type SourcePreviewTracesPayload = {
 
 export type SourcePreviewRefreshPayload = {
   status: string;
-  run_id: string;
+  run_id?: string;
   job_name: string;
   trigger_mode: string;
   cache_key?: string;

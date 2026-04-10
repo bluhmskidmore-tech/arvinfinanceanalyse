@@ -282,7 +282,7 @@ describe("OperationsAnalysisPage", () => {
         "pnl_materialize:test-run",
       );
       expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
-        "最近结果：completed",
+        /最近结果：completed/,
       );
     });
   });
@@ -322,7 +322,7 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
         "最近结果：failed",
       );
-      expect(screen.getByText("Pnl refresh worker failed.")).toBeInTheDocument();
+      expect(screen.getByText(/Pnl refresh worker failed\./)).toBeInTheDocument();
     });
   });
 
@@ -350,7 +350,7 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-pnl-refresh-status")).toHaveTextContent(
         "最近结果：running",
       );
-      expect(screen.getByText("任务轮询超时")).toBeInTheDocument();
+      expect(screen.getByText(/任务轮询超时/)).toBeInTheDocument();
     });
 
     pollingSpy.mockRestore();

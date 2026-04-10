@@ -1,4 +1,5 @@
 import socket
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -150,3 +151,22 @@ class ObjectStoreRepository:
             "capture_mode": capture_mode,
             "read_target": "duckdb",
         }
+
+    def read_archived_bytes(self, archived_path: str) -> bytes:
+        if self.mode != "local":
+            raise NotImplementedError("read_archived_bytes is only implemented for local archive mode.")
+        path = Path(archived_path)
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        return path.read_bytes()
+
+    @contextmanager
+    def open_archived_binary(self, archived_path: str):
+        """Yield a readable binary stream for an archived object (local mode). Caller must not use the handle outside the with-block."""
+        if self.mode != "local":
+            raise NotImplementedError("open_archived_binary is only implemented for local archive mode.")
+        path = Path(archived_path)
+        if not path.is_file():
+            raise FileNotFoundError(str(path))
+        with path.open("rb") as handle:
+            yield handle

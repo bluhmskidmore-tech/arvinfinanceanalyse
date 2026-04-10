@@ -55,6 +55,7 @@
 - 属于 `Phase 1 preview closeout`
 - 即使 `.omx/plans/phase1-preview-*` 存在，也只说明这是已计划 / 已执行的 closeout 面，不等于进入 `Phase 2`
 - `zqtz / tyw` 当前仅允许 docs-only 的 contract alignment / PRD / test-spec 收敛；这不构成 snapshot materialization、formal compute 或 workbench 消费授权。
+- 后续若存在 `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`，其授权仅适用于 `zqtz / tyw` snapshot materialization，不代表仓库整体进入 `Phase 2`。
 
 ### 4. Product Category PnL
 
