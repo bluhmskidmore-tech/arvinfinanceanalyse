@@ -947,6 +947,16 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
 
     conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
     try:
+        catalog_row_count = conn.execute(
+            "select count(*) from phase1_macro_vendor_catalog"
+        ).fetchone()[0]
+        duplicate_catalog_series = conn.execute(
+            """
+            select series_id from phase1_macro_vendor_catalog
+            group by series_id
+            having count(*) > 1
+            """
+        ).fetchall()
         rows = conn.execute(
             """
             select
@@ -969,6 +979,8 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
     finally:
         conn.close()
 
+    assert catalog_row_count == 4
+    assert duplicate_catalog_series == []
     assert rows == [
         (
             "cn_cpi_yoy",
@@ -1011,6 +1023,20 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
             "batch",
             "stable",
             "main refresh date-slice lane",
+        ),
+        (
+            "cn_shibor_on",
+            "EDB_SHIBOR_ON",
+            "isolated_vendor_pending",
+            "2026-04-11.choice-macro.v2",
+            "rates",
+            False,
+            '["china","rates","vendor_pending"]',
+            "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
+            "latest",
+            "single",
+            "isolated",
+            "wait for vendor permission or interface confirmation",
         ),
     ]
     get_settings.cache_clear()
@@ -1236,6 +1262,31 @@ def test_choice_macro_refresh_skips_isolated_catalog_batches(tmp_path, monkeypat
 
     assert payload["status"] == "completed"
     assert "cn_shibor_on" not in observed
+
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
+    try:
+        catalog_total = conn.execute("select count(*) from phase1_macro_vendor_catalog").fetchone()[0]
+        fact_total = conn.execute("select count(*) from fact_choice_macro_daily").fetchone()[0]
+        duplicate_catalog_series = conn.execute(
+            """
+            select series_id from phase1_macro_vendor_catalog
+            group by series_id
+            having count(*) > 1
+            """
+        ).fetchall()
+        isolated_tier = conn.execute(
+            """
+            select refresh_tier from phase1_macro_vendor_catalog
+            where series_id = 'cn_shibor_on'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert catalog_total == 4
+    assert fact_total == 3
+    assert duplicate_catalog_series == []
+    assert isolated_tier == ("isolated",)
     get_settings.cache_clear()
 
 
@@ -1304,3 +1355,88 @@ def test_choice_macro_refresh_skips_no_data_batch_and_keeps_successful_batch(tmp
 
     assert payload["status"] == "completed"
     assert payload["series_count"] == 1
+
+
+def test_choice_macro_refresh_retries_stable_date_slice_on_previous_trading_day(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    catalog_file = tmp_path / "choice_macro_catalog.json"
+    _write_choice_macro_catalog(catalog_file)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_file))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", "[]")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[tuple[list[str], str]] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        observed.append(([item.series_id for item in series], request_options))
+        if (
+            series[0].series_id == "cn_repo_7d"
+            and "StartDate=2026-04-11" in request_options
+            and "EndDate=2026-04-11" in request_options
+        ):
+            raise RuntimeError("no data")
+
+        trade_date = "2026-04-10" if series[0].series_id == "cn_repo_7d" else "2026-04-09"
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_choice_{series[0].series_id}_{trade_date.replace('-', '')}",
+            captured_at=f"{trade_date}T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date=trade_date,
+                    value_numeric=float(index + 1),
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_choice_{item.series_id}_{trade_date.replace('-', '')}",
+                )
+                for index, item in enumerate(series)
+            ],
+            raw_payload={
+                "vendor_version": f"vv_choice_{series[0].series_id}_{trade_date.replace('-', '')}",
+                "captured_at": f"{trade_date}T14:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["series_count"] == 3
+    assert observed[0] == (
+        ["cn_repo_7d"],
+        "IsLatest=0,StartDate=2026-04-11,EndDate=2026-04-11,Ispandas=1,RECVtimeout=5",
+    )
+    assert observed[1] == (
+        ["cn_repo_7d"],
+        "IsLatest=0,StartDate=2026-04-10,EndDate=2026-04-10,Ispandas=1,RECVtimeout=5",
+    )
+    assert observed[2][0] == ["cn_cpi_yoy"]
+    assert observed[3][0] == ["cn_m2_yoy"]

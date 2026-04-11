@@ -122,13 +122,10 @@ class ChoiceMacroLatestPoint(BaseModel):
     unit: str
     source_version: str
     vendor_version: str
-    vendor_series_code: str = ""
-    batch_id: str | None = None
-    catalog_version: str | None = None
-    theme: str = "unknown"
-    is_core: bool = False
-    tags: list[str] = Field(default_factory=list)
-    request_options: str = ""
+    refresh_tier: ChoiceMacroRefreshTier | None = None
+    fetch_mode: ChoiceMacroFetchMode | None = None
+    fetch_granularity: ChoiceMacroFetchGranularity | None = None
+    policy_note: str | None = None
     quality_flag: Literal["ok", "warning", "error", "stale"] = "warning"
     latest_change: float | None = None
     recent_points: list[ChoiceMacroRecentPoint] = Field(default_factory=list)

@@ -242,13 +242,10 @@ export type ChoiceMacroLatestPoint = {
   unit: string;
   source_version: string;
   vendor_version: string;
-  vendor_series_code?: string;
-  batch_id?: string | null;
-  catalog_version?: string | null;
-  theme?: string;
-  is_core?: boolean;
-  tags?: string[];
-  request_options?: string;
+  refresh_tier?: "stable" | "fallback" | "isolated" | null;
+  fetch_mode?: "date_slice" | "latest" | null;
+  fetch_granularity?: "batch" | "single" | null;
+  policy_note?: string | null;
   quality_flag?: ApiQuality;
   latest_change?: number | null;
   recent_points?: ChoiceMacroRecentPoint[];

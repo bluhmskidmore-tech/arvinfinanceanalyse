@@ -35,16 +35,131 @@ function formatRecentPoint(point: ChoiceMacroRecentPoint) {
   return `${point.trade_date} ${formatPointValue(point.value_numeric, "")}`;
 }
 
-function seriesTheme(point: ChoiceMacroLatestPoint) {
-  return point.theme?.trim() || "unknown";
-}
-
-function seriesTags(point: ChoiceMacroLatestPoint) {
-  return point.tags?.length ? point.tags.join(", ") : "no tags";
-}
-
 function seriesRecentPoints(point: ChoiceMacroLatestPoint) {
   return point.recent_points ?? [];
+}
+
+function seriesRefreshTier(point: ChoiceMacroLatestPoint) {
+  return point.refresh_tier ?? "stable";
+}
+
+function seriesPolicyNote(point: ChoiceMacroLatestPoint) {
+  return point.policy_note?.trim() || "analytical read path";
+}
+
+function seriesFetchModeLabel(point: ChoiceMacroLatestPoint) {
+  const fetchMode = point.fetch_mode ?? "date_slice";
+  const granularity = point.fetch_granularity ?? "batch";
+  return `${fetchMode} / ${granularity}`;
+}
+
+function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      {series.map((point) => (
+        <div
+          key={point.series_id}
+          data-testid={`market-data-series-${point.series_id}`}
+          style={{
+            display: "grid",
+            gap: 10,
+            padding: 16,
+            borderRadius: 16,
+            border: "1px solid #e4ebf5",
+            background: "#ffffff",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600 }}>{point.series_name}</div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>
+                {point.series_id}
+              </div>
+            </div>
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "#f3f6fb",
+                color: "#31425b",
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              <span>{`tier ${seriesRefreshTier(point)}`}</span>
+              <span>·</span>
+              <span>{point.quality_flag ?? "warning"}</span>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>trade_date</div>
+              <div>{point.trade_date}</div>
+            </div>
+            <div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>latest</div>
+              <div style={{ fontWeight: 600, color: "#162033" }}>
+                {formatPointValue(point.value_numeric, point.unit)}
+              </div>
+            </div>
+            <div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>delta</div>
+              <div>{formatDelta(point.latest_change, point.unit)}</div>
+            </div>
+            <div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>fetch</div>
+              <div>{seriesFetchModeLabel(point)}</div>
+            </div>
+          </div>
+
+          <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.7 }}>
+            source {point.source_version} · vendor {point.vendor_version}
+          </div>
+          <div style={{ color: "#31425b", fontSize: 13, lineHeight: 1.7 }}>
+            {seriesPolicyNote(point)}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {seriesRecentPoints(point).map((recentPoint) => (
+              <span
+                key={`${point.series_id}:${recentPoint.trade_date}:${recentPoint.vendor_version}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "#f8fafc",
+                  border: "1px solid #e4ebf5",
+                  color: "#5c6b82",
+                  fontSize: 12,
+                }}
+              >
+                {formatRecentPoint(recentPoint)}
+              </span>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function MarketDataPage() {
@@ -65,17 +180,29 @@ export default function MarketDataPage() {
     () => latestQuery.data?.result.series ?? [],
     [latestQuery.data?.result.series],
   );
-  const latestTradeDate = useMemo(() => {
-    if (latestSeries.length === 0) {
+  const visibleLatestSeries = useMemo(
+    () => latestSeries.filter((point) => seriesRefreshTier(point) !== "isolated"),
+    [latestSeries],
+  );
+  const stableSeries = useMemo(
+    () => visibleLatestSeries.filter((point) => seriesRefreshTier(point) !== "fallback"),
+    [visibleLatestSeries],
+  );
+  const fallbackSeries = useMemo(
+    () => visibleLatestSeries.filter((point) => seriesRefreshTier(point) === "fallback"),
+    [visibleLatestSeries],
+  );
+  const stableLatestTradeDate = useMemo(() => {
+    if (stableSeries.length === 0) {
       return "暂无";
     }
-    return latestSeries
+    return stableSeries
       .map((point) => point.trade_date)
       .sort((left, right) => right.localeCompare(left))[0];
-  }, [latestSeries]);
+  }, [stableSeries]);
   const vendorVersions = useMemo(
-    () => [...new Set(latestSeries.map((point) => point.vendor_version))],
-    [latestSeries],
+    () => [...new Set(visibleLatestSeries.map((point) => point.vendor_version))],
+    [visibleLatestSeries],
   );
   const meta = latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
 
@@ -140,27 +267,75 @@ export default function MarketDataPage() {
             detail="已登记的宏观序列数量。"
           />
         </div>
-        <div data-testid="market-data-latest-count">
+        <div data-testid="market-data-stable-count">
           <PlaceholderCard
-            title="最新点位"
-            value={String(latestSeries.length)}
-            detail="当前最新切片中返回的 Choice 序列数量。"
+            title="稳定可用"
+            value={String(stableSeries.length)}
+            detail="主 refresh 稳定链路中的序列数量。"
           />
         </div>
-        <div data-testid="market-data-latest-trade-date">
+        <div data-testid="market-data-fallback-count">
           <PlaceholderCard
-            title="最新交易日"
-            value={latestTradeDate}
-            detail="按最新点位切片计算出的最大交易日期。"
+            title="降级可用"
+            value={String(fallbackSeries.length)}
+            detail="latest-only / single-fetch 降级链路中的序列数量。"
+          />
+        </div>
+        <div data-testid="market-data-stable-trade-date">
+          <PlaceholderCard
+            title="稳定最新日"
+            value={stableLatestTradeDate}
+            detail="稳定主链路中可见序列的最大交易日期。"
             valueVariant="text"
           />
         </div>
-        <PlaceholderCard
-          title="供应商版本"
-          value={vendorVersions.join(", ") || "暂无"}
-          detail="用于当前市场数据视图的 vendor_version。"
-          valueVariant="text"
-        />
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <AsyncSection
+          title="可用 Choice 点位"
+          isLoading={latestQuery.isLoading}
+          isError={latestQuery.isError}
+          isEmpty={!latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0}
+          onRetry={() => void latestQuery.refetch()}
+        >
+          <div style={{ display: "grid", gap: 24 }}>
+            <section data-testid="market-data-stable-section">
+              <div style={{ marginBottom: 12 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>稳定主链路</h2>
+                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+                  面向日常分析的主 refresh 读面，只显示稳定可取的序列。
+                </p>
+              </div>
+              {renderSeriesCards(stableSeries)}
+            </section>
+
+            <section data-testid="market-data-fallback-section">
+              <div style={{ marginBottom: 12 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>降级 latest-only</h2>
+                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+                  低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
+                </p>
+              </div>
+              {fallbackSeries.length > 0 ? (
+                renderSeriesCards(fallbackSeries)
+              ) : (
+                <div
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid #e4ebf5",
+                    background: "#ffffff",
+                    color: "#5c6b82",
+                    fontSize: 14,
+                  }}
+                >
+                  当前无降级 latest-only 序列。
+                </div>
+              )}
+            </section>
+          </div>
+        </AsyncSection>
       </div>
 
       <div style={sectionGridStyle}>
@@ -225,6 +400,7 @@ export default function MarketDataPage() {
             <div>rule_version: {meta?.rule_version ?? "pending"}</div>
             <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
             <div>generated_at: {meta?.generated_at ?? "pending"}</div>
+            <div>visible_vendor_versions: {vendorVersions.join(", ") || "暂无"}</div>
           </div>
           <div
             style={{
@@ -238,124 +414,9 @@ export default function MarketDataPage() {
               lineHeight: 1.7,
             }}
           >
-            宏观视图与数据源规则预览均为只读分析增强面。如需追规则命中与批次 lineage，请从中台配置入口进入 source preview。
+            宏观视图仅用于分析增强和外部数据观察，不承载 formal finance 口径；待供应商确认的 isolated 序列不会进入当前读面。
           </div>
         </section>
-      </div>
-
-      <div style={{ marginTop: 18 }}>
-        <AsyncSection
-          title="最新 Choice 点位"
-          isLoading={latestQuery.isLoading}
-          isError={latestQuery.isError}
-          isEmpty={!latestQuery.isLoading && !latestQuery.isError && latestSeries.length === 0}
-          onRetry={() => void latestQuery.refetch()}
-        >
-          <div style={{ display: "grid", gap: 12 }}>
-            {latestSeries.map((point) => (
-              <div
-                key={point.series_id}
-                data-testid={`market-data-series-${point.series_id}`}
-                style={{
-                  display: "grid",
-                  gap: 10,
-                  padding: 16,
-                  borderRadius: 16,
-                  border: "1px solid #e4ebf5",
-                  background: "#ffffff",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{point.series_name}</div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>
-                      {point.series_id}
-                      {point.vendor_series_code ? ` · ${point.vendor_series_code}` : ""}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      background: "#f3f6fb",
-                      color: "#31425b",
-                      fontSize: 12,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span>{seriesTheme(point)}</span>
-                    <span>·</span>
-                    <span>{point.quality_flag ?? "warning"}</span>
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                    gap: 12,
-                  }}
-                >
-                  <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>trade_date</div>
-                    <div>{point.trade_date}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>latest</div>
-                    <div style={{ fontWeight: 600, color: "#162033" }}>
-                      {formatPointValue(point.value_numeric, point.unit)}
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>delta</div>
-                    <div>{formatDelta(point.latest_change, point.unit)}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>batch</div>
-                    <div>{point.batch_id ?? "n/a"}</div>
-                  </div>
-                </div>
-
-                <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.7 }}>
-                  catalog {point.catalog_version ?? "n/a"} · request {point.request_options || "n/a"} · tags{" "}
-                  {seriesTags(point)}
-                </div>
-
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {seriesRecentPoints(point).map((recentPoint) => (
-                    <span
-                      key={`${point.series_id}:${recentPoint.trade_date}:${recentPoint.vendor_version}`}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        padding: "6px 10px",
-                        borderRadius: 999,
-                        background: "#f8fafc",
-                        border: "1px solid #e4ebf5",
-                        color: "#5c6b82",
-                        fontSize: 12,
-                      }}
-                    >
-                      {formatRecentPoint(recentPoint)}
-                    </span>
-                  ))}
-                </div>
-
-              </div>
-            ))}
-          </div>
-        </AsyncSection>
       </div>
     </section>
   );

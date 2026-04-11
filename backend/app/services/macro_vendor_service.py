@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import duckdb
@@ -155,18 +154,16 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
         catalog = catalog_by_series.get(
             series_id,
             {
-                "series_name": "",
-                "vendor_series_code": "",
-                "batch_id": None,
-                "catalog_version": None,
-                "theme": "unknown",
-                "is_core": False,
-                "tags": [],
-                "request_options": "",
                 "frequency": latest["frequency"],
                 "unit": latest["unit"],
+                "refresh_tier": None,
+                "fetch_mode": None,
+                "fetch_granularity": None,
+                "policy_note": None,
             },
         )
+        if catalog.get("refresh_tier") == "isolated":
+            continue
         latest_change = None
         if len(rows) > 1:
             latest_change = float(latest["value_numeric"]) - float(rows[1]["value_numeric"])
@@ -181,13 +178,10 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
                 unit=str(catalog["unit"] or latest["unit"]),
                 source_version=str(latest["source_version"]),
                 vendor_version=str(latest["vendor_version"]),
-                vendor_series_code=str(catalog["vendor_series_code"]),
-                batch_id=_as_optional_string(catalog["batch_id"]),
-                catalog_version=_as_optional_string(catalog["catalog_version"]),
-                theme=str(catalog["theme"]),
-                is_core=bool(catalog["is_core"]),
-                tags=list(catalog["tags"]),
-                request_options=str(catalog["request_options"]),
+                refresh_tier=_as_optional_string(catalog.get("refresh_tier")),
+                fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
+                fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
+                policy_note=_as_optional_string(catalog.get("policy_note")),
                 quality_flag=_normalize_quality_flag(str(latest["quality_flag"])),
                 latest_change=latest_change,
                 recent_points=recent_points,
@@ -319,14 +313,10 @@ def _load_choice_macro_catalog_map(
     }
     select_columns = [
         "series_id",
-        "series_name",
-        _catalog_column_expr("vendor_series_code", available_columns, "''"),
-        _catalog_column_expr("batch_id", available_columns, "NULL"),
-        _catalog_column_expr("catalog_version", available_columns, "NULL"),
-        _catalog_column_expr("theme", available_columns, "'unknown'"),
-        _catalog_column_expr("is_core", available_columns, "false"),
-        _catalog_column_expr("tags_json", available_columns, "'[]'"),
-        _catalog_column_expr("request_options", available_columns, "''"),
+        _catalog_column_expr("refresh_tier", available_columns, "NULL"),
+        _catalog_column_expr("fetch_mode", available_columns, "NULL"),
+        _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
+        _catalog_column_expr("policy_note", available_columns, "NULL"),
         "frequency",
         "unit",
     ]
@@ -341,26 +331,18 @@ def _load_choice_macro_catalog_map(
     catalog_by_series: dict[str, dict[str, object]] = {}
     for (
         series_id,
-        series_name,
-        vendor_series_code,
-        batch_id,
-        catalog_version,
-        theme,
-        is_core,
-        tags_json,
-        request_options,
+        refresh_tier,
+        fetch_mode,
+        fetch_granularity,
+        policy_note,
         frequency,
         unit,
     ) in rows:
         catalog_by_series[str(series_id)] = {
-            "series_name": str(series_name or ""),
-            "vendor_series_code": str(vendor_series_code or ""),
-            "batch_id": batch_id,
-            "catalog_version": catalog_version,
-            "theme": str(theme or "unknown"),
-            "is_core": bool(is_core),
-            "tags": _parse_tags_json(tags_json),
-            "request_options": str(request_options or ""),
+            "refresh_tier": _as_optional_string(refresh_tier),
+            "fetch_mode": _as_optional_string(fetch_mode),
+            "fetch_granularity": _as_optional_string(fetch_granularity),
+            "policy_note": _as_optional_string(policy_note),
             "frequency": str(frequency or ""),
             "unit": str(unit or ""),
         }
@@ -371,18 +353,6 @@ def _catalog_column_expr(column: str, available_columns: set[str], fallback_sql:
     if column in available_columns:
         return column
     return f"{fallback_sql} as {column}"
-
-
-def _parse_tags_json(value: object) -> list[str]:
-    if value is None:
-        return []
-    try:
-        parsed = json.loads(str(value))
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed]
 
 
 def _aggregate_lineage_value(values: list[str], empty_value: str) -> str:

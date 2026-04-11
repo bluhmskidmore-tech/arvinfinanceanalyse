@@ -174,17 +174,159 @@ def test_choice_macro_latest_supports_legacy_catalog_schema(
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     get_settings.cache_clear()
-    main_module = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(main_module.app)
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
 
-    response = client.get("/ui/macro/choice-series/latest")
-
-    assert response.status_code == 200
-    payload = response.json()
+    payload = route_module.choice_series_latest()
     assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_repo_7d"]
-    assert payload["result"]["series"][0]["vendor_series_code"] == ""
-    assert payload["result"]["series"][0]["batch_id"] is None
+    assert payload["result"]["series"][0]["refresh_tier"] is None
+    assert "vendor_series_code" not in payload["result"]["series"][0]
+    assert "batch_id" not in payload["result"]["series"][0]
     assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_b"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_excludes_isolated_rows_and_exposes_policy_fields(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-policy-filter.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              vendor_series_code varchar,
+              batch_id varchar,
+              catalog_version varchar,
+              theme varchar,
+              is_core boolean,
+              tags_json varchar,
+              request_options varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                '2026-04-09',
+                1.82,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              ),
+              (
+                'cn_shibor_on',
+                'CN Shibor ON',
+                '2026-04-09',
+                1.95,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'warning',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct',
+                'EDB_REPO_7D',
+                'stable_daily',
+                '2026-04-11.choice-macro.v2',
+                'liquidity',
+                true,
+                '["china","rates","liquidity"]',
+                'IsLatest=0,StartDate=2026-04-09,EndDate=2026-04-09,Ispandas=1,RECVtimeout=5',
+                'date_slice',
+                'batch',
+                'stable',
+                'main refresh date-slice lane'
+              ),
+              (
+                'cn_shibor_on',
+                'CN Shibor ON',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct',
+                'EDB_SHIBOR_ON',
+                'isolated_vendor_pending',
+                '2026-04-11.choice-macro.v2',
+                'rates',
+                false,
+                '["china","rates","vendor_pending"]',
+                'IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5',
+                'latest',
+                'single',
+                'isolated',
+                'wait for vendor permission or interface confirmation'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+    assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_repo_7d"]
+    assert payload["result"]["series"][0]["refresh_tier"] == "stable"
+    assert payload["result"]["series"][0]["fetch_mode"] == "date_slice"
+    assert payload["result"]["series"][0]["fetch_granularity"] == "batch"
+    assert payload["result"]["series"][0]["policy_note"] == "main refresh date-slice lane"
+    assert "vendor_series_code" not in payload["result"]["series"][0]
+    assert "batch_id" not in payload["result"]["series"][0]
     get_settings.cache_clear()
 
 

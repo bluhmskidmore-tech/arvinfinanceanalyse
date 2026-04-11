@@ -4,7 +4,7 @@ import dramatiq
 import duckdb
 import hashlib
 import json
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 from backend.app.config.choice_runtime import _init_runtime
@@ -31,6 +31,7 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
+STABLE_DATE_SLICE_LOOKBACK_DAYS = 7
 
 
 @dramatiq.actor
@@ -71,13 +72,13 @@ def refresh_choice_macro_snapshot(
         batch_snapshots: list[ChoiceMacroSnapshot] = []
         for batch in fetch_plan:
             try:
-                snapshot = adapter.fetch_macro_snapshot(
-                    series=batch.series,
+                snapshot = _fetch_choice_macro_batch_snapshot(
+                    adapter=adapter,
+                    batch=batch,
                     timeout_seconds=settings.choice_timeout_seconds,
-                    request_options=batch.request_options,
                 )
             except RuntimeError as exc:
-                if "no data" in str(exc).lower():
+                if _is_choice_no_data_error(exc):
                     continue
                 raise
             batch_snapshots.append(snapshot)
@@ -116,22 +117,6 @@ def refresh_choice_macro_snapshot(
                 conn.execute("delete from phase1_macro_vendor_catalog")
 
                 for point in snapshot.series:
-                    registry_entry = series_registry.get(
-                        point.series_id,
-                        {
-                            "vendor_series_code": point.vendor_series_code,
-                            "batch_id": "",
-                            "catalog_version": None,
-                            "theme": "unknown",
-                            "is_core": False,
-                            "tags_json": "[]",
-                            "request_options": "",
-                            "fetch_mode": "date_slice",
-                            "fetch_granularity": "batch",
-                            "refresh_tier": "stable",
-                            "policy_note": None,
-                        },
-                    )
                     conn.execute(
                         """
                         insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -169,6 +154,12 @@ def refresh_choice_macro_snapshot(
                             run_id,
                         ],
                     )
+                point_vendor_versions = {
+                    point.series_id: point.vendor_version
+                    for point in snapshot.series
+                }
+                for series_id in sorted(series_registry):
+                    registry_entry = series_registry[series_id]
                     conn.execute(
                         """
                         insert into phase1_macro_vendor_catalog (
@@ -192,12 +183,12 @@ def refresh_choice_macro_snapshot(
                         ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
-                            point.series_id,
-                            point.series_name,
-                            point.vendor_name,
-                            point.vendor_version,
-                            point.frequency,
-                            point.unit,
+                            series_id,
+                            str(registry_entry["series_name"]),
+                            str(registry_entry["vendor_name"]),
+                            str(point_vendor_versions.get(series_id, snapshot.vendor_version)),
+                            str(registry_entry["frequency"]),
+                            str(registry_entry["unit"]),
                             str(registry_entry["vendor_series_code"]),
                             str(registry_entry["batch_id"]),
                             registry_entry["catalog_version"],
@@ -422,6 +413,81 @@ def _normalize_choice_batch_request_options(batch: ChoiceMacroBatchConfig, run_d
     return request_options.replace("__RUN_DATE__", run_date)
 
 
+def _fetch_choice_macro_batch_snapshot(
+    adapter: VendorAdapter,
+    batch: ChoiceMacroBatchConfig,
+    timeout_seconds: float,
+) -> ChoiceMacroSnapshot:
+    last_error: RuntimeError | None = None
+    for request_options in _iter_choice_batch_request_options(batch):
+        try:
+            return adapter.fetch_macro_snapshot(
+                series=batch.series,
+                timeout_seconds=timeout_seconds,
+                request_options=request_options,
+            )
+        except RuntimeError as exc:
+            if not _is_choice_no_data_error(exc):
+                raise
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Choice batch fetch produced no attempts.")
+
+
+def _iter_choice_batch_request_options(batch: ChoiceMacroBatchConfig) -> list[str]:
+    if not _should_retry_previous_trading_day(batch):
+        return [batch.request_options]
+
+    parsed = _parse_choice_request_options_string(batch.request_options)
+    start_date = parsed.get("StartDate")
+    end_date = parsed.get("EndDate")
+    if not start_date or not end_date or start_date != end_date:
+        return [batch.request_options]
+
+    base_date = date.fromisoformat(start_date)
+    return [
+        _replace_choice_date_range(batch.request_options, base_date - timedelta(days=offset))
+        for offset in range(STABLE_DATE_SLICE_LOOKBACK_DAYS + 1)
+    ]
+
+
+def _should_retry_previous_trading_day(batch: ChoiceMacroBatchConfig) -> bool:
+    return batch.refresh_tier == "stable" and batch.fetch_mode == "date_slice"
+
+
+def _is_choice_no_data_error(exc: RuntimeError) -> bool:
+    text = str(exc).lower()
+    return "no data" in text or "no rows" in text
+
+
+def _parse_choice_request_options_string(request_options: str) -> dict[str, str]:
+    parsed: dict[str, str] = {}
+    for part in request_options.split(","):
+        item = part.strip()
+        if not item or "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+def _replace_choice_date_range(request_options: str, target_date: date) -> str:
+    target_text = target_date.isoformat()
+    parts: list[str] = []
+    for part in request_options.split(","):
+        item = part.strip()
+        if item.startswith("StartDate="):
+            parts.append(f"StartDate={target_text}")
+            continue
+        if item.startswith("EndDate="):
+            parts.append(f"EndDate={target_text}")
+            continue
+        parts.append(item)
+    return ",".join(parts)
+
+
 def _build_choice_macro_fetch_plan(
     batches: list[ChoiceMacroBatchConfig],
 ) -> list[ChoiceMacroBatchConfig]:
@@ -468,6 +534,10 @@ def _build_choice_series_registry(
     for batch in batches:
         for series in batch.series:
             registry[series.series_id] = {
+                "series_name": series.series_name,
+                "vendor_name": "choice",
+                "frequency": series.frequency,
+                "unit": series.unit,
                 "vendor_series_code": series.vendor_series_code,
                 "batch_id": batch.batch_id,
                 "catalog_version": batch.catalog_version,

@@ -32,7 +32,7 @@ function renderPage(client: ApiClient) {
 }
 
 describe("MarketDataPage", () => {
-  it("renders macro catalog and latest choice series from the API client contract", async () => {
+  it("renders macro catalog plus trend and lineage evidence from the API client contract", async () => {
     const base = createApiClient({ mode: "mock" });
     const getMacroFoundation = vi.fn(async () => ({
       result_meta: {
@@ -53,7 +53,7 @@ describe("MarketDataPage", () => {
         series: [
           {
             series_id: "M001",
-            series_name: "公开市场7天逆回购利率",
+            series_name: "Open Market 7D Reverse Repo",
             vendor_name: "choice",
             vendor_version: "vv_choice_catalog_v1",
             frequency: "daily",
@@ -80,7 +80,7 @@ describe("MarketDataPage", () => {
         vendor_version: "vv_choice_macro_20260410",
         rule_version: "rv_choice_macro_thin_slice_v1",
         cache_version: "cv_choice_macro_thin_slice_v1",
-        quality_flag: "ok" as const,
+        quality_flag: "warning" as const,
         scenario_flag: false,
         generated_at: "2026-04-10T09:05:00Z",
       },
@@ -89,12 +89,35 @@ describe("MarketDataPage", () => {
         series: [
           {
             series_id: "M001",
-            series_name: "公开市场7天逆回购利率",
+            series_name: "Open Market 7D Reverse Repo",
             trade_date: "2026-04-10",
             value_numeric: 1.75,
             unit: "%",
             source_version: "sv_choice_macro_latest_test",
             vendor_version: "vv_choice_macro_20260410",
+            frequency: "daily",
+            refresh_tier: "stable" as const,
+            fetch_mode: "date_slice" as const,
+            fetch_granularity: "batch" as const,
+            policy_note: "main refresh date-slice lane",
+            quality_flag: "ok" as const,
+            latest_change: 0.2,
+            recent_points: [
+              {
+                trade_date: "2026-04-10",
+                value_numeric: 1.75,
+                source_version: "sv_choice_macro_latest_test",
+                vendor_version: "vv_choice_macro_20260410",
+                quality_flag: "ok" as const,
+              },
+              {
+                trade_date: "2026-04-09",
+                value_numeric: 1.55,
+                source_version: "sv_choice_macro_prev_test",
+                vendor_version: "vv_choice_macro_20260409",
+                quality_flag: "ok" as const,
+              },
+            ],
           },
           {
             series_id: "M002",
@@ -104,6 +127,22 @@ describe("MarketDataPage", () => {
             unit: "%",
             source_version: "sv_choice_macro_latest_test",
             vendor_version: "vv_choice_macro_20260410",
+            frequency: "daily",
+            refresh_tier: "fallback" as const,
+            fetch_mode: "latest" as const,
+            fetch_granularity: "single" as const,
+            policy_note: "low-frequency latest-only lane",
+            quality_flag: "warning" as const,
+            latest_change: null,
+            recent_points: [
+              {
+                trade_date: "2026-04-10",
+                value_numeric: 1.83,
+                source_version: "sv_choice_macro_latest_test",
+                vendor_version: "vv_choice_macro_20260410",
+                quality_flag: "warning" as const,
+              },
+            ],
           },
         ],
       },
@@ -115,19 +154,27 @@ describe("MarketDataPage", () => {
       getChoiceMacroLatest,
     });
 
-    expect(
-      await screen.findByRole("heading", { name: "市场数据工作台" }),
-    ).toBeInTheDocument();
-    expect(await screen.findAllByText("公开市场7天逆回购利率")).toHaveLength(2);
+    expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
     expect(screen.getAllByText("DR007")).toHaveLength(2);
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("2");
-    expect(screen.getByTestId("market-data-latest-count")).toHaveTextContent("2");
-    expect(screen.getByTestId("market-data-latest-trade-date")).toHaveTextContent(
+    expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("market-data-fallback-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("market-data-stable-trade-date")).toHaveTextContent(
       "2026-04-10",
     );
     expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
+    expect(screen.getByText("稳定主链路")).toBeInTheDocument();
+    expect(screen.getByText("降级 latest-only")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("tier stable");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("date_slice / batch");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("main refresh date-slice lane");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("+0.20 %");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("2026-04-09");
+    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("tier fallback");
+    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("latest / single");
+    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("low-frequency latest-only lane");
 
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);

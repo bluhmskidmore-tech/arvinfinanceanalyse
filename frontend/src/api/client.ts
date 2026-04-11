@@ -287,7 +287,10 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       unit: "%",
       source_version: "sv_choice_macro_mock",
       vendor_version: "vv_choice_macro_20260410",
-      vendor_series_code: "EDB_M001",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "main refresh date-slice lane",
     },
     {
       series_id: "M002",
@@ -297,6 +300,10 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       unit: "%",
       source_version: "sv_choice_macro_mock",
       vendor_version: "vv_choice_macro_20260410",
+      refresh_tier: "fallback",
+      fetch_mode: "latest",
+      fetch_granularity: "single",
+      policy_note: "low-frequency latest-only lane",
     },
     {
       series_id: "M003",
@@ -306,6 +313,10 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       unit: "%",
       source_version: "sv_choice_macro_mock",
       vendor_version: "vv_choice_macro_20260410",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "main refresh date-slice lane",
     },
   ],
 };
