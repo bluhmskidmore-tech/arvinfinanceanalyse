@@ -130,6 +130,8 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
         if line.strip()
     ]
 
+    assert build_runs[0]["status"] == "running"
+    assert build_runs[0]["started_at"]
     assert build_runs[-1]["status"] == "completed"
     assert build_runs[-1]["source_version"] == payload["source_version"]
     assert manifests[-1]["cache_key"] == payload["cache_key"]

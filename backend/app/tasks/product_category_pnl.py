@@ -56,15 +56,18 @@ def materialize_product_category_pnl(
     with acquire_lock(PRODUCT_CATEGORY_PNL_LOCK, base_dir=governance_path):
         repo.append(
             CACHE_BUILD_RUN_STREAM,
-            CacheBuildRunRecord(
-                run_id=run_id,
-                job_name=run.job_name,
-                status="running",
-                cache_key="product_category_pnl.formal",
-                lock=PRODUCT_CATEGORY_PNL_LOCK.key,
-                source_version="sv_product_category_running",
-                vendor_version="vv_none",
-            ).model_dump(),
+            {
+                **CacheBuildRunRecord(
+                    run_id=run_id,
+                    job_name=run.job_name,
+                    status="running",
+                    cache_key="product_category_pnl.formal",
+                    lock=PRODUCT_CATEGORY_PNL_LOCK.key,
+                    source_version="sv_product_category_running",
+                    vendor_version="vv_none",
+                ).model_dump(),
+                "started_at": run.created_at,
+            },
         )
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         try:

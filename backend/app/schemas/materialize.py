@@ -13,9 +13,12 @@ class CacheBuildRunRecord(BaseModel):
     lock: str
     source_version: str
     vendor_version: str
+    rule_version: str | None = None
 
 
 class CacheManifestRecord(BaseModel):
+    """Governance manifest row; PnL formal jobs use ``cache_key`` ``pnl:phase2:materialize:formal``."""
+
     model_config = ConfigDict(extra="forbid")
 
     cache_key: str
