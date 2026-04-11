@@ -256,6 +256,46 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "total_accrued_interest_amount": "50.40000000",
     }
 
+    workbook_response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    assert workbook_response.status_code == 200
+    workbook_payload = workbook_response.json()
+    table_map = {table["key"]: table for table in workbook_payload["result"]["tables"]}
+    assert table_map["decision_items"]["section_kind"] == "decision_items"
+    assert table_map["event_calendar"]["section_kind"] == "event_calendar"
+    assert table_map["risk_alerts"]["section_kind"] == "risk_alerts"
+    assert {
+        "title",
+        "action_label",
+        "severity",
+        "reason",
+        "source_section",
+        "rule_id",
+        "rule_version",
+    } <= set(table_map["decision_items"]["rows"][0])
+    assert {
+        "event_date",
+        "event_type",
+        "title",
+        "source",
+        "impact_hint",
+        "source_section",
+    } <= set(table_map["event_calendar"]["rows"][0])
+    assert {
+        "title",
+        "severity",
+        "reason",
+        "source_section",
+        "rule_id",
+        "rule_version",
+    } <= set(table_map["risk_alerts"]["rows"][0])
+
     get_settings.cache_clear()
 
 

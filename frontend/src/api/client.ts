@@ -298,6 +298,10 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "main refresh date-slice lane",
     },
     {
       series_id: "M002",
@@ -306,6 +310,10 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      refresh_tier: "fallback",
+      fetch_mode: "latest",
+      fetch_granularity: "single",
+      policy_note: "low-frequency latest-only lane",
     },
     {
       series_id: "M003",
@@ -314,6 +322,10 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
       vendor_version: "vv_choice_catalog_v1",
       frequency: "daily",
       unit: "%",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "main refresh date-slice lane",
     },
   ],
 };
@@ -1241,10 +1253,22 @@ function buildMockBalanceAnalysisWorkbook(
           note: "ZQTZ 资产端剔除发行类后的余额。",
         },
         {
+          key: "interbank_assets",
+          label: "同业资产",
+          value: "36.00",
+          note: "TYW 资产端余额。",
+        },
+        {
           key: "interbank_liabilities",
           label: "同业负债",
           value: "72.00",
           note: "TYW 负债端余额。",
+        },
+        {
+          key: "issuance_liabilities",
+          label: "发行类负债",
+          value: "18.00",
+          note: "ZQTZ 发行类单列余额。",
         },
         {
           key: "net_position",
@@ -1257,6 +1281,7 @@ function buildMockBalanceAnalysisWorkbook(
         {
           key: "bond_business_types",
           title: "债券业务种类",
+          section_kind: "table",
           columns: [
             { key: "bond_type", label: "业务种类" },
             { key: "balance_amount", label: "面值/余额" },
@@ -1271,6 +1296,7 @@ function buildMockBalanceAnalysisWorkbook(
         {
           key: "maturity_gap",
           title: "期限缺口分析",
+          section_kind: "table",
           columns: [
             { key: "bucket", label: "期限分类" },
             { key: "gap_amount", label: "缺口" },
@@ -1279,6 +1305,167 @@ function buildMockBalanceAnalysisWorkbook(
             {
               bucket: "1-2年",
               gap_amount: "648.00",
+            },
+          ],
+        },
+        {
+          key: "rating_analysis",
+          title: "信用评级分析",
+          section_kind: "table",
+          columns: [
+            { key: "rating", label: "评级" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              rating: "AAA",
+              balance_amount: "720.00",
+            },
+          ],
+        },
+        {
+          key: "issuance_business_types",
+          title: "发行类分析",
+          section_kind: "table",
+          columns: [
+            { key: "bond_type", label: "业务种类" },
+            { key: "balance_amount", label: "金额" },
+          ],
+          rows: [
+            {
+              bond_type: "同业存单",
+              balance_amount: "180.00",
+            },
+          ],
+        },
+        {
+          key: "industry_distribution",
+          title: "行业分布",
+          section_kind: "table",
+          columns: [
+            { key: "industry_name", label: "行业" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              industry_name: "金融业",
+              balance_amount: "720.00",
+            },
+          ],
+        },
+        {
+          key: "rate_distribution",
+          title: "利率分布分析",
+          section_kind: "table",
+          columns: [
+            { key: "bucket", label: "利率区间" },
+            { key: "bond_amount", label: "债券面值" },
+            { key: "interbank_asset_amount", label: "同业资产" },
+            { key: "interbank_liability_amount", label: "同业负债" },
+          ],
+          rows: [
+            {
+              bucket: "1.5%-2.0%",
+              bond_amount: "9900.75",
+              interbank_asset_amount: "958.00",
+              interbank_liability_amount: "2206.08",
+            },
+          ],
+        },
+        {
+          key: "counterparty_types",
+          title: "对手方类型",
+          section_kind: "table",
+          columns: [
+            { key: "counterparty_type", label: "对手方类型" },
+            { key: "asset_amount", label: "资产金额" },
+            { key: "liability_amount", label: "负债金额" },
+            { key: "net_position_amount", label: "净头寸" },
+          ],
+          rows: [
+            {
+              counterparty_type: "股份制银行",
+              asset_amount: "120.00",
+              liability_amount: "86.08",
+              net_position_amount: "33.92",
+            },
+          ],
+        },
+        {
+          key: "interest_modes",
+          title: "计息方式",
+          section_kind: "table",
+          columns: [
+            { key: "interest_mode", label: "计息方式" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              interest_mode: "固定",
+              balance_amount: "32874.42",
+            },
+          ],
+        },
+        {
+          key: "decision_items",
+          title: "Decision Items",
+          section_kind: "decision_items",
+          columns: [
+            { key: "title", label: "Title" },
+            { key: "action_label", label: "Action" },
+            { key: "severity", label: "Severity" },
+            { key: "reason", label: "Reason" },
+          ],
+          rows: [
+            {
+              title: "Review 1-2 year gap positioning",
+              action_label: "Review gap",
+              severity: "high",
+              reason: "Bucket gap is 648.00 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_decision_gap_001",
+              rule_version: "v1",
+            },
+          ],
+        },
+        {
+          key: "event_calendar",
+          title: "Event Calendar",
+          section_kind: "event_calendar",
+          columns: [
+            { key: "event_date", label: "Event Date" },
+            { key: "event_type", label: "Event Type" },
+            { key: "title", label: "Title" },
+            { key: "impact_hint", label: "Impact Hint" },
+          ],
+          rows: [
+            {
+              event_date: "2026-01-31",
+              event_type: "asset_maturity",
+              title: "asset-1 maturity",
+              source: "internal_governed_schedule",
+              impact_hint: "asset book / 拆放同业",
+              source_section: "maturity_gap",
+            },
+          ],
+        },
+        {
+          key: "risk_alerts",
+          title: "Risk Alerts",
+          section_kind: "risk_alerts",
+          columns: [
+            { key: "title", label: "Title" },
+            { key: "severity", label: "Severity" },
+            { key: "reason", label: "Reason" },
+          ],
+          rows: [
+            {
+              title: "Issuance liabilities outstanding",
+              severity: "medium",
+              reason: "Issuance book totals 18.00 wan yuan.",
+              source_section: "issuance_business_types",
+              rule_id: "bal_wb_risk_issuance_001",
+              rule_version: "v1",
             },
           ],
         },
@@ -1470,6 +1657,7 @@ const requestText = async (
   fetchImpl: typeof fetch,
   baseUrl: string,
   path: string,
+  fallbackFilename = "download.csv",
 ): Promise<{ content: string; filename: string }> => {
   const response = await fetchImpl(`${baseUrl}${path}`, {
     headers: {
@@ -1485,7 +1673,7 @@ const requestText = async (
   const filenameMatch = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
   return {
     content: await response.text(),
-    filename: filenameMatch?.[1] ?? "product-category-audit.csv",
+    filename: filenameMatch?.[1] ?? fallbackFilename,
   };
 };
 
@@ -2349,6 +2537,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/ui/pnl/product-category/manual-adjustments/export?${params.toString()}`,
+        "product-category-audit.csv",
       );
     },
     updateProductCategoryManualAdjustment: (adjustmentId, payload) =>
@@ -2469,6 +2658,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/ui/balance-analysis/summary/export?${params.toString()}`,
+        "balance-analysis-summary.csv",
       );
     },
     refreshBalanceAnalysis: (reportDate: string) =>

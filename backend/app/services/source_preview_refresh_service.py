@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.job_state_repo import JobStateRepository
 from backend.app.tasks.source_preview_refresh import (
     SOURCE_PREVIEW_REFRESH_CACHE_KEY,
     SOURCE_PREVIEW_REFRESH_JOB_NAME,
@@ -55,6 +56,14 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                     "vendor_version": "vv_none",
                     "preview_sources": preview_sources,
                 },
+            )
+            _record_job_state_transition(
+                settings=settings,
+                run_id=run_id,
+                status="queued",
+                source_version="sv_preview_pending",
+                vendor_version="vv_none",
+                queued_at=datetime.now(timezone.utc).isoformat(),
             )
 
             actor_kwargs = {
@@ -173,6 +182,15 @@ def _record_dispatch_failure(
             "finished_at": datetime.now(timezone.utc).isoformat(),
         },
     )
+    _record_job_state_transition(
+        settings=settings,
+        run_id=run_id,
+        status="failed",
+        source_version="sv_preview_failed",
+        vendor_version="vv_none",
+        error_message=error_message,
+        finished_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:
@@ -193,3 +211,32 @@ def _load_source_preview_refresh_records(settings: Settings) -> list[dict[str, o
         if str(record.get("cache_key")) == SOURCE_PREVIEW_REFRESH_CACHE_KEY
         and str(record.get("job_name")) == SOURCE_PREVIEW_REFRESH_JOB_NAME
     ]
+
+
+def _record_job_state_transition(
+    *,
+    settings: Settings,
+    run_id: str,
+    status: str,
+    source_version: str,
+    vendor_version: str,
+    queued_at: str | None = None,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    if not str(settings.job_state_dsn or "").strip():
+        return
+    JobStateRepository(settings.job_state_dsn).record_transition(
+        run_id=run_id,
+        job_name=SOURCE_PREVIEW_REFRESH_JOB_NAME,
+        cache_key=SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+        status=status,
+        report_date=None,
+        source_version=source_version,
+        vendor_version=vendor_version,
+        queued_at=queued_at,
+        started_at=started_at,
+        finished_at=finished_at,
+        error_message=error_message,
+    )

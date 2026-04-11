@@ -53,6 +53,10 @@ function seriesFetchModeLabel(point: ChoiceMacroLatestPoint) {
   return `${fetchMode} / ${granularity}`;
 }
 
+function catalogRefreshTier(series: { refresh_tier?: "stable" | "fallback" | "isolated" | null }) {
+  return series.refresh_tier ?? "stable";
+}
+
 function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
   return (
     <div style={{ display: "grid", gap: 12 }}>
@@ -192,6 +196,14 @@ export default function MarketDataPage() {
     () => visibleLatestSeries.filter((point) => seriesRefreshTier(point) === "fallback"),
     [visibleLatestSeries],
   );
+  const stableCatalogSeries = useMemo(
+    () => catalog.filter((series) => catalogRefreshTier(series) === "stable"),
+    [catalog],
+  );
+  const missingStableSeries = useMemo(() => {
+    const visibleStableIds = new Set(stableSeries.map((point) => point.series_id));
+    return stableCatalogSeries.filter((series) => !visibleStableIds.has(series.series_id));
+  }, [stableCatalogSeries, stableSeries]);
   const stableLatestTradeDate = useMemo(() => {
     if (stableSeries.length === 0) {
       return "暂无";
@@ -269,9 +281,9 @@ export default function MarketDataPage() {
         </div>
         <div data-testid="market-data-stable-count">
           <PlaceholderCard
-            title="稳定可用"
-            value={String(stableSeries.length)}
-            detail="主 refresh 稳定链路中的序列数量。"
+            title="稳定回收"
+            value={`${stableSeries.length} / ${stableCatalogSeries.length}`}
+            detail="稳定主链路已回收 / 目录应有数量。"
           />
         </div>
         <div data-testid="market-data-fallback-count">
@@ -287,6 +299,13 @@ export default function MarketDataPage() {
             value={stableLatestTradeDate}
             detail="稳定主链路中可见序列的最大交易日期。"
             valueVariant="text"
+          />
+        </div>
+        <div data-testid="market-data-missing-stable-count">
+          <PlaceholderCard
+            title="稳定缺口"
+            value={String(missingStableSeries.length)}
+            detail="目录中 stable 但当前未回收的序列数量。"
           />
         </div>
       </div>
@@ -308,6 +327,54 @@ export default function MarketDataPage() {
                 </p>
               </div>
               {renderSeriesCards(stableSeries)}
+            </section>
+
+            <section data-testid="market-data-missing-stable-section">
+              <div style={{ marginBottom: 12 }}>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>待补齐 stable</h2>
+                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+                  目录中归属 stable，但当前 refresh 尚未回收的序列。
+                </p>
+              </div>
+              {missingStableSeries.length > 0 ? (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {missingStableSeries.map((series) => (
+                    <div
+                      key={series.series_id}
+                      style={{
+                        display: "grid",
+                        gap: 6,
+                        padding: 14,
+                        borderRadius: 16,
+                        border: "1px solid #e4ebf5",
+                        background: "#ffffff",
+                      }}
+                    >
+                      <strong>{series.series_name}</strong>
+                      <div style={{ color: "#5c6b82", fontSize: 13 }}>
+                        {series.series_id} · {catalogRefreshTier(series)} · {series.fetch_mode ?? "date_slice"} /{" "}
+                        {series.fetch_granularity ?? "batch"}
+                      </div>
+                      <div style={{ color: "#31425b", fontSize: 13 }}>
+                        {series.policy_note ?? "main refresh date-slice lane"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    padding: 16,
+                    borderRadius: 16,
+                    border: "1px solid #e4ebf5",
+                    background: "#ffffff",
+                    color: "#5c6b82",
+                    fontSize: 14,
+                  }}
+                >
+                  当前 stable 目录已全部回收。
+                </div>
+              )}
             </section>
 
             <section data-testid="market-data-fallback-section">

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -44,6 +45,8 @@ def _materialize_pnl_facts(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     run_id: str | None = None,
+    formal_pnl_enabled: bool | None = None,
+    formal_pnl_scope_json: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -77,6 +80,16 @@ def _materialize_pnl_facts(
         normalized_nonstd.extend(
             normalize_nonstd_journal_entries(rows, journal_type=journal_type)
         )
+
+    _assert_formal_pnl_emission_allowed(
+        fi_rows=normalized_fi,
+        formal_pnl_enabled=(
+            settings.formal_pnl_enabled if formal_pnl_enabled is None else formal_pnl_enabled
+        ),
+        formal_pnl_scope_json=(
+            settings.formal_pnl_scope_json if formal_pnl_scope_json is None else formal_pnl_scope_json
+        ),
+    )
 
     target_report_date = date.fromisoformat(report_date)
     _assert_partition_matches(report_date=target_report_date, fi_rows=normalized_fi, nonstd_rows=normalized_nonstd)
@@ -280,3 +293,49 @@ def _assert_partition_matches(
             raise ValueError(
                 f"NonStd row voucher_date {row.voucher_date.isoformat()} is outside task report_date month {report_date.isoformat()}"
             )
+
+
+def _assert_formal_pnl_emission_allowed(
+    *,
+    fi_rows,
+    formal_pnl_enabled: bool,
+    formal_pnl_scope_json: str,
+) -> None:
+    if not fi_rows:
+        return
+    if not formal_pnl_enabled:
+        raise RuntimeError("Formal pnl emission is disabled for this repo phase boundary.")
+
+    allowed_tokens = _parse_formal_pnl_scope(formal_pnl_scope_json)
+    if not allowed_tokens:
+        raise RuntimeError("Formal pnl scope config is empty; explicit scope or '*' is required.")
+    if "*" in allowed_tokens:
+        return
+
+    for row in fi_rows:
+        if not _is_formal_pnl_row_allowed(row=row, allowed_tokens=allowed_tokens):
+            raise RuntimeError(
+                "Formal pnl emission is not enabled for the requested scope: "
+                f"instrument_code={row.instrument_code}, portfolio_name={row.portfolio_name}, cost_center={row.cost_center}."
+            )
+
+
+def _parse_formal_pnl_scope(scope_json: str) -> set[str]:
+    try:
+        parsed = json.loads(scope_json or "[]")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Formal pnl scope config is invalid JSON.") from exc
+
+    if not isinstance(parsed, list):
+        raise RuntimeError("Formal pnl scope config must be a JSON list.")
+    return {str(item).strip() for item in parsed if str(item).strip()}
+
+
+def _is_formal_pnl_row_allowed(*, row, allowed_tokens: set[str]) -> bool:
+    row_tokens = {
+        row.instrument_code,
+        row.portfolio_name,
+        row.cost_center,
+        f"{row.portfolio_name}:{row.cost_center}",
+    }
+    return any(token in allowed_tokens for token in row_tokens)

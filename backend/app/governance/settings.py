@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     postgres_dsn: str = "postgresql://moss:moss@localhost:5432/moss"
+    job_state_dsn: str = ""
     redis_dsn: str = "redis://localhost:6379/0"
     duckdb_path: str = "data/moss.duckdb"
     governance_path: Path = Path("data/governance")
@@ -39,6 +40,8 @@ class Settings(BaseSettings):
     choice_timeout_seconds: float = 10.0
     product_category_source_dir: Path = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     ftp_rate_pct: Decimal = Decimal("1.75")
+    formal_pnl_enabled: bool = False
+    formal_pnl_scope_json: str = "[]"
 
 
 @lru_cache(maxsize=1)

@@ -649,6 +649,7 @@ def _materialize_three_pnl_dates(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
     get_settings.cache_clear()
 
     shared = {
@@ -674,6 +675,9 @@ def _materialize_three_pnl_dates(tmp_path, monkeypatch):
                 "rule_version": "src-rule-fi-shared",
                 "ingest_batch_id": "batch-fi-shared",
                 "trace_id": "trace-fi-shared",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
             }
         ],
         nonstd_rows_by_type={
@@ -730,6 +734,9 @@ def _materialize_three_pnl_dates(tmp_path, monkeypatch):
                 "rule_version": "src-rule-fi-only",
                 "ingest_batch_id": "batch-fi-only",
                 "trace_id": "trace-fi-only",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
             }
         ],
         nonstd_rows_by_type={},
@@ -801,6 +808,7 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
     get_settings.cache_clear()
     return duckdb_path, governance_dir
 

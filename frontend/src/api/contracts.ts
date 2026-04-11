@@ -496,9 +496,16 @@ export type BalanceAnalysisWorkbookColumn = {
   label: string;
 };
 
+export type BalanceAnalysisWorkbookSectionKind =
+  | "table"
+  | "decision_items"
+  | "event_calendar"
+  | "risk_alerts";
+
 export type BalanceAnalysisWorkbookTable = {
   key: string;
   title: string;
+  section_kind: BalanceAnalysisWorkbookSectionKind;
   columns: BalanceAnalysisWorkbookColumn[];
   rows: Array<Record<string, DecimalLike | null>>;
 };

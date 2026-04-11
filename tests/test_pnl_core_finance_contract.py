@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import fields
-from datetime import date
-
-import pytest
 
 from backend.app.core_finance import (
     FiPnlRecord,
@@ -45,6 +42,11 @@ def test_pnl_core_finance_contract_shapes_match_governed_field_names():
         "rule_version",
         "ingest_batch_id",
         "trace_id",
+        "approval_status",
+        "governance_status",
+        "event_type",
+        "event_semantics",
+        "realized_flag",
     ]
     assert [field.name for field in fields(NonStdJournalEntry)] == [
         "voucher_date",

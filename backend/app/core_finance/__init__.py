@@ -13,9 +13,6 @@ from backend.app.core_finance.balance_analysis import (
     project_tyw_formal_balance_row,
     project_zqtz_formal_balance_row,
 )
-from backend.app.core_finance.balance_analysis_workbook import (
-    build_balance_analysis_workbook_payload,
-)
 from backend.app.core_finance.pnl import (
     AccountingBasis,
     CurrencyBasis,
@@ -57,3 +54,11 @@ __all__ = [
     "project_tyw_formal_balance_row",
     "project_zqtz_formal_balance_row",
 ]
+
+
+def build_balance_analysis_workbook_payload(*args, **kwargs):
+    from backend.app.core_finance.balance_analysis_workbook import (
+        build_balance_analysis_workbook_payload as _impl,
+    )
+
+    return _impl(*args, **kwargs)

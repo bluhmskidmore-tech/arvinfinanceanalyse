@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Annotated
+import importlib
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -61,8 +62,12 @@ def refresh() -> dict[str, object]:
 
 @router.get("/refresh-status")
 def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+    product_category_service = importlib.import_module(
+        "backend.app.services.product_category_pnl_service"
+    )
+
     try:
-        return product_category_refresh_status(get_settings(), run_id=run_id)
+        return product_category_service.product_category_refresh_status(get_settings(), run_id=run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:

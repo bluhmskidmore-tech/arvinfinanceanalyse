@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from backend.app.core_finance import (
     FiPnlRecord,
     FormalPnlFiFactRow,
@@ -397,6 +395,9 @@ def test_phase2_formal_fi_fact_projection_preserves_governed_components():
             rule_version="rule-v1",
             ingest_batch_id="batch-001",
             trace_id="trace-fi",
+            approval_status="approved",
+            event_semantics="realized_formal",
+            realized_flag=True,
         )
     ]
 
@@ -419,4 +420,69 @@ def test_phase2_formal_fi_fact_projection_preserves_governed_components():
             ingest_batch_id="batch-001",
             trace_id="trace-fi",
         )
+    ]
+
+
+def test_phase2_formal_fi_fact_projection_applies_recognition_matrix_and_gating():
+    rows = build_formal_pnl_fi_fact_rows(
+        [
+            FiPnlRecord(
+                report_date=date(2025, 12, 31),
+                instrument_code="AC-001",
+                portfolio_name="FI Desk",
+                cost_center="CC100",
+                invest_type_raw="持有至到期",
+                invest_type_std="H",
+                accounting_basis="AC",
+                interest_income_514=Decimal("10.00"),
+                fair_value_change_516=Decimal("5.00"),
+                capital_gain_517=Decimal("4.00"),
+                manual_adjustment=Decimal("3.00"),
+                total_pnl=Decimal("22.00"),
+                approval_status="approved",
+                event_semantics="realized_formal",
+                realized_flag=True,
+            ),
+            FiPnlRecord(
+                report_date=date(2025, 12, 31),
+                instrument_code="OCI-001",
+                portfolio_name="FI Desk",
+                cost_center="CC100",
+                invest_type_raw="可供出售",
+                invest_type_std="A",
+                accounting_basis="FVOCI",
+                interest_income_514=Decimal("10.00"),
+                fair_value_change_516=Decimal("5.00"),
+                capital_gain_517=Decimal("4.00"),
+                manual_adjustment=Decimal("3.00"),
+                total_pnl=Decimal("22.00"),
+                governance_status="pending",
+                event_semantics="realized_formal",
+                realized_flag=True,
+            ),
+            FiPnlRecord(
+                report_date=date(2025, 12, 31),
+                instrument_code="TPL-001",
+                portfolio_name="FI Desk",
+                cost_center="CC100",
+                invest_type_raw="交易性金融资产",
+                invest_type_std="T",
+                accounting_basis="FVTPL",
+                interest_income_514=Decimal("10.00"),
+                fair_value_change_516=Decimal("5.00"),
+                capital_gain_517=Decimal("4.00"),
+                manual_adjustment=Decimal("3.00"),
+                total_pnl=Decimal("22.00"),
+                approval_status="pending",
+                event_semantics="mark_to_market",
+                realized_flag=False,
+            ),
+        ]
+    )
+
+    assert [row.instrument_code for row in rows] == ["AC-001", "OCI-001", "TPL-001"]
+    assert [row.total_pnl for row in rows] == [
+        Decimal("17.00"),
+        Decimal("14.00"),
+        Decimal("15.00"),
     ]

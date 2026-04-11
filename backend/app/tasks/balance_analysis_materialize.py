@@ -6,63 +6,55 @@ from backend.app.core_finance.balance_analysis import (
     project_tyw_formal_balance_row,
     project_zqtz_formal_balance_row,
 )
-from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
+from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    CACHE_MANIFEST_STREAM,
-    GovernanceRepository,
+from backend.app.schemas.formal_compute_runtime import (
+    FormalComputeMaterializeFailure,
+    FormalComputeMaterializeResult,
 )
-from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.build_runs import BuildRunRecord
+from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
-BALANCE_ANALYSIS_FORMAL_BASIS = "formal"
-CACHE_KEY = f"balance_analysis:materialize:{BALANCE_ANALYSIS_FORMAL_BASIS}"
-BALANCE_ANALYSIS_LOCK = LockDefinition(
-    key=f"lock:duckdb:{BALANCE_ANALYSIS_FORMAL_BASIS}:balance-analysis:materialize",
-    ttl_seconds=900,
+BALANCE_ANALYSIS_MODULE = ensure_formal_module(
+    FormalComputeModuleDescriptor(
+        module_name="balance_analysis",
+        basis="formal",
+        input_sources=(
+            "zqtz_bond_daily_snapshot",
+            "tyw_interbank_daily_snapshot",
+            "fx_daily_mid",
+        ),
+        fact_tables=(
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+        ),
+        rule_version="rv_balance_analysis_formal_materialize_v1",
+        cache_key_prefix="balance_analysis:materialize",
+        lock_key_prefix="lock:duckdb:{basis}:balance-analysis:materialize",
+        cache_version_prefix="cv_balance_analysis",
+        result_kind_family="balance-analysis",
+        supports_standard_queries=True,
+        supports_custom_queries=True,
+    )
 )
-RULE_VERSION = "rv_balance_analysis_formal_materialize_v1"
-CACHE_VERSION = f"cv_balance_analysis_formal__{RULE_VERSION}"
+BALANCE_ANALYSIS_FORMAL_BASIS = BALANCE_ANALYSIS_MODULE.basis
+CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
+BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
+RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
+CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
 _DIRECT_ZQTZ_INVEST_TYPE_LABELS = frozenset(
     {"持有至到期类资产", "可供出售类资产", "交易性资产", "应收投资款项", "发行类债劵", "发行类债券"}
 )
 
 
-def _materialize_balance_analysis_facts(
+def _execute_balance_analysis_materialization(
     *,
     report_date: str,
-    duckdb_path: str | None = None,
-    governance_dir: str | None = None,
-    run_id: str | None = None,
-) -> dict[str, object]:
-    settings = get_settings()
-    duckdb_file = Path(duckdb_path or settings.duckdb_path)
-    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    governance_path = Path(governance_dir or settings.governance_path)
+    duckdb_file: Path,
+) -> FormalComputeMaterializeResult:
     repo = BalanceAnalysisRepository(str(duckdb_file))
-    governance_repo = GovernanceRepository(base_dir=governance_path)
-    run = BuildRunRecord(job_name="balance_analysis_materialize", status="running")
-    run_id = run_id or f"{run.job_name}:{run.created_at}"
-    governance_repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            **CacheBuildRunRecord(
-                run_id=run_id,
-                job_name=run.job_name,
-                status="running",
-                cache_key=CACHE_KEY,
-                lock=BALANCE_ANALYSIS_LOCK.key,
-                source_version="sv_balance_analysis_running",
-                vendor_version="vv_none",
-            ).model_dump(),
-            "report_date": report_date,
-            "started_at": run.created_at,
-        },
-    )
-
     zqtz_snapshot_rows = repo.load_zqtz_snapshot_rows(report_date)
     tyw_snapshot_rows = repo.load_tyw_snapshot_rows(report_date)
 
@@ -136,73 +128,52 @@ def _materialize_balance_analysis_facts(
             fx_source_versions.add(fx_source_version)
 
     combined_source_version = "__".join(sorted(source_versions | fx_source_versions)) or "sv_balance_analysis_empty"
-
     try:
-        with acquire_lock(BALANCE_ANALYSIS_LOCK, base_dir=duckdb_file.parent):
-            repo.replace_formal_balance_rows(
-                report_date=report_date,
-                zqtz_rows=zqtz_fact_rows,
-                tyw_rows=tyw_fact_rows,
-            )
+        repo.replace_formal_balance_rows(
+            report_date=report_date,
+            zqtz_rows=zqtz_fact_rows,
+            tyw_rows=tyw_fact_rows,
+        )
     except Exception as exc:
-        failed = CacheBuildRunRecord(
-            run_id=run_id,
-            job_name=run.job_name,
-            status="failed",
-            cache_key=CACHE_KEY,
-            lock=BALANCE_ANALYSIS_LOCK.key,
+        raise FormalComputeMaterializeFailure(
             source_version=combined_source_version,
             vendor_version="vv_none",
-            rule_version=RULE_VERSION,
-        ).model_dump()
-        failed["report_date"] = report_date
-        failed["error_message"] = str(exc)
-        governance_repo.append(CACHE_BUILD_RUN_STREAM, failed)
-        raise
-
-    governance_repo.append_many_atomic(
-        [
-            (
-                CACHE_MANIFEST_STREAM,
-                CacheManifestRecord(
-                    cache_key=CACHE_KEY,
-                    source_version=combined_source_version,
-                    vendor_version="vv_none",
-                    rule_version=RULE_VERSION,
-                ).model_dump(),
-            ),
-            (
-                CACHE_BUILD_RUN_STREAM,
-                {
-                    **CacheBuildRunRecord(
-                        run_id=run_id,
-                        job_name=run.job_name,
-                        status="completed",
-                        cache_key=CACHE_KEY,
-                        lock=BALANCE_ANALYSIS_LOCK.key,
-                        source_version=combined_source_version,
-                        vendor_version="vv_none",
-                        rule_version=RULE_VERSION,
-                    ).model_dump(),
-                    "report_date": report_date,
-                },
-            ),
-        ]
+            message=str(exc),
+        ) from exc
+    return FormalComputeMaterializeResult(
+        source_version=combined_source_version,
+        vendor_version="vv_none",
+        payload={
+            "zqtz_rows": len(zqtz_fact_rows),
+            "tyw_rows": len(tyw_fact_rows),
+        },
     )
 
-    return {
-        "status": "completed",
-        "cache_key": CACHE_KEY,
-        "cache_version": CACHE_VERSION,
-        "run_id": run_id,
-        "report_date": report_date,
-        "zqtz_rows": len(zqtz_fact_rows),
-        "tyw_rows": len(tyw_fact_rows),
-        "source_version": combined_source_version,
-        "rule_version": RULE_VERSION,
-        "vendor_version": "vv_none",
-        "lock": BALANCE_ANALYSIS_LOCK.key,
-    }
+
+def _materialize_balance_analysis_facts(
+    *,
+    report_date: str,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+    governance_path = Path(governance_dir or settings.governance_path)
+
+    return run_formal_materialize(
+        descriptor=BALANCE_ANALYSIS_MODULE,
+        job_name="balance_analysis_materialize",
+        report_date=report_date,
+        governance_dir=str(governance_path),
+        lock_base_dir=str(duckdb_file.parent),
+        run_id=run_id,
+        execute_materialization=lambda: _execute_balance_analysis_materialization(
+            report_date=report_date,
+            duckdb_file=duckdb_file,
+        ),
+    )
 
 
 materialize_balance_analysis_facts = register_actor_once(

@@ -3,12 +3,18 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, computed_field
 
 
 BalanceAnalysisSourceFamily = Literal["zqtz", "tyw", "combined"]
 BalancePositionScope = Literal["asset", "liability", "all"]
 BalanceCurrencyBasis = Literal["native", "CNY"]
+BalanceAnalysisWorkbookSectionKind = Literal[
+    "table",
+    "decision_items",
+    "event_calendar",
+    "risk_alerts",
+]
 
 
 class BalanceAnalysisDetailRow(BaseModel):
@@ -109,6 +115,16 @@ class BalanceAnalysisWorkbookTable(BaseModel):
     title: str
     columns: list[BalanceAnalysisWorkbookColumn]
     rows: list[dict[str, Decimal | str | int | None]]
+
+    @computed_field
+    @property
+    def section_kind(self) -> BalanceAnalysisWorkbookSectionKind:
+        section_kind_map: dict[str, BalanceAnalysisWorkbookSectionKind] = {
+            "decision_items": "decision_items",
+            "event_calendar": "event_calendar",
+            "risk_alerts": "risk_alerts",
+        }
+        return section_kind_map.get(self.key, "table")
 
 
 class BalanceAnalysisWorkbookPayload(BaseModel):

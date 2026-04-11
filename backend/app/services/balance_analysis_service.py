@@ -31,7 +31,10 @@ from backend.app.schemas.balance_analysis import (
     BalanceAnalysisWorkbookTable,
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_envelope,
+    build_formal_result_meta,
+)
 from backend.app.tasks.balance_analysis_materialize import (
     BALANCE_ANALYSIS_LOCK,
     CACHE_KEY,
@@ -79,6 +82,7 @@ def refresh_balance_analysis(settings: Settings, *, report_date: str) -> dict[st
                         job_name=BALANCE_ANALYSIS_JOB_NAME,
                         status="queued",
                         cache_key=CACHE_KEY,
+                        cache_version=CACHE_VERSION,
                         lock=BALANCE_ANALYSIS_LOCK.key,
                         source_version=PENDING_SOURCE_VERSION,
                         vendor_version="vv_none",
@@ -141,16 +145,17 @@ def balance_analysis_dates_envelope(*, duckdb_path: str, governance_dir: str) ->
     repo = BalanceAnalysisRepository(duckdb_path)
     payload = BalanceAnalysisDatesPayload(report_dates=repo.list_report_dates())
     lineage = _resolve_latest_balance_manifest_lineage(governance_dir)
-    meta = _formal_result_meta(
+    meta = build_formal_result_meta(
         trace_id="tr_balance_analysis_dates",
         result_kind="balance-analysis.dates",
+        cache_version=_resolve_balance_cache_version(lineage),
         source_version=str(lineage["source_version"]),
         rule_version=str(lineage["rule_version"]),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def balance_analysis_overview_envelope(
@@ -175,9 +180,10 @@ def balance_analysis_overview_envelope(
         currency_basis=currency_basis,
     )
     build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
-    meta = _formal_result_meta(
+    meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
+        cache_version=_resolve_balance_cache_version(build_lineage),
         source_version=_require_balance_lineage_value(
             build_lineage["source_version"] if build_lineage is not None else None,
             report_date=report_date,
@@ -190,9 +196,9 @@ def balance_analysis_overview_envelope(
             field_name="rule_version",
         ),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": {
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={
             "report_date": str(overview["report_date"]),
             "position_scope": str(overview["position_scope"]),
             "currency_basis": str(overview["currency_basis"]),
@@ -202,7 +208,7 @@ def balance_analysis_overview_envelope(
             "total_amortized_cost_amount": _as_decimal(overview["total_amortized_cost_amount"]),
             "total_accrued_interest_amount": _as_decimal(overview["total_accrued_interest_amount"]),
         },
-    }
+    )
 
 
 def balance_analysis_summary_envelope(
@@ -231,9 +237,10 @@ def balance_analysis_summary_envelope(
         offset=offset,
     )
     build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
-    meta = _formal_result_meta(
+    meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_summary_{report_date}_{position_scope}_{currency_basis}_{offset}_{limit}",
         result_kind="balance-analysis.summary",
+        cache_version=_resolve_balance_cache_version(build_lineage),
         source_version=_require_balance_lineage_value(
             build_lineage["source_version"] if build_lineage is not None else None,
             report_date=report_date,
@@ -254,10 +261,10 @@ def balance_analysis_summary_envelope(
         total_rows=int(table["total_rows"]),
         rows=[_to_summary_table_row(row) for row in table["rows"]],
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def export_balance_analysis_summary_csv(
@@ -341,9 +348,10 @@ def balance_analysis_detail_envelope(
         details=details,
         summary=summary,
     )
-    meta = _formal_result_meta(
+    meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_detail_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.detail",
+        cache_version=_resolve_balance_cache_version(build_lineage),
         source_version=(
             str(build_lineage["source_version"])
             if build_lineage is not None
@@ -355,10 +363,10 @@ def balance_analysis_detail_envelope(
             else _combine_lineage_values([*zqtz_rows, *tyw_rows], "rule_version") or RULE_VERSION
         ),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def balance_analysis_workbook_envelope(
@@ -428,9 +436,10 @@ def balance_analysis_workbook_envelope(
         ],
     )
     build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
-    meta = _formal_result_meta(
+    meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
+        cache_version=_resolve_balance_cache_version(build_lineage),
         source_version=_require_balance_lineage_value(
             build_lineage["source_version"] if build_lineage is not None else None,
             report_date=report_date,
@@ -442,10 +451,10 @@ def balance_analysis_workbook_envelope(
             field_name="rule_version",
         ),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def _to_zqtz_detail_row(row: dict[str, object]) -> BalanceAnalysisDetailRow:
@@ -597,27 +606,6 @@ def _build_summary_rows(details: list[BalanceAnalysisDetailRow]) -> list[Balance
     ]
 
 
-def _formal_result_meta(
-    *,
-    trace_id: str,
-    result_kind: str,
-    source_version: str,
-    rule_version: str,
-) -> ResultMeta:
-    return ResultMeta(
-        trace_id=trace_id,
-        basis="formal",
-        result_kind=result_kind,
-        formal_use_allowed=True,
-        source_version=source_version,
-        vendor_version="vv_none",
-        rule_version=rule_version,
-        cache_version=CACHE_VERSION,
-        quality_flag="ok",
-        scenario_flag=False,
-    )
-
-
 def _combine_lineage_values(rows: list[dict[str, object]], field_name: str) -> str:
     values = sorted(
         {
@@ -700,6 +688,14 @@ def _resolve_report_date_build_lineage(
         and str(row.get("source_version") or "").strip()
     ]
     return matches[-1] if matches else None
+
+
+def _resolve_balance_cache_version(lineage: dict[str, object] | None) -> str:
+    if lineage is not None:
+        resolved = str(lineage.get("cache_version") or "").strip()
+        if resolved:
+            return resolved
+    return CACHE_VERSION
 
 
 def _validate_balance_overview_filters(*, position_scope: str, currency_basis: str) -> None:

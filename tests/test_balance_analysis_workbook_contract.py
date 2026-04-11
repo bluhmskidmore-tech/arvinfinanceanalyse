@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 import duckdb
-
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import ROOT, load_module
+
+POLICY_BOND = "\u653f\u7b56\u6027\u91d1\u878d\u503a"
+OTHER_BOND = "\u5176\u4ed6"
+UNRATED = "\u65e0\u8bc4\u7ea7(\u5229\u7387\u503a\u7b49)"
+FIXED = "\u56fa\u5b9a"
+ISSUANCE_ASSET_CLASS = "\u53d1\u884c\u7c7b\u503a\u52b5"
+INTERBANK_DEPOSIT = "\u540c\u4e1a\u5b58\u653e"
+JOINT_STOCK_BANK = "\u80a1\u4efd\u5236\u94f6\u884c"
 
 
 def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
@@ -35,20 +43,28 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into zqtz_bond_daily_snapshot values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             [
                 "2025-12-31",
                 "240001.IB",
-                "政策行债A",
-                "组合A",
+                "Policy Bond A",
+                "PortfolioA",
                 "CC100",
-                "可供出售债券",
-                "可供出售类资产",
-                "政策性金融债",
-                "发行人A",
-                "公共管理、社会保障和社会组织",
+                "\u53ef\u4f9b\u51fa\u552e\u503a\u5238",
+                "\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
+                POLICY_BOND,
+                "IssuerA",
+                "\u516c\u5171\u7ba1\u7406\u3001\u793e\u4f1a\u4fdd\u969c\u548c\u793e\u4f1a\u7ec4\u7ec7",
                 "AAA",
                 "CNY",
                 Decimal("100"),
@@ -61,7 +77,7 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 None,
                 0,
                 False,
-                "固定",
+                FIXED,
                 "sv-z-1",
                 "rv-snap-1",
                 "ib-z-1",
@@ -70,33 +86,41 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into zqtz_bond_daily_snapshot values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             [
                 "2025-12-31",
                 "J11603010202",
-                "美元应收投资款项",
-                "组合B",
+                "USD Receivable Investment",
+                "PortfolioB",
                 "CC200",
-                "银行账户",
-                "应收投资款项",
-                "其他",
-                "发行人B",
-                "未分类",
-                None,
+                "\u94f6\u884c\u8d26\u6237",
+                "\u5e94\u6536\u6295\u8d44\u6b3e\u9879",
+                OTHER_BOND,
+                "IssuerB",
+                "\u672a\u5206\u7c7b",
+                "",
                 "USD",
                 Decimal("50"),
                 Decimal("50"),
                 Decimal("50"),
                 Decimal("0"),
-                Decimal("0.0"),
-                Decimal("0.0"),
+                Decimal("0"),
+                Decimal("0"),
                 "2026-06-30",
                 None,
                 0,
                 False,
-                "固定",
+                FIXED,
                 "sv-z-1",
                 "rv-snap-1",
                 "ib-z-1",
@@ -105,21 +129,29 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into zqtz_bond_daily_snapshot values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             [
                 "2025-12-31",
                 "NCD-ISSUE-1",
-                "发行类同业存单",
-                "负债组合",
+                "Issue CD",
+                "LiabilityPortfolio",
                 "CC300",
-                "发行类债劵",
-                "发行类债劵",
-                "同业存单",
-                "发行人C",
-                "金融业",
-                None,
+                ISSUANCE_ASSET_CLASS,
+                ISSUANCE_ASSET_CLASS,
+                "\u540c\u4e1a\u5b58\u5355",
+                "IssuerC",
+                "\u91d1\u878d\u4e1a",
+                "",
                 "CNY",
                 Decimal("80"),
                 Decimal("80"),
@@ -131,7 +163,7 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 None,
                 0,
                 True,
-                "固定",
+                FIXED,
                 "sv-z-1",
                 "rv-snap-1",
                 "ib-z-1",
@@ -140,18 +172,24 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into tyw_interbank_daily_snapshot values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into tyw_interbank_daily_snapshot (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, currency_code,
+              principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
+              pledged_bond_code, source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             [
                 "2025-12-31",
                 "asset-1",
-                "拆放同业",
+                "\u62c6\u653e\u540c\u4e1a",
                 "asset",
-                "城商行A",
-                "投融资类",
-                "一般",
-                "城市商业银行",
+                "\u57ce\u5546\u884cA",
+                "\u6295\u878d\u8d44\u7c7b",
+                "\u4e00\u822c",
+                "\u57ce\u5e02\u5546\u4e1a\u94f6\u884c",
                 "CNY",
                 Decimal("30"),
                 Decimal("0.3"),
@@ -166,18 +204,24 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into tyw_interbank_daily_snapshot values
-            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            insert into tyw_interbank_daily_snapshot (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, currency_code,
+              principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
+              pledged_bond_code, source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
             """,
             [
                 "2025-12-31",
                 "liability-1",
-                "同业存放",
+                INTERBANK_DEPOSIT,
                 "liability",
-                "股份行B",
-                "清算类",
-                "托管账户",
-                "股份制银行",
+                "\u80a1\u4efd\u884cB",
+                "\u6e05\u7b97\u7c7b",
+                "\u6258\u7ba1\u8d26\u6237",
+                JOINT_STOCK_BANK,
                 "CNY",
                 Decimal("40"),
                 Decimal("0.2"),
@@ -209,6 +253,276 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         conn.close()
 
 
+def test_workbook_weighted_term_years_matches_365_25_day_basis():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+
+    report_date = date(2026, 3, 1)
+    rows = [
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=report_date,
+            instrument_code="X1",
+            instrument_name="X1",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="\u672a\u5206\u7c7b",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("3"),
+            market_value_amount=Decimal("3"),
+            amortized_cost_amount=Decimal("3"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 3, 1),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=report_date,
+            instrument_code="X2",
+            instrument_name="X2",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="\u672a\u5206\u7c7b",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("7"),
+            market_value_amount=Decimal("7"),
+            amortized_cost_amount=Decimal("7"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2028, 3, 1),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+    ]
+
+    d1 = (date(2027, 3, 1) - report_date).days
+    d2 = (date(2028, 3, 1) - report_date).days
+    expected = (
+        Decimal("3") * Decimal(d1) / Decimal("365.25")
+        + Decimal("7") * Decimal(d2) / Decimal("365.25")
+    ) / Decimal("10")
+
+    table = workbook_module._build_bond_business_type_table(rows)
+    other_row = next(row for row in table["rows"] if row["bond_type"] == OTHER_BOND)
+    assert Decimal(str(other_row["weighted_term_years"])) == expected
+
+
+def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+
+    rows = [
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="A",
+            instrument_name="A",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="\u672a\u5206\u7c7b",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("10000"),
+            market_value_amount=Decimal("10000"),
+            amortized_cost_amount=Decimal("10000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=None,
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="B",
+            instrument_name="B",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="\u672a\u5206\u7c7b",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("20000"),
+            market_value_amount=Decimal("20000"),
+            amortized_cost_amount=Decimal("20000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2030, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="C",
+            instrument_name="C",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="\u672a\u5206\u7c7b",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("30000"),
+            market_value_amount=Decimal("30000"),
+            amortized_cost_amount=Decimal("30000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2025, 1, 1),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+    ]
+
+    table = workbook_module._build_bond_business_type_table(rows)
+    other_row = next(row for row in table["rows"] if row["bond_type"] == OTHER_BOND)
+    assert Decimal(str(other_row["weighted_term_years"])) > Decimal("4")
+
+
+def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+
+    rows = [
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="P",
+            instrument_name="P",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
+            bond_type=POLICY_BOND,
+            issuer_name="I",
+            industry_name="\u516c\u5171\u7ba1\u7406\u3001\u793e\u4f1a\u4fdd\u969c\u548c\u793e\u4f1a\u7ec4\u7ec7",
+            rating="AAA",
+            invest_type_std="H",
+            accounting_basis="AC",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("10000"),
+            market_value_amount=Decimal("10000"),
+            amortized_cost_amount=Decimal("10000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="G",
+            instrument_name="G",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
+            bond_type="\u56fd\u503a",
+            issuer_name="I",
+            industry_name="\u516c\u5171\u7ba1\u7406\u3001\u793e\u4f1a\u4fdd\u969c\u548c\u793e\u4f1a\u7ec4\u7ec7",
+            rating="",
+            invest_type_std="A",
+            accounting_basis="FVOCI",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("10000"),
+            market_value_amount=Decimal("10000"),
+            amortized_cost_amount=Decimal("10000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("5.0"),
+            ytm_value=None,
+            maturity_date=date(2035, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="C",
+            instrument_name="C",
+            portfolio_name="P",
+            cost_center="C",
+            asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
+            bond_type="\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a",
+            issuer_name="I",
+            industry_name="\u5236\u9020\u4e1a",
+            rating="AA+",
+            invest_type_std="A",
+            accounting_basis="FVOCI",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("10000"),
+            market_value_amount=Decimal("10000"),
+            amortized_cost_amount=Decimal("10000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("6.0"),
+            ytm_value=None,
+            maturity_date=date(2028, 12, 31),
+            interest_mode=FIXED,
+            is_issuance_like=False,
+        ),
+    ]
+
+    table = workbook_module._build_campisi_table(rows)
+    corp_row = next(row for row in table["rows"] if row["bond_type"] == "\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a")
+    assert Decimal(str(corp_row["spread_bp"])) == Decimal("400")
+
+
 def test_real_zqtz_parse_marks_asset_class_issue_rows_as_issuance_like():
     parse_mod = load_module(
         "backend.app.repositories.snapshot_row_parse",
@@ -222,7 +536,7 @@ def test_real_zqtz_parse_marks_asset_class_issue_rows_as_issuance_like():
         source_file=source_file,
         rule_version="rv-real-zqtz",
     )
-    issue_rows = [row for row in rows if str(row.get("asset_class") or "") == "发行类债劵"]
+    issue_rows = [row for row in rows if str(row.get("asset_class") or "") == ISSUANCE_ASSET_CLASS]
     assert issue_rows
     assert all(bool(row["is_issuance_like"]) for row in issue_rows[:10])
 
@@ -240,7 +554,7 @@ def test_real_tyw_parse_marks_tongye_cunfang_as_liability():
         source_file=source_file,
         rule_version="rv-real-tyw",
     )
-    cunfang_rows = [row for row in rows if str(row.get("product_type") or "") == "同业存放"]
+    cunfang_rows = [row for row in rows if str(row.get("product_type") or "") == INTERBANK_DEPOSIT]
     assert cunfang_rows
     assert all(str(row["position_side"]) == "liability" for row in cunfang_rows[:10])
 
@@ -286,8 +600,8 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
         "net_position",
     } <= card_keys
     card_map = {card["key"]: card for card in payload["result"]["cards"]}
-    assert Decimal(card_map["issuance_liabilities"]["value"]) > Decimal("0")
-    assert Decimal(card_map["bond_assets_excluding_issue"]["value"]) == Decimal("0.015")
+    assert Decimal(str(card_map["issuance_liabilities"]["value"])) > Decimal("0")
+    assert Decimal(str(card_map["bond_assets_excluding_issue"]["value"])) == Decimal("0.015")
 
     table_keys = {table["key"] for table in payload["result"]["tables"]}
     assert {
@@ -305,14 +619,14 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     } <= table_keys
     table_map = {table["key"]: table for table in payload["result"]["tables"]}
     issuance_rows = table_map["issuance_business_types"]["rows"]
-    assert any(row["bond_type"] == "同业存单" for row in issuance_rows)
+    assert any(row["bond_type"] == "\u540c\u4e1a\u5b58\u5355" for row in issuance_rows)
     counterparty_rows = table_map["counterparty_types"]["rows"]
-    liability_row = next(row for row in counterparty_rows if row["counterparty_type"] == "股份制银行")
+    liability_row = next(row for row in counterparty_rows if row["counterparty_type"] == JOINT_STOCK_BANK)
     assert liability_row["liability_count"] == 1
     bond_rows = table_map["bond_business_types"]["rows"]
-    policy_row = next(row for row in bond_rows if row["bond_type"] == "政策性金融债")
-    assert Decimal(policy_row["balance_amount"]) < Decimal("1")
-    other_row = next(row for row in bond_rows if row["bond_type"] == "其他")
-    assert Decimal(other_row["balance_amount"]) == Decimal("0.005")
+    policy_row = next(row for row in bond_rows if row["bond_type"] == POLICY_BOND)
+    assert Decimal(str(policy_row["balance_amount"])) < Decimal("1")
+    other_row = next(row for row in bond_rows if row["bond_type"] == OTHER_BOND)
+    assert Decimal(str(other_row["balance_amount"])) == Decimal("0.005")
 
     get_settings.cache_clear()

@@ -33,7 +33,7 @@ _RATE_BUCKETS = (
     ("3.5%-4.0%", Decimal("3.5"), Decimal("4.0")),
     ("4.0%以上", Decimal("4.0"), None),
 )
-_CAMPISI_TREASURY_TYPES = frozenset({"政策性金融债", "国债", "地方政府债", "凭证式国债"})
+_CAMPISI_POLICY_BOND = "政策性金融债"
 _TEN_THOUSAND = Decimal("10000")
 
 
@@ -60,6 +60,9 @@ def build_balance_analysis_workbook_payload(
         _build_campisi_table(zqtz_rows),
         _build_cross_analysis_table(zqtz_rows),
         _build_interest_mode_table(zqtz_rows),
+        _build_decision_items_table(report_date, zqtz_rows, tyw_rows),
+        _build_event_calendar_table(report_date, zqtz_rows, tyw_rows),
+        _build_risk_alerts_table(report_date, zqtz_rows, tyw_rows),
     ]
     return {
         "report_date": report_date.isoformat(),
@@ -107,7 +110,7 @@ def _build_bond_business_type_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -
                 "balance_amount": _to_wanyuan(balance_amount),
                 "share": _safe_ratio(balance_amount, total_balance),
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
-                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _remaining_years(row.report_date, row.maturity_date)),
+                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "amortized_cost_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.amortized_cost_amount)),
                 "market_value_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount)),
                 "floating_pnl_amount": _to_wanyuan(_sum_decimal(
@@ -219,7 +222,7 @@ def _build_issuance_business_type_table(zqtz_rows: list[FormalZqtzBalanceFactRow
                 "balance_amount": _to_wanyuan(balance_amount),
                 "share": _safe_ratio(balance_amount, total_balance),
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
-                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _remaining_years(row.report_date, row.maturity_date)),
+                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "interest_mode_fixed_count": sum(1 for row in entries if _normalize_interest_mode(row.interest_mode) == "固定"),
                 "interest_mode_floating_count": sum(1 for row in entries if _normalize_interest_mode(row.interest_mode) != "固定"),
             }
@@ -255,7 +258,7 @@ def _build_currency_split_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> di
                 "balance_amount": _to_wanyuan(balance_amount),
                 "share": _safe_ratio(balance_amount, total_balance),
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
-                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _remaining_years(row.report_date, row.maturity_date)),
+                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "amortized_cost_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.amortized_cost_amount)),
                 "market_value_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount)),
                 "floating_pnl_amount": _to_wanyuan(_sum_decimal(entries, lambda row: row.market_value_amount - row.amortized_cost_amount)),
@@ -297,7 +300,7 @@ def _build_rating_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, 
                 "balance_amount": _to_wanyuan(balance_amount),
                 "share": _safe_ratio(balance_amount, total_balance),
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
-                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _remaining_years(row.report_date, row.maturity_date)),
+                "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
             }
         )
     return _table(
@@ -423,7 +426,7 @@ def _build_counterparty_type_table(tyw_rows: list[FormalTywBalanceFactRow]) -> d
 
 def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str, Any]:
     asset_rows = [row for row in zqtz_rows if row.position_scope == "asset"]
-    benchmark_rows = [row for row in asset_rows if row.bond_type in _CAMPISI_TREASURY_TYPES]
+    benchmark_rows = [row for row in asset_rows if row.bond_type == _CAMPISI_POLICY_BOND]
     benchmark_rate = _weighted_average(benchmark_rows, lambda row: row.face_value_amount, lambda row: row.coupon_rate) or _ZERO
     total_income = _sum_decimal(asset_rows, lambda row: row.face_value_amount * _rate_value(row.coupon_rate) / Decimal("100"))
     grouped = _group_rows(asset_rows, lambda row: row.bond_type or "未分类")
@@ -443,7 +446,7 @@ def _build_campisi_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dict[str,
                 "balance_amount": _to_wanyuan(balance_amount),
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
                 "coupon_income_amount": _to_wanyuan(coupon_income),
-                "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _remaining_years(row.report_date, row.maturity_date)),
+                "duration_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "spread_bp": spread_value,
                 "spread_income_amount": _to_wanyuan(spread_income),
                 "share_of_income": _safe_ratio(coupon_income, total_income),
@@ -518,6 +521,201 @@ def _build_interest_mode_table(zqtz_rows: list[FormalZqtzBalanceFactRow]) -> dic
     )
 
 
+def _build_decision_items_table(
+    report_date: date,
+    zqtz_rows: list[FormalZqtzBalanceFactRow],
+    tyw_rows: list[FormalTywBalanceFactRow],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
+    gap_rows = [row for row in maturity_gap["rows"] if _decimal_value(row.get("gap_amount")) != _ZERO]
+    if gap_rows:
+        largest_gap = max(gap_rows, key=lambda row: abs(_decimal_value(row.get("gap_amount"))))
+        rows.append(
+            {
+                "title": f"Review {largest_gap['bucket']} gap positioning",
+                "action_label": "Review gap",
+                "severity": _severity_from_gap(_decimal_value(largest_gap.get("gap_amount"))),
+                "reason": f"Bucket gap is {largest_gap['gap_amount']} wan yuan.",
+                "source_section": "maturity_gap",
+                "rule_id": "bal_wb_decision_gap_001",
+                "rule_version": "v1",
+            }
+        )
+
+    rating_table = _build_rating_table(zqtz_rows)
+    if rating_table["rows"]:
+        top_rating = max(rating_table["rows"], key=lambda row: _decimal_value(row.get("share")))
+        top_share = _decimal_value(top_rating.get("share"))
+        if top_share >= Decimal("0.60"):
+            rows.append(
+                {
+                    "title": f"Check concentration in {top_rating['rating']}",
+                    "action_label": "Review concentration",
+                    "severity": "medium" if top_share < Decimal("0.75") else "high",
+                    "reason": f"Top rating bucket share reached {top_share:.4f}.",
+                    "source_section": "rating_analysis",
+                    "rule_id": "bal_wb_decision_rating_001",
+                    "rule_version": "v1",
+                }
+            )
+
+    issuance_table = _build_issuance_business_type_table(zqtz_rows)
+    if issuance_table["rows"]:
+        leading_issue = max(
+            issuance_table["rows"],
+            key=lambda row: _decimal_value(row.get("balance_amount")),
+        )
+        rows.append(
+            {
+                "title": f"Monitor issuance book: {leading_issue['bond_type']}",
+                "action_label": "Review issuance",
+                "severity": "medium",
+                "reason": f"Issuance bucket balance is {leading_issue['balance_amount']} wan yuan.",
+                "source_section": "issuance_business_types",
+                "rule_id": "bal_wb_decision_issuance_001",
+                "rule_version": "v1",
+            }
+        )
+
+    return _section(
+        "decision_items",
+        "Decision Items",
+        "decision_items",
+        [
+            ("title", "Title"),
+            ("action_label", "Action"),
+            ("severity", "Severity"),
+            ("reason", "Reason"),
+            ("source_section", "Source Section"),
+            ("rule_id", "Rule Id"),
+            ("rule_version", "Rule Version"),
+        ],
+        rows,
+    )
+
+
+def _build_event_calendar_table(
+    report_date: date,
+    zqtz_rows: list[FormalZqtzBalanceFactRow],
+    tyw_rows: list[FormalTywBalanceFactRow],
+) -> dict[str, Any]:
+    events: list[dict[str, Any]] = []
+    for row in zqtz_rows:
+        if row.maturity_date is None or row.maturity_date < report_date:
+            continue
+        event_type = "issuance_maturity" if row.position_scope == "liability" else "bond_maturity"
+        events.append(
+            {
+                "event_date": row.maturity_date.isoformat(),
+                "event_type": event_type,
+                "title": f"{row.instrument_code} maturity",
+                "source": "internal_governed_schedule",
+                "impact_hint": f"{row.position_scope} book / {row.bond_type or 'unknown bond type'}",
+                "source_section": "maturity_gap",
+            }
+        )
+    for row in tyw_rows:
+        if row.maturity_date is None or row.maturity_date < report_date:
+            continue
+        event_type = "funding_rollover" if row.position_scope == "liability" else "asset_maturity"
+        events.append(
+            {
+                "event_date": row.maturity_date.isoformat(),
+                "event_type": event_type,
+                "title": f"{row.position_id} maturity",
+                "source": "internal_governed_schedule",
+                "impact_hint": f"{row.position_scope} book / {row.product_type or 'unknown product'}",
+                "source_section": "maturity_gap",
+            }
+        )
+
+    events.sort(key=lambda item: (str(item["event_date"]), str(item["title"])))
+    return _section(
+        "event_calendar",
+        "Event Calendar",
+        "event_calendar",
+        [
+            ("event_date", "Event Date"),
+            ("event_type", "Event Type"),
+            ("title", "Title"),
+            ("source", "Source"),
+            ("impact_hint", "Impact Hint"),
+            ("source_section", "Source Section"),
+        ],
+        events[:5],
+    )
+
+
+def _build_risk_alerts_table(
+    report_date: date,
+    zqtz_rows: list[FormalZqtzBalanceFactRow],
+    tyw_rows: list[FormalTywBalanceFactRow],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    maturity_gap = _build_maturity_gap_table(report_date, zqtz_rows, tyw_rows)
+    negative_gap_rows = [row for row in maturity_gap["rows"] if _decimal_value(row.get("gap_amount")) < _ZERO]
+    if negative_gap_rows:
+        tightest_gap = min(negative_gap_rows, key=lambda row: _decimal_value(row.get("gap_amount")))
+        rows.append(
+            {
+                "title": f"Negative gap in {tightest_gap['bucket']}",
+                "severity": "high",
+                "reason": f"Gap dropped to {tightest_gap['gap_amount']} wan yuan.",
+                "source_section": "maturity_gap",
+                "rule_id": "bal_wb_risk_gap_001",
+                "rule_version": "v1",
+            }
+        )
+
+    issuance_total = _sum_decimal(
+        [row for row in zqtz_rows if row.position_scope == "liability"],
+        lambda row: row.face_value_amount,
+    )
+    if issuance_total > _ZERO:
+        rows.append(
+            {
+                "title": "Issuance liabilities outstanding",
+                "severity": "medium",
+                "reason": f"Issuance book totals {_to_wanyuan(issuance_total)} wan yuan.",
+                "source_section": "issuance_business_types",
+                "rule_id": "bal_wb_risk_issuance_001",
+                "rule_version": "v1",
+            }
+        )
+
+    rating_table = _build_rating_table(zqtz_rows)
+    if rating_table["rows"]:
+        top_rating = max(rating_table["rows"], key=lambda row: _decimal_value(row.get("share")))
+        top_share = _decimal_value(top_rating.get("share"))
+        if top_share >= Decimal("0.60"):
+            rows.append(
+                {
+                    "title": f"{top_rating['rating']} concentration watch",
+                    "severity": "medium" if top_share < Decimal("0.75") else "high",
+                    "reason": f"Top rating bucket share reached {top_share:.4f}.",
+                    "source_section": "rating_analysis",
+                    "rule_id": "bal_wb_risk_rating_001",
+                    "rule_version": "v1",
+                }
+            )
+
+    return _section(
+        "risk_alerts",
+        "Risk Alerts",
+        "risk_alerts",
+        [
+            ("title", "Title"),
+            ("severity", "Severity"),
+            ("reason", "Reason"),
+            ("source_section", "Source Section"),
+            ("rule_id", "Rule Id"),
+            ("rule_version", "Rule Version"),
+        ],
+        rows,
+    )
+
+
 def _group_rows(rows: list[Any], key_fn) -> dict[str, list[Any]]:
     grouped: dict[str, list[Any]] = {}
     for row in rows:
@@ -566,6 +764,18 @@ def _remaining_years(report_date: date, maturity_date: date | None) -> Decimal:
     return Decimal((maturity_date - report_date).days) / Decimal("365")
 
 
+def _optional_remaining_years(report_date: date, maturity_date: date | None) -> Decimal | None:
+    # Workbook 加权期限: calendar days / 365.25 (verified vs 2026-03-01 desktop reference).
+    if maturity_date is None:
+        return None
+    if maturity_date < report_date:
+        return None
+    days = (maturity_date - report_date).days
+    if days <= 0:
+        return None
+    return Decimal(days) / Decimal("365.25")
+
+
 def _match_bucket(value: Decimal, lower: Decimal | None, upper: Decimal | None) -> bool:
     if lower is None:
         return value <= (upper or _ZERO)
@@ -603,10 +813,36 @@ def _card(key: str, label: str, value: Decimal, note: str) -> dict[str, Any]:
     return {"key": key, "label": label, "value": value, "note": note}
 
 
-def _table(key: str, title: str, columns: list[tuple[str, str]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _section(
+    key: str,
+    title: str,
+    section_kind: str,
+    columns: list[tuple[str, str]],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
     return {
         "key": key,
         "title": title,
+        "section_kind": section_kind,
         "columns": [{"key": column_key, "label": label} for column_key, label in columns],
         "rows": rows,
     }
+
+
+def _table(key: str, title: str, columns: list[tuple[str, str]], rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return _section(key, title, "table", columns, rows)
+
+
+def _decimal_value(value: Any) -> Decimal:
+    if value in (None, ""):
+        return _ZERO
+    return Decimal(str(value))
+
+
+def _severity_from_gap(gap_value: Decimal) -> str:
+    absolute_gap = abs(gap_value)
+    if absolute_gap >= Decimal("20"):
+        return "high"
+    if absolute_gap >= Decimal("5"):
+        return "medium"
+    return "low"

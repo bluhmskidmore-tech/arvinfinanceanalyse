@@ -1564,6 +1564,134 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses a balance-analysis specific fallback filename when export headers are missing", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers(),
+      text: async () => "row_key,display_name\nrow-1,240001.IB\n",
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const exported = await client.exportBalanceAnalysisSummaryCsv({
+      reportDate: "2025-12-31",
+      positionScope: "asset",
+      currencyBasis: "CNY",
+    });
+
+    expect(exported.filename).toBe("balance-analysis-summary.csv");
+  });
+
+  it("reads workbook right-rail sections from the existing workbook endpoint", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_balance_workbook",
+          basis: "formal",
+          result_kind: "balance-analysis.workbook",
+          formal_use_allowed: true,
+          source_version: "sv_balance",
+          vendor_version: "vv_none",
+          rule_version: "rv_balance",
+          cache_version: "cv_balance",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-11T05:00:00Z",
+        },
+        result: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [],
+          tables: [
+            {
+              key: "decision_items",
+              title: "Decision Items",
+              section_kind: "decision_items",
+              columns: [{ key: "title", label: "Title" }],
+              rows: [
+                {
+                  title: "Review 1-2 year gap positioning",
+                  action_label: "Review gap",
+                  severity: "high",
+                  reason: "Bucket gap is 4290357.07 wan yuan.",
+                  source_section: "maturity_gap",
+                  rule_id: "bal_wb_decision_gap_001",
+                  rule_version: "v1",
+                },
+              ],
+            },
+            {
+              key: "event_calendar",
+              title: "Event Calendar",
+              section_kind: "event_calendar",
+              columns: [{ key: "event_date", label: "Event Date" }],
+              rows: [
+                {
+                  event_date: "2026-03-05",
+                  event_type: "bond_maturity",
+                  title: "240001.IB maturity",
+                  source: "internal_governed_schedule",
+                  impact_hint: "asset book / policy bond",
+                  source_section: "maturity_gap",
+                },
+              ],
+            },
+            {
+              key: "risk_alerts",
+              title: "Risk Alerts",
+              section_kind: "risk_alerts",
+              columns: [{ key: "title", label: "Title" }],
+              rows: [
+                {
+                  title: "Negative gap in 1-2 year bucket",
+                  severity: "high",
+                  reason: "Gap dropped to -128000.00 wan yuan.",
+                  source_section: "maturity_gap",
+                  rule_id: "bal_wb_risk_gap_001",
+                  rule_version: "v1",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const workbook = await client.getBalanceAnalysisWorkbook({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+
+    expect(workbook.result.tables.map((table) => table.section_kind)).toEqual([
+      "decision_items",
+      "event_calendar",
+      "risk_alerts",
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/balance-analysis/workbook?report_date=2025-12-31&position_scope=all&currency_basis=CNY",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to trigger and poll balance-analysis refresh", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

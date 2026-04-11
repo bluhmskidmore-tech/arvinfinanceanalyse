@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
@@ -58,6 +58,10 @@ describe("MarketDataPage", () => {
             vendor_version: "vv_choice_catalog_v1",
             frequency: "daily",
             unit: "%",
+            refresh_tier: "stable" as const,
+            fetch_mode: "date_slice" as const,
+            fetch_granularity: "batch" as const,
+            policy_note: "main refresh date-slice lane",
           },
           {
             series_id: "M002",
@@ -66,6 +70,22 @@ describe("MarketDataPage", () => {
             vendor_version: "vv_choice_catalog_v1",
             frequency: "daily",
             unit: "%",
+            refresh_tier: "fallback" as const,
+            fetch_mode: "latest" as const,
+            fetch_granularity: "single" as const,
+            policy_note: "low-frequency latest-only lane",
+          },
+          {
+            series_id: "M003",
+            series_name: "RMB Index",
+            vendor_name: "choice",
+            vendor_version: "vv_choice_catalog_v1",
+            frequency: "daily",
+            unit: "%",
+            refresh_tier: "stable" as const,
+            fetch_mode: "date_slice" as const,
+            fetch_granularity: "batch" as const,
+            policy_note: "main refresh date-slice lane",
           },
         ],
       },
@@ -156,12 +176,17 @@ describe("MarketDataPage", () => {
 
     expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
     expect(screen.getAllByText("DR007")).toHaveLength(2);
-    expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("2");
-    expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1");
+    expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1 / 2");
     expect(screen.getByTestId("market-data-fallback-count")).toHaveTextContent("1");
     expect(screen.getByTestId("market-data-stable-trade-date")).toHaveTextContent(
       "2026-04-10",
     );
+    expect(screen.getByTestId("market-data-missing-stable-count")).toHaveTextContent("1");
+    expect(screen.getByText("待补齐 stable")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("market-data-missing-stable-section")).getByText("RMB Index"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );

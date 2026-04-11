@@ -111,6 +111,219 @@ function buildSummaryResponse(offset: number) {
   };
 }
 
+function buildWorkbookResponse() {
+  return {
+    result_meta: buildMeta("balance-analysis.workbook", "tr_balance_workbook"),
+    result: {
+      report_date: "2025-12-31",
+      position_scope: "all" as const,
+      currency_basis: "CNY" as const,
+      cards: [
+        {
+          key: "bond_assets_excluding_issue",
+          label: "债券资产(剔除发行类)",
+          value: "32877980.96",
+          note: "ZQTZ 资产端剔除发行类后的余额。",
+        },
+        {
+          key: "interbank_liabilities",
+          label: "同业负债",
+          value: "7239682.56",
+          note: "TYW 负债端余额。",
+        },
+      ],
+      tables: [
+        {
+          key: "bond_business_types",
+          title: "债券业务种类",
+          section_kind: "table" as const,
+          columns: [
+            { key: "bond_type", label: "业务种类" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              bond_type: "政策性金融债",
+              balance_amount: "6482200.00",
+            },
+          ],
+        },
+        {
+          key: "rating_analysis",
+          title: "信用评级分析",
+          section_kind: "table" as const,
+          columns: [
+            { key: "rating", label: "评级" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              rating: "AAA",
+              balance_amount: "16960854.11",
+            },
+          ],
+        },
+        {
+          key: "maturity_gap",
+          title: "期限缺口分析",
+          section_kind: "table" as const,
+          columns: [
+            { key: "bucket", label: "期限分类" },
+            { key: "gap_amount", label: "缺口" },
+          ],
+          rows: [
+            {
+              bucket: "1-2年",
+              gap_amount: "4290357.07",
+            },
+          ],
+        },
+        {
+          key: "issuance_business_types",
+          title: "发行类分析",
+          section_kind: "table" as const,
+          columns: [
+            { key: "bond_type", label: "业务种类" },
+            { key: "balance_amount", label: "金额" },
+          ],
+          rows: [
+            {
+              bond_type: "同业存单",
+              balance_amount: "9933000.00",
+            },
+          ],
+        },
+        {
+          key: "industry_distribution",
+          title: "行业分布",
+          section_kind: "table" as const,
+          columns: [
+            { key: "industry_name", label: "行业" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              industry_name: "金融业",
+              balance_amount: "19483961.98",
+            },
+          ],
+        },
+        {
+          key: "rate_distribution",
+          title: "利率分布分析",
+          section_kind: "table" as const,
+          columns: [
+            { key: "bucket", label: "利率区间" },
+            { key: "bond_amount", label: "债券面值" },
+            { key: "interbank_asset_amount", label: "同业资产" },
+            { key: "interbank_liability_amount", label: "同业负债" },
+          ],
+          rows: [
+            {
+              bucket: "1.5%-2.0%",
+              bond_amount: "9900751.47",
+              interbank_asset_amount: "958000.00",
+              interbank_liability_amount: "2206085.05",
+            },
+          ],
+        },
+        {
+          key: "counterparty_types",
+          title: "对手方类型",
+          section_kind: "table" as const,
+          columns: [
+            { key: "counterparty_type", label: "对手方类型" },
+            { key: "asset_amount", label: "资产金额" },
+            { key: "liability_amount", label: "负债金额" },
+            { key: "net_position_amount", label: "净头寸" },
+          ],
+          rows: [
+            {
+              counterparty_type: "股份制银行",
+              asset_amount: "120000.00",
+              liability_amount: "86079.26",
+              net_position_amount: "33920.74",
+            },
+          ],
+        },
+        {
+          key: "interest_modes",
+          title: "计息方式",
+          section_kind: "table" as const,
+          columns: [
+            { key: "interest_mode", label: "计息方式" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              interest_mode: "固定",
+              balance_amount: "32874418.15",
+            },
+          ],
+        },
+        {
+          key: "decision_items",
+          title: "Decision Items",
+          section_kind: "decision_items" as const,
+          columns: [
+            { key: "title", label: "Title" },
+            { key: "severity", label: "Severity" },
+          ],
+          rows: [
+            {
+              title: "Review 1-2 year gap positioning",
+              action_label: "Review gap",
+              severity: "high",
+              reason: "Bucket gap is 4290357.07 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_decision_gap_001",
+              rule_version: "v1",
+            },
+          ],
+        },
+        {
+          key: "event_calendar",
+          title: "Event Calendar",
+          section_kind: "event_calendar" as const,
+          columns: [
+            { key: "event_date", label: "Event Date" },
+            { key: "title", label: "Title" },
+          ],
+          rows: [
+            {
+              event_date: "2026-03-05",
+              event_type: "bond_maturity",
+              title: "240001.IB maturity",
+              source: "internal_governed_schedule",
+              impact_hint: "asset book / 政策性金融债",
+              source_section: "maturity_gap",
+            },
+          ],
+        },
+        {
+          key: "risk_alerts",
+          title: "Risk Alerts",
+          section_kind: "risk_alerts" as const,
+          columns: [
+            { key: "title", label: "Title" },
+            { key: "severity", label: "Severity" },
+          ],
+          rows: [
+            {
+              title: "Negative gap in 1-2 year bucket",
+              severity: "high",
+              reason: "Gap dropped to -128000.00 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_risk_gap_001",
+              rule_version: "v1",
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
 describe("BalanceAnalysisPage", () => {
   it("renders cockpit cards and a paginated summary table from the dedicated summary query", async () => {
     const baseClient = createApiClient({ mode: "mock" });
@@ -159,6 +372,7 @@ describe("BalanceAnalysisPage", () => {
       },
     }));
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
@@ -166,6 +380,7 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisOverview: getOverviewSpy,
       getBalanceAnalysisDetail: getDetailSpy,
       getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
@@ -184,8 +399,41 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-workbook-cards")).toHaveTextContent(
         "债券资产(剔除发行类)",
       );
-      expect(screen.getByTestId("balance-analysis-workbook-table-bond_business_types")).toHaveTextContent(
-        "政策性金融债",
+      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-bond_business_types"),
+      ).toHaveTextContent("政策性金融债");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-rating_analysis"),
+      ).toHaveTextContent("AAA");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-maturity_gap"),
+      ).toHaveTextContent("1-2年");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-issuance_business_types"),
+      ).toHaveTextContent("同业存单");
+      expect(screen.getByTestId("balance-analysis-workbook-secondary-panels")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-industry_distribution"),
+      ).toHaveTextContent("金融业");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-rate_distribution"),
+      ).toHaveTextContent("1.5%-2.0%");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-counterparty_types"),
+      ).toHaveTextContent("股份制银行");
+      expect(screen.getByTestId("balance-analysis-workbook-secondary-grid")).toHaveTextContent(
+        "计息方式",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-decision_items")).toHaveTextContent(
+        "Review 1-2 year gap positioning",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).toHaveTextContent(
+        "240001.IB maturity",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).toHaveTextContent(
+        "Negative gap in 1-2 year bucket",
       );
     });
     expect(screen.getByText("第 1 / 2 页")).toBeInTheDocument();
@@ -284,6 +532,85 @@ describe("BalanceAnalysisPage", () => {
       globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
       vi.restoreAllMocks();
     }
+  });
+
+  it("keeps the summary cockpit available when detail drill-down fails", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDetailSpy = vi.fn(async () => {
+      throw new Error("detail unavailable");
+    });
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisWorkbook: vi.fn(async () => buildWorkbookResponse()),
+      getBalanceAnalysisSummary: vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset)),
+    });
+
+    expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("利率债组合");
+      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+      expect(screen.getByText("明细下钻暂时不可用，汇总驾驶舱仍可继续使用。")).toBeInTheDocument();
+    });
+  });
+
+  it("shows a contract mismatch warning when workbook primary fields are missing", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const malformedWorkbook = buildWorkbookResponse();
+    malformedWorkbook.result.tables[0] = {
+      ...malformedWorkbook.result.tables[0],
+      rows: [{ bond_type: "政策性金融债" }],
+    };
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => malformedWorkbook),
+    });
+
+    expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-bond_business_types"),
+      ).toHaveTextContent("Workbook contract mismatch");
+    });
+  });
+
+  it("renders independent right-rail empty states without breaking the workbook cockpit", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const workbook = buildWorkbookResponse();
+    workbook.result.tables = workbook.result.tables.map((table) => {
+      if (
+        table.key === "decision_items" ||
+        table.key === "event_calendar" ||
+        table.key === "risk_alerts"
+      ) {
+        return { ...table, rows: [] };
+      }
+      return table;
+    });
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => workbook),
+    });
+
+    expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-decision_items")).toHaveTextContent(
+        "No governed items.",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).toHaveTextContent(
+        "No governed items.",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).toHaveTextContent(
+        "No governed items.",
+      );
+      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+    });
   });
 
   it("polls refresh status and refetches overview detail and summary after rebuild", async () => {

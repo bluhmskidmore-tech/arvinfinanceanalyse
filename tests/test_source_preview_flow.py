@@ -183,6 +183,45 @@ def test_source_preview_refresh_queues_async_run_and_reports_latest_status(tmp_p
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_async_run_dual_writes_job_state_when_configured(tmp_path, monkeypatch):
+    _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
+    job_state_path = tmp_path / "job-state.db"
+    monkeypatch.setenv("MOSS_JOB_STATE_DSN", f"sqlite:///{job_state_path.as_posix()}")
+    queued_messages: list[dict[str, object]] = []
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    job_state_module = load_module(
+        "backend.app.repositories.job_state_repo",
+        "backend/app/repositories/job_state_repo.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    refresh_payload = refresh_response.json()
+    assert refresh_payload["status"] == "queued"
+
+    repo = job_state_module.JobStateRepository(f"sqlite:///{job_state_path.as_posix()}")
+    latest = repo.get_latest_run(refresh_payload["run_id"])
+
+    assert latest is not None
+    assert latest["status"] == "queued"
+    assert latest["job_name"] == "source_preview_refresh"
+    assert latest["cache_key"] == "source_preview.foundation"
+    assert latest["queued_at"]
+    assert queued_messages[0]["run_id"] == refresh_payload["run_id"]
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz_and_tyw(
     tmp_path,
     monkeypatch,
@@ -228,6 +267,47 @@ def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz
     assert foundation_response.status_code == 200
     foundation_sources = foundation_response.json()["result"]["sources"]
     assert {source["source_family"] for source in foundation_sources} == {"zqtz", "tyw"}
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_sync_fallback_dual_writes_job_state_when_configured(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
+    job_state_path = tmp_path / "job-state.db"
+    monkeypatch.setenv("MOSS_JOB_STATE_DSN", f"sqlite:///{job_state_path.as_posix()}")
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    job_state_module = load_module(
+        "backend.app.repositories.job_state_repo",
+        "backend/app/repositories/job_state_repo.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    refresh_payload = refresh_response.json()
+    assert refresh_payload["status"] == "completed"
+
+    repo = job_state_module.JobStateRepository(f"sqlite:///{job_state_path.as_posix()}")
+    latest = repo.get_latest_run(refresh_payload["run_id"])
+
+    assert latest is not None
+    assert latest["status"] == "completed"
+    assert latest["queued_at"]
+    assert latest["started_at"]
+    assert latest["finished_at"]
+    assert latest["source_version"] == refresh_payload["source_version"]
     get_settings.cache_clear()
 
 

@@ -10,6 +10,7 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
+from backend.app.repositories.job_state_repo import JobStateRepository
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.repositories.source_preview_repo import (
@@ -64,6 +65,14 @@ def _refresh_source_preview_cache(
             "started_at": started_at,
         },
     )
+    _record_job_state_transition(
+        settings=settings,
+        run_id=run_id,
+        status="running",
+        source_version="sv_preview_running",
+        vendor_version="vv_none",
+        started_at=started_at,
+    )
 
     ingest_batch_id = ""
     snapshot_ready = False
@@ -115,6 +124,15 @@ def _refresh_source_preview_cache(
                 "finished_at": datetime.now(timezone.utc).isoformat(),
             },
         )
+        _record_job_state_transition(
+            settings=settings,
+            run_id=run_id,
+            status="failed",
+            source_version="sv_preview_failed",
+            vendor_version="vv_none",
+            error_message=str(exc),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+        )
         raise
 
     preview_sources = [str(summary["source_family"]) for summary in preview_summaries]
@@ -157,6 +175,14 @@ def _refresh_source_preview_cache(
                 },
             ),
         ]
+    )
+    _record_job_state_transition(
+        settings=settings,
+        run_id=run_id,
+        status="completed",
+        source_version=source_version,
+        vendor_version="vv_none",
+        finished_at=finished_at,
     )
 
     return {
@@ -216,3 +242,30 @@ refresh_source_preview_cache = register_actor_once(
     "refresh_source_preview_cache",
     _refresh_source_preview_cache,
 )
+
+
+def _record_job_state_transition(
+    *,
+    settings,
+    run_id: str,
+    status: str,
+    source_version: str,
+    vendor_version: str,
+    started_at: str | None = None,
+    finished_at: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    if not str(getattr(settings, "job_state_dsn", "") or "").strip():
+        return
+    JobStateRepository(settings.job_state_dsn).record_transition(
+        run_id=run_id,
+        job_name=SOURCE_PREVIEW_REFRESH_JOB_NAME,
+        cache_key=SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+        status=status,
+        report_date=None,
+        source_version=source_version,
+        vendor_version=vendor_version,
+        started_at=started_at,
+        finished_at=finished_at,
+        error_message=error_message,
+    )

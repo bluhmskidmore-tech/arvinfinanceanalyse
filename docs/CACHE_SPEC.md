@@ -130,6 +130,20 @@ risk:summary:2026-03-28:formal:asset:CNY:sv_2a90:rv_20260409:fh_01ef
 - `rule_version`：计算口径版本
 - `filter_hash`：标准化过滤条件哈希
 
+### 当前 governed formal-balance pilot identity
+
+当前 `zqtz / tyw` governed formal balance pilot 的 runtime identity 为：
+
+```text
+cache_key      = balance_analysis:materialize:formal
+cache_version  = cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1
+lock_key       = lock:duckdb:formal:balance-analysis:materialize
+```
+
+说明：
+- 这些 identity 属于当前已落地的 formal-balance pilot，不自动推广为其他 formal module 的默认公开接口。
+- 共享 formal materialize runtime 允许复用 basis-scoped identity 规则，但不得绕过 per-module 的显式 descriptor 声明。
+
 ## 4. result_meta 要求
 
 本节只定义 outward response / cache 语义，不定义底层 standardized snapshot 表身份。

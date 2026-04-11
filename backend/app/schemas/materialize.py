@@ -10,10 +10,15 @@ class CacheBuildRunRecord(BaseModel):
     job_name: str
     status: str
     cache_key: str
+    cache_version: str | None = None
     lock: str
     source_version: str
     vendor_version: str
     rule_version: str | None = None
+
+    def model_dump(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(*args, **kwargs)
 
 
 class CacheManifestRecord(BaseModel):
@@ -22,6 +27,7 @@ class CacheManifestRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     cache_key: str
+    cache_version: str | None = None
     source_version: str
     vendor_version: str
     rule_version: str

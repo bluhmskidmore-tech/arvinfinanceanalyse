@@ -236,6 +236,38 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
         )
 
 
+def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fails(tmp_path, monkeypatch):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    def _fail_replace(self, **_kwargs):
+        raise RuntimeError("synthetic write failure")
+
+    monkeypatch.setattr(
+        repo_mod.BalanceAnalysisRepository,
+        "replace_formal_balance_rows",
+        _fail_replace,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic write failure"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+
+
 def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exists(tmp_path):
     _repo_mod, task_mod = _load_modules()
 

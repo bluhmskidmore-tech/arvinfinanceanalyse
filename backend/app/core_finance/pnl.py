@@ -36,6 +36,11 @@ class FiPnlRecord:
     rule_version: str = ""
     ingest_batch_id: str = ""
     trace_id: str = ""
+    approval_status: str = ""
+    governance_status: str = ""
+    event_type: str = ""
+    event_semantics: str = ""
+    realized_flag: bool = False
 
 
 @dataclass(slots=True, frozen=True)
@@ -99,36 +104,51 @@ class NonStdPnlBridgeRow:
     trace_id: str = ""
 
 
+@dataclass(slots=True, frozen=True)
+class RecognizedPnlComponents:
+    interest_income_514: Decimal = ZERO
+    fair_value_change_516: Decimal = ZERO
+    capital_gain_517: Decimal = ZERO
+    manual_adjustment: Decimal = ZERO
+
+    @property
+    def total_pnl(self) -> Decimal:
+        return (
+            self.interest_income_514
+            + self.fair_value_change_516
+            + self.capital_gain_517
+            + self.manual_adjustment
+        )
+
+
 def build_formal_pnl_fi_fact_rows(
     fi_records: Iterable[FiPnlRecord],
 ) -> list[FormalPnlFiFactRow]:
     """Project standardized FI records into the future formal FI fact shape."""
-    return [
-        FormalPnlFiFactRow(
-            report_date=row.report_date,
-            instrument_code=row.instrument_code,
-            portfolio_name=row.portfolio_name,
-            cost_center=row.cost_center,
-            invest_type_std=row.invest_type_std,
-            accounting_basis=row.accounting_basis,
-            currency_basis=row.currency_basis,
-            interest_income_514=row.interest_income_514,
-            fair_value_change_516=row.fair_value_change_516,
-            capital_gain_517=row.capital_gain_517,
-            manual_adjustment=row.manual_adjustment,
-            total_pnl=(
-                row.interest_income_514
-                + row.fair_value_change_516
-                + row.capital_gain_517
-                + row.manual_adjustment
-            ),
-            source_version=row.source_version,
-            rule_version=row.rule_version,
-            ingest_batch_id=row.ingest_batch_id,
-            trace_id=row.trace_id,
+    rows: list[FormalPnlFiFactRow] = []
+    for row in fi_records:
+        recognized = _recognized_pnl_components(row)
+        rows.append(
+            FormalPnlFiFactRow(
+                report_date=row.report_date,
+                instrument_code=row.instrument_code,
+                portfolio_name=row.portfolio_name,
+                cost_center=row.cost_center,
+                invest_type_std=row.invest_type_std,
+                accounting_basis=row.accounting_basis,
+                currency_basis=row.currency_basis,
+                interest_income_514=recognized.interest_income_514,
+                fair_value_change_516=recognized.fair_value_change_516,
+                capital_gain_517=recognized.capital_gain_517,
+                manual_adjustment=recognized.manual_adjustment,
+                total_pnl=recognized.total_pnl,
+                source_version=row.source_version,
+                rule_version=row.rule_version,
+                ingest_batch_id=row.ingest_batch_id,
+                trace_id=row.trace_id,
+            )
         )
-        for row in fi_records
-    ]
+    return rows
 
 
 def build_nonstd_pnl_bridge_rows(
@@ -264,6 +284,11 @@ def normalize_fi_pnl_records(
                 rule_version=str(row.get("rule_version", "")),
                 ingest_batch_id=str(row.get("ingest_batch_id", "")),
                 trace_id=str(row.get("trace_id", "")),
+                approval_status=_coerce_optional_text(row.get("approval_status")),
+                governance_status=_coerce_optional_text(row.get("governance_status")),
+                event_type=_coerce_optional_text(row.get("event_type")),
+                event_semantics=_coerce_optional_text(row.get("event_semantics")),
+                realized_flag=_coerce_bool(row.get("realized_flag", False)),
             )
         )
     return normalized
@@ -302,6 +327,17 @@ def _coerce_optional_text(value: object) -> str:
         return ""
     text = str(value).strip()
     return "" if text.lower() == "none" else text
+
+
+def _coerce_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    normalized = str(value).strip().lower()
+    return normalized in {"1", "true", "yes", "y"}
 
 
 def _normalize_nonstd_signed_amount(
@@ -354,3 +390,32 @@ def _entry_in_scope(entry_date: date, *, target_date: date, is_month_end: bool) 
 def _append_unique(items: list[str], value: str) -> None:
     if value and value not in items:
         items.append(value)
+
+
+def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:
+    return RecognizedPnlComponents(
+        interest_income_514=row.interest_income_514,
+        fair_value_change_516=(
+            row.fair_value_change_516 if row.accounting_basis == "FVTPL" else ZERO
+        ),
+        capital_gain_517=(
+            row.capital_gain_517 if _is_517_formal_allowed(row) else ZERO
+        ),
+        manual_adjustment=(
+            row.manual_adjustment if _is_manual_adjustment_formal_allowed(row) else ZERO
+        ),
+    )
+
+
+def _is_517_formal_allowed(row: FiPnlRecord) -> bool:
+    if not row.realized_flag:
+        return False
+    return row.event_semantics.strip().lower() in {
+        "realized_formal",
+        "realized_disposal",
+        "realized_redemption",
+    }
+
+
+def _is_manual_adjustment_formal_allowed(row: FiPnlRecord) -> bool:
+    return row.approval_status.strip().lower() == "approved" or row.governance_status.strip().lower() == "approved"

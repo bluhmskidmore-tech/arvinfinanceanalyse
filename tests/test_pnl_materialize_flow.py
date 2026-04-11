@@ -46,6 +46,9 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
                 "rule_version": "rule-v1",
                 "ingest_batch_id": "batch-fi",
                 "trace_id": "trace-fi",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
             }
         ],
         nonstd_rows_by_type={
@@ -84,6 +87,7 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
         },
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
+        formal_pnl_enabled=True,
     )
 
     assert payload["status"] == "completed"
@@ -154,6 +158,7 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
         "is_month_end": True,
         "duckdb_path": str(duckdb_path),
         "governance_dir": str(governance_dir),
+        "formal_pnl_enabled": True,
     }
 
     task_module.materialize_pnl_facts.fn(
@@ -170,6 +175,9 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
                 "manual_adjustment": "0.50",
                 "currency_basis": "CNY",
                 "source_version": "src-v1",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
             }
         ],
         nonstd_rows_by_type={},
@@ -190,6 +198,9 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
                 "manual_adjustment": "0.00",
                 "currency_basis": "CNY",
                 "source_version": "src-v2",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
             }
         ],
         nonstd_rows_by_type={},
@@ -241,4 +252,72 @@ def test_pnl_materialize_task_rejects_rows_outside_requested_report_date(tmp_pat
             nonstd_rows_by_type={},
             duckdb_path=str(tmp_path / "moss.duckdb"),
             governance_dir=str(tmp_path / "governance"),
+            formal_pnl_enabled=True,
+        )
+
+
+def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_disabled(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    with pytest.raises(RuntimeError, match="Formal pnl emission is disabled"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "交易性金融资产",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+        )
+
+
+def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    with pytest.raises(RuntimeError, match="Formal pnl scope config is empty"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "交易性金融资产",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            formal_pnl_enabled=True,
         )
