@@ -93,15 +93,28 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                     governance_dir=str(settings.governance_path),
                     run_id=run_id,
                 )
-            except Exception as exc:
-                _record_dispatch_failure(
-                    settings=settings,
-                    run_id=run_id,
-                    error_message="Product-category refresh queue dispatch failed.",
-                )
-                raise ProductCategoryRefreshServiceError(
-                    "Product-category refresh queue dispatch failed."
-                ) from exc
+            except Exception:
+                try:
+                    payload = materialize_product_category_pnl.fn(
+                        duckdb_path=str(settings.duckdb_path),
+                        source_dir=str(settings.product_category_source_dir),
+                        governance_dir=str(settings.governance_path),
+                        run_id=run_id,
+                    )
+                except Exception as fallback_exc:
+                    _record_dispatch_failure(
+                        settings=settings,
+                        run_id=run_id,
+                        error_message="Product-category refresh failed during sync fallback.",
+                    )
+                    raise ProductCategoryRefreshServiceError(
+                        "Product-category refresh failed during sync fallback."
+                    ) from fallback_exc
+                return {
+                    **payload,
+                    "job_name": PRODUCT_CATEGORY_JOB_NAME,
+                    "trigger_mode": "sync-fallback",
+                }
 
             return {
                 "status": "queued",
@@ -499,7 +512,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
             continue
         timestamp = _parse_timestamp(raw_value)
         return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
-    return True
+    return False
 
 
 def _parse_timestamp(raw_value: str) -> datetime:

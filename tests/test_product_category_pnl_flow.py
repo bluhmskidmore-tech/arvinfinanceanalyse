@@ -251,6 +251,59 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timestamps(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        CacheBuildRunRecord(
+            run_id="product-category-legacy-inflight",
+            job_name="product_category_pnl",
+            status="running",
+            cache_key="product_category_pnl.formal",
+            lock="lock:duckdb:product-category-pnl",
+            source_version="sv_product_category_pending",
+            vendor_version="vv_none",
+        ).model_dump(),
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Product-category refresh already in progress."
+    assert queued_messages == []
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    legacy = [record for record in records if record.get("run_id") == "product-category-legacy-inflight"]
+    assert len(legacy) == 1
+    assert legacy[0]["status"] == "running"
+    get_settings.cache_clear()
+
+
 def test_product_category_refresh_returns_409_when_refresh_is_already_in_progress(
     tmp_path,
     monkeypatch,
@@ -302,12 +355,12 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
     get_settings.cache_clear()
 
 
-def test_product_category_refresh_returns_503_when_queue_dispatch_fails_without_sync_fallback(
+def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fails(
     tmp_path,
     monkeypatch,
 ):
     data_root = tmp_path / "data_input"
-    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
     source_dir.mkdir(parents=True)
 
     _write_month_pair(source_dir, "202601", january=True)
@@ -319,14 +372,47 @@ def test_product_category_refresh_returns_503_when_queue_dispatch_fails_without_
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
-    fallback_calls: list[dict[str, object]] = []
     monkeypatch.setattr(
         "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
-        lambda **_: (_ for _ in ()).throw(RuntimeError("unexpected broker failure")),
+        lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["job_name"] == "product_category_pnl"
+    assert payload["trigger_mode"] == "sync-fallback"
+    assert payload["report_dates"] == ["2026-01-31"]
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_returns_503_when_sync_fallback_fails(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
     monkeypatch.setattr(
         "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.fn",
-        lambda **kwargs: fallback_calls.append(kwargs),
+        lambda **_: (_ for _ in ()).throw(RuntimeError("sync fallback failed")),
     )
 
     client = TestClient(
@@ -336,13 +422,12 @@ def test_product_category_refresh_returns_503_when_queue_dispatch_fails_without_
     response = client.post("/ui/pnl/product-category/refresh")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Product-category refresh queue dispatch failed."
-    assert fallback_calls == []
+    assert response.json()["detail"] == "Product-category refresh failed during sync fallback."
 
     records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
     latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
     assert latest["status"] == "failed"
-    assert latest["error_message"] == "Product-category refresh queue dispatch failed."
+    assert latest["error_message"] == "Product-category refresh failed during sync fallback."
     get_settings.cache_clear()
 
 

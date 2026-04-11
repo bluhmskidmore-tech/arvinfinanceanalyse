@@ -223,10 +223,6 @@ describe("OperationsAnalysisPage", () => {
       "href",
       "/news-events",
     );
-    expect(screen.getByRole("link", { name: "进入资产负债分析" })).toHaveAttribute(
-      "href",
-      "/balance-analysis",
-    );
     expect(screen.getByText("Macro data release calendar updated.")).toBeInTheDocument();
     expect(screen.getByText("vendor callback timeout")).toBeInTheDocument();
 

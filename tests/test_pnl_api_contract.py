@@ -322,6 +322,54 @@ def test_pnl_refresh_returns_409_when_same_report_date_is_already_in_progress(
     get_settings.cache_clear()
 
 
+def test_pnl_refresh_returns_409_when_legacy_inflight_has_no_timestamps(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    governance_dir = tmp_path / "governance"
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="run-legacy-inflight",
+                job_name="pnl_materialize",
+                status="running",
+                cache_key="pnl:phase2:materialize:formal",
+                lock="lock:duckdb:formal:pnl:phase2:materialize",
+                source_version="sv_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "report_date": "2026-02-28",
+        },
+    )
+
+    send_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/api/data/refresh_pnl")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Pnl refresh already in progress for report_date=2026-02-28."
+    assert send_calls == []
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    legacy = [record for record in records if record.get("run_id") == "run-legacy-inflight"]
+    assert len(legacy) == 1
+    assert legacy[0]["status"] == "running"
+    get_settings.cache_clear()
+
+
 def test_pnl_refresh_reconciles_stale_inflight_run_and_requeues_requested_month(
     tmp_path,
     monkeypatch,

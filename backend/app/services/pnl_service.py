@@ -326,7 +326,7 @@ def _is_stale_inflight_record(record: dict[str, object]) -> bool:
             continue
         timestamp = _parse_timestamp(raw_value)
         return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
-    return True
+    return False
 
 
 def _parse_timestamp(raw_value: str) -> datetime:
