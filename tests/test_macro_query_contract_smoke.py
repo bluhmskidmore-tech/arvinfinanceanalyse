@@ -25,6 +25,169 @@ def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_p
     get_settings.cache_clear()
 
 
+def test_choice_macro_latest_ignores_empty_snapshot_table_when_fact_rows_exist(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-latest.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_cpi_yoy',
+                'CN CPI YoY',
+                '2026-04-09',
+                0.7,
+                'monthly',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/macro/choice-series/latest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_cpi_yoy"]
+    assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_b"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_supports_legacy_catalog_schema(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-legacy-catalog.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                '2026-04-09',
+                1.82,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/macro/choice-series/latest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["series_id"] for item in payload["result"]["series"]] == ["cn_repo_7d"]
+    assert payload["result"]["series"][0]["vendor_series_code"] == ""
+    assert payload["result"]["series"][0]["batch_id"] is None
+    assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_b"
+    get_settings.cache_clear()
+
+
 def test_macro_foundation_preview_degrades_to_empty_payload_for_corrupt_duckdb(tmp_path, monkeypatch):
     corrupt_duckdb = tmp_path / "corrupt.duckdb"
     corrupt_duckdb.write_text("not-a-duckdb-file", encoding="utf-8")

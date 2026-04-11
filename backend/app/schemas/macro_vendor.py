@@ -6,6 +6,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 ChoiceMacroOptionValue = str | int | float | bool
+ChoiceMacroFetchMode = Literal["date_slice", "latest"]
+ChoiceMacroFetchGranularity = Literal["batch", "single"]
+ChoiceMacroRefreshTier = Literal["stable", "fallback", "isolated"]
 
 
 class ChoiceMacroSeriesConfig(BaseModel):
@@ -28,6 +31,10 @@ class ChoiceMacroBatchConfig(BaseModel):
     request_options: str
     series: list[ChoiceMacroSeriesConfig]
     catalog_version: str | None = None
+    fetch_mode: ChoiceMacroFetchMode = "date_slice"
+    fetch_granularity: ChoiceMacroFetchGranularity = "batch"
+    refresh_tier: ChoiceMacroRefreshTier = "stable"
+    policy_note: str | None = None
 
 
 class ChoiceMacroCatalogBatchConfig(BaseModel):
@@ -36,6 +43,10 @@ class ChoiceMacroCatalogBatchConfig(BaseModel):
     batch_id: str
     request_options: dict[str, ChoiceMacroOptionValue]
     series: list[ChoiceMacroSeriesConfig]
+    fetch_mode: ChoiceMacroFetchMode = "date_slice"
+    fetch_granularity: ChoiceMacroFetchGranularity = "batch"
+    refresh_tier: ChoiceMacroRefreshTier = "stable"
+    policy_note: str | None = None
 
 
 class ChoiceMacroCatalogAsset(BaseModel):
@@ -90,6 +101,16 @@ class MacroVendorPayload(BaseModel):
     series: list[MacroVendorSeries]
 
 
+class ChoiceMacroRecentPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    trade_date: str
+    value_numeric: float
+    source_version: str
+    vendor_version: str
+    quality_flag: Literal["ok", "warning", "error", "stale"] = "warning"
+
+
 class ChoiceMacroLatestPoint(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -97,9 +118,20 @@ class ChoiceMacroLatestPoint(BaseModel):
     series_name: str
     trade_date: str
     value_numeric: float
+    frequency: str
     unit: str
     source_version: str
     vendor_version: str
+    vendor_series_code: str = ""
+    batch_id: str | None = None
+    catalog_version: str | None = None
+    theme: str = "unknown"
+    is_core: bool = False
+    tags: list[str] = Field(default_factory=list)
+    request_options: str = ""
+    quality_flag: Literal["ok", "warning", "error", "stale"] = "warning"
+    latest_change: float | None = None
+    recent_points: list[ChoiceMacroRecentPoint] = Field(default_factory=list)
 
 
 class ChoiceMacroLatestPayload(BaseModel):

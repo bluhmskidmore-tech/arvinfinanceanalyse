@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import duckdb
@@ -7,6 +8,7 @@ import duckdb
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroLatestPayload,
     ChoiceMacroLatestPoint,
+    ChoiceMacroRecentPoint,
     MacroVendorPayload,
     MacroVendorSeries,
 )
@@ -29,10 +31,7 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
         return MacroVendorPayload(series=[])
 
     try:
-        tables = {
-            row[0]
-            for row in conn.execute("show tables").fetchall()
-        }
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "phase1_macro_vendor_catalog" not in tables:
             return MacroVendorPayload(series=[])
 
@@ -78,7 +77,7 @@ def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_version=vendor_version,
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
-        quality_flag=_quality_flag_for_series(payload.series),
+        quality_flag=_quality_flag_for_presence(payload.series),
         scenario_flag=False,
     )
     return {
@@ -102,45 +101,100 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
         if "fact_choice_macro_daily" not in tables:
             return ChoiceMacroLatestPayload(series=[])
 
-        rows = conn.execute(
-            """
-            with ranked as (
-              select
-                series_id,
-                series_name,
-                trade_date,
-                value_numeric,
-                unit,
-                source_version,
-                vendor_version,
-                row_number() over(partition by series_id order by trade_date desc) as rn
-              from fact_choice_macro_daily
-            )
-            select series_id, series_name, trade_date, value_numeric, unit, source_version, vendor_version
-            from ranked
-            where rn = 1
-            order by series_id
-            """
-        ).fetchall()
+        recent_rows = _load_choice_macro_recent_rows(conn, tables)
+        catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
     except duckdb.Error:
         return ChoiceMacroLatestPayload(series=[])
     finally:
         conn.close()
 
-    return ChoiceMacroLatestPayload(
-        series=[
-            ChoiceMacroLatestPoint(
-                series_id=str(series_id),
-                series_name=str(series_name),
-                trade_date=str(trade_date),
-                value_numeric=float(value_numeric),
-                unit=str(unit),
-                source_version=str(source_version),
-                vendor_version=str(vendor_version),
+    if not recent_rows:
+        return ChoiceMacroLatestPayload(series=[])
+
+    grouped_rows: dict[str, list[dict[str, object]]] = {}
+    for (
+        series_id,
+        series_name,
+        trade_date,
+        value_numeric,
+        frequency,
+        unit,
+        source_version,
+        vendor_version,
+        quality_flag,
+        _rn,
+    ) in recent_rows:
+        grouped_rows.setdefault(str(series_id), []).append(
+            {
+                "series_id": str(series_id),
+                "series_name": str(series_name),
+                "trade_date": str(trade_date),
+                "value_numeric": float(value_numeric),
+                "frequency": str(frequency),
+                "unit": str(unit),
+                "source_version": str(source_version),
+                "vendor_version": str(vendor_version),
+                "quality_flag": str(quality_flag),
+            }
+        )
+
+    series = []
+    for series_id in sorted(grouped_rows):
+        rows = grouped_rows[series_id]
+        latest = rows[0]
+        recent_points = [
+            ChoiceMacroRecentPoint(
+                trade_date=str(row["trade_date"]),
+                value_numeric=float(row["value_numeric"]),
+                source_version=str(row["source_version"]),
+                vendor_version=str(row["vendor_version"]),
+                quality_flag=_normalize_quality_flag(str(row["quality_flag"])),
             )
-            for series_id, series_name, trade_date, value_numeric, unit, source_version, vendor_version in rows
+            for row in rows
         ]
-    )
+        catalog = catalog_by_series.get(
+            series_id,
+            {
+                "series_name": "",
+                "vendor_series_code": "",
+                "batch_id": None,
+                "catalog_version": None,
+                "theme": "unknown",
+                "is_core": False,
+                "tags": [],
+                "request_options": "",
+                "frequency": latest["frequency"],
+                "unit": latest["unit"],
+            },
+        )
+        latest_change = None
+        if len(rows) > 1:
+            latest_change = float(latest["value_numeric"]) - float(rows[1]["value_numeric"])
+
+        series.append(
+            ChoiceMacroLatestPoint(
+                series_id=series_id,
+                series_name=str(latest["series_name"]),
+                trade_date=str(latest["trade_date"]),
+                value_numeric=float(latest["value_numeric"]),
+                frequency=str(catalog["frequency"] or latest["frequency"]),
+                unit=str(catalog["unit"] or latest["unit"]),
+                source_version=str(latest["source_version"]),
+                vendor_version=str(latest["vendor_version"]),
+                vendor_series_code=str(catalog["vendor_series_code"]),
+                batch_id=_as_optional_string(catalog["batch_id"]),
+                catalog_version=_as_optional_string(catalog["catalog_version"]),
+                theme=str(catalog["theme"]),
+                is_core=bool(catalog["is_core"]),
+                tags=list(catalog["tags"]),
+                request_options=str(catalog["request_options"]),
+                quality_flag=_normalize_quality_flag(str(latest["quality_flag"])),
+                latest_change=latest_change,
+                recent_points=recent_points,
+            )
+        )
+
+    return ChoiceMacroLatestPayload(series=series)
 
 
 def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
@@ -162,13 +216,173 @@ def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_version=vendor_version,
         rule_version=LIVE_RULE_VERSION,
         cache_version=LIVE_CACHE_VERSION,
-        quality_flag=_quality_flag_for_series(payload.series),
+        quality_flag=_aggregate_quality_flags([item.quality_flag for item in payload.series]),
         scenario_flag=False,
     )
     return {
         "result_meta": meta.model_dump(mode="json"),
         "result": payload.model_dump(mode="json"),
     }
+
+
+def _load_choice_macro_recent_rows(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+) -> list[tuple[object, ...]]:
+    if "choice_market_snapshot" in tables:
+        snapshot_count = conn.execute(
+            "select count(*) from choice_market_snapshot"
+        ).fetchone()
+        if snapshot_count and int(snapshot_count[0]) > 0:
+            return conn.execute(
+                """
+                with active_series as (
+                  select distinct series_id
+                  from choice_market_snapshot
+                ),
+                ranked as (
+                  select
+                    fact.series_id,
+                    fact.series_name,
+                    fact.trade_date,
+                    fact.value_numeric,
+                    fact.frequency,
+                    fact.unit,
+                    fact.source_version,
+                    fact.vendor_version,
+                    fact.quality_flag,
+                    row_number() over(partition by fact.series_id order by fact.trade_date desc) as rn
+                  from fact_choice_macro_daily as fact
+                  inner join active_series on active_series.series_id = fact.series_id
+                )
+                select
+                  series_id,
+                  series_name,
+                  trade_date,
+                  value_numeric,
+                  frequency,
+                  unit,
+                  source_version,
+                  vendor_version,
+                  quality_flag,
+                  rn
+                from ranked
+                where rn <= 3
+                order by series_id, rn
+                """
+            ).fetchall()
+
+    return conn.execute(
+        """
+        with ranked as (
+          select
+            series_id,
+            series_name,
+            trade_date,
+            value_numeric,
+            frequency,
+            unit,
+            source_version,
+            vendor_version,
+            quality_flag,
+            row_number() over(partition by series_id order by trade_date desc) as rn
+          from fact_choice_macro_daily
+        )
+        select
+          series_id,
+          series_name,
+          trade_date,
+          value_numeric,
+          frequency,
+          unit,
+          source_version,
+          vendor_version,
+          quality_flag,
+          rn
+        from ranked
+        where rn <= 3
+        order by series_id, rn
+        """
+    ).fetchall()
+
+
+def _load_choice_macro_catalog_map(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+) -> dict[str, dict[str, object]]:
+    if "phase1_macro_vendor_catalog" not in tables:
+        return {}
+
+    available_columns = {
+        str(row[1])
+        for row in conn.execute("pragma table_info('phase1_macro_vendor_catalog')").fetchall()
+    }
+    select_columns = [
+        "series_id",
+        "series_name",
+        _catalog_column_expr("vendor_series_code", available_columns, "''"),
+        _catalog_column_expr("batch_id", available_columns, "NULL"),
+        _catalog_column_expr("catalog_version", available_columns, "NULL"),
+        _catalog_column_expr("theme", available_columns, "'unknown'"),
+        _catalog_column_expr("is_core", available_columns, "false"),
+        _catalog_column_expr("tags_json", available_columns, "'[]'"),
+        _catalog_column_expr("request_options", available_columns, "''"),
+        "frequency",
+        "unit",
+    ]
+    rows = conn.execute(
+        f"""
+        select
+          {", ".join(select_columns)}
+        from phase1_macro_vendor_catalog
+        """
+    ).fetchall()
+
+    catalog_by_series: dict[str, dict[str, object]] = {}
+    for (
+        series_id,
+        series_name,
+        vendor_series_code,
+        batch_id,
+        catalog_version,
+        theme,
+        is_core,
+        tags_json,
+        request_options,
+        frequency,
+        unit,
+    ) in rows:
+        catalog_by_series[str(series_id)] = {
+            "series_name": str(series_name or ""),
+            "vendor_series_code": str(vendor_series_code or ""),
+            "batch_id": batch_id,
+            "catalog_version": catalog_version,
+            "theme": str(theme or "unknown"),
+            "is_core": bool(is_core),
+            "tags": _parse_tags_json(tags_json),
+            "request_options": str(request_options or ""),
+            "frequency": str(frequency or ""),
+            "unit": str(unit or ""),
+        }
+    return catalog_by_series
+
+
+def _catalog_column_expr(column: str, available_columns: set[str], fallback_sql: str) -> str:
+    if column in available_columns:
+        return column
+    return f"{fallback_sql} as {column}"
+
+
+def _parse_tags_json(value: object) -> list[str]:
+    if value is None:
+        return []
+    try:
+        parsed = json.loads(str(value))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [str(item) for item in parsed]
 
 
 def _aggregate_lineage_value(values: list[str], empty_value: str) -> str:
@@ -180,5 +394,28 @@ def _aggregate_lineage_value(values: list[str], empty_value: str) -> str:
     return "__".join(distinct)
 
 
-def _quality_flag_for_series(series: list[object]) -> str:
+def _quality_flag_for_presence(series: list[object]) -> str:
     return "ok" if series else "warning"
+
+
+def _aggregate_quality_flags(values: list[str]) -> str:
+    normalized = {_normalize_quality_flag(value) for value in values if value}
+    if not normalized:
+        return "warning"
+    for flag in ("error", "stale", "warning"):
+        if flag in normalized:
+            return flag
+    return "ok"
+
+
+def _normalize_quality_flag(value: str) -> str:
+    if value in {"ok", "warning", "error", "stale"}:
+        return value
+    return "warning"
+
+
+def _as_optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None

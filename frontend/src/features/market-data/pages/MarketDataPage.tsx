@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
 
@@ -20,6 +21,30 @@ const sectionGridStyle = {
 
 function formatPointValue(value: number, unit: string) {
   return `${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatDelta(value: number | null | undefined, unit: string) {
+  if (value == null) {
+    return "n/a";
+  }
+  const sign = value >= 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
+}
+
+function formatRecentPoint(point: ChoiceMacroRecentPoint) {
+  return `${point.trade_date} ${formatPointValue(point.value_numeric, "")}`;
+}
+
+function seriesTheme(point: ChoiceMacroLatestPoint) {
+  return point.theme?.trim() || "unknown";
+}
+
+function seriesTags(point: ChoiceMacroLatestPoint) {
+  return point.tags?.length ? point.tags.join(", ") : "no tags";
+}
+
+function seriesRecentPoints(point: ChoiceMacroLatestPoint) {
+  return point.recent_points ?? [];
 }
 
 export default function MarketDataPage() {
@@ -198,6 +223,7 @@ export default function MarketDataPage() {
             <div>source_version: {meta?.source_version ?? "pending"}</div>
             <div>vendor_version: {meta?.vendor_version ?? "pending"}</div>
             <div>rule_version: {meta?.rule_version ?? "pending"}</div>
+            <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
             <div>generated_at: {meta?.generated_at ?? "pending"}</div>
           </div>
           <div
@@ -229,28 +255,103 @@ export default function MarketDataPage() {
             {latestSeries.map((point) => (
               <div
                 key={point.series_id}
+                data-testid={`market-data-series-${point.series_id}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(0, 1.6fr) repeat(3, minmax(0, 0.8fr))",
-                  gap: 12,
-                  alignItems: "center",
-                  padding: 14,
+                  gap: 10,
+                  padding: 16,
                   borderRadius: 16,
                   border: "1px solid #e4ebf5",
                   background: "#ffffff",
                 }}
               >
-                <div>
-                  <div style={{ fontWeight: 600 }}>{point.series_name}</div>
-                  <div style={{ color: "#8090a8", fontSize: 12 }}>{point.series_id}</div>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{point.series_name}</div>
+                    <div style={{ color: "#8090a8", fontSize: 12 }}>
+                      {point.series_id}
+                      {point.vendor_series_code ? ` · ${point.vendor_series_code}` : ""}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      background: "#f3f6fb",
+                      color: "#31425b",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <span>{seriesTheme(point)}</span>
+                    <span>·</span>
+                    <span>{point.quality_flag ?? "warning"}</span>
+                  </div>
                 </div>
-                <div>{point.trade_date}</div>
-                <div style={{ fontWeight: 600, color: "#162033" }}>
-                  {formatPointValue(point.value_numeric, point.unit)}
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <div style={{ color: "#8090a8", fontSize: 12 }}>trade_date</div>
+                    <div>{point.trade_date}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#8090a8", fontSize: 12 }}>latest</div>
+                    <div style={{ fontWeight: 600, color: "#162033" }}>
+                      {formatPointValue(point.value_numeric, point.unit)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#8090a8", fontSize: 12 }}>delta</div>
+                    <div>{formatDelta(point.latest_change, point.unit)}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: "#8090a8", fontSize: 12 }}>batch</div>
+                    <div>{point.batch_id ?? "n/a"}</div>
+                  </div>
                 </div>
-                <div style={{ color: "#5c6b82", fontSize: 12 }}>
-                  {point.vendor_version}
+
+                <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.7 }}>
+                  catalog {point.catalog_version ?? "n/a"} · request {point.request_options || "n/a"} · tags{" "}
+                  {seriesTags(point)}
                 </div>
+
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {seriesRecentPoints(point).map((recentPoint) => (
+                    <span
+                      key={`${point.series_id}:${recentPoint.trade_date}:${recentPoint.vendor_version}`}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        padding: "6px 10px",
+                        borderRadius: 999,
+                        background: "#f8fafc",
+                        border: "1px solid #e4ebf5",
+                        color: "#5c6b82",
+                        fontSize: 12,
+                      }}
+                    >
+                      {formatRecentPoint(recentPoint)}
+                    </span>
+                  ))}
+                </div>
+
               </div>
             ))}
           </div>

@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 
 from backend.app.config.choice_runtime import _get_em_c, configure_emquant_parent, load_settings
@@ -169,6 +170,11 @@ def _pandas_edb_to_macro_payload(
         if rows is None or len(rows) == 0:
             continue
         latest = rows.iloc[-1]
+        result_value = latest["RESULT"]
+        if result_value is None:
+            continue
+        if isinstance(result_value, float) and math.isnan(result_value):
+            continue
         trade_date = _normalize_emquant_date(str(latest["DATES"]))
         latest_trade_date = max(latest_trade_date, trade_date)
         normalized.append(
@@ -177,7 +183,7 @@ def _pandas_edb_to_macro_payload(
                 "series_name": config.series_name,
                 "vendor_series_code": config.vendor_series_code,
                 "trade_date": trade_date,
-                "value_numeric": float(latest["RESULT"]),
+                "value_numeric": float(result_value),
                 "frequency": config.frequency,
                 "unit": config.unit,
             }

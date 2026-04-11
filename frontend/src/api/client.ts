@@ -285,6 +285,7 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       unit: "%",
       source_version: "sv_choice_macro_mock",
       vendor_version: "vv_choice_macro_20260410",
+      vendor_series_code: "EDB_M001",
     },
     {
       series_id: "M002",

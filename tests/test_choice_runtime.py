@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+import builtins
+import importlib
 import sys
 from pathlib import Path
 from types import ModuleType
+from types import SimpleNamespace
 
 import pytest
 
 from tests.helpers import load_module
+
+
+def test_governance_settings_env_files_resolve_under_repo():
+    settings_module = load_module(
+        "_test_governance_settings_path_check",
+        "backend/app/governance/settings.py",
+    )
+    root = settings_module._REPO_ROOT
+    assert (root / "backend" / "app" / "governance" / "settings.py").exists()
+    assert settings_module._ENV_FILES == (root / "config" / ".env", root / ".env")
 
 
 def test_configure_emquant_parent_inserts_parent_and_clears_import_cache(tmp_path, monkeypatch):
@@ -63,6 +76,183 @@ def test_load_settings_reads_yaml_and_env_overrides(tmp_path, monkeypatch):
     assert settings.choice_request_options == "Ispandas=1,RECVtimeout=5"
     assert settings.log_level == "INFO"
     assert settings.log_path == "logs/choice.log"
+
+
+def test_load_settings_reads_choice_runtime_fields_from_governance_settings(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+
+    monkeypatch.delenv("CHOICE_EMQUANT_PARENT", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_START_OPTIONS", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_REQUEST_OPTIONS", raising=False)
+    monkeypatch.setattr(
+        runtime_module,
+        "_load_governance_settings",
+        lambda: SimpleNamespace(
+            choice_emquant_parent="F:/EMQuantAPI_Python/python3",
+            choice_start_options="UserName=governance,PassWord=governance,ForceLogin=1",
+            choice_request_options="Ispandas=1,RECVtimeout=9",
+            choice_username="",
+            choice_password="",
+        ),
+    )
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_emquant_parent == "F:/EMQuantAPI_Python/python3"
+    assert settings.choice_start_options == "UserName=governance,PassWord=governance,ForceLogin=1"
+    assert settings.choice_request_options == "Ispandas=1,RECVtimeout=9"
+
+
+def test_load_settings_builds_choice_start_options_from_raw_choice_env(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+
+    monkeypatch.delenv("CHOICE_EMQUANT_PARENT", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_START_OPTIONS", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_REQUEST_OPTIONS", raising=False)
+    monkeypatch.setenv("CHOICE_USERNAME", "raw-user")
+    monkeypatch.setenv("CHOICE_PASSWORD", "raw-pass")
+    monkeypatch.setattr(
+        runtime_module,
+        "_load_governance_settings",
+        lambda: SimpleNamespace(
+            choice_emquant_parent="F:/EMQuantAPI_Python/python3",
+            choice_start_options="",
+            choice_request_options="",
+            choice_username="",
+            choice_password="",
+        ),
+    )
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_start_options == "UserName=raw-user,PassWord=raw-pass,ForceLogin=1"
+
+
+def test_load_settings_builds_choice_start_options_from_governance_credentials(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+
+    monkeypatch.delenv("CHOICE_EMQUANT_PARENT", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_START_OPTIONS", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_REQUEST_OPTIONS", raising=False)
+    monkeypatch.setattr(
+        runtime_module,
+        "_load_governance_settings",
+        lambda: SimpleNamespace(
+            choice_emquant_parent="F:/EMQuantAPI_Python/python3",
+            choice_start_options="",
+            choice_request_options="Ispandas=1,RECVtimeout=5",
+            choice_username="demo-user",
+            choice_password="demo-pass",
+        ),
+    )
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_emquant_parent == "F:/EMQuantAPI_Python/python3"
+    assert settings.choice_start_options == "UserName=demo-user,PassWord=demo-pass,ForceLogin=1"
+    assert settings.choice_request_options == "Ispandas=1,RECVtimeout=5"
+
+
+def test_load_settings_prefers_env_over_governance_settings(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+
+    monkeypatch.setenv("CHOICE_EMQUANT_PARENT", "F:/Env/EMQuantAPI_Python/python3")
+    monkeypatch.setenv("CHOICE_MACRO_CHOICE_START_OPTIONS", "UserName=env,PassWord=env,ForceLogin=1")
+    monkeypatch.setenv("CHOICE_MACRO_CHOICE_REQUEST_OPTIONS", "Ispandas=1,RECVtimeout=11")
+    monkeypatch.setattr(
+        runtime_module,
+        "_load_governance_settings",
+        lambda: SimpleNamespace(
+            choice_emquant_parent="F:/Governance/EMQuantAPI_Python/python3",
+            choice_start_options="UserName=governance,PassWord=governance,ForceLogin=1",
+            choice_request_options="Ispandas=1,RECVtimeout=5",
+            choice_username="governance-user",
+            choice_password="governance-pass",
+        ),
+    )
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_emquant_parent == "F:/Env/EMQuantAPI_Python/python3"
+    assert settings.choice_start_options == "UserName=env,PassWord=env,ForceLogin=1"
+    assert settings.choice_request_options == "Ispandas=1,RECVtimeout=11"
+
+
+def test_load_settings_reads_real_governance_settings_from_moss_env(monkeypatch):
+    governance_module = importlib.import_module("backend.app.governance.settings")
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+
+    monkeypatch.delenv("CHOICE_EMQUANT_PARENT", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_START_OPTIONS", raising=False)
+    monkeypatch.delenv("CHOICE_MACRO_CHOICE_REQUEST_OPTIONS", raising=False)
+    monkeypatch.setenv("MOSS_CHOICE_EMQUANT_PARENT", "F:/Moss/EMQuantAPI_Python/python3")
+    monkeypatch.setenv("MOSS_CHOICE_REQUEST_OPTIONS", "Ispandas=1,RECVtimeout=7")
+    monkeypatch.setenv("MOSS_CHOICE_USERNAME", "moss-user")
+    monkeypatch.setenv("MOSS_CHOICE_PASSWORD", "moss-pass")
+    governance_module.get_settings.cache_clear()
+
+    settings = runtime_module.load_settings()
+
+    assert settings.choice_emquant_parent == "F:/Moss/EMQuantAPI_Python/python3"
+    assert settings.choice_start_options == "UserName=moss-user,PassWord=moss-pass,ForceLogin=1"
+    assert settings.choice_request_options == "Ispandas=1,RECVtimeout=7"
+
+    governance_module.get_settings.cache_clear()
+
+
+def test_load_governance_settings_returns_none_when_governance_module_is_unavailable(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "backend.app.governance.settings":
+            raise ModuleNotFoundError(
+                "No module named 'backend.app.governance.settings'",
+                name="backend.app.governance.settings",
+            )
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert runtime_module._load_governance_settings() is None
+
+
+def test_load_governance_settings_propagates_get_settings_failures(monkeypatch):
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "backend.app.governance.settings":
+            return SimpleNamespace(
+                get_settings=lambda: (_ for _ in ()).throw(RuntimeError("settings boom"))
+            )
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    with pytest.raises(RuntimeError, match="settings boom"):
+        runtime_module._load_governance_settings()
 
 
 def test_choice_client_lazy_imports_emquant_c_and_omits_recvtimeout_for_edbquery(tmp_path, monkeypatch):
@@ -163,6 +353,7 @@ def test_init_runtime_loads_settings_and_configures_emquant_parent(tmp_path, mon
         "backend.app.config.choice_runtime",
         "backend/app/config/choice_runtime.py",
     )
+    monkeypatch.setattr(runtime_module, "_load_governance_settings", lambda: None)
 
     settings_file = tmp_path / "settings.yaml"
     settings_file.write_text(

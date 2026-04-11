@@ -10,6 +10,7 @@ from typing import Any
 
 
 _EM_C: Any | None = None
+_GOVERNANCE_SETTINGS_MODULE = "backend.app.governance.settings"
 
 
 @dataclass
@@ -75,6 +76,10 @@ def load_settings(yaml_path: Path | None = None) -> AppSettings:
     if path.exists():
         data.update(_parse_simple_yaml(path))
 
+    governance_settings = _load_governance_settings()
+    if governance_settings is not None:
+        _merge_governance_settings(data, governance_settings)
+
     env_parent = os.environ.get("CHOICE_EMQUANT_PARENT", "").strip()
     if env_parent:
         data["choice_emquant_parent"] = env_parent
@@ -99,6 +104,56 @@ def _init_runtime(yaml_path: Path | None = None) -> AppSettings:
     configure_emquant_parent(settings.choice_emquant_parent)
     setup_logging(settings.log_level, settings.log_path)
     return settings
+
+
+def _load_governance_settings() -> Any | None:
+    try:
+        from backend.app.governance.settings import get_settings
+    except ModuleNotFoundError as exc:
+        if _is_governance_settings_unavailable(exc):
+            return None
+        raise
+
+    return get_settings()
+
+
+def _is_governance_settings_unavailable(exc: ModuleNotFoundError) -> bool:
+    missing_name = str(getattr(exc, "name", "") or "")
+    return missing_name in {
+        "backend",
+        "backend.app",
+        "backend.app.governance",
+        _GOVERNANCE_SETTINGS_MODULE,
+    }
+
+
+def _merge_governance_settings(data: dict[str, str], settings: Any) -> None:
+    emquant_parent = str(getattr(settings, "choice_emquant_parent", "") or "").strip()
+    if emquant_parent:
+        data["choice_emquant_parent"] = emquant_parent
+
+    username = str(getattr(settings, "choice_username", "") or "").strip()
+    password = str(getattr(settings, "choice_password", "") or "").strip()
+    if not username:
+        username = os.environ.get("CHOICE_USERNAME", "").strip()
+    if not password:
+        password = os.environ.get("CHOICE_PASSWORD", "").strip()
+
+    start_options = str(getattr(settings, "choice_start_options", "") or "").strip()
+    if not start_options:
+        start_options = _build_choice_start_options(username=username, password=password)
+    if start_options:
+        data["choice_start_options"] = start_options
+
+    request_options = str(getattr(settings, "choice_request_options", "") or "").strip()
+    if request_options:
+        data["choice_request_options"] = request_options
+
+
+def _build_choice_start_options(username: str, password: str) -> str:
+    if not username or not password:
+        return ""
+    return f"UserName={username},PassWord={password},ForceLogin=1"
 
 
 def _parse_simple_yaml(path: Path) -> dict[str, str]:

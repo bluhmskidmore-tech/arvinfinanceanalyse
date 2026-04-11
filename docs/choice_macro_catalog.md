@@ -29,11 +29,22 @@ Each batch is a JSON object with:
 
 - `batch_id`
 - `request_options`
+- `fetch_mode`
+- `fetch_granularity`
+- `refresh_tier`
+- `policy_note`
 - `series[]`
 
 Each `series[]` entry uses the fields above.
 
-`request_options` is the exact EDB option string for that batch. The runtime still merges in the global Choice request settings before calling EmQuant, and the adapter falls back to `IsPublishDate=1,RowIndex=1,Ispandas=1,RECVtimeout=<timeout>` when a batch leaves it empty.
+Batch strategy fields mean:
+
+- `fetch_mode`: `date_slice` or `latest`
+- `fetch_granularity`: `batch` or `single`
+- `refresh_tier`: `stable`, `fallback`, or `isolated`
+- `policy_note`: short governance note explaining why the batch sits in that lane
+
+`request_options` is the batch EDB option template. For `date_slice` batches, `StartDate` / `EndDate` may use the `__RUN_DATE__` placeholder so the refresh resolves them at runtime instead of pinning a stale calendar day into source control.
 
 The raw fallback keeps the same batch idea in line form: a `# batch_id ...` comment header followed by one `data=c.edb("code1,code2", "options")` command.
 
@@ -46,6 +57,9 @@ The raw fallback keeps the same batch idea in line form: a `# batch_id ...` comm
 ## Thin Slice Behavior
 
 - The catalog feeds the current EmQuant thin slice only.
+- `stable` batches stay on the default refresh path.
+- `fallback` batches stay on the default refresh path but can use `latest` + `single` fetches to recover low-frequency series.
+- `isolated` batches are cataloged for governance but skipped by the default refresh path until the vendor/API path is confirmed.
 - Batches with no data are skipped.
 - A skipped batch does not fail the whole refresh run.
 - Successful batches are merged, archived, and materialized into the Choice macro DuckDB tables used by the latest preview endpoint.

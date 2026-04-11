@@ -29,6 +29,10 @@ def test_vendor_preflight_reports_typed_missing_config_state(
 ):
     schema_module = load_module("backend.app.schemas.vendor", "backend/app/schemas/vendor.py")
     module = load_module(module_name, relative_path)
+    runtime_module = load_module(
+        "backend.app.config.choice_runtime",
+        "backend/app/config/choice_runtime.py",
+    )
 
     preflight_model = getattr(schema_module, "VendorPreflightResult", None)
     if preflight_model is None:
@@ -36,6 +40,13 @@ def test_vendor_preflight_reports_typed_missing_config_state(
 
     for env_var in env_vars:
         monkeypatch.delenv(env_var, raising=False)
+
+    if expected_vendor == "choice":
+        monkeypatch.setattr(
+            module,
+            "load_settings",
+            lambda: runtime_module.AppSettings(),
+        )
 
     instance = module.VendorAdapter()
     result = instance.preflight()

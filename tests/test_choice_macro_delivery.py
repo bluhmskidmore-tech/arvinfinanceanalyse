@@ -38,29 +38,25 @@ def _write_choice_macro_catalog(path) -> None:
     path.write_text(
         json.dumps(
             {
-                "catalog_version": "2026-04-10.choice-macro.v1",
+                "catalog_version": "2026-04-11.choice-macro.v2",
                 "vendor_name": "choice",
-                "generated_at": "2026-04-10T09:00:00Z",
+                "generated_at": "2026-04-11T09:00:00Z",
                 "generated_from": "tests.fixture.choice_macro_catalog",
                 "batches": [
                     {
-                        "batch_id": "catalog_cmd1",
+                        "batch_id": "stable_daily",
+                        "fetch_mode": "date_slice",
+                        "fetch_granularity": "batch",
+                        "refresh_tier": "stable",
+                        "policy_note": "main refresh date-slice lane",
                         "request_options": {
-                            "IsPublishDate": 1,
-                            "RowIndex": 1,
+                            "IsLatest": 0,
+                            "StartDate": "__RUN_DATE__",
+                            "EndDate": "__RUN_DATE__",
                             "Ispandas": 1,
+                            "RECVtimeout": 5,
                         },
                         "series": [
-                            {
-                                "series_id": "cn_cpi_yoy",
-                                "series_name": "CN CPI YoY",
-                                "vendor_series_code": "EDB_CPI_YOY",
-                                "frequency": "monthly",
-                                "unit": "pct",
-                                "theme": "inflation",
-                                "is_core": True,
-                                "tags": ["china", "macro", "inflation"],
-                            },
                             {
                                 "series_id": "cn_repo_7d",
                                 "series_name": "CN Repo 7D",
@@ -74,13 +70,28 @@ def _write_choice_macro_catalog(path) -> None:
                         ],
                     },
                     {
-                        "batch_id": "catalog_cmd2",
+                        "batch_id": "fallback_latest_single",
+                        "fetch_mode": "latest",
+                        "fetch_granularity": "single",
+                        "refresh_tier": "fallback",
+                        "policy_note": "low-frequency latest-only lane",
                         "request_options": {
-                            "IsLatest": 0,
-                            "StartDate": "2026-04-09",
-                            "EndDate": "2026-04-09",
+                            "IsLatest": 1,
+                            "RowIndex": 1,
+                            "Ispandas": 1,
+                            "RECVtimeout": 5,
                         },
                         "series": [
+                            {
+                                "series_id": "cn_cpi_yoy",
+                                "series_name": "CN CPI YoY",
+                                "vendor_series_code": "EDB_CPI_YOY",
+                                "frequency": "monthly",
+                                "unit": "pct",
+                                "theme": "inflation",
+                                "is_core": True,
+                                "tags": ["china", "macro", "inflation"],
+                            },
                             {
                                 "series_id": "cn_m2_yoy",
                                 "series_name": "CN M2 YoY",
@@ -90,6 +101,31 @@ def _write_choice_macro_catalog(path) -> None:
                                 "theme": "money_supply",
                                 "is_core": False,
                                 "tags": ["china", "macro", "money_supply"],
+                            }
+                        ],
+                    },
+                    {
+                        "batch_id": "isolated_vendor_pending",
+                        "fetch_mode": "latest",
+                        "fetch_granularity": "single",
+                        "refresh_tier": "isolated",
+                        "policy_note": "wait for vendor permission or interface confirmation",
+                        "request_options": {
+                            "IsLatest": 1,
+                            "RowIndex": 1,
+                            "Ispandas": 1,
+                            "RECVtimeout": 5,
+                        },
+                        "series": [
+                            {
+                                "series_id": "cn_shibor_on",
+                                "series_name": "CN Shibor ON",
+                                "vendor_series_code": "EDB_SHIBOR_ON",
+                                "frequency": "daily",
+                                "unit": "pct",
+                                "theme": "rates",
+                                "is_core": False,
+                                "tags": ["china", "rates", "vendor_pending"],
                             }
                         ],
                     },
@@ -645,6 +681,62 @@ def test_choice_adapter_parses_pandas_edb_result(monkeypatch):
     assert snapshot.series[0].value_numeric == 8.8
 
 
+def test_choice_adapter_pandas_edb_skips_null_result_rows(monkeypatch):
+    schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+    adapter_module = load_module(
+        "backend.app.repositories.choice_adapter",
+        "backend/app/repositories/choice_adapter.py",
+    )
+
+    frame = pd.DataFrame(
+        {
+            "DATES": ["2026/04/09", "2026/04/09"],
+            "RESULT": ["", ""],
+            "PUBLISHDATE": ["20260409", "20260409"],
+        },
+        index=["EMM_NULL", "EMM_OK"],
+        dtype=object,
+    )
+    frame.index.name = "CODES"
+    frame.at["EMM_NULL", "RESULT"] = None
+    frame.at["EMM_OK", "RESULT"] = 1.82
+
+    class FakeChoiceClient:
+        def start(self):
+            return 0
+
+        def edb(self, codes: list[str], options: str = ""):
+            return frame
+
+    monkeypatch.setattr(adapter_module, "ChoiceClient", lambda: FakeChoiceClient())
+
+    configs = [
+        schema_module.ChoiceMacroSeriesConfig(
+            series_id="emm_null",
+            series_name="Null EDB",
+            vendor_series_code="EMM_NULL",
+            frequency="daily",
+            unit="unknown",
+        ),
+        schema_module.ChoiceMacroSeriesConfig(
+            series_id="emm_ok",
+            series_name="OK EDB",
+            vendor_series_code="EMM_OK",
+            frequency="daily",
+            unit="pct",
+        ),
+    ]
+
+    snapshot = adapter_module.VendorAdapter().fetch_macro_snapshot(configs)
+
+    assert len(snapshot.series) == 1
+    assert snapshot.series[0].series_id == "emm_ok"
+    assert snapshot.series[0].value_numeric == 1.82
+
+
 def test_choice_macro_refresh_initializes_runtime_before_fetch(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
@@ -742,16 +834,28 @@ def test_choice_macro_load_batches_prefers_structured_catalog(tmp_path, monkeypa
             "backend.app.tasks.choice_macro",
             "backend/app/tasks/choice_macro.py",
         )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
 
     batches = task_module.load_choice_macro_batches(get_settings())
 
-    assert [batch.batch_id for batch in batches] == ["catalog_cmd1", "catalog_cmd2"]
-    assert batches[0].catalog_version == "2026-04-10.choice-macro.v1"
-    assert batches[0].request_options == "IsPublishDate=1,RowIndex=1,Ispandas=1"
-    assert [item.vendor_series_code for item in batches[0].series] == ["EDB_CPI_YOY", "EDB_REPO_7D"]
-    assert batches[0].series[0].theme == "inflation"
-    assert batches[0].series[0].is_core is True
-    assert batches[1].series[0].tags == ["china", "macro", "money_supply"]
+    assert [batch.batch_id for batch in batches] == [
+        "stable_daily",
+        "fallback_latest_single",
+        "isolated_vendor_pending",
+    ]
+    assert batches[0].catalog_version == "2026-04-11.choice-macro.v2"
+    assert batches[0].request_options == "IsLatest=0,StartDate=2026-04-11,EndDate=2026-04-11,Ispandas=1,RECVtimeout=5"
+    assert batches[0].fetch_mode == "date_slice"
+    assert batches[0].fetch_granularity == "batch"
+    assert batches[0].refresh_tier == "stable"
+    assert batches[1].request_options == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+    assert batches[1].fetch_granularity == "single"
+    assert batches[1].refresh_tier == "fallback"
+    assert [item.vendor_series_code for item in batches[0].series] == ["EDB_REPO_7D"]
+    assert batches[1].series[0].theme == "inflation"
+    assert batches[1].series[0].is_core is True
+    assert batches[1].series[1].tags == ["china", "macro", "money_supply"]
+    assert batches[2].refresh_tier == "isolated"
     get_settings.cache_clear()
 
 
@@ -853,7 +957,11 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
               theme,
               is_core,
               tags_json,
-              request_options
+              request_options,
+              fetch_mode,
+              fetch_granularity,
+              refresh_tier,
+              policy_note
             from phase1_macro_vendor_catalog
             order by series_id
             """
@@ -865,32 +973,44 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
         (
             "cn_cpi_yoy",
             "EDB_CPI_YOY",
-            "catalog_cmd1",
-            "2026-04-10.choice-macro.v1",
+            "fallback_latest_single",
+            "2026-04-11.choice-macro.v2",
             "inflation",
             True,
             '["china","macro","inflation"]',
-            "IsPublishDate=1,RowIndex=1,Ispandas=1",
+            "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
+            "latest",
+            "single",
+            "fallback",
+            "low-frequency latest-only lane",
         ),
         (
             "cn_m2_yoy",
             "EDB_M2_YOY",
-            "catalog_cmd2",
-            "2026-04-10.choice-macro.v1",
+            "fallback_latest_single",
+            "2026-04-11.choice-macro.v2",
             "money_supply",
             False,
             '["china","macro","money_supply"]',
-            "IsLatest=0,StartDate=2026-04-09,EndDate=2026-04-09",
+            "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
+            "latest",
+            "single",
+            "fallback",
+            "low-frequency latest-only lane",
         ),
         (
             "cn_repo_7d",
             "EDB_REPO_7D",
-            "catalog_cmd1",
-            "2026-04-10.choice-macro.v1",
+            "stable_daily",
+            "2026-04-11.choice-macro.v2",
             "liquidity",
             True,
             '["china","rates","liquidity"]',
-            "IsPublishDate=1,RowIndex=1,Ispandas=1",
+            "IsLatest=0,StartDate=2026-04-11,EndDate=2026-04-11,Ispandas=1,RECVtimeout=5",
+            "date_slice",
+            "batch",
+            "stable",
+            "main refresh date-slice lane",
         ),
     ]
     get_settings.cache_clear()
@@ -970,6 +1090,153 @@ def test_choice_macro_refresh_supports_multi_batch_command_file(tmp_path, monkey
     assert len(observed) == 2
     assert observed[0][0] == ["EMM00000015", "EMM00008445"]
     assert observed[1][0] == ["EMM00087083"]
+    assert observed[1][1] == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+
+
+def test_choice_macro_refresh_splits_single_fetch_catalog_batches(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    catalog_file = tmp_path / "choice_macro_catalog.json"
+    _write_choice_macro_catalog(catalog_file)
+    catalog = json.loads(catalog_file.read_text(encoding="utf-8"))
+    catalog["batches"][1]["series"].append(
+        {
+            "series_id": "cn_social_financing",
+            "series_name": "Social Financing",
+            "vendor_series_code": "EDB_SOCIAL_FINANCING",
+            "frequency": "monthly",
+            "unit": "pct",
+            "theme": "money_supply",
+            "is_core": False,
+            "tags": ["china", "macro", "money_supply"],
+        }
+    )
+    catalog_file.write_text(json.dumps(catalog, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_file))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", "[]")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[tuple[str, list[str], str]] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        observed.append((series[0].series_id, [item.vendor_series_code for item in series], request_options))
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_20260409T140000Z",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=float(index + 1),
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version="vv_choice_20260409T140000Z",
+                )
+                for index, item in enumerate(series)
+            ],
+            raw_payload={
+                "vendor_version": "vv_choice_20260409T140000Z",
+                "captured_at": "2026-04-09T14:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["series_count"] == 4
+    assert observed[0][1] == ["EDB_REPO_7D"]
+    assert observed[1][1] == ["EDB_CPI_YOY"]
+    assert observed[2][1] == ["EDB_M2_YOY"]
+    assert observed[3][1] == ["EDB_SOCIAL_FINANCING"]
+    assert observed[1][2] == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+    assert observed[2][2] == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+
+
+def test_choice_macro_refresh_skips_isolated_catalog_batches(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    catalog_file = tmp_path / "choice_macro_catalog.json"
+    _write_choice_macro_catalog(catalog_file)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_file))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", "[]")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[str] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        observed.append(series[0].series_id)
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_20260409T140000Z",
+            captured_at="2026-04-09T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-09",
+                    value_numeric=float(index + 1),
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version="vv_choice_20260409T140000Z",
+                )
+                for index, item in enumerate(series)
+            ],
+            raw_payload=_choice_gateway_payload(),
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "completed"
+    assert "cn_shibor_on" not in observed
+    get_settings.cache_clear()
 
 
 def test_choice_macro_refresh_skips_no_data_batch_and_keeps_successful_batch(tmp_path, monkeypatch):

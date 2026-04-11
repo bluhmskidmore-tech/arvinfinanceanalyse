@@ -1,129 +1,23 @@
 {
-  "catalog_version": "2026-04-10.choice-macro.v1",
+  "catalog_version": "2026-04-11.choice-macro.v2",
   "vendor_name": "choice",
-  "generated_at": "2026-04-10T01:42:35.029044+00:00",
-  "generated_from": "config/choice_macro_commands_2026-04-09.txt",
+  "generated_at": "2026-04-11T14:07:47.199208+08:00",
+  "generated_from": "config/choice_macro_commands_2026-04-09.txt + data/choice_refresh_strategy_2026-04-11.json",
   "batches": [
     {
-      "batch_id": "cmd1",
+      "batch_id": "stable_daily",
+      "fetch_mode": "date_slice",
+      "fetch_granularity": "batch",
+      "refresh_tier": "stable",
+      "policy_note": "Series already proven on same-day date-slice; keep in default main refresh.",
       "request_options": {
         "IsLatest": 0,
-        "StartDate": "2026-04-09",
-        "EndDate": "2026-04-09"
+        "StartDate": "__RUN_DATE__",
+        "EndDate": "__RUN_DATE__",
+        "Ispandas": 1,
+        "RECVtimeout": 5
       },
       "series": [
-        {
-          "series_id": "EMM00619381",
-          "series_name": "中国:GDP:现价:当季值",
-          "vendor_series_code": "EMM00619381",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00000015",
-          "series_name": "中国:GDP:现价",
-          "vendor_series_code": "EMM00000015",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM01244358",
-          "series_name": "地方政府债务占GDP比重(地方政府杠杆率)",
-          "vendor_series_code": "EMM01244358",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00008445",
-          "series_name": "工业增加值:当月同比",
-          "vendor_series_code": "EMM00008445",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00008464",
-          "series_name": "工业增加值:累计同比",
-          "vendor_series_code": "EMM00008464",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00072858",
-          "series_name": "中国:CPI:不变价:1978年=100",
-          "vendor_series_code": "EMM00072858",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00072301",
-          "series_name": "CPI:当月同比",
-          "vendor_series_code": "EMM00072301",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
         {
           "series_id": "EMM00058129",
           "series_name": "中间价:澳元兑人民币",
@@ -224,166 +118,6 @@
           "series_id": "EMM00641604",
           "series_name": "人民币指数",
           "vendor_series_code": "EMM00641604",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166216",
-          "series_name": "活期存款利率",
-          "vendor_series_code": "EMM00166216",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166239",
-          "series_name": "短期贷款利率:6个月(含)",
-          "vendor_series_code": "EMM00166239",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166241",
-          "series_name": "中长期贷款利率:1至3年(含)",
-          "vendor_series_code": "EMM00166241",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166252",
-          "series_name": "SHIBOR:隔夜",
-          "vendor_series_code": "EMM00166252",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166253",
-          "series_name": "SHIBOR:1周",
-          "vendor_series_code": "EMM00166253",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166254",
-          "series_name": "SHIBOR:2周",
-          "vendor_series_code": "EMM00166254",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167612",
-          "series_name": "银行间同业拆借加权利率:1天",
-          "vendor_series_code": "EMM00167612",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167613",
-          "series_name": "银行间同业拆借加权利率:7天",
-          "vendor_series_code": "EMM00167613",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167614",
-          "series_name": "银行间同业拆借加权利率:14天",
-          "vendor_series_code": "EMM00167614",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00167708",
-          "series_name": "银行间同业拆借加权利率:21天",
-          "vendor_series_code": "EMM00167708",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -560,150 +294,6 @@
           "series_id": "EMM00166469",
           "series_name": "中债国债到期收益率:30年",
           "vendor_series_code": "EMM00166469",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166438",
-          "series_name": "中债地方政府债到期收益率:6个月",
-          "vendor_series_code": "EMM00166438",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166440",
-          "series_name": "中债地方政府债到期收益率:1年",
-          "vendor_series_code": "EMM00166440",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166441",
-          "series_name": "中债地方政府债到期收益率:2年",
-          "vendor_series_code": "EMM00166441",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166442",
-          "series_name": "中债地方政府债到期收益率:3年",
-          "vendor_series_code": "EMM00166442",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166443",
-          "series_name": "中债地方政府债到期收益率:4年",
-          "vendor_series_code": "EMM00166443",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166444",
-          "series_name": "中债地方政府债到期收益率:5年",
-          "vendor_series_code": "EMM00166444",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166445",
-          "series_name": "中债地方政府债到期收益率:6年",
-          "vendor_series_code": "EMM00166445",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166446",
-          "series_name": "中债地方政府债到期收益率:7年",
-          "vendor_series_code": "EMM00166446",
-          "frequency": "unknown",
-          "unit": "unknown",
-          "theme": "macro_market",
-          "is_core": true,
-          "tags": [
-            "choice",
-            "macro",
-            "market",
-            "rates",
-            "fx"
-          ]
-        },
-        {
-          "series_id": "EMM00166447",
-          "series_name": "中债地方政府债到期收益率:8年",
-          "vendor_series_code": "EMM00166447",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1243,11 +833,26 @@
             "rates",
             "fx"
           ]
-        },
+        }
+      ]
+    },
+    {
+      "batch_id": "fallback_latest_single",
+      "fetch_mode": "latest",
+      "fetch_granularity": "single",
+      "refresh_tier": "fallback",
+      "policy_note": "Series are sparse or low-frequency; fetch individually via latest-only without blocking the stable lane.",
+      "request_options": {
+        "IsLatest": 1,
+        "RowIndex": 1,
+        "Ispandas": 1,
+        "RECVtimeout": 5
+      },
+      "series": [
         {
-          "series_id": "EMM01474568",
-          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:6M",
-          "vendor_series_code": "EMM01474568",
+          "series_id": "EMM00619381",
+          "series_name": "中国:GDP:现价:当季值",
+          "vendor_series_code": "EMM00619381",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1261,9 +866,9 @@
           ]
         },
         {
-          "series_id": "EMM01474569",
-          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:9M",
-          "vendor_series_code": "EMM01474569",
+          "series_id": "EMM00000015",
+          "series_name": "中国:GDP:现价",
+          "vendor_series_code": "EMM00000015",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1277,9 +882,9 @@
           ]
         },
         {
-          "series_id": "EMM01474570",
-          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:1Y",
-          "vendor_series_code": "EMM01474570",
+          "series_id": "EMM01244358",
+          "series_name": "地方政府债务占GDP比重(地方政府杠杆率)",
+          "vendor_series_code": "EMM01244358",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1293,9 +898,9 @@
           ]
         },
         {
-          "series_id": "EMM01474571",
-          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:2Y",
-          "vendor_series_code": "EMM01474571",
+          "series_id": "EMM00008445",
+          "series_name": "工业增加值:当月同比",
+          "vendor_series_code": "EMM00008445",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1309,9 +914,9 @@
           ]
         },
         {
-          "series_id": "EMM01474572",
-          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:3Y",
-          "vendor_series_code": "EMM01474572",
+          "series_id": "EMM00008464",
+          "series_name": "工业增加值:累计同比",
+          "vendor_series_code": "EMM00008464",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1325,9 +930,9 @@
           ]
         },
         {
-          "series_id": "EMI01743799",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:ON",
-          "vendor_series_code": "EMI01743799",
+          "series_id": "EMM00072858",
+          "series_name": "中国:CPI:不变价:1978年=100",
+          "vendor_series_code": "EMM00072858",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1341,9 +946,9 @@
           ]
         },
         {
-          "series_id": "EMI01743800",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:TN",
-          "vendor_series_code": "EMI01743800",
+          "series_id": "EMM00072301",
+          "series_name": "CPI:当月同比",
+          "vendor_series_code": "EMM00072301",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1357,9 +962,9 @@
           ]
         },
         {
-          "series_id": "EMI01743801",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:SN",
-          "vendor_series_code": "EMI01743801",
+          "series_id": "EMM00166216",
+          "series_name": "活期存款利率",
+          "vendor_series_code": "EMM00166216",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1373,9 +978,9 @@
           ]
         },
         {
-          "series_id": "EMI01743802",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:1W",
-          "vendor_series_code": "EMI01743802",
+          "series_id": "EMM00166239",
+          "series_name": "短期贷款利率:6个月(含)",
+          "vendor_series_code": "EMM00166239",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1389,9 +994,9 @@
           ]
         },
         {
-          "series_id": "EMI01743803",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:2W",
-          "vendor_series_code": "EMI01743803",
+          "series_id": "EMM00166241",
+          "series_name": "中长期贷款利率:1至3年(含)",
+          "vendor_series_code": "EMM00166241",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1405,9 +1010,9 @@
           ]
         },
         {
-          "series_id": "EMI01743804",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:3W",
-          "vendor_series_code": "EMI01743804",
+          "series_id": "EMM00166438",
+          "series_name": "中债地方政府债到期收益率:6个月",
+          "vendor_series_code": "EMM00166438",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1421,9 +1026,121 @@
           ]
         },
         {
-          "series_id": "EMI01743805",
-          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:1M",
-          "vendor_series_code": "EMI01743805",
+          "series_id": "EMM00166440",
+          "series_name": "中债地方政府债到期收益率:1年",
+          "vendor_series_code": "EMM00166440",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166441",
+          "series_name": "中债地方政府债到期收益率:2年",
+          "vendor_series_code": "EMM00166441",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166442",
+          "series_name": "中债地方政府债到期收益率:3年",
+          "vendor_series_code": "EMM00166442",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166443",
+          "series_name": "中债地方政府债到期收益率:4年",
+          "vendor_series_code": "EMM00166443",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166444",
+          "series_name": "中债地方政府债到期收益率:5年",
+          "vendor_series_code": "EMM00166444",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166445",
+          "series_name": "中债地方政府债到期收益率:6年",
+          "vendor_series_code": "EMM00166445",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166446",
+          "series_name": "中债地方政府债到期收益率:7年",
+          "vendor_series_code": "EMM00166446",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166447",
+          "series_name": "中债地方政府债到期收益率:8年",
+          "vendor_series_code": "EMM00166447",
           "frequency": "unknown",
           "unit": "unknown",
           "theme": "macro_market",
@@ -1611,17 +1328,7 @@
             "rates",
             "fx"
           ]
-        }
-      ]
-    },
-    {
-      "batch_id": "cmd2",
-      "request_options": {
-        "IsLatest": 0,
-        "StartDate": "2026-04-09",
-        "EndDate": "2026-04-09"
-      },
-      "series": [
+        },
         {
           "series_id": "EMM00268521",
           "series_name": "M1-M2",
@@ -1890,6 +1597,325 @@
             "macro",
             "liquidity",
             "money"
+          ]
+        }
+      ]
+    },
+    {
+      "batch_id": "isolated_vendor_pending",
+      "fetch_mode": "latest",
+      "fetch_granularity": "single",
+      "refresh_tier": "isolated",
+      "policy_note": "Do not include in default refresh until Choice confirms API ownership or account permission.",
+      "request_options": {
+        "IsLatest": 1,
+        "RowIndex": 1,
+        "Ispandas": 1,
+        "RECVtimeout": 5
+      },
+      "series": [
+        {
+          "series_id": "EMM00166252",
+          "series_name": "SHIBOR:隔夜",
+          "vendor_series_code": "EMM00166252",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166253",
+          "series_name": "SHIBOR:1周",
+          "vendor_series_code": "EMM00166253",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00166254",
+          "series_name": "SHIBOR:2周",
+          "vendor_series_code": "EMM00166254",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00167612",
+          "series_name": "银行间同业拆借加权利率:1天",
+          "vendor_series_code": "EMM00167612",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00167613",
+          "series_name": "银行间同业拆借加权利率:7天",
+          "vendor_series_code": "EMM00167613",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00167614",
+          "series_name": "银行间同业拆借加权利率:14天",
+          "vendor_series_code": "EMM00167614",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM00167708",
+          "series_name": "银行间同业拆借加权利率:21天",
+          "vendor_series_code": "EMM00167708",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM01474568",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:6M",
+          "vendor_series_code": "EMM01474568",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM01474569",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:9M",
+          "vendor_series_code": "EMM01474569",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM01474570",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:1Y",
+          "vendor_series_code": "EMM01474570",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM01474571",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:2Y",
+          "vendor_series_code": "EMM01474571",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMM01474572",
+          "series_name": "LPR1Y(季付)利率互换收盘曲线_报买:3Y",
+          "vendor_series_code": "EMM01474572",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743799",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:ON",
+          "vendor_series_code": "EMI01743799",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743800",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:TN",
+          "vendor_series_code": "EMI01743800",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743801",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:SN",
+          "vendor_series_code": "EMI01743801",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743802",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:1W",
+          "vendor_series_code": "EMI01743802",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743803",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:2W",
+          "vendor_series_code": "EMI01743803",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743804",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:3W",
+          "vendor_series_code": "EMI01743804",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
+          ]
+        },
+        {
+          "series_id": "EMI01743805",
+          "series_name": "美元对人民币外汇掉期C-Swap定盘曲线:全价汇率:1M",
+          "vendor_series_code": "EMI01743805",
+          "frequency": "unknown",
+          "unit": "unknown",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "fx"
           ]
         }
       ]

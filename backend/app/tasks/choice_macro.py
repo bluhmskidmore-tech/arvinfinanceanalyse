@@ -4,6 +4,7 @@ import dramatiq
 import duckdb
 import hashlib
 import json
+from datetime import date
 from pathlib import Path
 
 from backend.app.config.choice_runtime import _init_runtime
@@ -64,10 +65,11 @@ def refresh_choice_macro_snapshot(
     try:
         batches = load_choice_macro_batches(settings)
         series_registry = _build_choice_series_registry(batches)
+        fetch_plan = _build_choice_macro_fetch_plan(batches)
 
         adapter = VendorAdapter()
         batch_snapshots: list[ChoiceMacroSnapshot] = []
-        for batch in batches:
+        for batch in fetch_plan:
             try:
                 snapshot = adapter.fetch_macro_snapshot(
                     series=batch.series,
@@ -124,6 +126,10 @@ def refresh_choice_macro_snapshot(
                             "is_core": False,
                             "tags_json": "[]",
                             "request_options": "",
+                            "fetch_mode": "date_slice",
+                            "fetch_granularity": "batch",
+                            "refresh_tier": "stable",
+                            "policy_note": None,
                         },
                     )
                     conn.execute(
@@ -178,8 +184,12 @@ def refresh_choice_macro_snapshot(
                           theme,
                           is_core,
                           tags_json,
-                          request_options
-                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          request_options,
+                          fetch_mode,
+                          fetch_granularity,
+                          refresh_tier,
+                          policy_note
+                        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         [
                             point.series_id,
@@ -195,6 +205,10 @@ def refresh_choice_macro_snapshot(
                             bool(registry_entry["is_core"]),
                             str(registry_entry["tags_json"]),
                             str(registry_entry["request_options"]),
+                            str(registry_entry["fetch_mode"]),
+                            str(registry_entry["fetch_granularity"]),
+                            str(registry_entry["refresh_tier"]),
+                            registry_entry["policy_note"],
                         ],
                     )
                 conn.execute("commit")
@@ -271,24 +285,34 @@ def _build_source_version(raw_payload: dict[str, object]) -> str:
 
 
 def load_choice_macro_batches(settings) -> list[ChoiceMacroBatchConfig]:
+    run_date = _choice_macro_run_date()
     catalog_path = _resolve_choice_macro_catalog_path(settings)
     if catalog_path is not None and catalog_path.exists():
-        return load_choice_macro_batches_from_catalog(catalog_path)
+        return _normalize_choice_macro_batches(
+            load_choice_macro_batches_from_catalog(catalog_path),
+            run_date=run_date,
+        )
 
     if settings.choice_macro_commands_file:
-        return load_choice_macro_batches_from_file(Path(settings.choice_macro_commands_file))
+        return _normalize_choice_macro_batches(
+            load_choice_macro_batches_from_file(Path(settings.choice_macro_commands_file)),
+            run_date=run_date,
+        )
 
     series = [
         ChoiceMacroSeriesConfig(**item)
         for item in json.loads(settings.choice_macro_series_json or "[]")
     ]
-    return [
-        ChoiceMacroBatchConfig(
-            batch_id="default",
-            request_options="IsPublishDate=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
-            series=series,
-        )
-    ]
+    return _normalize_choice_macro_batches(
+        [
+            ChoiceMacroBatchConfig(
+                batch_id="default",
+                request_options="IsPublishDate=1,RowIndex=1,Ispandas=1,RECVtimeout=5",
+                series=series,
+            )
+        ],
+        run_date=run_date,
+    )
 
 
 def load_choice_macro_batches_from_catalog(path: Path) -> list[ChoiceMacroBatchConfig]:
@@ -299,6 +323,10 @@ def load_choice_macro_batches_from_catalog(path: Path) -> list[ChoiceMacroBatchC
             request_options=_serialize_choice_request_options(batch.request_options),
             series=batch.series,
             catalog_version=asset.catalog_version,
+            fetch_mode=batch.fetch_mode,
+            fetch_granularity=batch.fetch_granularity,
+            refresh_tier=batch.refresh_tier,
+            policy_note=batch.policy_note,
         )
         for batch in asset.batches
     ]
@@ -372,6 +400,50 @@ def _resolve_choice_macro_catalog_path(settings) -> Path | None:
     return Path(settings.choice_macro_catalog_file)
 
 
+def _normalize_choice_macro_batches(
+    batches: list[ChoiceMacroBatchConfig],
+    run_date: str,
+) -> list[ChoiceMacroBatchConfig]:
+    return [
+        batch.model_copy(
+            update={
+                "request_options": _normalize_choice_batch_request_options(batch, run_date=run_date),
+            }
+        )
+        for batch in batches
+    ]
+
+
+def _normalize_choice_batch_request_options(batch: ChoiceMacroBatchConfig, run_date: str) -> str:
+    batch_id = batch.batch_id.strip().lower()
+    if batch.fetch_mode == "latest" or batch_id in {"cmd2", "catalog_cmd2"}:
+        return "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+    request_options = batch.request_options or "IsPublishDate=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
+    return request_options.replace("__RUN_DATE__", run_date)
+
+
+def _build_choice_macro_fetch_plan(
+    batches: list[ChoiceMacroBatchConfig],
+) -> list[ChoiceMacroBatchConfig]:
+    plan: list[ChoiceMacroBatchConfig] = []
+    for batch in batches:
+        batch_id = batch.batch_id.strip().lower()
+        if batch.refresh_tier == "isolated":
+            continue
+        if batch.fetch_granularity == "single" or batch_id in {"cmd2", "catalog_cmd2"}:
+            for series in batch.series:
+                plan.append(
+                    batch.model_copy(
+                        update={
+                            "series": [series],
+                        }
+                    )
+                )
+            continue
+        plan.append(batch)
+    return plan
+
+
 def _serialize_choice_request_options(options: dict[str, object]) -> str:
     return ",".join(
         f"{key}={_serialize_choice_request_option_value(value)}"
@@ -383,6 +455,10 @@ def _serialize_choice_request_option_value(value: object) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     return str(value)
+
+
+def _choice_macro_run_date() -> str:
+    return date.today().isoformat()
 
 
 def _build_choice_series_registry(
@@ -399,6 +475,10 @@ def _build_choice_series_registry(
                 "is_core": series.is_core,
                 "tags_json": json.dumps(series.tags, ensure_ascii=False, separators=(",", ":")),
                 "request_options": batch.request_options,
+                "fetch_mode": batch.fetch_mode,
+                "fetch_granularity": batch.fetch_granularity,
+                "refresh_tier": batch.refresh_tier,
+                "policy_note": batch.policy_note,
             }
     return registry
 
@@ -486,7 +566,11 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
           theme varchar,
           is_core boolean,
           tags_json varchar,
-          request_options varchar
+          request_options varchar,
+          fetch_mode varchar,
+          fetch_granularity varchar,
+          refresh_tier varchar,
+          policy_note varchar
         )
         """
     )
@@ -497,3 +581,7 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute("alter table phase1_macro_vendor_catalog add column if not exists is_core boolean")
     conn.execute("alter table phase1_macro_vendor_catalog add column if not exists tags_json varchar")
     conn.execute("alter table phase1_macro_vendor_catalog add column if not exists request_options varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists fetch_mode varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists fetch_granularity varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists refresh_tier varchar")
+    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists policy_note varchar")

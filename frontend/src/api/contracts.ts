@@ -244,9 +244,28 @@ export type ChoiceMacroLatestPoint = {
   series_name: string;
   trade_date: string;
   value_numeric: number;
+  frequency?: string;
   unit: string;
   source_version: string;
   vendor_version: string;
+  vendor_series_code?: string;
+  batch_id?: string | null;
+  catalog_version?: string | null;
+  theme?: string;
+  is_core?: boolean;
+  tags?: string[];
+  request_options?: string;
+  quality_flag?: ApiQuality;
+  latest_change?: number | null;
+  recent_points?: ChoiceMacroRecentPoint[];
+};
+
+export type ChoiceMacroRecentPoint = {
+  trade_date: string;
+  value_numeric: number;
+  source_version: string;
+  vendor_version: string;
+  quality_flag: ApiQuality;
 };
 
 export type ChoiceMacroLatestPayload = {
