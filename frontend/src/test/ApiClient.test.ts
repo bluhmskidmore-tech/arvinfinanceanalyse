@@ -412,8 +412,12 @@ describe("createApiClient", () => {
   it("surfaces backend detail for failed action requests", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: false,
+      status: 409,
       json: async () => ({
-        detail: "Source preview refresh already in progress.",
+        detail: {
+          error_message: "Source preview refresh already in progress.",
+          run_id: "source_preview_refresh:inflight",
+        },
       }),
     }));
 
@@ -423,8 +427,94 @@ describe("createApiClient", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await expect(client.refreshSourcePreview()).rejects.toThrow(
-      "Source preview refresh already in progress.",
+    await expect(client.refreshSourcePreview()).rejects.toMatchObject({
+      message: "Source preview refresh already in progress.",
+      name: "ActionRequestError",
+      status: 409,
+      runId: "source_preview_refresh:inflight",
+      errorMessage: "Source preview refresh already in progress.",
+    });
+  });
+
+  it("preserves run_id on failed action responses when backend embeds it in detail", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        detail: {
+          error_message: "Source preview refresh queue dispatch failed.",
+          run_id: "source_preview_refresh:failed-503",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.refreshSourcePreview()).rejects.toEqual(
+      expect.objectContaining({
+        name: "ActionRequestError",
+        message: "Source preview refresh queue dispatch failed.",
+        status: 503,
+        runId: "source_preview_refresh:failed-503",
+      }),
+    );
+  });
+
+  it("preserves top-level run_id on failed action responses", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        detail: "Pnl refresh queue dispatch failed.",
+        run_id: "pnl_materialize:top-level",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.refreshFormalPnl()).rejects.toEqual(
+      expect.objectContaining({
+        name: "ActionRequestError",
+        message: "Pnl refresh queue dispatch failed.",
+        runId: "pnl_materialize:top-level",
+      }),
+    );
+  });
+
+  it("preserves run_id from nested detail only on formal pnl refresh failure", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({
+        detail: {
+          error_message: "Pnl refresh queue dispatch failed.",
+          run_id: "pnl_materialize:nested-detail-only",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await expect(client.refreshFormalPnl()).rejects.toEqual(
+      expect.objectContaining({
+        name: "ActionRequestError",
+        message: "Pnl refresh queue dispatch failed.",
+        status: 503,
+        runId: "pnl_materialize:nested-detail-only",
+        errorMessage: "Pnl refresh queue dispatch failed.",
+      }),
     );
   });
 
@@ -455,7 +545,7 @@ describe("createApiClient", () => {
         run_id: "pnl_materialize:test-run",
         job_name: "pnl_materialize",
         trigger_mode: "async",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
         report_date: "2026-02-28",
       }),
     }));
@@ -487,7 +577,7 @@ describe("createApiClient", () => {
         run_id: "pnl_materialize:test-run",
         job_name: "pnl_materialize",
         trigger_mode: "terminal",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
         source_version: "sv_pnl_test",
       }),
     }));
@@ -665,6 +755,128 @@ describe("createApiClient", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/ui/macro/choice-series/latest",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch formal pnl envelopes", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/pnl/dates")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_dates",
+              basis: "formal",
+              result_kind: "pnl.dates",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_dates: ["2026-02-28"],
+              formal_fi_report_dates: ["2026-02-28"],
+              nonstd_bridge_report_dates: [],
+            },
+          }),
+        };
+      }
+      if (url.includes("/api/pnl/data?date=2026-02-28")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_pnl_data",
+              basis: "formal",
+              result_kind: "pnl.data",
+              formal_use_allowed: true,
+              source_version: "sv_pnl",
+              vendor_version: "vv_none",
+              rule_version: "rv_pnl",
+              cache_version: "cv_pnl",
+              quality_flag: "ok",
+              scenario_flag: false,
+              generated_at: "2026-04-11T03:00:00Z",
+            },
+            result: {
+              report_date: "2026-02-28",
+              formal_fi_rows: [],
+              nonstd_bridge_rows: [],
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_pnl_overview",
+            basis: "formal",
+            result_kind: "pnl.overview",
+            formal_use_allowed: true,
+            source_version: "sv_pnl",
+            vendor_version: "vv_none",
+            rule_version: "rv_pnl",
+            cache_version: "cv_pnl",
+            quality_flag: "ok",
+            scenario_flag: false,
+            generated_at: "2026-04-11T03:00:00Z",
+          },
+          result: {
+            report_date: "2026-02-28",
+            formal_fi_row_count: 0,
+            nonstd_bridge_row_count: 0,
+            interest_income_514: "0.00",
+            fair_value_change_516: "0.00",
+            capital_gain_517: "0.00",
+            manual_adjustment: "0.00",
+            total_pnl: "0.00",
+          },
+        }),
+      };
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFormalPnlDates();
+    await client.getFormalPnlData("2026-02-28");
+    await client.getFormalPnlOverview("2026-02-28");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/pnl/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl/data?date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl/overview?report_date=2026-02-28",
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "application/json",
@@ -1120,4 +1332,5 @@ describe("createApiClient", () => {
       }),
     );
   });
+
 });

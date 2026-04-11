@@ -223,6 +223,10 @@ describe("OperationsAnalysisPage", () => {
       "href",
       "/news-events",
     );
+    expect(screen.getByRole("link", { name: "进入资产负债分析" })).toHaveAttribute(
+      "href",
+      "/balance-analysis",
+    );
     expect(screen.getByText("Macro data release calendar updated.")).toBeInTheDocument();
     expect(screen.getByText("vendor callback timeout")).toBeInTheDocument();
 
@@ -245,7 +249,7 @@ describe("OperationsAnalysisPage", () => {
       run_id: "pnl_materialize:test-run",
       job_name: "pnl_materialize",
       trigger_mode: "async",
-      cache_key: "pnl.phase2.materialize",
+      cache_key: "pnl:phase2:materialize:formal",
       report_date: "2026-02-28",
     }));
     const statusSpy = vi
@@ -255,14 +259,14 @@ describe("OperationsAnalysisPage", () => {
         run_id: "pnl_materialize:test-run",
         job_name: "pnl_materialize",
         trigger_mode: "async",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
       })
       .mockResolvedValueOnce({
         status: "completed",
         run_id: "pnl_materialize:test-run",
         job_name: "pnl_materialize",
         trigger_mode: "terminal",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
         source_version: "sv_pnl_test",
       });
 
@@ -295,14 +299,14 @@ describe("OperationsAnalysisPage", () => {
       run_id: "pnl_materialize:failed-run",
       job_name: "pnl_materialize",
       trigger_mode: "async",
-      cache_key: "pnl.phase2.materialize",
+      cache_key: "pnl:phase2:materialize:formal",
     }));
     const statusSpy = vi.fn(async () => ({
       status: "failed",
       run_id: "pnl_materialize:failed-run",
       job_name: "pnl_materialize",
       trigger_mode: "terminal",
-      cache_key: "pnl.phase2.materialize",
+      cache_key: "pnl:phase2:materialize:formal",
       error_message: "Pnl refresh worker failed.",
     }));
 

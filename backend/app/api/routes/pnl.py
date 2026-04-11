@@ -64,8 +64,11 @@ def overview(
 @router.post("/data/refresh_pnl")
 def refresh_pnl(report_date: str | None = Query(None)) -> dict[str, object]:
     settings = get_settings()
+    service = _pnl_service()
     try:
-        return _pnl_service().refresh_pnl(settings, report_date=report_date)
+        return service.refresh_pnl(settings, report_date=report_date)
+    except service.PnlRefreshConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:

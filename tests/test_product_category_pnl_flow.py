@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import sys
@@ -250,6 +251,194 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_product_category_refresh_returns_409_when_refresh_is_already_in_progress(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="product-category-inflight",
+                job_name="product_category_pnl",
+                status="running",
+                cache_key="product_category_pnl.formal",
+                lock="lock:duckdb:product-category-pnl",
+                source_version="sv_product_category_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Product-category refresh already in progress."
+    assert queued_messages == []
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_returns_503_when_queue_dispatch_fails_without_sync_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    fallback_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("unexpected broker failure")),
+    )
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.fn",
+        lambda **kwargs: fallback_calls.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Product-category refresh queue dispatch failed."
+    assert fallback_calls == []
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    latest = [record for record in records if record.get("job_name") == "product_category_pnl"][-1]
+    assert latest["status"] == "failed"
+    assert latest["error_message"] == "Product-category refresh queue dispatch failed."
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="product-category-stale",
+                job_name="product_category_pnl",
+                status="running",
+                cache_key="product_category_pnl.formal",
+                lock="lock:duckdb:product-category-pnl",
+                source_version="sv_product_category_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "started_at": stale_time,
+        },
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert queued_messages[0]["run_id"] == response.json()["run_id"]
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    stale_records = [record for record in records if record.get("run_id") == "product-category-stale"]
+    assert stale_records[-1]["status"] == "failed"
+    assert stale_records[-1]["error_message"] == "Marked stale product-category refresh run as failed."
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_status_returns_503_when_status_backend_fails(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.product_category_pnl_service",
+        "backend/app/services/product_category_pnl_service.py",
+    )
+    monkeypatch.setattr(
+        service_mod.GovernanceRepository,
+        "read_all",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("status backend unavailable")),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get(
+        "/ui/pnl/product-category/refresh-status",
+        params={"run_id": "run-any"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "status backend unavailable"
+    get_settings.cache_clear()
+
+
 def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monkeypatch):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
@@ -274,11 +463,6 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
         duckdb_path=str(duckdb_path),
         source_dir=str(source_dir),
         governance_dir=str(governance_dir),
-    )
-
-    monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
-        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
     )
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
@@ -318,9 +502,11 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     assert any(item["adjustment_id"] == adjustment_id for item in listed)
     assert [event["event_type"] for event in listed_payload["events"]] == ["created"]
 
-    refresh_response = client.post("/ui/pnl/product-category/refresh")
-    assert refresh_response.status_code == 200
-    assert refresh_response.json()["status"] == "completed"
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
     adjusted_response = client.get(
         "/ui/pnl/product-category",
@@ -347,9 +533,11 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     assert edit_response.status_code == 200
     assert edit_response.json()["event_type"] == "edited"
 
-    refresh_after_edit = client.post("/ui/pnl/product-category/refresh")
-    assert refresh_after_edit.status_code == 200
-    assert refresh_after_edit.json()["status"] == "completed"
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
     edited_response = client.get(
         "/ui/pnl/product-category",
@@ -367,9 +555,11 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     assert revoke_response.status_code == 200
     assert revoke_response.json()["approval_status"] == "rejected"
 
-    refresh_after_revoke = client.post("/ui/pnl/product-category/refresh")
-    assert refresh_after_revoke.status_code == 200
-    assert refresh_after_revoke.json()["status"] == "completed"
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
     reverted_response = client.get(
         "/ui/pnl/product-category",
@@ -388,9 +578,11 @@ def test_manual_adjustment_changes_read_model_and_can_be_revoked(tmp_path, monke
     assert restore_response.json()["event_type"] == "restored"
     assert restore_response.json()["approval_status"] == "approved"
 
-    refresh_after_restore = client.post("/ui/pnl/product-category/refresh")
-    assert refresh_after_restore.status_code == 200
-    assert refresh_after_restore.json()["status"] == "completed"
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
     restored_response = client.get(
         "/ui/pnl/product-category",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import json
 import sys
 from pathlib import Path
@@ -37,7 +38,7 @@ def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.dates"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_dates_data_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     assert payload["result"] == {
         "report_dates": ["2026-02-28", "2026-01-31", "2025-12-31"],
         "formal_fi_report_dates": ["2026-01-31", "2025-12-31"],
@@ -61,7 +62,7 @@ def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_manifest_linea
     assert payload["result_meta"]["source_version"] == "sv_override"
     assert payload["result_meta"]["vendor_version"] == "vv_override"
     assert payload["result_meta"]["rule_version"] == "rv_override"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_dates_data_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["formal_fi_rows"]) == 1
     assert len(payload["result"]["nonstd_bridge_rows"]) == 1
@@ -114,7 +115,7 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_manifest_lineage(tmp
     assert payload["result_meta"]["source_version"] == "sv_overview"
     assert payload["result_meta"]["vendor_version"] == "vv_overview"
     assert payload["result_meta"]["rule_version"] == "rv_overview"
-    assert payload["result_meta"]["cache_version"] == "cv_pnl_dates_data_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     assert payload["result"] == {
         "report_date": "2025-12-31",
         "formal_fi_row_count": 1,
@@ -159,7 +160,7 @@ def test_pnl_refresh_queue_and_latest_import_status_flow(tmp_path, monkeypatch):
     assert refresh_payload["status"] == "queued"
     assert refresh_payload["job_name"] == "pnl_materialize"
     assert refresh_payload["trigger_mode"] == "async"
-    assert refresh_payload["cache_key"] == "pnl.phase2.materialize"
+    assert refresh_payload["cache_key"] == "pnl:phase2:materialize:formal"
     assert refresh_payload["report_date"] == "2026-02-28"
     assert queued_messages[0]["run_id"] == refresh_payload["run_id"]
     assert queued_messages[0]["report_date"] == "2026-02-28"
@@ -178,8 +179,8 @@ def test_pnl_refresh_queue_and_latest_import_status_flow(tmp_path, monkeypatch):
             run_id=refresh_payload["run_id"],
             job_name="pnl_materialize",
             status="completed",
-            cache_key="pnl.phase2.materialize",
-            lock="lock:duckdb:pnl-materialize",
+            cache_key="pnl:phase2:materialize:formal",
+            lock="lock:duckdb:formal:pnl:phase2:materialize",
             source_version="sv_pnl_test",
             vendor_version="vv_none",
         ).model_dump(),
@@ -191,7 +192,7 @@ def test_pnl_refresh_queue_and_latest_import_status_flow(tmp_path, monkeypatch):
     assert completed_payload["status"] == "completed"
     assert completed_payload["run_id"] == refresh_payload["run_id"]
     assert completed_payload["trigger_mode"] == "terminal"
-    assert completed_payload["cache_key"] == "pnl.phase2.materialize"
+    assert completed_payload["cache_key"] == "pnl:phase2:materialize:formal"
     assert completed_payload["source_version"] == "sv_pnl_test"
     assert duckdb_path.exists() is False
     get_settings.cache_clear()
@@ -216,7 +217,7 @@ def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeyp
     assert refresh_payload["status"] == "completed"
     assert refresh_payload["job_name"] == "pnl_materialize"
     assert refresh_payload["trigger_mode"] == "sync-fallback"
-    assert refresh_payload["cache_key"] == "pnl.phase2.materialize"
+    assert refresh_payload["cache_key"] == "pnl:phase2:materialize:formal"
     assert refresh_payload["report_date"] == "2026-02-28"
     assert refresh_payload["formal_fi_rows"] > 0
     assert refresh_payload["nonstd_bridge_rows"] == 1
@@ -227,7 +228,7 @@ def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeyp
     assert status_payload["status"] == "completed"
     assert status_payload["run_id"] == refresh_payload["run_id"]
     assert status_payload["report_date"] == "2026-02-28"
-    assert status_payload["cache_key"] == "pnl.phase2.materialize"
+    assert status_payload["cache_key"] == "pnl:phase2:materialize:formal"
     assert status_payload["job_name"] == "pnl_materialize"
 
     dates_response = client.get("/api/pnl/dates")
@@ -274,6 +275,97 @@ def test_pnl_refresh_returns_503_when_send_error_is_not_safe_for_sync_fallback(
     latest = [record for record in records if record.get("job_name") == "pnl_materialize"][-1]
     assert latest["status"] == "failed"
     assert latest["error_message"] == "Pnl refresh queue dispatch failed."
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_returns_409_when_same_report_date_is_already_in_progress(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    governance_dir = tmp_path / "governance"
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="run-inflight",
+                job_name="pnl_materialize",
+                status="running",
+                cache_key="pnl:phase2:materialize:formal",
+                lock="lock:duckdb:formal:pnl:phase2:materialize",
+                source_version="sv_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "report_date": "2026-02-28",
+            "queued_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+    send_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/api/data/refresh_pnl")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Pnl refresh already in progress for report_date=2026-02-28."
+    assert send_calls == []
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_reconciles_stale_inflight_run_and_requeues_requested_month(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    governance_dir = tmp_path / "governance"
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="run-stale",
+                job_name="pnl_materialize",
+                status="running",
+                cache_key="pnl:phase2:materialize:formal",
+                lock="lock:duckdb:formal:pnl:phase2:materialize",
+                source_version="sv_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "report_date": "2026-02-28",
+            "queued_at": stale_time,
+        },
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/api/data/refresh_pnl")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert queued_messages[0]["report_date"] == "2026-02-28"
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    stale_records = [record for record in records if record.get("run_id") == "run-stale"]
+    assert stale_records[-1]["status"] == "failed"
+    assert stale_records[-1]["error_message"] == "Marked stale pnl refresh run as failed."
     get_settings.cache_clear()
 
 
@@ -427,7 +519,7 @@ def test_pnl_import_status_run_id_returns_failed_terminal_record(tmp_path, monke
     assert payload["trigger_mode"] == "terminal"
     assert payload["error_message"] == "duckdb transaction rolled back"
     assert payload["report_date"] == "2026-01-31"
-    assert payload["cache_key"] == "pnl.phase2.materialize"
+    assert payload["cache_key"] == "pnl:phase2:materialize:formal"
     assert payload["job_name"] == "pnl_materialize"
     get_settings.cache_clear()
 
@@ -635,7 +727,7 @@ def _append_manifest_override(governance_dir, *, source_version: str, vendor_ver
         handle.write(
             json.dumps(
                 {
-                    "cache_key": "pnl.phase2.materialize",
+                    "cache_key": "pnl:phase2:materialize:formal",
                     "source_version": source_version,
                     "vendor_version": vendor_version,
                     "rule_version": rule_version,
@@ -692,8 +784,8 @@ def _append_pnl_build_run(
         run_id=run_id,
         job_name="pnl_materialize",
         status=status,
-        cache_key="pnl.phase2.materialize",
-        lock="lock:duckdb:pnl-materialize",
+        cache_key="pnl:phase2:materialize:formal",
+        lock="lock:duckdb:formal:pnl:phase2:materialize",
         source_version=source_version,
         vendor_version="vv_none",
     ).model_dump()

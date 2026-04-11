@@ -23,12 +23,16 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
 
+# Basis-scoped PnL materialize identity (CACHE_SPEC §3: basis must participate in cache_key / locks).
+PNL_FORMAL_BASIS = "formal"
+CACHE_KEY = f"pnl:phase2:materialize:{PNL_FORMAL_BASIS}"
 PNL_MATERIALIZE_LOCK = LockDefinition(
-    key="lock:duckdb:pnl-materialize",
+    key=f"lock:duckdb:{PNL_FORMAL_BASIS}:pnl:phase2:materialize",
     ttl_seconds=900,
 )
 RULE_VERSION = "rv_pnl_phase2_materialize_v1"
-CACHE_KEY = "pnl.phase2.materialize"
+# API result_meta.cache_version: formal basis + materialize rule bundle (distinct from scenario/analytical).
+PNL_RESULT_CACHE_VERSION = f"cv_pnl_formal__{RULE_VERSION}"
 
 
 def _materialize_pnl_facts(
@@ -48,6 +52,22 @@ def _materialize_pnl_facts(
     repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(job_name="pnl_materialize", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=run.job_name,
+                status="running",
+                cache_key=CACHE_KEY,
+                lock=PNL_MATERIALIZE_LOCK.key,
+                source_version="sv_pnl_running",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "report_date": report_date,
+            "started_at": run.created_at,
+        },
+    )
 
     normalized_fi = normalize_fi_pnl_records(fi_rows)
     normalized_nonstd = []

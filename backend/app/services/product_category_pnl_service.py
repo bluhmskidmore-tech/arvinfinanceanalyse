@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -39,56 +40,86 @@ RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
 AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
 PENDING_SOURCE_VERSION = "sv_product_category_pending"
+PRODUCT_CATEGORY_JOB_NAME = "product_category_pnl"
+PRODUCT_CATEGORY_CACHE_KEY = "product_category_pnl.formal"
+IN_FLIGHT_STATUSES = {"queued", "running"}
+STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
+
+
+class ProductCategoryRefreshServiceError(RuntimeError):
+    pass
+
+
+class ProductCategoryRefreshConflictError(RuntimeError):
+    pass
 
 
 def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
-    run_id = _build_run_id()
-    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
-    governance_repo.append(
-        CACHE_BUILD_RUN_STREAM,
-        CacheBuildRunRecord(
-            run_id=run_id,
-            job_name="product_category_pnl",
-            status="queued",
-            cache_key="product_category_pnl.formal",
-            lock=PRODUCT_CATEGORY_PNL_LOCK.key,
-            source_version=PENDING_SOURCE_VERSION,
-            vendor_version="vv_none",
-        ).model_dump(),
-    )
-
     try:
-        materialize_product_category_pnl.send(
-            duckdb_path=str(settings.duckdb_path),
-            source_dir=str(settings.product_category_source_dir),
-            governance_dir=str(settings.governance_path),
-            run_id=run_id,
-        )
-        return {
-            "status": "queued",
-            "run_id": run_id,
-            "job_name": "product_category_pnl",
-            "trigger_mode": "async",
-            "cache_key": "product_category_pnl.formal",
-        }
-    except Exception:
-        payload = materialize_product_category_pnl.fn(
-            duckdb_path=str(settings.duckdb_path),
-            source_dir=str(settings.product_category_source_dir),
-            governance_dir=str(settings.governance_path),
-            run_id=run_id,
-        )
-        return {
-            **payload,
-            "trigger_mode": "sync-fallback",
-        }
+        with acquire_lock(
+            _refresh_trigger_lock(),
+            base_dir=settings.governance_path,
+            timeout_seconds=0.1,
+        ):
+            existing = _latest_inflight_refresh(settings)
+            if existing is not None:
+                raise ProductCategoryRefreshConflictError(
+                    "Product-category refresh already in progress."
+                )
+
+            run_id = _build_run_id()
+            queued_at = datetime.now(timezone.utc).isoformat()
+            governance_repo = GovernanceRepository(base_dir=settings.governance_path)
+            governance_repo.append(
+                CACHE_BUILD_RUN_STREAM,
+                {
+                    **CacheBuildRunRecord(
+                        run_id=run_id,
+                        job_name=PRODUCT_CATEGORY_JOB_NAME,
+                        status="queued",
+                        cache_key=PRODUCT_CATEGORY_CACHE_KEY,
+                        lock=PRODUCT_CATEGORY_PNL_LOCK.key,
+                        source_version=PENDING_SOURCE_VERSION,
+                        vendor_version="vv_none",
+                    ).model_dump(),
+                    "queued_at": queued_at,
+                },
+            )
+
+            try:
+                materialize_product_category_pnl.send(
+                    duckdb_path=str(settings.duckdb_path),
+                    source_dir=str(settings.product_category_source_dir),
+                    governance_dir=str(settings.governance_path),
+                    run_id=run_id,
+                )
+            except Exception as exc:
+                _record_dispatch_failure(
+                    settings=settings,
+                    run_id=run_id,
+                    error_message="Product-category refresh queue dispatch failed.",
+                )
+                raise ProductCategoryRefreshServiceError(
+                    "Product-category refresh queue dispatch failed."
+                ) from exc
+
+            return {
+                "status": "queued",
+                "run_id": run_id,
+                "job_name": PRODUCT_CATEGORY_JOB_NAME,
+                "trigger_mode": "async",
+                "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+            }
+    except TimeoutError as exc:
+        raise ProductCategoryRefreshConflictError(
+            "Product-category refresh already in progress."
+        ) from exc
 
 
 def product_category_refresh_status(settings: Settings, run_id: str) -> dict[str, object]:
-    governance_repo = GovernanceRepository(base_dir=settings.governance_path)
     matching_records = [
         record
-        for record in governance_repo.read_all(CACHE_BUILD_RUN_STREAM)
+        for record in _load_refresh_run_records(settings)
         if str(record.get("run_id")) == run_id
     ]
     if not matching_records:
@@ -422,7 +453,104 @@ def build_analysis_service(duckdb_path: str) -> UnifiedAnalysisService:
 
 
 def _build_run_id() -> str:
-    return f"product_category_pnl:{datetime.now(timezone.utc).isoformat()}"
+    return f"{PRODUCT_CATEGORY_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+
+
+def _refresh_trigger_lock() -> LockDefinition:
+    return LockDefinition(
+        key=f"{PRODUCT_CATEGORY_PNL_LOCK.key}:trigger",
+        ttl_seconds=30,
+    )
+
+
+def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
+    return [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("job_name")) == PRODUCT_CATEGORY_JOB_NAME
+        and str(record.get("cache_key")) == PRODUCT_CATEGORY_CACHE_KEY
+    ]
+
+
+def _latest_inflight_refresh(settings: Settings) -> dict[str, object] | None:
+    by_run_id: dict[str, dict[str, object]] = {}
+    for record in _load_refresh_run_records(settings):
+        by_run_id[str(record.get("run_id"))] = record
+    stale_records: list[dict[str, object]] = []
+    for record in reversed(list(by_run_id.values())):
+        if str(record.get("status")) in IN_FLIGHT_STATUSES:
+            if _is_stale_inflight_record(record):
+                stale_records.append(record)
+                continue
+            return record
+    for record in stale_records:
+        _mark_stale_inflight_run(
+            settings=settings,
+            run_id=str(record.get("run_id")),
+            error_message="Marked stale product-category refresh run as failed.",
+        )
+    return None
+
+
+def _is_stale_inflight_record(record: dict[str, object]) -> bool:
+    for field_name in ("started_at", "queued_at", "created_at"):
+        raw_value = str(record.get(field_name) or "").strip()
+        if not raw_value:
+            continue
+        timestamp = _parse_timestamp(raw_value)
+        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+    return True
+
+
+def _parse_timestamp(raw_value: str) -> datetime:
+    normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _record_dispatch_failure(
+    *,
+    settings: Settings,
+    run_id: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": PRODUCT_CATEGORY_JOB_NAME,
+            "status": "failed",
+            "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+            "lock": PRODUCT_CATEGORY_PNL_LOCK.key,
+            "source_version": "sv_product_category_failed",
+            "vendor_version": "vv_none",
+            "error_message": error_message,
+        },
+    )
+
+
+def _mark_stale_inflight_run(
+    *,
+    settings: Settings,
+    run_id: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": PRODUCT_CATEGORY_JOB_NAME,
+            "status": "failed",
+            "cache_key": PRODUCT_CATEGORY_CACHE_KEY,
+            "lock": PRODUCT_CATEGORY_PNL_LOCK.key,
+            "source_version": "sv_product_category_stale",
+            "vendor_version": "vv_none",
+            "error_message": error_message,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 def _load_manual_adjustment_events(settings: Settings) -> list[dict[str, object]]:

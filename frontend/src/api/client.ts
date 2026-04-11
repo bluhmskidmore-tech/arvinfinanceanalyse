@@ -12,11 +12,13 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceNewsEventsPayload,
   ContributionPayload,
-  FormalPnlDisabledResponse,
   FormalPnlRefreshPayload,
   HealthResponse,
   MacroVendorPayload,
   OverviewPayload,
+  PnlDataPayload,
+  PnlDatesPayload,
+  PnlOverviewPayload,
   PlaceholderSnapshot,
   ProductCategoryDatesPayload,
   ProductCategoryManualAdjustmentListPayload,
@@ -56,9 +58,9 @@ export type ApiClient = {
   getHealth: () => Promise<HealthResponse>;
   getOverview: () => Promise<ApiEnvelope<OverviewPayload>>;
   getSummary: () => Promise<ApiEnvelope<SummaryPayload>>;
-  getFormalPnlDates: () => Promise<FormalPnlDisabledResponse>;
-  getFormalPnlData: (date: string) => Promise<FormalPnlDisabledResponse>;
-  getFormalPnlOverview: (reportDate: string) => Promise<FormalPnlDisabledResponse>;
+  getFormalPnlDates: () => Promise<ApiEnvelope<PnlDatesPayload>>;
+  getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
+  getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
   refreshFormalPnl: () => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
@@ -1020,12 +1022,6 @@ function buildMockChoiceNewsEnvelope(options: {
   });
 }
 
-const buildPhase1PnlDisabledResponse = (): FormalPnlDisabledResponse => ({
-  enabled: false as const,
-  phase: "phase1" as const,
-  detail: "Formal /api/pnl endpoints are planned but disabled in Phase 1.",
-});
-
 const normalizeBaseUrl = (value?: string) =>
   value ? value.replace(/\/$/, "") : "";
 
@@ -1035,6 +1031,62 @@ const parseEnvMode = (): DataSourceMode => {
 };
 
 const parseBaseUrl = () => normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+
+export class ActionRequestError extends Error {
+  readonly status: number;
+  readonly runId?: string;
+  /** Top-level `error_message` from the JSON body when present. */
+  readonly errorMessage?: string;
+  /** Raw `detail` field from the JSON body (string, object, or array). */
+  readonly detail?: unknown;
+
+  constructor(
+    message: string,
+    opts: {
+      status: number;
+      runId?: string;
+      errorMessage?: string;
+      detail?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "ActionRequestError";
+    this.status = opts.status;
+    this.runId = opts.runId;
+    this.errorMessage = opts.errorMessage;
+    this.detail = opts.detail;
+  }
+}
+
+function extractApiRunId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const body = payload as Record<string, unknown>;
+  const top = body.run_id;
+  if (typeof top === "string" && top.trim()) {
+    return top;
+  }
+  const detail = body.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const nested = (detail as Record<string, unknown>).run_id;
+    if (typeof nested === "string" && nested.trim()) {
+      return nested;
+    }
+  }
+  return undefined;
+}
+
+function extractTopLevelErrorMessage(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const errMsg = (payload as Record<string, unknown>).error_message;
+  if (typeof errMsg === "string" && errMsg.trim()) {
+    return errMsg;
+  }
+  return undefined;
+}
 
 function extractApiErrorDetail(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") {
@@ -1048,6 +1100,17 @@ function extractApiErrorDetail(payload: unknown): string | undefined {
   const detail = body.detail;
   if (typeof detail === "string" && detail.trim()) {
     return detail;
+  }
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const d = detail as Record<string, unknown>;
+    const nestedMsg = d.error_message;
+    if (typeof nestedMsg === "string" && nestedMsg.trim()) {
+      return nestedMsg;
+    }
+    const nestedDetail = d.detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
   }
   if (Array.isArray(detail)) {
     const parts = detail.map((item) => {
@@ -1067,6 +1130,16 @@ function extractApiErrorDetail(payload: unknown): string | undefined {
     return joined || undefined;
   }
   return undefined;
+}
+
+function extractRawDetail(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  if (!("detail" in (payload as Record<string, unknown>))) {
+    return undefined;
+  }
+  return (payload as Record<string, unknown>).detail;
 }
 
 const requestJson = async <T>(
@@ -1102,13 +1175,30 @@ const requestActionJson = async <T>(
   });
 
   if (!response.ok) {
-    let detail: string | undefined;
+    let body: unknown;
     try {
-      detail = extractApiErrorDetail(await response.json());
+      body = await response.json();
     } catch {
-      detail = undefined;
+      body = undefined;
     }
-    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
+    const detailText =
+      extractApiErrorDetail(body) ?? `Request failed: ${path} (${response.status})`;
+    const runId = extractApiRunId(body);
+    const rawDetail = extractRawDetail(body);
+    const topErrorMessage = extractTopLevelErrorMessage(body);
+    const nestedDetail =
+      rawDetail && typeof rawDetail === "object" && !Array.isArray(rawDetail)
+        ? (rawDetail as Record<string, unknown>).error_message
+        : undefined;
+    const errorMessageField =
+      topErrorMessage ??
+      (typeof nestedDetail === "string" && nestedDetail.trim() ? nestedDetail : undefined);
+    throw new ActionRequestError(detailText, {
+      status: response.status,
+      runId,
+      errorMessage: errorMessageField,
+      detail: rawDetail,
+    });
   }
 
   return (await response.json()) as T;
@@ -1159,27 +1249,6 @@ const requestActionWithBody = async <TResponse, TBody>(
   return (await response.json()) as TResponse;
 };
 
-const requestPhase1Disabled = async (
-  fetchImpl: typeof fetch,
-  baseUrl: string,
-  path: string,
-  init?: RequestInit,
-): Promise<FormalPnlDisabledResponse> => {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  if (response.status !== 503) {
-    throw new Error(`Request failed: ${path} (${response.status})`);
-  }
-
-  return (await response.json()) as FormalPnlDisabledResponse;
-};
-
 export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const mode = options.mode ?? parseEnvMode();
   const baseUrl = normalizeBaseUrl(options.baseUrl ?? parseBaseUrl());
@@ -1203,17 +1272,44 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getFormalPnlDates() {
       await delay();
-      return buildPhase1PnlDisabledResponse();
+      return buildMockApiEnvelope(
+        "pnl.dates",
+        {
+          report_dates: [],
+          formal_fi_report_dates: [],
+          nonstd_bridge_report_dates: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
     },
     async getFormalPnlData(date: string) {
-      void date;
       await delay();
-      return buildPhase1PnlDisabledResponse();
+      return buildMockApiEnvelope(
+        "pnl.data",
+        {
+          report_date: date,
+          formal_fi_rows: [],
+          nonstd_bridge_rows: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
     },
     async getFormalPnlOverview(reportDate: string) {
-      void reportDate;
       await delay();
-      return buildPhase1PnlDisabledResponse();
+      return buildMockApiEnvelope(
+        "pnl.overview",
+        {
+          report_date: reportDate,
+          formal_fi_row_count: 0,
+          nonstd_bridge_row_count: 0,
+          interest_income_514: "0.00",
+          fair_value_change_516: "0.00",
+          capital_gain_517: "0.00",
+          manual_adjustment: "0.00",
+          total_pnl: "0.00",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
     },
     async refreshFormalPnl() {
       await delay();
@@ -1222,7 +1318,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         run_id: "pnl_materialize:mock-run",
         job_name: "pnl_materialize",
         trigger_mode: "async",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
         report_date: "2026-02-28",
       };
     },
@@ -1233,7 +1329,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         run_id: runId ?? "pnl_materialize:mock-run",
         job_name: "pnl_materialize",
         trigger_mode: runId ? "terminal" : "idle",
-        cache_key: "pnl.phase2.materialize",
+        cache_key: "pnl:phase2:materialize:formal",
         report_date: "2026-02-28",
         source_version: "sv_mock_dashboard_v2",
       };
@@ -1627,15 +1723,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: () =>
-      requestPhase1Disabled(fetchImpl, baseUrl, "/api/pnl/dates"),
+      requestJson<PnlDatesPayload>(fetchImpl, baseUrl, "/api/pnl/dates"),
     getFormalPnlData: (date: string) =>
-      requestPhase1Disabled(
+      requestJson<PnlDataPayload>(
         fetchImpl,
         baseUrl,
         `/api/pnl/data?date=${encodeURIComponent(date)}`,
       ),
     getFormalPnlOverview: (reportDate: string) =>
-      requestPhase1Disabled(
+      requestJson<PnlOverviewPayload>(
         fetchImpl,
         baseUrl,
         `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}`,

@@ -7,6 +7,8 @@ from fastapi.responses import Response
 
 from backend.app.governance.settings import get_settings
 from backend.app.services.product_category_pnl_service import (
+    ProductCategoryRefreshConflictError,
+    ProductCategoryRefreshServiceError,
     create_product_category_manual_adjustment,
     export_product_category_manual_adjustments_csv,
     list_product_category_manual_adjustments,
@@ -49,7 +51,12 @@ def detail(
 
 @router.post("/refresh")
 def refresh() -> dict[str, object]:
-    return refresh_product_category_pnl(get_settings())
+    try:
+        return refresh_product_category_pnl(get_settings())
+    except ProductCategoryRefreshConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ProductCategoryRefreshServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/refresh-status")
@@ -58,6 +65,8 @@ def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
         return product_category_refresh_status(get_settings(), run_id=run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/manual-adjustments")

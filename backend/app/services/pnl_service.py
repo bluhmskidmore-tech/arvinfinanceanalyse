@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -25,20 +26,31 @@ from backend.app.services.pnl_source_service import (
     load_latest_pnl_refresh_input,
     resolve_pnl_data_input_root,
 )
-from backend.app.tasks.pnl_materialize import CACHE_KEY, PNL_MATERIALIZE_LOCK, materialize_pnl_facts
+from backend.app.tasks.pnl_materialize import (
+    CACHE_KEY,
+    PNL_MATERIALIZE_LOCK,
+    PNL_RESULT_CACHE_VERSION,
+    materialize_pnl_facts,
+)
 
 
 DISABLED_DETAIL = "Formal /api/pnl endpoints are planned but disabled in Phase 1."
-PNL_CACHE_KEY = "pnl.phase2.materialize"
-PNL_CACHE_VERSION = "cv_pnl_dates_data_v1"
+PNL_CACHE_KEY = CACHE_KEY
+PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
 PNL_JOB_NAME = "pnl_materialize"
 PENDING_SOURCE_VERSION = "sv_pnl_pending"
 TWOPLACES = Decimal("0.01")
+IN_FLIGHT_STATUSES = {"queued", "running"}
+STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
 SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
 
 
 class PnlRefreshServiceError(RuntimeError):
+    pass
+
+
+class PnlRefreshConflictError(RuntimeError):
     pass
 
 
@@ -52,65 +64,86 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
         data_root=resolve_pnl_data_input_root(),
         report_date=report_date,
     )
-    run_id = _build_run_id()
-    GovernanceRepository(base_dir=settings.governance_path).append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            **CacheBuildRunRecord(
-                run_id=run_id,
-                job_name=PNL_JOB_NAME,
-                status="queued",
-                cache_key=CACHE_KEY,
-                lock=PNL_MATERIALIZE_LOCK.key,
-                source_version=PENDING_SOURCE_VERSION,
-                vendor_version="vv_none",
-            ).model_dump(),
-            "report_date": refresh_input.report_date,
-        },
-    )
-
-    actor_kwargs = {
-        "report_date": refresh_input.report_date,
-        "is_month_end": refresh_input.is_month_end,
-        "fi_rows": refresh_input.fi_rows,
-        "nonstd_rows_by_type": refresh_input.nonstd_rows_by_type,
-        "duckdb_path": str(settings.duckdb_path),
-        "governance_dir": str(settings.governance_path),
-        "run_id": run_id,
-    }
     try:
-        materialize_pnl_facts.send(**actor_kwargs)
-        return {
-            "status": "queued",
-            "run_id": run_id,
-            "job_name": PNL_JOB_NAME,
-            "trigger_mode": "async",
-            "cache_key": CACHE_KEY,
-            "report_date": refresh_input.report_date,
-        }
-    except Exception as exc:
-        if _should_use_sync_fallback(settings, exc):
-            try:
-                payload = PnlMaterializePayload.model_validate(
-                    materialize_pnl_facts.fn(**actor_kwargs)
+        with acquire_lock(
+            _refresh_trigger_lock(report_date=refresh_input.report_date),
+            base_dir=settings.governance_path,
+            timeout_seconds=0.1,
+        ):
+            existing = _latest_inflight_refresh(
+                settings,
+                report_date=refresh_input.report_date,
+            )
+            if existing is not None:
+                raise PnlRefreshConflictError(
+                    f"Pnl refresh already in progress for report_date={refresh_input.report_date}."
                 )
-            except Exception as fallback_exc:
-                raise PnlRefreshServiceError(
-                    "Pnl refresh failed during sync fallback."
-                ) from fallback_exc
-            return {
-                **payload.model_dump(mode="json"),
-                "job_name": PNL_JOB_NAME,
-                "trigger_mode": "sync-fallback",
-            }
 
-        _record_dispatch_failure(
-            settings=settings,
-            run_id=run_id,
-            report_date=refresh_input.report_date,
-            error_message="Pnl refresh queue dispatch failed.",
-        )
-        raise PnlRefreshServiceError("Pnl refresh queue dispatch failed.") from exc
+            run_id = _build_run_id()
+            queued_at = datetime.now(timezone.utc).isoformat()
+            GovernanceRepository(base_dir=settings.governance_path).append(
+                CACHE_BUILD_RUN_STREAM,
+                {
+                    **CacheBuildRunRecord(
+                        run_id=run_id,
+                        job_name=PNL_JOB_NAME,
+                        status="queued",
+                        cache_key=CACHE_KEY,
+                        lock=PNL_MATERIALIZE_LOCK.key,
+                        source_version=PENDING_SOURCE_VERSION,
+                        vendor_version="vv_none",
+                    ).model_dump(),
+                    "report_date": refresh_input.report_date,
+                    "queued_at": queued_at,
+                },
+            )
+
+            actor_kwargs = {
+                "report_date": refresh_input.report_date,
+                "is_month_end": refresh_input.is_month_end,
+                "fi_rows": refresh_input.fi_rows,
+                "nonstd_rows_by_type": refresh_input.nonstd_rows_by_type,
+                "duckdb_path": str(settings.duckdb_path),
+                "governance_dir": str(settings.governance_path),
+                "run_id": run_id,
+            }
+            try:
+                materialize_pnl_facts.send(**actor_kwargs)
+                return {
+                    "status": "queued",
+                    "run_id": run_id,
+                    "job_name": PNL_JOB_NAME,
+                    "trigger_mode": "async",
+                    "cache_key": CACHE_KEY,
+                    "report_date": refresh_input.report_date,
+                }
+            except Exception as exc:
+                if _should_use_sync_fallback(settings, exc):
+                    try:
+                        payload = PnlMaterializePayload.model_validate(
+                            materialize_pnl_facts.fn(**actor_kwargs)
+                        )
+                    except Exception as fallback_exc:
+                        raise PnlRefreshServiceError(
+                            "Pnl refresh failed during sync fallback."
+                        ) from fallback_exc
+                    return {
+                        **payload.model_dump(mode="json"),
+                        "job_name": PNL_JOB_NAME,
+                        "trigger_mode": "sync-fallback",
+                    }
+
+                _record_dispatch_failure(
+                    settings=settings,
+                    run_id=run_id,
+                    report_date=refresh_input.report_date,
+                    error_message="Pnl refresh queue dispatch failed.",
+                )
+                raise PnlRefreshServiceError("Pnl refresh queue dispatch failed.") from exc
+    except TimeoutError as exc:
+        raise PnlRefreshConflictError(
+            f"Pnl refresh already in progress for report_date={refresh_input.report_date}."
+        ) from exc
 
 
 def pnl_import_status(settings: Settings, *, run_id: str | None = None) -> dict[str, object]:
@@ -244,12 +277,88 @@ def _build_run_id() -> str:
     return f"{PNL_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
 
 
+def _refresh_trigger_lock(*, report_date: str) -> LockDefinition:
+    return LockDefinition(
+        key=f"{PNL_MATERIALIZE_LOCK.key}:{report_date}:trigger",
+        ttl_seconds=30,
+    )
+
+
 def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
     return [
         record
         for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
         if str(record.get("cache_key")) == CACHE_KEY and str(record.get("job_name")) == PNL_JOB_NAME
     ]
+
+
+def _latest_inflight_refresh(
+    settings: Settings,
+    *,
+    report_date: str,
+) -> dict[str, object] | None:
+    by_run_id: dict[str, dict[str, object]] = {}
+    for record in _load_refresh_run_records(settings):
+        if str(record.get("report_date")) != report_date:
+            continue
+        by_run_id[str(record.get("run_id"))] = record
+    stale_records: list[dict[str, object]] = []
+    for record in reversed(list(by_run_id.values())):
+        if str(record.get("status")) in IN_FLIGHT_STATUSES:
+            if _is_stale_inflight_record(record):
+                stale_records.append(record)
+                continue
+            return record
+    for record in stale_records:
+        _mark_stale_inflight_run(
+            settings=settings,
+            run_id=str(record.get("run_id")),
+            report_date=report_date,
+            error_message="Marked stale pnl refresh run as failed.",
+        )
+    return None
+
+
+def _is_stale_inflight_record(record: dict[str, object]) -> bool:
+    for field_name in ("started_at", "queued_at", "created_at"):
+        raw_value = str(record.get(field_name) or "").strip()
+        if not raw_value:
+            continue
+        timestamp = _parse_timestamp(raw_value)
+        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+    return True
+
+
+def _parse_timestamp(raw_value: str) -> datetime:
+    normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _mark_stale_inflight_run(
+    *,
+    settings: Settings,
+    run_id: str,
+    report_date: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": PNL_JOB_NAME,
+            "status": "failed",
+            "cache_key": CACHE_KEY,
+            "lock": PNL_MATERIALIZE_LOCK.key,
+            "source_version": "sv_pnl_stale",
+            "vendor_version": "vv_none",
+            "report_date": report_date,
+            "error_message": error_message,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
 
 
 def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:

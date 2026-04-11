@@ -73,12 +73,6 @@ export type PnlAttributionPayload = {
   segments: AttributionSegment[];
 };
 
-export type FormalPnlDisabledResponse = {
-  enabled: false;
-  phase: "phase1";
-  detail: string;
-};
-
 export type FormalPnlRefreshPayload = {
   status: string;
   run_id?: string;
@@ -293,6 +287,64 @@ export type ChoiceNewsEventsPayload = {
   limit: number;
   offset: number;
   events: ChoiceNewsEvent[];
+};
+
+export type PnlFormalFiRow = {
+  report_date: string;
+  instrument_code: string;
+  portfolio_name: string;
+  cost_center: string;
+  invest_type_std: string;
+  accounting_basis: string;
+  currency_basis: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  source_version: string;
+  rule_version: string;
+  ingest_batch_id: string;
+  trace_id: string;
+};
+
+export type PnlNonStdBridgeRow = {
+  report_date: string;
+  bond_code: string;
+  portfolio_name: string;
+  cost_center: string;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
+  source_version: string;
+  rule_version: string;
+  ingest_batch_id: string;
+  trace_id: string;
+};
+
+export type PnlDatesPayload = {
+  report_dates: string[];
+  formal_fi_report_dates: string[];
+  nonstd_bridge_report_dates: string[];
+};
+
+export type PnlDataPayload = {
+  report_date: string;
+  formal_fi_rows: PnlFormalFiRow[];
+  nonstd_bridge_rows: PnlNonStdBridgeRow[];
+};
+
+export type PnlOverviewPayload = {
+  report_date: string;
+  formal_fi_row_count: number;
+  nonstd_bridge_row_count: number;
+  interest_income_514: string;
+  fair_value_change_516: string;
+  capital_gain_517: string;
+  manual_adjustment: string;
+  total_pnl: string;
 };
 
 export type DecimalLike = string | number;
