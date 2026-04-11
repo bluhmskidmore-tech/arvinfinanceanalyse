@@ -4,7 +4,7 @@
 
 - **读者**：Codex / 自动化代理在实现、审查或重构「余额、月均、年日均、规模折算、FTP、加权收益率」相关逻辑时使用。
 - **约束**：正式金融计算**唯一实现位置**为 `backend/app/core_finance/`（见 `docs/calc_rules.md` 总则）。API与前端只做编排与展示，不得复制公式。
-- **环境说明**：若本地前端使用 `http://localhost:3888/balance-analysis`，本仓库当前**无**该路由；与「余额 / 日均 / 规模」计算直接对应的功能面是 **产品类别损益** 工作台：`/product-category-pnl`，读模型由 `GET /ui/pnl/product-category` 提供。本文档以**后端与 core_finance 真值**为准，URL 仅作产品别名提示。
+- **环境说明**：若本地前端使用 `http://localhost:3888/balance-analysis`，本仓库当前**已有**该路由；其 governed formal 路径由 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 共同构成。与之并行的 **产品类别损益** 工作台仍是 `/product-category-pnl`，两条线不可混用。本文档以**后端与 core_finance 真值**为准。
 
 ## 1. 权威引用顺序（摘录）
 
@@ -110,3 +110,55 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 ---
 
 **版本提示**：`product_category_source_service.RULE_VERSION = "rv_product_category_pnl_v1"`；源结构变更时应递增规则版本并在 `result_meta` / 治理字段中可追溯（若适用）。
+
+## 13. ZQTZ / TYW Formal Balance Analysis Boundary
+
+本节只用于划清 `product-category-pnl` 与当前已落地的 `zqtz / tyw formal balance-analysis` 的边界，避免把两条线混成同一个实现面。
+
+### 13.1 产品类别损益已实现面
+
+- 当前仓库中，`product-category-pnl` 仍是独立的“余额 / 日均 / 规模”正式读模型，不与 `zqtz / tyw balance-analysis` 复用实现面。
+- 它的真值仍是：
+  - `backend/app/core_finance/product_category_pnl.py`
+  - `backend/app/services/product_category_pnl_service.py`
+  - `backend/app/api/routes/product_category_pnl.py`
+
+### 13.2 当前已落地的 ZQTZ / TYW governed formal balance path
+
+当前已落地且后续不得破坏的输入边界是：
+
+```text
+zqtz_bond_daily_snapshot / tyw_interbank_daily_snapshot
+-> module registry / formal materialize runtime
+-> core_finance formal derivation
+-> fact_formal_zqtz_balance_daily / fact_formal_tyw_balance_daily
+-> governed service / API
+-> workbench consumer
+```
+
+当前实现中的受控接入骨架为：
+
+- `backend/app/core_finance/module_registry.py`
+- `backend/app/tasks/formal_compute_runtime.py`
+- `backend/app/services/formal_result_runtime.py`
+
+其中：
+- formal module 通过 registry 登记 runtime identity 与 fact 边界
+- materialize 继续只在 `tasks/` 路径写 DuckDB
+- service 复用 shared formal result helper 组装 `result_meta`
+- API 路由保持显式定义，不因为模块注册而自动暴露新路由
+
+禁止：
+- `phase1_*preview*` 直接进入 formal balance read model
+- snapshot 直接冒充 formal fact
+- 在 service / API / 前端层补写 H/A/T、FX、发行类排除、月均正式逻辑
+
+### 13.3 当前状态
+
+- 截至当前仓库状态，`zqtz / tyw` 已有正式 `balance-analysis` core_finance 派生、materialize task、governed service / API 路由与首个 workbench 页面：
+  - `backend/app/core_finance/balance_analysis.py`
+  - `backend/app/tasks/balance_analysis_materialize.py`
+  - `backend/app/services/balance_analysis_service.py`
+  - `backend/app/api/routes/balance_analysis.py`
+  - `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx`
+- 本文档与 [data_contracts.md](data_contracts.md)、[calc_rules.md](calc_rules.md) 现在既约束已交付路径，也保留 contract / boundary 约束；但不宣称超出上述实现面的更多能力。

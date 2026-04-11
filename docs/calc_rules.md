@@ -183,7 +183,49 @@ PnL Bridge 结构：
 - `generated_at`
 - `trace_id`
 
-## 12. 禁止事项
+## 12. ZQTZ / TYW Formal Balance
+
+### 12.1 输入边界
+
+`zqtz / tyw` 正式资产负债分析只允许读取：
+- `zqtz_bond_daily_snapshot`
+- `tyw_interbank_daily_snapshot`
+- `fx_daily_mid`
+- 治理 / 审批 / mapping 输入
+
+禁止：
+- 直接读取任何 `phase1_*preview*` 表
+- 在 API / service / frontend 中重新实现正式规则
+
+### 12.2 zqtz formal fact 规则
+
+- `fact_formal_zqtz_balance_daily` 的金额事实来自 `zqtz_bond_daily_snapshot` 的正式投影。
+- `invest_type_std` / `accounting_basis` / `position_scope` / `currency_basis` 必须在 `core_finance/` 中派生。
+- `position_scope=asset` 时，默认排除 `is_issuance_like=true` 的发行类债券。
+- `position_scope=liability` 时，只允许保留发行类 / 负债侧债券语义行。
+- `position_scope=all` 时保留全量，用于审计与对账。
+
+### 12.3 tyw formal fact 规则
+
+- `fact_formal_tyw_balance_daily` 的金额事实来自 `tyw_interbank_daily_snapshot` 的正式投影。
+- `principal_amount` 与 `accrued_interest_amount` 是正式读模型的基础金额字段；是否进入某个读模型口径，必须在 `core_finance/` 判定。
+- `position_scope` 必须由 `position_side` 与治理映射共同确定，不允许 UI 临时解释。
+- `funding_cost_rate` 是正式属性，不是展示层现算字段。
+
+### 12.4 月均与汇率顺序
+
+- 必须先生成逐日 formal amount，再按所选 basis 求月均。
+- 当 `currency_basis=CNY` 时，必须先按每日 FX 中间价换算，再进入逐日 formal amount，再求月均。
+- 不允许“先原币月均，后乘汇率”。
+- 不允许用 preview rows 直接代替 formal daily facts。
+
+### 12.5 当前状态说明
+
+- 本节是当前 `zqtz / tyw` formal balance-analysis 的规则来源之一。
+- 当前仓库已落地 governed formal compute / materialize、service / API 与首个 workbench consumer；已落地面以 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 为准。
+- 本节不宣称超出上述已落地面的更多分析能力；后续扩展仍必须遵守 `backend/app/core_finance/` 唯一正式计算入口原则。
+
+## 13. 禁止事项
 
 - 不允许在 endpoint 或前端实现任何正式公式
 - 不允许 Scenario 结果写入 Formal 事实表

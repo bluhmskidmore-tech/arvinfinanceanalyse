@@ -64,15 +64,17 @@
 - `industry_name` varchar
 - `rating` varchar
 - `currency_code` varchar
+- `face_value_native` decimal(24,8)
 - `market_value_native` decimal(24,8)
 - `amortized_cost_native` decimal(24,8)
 - `accrued_interest_native` decimal(24,8)
-- `ytm_value` decimal(18,8)
 - `coupon_rate` decimal(18,8)
+- `ytm_value` decimal(18,8)
 - `maturity_date` date
 - `next_call_date` date
 - `overdue_days` integer
 - `is_issuance_like` boolean
+- `interest_mode` varchar
 - `source_version` varchar
 
 hard-required lineage：
@@ -90,6 +92,7 @@ first-wave required now：
 - `portfolio_name`
 - `cost_center`
 - `currency_code`
+- `face_value_native`
 - `market_value_native`
 - `amortized_cost_native`
 - `accrued_interest_native`
@@ -99,6 +102,7 @@ deferred enrichment：
 - `issuer_name`
 - `industry_name`
 - `rating`
+- `interest_mode`
 - `next_call_date`
 - `overdue_days`
 
@@ -109,9 +113,8 @@ formal-only derived later：
 - `currency_basis`
 
 直接允许消费者：
-- 未来 `core_finance` 输入
+- formal balance materialize / `core_finance` 输入
 - 治理 / 数据质量校验
-- 未来受治理的 snapshot read API
 
 直接禁止消费者：
 - `executive.*`
@@ -141,6 +144,7 @@ formal-only derived later：
 - `counterparty_name`
 - `account_type`
 - `special_account_type`
+- `core_customer_type`
 - `currency_code`
 - `principal_native`
 - `accrued_interest_native`
@@ -182,9 +186,8 @@ formal-only derived later：
 - `currency_basis`
 
 直接允许消费者：
-- 未来 `core_finance` 输入
+- formal balance materialize / `core_finance` 输入
 - 治理 / 数据质量校验
-- 未来受治理的 snapshot read API
 
 直接禁止消费者：
 - `executive.*`
@@ -192,7 +195,147 @@ formal-only derived later：
 - formal-facing service adapter
 - 任何把该表直接重标成 formal result 的服务路径
 
-### 4.3 fi_pnl_record
+### 4.3 fact_formal_zqtz_balance_daily
+
+用途：`zqtz` 正式资产负债分析逐日事实表。
+
+状态：
+- 属于当前 governed formal fact contract
+- 当前仓库已实现基于该表的 materialize 与 governed balance-analysis service / API；本文继续作为结构 contract 来源
+
+层级归属：
+- 属于 `Curated / Fact`
+- 属于 formal fact
+- 不是 preview output
+- 不是 snapshot storage
+
+上游输入边界：
+- `zqtz_bond_daily_snapshot`
+- `fx_daily_mid`
+- 治理字段 / 已批准 mapping / manual adjustment（若后续设计引入）
+- 不允许读取任何 `phase1_*preview*` 表
+
+canonical grain：
+- `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)`
+
+first-wave required now：
+- `report_date`
+- `instrument_code`
+- `portfolio_name`
+- `cost_center`
+- `invest_type_std`
+- `accounting_basis`
+- `position_scope`
+- `currency_basis`
+- `currency_code`
+- `face_value_amount`
+- `market_value_amount`
+- `amortized_cost_amount`
+- `accrued_interest_amount`
+- `coupon_rate`
+- `ytm_value`
+- `maturity_date`
+- `interest_mode`
+- `is_issuance_like`
+- `source_version`
+- `rule_version`
+- `ingest_batch_id`
+- `trace_id`
+
+deferred enrichment：
+- `instrument_name`
+- `asset_class`
+- `bond_type`
+- `issuer_name`
+- `industry_name`
+- `rating`
+- `next_call_date`
+- `overdue_days`
+
+直接允许消费者：
+- balance-analysis repository / `core_finance` read-model 组装
+- 治理 / 数据质量校验
+- 受治理的 balance-analysis repository / service path（当前已落地）
+
+直接禁止消费者：
+- preview page
+- snapshot read API
+- `executive.*`
+- scenario result writer
+- 任何把 standardized snapshot 直接冒充 formal fact 的服务路径
+
+说明：
+- `market_value_amount` / `amortized_cost_amount` / `accrued_interest_amount` 的单位由 `currency_basis` 决定。
+- 当 `currency_basis = CNY` 时，金额必须已经过正式 FX 逐日折算，不允许“先月均后换汇”。
+- `position_scope` 只允许 `asset / liability / all`。
+
+### 4.4 fact_formal_tyw_balance_daily
+
+用途：`tyw` 正式资产负债分析逐日事实表。
+
+状态：
+- 属于当前 governed formal fact contract
+- 当前仓库已实现基于该表的 materialize 与 governed balance-analysis service / API；本文继续作为结构 contract 来源
+
+层级归属：
+- 属于 `Curated / Fact`
+- 属于 formal fact
+- 不是 preview output
+- 不是 snapshot storage
+
+上游输入边界：
+- `tyw_interbank_daily_snapshot`
+- `fx_daily_mid`
+- 治理字段 / 已批准 mapping / manual adjustment（若后续设计引入）
+- 不允许读取任何 `phase1_*preview*` 表
+
+canonical grain：
+- `(report_date, position_id, currency_basis, position_scope)`
+
+first-wave required now：
+- `report_date`
+- `position_id`
+- `product_type`
+- `position_side`
+- `counterparty_name`
+- `invest_type_std`
+- `accounting_basis`
+- `position_scope`
+- `currency_basis`
+- `currency_code`
+- `principal_amount`
+- `accrued_interest_amount`
+- `account_type`
+- `special_account_type`
+- `core_customer_type`
+- `funding_cost_rate`
+- `maturity_date`
+- `source_version`
+- `rule_version`
+- `ingest_batch_id`
+- `trace_id`
+
+deferred enrichment：
+- `pledged_bond_code`
+
+直接允许消费者：
+- balance-analysis repository / `core_finance` read-model 组装
+- 治理 / 数据质量校验
+- 受治理的 balance-analysis repository / service path（当前已落地）
+
+直接禁止消费者：
+- preview page
+- snapshot read API
+- `executive.*`
+- scenario result writer
+- 任何把 standardized snapshot 直接冒充 formal fact 的服务路径
+
+说明：
+- `principal_amount` / `accrued_interest_amount` 的单位由 `currency_basis` 决定。
+- `position_scope` 由正式规则从 `position_side` 与治理映射生成，不允许在前端临时推导。
+- `funding_cost_rate` 若参与正式读模型，必须在 `core_finance/` 中消费，不得在 service 或 UI 中直接写公式。
+
+### 4.5 fi_pnl_record
 
 用途：FI 正式损益记录。
 
@@ -223,7 +366,7 @@ formal-only derived later：
 - `capital_gain_517` 是 standardized realized component，是否进入 formal 取决于 `accounting_basis` 与 event semantics
 - `manual_adjustment` 只有在治理/审批状态字段（如 `approval_status` / `governance_status`）为 approved 时才可进入 formal total；未批准 adjustment 不进入 formal total_pnl。
 
-### 4.4 nonstd_journal_entry
+### 4.6 nonstd_journal_entry
 
 用途：非标分录明细。
 
@@ -246,7 +389,7 @@ formal-only derived later：
 
 - `nonstd_journal_entry` 是 standardized ledger grain，不是 formal fact grain。
 
-### 4.5 ledger_daily_pnl
+### 4.7 ledger_daily_pnl
 
 用途：总账日均与月度损益正式源。
 
@@ -266,7 +409,7 @@ formal-only derived later：
 - `CNY` = 人民币账
 - 外币展示 = `CNX - CNY`
 
-### 4.6 fx_daily_mid
+### 4.8 fx_daily_mid
 
 用途：正式 FX 中间价。
 
@@ -285,7 +428,7 @@ formal-only derived later：
 - 周末/节假日允许沿用前一营业日
 - 缺失营业日中间价时，formal 失败，不静默补值
 
-### 4.7 choice_market_snapshot / choice_market_curve
+### 4.9 choice_market_snapshot / choice_market_curve
 
 用途：Choice 市场增强与曲线。
 
@@ -305,6 +448,8 @@ formal-only derived later：
 
 - `fact_bond_monthly_avg`
 - `fact_interbank_monthly_avg`
+- `fact_formal_zqtz_balance_daily`
+- `fact_formal_tyw_balance_daily`
 - `fact_formal_pnl_fi`
 - `fact_nonstd_pnl_bridge`
 - `fact_fx_converted_positions_daily`
@@ -312,11 +457,13 @@ formal-only derived later：
 - `fact_risk_tensor_daily`
 - `fact_formal_analytical_bridge_daily`
 
+- `fact_formal_zqtz_balance_daily` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)`
+- `fact_formal_tyw_balance_daily` grain = `(report_date, position_id, currency_basis, position_scope)`
 - `fact_formal_pnl_fi` grain = `(report_date, instrument_code, portfolio_name, cost_center, currency_basis)`
 - `fact_nonstd_pnl_bridge` grain = `(report_date, bond_code, portfolio_name, cost_center)`
 - `fact_nonstd_pnl_bridge` 是 bridge / aggregation fact，不是 raw ledger 明细。
 
-### 4.8 Preview / Snapshot / Formal 三层关系
+### 5.1 Preview / Snapshot / Formal 三层关系
 
 用途：定义 `zqtz / tyw` 在仓库中的三层位置关系，避免把 preview、snapshot、formal 写成同一层。
 
@@ -324,6 +471,8 @@ formal-only derived later：
 - preview surface 只用于解释、审阅、规则命中与 trace，下游不直接当作 canonical input。
 - `zqtz_bond_daily_snapshot` 与 `tyw_interbank_daily_snapshot` 属于 standardized canonical storage，是后续正式计算的输入边界，不是 analytical output。
 - formal facts 才属于正式结果域；snapshot 不得被直接重标成 formal result。
+- `fact_formal_zqtz_balance_daily` 与 `fact_formal_tyw_balance_daily` 只允许读取 snapshot + 正式 FX / 治理输入，不允许读取 `phase1_*preview*`。
+- `fact_formal_zqtz_balance_daily` 与 `fact_formal_tyw_balance_daily` 是当前 governed formal balance-analysis 的唯一事实输入边界；workbench 只能经由 governed service / API 消费它们，不得直接消费 snapshot 充当 formal 结果。
 - 对外 `basis / formal_use_allowed / scenario_flag`、cache identity、cache namespace 语义由 [CACHE_SPEC.md](CACHE_SPEC.md) 统一定义。
 - 若未来存在 snapshot read API，API envelope 可以带 outward `basis / result_meta` 语义，但这不改变 snapshot 表本身的层级归属。
 
@@ -342,6 +491,16 @@ formal-only derived later：
 ### fi pnl 主键
 ```text
 (report_date, instrument_code, portfolio_name, cost_center, currency_basis)
+```
+
+### zqtz formal balance 主键
+```text
+(report_date, instrument_code, portfolio_name, cost_center, currency_basis, position_scope)
+```
+
+### tyw formal balance 主键
+```text
+(report_date, position_id, currency_basis, position_scope)
 ```
 
 ### fx_daily_mid 主键

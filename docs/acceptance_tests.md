@@ -87,12 +87,53 @@
 - 若 [data_contracts.md](data_contracts.md) 之外出现独立 snapshot 字段清单、主键清单或 lineage 清单，则判定不通过。
 - 若 [CACHE_SPEC.md](CACHE_SPEC.md) 之外出现独立 `basis / formal_use_allowed / scenario_flag` 真值表，则判定不通过。
 - [CURRENT_BOUNDARY_HANDOFF_2026-04-10.md](CURRENT_BOUNDARY_HANDOFF_2026-04-10.md) 与 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 只允许保留 docs-only / non-authorization 语言；若复述 snapshot 结构合同，则判定不通过。
-- 本轮仅验证 docs-only contract alignment，不宣称：
-  - snapshot 已 materialized
-  - formal compute 已放开
-  - workbench 已可直接消费 snapshot
+- 本轮验证 docs-only contract alignment，必须同时避免以下误写：
+  - 把 snapshot 写成已 materialized 的 formal result
+  - 把当前已落地的 governed formal compute / materialize / service / API / 首个 workbench consumer 写成 future-only
+  - 把 workbench 写成可直接消费 snapshot
 
-### 3.6A Gate A 测试矩阵与文件级测试设计
+### 3.6C ZQTZ / TYW Formal Balance Contract（implemented path + continuing contract）
+
+本节定义已落地 governed formal balance-analysis 的测试归属与继续扩展边界，不构成放宽架构约束的授权。
+
+- `fact_formal_zqtz_balance_daily` 与 `fact_formal_tyw_balance_daily` 的字段、grain、lineage 与允许消费者，以 [data_contracts.md](data_contracts.md) 为准。
+- `zqtz / tyw` formal balance 只允许从 snapshot + FX + 治理输入进入 formal fact，不允许从 `phase1_*preview*` 进入 formal fact。
+- `invest_type_std` / `accounting_basis` / `position_scope` / `currency_basis` 只允许在 `core_finance/` 中派生。
+- `应收投资款项` 必须按正式规则映射到 `H / AC`，不得在 service / UI 中临时特判。
+- `currency_basis=CNY` 时，必须验证“先逐日 FX，后逐日 formal amount，最后月均”。
+- `position_scope=asset/liability/all` 时，必须验证发行类排除与保留规则。
+- `发行类债券` 必须作为 liability-scoped balance row 保留，不得重新并入资产端 `H/A/T`。
+- workbook-style balance-analysis 读面必须只消费 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily`，不得回读 snapshot / preview。
+- 所有 outward response 必须显式返回 `result_meta`，且 `basis / formal_use_allowed / scenario_flag` 语义与 [CACHE_SPEC.md](CACHE_SPEC.md) 保持一致。
+- 当前仓库已实现 governed formal compute / materialize / service / API / 首个 workbench consumer；测试与文档必须据此标注已交付边界，但不得把 snapshot 直读或更多未落地能力写成已完成。
+
+已落地并应持续回归的测试文件：
+- `tests/test_balance_analysis_contracts.py`
+- `tests/test_balance_analysis_core.py`
+- `tests/test_balance_analysis_materialize_flow.py`
+- `tests/test_balance_analysis_service.py`
+- `tests/test_balance_analysis_api.py`
+- `tests/test_balance_analysis_boundary_guards.py`
+- `tests/test_balance_analysis_workbook_contract.py`
+- `tests/test_balance_analysis_module_registration_flow.py`
+- `tests/test_formal_compute_module_registry.py`
+- `tests/test_formal_compute_runtime_contract.py`
+- `tests/test_formal_compute_result_meta_contract.py`
+
+当前文件级断言：
+- `test_balance_analysis_contracts.py` 只校验 contract、grain、消费者边界与 docs 引用关系，不额外替业务宣称超出当前实现面的功能。
+- `test_balance_analysis_core.py` 覆盖 H/A/T、FX、发行类排除、月均顺序与 `position_scope` 规则。
+- `test_balance_analysis_materialize_flow.py` 明确 formal fact 不能读取 `phase1_*preview*`。
+- `test_balance_analysis_service.py` 约束 governed envelope、refresh 状态与 result_meta 语义。
+- `test_balance_analysis_api.py` 明确 outward payload 必带 `result_meta`。
+- `test_balance_analysis_boundary_guards.py` 保护“formal 公式只能在 `core_finance/`”。
+- `test_balance_analysis_workbook_contract.py` 约束 workbook-style governed read model 的表格、分桶与指标结构。
+- `test_balance_analysis_module_registration_flow.py` 保护 API / core_finance / task / frontend 的模块注册链路。
+- `test_formal_compute_module_registry.py` 约束 formal module descriptor 的 basis / fact identity / duplicate registration fail-closed 行为。
+- `test_formal_compute_runtime_contract.py` 约束 shared materialize runtime 的 run record / manifest / writer-failure lineage 语义。
+- `test_formal_compute_result_meta_contract.py` 约束 shared formal result helper 的 `result_meta` 与 envelope 语义。
+
+### 3.6D Gate A 测试矩阵与文件级测试设计
 
 本节是 `Task 2A-3` 的测试设计，不构成实现授权。
 
