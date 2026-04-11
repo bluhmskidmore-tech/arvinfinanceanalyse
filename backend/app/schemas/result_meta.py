@@ -13,6 +13,8 @@ class ResultMeta(BaseModel):
     vendor_version: str = "vv_none"
     rule_version: str
     cache_version: str
-    quality_flag: Literal["ok", "warning", "error"] = "ok"
+    quality_flag: Literal["ok", "warning", "error", "stale"] = "ok"
+    vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok"
+    fallback_mode: Literal["none", "latest_snapshot"] = "none"
     scenario_flag: bool = False
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

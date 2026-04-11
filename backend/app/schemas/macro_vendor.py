@@ -92,6 +92,10 @@ class MacroVendorSeries(BaseModel):
     vendor_version: str
     frequency: str
     unit: str
+    refresh_tier: ChoiceMacroRefreshTier | None = None
+    fetch_mode: ChoiceMacroFetchMode | None = None
+    fetch_granularity: ChoiceMacroFetchGranularity | None = None
+    policy_note: str | None = None
 
 
 class MacroVendorPayload(BaseModel):

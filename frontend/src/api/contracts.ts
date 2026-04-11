@@ -22,6 +22,8 @@ export type ResultMeta = {
   rule_version: string;
   cache_version: string;
   quality_flag: ApiQuality;
+  vendor_status: "ok" | "vendor_stale" | "vendor_unavailable";
+  fallback_mode: "none" | "latest_snapshot";
   scenario_flag: boolean;
   generated_at: string;
 };
@@ -226,6 +228,10 @@ export type MacroVendorSeries = {
   vendor_version: string;
   frequency: string;
   unit: string;
+  refresh_tier?: "stable" | "fallback" | "isolated" | null;
+  fetch_mode?: "date_slice" | "latest" | null;
+  fetch_granularity?: "batch" | "single" | null;
+  policy_note?: string | null;
 };
 
 export type MacroVendorPayload = {

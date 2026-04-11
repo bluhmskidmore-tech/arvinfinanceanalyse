@@ -34,9 +34,26 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
         if "phase1_macro_vendor_catalog" not in tables:
             return MacroVendorPayload(series=[])
 
+        available_columns = {
+            str(row[1])
+            for row in conn.execute("pragma table_info('phase1_macro_vendor_catalog')").fetchall()
+        }
+        select_columns = [
+            "series_id",
+            "series_name",
+            "vendor_name",
+            "vendor_version",
+            "frequency",
+            "unit",
+            _catalog_column_expr("refresh_tier", available_columns, "NULL"),
+            _catalog_column_expr("fetch_mode", available_columns, "NULL"),
+            _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
+            _catalog_column_expr("policy_note", available_columns, "NULL"),
+        ]
         rows = conn.execute(
-            """
-            select series_id, series_name, vendor_name, vendor_version, frequency, unit
+            f"""
+            select
+              {", ".join(select_columns)}
             from phase1_macro_vendor_catalog
             order by vendor_name, series_id
             """
@@ -55,14 +72,33 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
                 unit=str(unit),
+                refresh_tier=_as_optional_string(refresh_tier),
+                fetch_mode=_as_optional_string(fetch_mode),
+                fetch_granularity=_as_optional_string(fetch_granularity),
+                policy_note=_as_optional_string(policy_note),
             )
-            for series_id, series_name, vendor_name, vendor_version, frequency, unit in rows
+            for (
+                series_id,
+                series_name,
+                vendor_name,
+                vendor_version,
+                frequency,
+                unit,
+                refresh_tier,
+                fetch_mode,
+                fetch_granularity,
+                policy_note,
+            ) in rows
         ]
     )
 
 
 def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
     payload = load_macro_vendor_payload(duckdb_path)
+    source_version = _load_macro_vendor_source_version(
+        duckdb_path,
+        series_ids=[item.series_id for item in payload.series],
+    )
     vendor_version = _aggregate_lineage_value(
         [item.vendor_version for item in payload.series],
         empty_value="vv_none",
@@ -72,17 +108,59 @@ def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
         basis="analytical",
         result_kind="preview.macro-foundation",
         formal_use_allowed=False,
-        source_version="sv_macro_vendor_empty",
+        source_version=source_version,
         vendor_version=vendor_version,
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag=_quality_flag_for_presence(payload.series),
+        vendor_status=_vendor_status_for_presence(payload.series),
+        fallback_mode="none",
         scenario_flag=False,
     )
     return {
         "result_meta": meta.model_dump(mode="json"),
         "result": payload.model_dump(mode="json"),
     }
+
+
+def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -> str:
+    if not series_ids:
+        return "sv_macro_vendor_empty"
+
+    duckdb_file = Path(duckdb_path)
+    if not duckdb_file.exists():
+        return "sv_macro_vendor_empty"
+
+    try:
+        conn = duckdb.connect(str(duckdb_file), read_only=True)
+    except duckdb.Error:
+        return "sv_macro_vendor_empty"
+
+    try:
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+        if "choice_market_snapshot" not in tables:
+            return "sv_macro_vendor_empty"
+
+        placeholders = ", ".join(["?"] * len(series_ids))
+        rows = conn.execute(
+            f"""
+            select distinct source_version
+            from choice_market_snapshot
+            where series_id in ({placeholders})
+              and source_version is not null and source_version <> ''
+            order by source_version
+            """,
+            series_ids,
+        ).fetchall()
+    except duckdb.Error:
+        return "sv_macro_vendor_empty"
+    finally:
+        conn.close()
+
+    return _aggregate_lineage_value(
+        [str(row[0]) for row in rows if row and row[0]],
+        empty_value="sv_macro_vendor_empty",
+    )
 
 
 def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPayload:
@@ -193,6 +271,7 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
 
 def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
     payload = load_choice_macro_latest_payload(duckdb_path)
+    quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
     source_version = _aggregate_lineage_value(
         [item.source_version for item in payload.series],
         empty_value="sv_choice_macro_empty",
@@ -210,7 +289,9 @@ def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
         vendor_version=vendor_version,
         rule_version=LIVE_RULE_VERSION,
         cache_version=LIVE_CACHE_VERSION,
-        quality_flag=_aggregate_quality_flags([item.quality_flag for item in payload.series]),
+        quality_flag=quality_flag,
+        vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
+        fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
         scenario_flag=False,
     )
     return {
@@ -366,6 +447,24 @@ def _aggregate_lineage_value(values: list[str], empty_value: str) -> str:
 
 def _quality_flag_for_presence(series: list[object]) -> str:
     return "ok" if series else "warning"
+
+
+def _vendor_status_for_presence(series: list[object]) -> str:
+    return "ok" if series else "vendor_unavailable"
+
+
+def _vendor_status_for_macro_latest(payload: ChoiceMacroLatestPayload, quality_flag: str) -> str:
+    if not payload.series:
+        return "vendor_unavailable"
+    if quality_flag == "stale":
+        return "vendor_stale"
+    return "ok"
+
+
+def _fallback_mode_for_macro_latest(payload: ChoiceMacroLatestPayload, quality_flag: str) -> str:
+    if payload.series and quality_flag == "stale":
+        return "latest_snapshot"
+    return "none"
 
 
 def _aggregate_quality_flags(values: list[str]) -> str:

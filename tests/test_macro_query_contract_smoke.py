@@ -20,6 +20,8 @@ def test_macro_foundation_preview_is_duckdb_backed_and_returns_result_meta(tmp_p
     assert payload["result_meta"]["result_kind"] == "preview.macro-foundation"
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert payload["result_meta"]["fallback_mode"] == "none"
     assert payload["result"]["read_target"] == "duckdb"
     assert payload["result"]["series"] == []
     get_settings.cache_clear()
@@ -387,8 +389,290 @@ def test_macro_foundation_preview_reports_aggregated_vendor_version_from_catalog
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_a__vv_choice_batch_b"
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
     assert sorted(item["vendor_version"] for item in payload["result"]["series"]) == [
         "vv_choice_batch_a",
         "vv_choice_batch_b",
     ]
+    get_settings.cache_clear()
+
+
+def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-foundation-policy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              vendor_series_code varchar,
+              batch_id varchar,
+              catalog_version varchar,
+              theme varchar,
+              is_core boolean,
+              tags_json varchar,
+              request_options varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct',
+                'EDB_REPO_7D',
+                'stable_daily',
+                '2026-04-11.choice-macro.v2',
+                'liquidity',
+                true,
+                '["china","rates","liquidity"]',
+                'IsLatest=0,StartDate=2026-04-10,EndDate=2026-04-10,Ispandas=1,RECVtimeout=5',
+                'date_slice',
+                'batch',
+                'stable',
+                'main refresh date-slice lane'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.macro_foundation()
+
+    assert payload["result"]["series"][0]["refresh_tier"] == "stable"
+    assert payload["result"]["series"][0]["fetch_mode"] == "date_slice"
+    assert payload["result"]["series"][0]["fetch_granularity"] == "batch"
+    assert payload["result"]["series"][0]["policy_note"] == "main refresh date-slice lane"
+    get_settings.cache_clear()
+
+
+def test_macro_foundation_preview_reports_snapshot_source_version_when_available(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-source-version.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              ('cn_cpi_yoy', 'CN CPI YoY', 'choice', 'vv_choice_batch_b', 'monthly', 'pct')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+              (
+                'cn_cpi_yoy',
+                'CN CPI YoY',
+                'EDB_CPI_YOY',
+                'choice',
+                '2026-04-11',
+                0.7,
+                'monthly',
+                'pct',
+                'sv_choice_macro_20260411',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'run-1'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/preview/macro-foundation")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_choice_macro_20260411"
+    assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_b"
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    get_settings.cache_clear()
+
+
+def test_macro_foundation_preview_keeps_empty_source_version_when_snapshot_exists_without_catalog_payload(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-source-version-mismatch.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+              (
+                'cn_cpi_yoy',
+                'CN CPI YoY',
+                'EDB_CPI_YOY',
+                'choice',
+                '2026-04-11',
+                0.7,
+                'monthly',
+                'pct',
+                'sv_choice_macro_20260411',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'run-1'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/preview/macro-foundation")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["series"] == []
+    assert payload["result_meta"]["source_version"] == "sv_macro_vendor_empty"
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_returns_stale_result_meta_when_latest_rows_are_stale(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-stale.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                '2026-04-11',
+                1.83,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260411',
+                'vv_choice_batch_stale',
+                'rv_choice_macro_thin_slice_v1',
+                'stale',
+                'choice_macro_refresh:2026-04-11T09:00:00Z'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    response = client.get("/ui/macro/choice-series/latest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["quality_flag"] == "stale"
+    assert payload["result_meta"]["vendor_status"] == "vendor_stale"
+    assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert payload["result_meta"]["vendor_version"] == "vv_choice_batch_stale"
+    assert payload["result"]["series"][0]["quality_flag"] == "stale"
     get_settings.cache_clear()
