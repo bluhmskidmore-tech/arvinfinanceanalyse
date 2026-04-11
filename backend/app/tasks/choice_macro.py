@@ -31,7 +31,8 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
-STABLE_DATE_SLICE_LOOKBACK_DAYS = 7
+STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS = 7
+STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
 
 
 @dramatiq.actor
@@ -447,9 +448,16 @@ def _iter_choice_batch_request_options(batch: ChoiceMacroBatchConfig) -> list[st
         return [batch.request_options]
 
     base_date = date.fromisoformat(start_date)
+    offsets = list(range(STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS + 1))
+    offsets.extend(
+        range(
+            STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS + 1,
+            STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS + 1,
+        )
+    )
     return [
         _replace_choice_date_range(batch.request_options, base_date - timedelta(days=offset))
-        for offset in range(STABLE_DATE_SLICE_LOOKBACK_DAYS + 1)
+        for offset in offsets
     ]
 
 

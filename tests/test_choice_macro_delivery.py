@@ -1440,3 +1440,79 @@ def test_choice_macro_refresh_retries_stable_date_slice_on_previous_trading_day(
     )
     assert observed[2][0] == ["cn_cpi_yoy"]
     assert observed[3][0] == ["cn_m2_yoy"]
+
+
+def test_choice_macro_refresh_extends_stable_date_slice_lookback_until_recent_valid_day(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    catalog_file = tmp_path / "choice_macro_catalog.json"
+    _write_choice_macro_catalog(catalog_file)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_file))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", "[]")
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[str] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        observed.append(request_options)
+        if (
+            series[0].series_id == "cn_repo_7d"
+            and "StartDate=2026-04-01" not in request_options
+        ):
+            raise RuntimeError("no data")
+
+        trade_date = "2026-04-01" if series[0].series_id == "cn_repo_7d" else "2026-04-09"
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_choice_{series[0].series_id}_{trade_date.replace('-', '')}",
+            captured_at=f"{trade_date}T14:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date=trade_date,
+                    value_numeric=float(index + 1),
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_choice_{item.series_id}_{trade_date.replace('-', '')}",
+                )
+                for index, item in enumerate(series)
+            ],
+            raw_payload={
+                "vendor_version": f"vv_choice_{series[0].series_id}_{trade_date.replace('-', '')}",
+                "captured_at": f"{trade_date}T14:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["series_count"] == 3
+    assert "StartDate=2026-04-11,EndDate=2026-04-11" in observed[0]
+    assert any("StartDate=2026-04-01,EndDate=2026-04-01" in item for item in observed)
