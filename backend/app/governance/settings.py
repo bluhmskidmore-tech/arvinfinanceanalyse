@@ -4,9 +4,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Repo root: backend/app/governance/settings.py -> parents[3] == <repo>
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_ENV_FILES = (
+    _REPO_ROOT / "config" / ".env",
+    _REPO_ROOT / ".env",
+)
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="MOSS_", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ENV_FILES, env_prefix="MOSS_", extra="ignore")
 
     environment: str = "development"
     postgres_dsn: str = "postgresql://moss:moss@localhost:5432/moss"
@@ -22,6 +29,9 @@ class Settings(BaseSettings):
     choice_macro_url: str = ""
     choice_username: str = ""
     choice_password: str = ""
+    choice_emquant_parent: str = ""
+    choice_start_options: str = ""
+    choice_request_options: str = ""
     choice_macro_series_json: str = "[]"
     choice_macro_catalog_file: str = "config/choice_macro_catalog.json"
     choice_macro_commands_file: str = ""
