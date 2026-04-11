@@ -13,6 +13,12 @@ class CacheBuildRunRecord(BaseModel):
     lock: str
     source_version: str
     vendor_version: str
+    cache_version: str | None = None
+    rule_version: str | None = None
+
+    def model_dump(self, *args, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(*args, **kwargs)
 
 
 class CacheManifestRecord(BaseModel):

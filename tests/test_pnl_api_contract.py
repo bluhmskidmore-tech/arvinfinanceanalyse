@@ -9,7 +9,11 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    SOURCE_MANIFEST_STREAM,
+    GovernanceRepository,
+)
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import ROOT, load_module
 
@@ -335,6 +339,94 @@ def test_pnl_refresh_report_date_returns_404_when_requested_month_is_missing(tmp
 
     assert response.status_code == 404
     assert "2024-12-31" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_report_date_prefers_manifest_source_over_direct_source_for_same_family(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir = _configure_refresh_sources(tmp_path, monkeypatch)
+    _copy_fi_refresh_source(tmp_path, month_key="202601")
+    manifest_fi = _create_archived_copy(
+        tmp_path,
+        source_file=ROOT / "data_input" / "pnl" / "FI损益202601.xls",
+        archive_name="manifest-fi-202601.xls",
+    )
+    _append_source_manifest_row(
+        governance_dir,
+        source_family="pnl",
+        report_date="2026-01-31",
+        source_file="FI损益202601.xls",
+        archived_path=manifest_fi,
+        source_version="sv_manifest_fi_202601",
+        ingest_batch_id="ib_manifest_fi_202601",
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/api/data/refresh_pnl", params={"report_date": "2026-01-31"})
+
+    assert response.status_code == 200
+    assert response.json()["report_date"] == "2026-01-31"
+    assert queued_messages
+    assert queued_messages[0]["fi_rows"]
+    assert {
+        row["source_version"] for row in queued_messages[0]["fi_rows"]
+    } == {"sv_manifest_fi_202601"}
+    get_settings.cache_clear()
+
+
+def test_pnl_refresh_report_date_mixes_manifest_and_direct_sources_by_family(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir = _configure_refresh_sources(tmp_path, monkeypatch)
+    _copy_fi_refresh_source(tmp_path, month_key="202601")
+    _write_nonstd_refresh_workbook(
+        tmp_path / "data_input" / "pnl_516" / "非标516-20260101-0131.xlsx",
+        row_dates=("2026-01-30", "2026-01-31"),
+    )
+    manifest_fi = _create_archived_copy(
+        tmp_path,
+        source_file=ROOT / "data_input" / "pnl" / "FI损益202601.xls",
+        archive_name="manifest-fi-202601.xls",
+    )
+    _append_source_manifest_row(
+        governance_dir,
+        source_family="pnl",
+        report_date="2026-01-31",
+        source_file="FI损益202601.xls",
+        archived_path=manifest_fi,
+        source_version="sv_manifest_fi_202601",
+        ingest_batch_id="ib_manifest_fi_202601",
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/api/data/refresh_pnl", params={"report_date": "2026-01-31"})
+
+    assert response.status_code == 200
+    assert queued_messages
+    fi_rows = queued_messages[0]["fi_rows"]
+    nonstd_rows = queued_messages[0]["nonstd_rows_by_type"]["516"]
+    assert {row["source_version"] for row in fi_rows} == {"sv_manifest_fi_202601"}
+    assert all(row["source_version"] != "sv_manifest_fi_202601" for row in nonstd_rows)
+    assert all(str(row["source_version"]).startswith("sv_pnl_") for row in nonstd_rows)
     get_settings.cache_clear()
 
 
@@ -680,6 +772,39 @@ def _configure_import_status_env(tmp_path, monkeypatch):
     return governance_dir
 
 
+def _append_source_manifest_row(
+    governance_dir,
+    *,
+    source_family: str,
+    report_date: str,
+    source_file: str,
+    archived_path: Path,
+    source_version: str,
+    ingest_batch_id: str,
+):
+    GovernanceRepository(base_dir=governance_dir).append(
+        SOURCE_MANIFEST_STREAM,
+        {
+            "source_family": source_family,
+            "report_date": report_date,
+            "source_file": source_file,
+            "archived_path": str(archived_path),
+            "source_version": source_version,
+            "ingest_batch_id": ingest_batch_id,
+            "status": "completed",
+            "created_at": "2026-04-11T00:00:00+00:00",
+        },
+    )
+
+
+def _create_archived_copy(tmp_path, *, source_file: Path, archive_name: str) -> Path:
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    target = archive_dir / archive_name
+    target.write_bytes(source_file.read_bytes())
+    return target
+
+
 def _append_pnl_build_run(
     governance_dir,
     *,
@@ -703,7 +828,12 @@ def _append_pnl_build_run(
     GovernanceRepository(base_dir=governance_dir).append(CACHE_BUILD_RUN_STREAM, record)
 
 
-def _write_nonstd_refresh_workbook(path: Path, *, include_prior_month_row: bool = False) -> None:
+def _write_nonstd_refresh_workbook(
+    path: Path,
+    *,
+    include_prior_month_row: bool = False,
+    row_dates: tuple[str, str] = ("2026-02-27", "2026-02-28"),
+) -> None:
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = "Sheet1"
@@ -758,14 +888,14 @@ def _write_nonstd_refresh_workbook(path: Path, *, include_prior_month_row: bool 
             ]
         )
     worksheet.append(
-        [
-            "1411968",
-            "1",
-            "默认账套",
-            "2026-02-27",
-            "TRD001",
-            "",
-            "证券投资基金",
+            [
+                "1411968",
+                "1",
+                "默认账套",
+                row_dates[0],
+                "TRD001",
+                "",
+                "证券投资基金",
             "测试产品A",
             "FVTPL",
             "5010",
@@ -782,14 +912,14 @@ def _write_nonstd_refresh_workbook(path: Path, *, include_prior_month_row: bool 
         ]
     )
     worksheet.append(
-        [
-            "1411969",
-            "2",
-            "默认账套",
-            "2026-02-28",
-            "TRD002",
-            "",
-            "证券投资基金",
+            [
+                "1411969",
+                "2",
+                "默认账套",
+                row_dates[1],
+                "TRD002",
+                "",
+                "证券投资基金",
             "测试产品B",
             "FVTPL",
             "5010",
