@@ -22,7 +22,7 @@ services:
   worker:
     image: python:3.14-slim
     working_dir: /workspace
-    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq backend.app.tasks.ingest backend.app.tasks.materialize"
+    command: sh -c "pip install -e ./backend[dev] && python -m dramatiq backend.app.tasks.worker_bootstrap"
     volumes:
       - ./:/workspace
     environment:

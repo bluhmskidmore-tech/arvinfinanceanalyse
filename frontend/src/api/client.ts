@@ -9,6 +9,16 @@ import {
 import type {
   AlertsPayload,
   ApiEnvelope,
+  BalanceAnalysisOverviewPayload,
+  BalanceAnalysisDatesPayload,
+  BalanceCurrencyBasis,
+  BalanceAnalysisPayload,
+  BalanceAnalysisWorkbookPayload,
+  BalancePositionScope,
+  BalanceAnalysisRefreshPayload,
+  BalanceAnalysisSummaryExportPayload,
+  BalanceAnalysisSummaryTablePayload,
+  BalanceAnalysisTableRow,
   ChoiceMacroLatestPayload,
   ChoiceNewsEventsPayload,
   ContributionPayload,
@@ -128,6 +138,38 @@ export type ApiClient = {
     view: string;
     scenarioRatePct?: string;
   }) => Promise<ApiEnvelope<ProductCategoryPnlPayload>>;
+  getBalanceAnalysisDates: () => Promise<ApiEnvelope<BalanceAnalysisDatesPayload>>;
+  getBalanceAnalysisOverview: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<ApiEnvelope<BalanceAnalysisOverviewPayload>>;
+  getBalanceAnalysisSummary: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+    limit: number;
+    offset: number;
+  }) => Promise<ApiEnvelope<BalanceAnalysisSummaryTablePayload>>;
+  getBalanceAnalysisWorkbook: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<ApiEnvelope<BalanceAnalysisWorkbookPayload>>;
+  getBalanceAnalysisDetail: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<ApiEnvelope<BalanceAnalysisPayload>>;
+  exportBalanceAnalysisSummaryCsv: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<BalanceAnalysisSummaryExportPayload>;
+  refreshBalanceAnalysis: (reportDate: string) => Promise<BalanceAnalysisRefreshPayload>;
+  getBalanceAnalysisRefreshStatus: (
+    runId: string,
+  ) => Promise<BalanceAnalysisRefreshPayload>;
 };
 
 type ApiClientOptions = {
@@ -1043,6 +1085,215 @@ const parseEnvMode = (): DataSourceMode => {
 
 const parseBaseUrl = () => normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
+function buildMockBalanceAnalysisTableRows(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+): BalanceAnalysisTableRow[] {
+  return [
+    {
+      row_key: "zqtz:240001.IB:portfolio-a:cc-1:CNY:asset:A:FVOCI",
+      source_family: "zqtz",
+      display_name: "240001.IB",
+      owner_name: "利率债组合",
+      category_name: "交易账户",
+      position_scope: "asset",
+      currency_basis: "CNY",
+      invest_type_std: "A",
+      accounting_basis: "FVOCI",
+      detail_row_count: 3,
+      market_value_amount: "720.00",
+      amortized_cost_amount: "648.00",
+      accrued_interest_amount: "36.00",
+    },
+    {
+      row_key: "tyw:repo-1:CNY:liability:H:AC",
+      source_family: "tyw",
+      display_name: "repo-1",
+      owner_name: "同业负债池",
+      category_name: "卖出回购",
+      position_scope: "liability",
+      currency_basis: "CNY",
+      invest_type_std: "H",
+      accounting_basis: "AC",
+      detail_row_count: 1,
+      market_value_amount: "72.00",
+      amortized_cost_amount: "72.00",
+      accrued_interest_amount: "14.40",
+    },
+    {
+      row_key: "zqtz:240002.IB:portfolio-b:cc-2:CNY:asset:H:AC",
+      source_family: "zqtz",
+      display_name: "240002.IB",
+      owner_name: "高等级组合",
+      category_name: "摊余成本",
+      position_scope: "asset",
+      currency_basis: "CNY",
+      invest_type_std: "H",
+      accounting_basis: "AC",
+      detail_row_count: 2,
+      market_value_amount: "410.00",
+      amortized_cost_amount: "403.00",
+      accrued_interest_amount: "20.00",
+    },
+  ].filter((row) => {
+    const matchesScope = positionScope === "all" || row.position_scope === positionScope;
+    const matchesBasis = row.currency_basis === currencyBasis;
+    return matchesScope && matchesBasis;
+  });
+}
+
+function buildMockBalanceAnalysisSummaryTable(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+  limit: number,
+  offset: number,
+): ApiEnvelope<BalanceAnalysisSummaryTablePayload> {
+  const rows = buildMockBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  return buildMockApiEnvelope(
+    "balance-analysis.summary",
+    {
+      report_date: reportDate,
+      position_scope: positionScope,
+      currency_basis: currencyBasis,
+      limit,
+      offset,
+      total_rows: rows.length,
+      rows: rows.slice(offset, offset + limit),
+    },
+    {
+      basis: "formal",
+      formal_use_allowed: true,
+      source_version: "sv_balance_mock",
+      rule_version: "rv_balance_analysis_formal_materialize_v1",
+      cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    },
+  );
+}
+
+function buildMockBalanceAnalysisSummaryCsv(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+): BalanceAnalysisSummaryExportPayload {
+  const rows = buildMockBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  const headers = [
+    "row_key",
+    "source_family",
+    "display_name",
+    "owner_name",
+    "category_name",
+    "position_scope",
+    "currency_basis",
+    "invest_type_std",
+    "accounting_basis",
+    "detail_row_count",
+    "market_value_amount",
+    "amortized_cost_amount",
+    "accrued_interest_amount",
+    "report_date",
+    "source_version",
+    "rule_version",
+  ];
+  const lines = rows.map((row) =>
+    [
+      row.row_key,
+      row.source_family,
+      row.display_name,
+      row.owner_name,
+      row.category_name,
+      row.position_scope,
+      row.currency_basis,
+      row.invest_type_std,
+      row.accounting_basis,
+      String(row.detail_row_count),
+      String(row.market_value_amount),
+      String(row.amortized_cost_amount),
+      String(row.accrued_interest_amount),
+      reportDate,
+      "sv_balance_mock",
+      "rv_balance_analysis_formal_materialize_v1",
+    ].join(","),
+  );
+  return {
+    filename: `balance-analysis-summary-${reportDate}-${positionScope}-${currencyBasis}.csv`,
+    content: [headers.join(","), ...lines].join("\n"),
+  };
+}
+
+function buildMockBalanceAnalysisWorkbook(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+): ApiEnvelope<BalanceAnalysisWorkbookPayload> {
+  return buildMockApiEnvelope(
+    "balance-analysis.workbook",
+    {
+      report_date: reportDate,
+      position_scope: positionScope,
+      currency_basis: currencyBasis,
+      cards: [
+        {
+          key: "bond_assets_excluding_issue",
+          label: "债券资产(剔除发行类)",
+          value: "720.00",
+          note: "ZQTZ 资产端剔除发行类后的余额。",
+        },
+        {
+          key: "interbank_liabilities",
+          label: "同业负债",
+          value: "72.00",
+          note: "TYW 负债端余额。",
+        },
+        {
+          key: "net_position",
+          label: "净头寸",
+          value: "648.00",
+          note: "资产端合计 - 同业负债。",
+        },
+      ],
+      tables: [
+        {
+          key: "bond_business_types",
+          title: "债券业务种类",
+          columns: [
+            { key: "bond_type", label: "业务种类" },
+            { key: "balance_amount", label: "面值/余额" },
+          ],
+          rows: [
+            {
+              bond_type: "政策性金融债",
+              balance_amount: "720.00",
+            },
+          ],
+        },
+        {
+          key: "maturity_gap",
+          title: "期限缺口分析",
+          columns: [
+            { key: "bucket", label: "期限分类" },
+            { key: "gap_amount", label: "缺口" },
+          ],
+          rows: [
+            {
+              bucket: "1-2年",
+              gap_amount: "648.00",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      basis: "formal",
+      formal_use_allowed: true,
+      source_version: "sv_balance_mock",
+      rule_version: "rv_balance_analysis_formal_materialize_v1",
+      cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    },
+  );
+}
+
 export class ActionRequestError extends Error {
   readonly status: number;
   readonly runId?: string;
@@ -1710,6 +1961,188 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockProductCategoryPnlEnvelope(options);
     },
+    async getBalanceAnalysisDates() {
+      await delay();
+      return buildMockApiEnvelope(
+        "balance-analysis.dates",
+        {
+          report_dates: ["2025-12-31"],
+        },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: "sv_balance_mock",
+          rule_version: "rv_balance_analysis_formal_materialize_v1",
+          cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        },
+      );
+    },
+    async getBalanceAnalysisOverview({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      const detailRows = [
+        {
+          source_family: "zqtz" as const,
+          position_scope: "asset" as const,
+          currency_basis: "CNY" as const,
+          market_value_amount: "720.00",
+          amortized_cost_amount: "648.00",
+          accrued_interest_amount: "36.00",
+        },
+        {
+          source_family: "tyw" as const,
+          position_scope: "liability" as const,
+          currency_basis: "CNY" as const,
+          market_value_amount: "72.00",
+          amortized_cost_amount: "72.00",
+          accrued_interest_amount: "14.40",
+        },
+      ].filter((row) => {
+        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
+        const matchesBasis = row.currency_basis === currencyBasis;
+        return matchesScope && matchesBasis;
+      });
+      const totals = detailRows.reduce(
+        (acc, row) => ({
+          detailRowCount: acc.detailRowCount + 1,
+          summaryRowCount: acc.summaryRowCount + 1,
+          marketValue: acc.marketValue + Number.parseFloat(row.market_value_amount),
+          amortizedCost: acc.amortizedCost + Number.parseFloat(row.amortized_cost_amount),
+          accruedInterest: acc.accruedInterest + Number.parseFloat(row.accrued_interest_amount),
+        }),
+        {
+          detailRowCount: 0,
+          summaryRowCount: 0,
+          marketValue: 0,
+          amortizedCost: 0,
+          accruedInterest: 0,
+        },
+      );
+      return buildMockApiEnvelope(
+        "balance-analysis.overview",
+        {
+          report_date: reportDate,
+          position_scope: positionScope,
+          currency_basis: currencyBasis,
+          detail_row_count: totals.detailRowCount,
+          summary_row_count: totals.summaryRowCount,
+          total_market_value_amount: totals.marketValue.toFixed(2),
+          total_amortized_cost_amount: totals.amortizedCost.toFixed(2),
+          total_accrued_interest_amount: totals.accruedInterest.toFixed(2),
+        },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: "sv_balance_mock",
+          rule_version: "rv_balance_analysis_formal_materialize_v1",
+          cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        },
+      );
+    },
+    async getBalanceAnalysisDetail({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      const baseDetails = [
+        {
+          source_family: "zqtz" as const,
+          report_date: reportDate,
+          row_key: "zqtz:mock",
+          display_name: "240001.IB",
+          position_scope: "asset" as const,
+          currency_basis: "CNY" as const,
+          invest_type_std: "A",
+          accounting_basis: "FVOCI",
+          market_value_amount: "720.00",
+          amortized_cost_amount: "648.00",
+          accrued_interest_amount: "36.00",
+          is_issuance_like: false,
+        },
+        {
+          source_family: "tyw" as const,
+          report_date: reportDate,
+          row_key: "tyw:mock",
+          display_name: "pos-1",
+          position_scope: "liability" as const,
+          currency_basis: "CNY" as const,
+          invest_type_std: "H",
+          accounting_basis: "AC",
+          market_value_amount: "72.00",
+          amortized_cost_amount: "72.00",
+          accrued_interest_amount: "14.40",
+          is_issuance_like: null,
+        },
+      ].filter((row) => {
+        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
+        const matchesBasis = row.currency_basis === currencyBasis;
+        return matchesScope && matchesBasis;
+      });
+      const summary = baseDetails.map((row) => ({
+        source_family: row.source_family,
+        position_scope: row.position_scope,
+        currency_basis: row.currency_basis,
+        row_count: 1,
+        market_value_amount: row.market_value_amount,
+        amortized_cost_amount: row.amortized_cost_amount,
+        accrued_interest_amount: row.accrued_interest_amount,
+      }));
+      return buildMockApiEnvelope(
+        "balance-analysis.detail",
+        {
+          report_date: reportDate,
+          position_scope: positionScope,
+          currency_basis: currencyBasis,
+          details: baseDetails,
+          summary,
+        },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: "sv_balance_mock",
+          rule_version: "rv_balance_analysis_formal_materialize_v1",
+          cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        },
+      );
+    },
+    async getBalanceAnalysisSummary({ reportDate, positionScope, currencyBasis, limit, offset }) {
+      await delay();
+      return buildMockBalanceAnalysisSummaryTable(
+        reportDate,
+        positionScope,
+        currencyBasis,
+        limit,
+        offset,
+      );
+    },
+    async getBalanceAnalysisWorkbook({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      return buildMockBalanceAnalysisWorkbook(reportDate, positionScope, currencyBasis);
+    },
+    async exportBalanceAnalysisSummaryCsv({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      return buildMockBalanceAnalysisSummaryCsv(reportDate, positionScope, currencyBasis);
+    },
+    async refreshBalanceAnalysis(reportDate: string) {
+      await delay();
+      return {
+        status: "queued",
+        run_id: "balance_analysis_materialize:mock-run",
+        job_name: "balance_analysis_materialize",
+        trigger_mode: "async",
+        cache_key: "balance_analysis:materialize:formal",
+        report_date: reportDate,
+      };
+    },
+    async getBalanceAnalysisRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "balance_analysis_materialize",
+        trigger_mode: "terminal",
+        cache_key: "balance_analysis:materialize:formal",
+        report_date: "2025-12-31",
+        source_version: "sv_balance_mock",
+        rule_version: "rv_balance_analysis_formal_materialize_v1",
+      };
+    },
   };
 
   if (mode === "mock") {
@@ -1960,6 +2393,99 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/ui/pnl/product-category?${params.toString()}`,
       );
     },
+    getBalanceAnalysisDates: () =>
+      requestJson<BalanceAnalysisDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/balance-analysis/dates",
+      ),
+    getBalanceAnalysisOverview: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisOverviewPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/overview?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisSummary: ({
+      reportDate,
+      positionScope,
+      currencyBasis,
+      limit,
+      offset,
+    }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      return requestJson<BalanceAnalysisSummaryTablePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/summary?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisWorkbook: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisWorkbookPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/workbook?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisDetail: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis?${params.toString()}`,
+      );
+    },
+    exportBalanceAnalysisSummaryCsv: ({
+      reportDate,
+      positionScope,
+      currencyBasis,
+    }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestText(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/summary/export?${params.toString()}`,
+      );
+    },
+    refreshBalanceAnalysis: (reportDate: string) =>
+      requestActionJson<BalanceAnalysisRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/refresh?report_date=${encodeURIComponent(reportDate)}`,
+        {
+          method: "POST",
+        },
+      ),
+    getBalanceAnalysisRefreshStatus: (runId: string) =>
+      requestActionJson<BalanceAnalysisRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
   };
 }
 

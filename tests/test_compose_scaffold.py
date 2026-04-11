@@ -19,6 +19,7 @@ def test_docker_compose_bootstraps_backend_dependencies_and_uses_container_hosts
     text = compose_path.read_text(encoding="utf-8")
 
     assert "pip install -e ./backend" in text
+    assert "python -m dramatiq backend.app.tasks.worker_bootstrap" in text
     assert "postgresql://moss:moss@postgres:5432/moss" in text
     assert "redis://redis:6379/0" in text
     assert "minio:9000" in text

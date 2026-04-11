@@ -51,6 +51,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "债券工作台入口",
   },
   {
+    key: "balance-analysis",
+    label: "资产负债分析",
+    path: "/balance-analysis",
+    icon: "analysis",
+    description: "债券与同业正式资产负债分析入口",
+  },
+  {
     key: "product-category-pnl",
     label: "产品损益",
     path: "/product-category-pnl",

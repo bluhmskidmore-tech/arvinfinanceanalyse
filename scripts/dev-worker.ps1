@@ -9,4 +9,4 @@ if (-not (Test-Path ".\.venv\Scripts\Activate.ps1")) {
 }
 
 . .\.venv\Scripts\Activate.ps1
-python -m dramatiq backend.app.tasks.ingest backend.app.tasks.materialize backend.app.tasks.choice_macro
+python -m dramatiq backend.app.tasks.worker_bootstrap

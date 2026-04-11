@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from backend.app.api.routes.agent import router as agent_router
+from backend.app.api.routes.balance_analysis import router as balance_analysis_router
 from backend.app.api.routes.executive import router as executive_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.choice_news import router as choice_news_router
@@ -12,6 +13,7 @@ from backend.app.api.routes.source_preview import router as source_preview_route
 
 router = APIRouter()
 router.include_router(agent_router, tags=["agent"])
+router.include_router(balance_analysis_router, tags=["balance-analysis"])
 router.include_router(bond_analytics_router, tags=["bond-analytics"])
 router.include_router(choice_news_router, tags=["choice-news"])
 router.include_router(health_router, tags=["health"])

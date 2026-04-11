@@ -25,6 +25,8 @@ ZQTZ_ISSUER = "授信客户名称"
 ZQTZ_FAIR_VALUE = "公允价值"
 ZQTZ_AMORTIZED = "摊余成本"
 ZQTZ_ACCRUED = "应计利息"
+ZQTZ_FACE_VALUE = "面值"
+ZQTZ_INTEREST_MODE = "计息方式"
 ZQTZ_COUPON = "利率"
 ZQTZ_YTM = "到期收益率"
 ZQTZ_MATURITY = "到期日"
@@ -38,6 +40,7 @@ TYW_COUNTERPARTY = "对手方名称"
 TYW_PORTFOLIO = "投资组合"
 TYW_ACCOUNT_TYPE = "账户类型"
 TYW_SPECIAL_ACCOUNT = "特殊账户类型"
+TYW_CORE_CUSTOMER = "核心客户类型"
 TYW_CURRENCY = "币种"
 TYW_PRINCIPAL = "金额"
 TYW_ACCRUED = "应计利息"
@@ -45,7 +48,7 @@ TYW_RATE = "利率"
 TYW_MATURITY = "到期日"
 TYW_PLEDGED = "质押债券号"
 
-_LIABILITY_PRODUCTS = frozenset({"同业拆入", "卖出回购证券", "卖出回购票据"})
+_LIABILITY_PRODUCTS = frozenset({"同业拆入", "同业存放", "卖出回购证券", "卖出回购票据"})
 
 
 def _text(row: dict[str, object], key: str) -> str:
@@ -125,7 +128,10 @@ def parse_zqtz_snapshot_rows_from_bytes(
 
         business_kind = _text(raw_row, ZQTZ_BUSINESS_KIND)
         business_one = _text(raw_row, ZQTZ_BUSINESS_TYPE1)
-        is_issuance_like = "发行" in business_kind or "发行" in business_one
+        account_category = _text(raw_row, ZQTZ_ACCOUNT_CATEGORY)
+        asset_class = _text(raw_row, ZQTZ_ASSET_CLASS)
+        issuance_markers = (business_kind, business_one, account_category, asset_class)
+        is_issuance_like = any("发行类债" in marker or marker == "发行类债劵" for marker in issuance_markers)
 
         overdue_raw = _decimal(_text(raw_row, ZQTZ_OVERDUE_DAYS) or raw_row.get(ZQTZ_OVERDUE_DAYS))
         overdue_days = int(overdue_raw) if overdue_raw is not None else None
@@ -137,22 +143,24 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "instrument_name": _text(raw_row, ZQTZ_BOND_NAME),
                 "portfolio_name": _text(raw_row, ZQTZ_PORTFOLIO),
                 "cost_center": _text(raw_row, ZQTZ_COST_CENTER),
-                "account_category": _text(raw_row, ZQTZ_ACCOUNT_CATEGORY),
-                "asset_class": _text(raw_row, ZQTZ_ASSET_CLASS),
+                "account_category": account_category,
+                "asset_class": asset_class,
                 "bond_type": business_kind or business_one,
                 "issuer_name": _text(raw_row, ZQTZ_ISSUER) or None,
                 "industry_name": _text(raw_row, ZQTZ_INDUSTRY) or None,
                 "rating": _text(raw_row, ZQTZ_RATING) or None,
                 "currency_code": _text(raw_row, ZQTZ_CURRENCY),
+                "face_value_native": _decimal_required(raw_row.get(ZQTZ_FACE_VALUE)),
                 "market_value_native": _decimal_required(raw_row.get(ZQTZ_FAIR_VALUE)),
                 "amortized_cost_native": _decimal_required(raw_row.get(ZQTZ_AMORTIZED)),
                 "accrued_interest_native": _decimal_required(raw_row.get(ZQTZ_ACCRUED)),
-                "ytm_value": _decimal(raw_row.get(ZQTZ_YTM)),
                 "coupon_rate": _decimal(raw_row.get(ZQTZ_COUPON)),
+                "ytm_value": _decimal(raw_row.get(ZQTZ_YTM)),
                 "maturity_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_MATURITY)),
                 "next_call_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_NEXT_CALL)),
                 "overdue_days": overdue_days,
                 "is_issuance_like": bool(is_issuance_like),
+                "interest_mode": _text(raw_row, ZQTZ_INTEREST_MODE),
                 "source_version": source_version,
                 "rule_version": rule_version,
                 "ingest_batch_id": ingest_batch_id,
@@ -199,6 +207,7 @@ def parse_tyw_snapshot_rows_from_bytes(
                 "counterparty_name": _text(raw_row, TYW_COUNTERPARTY),
                 "account_type": _text(raw_row, TYW_ACCOUNT_TYPE) or None,
                 "special_account_type": _text(raw_row, TYW_SPECIAL_ACCOUNT) or None,
+                "core_customer_type": _text(raw_row, TYW_CORE_CUSTOMER) or None,
                 "currency_code": _text(raw_row, TYW_CURRENCY),
                 "principal_native": _decimal_required(raw_row.get(TYW_PRINCIPAL)),
                 "accrued_interest_native": _decimal_required(raw_row.get(TYW_ACCRUED)),

@@ -25,6 +25,9 @@ const MarketDataPage = lazy(
 const ProductCategoryPnlPage = lazy(
   () => import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
 );
+const BalanceAnalysisPage = lazy(
+  () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
+);
 const ProductCategoryAdjustmentAuditPage = lazy(
   () => import("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage"),
 );
@@ -87,6 +90,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<ProductCategoryPnlPage />),
+      };
+    }
+
+    if (section.path === "/balance-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<BalanceAnalysisPage />),
       };
     }
 

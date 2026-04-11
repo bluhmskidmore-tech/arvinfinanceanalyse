@@ -86,4 +86,18 @@ describe("RouteRegistry", () => {
     ).toBeInTheDocument();
     expect(await screen.findByTestId("market-data-catalog-count")).toBeInTheDocument();
   });
+
+  it("renders the hidden balance-analysis route as the first governed balance consumer", async () => {
+    renderWorkbenchApp(["/balance-analysis"]);
+
+    expect(
+      await screen.findByRole("heading", { name: "资产负债分析" }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation")).getByRole("link", {
+        name: /资产负债分析/,
+      }),
+    ).toHaveAttribute("href", "/balance-analysis");
+    expect(await screen.findByTestId("balance-analysis-table")).toBeInTheDocument();
+  });
 });

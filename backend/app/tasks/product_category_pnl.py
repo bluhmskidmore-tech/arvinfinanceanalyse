@@ -4,7 +4,6 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-import dramatiq
 import duckdb
 
 from backend.app.config.product_category_mapping import build_default_product_category_config
@@ -26,6 +25,7 @@ from backend.app.services.product_category_source_service import (
     build_canonical_facts,
     discover_source_pairs,
 )
+from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
 
@@ -36,8 +36,7 @@ PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
 PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
 
 
-@dramatiq.actor
-def materialize_product_category_pnl(
+def _materialize_product_category_pnl(
     duckdb_path: str | None = None,
     source_dir: str | None = None,
     governance_dir: str | None = None,
@@ -175,6 +174,12 @@ def materialize_product_category_pnl(
         "rule_version": RULE_VERSION,
         "source_version": joined_source_version,
     }
+
+
+materialize_product_category_pnl = register_actor_once(
+    "materialize_product_category_pnl",
+    _materialize_product_category_pnl,
+)
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:

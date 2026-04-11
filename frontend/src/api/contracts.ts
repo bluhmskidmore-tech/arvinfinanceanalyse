@@ -400,6 +400,133 @@ export type ProductCategoryRefreshPayload = {
   detail?: string | null;
 };
 
+export type BalanceAnalysisDatesPayload = {
+  report_dates: string[];
+};
+
+export type BalancePositionScope = "asset" | "liability" | "all";
+
+export type BalanceCurrencyBasis = "native" | "CNY";
+
+export type BalanceAnalysisDetailRow = {
+  source_family: "zqtz" | "tyw";
+  report_date: string;
+  row_key: string;
+  display_name: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  invest_type_std: string;
+  accounting_basis: string;
+  market_value_amount: DecimalLike;
+  amortized_cost_amount: DecimalLike;
+  accrued_interest_amount: DecimalLike;
+  is_issuance_like: boolean | null;
+};
+
+export type BalanceAnalysisSummaryRow = {
+  source_family: "zqtz" | "tyw" | "combined";
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  row_count: number;
+  market_value_amount: DecimalLike;
+  amortized_cost_amount: DecimalLike;
+  accrued_interest_amount: DecimalLike;
+};
+
+export type BalanceAnalysisOverviewPayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  detail_row_count: number;
+  summary_row_count: number;
+  total_market_value_amount: DecimalLike;
+  total_amortized_cost_amount: DecimalLike;
+  total_accrued_interest_amount: DecimalLike;
+};
+
+export type BalanceAnalysisTableRow = {
+  row_key: string;
+  source_family: "zqtz" | "tyw";
+  display_name: string;
+  owner_name: string;
+  category_name: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  invest_type_std: string;
+  accounting_basis: string;
+  detail_row_count: number;
+  market_value_amount: DecimalLike;
+  amortized_cost_amount: DecimalLike;
+  accrued_interest_amount: DecimalLike;
+};
+
+export type BalanceAnalysisSummaryTablePayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  limit: number;
+  offset: number;
+  total_rows: number;
+  rows: BalanceAnalysisTableRow[];
+};
+
+export type BalanceAnalysisPayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  details: BalanceAnalysisDetailRow[];
+  summary: BalanceAnalysisSummaryRow[];
+};
+
+export type BalanceAnalysisWorkbookCard = {
+  key: string;
+  label: string;
+  value: DecimalLike;
+  note?: string | null;
+};
+
+export type BalanceAnalysisWorkbookColumn = {
+  key: string;
+  label: string;
+};
+
+export type BalanceAnalysisWorkbookTable = {
+  key: string;
+  title: string;
+  columns: BalanceAnalysisWorkbookColumn[];
+  rows: Array<Record<string, DecimalLike | null>>;
+};
+
+export type BalanceAnalysisWorkbookPayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  cards: BalanceAnalysisWorkbookCard[];
+  tables: BalanceAnalysisWorkbookTable[];
+};
+
+export type BalanceAnalysisSummaryExportPayload = {
+  filename: string;
+  content: string;
+};
+
+export type BalanceAnalysisRefreshPayload = {
+  status: string;
+  run_id?: string;
+  job_name: string;
+  trigger_mode: string;
+  cache_key?: string;
+  report_date?: string;
+  source_version?: string;
+  vendor_version?: string;
+  rule_version?: string;
+  lock?: string;
+  zqtz_rows?: number;
+  tyw_rows?: number;
+  detail?: string | null;
+  error_message?: string | null;
+};
+
 export type ProductCategoryManualAdjustmentRequest = {
   report_date: string;
   operator: "ADD" | "DELTA" | "OVERRIDE";

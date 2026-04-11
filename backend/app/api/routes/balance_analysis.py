@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Query, Response
+
+from backend.app.governance.settings import get_settings
+from backend.app.services.balance_analysis_service import (
+    BalanceAnalysisRefreshConflictError,
+    BalanceAnalysisRefreshServiceError,
+    balance_analysis_dates_envelope,
+    balance_analysis_detail_envelope,
+    balance_analysis_overview_envelope,
+    balance_analysis_refresh_status,
+    balance_analysis_summary_envelope,
+    balance_analysis_workbook_envelope,
+    export_balance_analysis_summary_csv,
+    refresh_balance_analysis,
+)
+
+router = APIRouter(prefix="/ui/balance-analysis")
+
+
+@router.get("/dates")
+def dates() -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_dates_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("")
+def detail(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_detail_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/overview")
+def overview(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_overview_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/summary")
+def summary(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_summary_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            limit=limit,
+            offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/workbook")
+def workbook(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_workbook_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/summary/export")
+def export_summary(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+) -> Response:
+    settings = get_settings()
+    try:
+        filename, content = export_balance_analysis_summary_csv(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/refresh")
+def refresh(report_date: str = Query(...)) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return refresh_balance_analysis(settings, report_date=report_date)
+    except BalanceAnalysisRefreshConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except BalanceAnalysisRefreshServiceError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/refresh-status")
+def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_refresh_status(settings, run_id=run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

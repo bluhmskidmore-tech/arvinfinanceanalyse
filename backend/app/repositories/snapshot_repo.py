@@ -27,15 +27,17 @@ def ensure_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
           industry_name varchar,
           rating varchar,
           currency_code varchar,
-          market_value_native decimal(24,8),
+          face_value_native decimal(24, 8),
+          market_value_native decimal(24, 8),
           amortized_cost_native decimal(24, 8),
           accrued_interest_native decimal(24, 8),
-          ytm_value decimal(18, 8),
           coupon_rate decimal(18, 8),
+          ytm_value decimal(18, 8),
           maturity_date date,
           next_call_date date,
           overdue_days integer,
           is_issuance_like boolean,
+          interest_mode varchar,
           source_version varchar,
           rule_version varchar,
           ingest_batch_id varchar,
@@ -53,6 +55,7 @@ def ensure_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
           counterparty_name varchar,
           account_type varchar,
           special_account_type varchar,
+          core_customer_type varchar,
           currency_code varchar,
           principal_native decimal(24, 8),
           accrued_interest_native decimal(24, 8),
@@ -106,7 +109,7 @@ def replace_zqtz_snapshot_rows(
     conn.executemany(
         f"""
         insert into {ZQTZ_TABLE} values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -123,15 +126,17 @@ def replace_zqtz_snapshot_rows(
                 r["industry_name"],
                 r["rating"],
                 r["currency_code"],
+                _sql_value(r["face_value_native"]),
                 _sql_value(r["market_value_native"]),
                 _sql_value(r["amortized_cost_native"]),
                 _sql_value(r["accrued_interest_native"]),
-                _sql_value(r["ytm_value"]),
                 _sql_value(r["coupon_rate"]),
+                _sql_value(r["ytm_value"]),
                 _sql_value(r["maturity_date"]),
                 _sql_value(r["next_call_date"]),
                 r["overdue_days"],
                 r["is_issuance_like"],
+                r["interest_mode"],
                 r["source_version"],
                 r["rule_version"],
                 r["ingest_batch_id"],
@@ -155,7 +160,7 @@ def replace_tyw_snapshot_rows(
     conn.executemany(
         f"""
         insert into {TYW_TABLE} values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -167,6 +172,7 @@ def replace_tyw_snapshot_rows(
                 r["counterparty_name"],
                 r["account_type"],
                 r["special_account_type"],
+                r["core_customer_type"],
                 r["currency_code"],
                 _sql_value(r["principal_native"]),
                 _sql_value(r["accrued_interest_native"]),

@@ -1333,4 +1333,293 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch balance-analysis envelopes", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/ui/balance-analysis/dates")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_balance_dates",
+              basis: "formal",
+              result_kind: "balance-analysis.dates",
+              formal_use_allowed: true,
+              source_version: "sv_balance",
+              vendor_version: "vv_none",
+              rule_version: "rv_balance",
+              cache_version: "cv_balance",
+              quality_flag: "ok",
+              scenario_flag: false,
+              generated_at: "2026-04-11T04:00:00Z",
+            },
+            result: {
+              report_dates: ["2025-12-31"],
+            },
+          }),
+        };
+      }
+      if (url.includes("/ui/balance-analysis/overview?")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: {
+              trace_id: "tr_balance_overview",
+              basis: "formal",
+              result_kind: "balance-analysis.overview",
+              formal_use_allowed: true,
+              source_version: "sv_balance",
+              vendor_version: "vv_none",
+              rule_version: "rv_balance",
+              cache_version: "cv_balance",
+              quality_flag: "ok",
+              scenario_flag: false,
+              generated_at: "2026-04-11T04:00:00Z",
+            },
+            result: {
+              report_date: "2025-12-31",
+              position_scope: "all",
+              currency_basis: "CNY",
+              detail_row_count: 2,
+              summary_row_count: 2,
+              total_market_value_amount: "792.00",
+              total_amortized_cost_amount: "720.00",
+              total_accrued_interest_amount: "50.40",
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_balance_detail",
+            basis: "formal",
+            result_kind: "balance-analysis.detail",
+            formal_use_allowed: true,
+            source_version: "sv_balance",
+            vendor_version: "vv_none",
+            rule_version: "rv_balance",
+            cache_version: "cv_balance",
+            quality_flag: "ok",
+            scenario_flag: false,
+            generated_at: "2026-04-11T04:00:00Z",
+          },
+          result: {
+            report_date: "2025-12-31",
+            position_scope: "all",
+            currency_basis: "CNY",
+            details: [],
+            summary: [],
+          },
+        }),
+      };
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getBalanceAnalysisDates();
+    await client.getBalanceAnalysisOverview({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    await client.getBalanceAnalysisDetail({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/balance-analysis/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/balance-analysis/overview?report_date=2025-12-31&position_scope=all&currency_basis=CNY",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/ui/balance-analysis?report_date=2025-12-31&position_scope=all&currency_basis=CNY",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch balance-analysis summary and export csv", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/ui/balance-analysis/summary/export?")) {
+        return {
+          ok: true,
+          headers: new Headers({
+            "Content-Disposition":
+              'attachment; filename="balance-analysis-summary-2025-12-31-asset-CNY.csv"',
+          }),
+          text: async () => "row_key,display_name\nrow-1,240001.IB\n",
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_balance_summary",
+            basis: "formal",
+            result_kind: "balance-analysis.summary",
+            formal_use_allowed: true,
+            source_version: "sv_balance",
+            vendor_version: "vv_none",
+            rule_version: "rv_balance",
+            cache_version: "cv_balance",
+            quality_flag: "ok",
+            scenario_flag: false,
+            generated_at: "2026-04-11T04:00:00Z",
+          },
+          result: {
+            report_date: "2025-12-31",
+            position_scope: "asset",
+            currency_basis: "CNY",
+            limit: 2,
+            offset: 2,
+            total_rows: 3,
+            rows: [
+              {
+                row_key: "zqtz:240001.IB:portfolio-a:cc-1:CNY:asset:A:FVOCI",
+                source_family: "zqtz",
+                display_name: "240001.IB",
+                owner_name: "利率债组合",
+                category_name: "交易账户",
+                position_scope: "asset",
+                currency_basis: "CNY",
+                invest_type_std: "A",
+                accounting_basis: "FVOCI",
+                detail_row_count: 3,
+                market_value_amount: "720.00",
+                amortized_cost_amount: "648.00",
+                accrued_interest_amount: "36.00",
+              },
+            ],
+          },
+        }),
+      };
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const summary = await client.getBalanceAnalysisSummary({
+      reportDate: "2025-12-31",
+      positionScope: "asset",
+      currencyBasis: "CNY",
+      limit: 2,
+      offset: 2,
+    });
+    const exported = await client.exportBalanceAnalysisSummaryCsv({
+      reportDate: "2025-12-31",
+      positionScope: "asset",
+      currencyBasis: "CNY",
+    });
+
+    expect(summary.result.total_rows).toBe(3);
+    expect(summary.result.rows[0]?.owner_name).toBe("利率债组合");
+    expect(exported.filename).toBe("balance-analysis-summary-2025-12-31-asset-CNY.csv");
+    expect(exported.content).toContain("240001.IB");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/balance-analysis/summary?report_date=2025-12-31&position_scope=asset&currency_basis=CNY&limit=2&offset=2",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/balance-analysis/summary/export?report_date=2025-12-31&position_scope=asset&currency_basis=CNY",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "text/csv, text/plain;q=0.9, */*;q=0.8",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to trigger and poll balance-analysis refresh", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/refresh-status?run_id=")) {
+        return {
+          ok: true,
+          json: async () => ({
+            status: "completed",
+            run_id: "balance_analysis_materialize:test-run",
+            job_name: "balance_analysis_materialize",
+            trigger_mode: "terminal",
+            cache_key: "balance_analysis:materialize:formal",
+            source_version: "sv_balance_test",
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          status: "queued",
+          run_id: "balance_analysis_materialize:test-run",
+          job_name: "balance_analysis_materialize",
+          trigger_mode: "async",
+          cache_key: "balance_analysis:materialize:formal",
+          report_date: "2025-12-31",
+        }),
+      };
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.refreshBalanceAnalysis("2025-12-31");
+    await client.getBalanceAnalysisRefreshStatus("balance_analysis_materialize:test-run");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/balance-analysis/refresh?report_date=2025-12-31",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/balance-analysis/refresh-status?run_id=balance_analysis_materialize%3Atest-run",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
 });
