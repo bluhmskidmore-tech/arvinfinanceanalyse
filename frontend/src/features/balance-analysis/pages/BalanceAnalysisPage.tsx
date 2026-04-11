@@ -584,7 +584,17 @@ function renderDecisionItemsPanel(table: BalanceAnalysisWorkbookTable) {
   if (table.rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
-  if (!hasWorkbookFields(table.rows, ["title", "action_label", "severity", "reason", "source_section"])) {
+  if (
+    !hasWorkbookFields(table.rows, [
+      "title",
+      "action_label",
+      "severity",
+      "reason",
+      "source_section",
+      "rule_id",
+      "rule_version",
+    ])
+  ) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：决策事项字段不完整。");
   }
 
@@ -613,6 +623,7 @@ function renderDecisionItemsPanel(table: BalanceAnalysisWorkbookTable) {
             <span>{formatWorkbookValue(row.action_label)}</span>
             <span>{formatWorkbookValue(row.source_section)}</span>
             <span>{formatWorkbookValue(row.rule_id)}</span>
+            <span>{formatWorkbookValue(row.rule_version)}</span>
           </div>
         </article>
       ))}
@@ -624,7 +635,16 @@ function renderEventCalendarPanel(table: BalanceAnalysisWorkbookTable) {
   if (table.rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
-  if (!hasWorkbookFields(table.rows, ["event_date", "event_type", "title", "source", "impact_hint"])) {
+  if (
+    !hasWorkbookFields(table.rows, [
+      "event_date",
+      "event_type",
+      "title",
+      "source",
+      "impact_hint",
+      "source_section",
+    ])
+  ) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：事件日历字段不完整。");
   }
 
@@ -650,6 +670,7 @@ function renderEventCalendarPanel(table: BalanceAnalysisWorkbookTable) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
             <span>{formatWorkbookValue(row.event_type)}</span>
             <span>{formatWorkbookValue(row.source)}</span>
+            <span>{formatWorkbookValue(row.source_section)}</span>
           </div>
         </article>
       ))}
@@ -661,7 +682,16 @@ function renderRiskAlertsPanel(table: BalanceAnalysisWorkbookTable) {
   if (table.rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
-  if (!hasWorkbookFields(table.rows, ["title", "severity", "reason", "source_section"])) {
+  if (
+    !hasWorkbookFields(table.rows, [
+      "title",
+      "severity",
+      "reason",
+      "source_section",
+      "rule_id",
+      "rule_version",
+    ])
+  ) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：风险预警字段不完整。");
   }
 
@@ -691,6 +721,7 @@ function renderRiskAlertsPanel(table: BalanceAnalysisWorkbookTable) {
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
             <span>{formatWorkbookValue(row.source_section)}</span>
             <span>{formatWorkbookValue(row.rule_id)}</span>
+            <span>{formatWorkbookValue(row.rule_version)}</span>
           </div>
         </article>
       ))}
@@ -712,13 +743,13 @@ function renderWorkbookSecondaryPanel(table: BalanceAnalysisWorkbookTable) {
 }
 
 function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookTable) {
-  if (table.key === "decision_items") {
+  if (table.section_kind === "decision_items") {
     return renderDecisionItemsPanel(table);
   }
-  if (table.key === "event_calendar") {
+  if (table.section_kind === "event_calendar") {
     return renderEventCalendarPanel(table);
   }
-  if (table.key === "risk_alerts") {
+  if (table.section_kind === "risk_alerts") {
     return renderRiskAlertsPanel(table);
   }
   return null;
@@ -845,14 +876,14 @@ export default function BalanceAnalysisPage() {
   const secondaryWorkbookPanelTables = secondaryWorkbookPanelKeys
     .map((tableKey) => workbookTables.find((table) => table.key === tableKey))
     .filter((table): table is BalanceAnalysisWorkbookTable => table !== undefined);
-  const rightRailWorkbookTables = rightRailWorkbookKeys
-    .map((tableKey) => workbookTables.find((table) => table.key === tableKey))
-    .filter((table): table is BalanceAnalysisWorkbookTable => table !== undefined);
+  const rightRailWorkbookTables = workbookTables.filter((table) =>
+    rightRailWorkbookKeys.includes(table.section_kind as (typeof rightRailWorkbookKeys)[number]),
+  );
   const secondaryWorkbookTables = workbookTables.filter(
     (table) =>
       !primaryWorkbookTableKeys.includes(table.key as (typeof primaryWorkbookTableKeys)[number]) &&
       !secondaryWorkbookPanelKeys.includes(table.key as (typeof secondaryWorkbookPanelKeys)[number]) &&
-      !rightRailWorkbookKeys.includes(table.key as (typeof rightRailWorkbookKeys)[number]),
+      !rightRailWorkbookKeys.includes(table.section_kind as (typeof rightRailWorkbookKeys)[number]),
   );
   const resultMetaSections = [
     overviewMeta ? { key: "overview", title: "Overview Result Meta", meta: overviewMeta } : null,

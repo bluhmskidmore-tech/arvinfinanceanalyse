@@ -18,6 +18,8 @@ def test_balance_analysis_schema_defines_governed_payload_models():
     workbook_card = getattr(module, "BalanceAnalysisWorkbookCard")
     workbook_table = getattr(module, "BalanceAnalysisWorkbookTable")
     workbook_payload = getattr(module, "BalanceAnalysisWorkbookPayload")
+    basis_row = getattr(module, "BalanceAnalysisBasisBreakdownRow")
+    basis_payload = getattr(module, "BalanceAnalysisBasisBreakdownPayload")
 
     assert {
         "source_family",
@@ -54,6 +56,18 @@ def test_balance_analysis_schema_defines_governed_payload_models():
     assert {"report_date", "position_scope", "currency_basis", "cards", "tables"} <= set(
         workbook_payload.model_fields
     )
+    assert {
+        "source_family",
+        "invest_type_std",
+        "accounting_basis",
+        "position_scope",
+        "currency_basis",
+        "detail_row_count",
+        "market_value_amount",
+        "amortized_cost_amount",
+        "accrued_interest_amount",
+    } <= set(basis_row.model_fields)
+    assert {"report_date", "position_scope", "currency_basis", "rows"} <= set(basis_payload.model_fields)
 
 
 def test_balance_analysis_core_exports_future_formal_fact_types():

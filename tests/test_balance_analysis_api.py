@@ -299,6 +299,302 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_balance_analysis_workbook_api_keeps_right_rail_sections_when_rows_are_empty(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
+              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-a",
+                "Neutral A",
+                "Portfolio A",
+                "CC100",
+                "可供出售类资产",
+                "政策性金融债",
+                "Issuer A",
+                "金融业",
+                "AAA",
+                "A",
+                "FVOCI",
+                "asset",
+                "CNY",
+                "CNY",
+                "100.00000000",
+                "100.00000000",
+                "100.00000000",
+                "1.00000000",
+                "2.00000000",
+                "2.00000000",
+                None,
+                "固定",
+                False,
+                "sv-neutral-z",
+                "rv-neutral-balance",
+                "ib-neutral-z",
+                "trace-neutral-z1",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
+              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-a",
+                "Neutral A",
+                "Portfolio A",
+                "CC100",
+                "可供出售类资产",
+                "政策性金融债",
+                "Issuer A",
+                "金融业",
+                "AAA",
+                "A",
+                "FVOCI",
+                "asset",
+                "native",
+                "CNY",
+                "100.00000000",
+                "100.00000000",
+                "100.00000000",
+                "1.00000000",
+                "2.00000000",
+                "2.00000000",
+                None,
+                "固定",
+                False,
+                "sv-neutral-z",
+                "rv-neutral-balance",
+                "ib-neutral-z",
+                "trace-neutral-z1-native",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
+              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-b",
+                "Neutral B",
+                "Portfolio B",
+                "CC200",
+                "可供出售类资产",
+                "国债",
+                "Issuer B",
+                "公共管理",
+                "AA+",
+                "A",
+                "FVOCI",
+                "asset",
+                "CNY",
+                "CNY",
+                "100.00000000",
+                "100.00000000",
+                "100.00000000",
+                "1.00000000",
+                "2.10000000",
+                "2.10000000",
+                None,
+                "固定",
+                False,
+                "sv-neutral-z",
+                "rv-neutral-balance",
+                "ib-neutral-z",
+                "trace-neutral-z2",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
+              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-b",
+                "Neutral B",
+                "Portfolio B",
+                "CC200",
+                "可供出售类资产",
+                "国债",
+                "Issuer B",
+                "公共管理",
+                "AA+",
+                "A",
+                "FVOCI",
+                "asset",
+                "native",
+                "CNY",
+                "100.00000000",
+                "100.00000000",
+                "100.00000000",
+                "1.00000000",
+                "2.10000000",
+                "2.10000000",
+                None,
+                "固定",
+                False,
+                "sv-neutral-z",
+                "rv-neutral-balance",
+                "ib-neutral-z",
+                "trace-neutral-z2-native",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
+              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-liability",
+                "同业存放",
+                "liability",
+                "Bank N",
+                "清算类",
+                "",
+                "股份制银行",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "CNY",
+                "200.00000000",
+                "2.00000000",
+                "1.50000000",
+                None,
+                "sv-neutral-t",
+                "rv-neutral-balance",
+                "ib-neutral-t",
+                "trace-neutral-t1",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
+              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-15",
+                "neutral-liability",
+                "同业存放",
+                "liability",
+                "Bank N",
+                "清算类",
+                "",
+                "股份制银行",
+                "H",
+                "AC",
+                "liability",
+                "native",
+                "CNY",
+                "200.00000000",
+                "2.00000000",
+                "1.50000000",
+                None,
+                "sv-neutral-t",
+                "rv-neutral-balance",
+                "ib-neutral-t",
+                "trace-neutral-t1-native",
+            ],
+        )
+    finally:
+        conn.close()
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="run-neutral",
+                job_name="balance_analysis_materialize",
+                status="completed",
+                cache_key="balance_analysis:materialize:formal",
+                lock="lock:duckdb:formal:balance-analysis:materialize",
+                source_version="sv-neutral-t__sv-neutral-z",
+                vendor_version="vv_none",
+                rule_version="rv-neutral-balance",
+            ).model_dump(),
+            "report_date": "2026-01-15",
+        },
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={
+            "report_date": "2026-01-15",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert table_map["decision_items"]["section_kind"] == "decision_items"
+    assert table_map["decision_items"]["rows"] == []
+    assert table_map["event_calendar"]["section_kind"] == "event_calendar"
+    assert table_map["event_calendar"]["rows"] == []
+    assert table_map["risk_alerts"]["section_kind"] == "risk_alerts"
+    assert table_map["risk_alerts"]["rows"] == []
+
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_detail_and_overview_use_report_date_specific_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
 
@@ -572,6 +868,82 @@ def test_balance_analysis_summary_api_returns_paginated_rows(tmp_path, monkeypat
             }
         ],
     }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_summary_by_basis_api_aggregates_zqtz_and_tyw(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(
+        "/ui/balance-analysis/summary-by-basis",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "balance-analysis.basis-breakdown"
+    assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+    assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_formal_materialize_v1"
+    assert payload["result"] == {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        "rows": [
+            {
+                "source_family": "tyw",
+                "invest_type_std": "H",
+                "accounting_basis": "AC",
+                "position_scope": "liability",
+                "currency_basis": "CNY",
+                "detail_row_count": 1,
+                "market_value_amount": "72.00000000",
+                "amortized_cost_amount": "72.00000000",
+                "accrued_interest_amount": "14.40000000",
+            },
+            {
+                "source_family": "zqtz",
+                "invest_type_std": "A",
+                "accounting_basis": "FVOCI",
+                "position_scope": "asset",
+                "currency_basis": "CNY",
+                "detail_row_count": 1,
+                "market_value_amount": "720.00000000",
+                "amortized_cost_amount": "648.00000000",
+                "accrued_interest_amount": "36.00000000",
+            },
+        ],
+    }
+
+    asset_only = client.get(
+        "/ui/balance-analysis/summary-by-basis",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "asset",
+            "currency_basis": "CNY",
+        },
+    )
+    assert asset_only.status_code == 200
+    assert asset_only.json()["result"]["rows"] == [
+        {
+            "source_family": "zqtz",
+            "invest_type_std": "A",
+            "accounting_basis": "FVOCI",
+            "position_scope": "asset",
+            "currency_basis": "CNY",
+            "detail_row_count": 1,
+            "market_value_amount": "720.00000000",
+            "amortized_cost_amount": "648.00000000",
+            "accrued_interest_amount": "36.00000000",
+        },
+    ]
 
     get_settings.cache_clear()
 

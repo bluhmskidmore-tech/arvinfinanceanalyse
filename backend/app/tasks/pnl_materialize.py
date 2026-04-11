@@ -71,123 +71,127 @@ def _materialize_pnl_facts(
             "started_at": run.created_at,
         },
     )
+    source_version = "sv_pnl_running"
 
-    normalized_fi = normalize_fi_pnl_records(fi_rows)
-    normalized_nonstd = []
-    for journal_type, rows in sorted(nonstd_rows_by_type.items()):
-        if journal_type not in {"514", "516", "517", "adjustment"}:
-            raise ValueError(f"Unsupported journal_type={journal_type}")
-        normalized_nonstd.extend(
-            normalize_nonstd_journal_entries(rows, journal_type=journal_type)
+    try:
+        normalized_fi = normalize_fi_pnl_records(fi_rows)
+        normalized_nonstd = []
+        for journal_type, rows in sorted(nonstd_rows_by_type.items()):
+            if journal_type not in {"514", "516", "517", "adjustment"}:
+                raise ValueError(f"Unsupported journal_type={journal_type}")
+            normalized_nonstd.extend(
+                normalize_nonstd_journal_entries(rows, journal_type=journal_type)
+            )
+
+        _assert_formal_pnl_emission_allowed(
+            fi_rows=normalized_fi,
+            formal_pnl_enabled=(
+                settings.formal_pnl_enabled if formal_pnl_enabled is None else formal_pnl_enabled
+            ),
+            formal_pnl_scope_json=(
+                settings.formal_pnl_scope_json if formal_pnl_scope_json is None else formal_pnl_scope_json
+            ),
         )
 
-    _assert_formal_pnl_emission_allowed(
-        fi_rows=normalized_fi,
-        formal_pnl_enabled=(
-            settings.formal_pnl_enabled if formal_pnl_enabled is None else formal_pnl_enabled
-        ),
-        formal_pnl_scope_json=(
-            settings.formal_pnl_scope_json if formal_pnl_scope_json is None else formal_pnl_scope_json
-        ),
-    )
+        target_report_date = date.fromisoformat(report_date)
+        _assert_partition_matches(report_date=target_report_date, fi_rows=normalized_fi, nonstd_rows=normalized_nonstd)
 
-    target_report_date = date.fromisoformat(report_date)
-    _assert_partition_matches(report_date=target_report_date, fi_rows=normalized_fi, nonstd_rows=normalized_nonstd)
+        bridge_rows = build_nonstd_pnl_bridge_rows(
+            normalized_nonstd,
+            target_date=target_report_date,
+            is_month_end=is_month_end,
+        )
+        formal_fi_rows = build_formal_pnl_fi_fact_rows(normalized_fi)
 
-    bridge_rows = build_nonstd_pnl_bridge_rows(
-        normalized_nonstd,
-        target_date=target_report_date,
-        is_month_end=is_month_end,
-    )
-    formal_fi_rows = build_formal_pnl_fi_fact_rows(normalized_fi)
+        source_versions = sorted(
+            {
+                *(row.source_version for row in formal_fi_rows if row.source_version),
+                *(row.source_version for row in bridge_rows if row.source_version),
+            }
+        )
+        source_version = "__".join(source_versions) or "sv_pnl_empty"
 
-    source_versions = sorted(
-        {
-            *(row.source_version for row in formal_fi_rows if row.source_version),
-            *(row.source_version for row in bridge_rows if row.source_version),
-        }
-    )
-    source_version = "__".join(source_versions) or "sv_pnl_empty"
-
-    with acquire_lock(PNL_MATERIALIZE_LOCK, base_dir=duckdb_file.parent):
-        conn = duckdb.connect(str(duckdb_file), read_only=False)
-        try:
-            conn.execute("begin transaction")
-            _ensure_tables(conn)
-            conn.execute(
-                "delete from fact_formal_pnl_fi where report_date = ?",
-                [report_date],
-            )
-            conn.execute(
-                "delete from fact_nonstd_pnl_bridge where report_date = ?",
-                [report_date],
-            )
-
-            for row in formal_fi_rows:
+        with acquire_lock(PNL_MATERIALIZE_LOCK, base_dir=duckdb_file.parent):
+            conn = duckdb.connect(str(duckdb_file), read_only=False)
+            try:
+                conn.execute("begin transaction")
+                _ensure_tables(conn)
                 conn.execute(
-                    """
-                    insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        row.report_date.isoformat(),
-                        row.instrument_code,
-                        row.portfolio_name,
-                        row.cost_center,
-                        row.invest_type_std,
-                        row.accounting_basis,
-                        row.currency_basis,
-                        row.interest_income_514,
-                        row.fair_value_change_516,
-                        row.capital_gain_517,
-                        row.manual_adjustment,
-                        row.total_pnl,
-                        row.source_version,
-                        RULE_VERSION,
-                        row.ingest_batch_id,
-                        row.trace_id,
-                    ],
+                    "delete from fact_formal_pnl_fi where report_date = ?",
+                    [report_date],
+                )
+                conn.execute(
+                    "delete from fact_nonstd_pnl_bridge where report_date = ?",
+                    [report_date],
                 )
 
-            for row in bridge_rows:
-                conn.execute(
-                    """
-                    insert into fact_nonstd_pnl_bridge values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        row.report_date.isoformat(),
-                        row.bond_code,
-                        row.portfolio_name,
-                        row.cost_center,
-                        row.interest_income_514,
-                        row.fair_value_change_516,
-                        row.capital_gain_517,
-                        row.manual_adjustment,
-                        row.total_pnl,
-                        row.source_version,
-                        RULE_VERSION,
-                        row.ingest_batch_id,
-                        row.trace_id,
-                    ],
-                )
+                for row in formal_fi_rows:
+                    conn.execute(
+                        """
+                        insert into fact_formal_pnl_fi values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            row.report_date.isoformat(),
+                            row.instrument_code,
+                            row.portfolio_name,
+                            row.cost_center,
+                            row.invest_type_std,
+                            row.accounting_basis,
+                            row.currency_basis,
+                            row.interest_income_514,
+                            row.fair_value_change_516,
+                            row.capital_gain_517,
+                            row.manual_adjustment,
+                            row.total_pnl,
+                            row.source_version,
+                            RULE_VERSION,
+                            row.ingest_batch_id,
+                            row.trace_id,
+                        ],
+                    )
 
-            conn.execute("commit")
-        except Exception as exc:
-            conn.execute("rollback")
-            failed_record = CacheBuildRunRecord(
-                run_id=run_id,
-                job_name=run.job_name,
-                status="failed",
-                cache_key=CACHE_KEY,
-                lock=PNL_MATERIALIZE_LOCK.key,
-                source_version=source_version,
-                vendor_version="vv_none",
-            ).model_dump()
-            failed_record["error_message"] = str(exc)
-            failed_record["report_date"] = report_date
-            repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
-            raise
-        finally:
-            conn.close()
+                for row in bridge_rows:
+                    conn.execute(
+                        """
+                        insert into fact_nonstd_pnl_bridge values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        [
+                            row.report_date.isoformat(),
+                            row.bond_code,
+                            row.portfolio_name,
+                            row.cost_center,
+                            row.interest_income_514,
+                            row.fair_value_change_516,
+                            row.capital_gain_517,
+                            row.manual_adjustment,
+                            row.total_pnl,
+                            row.source_version,
+                            RULE_VERSION,
+                            row.ingest_batch_id,
+                            row.trace_id,
+                        ],
+                    )
+
+                conn.execute("commit")
+            except Exception:
+                conn.execute("rollback")
+                raise
+            finally:
+                conn.close()
+    except Exception as exc:
+        failed_record = CacheBuildRunRecord(
+            run_id=run_id,
+            job_name=run.job_name,
+            status="failed",
+            cache_key=CACHE_KEY,
+            lock=PNL_MATERIALIZE_LOCK.key,
+            source_version=source_version,
+            vendor_version="vv_none",
+        ).model_dump()
+        failed_record["error_message"] = str(exc)
+        failed_record["report_date"] = report_date
+        repo.append(CACHE_BUILD_RUN_STREAM, failed_record)
+        raise
 
     completed_run = CacheBuildRunRecord(
         run_id=run_id,

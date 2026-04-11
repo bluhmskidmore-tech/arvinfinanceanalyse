@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 import csv
+import importlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from io import StringIO
 from typing import Literal
 
 from backend.app.core_finance.balance_analysis import FormalTywBalanceFactRow, FormalZqtzBalanceFactRow
-from backend.app.core_finance.balance_analysis_workbook import (
-    build_balance_analysis_workbook_payload,
-)
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
@@ -19,6 +17,8 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.schemas.balance_analysis import (
+    BalanceAnalysisBasisBreakdownPayload,
+    BalanceAnalysisBasisBreakdownRow,
     BalanceAnalysisDatesPayload,
     BalanceAnalysisDetailRow,
     BalanceAnalysisPayload,
@@ -267,6 +267,55 @@ def balance_analysis_summary_envelope(
     )
 
 
+def balance_analysis_basis_breakdown_envelope(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"] = "all",
+    currency_basis: Literal["native", "CNY"] = "CNY",
+) -> dict[str, object]:
+    _validate_balance_overview_filters(
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+    repo = BalanceAnalysisRepository(duckdb_path)
+    if report_date not in repo.list_report_dates():
+        raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
+
+    breakdown_rows = repo.fetch_formal_basis_breakdown(
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    meta = build_formal_result_meta(
+        trace_id=f"tr_balance_analysis_basis_breakdown_{report_date}_{position_scope}_{currency_basis}",
+        result_kind="balance-analysis.basis-breakdown",
+        cache_version=_resolve_balance_cache_version(build_lineage),
+        source_version=_require_balance_lineage_value(
+            build_lineage["source_version"] if build_lineage is not None else None,
+            report_date=report_date,
+            field_name="source_version",
+        ),
+        rule_version=_require_balance_lineage_value(
+            build_lineage["rule_version"] if build_lineage is not None else None,
+            report_date=report_date,
+            field_name="rule_version",
+        ),
+    )
+    payload = BalanceAnalysisBasisBreakdownPayload(
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
 def export_balance_analysis_summary_csv(
     *,
     duckdb_path: str,
@@ -409,7 +458,9 @@ def balance_analysis_workbook_envelope(
             currency_basis="CNY",
         )
     ]
-    workbook = build_balance_analysis_workbook_payload(
+    workbook_mod = importlib.import_module("backend.app.core_finance.balance_analysis_workbook")
+    workbook_mod = importlib.reload(workbook_mod)
+    workbook = workbook_mod.build_balance_analysis_workbook_payload(
         report_date=zqtz_native_rows[0].report_date if zqtz_native_rows else tyw_native_rows[0].report_date,
         position_scope=position_scope,
         currency_basis=currency_basis,
@@ -429,6 +480,7 @@ def balance_analysis_workbook_envelope(
             BalanceAnalysisWorkbookTable(
                 key=table["key"],
                 title=table["title"],
+                section_kind=table["section_kind"],
                 columns=[BalanceAnalysisWorkbookColumn(**column) for column in table["columns"]],
                 rows=table["rows"],
             )
@@ -492,6 +544,20 @@ def _to_tyw_detail_row(row: dict[str, object]) -> BalanceAnalysisDetailRow:
         amortized_cost_amount=principal,
         accrued_interest_amount=accrued,
         is_issuance_like=None,
+    )
+
+
+def _to_basis_breakdown_row(row: dict[str, object]) -> BalanceAnalysisBasisBreakdownRow:
+    return BalanceAnalysisBasisBreakdownRow(
+        source_family=str(row["source_family"]),  # type: ignore[arg-type]
+        invest_type_std=str(row["invest_type_std"]),
+        accounting_basis=str(row["accounting_basis"]),
+        position_scope=str(row["position_scope"]),  # type: ignore[arg-type]
+        currency_basis=str(row["currency_basis"]),  # type: ignore[arg-type]
+        detail_row_count=int(row["detail_row_count"]),
+        market_value_amount=_as_decimal(row["market_value_amount"]),
+        amortized_cost_amount=_as_decimal(row["amortized_cost_amount"]),
+        accrued_interest_amount=_as_decimal(row["accrued_interest_amount"]),
     )
 
 

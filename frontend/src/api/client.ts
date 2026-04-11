@@ -1408,7 +1408,7 @@ function buildMockBalanceAnalysisWorkbook(
         },
         {
           key: "decision_items",
-          title: "Decision Items",
+          title: "决策事项",
           section_kind: "decision_items",
           columns: [
             { key: "title", label: "Title" },
@@ -1430,7 +1430,7 @@ function buildMockBalanceAnalysisWorkbook(
         },
         {
           key: "event_calendar",
-          title: "Event Calendar",
+          title: "事件日历",
           section_kind: "event_calendar",
           columns: [
             { key: "event_date", label: "Event Date" },
@@ -1451,7 +1451,7 @@ function buildMockBalanceAnalysisWorkbook(
         },
         {
           key: "risk_alerts",
-          title: "Risk Alerts",
+          title: "风险预警",
           section_kind: "risk_alerts",
           columns: [
             { key: "title", label: "Title" },

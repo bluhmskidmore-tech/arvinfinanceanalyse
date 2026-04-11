@@ -23,6 +23,7 @@ def _materialize_formal_anchor(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
+    monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", '["*"]')
     get_settings.cache_clear()
 
     task_module.materialize_pnl_facts.fn(

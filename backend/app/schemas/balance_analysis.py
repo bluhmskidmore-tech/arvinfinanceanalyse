@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, computed_field
+from pydantic import BaseModel, ConfigDict
 
 
 BalanceAnalysisSourceFamily = Literal["zqtz", "tyw", "combined"]
@@ -86,6 +86,29 @@ class BalanceAnalysisSummaryTablePayload(BaseModel):
     rows: list[BalanceAnalysisTableRow]
 
 
+class BalanceAnalysisBasisBreakdownRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_family: Literal["zqtz", "tyw"]
+    invest_type_std: str
+    accounting_basis: str
+    position_scope: BalancePositionScope
+    currency_basis: BalanceCurrencyBasis
+    detail_row_count: int
+    market_value_amount: Decimal
+    amortized_cost_amount: Decimal
+    accrued_interest_amount: Decimal
+
+
+class BalanceAnalysisBasisBreakdownPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    position_scope: BalancePositionScope
+    currency_basis: BalanceCurrencyBasis
+    rows: list[BalanceAnalysisBasisBreakdownRow]
+
+
 class BalanceAnalysisDatesPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -113,18 +136,9 @@ class BalanceAnalysisWorkbookTable(BaseModel):
 
     key: str
     title: str
+    section_kind: BalanceAnalysisWorkbookSectionKind
     columns: list[BalanceAnalysisWorkbookColumn]
     rows: list[dict[str, Decimal | str | int | None]]
-
-    @computed_field
-    @property
-    def section_kind(self) -> BalanceAnalysisWorkbookSectionKind:
-        section_kind_map: dict[str, BalanceAnalysisWorkbookSectionKind] = {
-            "decision_items": "decision_items",
-            "event_calendar": "event_calendar",
-            "risk_alerts": "risk_alerts",
-        }
-        return section_kind_map.get(self.key, "table")
 
 
 class BalanceAnalysisWorkbookPayload(BaseModel):

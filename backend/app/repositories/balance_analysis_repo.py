@@ -500,6 +500,74 @@ class BalanceAnalysisRepository:
             "rows": [dict(zip(columns, row, strict=True)) for row in row_tuples],
         }
 
+    def fetch_formal_basis_breakdown(
+        self,
+        *,
+        report_date: str,
+        position_scope: str = "all",
+        currency_basis: str = "CNY",
+    ) -> list[dict[str, object]]:
+        zqtz_where_parts = ["report_date = ?", "currency_basis = ?"]
+        tyw_where_parts = ["report_date = ?", "currency_basis = ?"]
+        zqtz_params: list[object] = [report_date, currency_basis]
+        tyw_params: list[object] = [report_date, currency_basis]
+        if position_scope != "all":
+            zqtz_where_parts.append("position_scope = ?")
+            tyw_where_parts.append("position_scope = ?")
+            zqtz_params.append(position_scope)
+            tyw_params.append(position_scope)
+
+        rows = self._fetch_rows(
+            f"""
+            select * from (
+              select
+                'zqtz' as source_family,
+                invest_type_std,
+                accounting_basis,
+                position_scope,
+                currency_basis,
+                count(*) as detail_row_count,
+                coalesce(sum(market_value_amount), 0) as market_value_amount,
+                coalesce(sum(amortized_cost_amount), 0) as amortized_cost_amount,
+                coalesce(sum(accrued_interest_amount), 0) as accrued_interest_amount
+              from fact_formal_zqtz_balance_daily
+              where {' and '.join(zqtz_where_parts)}
+              group by invest_type_std, accounting_basis, position_scope, currency_basis
+
+              union all
+
+              select
+                'tyw' as source_family,
+                invest_type_std,
+                accounting_basis,
+                position_scope,
+                currency_basis,
+                count(*) as detail_row_count,
+                coalesce(sum(principal_amount), 0) as market_value_amount,
+                coalesce(sum(principal_amount), 0) as amortized_cost_amount,
+                coalesce(sum(accrued_interest_amount), 0) as accrued_interest_amount
+              from fact_formal_tyw_balance_daily
+              where {' and '.join(tyw_where_parts)}
+              group by invest_type_std, accounting_basis, position_scope, currency_basis
+            ) as basis_rows
+            order by source_family asc, invest_type_std asc, accounting_basis asc,
+                     position_scope asc, currency_basis asc
+            """,
+            [*zqtz_params, *tyw_params],
+        )
+        columns = [
+            "source_family",
+            "invest_type_std",
+            "accounting_basis",
+            "position_scope",
+            "currency_basis",
+            "detail_row_count",
+            "market_value_amount",
+            "amortized_cost_amount",
+            "accrued_interest_amount",
+        ]
+        return [dict(zip(columns, row, strict=True)) for row in rows]
+
     def _formal_summary_table_cte(
         self,
         *,

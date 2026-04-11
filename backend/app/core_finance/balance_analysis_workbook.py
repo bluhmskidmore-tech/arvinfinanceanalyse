@@ -580,7 +580,7 @@ def _build_decision_items_table(
 
     return _section(
         "decision_items",
-        "Decision Items",
+        "决策事项",
         "decision_items",
         [
             ("title", "Title"),
@@ -633,7 +633,7 @@ def _build_event_calendar_table(
     events.sort(key=lambda item: (str(item["event_date"]), str(item["title"])))
     return _section(
         "event_calendar",
-        "Event Calendar",
+        "事件日历",
         "event_calendar",
         [
             ("event_date", "Event Date"),
@@ -702,7 +702,7 @@ def _build_risk_alerts_table(
 
     return _section(
         "risk_alerts",
-        "Risk Alerts",
+        "风险预警",
         "risk_alerts",
         [
             ("title", "Title"),

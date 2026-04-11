@@ -225,6 +225,48 @@
 - 本节不授权新增生产实现，不授权修改 `core_finance`、`services`、`tasks`、`cache` 代码。
 - 真正进入编码前，必须先按本节矩阵把测试归属和 fixtures 策略拆成可执行任务单。
 
+### 3.6E QDB GL baseline source-binding + input-contract validation
+
+本节只验证 contract-level admissibility，不构成 normalization、storage、analytical output 或 formal-upstream 授权。
+
+- `总账对账YYYYMM.xlsx` 与 `日均YYYYMM.xlsx` 的 baseline source-binding，以 [data_contracts.md](data_contracts.md) 的 `qdb_gl_baseline_input` 为准。
+- 识别失败的文件必须返回 contract-level `fail evidence`，不得静默当作 baseline input。
+- canonical sheet 缺失时，必须记为 `source_binding` 失败，而不是下沉为其他检查类别。
+- `ledger_reconciliation` 必须检测：
+  - header row
+  - row-shape
+  - required raw fields
+  - account-code text preservation
+  - currency grouping
+  - reconciliation contract
+- `ledger_reconciliation` 的 auxiliary trailing columns 可存在，但不得破坏前 7 列 core contract。
+- `ledger_reconciliation` 的 row-level reconciliation 允许 `±0.01` rounding tolerance。
+- `average_balance` 必须检测：
+  - header row
+  - row-shape
+  - required raw fields
+  - account-code text preservation
+  - currency grouping
+  - `reconciliation_contract = not_applicable`
+- `average_balance` 的最后一个 header block 允许无尾部 spacer。
+- contract evidence 必须带：
+  - `source_file`
+  - `source_kind`
+  - `report_month`
+  - `source_version`
+  - `rule_version`
+  - `trace_id`
+  - `sheet_name`
+  - `row_locator`（适用时）
+- contract evidence 的 `status_label` 只允许：
+  - `pass`
+  - `fail`
+  - `not_applicable`
+- 输出必须保持为 lineage-aware pass/fail evidence，不得产出分析指标、read model 或 materialized target 描述。
+
+本轮对应测试文件：
+- `tests/test_qdb_gl_input_contract_validation.py`
+
 ## 4. Phase 3：分析深钻验收
 
 ### 4.1 cube query

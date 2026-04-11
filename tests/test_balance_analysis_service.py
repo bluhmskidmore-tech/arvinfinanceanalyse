@@ -33,6 +33,15 @@ def test_balance_analysis_overview_service_rejects_invalid_filters(tmp_path, mon
             currency_basis="USD",
         )
 
+    with pytest.raises(ValueError, match="position_scope"):
+        service_mod.balance_analysis_basis_breakdown_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date="2025-12-31",
+            position_scope="wrong-scope",
+            currency_basis="CNY",
+        )
+
 
 def test_balance_analysis_service_uses_shared_formal_result_runtime_helper():
     path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "balance_analysis_service.py"

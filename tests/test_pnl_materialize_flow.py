@@ -7,6 +7,7 @@ from decimal import Decimal
 import duckdb
 import pytest
 
+from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 
@@ -88,6 +89,7 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
         duckdb_path=str(duckdb_path),
         governance_dir=str(governance_dir),
         formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
     )
 
     assert payload["status"] == "completed"
@@ -159,6 +161,7 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
         "duckdb_path": str(duckdb_path),
         "governance_dir": str(governance_dir),
         "formal_pnl_enabled": True,
+        "formal_pnl_scope_json": '["*"]',
     }
 
     task_module.materialize_pnl_facts.fn(
@@ -253,6 +256,7 @@ def test_pnl_materialize_task_rejects_rows_outside_requested_report_date(tmp_pat
             duckdb_path=str(tmp_path / "moss.duckdb"),
             governance_dir=str(tmp_path / "governance"),
             formal_pnl_enabled=True,
+            formal_pnl_scope_json='["*"]',
         )
 
 
@@ -263,6 +267,8 @@ def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_dis
             "backend.app.tasks.pnl_materialize",
             "backend/app/tasks/pnl_materialize.py",
         )
+
+    governance_dir = tmp_path / "governance"
 
     with pytest.raises(RuntimeError, match="Formal pnl emission is disabled"):
         task_module.materialize_pnl_facts.fn(
@@ -285,8 +291,17 @@ def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_dis
             ],
             nonstd_rows_by_type={},
             duckdb_path=str(tmp_path / "moss.duckdb"),
-            governance_dir=str(tmp_path / "governance"),
+            governance_dir=str(governance_dir),
         )
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert build_runs[-1]["report_date"] == "2025-12-31"
+    assert "Formal pnl emission is disabled" in build_runs[-1]["error_message"]
 
 
 def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_path):
@@ -296,6 +311,8 @@ def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_p
             "backend.app.tasks.pnl_materialize",
             "backend/app/tasks/pnl_materialize.py",
         )
+
+    governance_dir = tmp_path / "governance"
 
     with pytest.raises(RuntimeError, match="Formal pnl scope config is empty"):
         task_module.materialize_pnl_facts.fn(
@@ -318,6 +335,145 @@ def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_p
             ],
             nonstd_rows_by_type={},
             duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(governance_dir),
+            formal_pnl_enabled=True,
+        )
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert build_runs[-1]["report_date"] == "2025-12-31"
+    assert "Formal pnl scope config is empty" in build_runs[-1]["error_message"]
+
+
+def test_pnl_materialize_task_rejects_settings_enabled_formal_fi_rows_without_scope(
+    tmp_path,
+    monkeypatch,
+):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
+    monkeypatch.delenv("MOSS_FORMAL_PNL_SCOPE_JSON", raising=False)
+    get_settings.cache_clear()
+
+    governance_dir = tmp_path / "governance"
+
+    with pytest.raises(RuntimeError, match="Formal pnl scope config is empty"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "交易性金融资产",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(governance_dir),
+        )
+
+    build_runs = [
+        json.loads(line)
+        for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert build_runs[-1]["report_date"] == "2025-12-31"
+    assert "Formal pnl scope config is empty" in build_runs[-1]["error_message"]
+    get_settings.cache_clear()
+
+
+def test_pnl_materialize_task_allows_formal_fi_rows_for_named_scope_token(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    payload = task_module.materialize_pnl_facts.fn(
+        report_date="2025-12-31",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "240001.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "12.50",
+                "fair_value_change_516": "-3.25",
+                "capital_gain_517": "1.75",
+                "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "source_version": "src-v1",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["240001.IB"]',
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["formal_fi_rows"] == 1
+
+
+def test_pnl_materialize_task_rejects_formal_fi_rows_outside_named_scope_token(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    with pytest.raises(RuntimeError, match="Formal pnl emission is not enabled for the requested scope"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "交易性金融资产",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                    "approval_status": "approved",
+                    "event_semantics": "realized_formal",
+                    "realized_flag": True,
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
             governance_dir=str(tmp_path / "governance"),
             formal_pnl_enabled=True,
+            formal_pnl_scope_json='["OTHER_SCOPE"]',
         )

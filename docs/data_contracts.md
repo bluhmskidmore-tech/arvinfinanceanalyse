@@ -409,6 +409,112 @@ deferred enrichment：
 - `CNY` = 人民币账
 - 外币展示 = `CNX - CNY`
 
+### 4.7A qdb_gl_baseline_input
+
+用途：QDB GL baseline 原始输入合同，仅用于 `source-binding + input-contract validation`。
+
+标签：
+- `QDB baseline convention`
+
+层级归属：
+- 属于 `Raw baseline input contract`
+- 不是 standardized table
+- 不是 formal fact
+- 不是 analytical/read-model output
+
+source kind：
+- `ledger_reconciliation` -> `总账对账YYYYMM.xlsx`
+- `average_balance` -> `日均YYYYMM.xlsx`
+
+文件级绑定规则：
+- `ledger_reconciliation` 只绑定 canonical sheets：
+  - `综本`
+  - `人民币`
+- `average_balance` 只绑定 canonical sheets：
+  - `年`
+  - `月`
+- canonical sheet 缺失时，`source_binding` 必须直接失败。
+- 识别失败的文件不得静默降级为 baseline input。
+
+`ledger_reconciliation` header / row-shape：
+- row 6 的前 7 列必须依次为：
+  - `组合科目代码`
+  - `组合科目名称`
+  - `币种`
+  - `期初余额`
+  - `本期借方`
+  - `本期贷方`
+  - `期末余额`
+- 数据行从 row 7 开始。
+- 前 7 列是 baseline core contract。
+- baseline core contract 之外允许存在 auxiliary trailing columns，但它们不得替代或覆盖前 7 列语义。
+
+`ledger_reconciliation` required raw fields：
+- `account_code_raw`
+- `account_name_raw`
+- `currency_raw`
+- `beginning_balance_raw`
+- `period_debit_raw`
+- `period_credit_raw`
+- `ending_balance_raw`
+
+`average_balance` header / row-shape：
+- `年` / `月` sheet 的 row 3 必须按 4 列 block 重复：
+  - `币种`
+  - `科目`
+  - `科目日均余额`
+  - blank spacer
+- 最后一个 block 允许只有前 3 列，不强制追加尾部 spacer。
+- 数据行从 row 4 开始。
+- populated block 不允许缺字段，也不允许 spacer 列带值。
+
+`average_balance` required raw fields：
+- `currency_raw`
+- `account_code_raw`
+- `avg_balance_raw`
+
+account-code text preservation：
+- `account_code_raw` 必须以 digit-only text 解释。
+- 不允许 scientific notation。
+- 不允许带小数位的数值型科目号。
+- 不允许在 admissibility 层把科目号改写成 float / Decimal 展示文本。
+
+currency grouping：
+- baseline 只允许 `CNX` / `CNY` 两个 currency groups。
+- `ledger_reconciliation` 的 canonical sheet 行内 `currency_raw` 必须与 sheet 绑定币组一致。
+- admissible workbook 必须同时暴露 `CNX` 与 `CNY` 两个 canonical currency groups。
+
+reconciliation / status-label contract：
+- `ledger_reconciliation` 每一行必须满足：
+  - `期初余额 + 本期借方 - 本期贷方 = 期末余额`
+- 允许 `±0.01` rounding tolerance。
+- `average_balance` 不承载该勾稽公式，相关 evidence 的 `status_label` 只能为 `not_applicable`。
+- contract evidence 允许的 `status_label` 仅有：
+  - `pass`
+  - `fail`
+  - `not_applicable`
+
+lineage for contract-level pass/fail evidence：
+- `source_file`
+- `source_kind`
+- `report_month`
+- `source_version`
+- `rule_version`
+- `trace_id`
+- `sheet_name`
+- `row_locator`
+
+直接允许消费者：
+- 内部 source-binding / input-contract validation seam
+- 数据治理 / admissibility evidence
+
+直接禁止消费者：
+- normalization / classification runtime
+- storage / materialization runtime
+- analytical/read-model output
+- formal-upstream integration
+- API / frontend consumer rollout
+
 ### 4.8 fx_daily_mid
 
 用途：正式 FX 中间价。

@@ -8,6 +8,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.services.balance_analysis_service import (
     BalanceAnalysisRefreshConflictError,
     BalanceAnalysisRefreshServiceError,
+    balance_analysis_basis_breakdown_envelope,
     balance_analysis_dates_envelope,
     balance_analysis_detail_envelope,
     balance_analysis_overview_envelope,
@@ -93,6 +94,27 @@ def summary(
             currency_basis=currency_basis,
             limit=limit,
             offset=offset,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/summary-by-basis")
+def summary_by_basis(
+    report_date: str = Query(...),
+    position_scope: Literal["asset", "liability", "all"] = Query("all"),
+    currency_basis: Literal["native", "CNY"] = Query("CNY"),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return balance_analysis_basis_breakdown_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

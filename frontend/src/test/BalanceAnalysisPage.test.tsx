@@ -263,7 +263,7 @@ function buildWorkbookResponse() {
         },
         {
           key: "decision_items",
-          title: "Decision Items",
+          title: "决策事项",
           section_kind: "decision_items" as const,
           columns: [
             { key: "title", label: "Title" },
@@ -283,7 +283,7 @@ function buildWorkbookResponse() {
         },
         {
           key: "event_calendar",
-          title: "Event Calendar",
+          title: "事件日历",
           section_kind: "event_calendar" as const,
           columns: [
             { key: "event_date", label: "Event Date" },
@@ -302,7 +302,7 @@ function buildWorkbookResponse() {
         },
         {
           key: "risk_alerts",
-          title: "Risk Alerts",
+          title: "风险预警",
           section_kind: "risk_alerts" as const,
           columns: [
             { key: "title", label: "Title" },
@@ -574,6 +574,42 @@ describe("BalanceAnalysisPage", () => {
     await waitFor(() => {
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-bond_business_types"),
+      ).toHaveTextContent("Workbook contract mismatch");
+    });
+  });
+
+  it("shows a contract mismatch warning when right-rail explainability fields are missing", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const malformedWorkbook = buildWorkbookResponse();
+    malformedWorkbook.result.tables = malformedWorkbook.result.tables.map((table) => {
+      if (table.key === "decision_items") {
+        return {
+          ...table,
+          rows: [
+            {
+              title: "Review 1-2 year gap positioning",
+              action_label: "Review gap",
+              severity: "high",
+              reason: "Bucket gap is 4290357.07 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_decision_gap_001",
+            },
+          ],
+        };
+      }
+      return table;
+    });
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => malformedWorkbook),
+    });
+
+    expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("balance-analysis-right-rail-panel-decision_items"),
       ).toHaveTextContent("Workbook contract mismatch");
     });
   });
