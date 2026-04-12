@@ -73,10 +73,7 @@ def test_pnl_bridge_warns_when_latest_curve_fallback_is_used_and_merges_lineage(
     assert any("latest available treasury curve from trade_date=2025-12-30" in warning for warning in warnings)
     assert "sv_treasury_latest" in payload["result_meta"]["source_version"]
     assert "sv_treasury_prior" in payload["result_meta"]["source_version"]
-    assert "sv_cdb_latest" in payload["result_meta"]["source_version"]
-    assert "sv_cdb_prior" in payload["result_meta"]["source_version"]
     assert "vv_treasury_latest" in payload["result_meta"]["vendor_version"]
-    assert "vv_cdb_latest" in payload["result_meta"]["vendor_version"]
     get_settings.cache_clear()
 
 

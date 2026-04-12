@@ -260,37 +260,38 @@ def _empty_return_response(meta, report_date: date, period_type: str, period_sta
 def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
+    if not rows:
+        meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
-    treasury_current, treasury_current_warning = _resolve_curve_for_service(
-        repo=curve_repo,
-        requested_trade_date=report_date.isoformat(),
+    required_curve_types = _required_curve_types_for_return_rows(rows)
+    treasury_current, treasury_current_warning = _resolve_curve_pair_if_needed(
         curve_type="treasury",
-    )
-    treasury_prior, treasury_prior_warning = _resolve_curve_for_service(
+        required_curve_types=required_curve_types,
         repo=curve_repo,
-        requested_trade_date=period_start.isoformat(),
-        curve_type="treasury",
+        report_date=report_date.isoformat(),
+        prior_date=period_start.isoformat(),
     )
-    cdb_current, cdb_current_warning = _resolve_curve_for_service(
-        repo=curve_repo,
-        requested_trade_date=report_date.isoformat(),
+    cdb_current, cdb_current_warning = _resolve_curve_pair_if_needed(
         curve_type="cdb",
-    )
-    cdb_prior, cdb_prior_warning = _resolve_curve_for_service(
+        required_curve_types=required_curve_types,
         repo=curve_repo,
-        requested_trade_date=period_start.isoformat(),
-        curve_type="cdb",
+        report_date=report_date.isoformat(),
+        prior_date=period_start.isoformat(),
     )
-    aaa_current, aaa_current_warning = _resolve_curve_for_service(
-        repo=curve_repo,
-        requested_trade_date=report_date.isoformat(),
+    aaa_current, aaa_current_warning = _resolve_curve_pair_if_needed(
         curve_type="aaa_credit",
-    )
-    aaa_prior, aaa_prior_warning = _resolve_curve_for_service(
+        required_curve_types=required_curve_types,
         repo=curve_repo,
-        requested_trade_date=period_start.isoformat(),
-        curve_type="aaa_credit",
+        report_date=report_date.isoformat(),
+        prior_date=period_start.isoformat(),
     )
+    treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
+    cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
+    aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
+    treasury_prior_warning = treasury_current.get("_prior_warning") if treasury_current else None
+    cdb_prior_warning = cdb_current.get("_prior_warning") if cdb_current else None
+    aaa_prior_warning = aaa_current.get("_prior_warning") if aaa_current else None
     curve_snapshots = [
         snapshot
         for snapshot in (treasury_current, treasury_prior, cdb_current, cdb_prior, aaa_current, aaa_prior)
@@ -314,8 +315,6 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         for w in relevant_curve_warnings
     )
     meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-    if not rows:
-        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
     if curve_snapshots:
         meta = meta.model_copy(
             update={
@@ -335,11 +334,11 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
                 or "vv_none",
                 "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
                 **(
-                    {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                    if curve_latest_fallback
+                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+                    if curve_unavailable
                     else (
-                        {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                        if curve_unavailable
+                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
+                        if curve_latest_fallback
                         else {}
                     )
                 ),
@@ -435,6 +434,63 @@ def _resolve_curve_for_service(
 
 def _compact_warnings(values: list[str | None]) -> list[str]:
     return [value for value in values if value]
+
+
+def _required_curve_types_for_return_rows(rows: list[dict[str, object]]) -> set[str]:
+    needs_treasury = False
+    needs_cdb = False
+    needs_aaa = False
+    for row in rows:
+        if str(row.get("asset_class_std")) == "credit":
+            needs_treasury = True
+            needs_aaa = True
+            continue
+        curve_type = infer_curve_type(
+            row.get("instrument_name"),
+            row.get("bond_type"),
+            row.get("asset_class_raw"),
+        )
+        if curve_type == "cdb":
+            needs_cdb = True
+        else:
+            needs_treasury = True
+    required: set[str] = set()
+    if needs_treasury:
+        required.add("treasury")
+    if needs_cdb:
+        required.add("cdb")
+    if needs_aaa:
+        required.add("aaa_credit")
+    return required
+
+
+def _resolve_curve_pair_if_needed(
+    *,
+    curve_type: str,
+    required_curve_types: set[str],
+    repo: YieldCurveRepository,
+    report_date: str,
+    prior_date: str,
+) -> tuple[dict[str, object] | None, str | None]:
+    if curve_type not in required_curve_types:
+        return None, None
+    current_snapshot, current_warning = _resolve_curve_for_service(
+        repo=repo,
+        requested_trade_date=report_date,
+        curve_type=curve_type,
+    )
+    prior_snapshot, prior_warning = _resolve_curve_for_service(
+        repo=repo,
+        requested_trade_date=prior_date,
+        curve_type=curve_type,
+    )
+    if current_snapshot is not None:
+        current_snapshot = {
+            **current_snapshot,
+            "_prior_snapshot": prior_snapshot,
+            "_prior_warning": prior_warning,
+        }
+    return current_snapshot, current_warning
 
 
 def _curve_warnings_for_return_rows(
@@ -566,11 +622,11 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
                 or "vv_none",
                 "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
                 **(
-                    {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                    if curve_latest_fallback
+                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+                    if curve_unavailable
                     else (
-                        {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                        if curve_unavailable
+                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
+                        if curve_latest_fallback
                         else {}
                     )
                 ),

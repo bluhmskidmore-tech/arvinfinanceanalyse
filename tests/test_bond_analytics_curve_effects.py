@@ -88,8 +88,6 @@ def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, mo
     ) <= Decimal("0.00000001")
     assert "sv_curve_current" in payload["result_meta"]["source_version"]
     assert "sv_curve_prior" in payload["result_meta"]["source_version"]
-    assert "sv_aaa_current" in payload["result_meta"]["source_version"]
-    assert "sv_aaa_prior" in payload["result_meta"]["source_version"]
     assert "akshare" in payload["result_meta"]["source_version"]
     assert "choice" in payload["result_meta"]["source_version"]
     assert "vv_curve_current" in payload["result_meta"]["vendor_version"]

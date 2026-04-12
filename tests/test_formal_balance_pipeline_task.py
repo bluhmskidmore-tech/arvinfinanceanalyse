@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -230,3 +231,199 @@ def test_formal_balance_pipeline_does_not_materialize_from_stale_snapshots_when_
         conn.close()
 
     assert table_names == set()
+
+
+def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(tmp_path, monkeypatch):
+    pipeline_mod = _load_pipeline_module()
+
+    ingest_batch_id = "ib-backfill"
+    governance_dir = tmp_path / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = governance_dir / "source_manifest.jsonl"
+    manifest_rows = [
+        {
+            "source_name": "ZQTZSHOW",
+            "source_family": "zqtz",
+            "source_file": "ZQTZSHOW-20251230.xls",
+            "file_name": "ZQTZSHOW-20251230.xls",
+            "file_path": str(tmp_path / "data_input" / "ZQTZSHOW-20251230.xls"),
+            "file_size": 1,
+            "report_date": "2025-12-30",
+            "report_start_date": "2025-12-30",
+            "report_end_date": "2025-12-30",
+            "report_granularity": "day",
+            "source_version": "sv-z-20251230",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "ZQTZSHOW-20251230.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "TYWLSHOW",
+            "source_family": "tyw",
+            "source_file": "TYWLSHOW-20251230.xls",
+            "file_name": "TYWLSHOW-20251230.xls",
+            "file_path": str(tmp_path / "data_input" / "TYWLSHOW-20251230.xls"),
+            "file_size": 1,
+            "report_date": "2025-12-30",
+            "report_start_date": "2025-12-30",
+            "report_end_date": "2025-12-30",
+            "report_granularity": "day",
+            "source_version": "sv-t-20251230",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "TYWLSHOW-20251230.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "ZQTZSHOW",
+            "source_family": "zqtz",
+            "source_file": "ZQTZSHOW-20251231.xls",
+            "file_name": "ZQTZSHOW-20251231.xls",
+            "file_path": str(tmp_path / "data_input" / "ZQTZSHOW-20251231.xls"),
+            "file_size": 1,
+            "report_date": "2025-12-31",
+            "report_start_date": "2025-12-31",
+            "report_end_date": "2025-12-31",
+            "report_granularity": "day",
+            "source_version": "sv-z-20251231",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "ZQTZSHOW-20251231.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "TYWLSHOW",
+            "source_family": "tyw",
+            "source_file": "TYWLSHOW-20251231.xls",
+            "file_name": "TYWLSHOW-20251231.xls",
+            "file_path": str(tmp_path / "data_input" / "TYWLSHOW-20251231.xls"),
+            "file_size": 1,
+            "report_date": "2025-12-31",
+            "report_start_date": "2025-12-31",
+            "report_end_date": "2025-12-31",
+            "report_granularity": "day",
+            "source_version": "sv-t-20251231",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "TYWLSHOW-20251231.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "ZQTZSHOW",
+            "source_family": "zqtz",
+            "source_file": "ZQTZSHOW-20260101.xls",
+            "file_name": "ZQTZSHOW-20260101.xls",
+            "file_path": str(tmp_path / "data_input" / "ZQTZSHOW-20260101.xls"),
+            "file_size": 1,
+            "report_date": "2026-01-01",
+            "report_start_date": "2026-01-01",
+            "report_end_date": "2026-01-01",
+            "report_granularity": "day",
+            "source_version": "sv-z-20260101",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "ZQTZSHOW-20260101.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "TYWLSHOW",
+            "source_family": "tyw",
+            "source_file": "TYWLSHOW-20260101.xls",
+            "file_name": "TYWLSHOW-20260101.xls",
+            "file_path": str(tmp_path / "data_input" / "TYWLSHOW-20260101.xls"),
+            "file_size": 1,
+            "report_date": "2026-01-01",
+            "report_start_date": "2026-01-01",
+            "report_end_date": "2026-01-01",
+            "report_granularity": "day",
+            "source_version": "sv-t-20260101",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "TYWLSHOW-20260101.xls"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "PNL",
+            "source_family": "pnl",
+            "source_file": "FI-20251231.xlsx",
+            "file_name": "FI-20251231.xlsx",
+            "file_path": str(tmp_path / "data_input" / "FI-20251231.xlsx"),
+            "file_size": 1,
+            "report_date": "2025-12-31",
+            "report_start_date": "2025-12-31",
+            "report_end_date": "2025-12-31",
+            "report_granularity": "day",
+            "source_version": "sv-pnl-20251231",
+            "ingest_batch_id": ingest_batch_id,
+            "archive_mode": "local",
+            "archived_path": str(tmp_path / "archive" / "FI-20251231.xlsx"),
+            "schema_version": "phase1.manifest.v1",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+    ]
+    manifest_path.write_text(
+        "\n".join(json.dumps(row, ensure_ascii=False) for row in manifest_rows) + "\n",
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def _fake_ingest(**kwargs):
+        calls.append(("ingest", kwargs))
+        return {
+            "status": "completed",
+            "ingest_batch_id": ingest_batch_id,
+        }
+
+    def _fake_snapshot(**kwargs):
+        calls.append(("snapshot", kwargs))
+        return {"status": "completed", "report_date": kwargs["report_date"]}
+
+    def _fake_balance(**kwargs):
+        calls.append(("balance", kwargs))
+        return {"status": "completed", "report_date": kwargs["report_date"]}
+
+    monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        start_date="2025-12-31",
+        end_date="2026-01-01",
+        governance_dir=str(governance_dir),
+    )
+
+    assert [name for name, _kwargs in calls] == [
+        "ingest",
+        "snapshot",
+        "balance",
+        "snapshot",
+        "balance",
+    ]
+    assert [kwargs["report_date"] for name, kwargs in calls if name in {"snapshot", "balance"}] == [
+        "2025-12-31",
+        "2025-12-31",
+        "2026-01-01",
+        "2026-01-01",
+    ]
+    assert all(
+        kwargs.get("ingest_batch_id") == ingest_batch_id
+        for name, kwargs in calls
+        if name in {"snapshot", "balance"}
+    )
+    assert payload["status"] == "completed"
+    assert payload["report_dates"] == ["2025-12-31", "2026-01-01"]
