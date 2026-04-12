@@ -227,6 +227,80 @@ def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
     assert any(card.title == "Portfolio DV01" for card in envelope.cards)
 
 
+def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    repo_path = tmp_path / "gitnexus-demo-repo"
+    gitnexus_dir = repo_path / ".gitnexus"
+    wiki_dir = gitnexus_dir / "wiki"
+    wiki_dir.mkdir(parents=True)
+    (gitnexus_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(repo_path),
+                "lastCommit": "10aa27673481f5c024642d0a1990a01954ad09e3",
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {
+                    "files": 1934,
+                    "nodes": 8462,
+                    "edges": 23878,
+                    "communities": 756,
+                    "processes": 300,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (repo_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "gitnexus": {
+                        "command": "npx",
+                        "args": ["-y", "gitnexus@latest", "mcp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (wiki_dir / "overview.md").write_text("# Overview", encoding="utf-8")
+    (wiki_dir / "flows.md").write_text("# Flows", encoding="utf-8")
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question=rf"{repo_path}\.gitnexus 请给我看 GitNexus 仓库图谱状态",
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.gitnexus_status"
+    assert envelope.result_meta.basis == "analytical"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert envelope.result_meta.filters_applied["repo_path"] == str(repo_path)
+    assert envelope.evidence.tables_used == [".gitnexus/meta.json", ".mcp.json", ".gitnexus/wiki"]
+    assert any(card.title == "Nodes" and card.value == "8462" for card in envelope.cards)
+    assert any(card.title == "Processes" and card.value == "300" for card in envelope.cards)
+    assert any(card.title == "MCP GitNexus" and card.value == "enabled" for card in envelope.cards)
+    assert any(card.title == "Wiki Documents" and card.value == "2" for card in envelope.cards)
+    assert "GitNexus 索引状态已返回" in envelope.answer
+
+
 def test_unknown_intent_returns_help_message(tmp_path):
     module = load_module(
         "backend.app.agent.tools.analysis_view_tool",

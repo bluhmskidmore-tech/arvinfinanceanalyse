@@ -16,6 +16,7 @@ from backend.app.schemas.cube_query import CubeQueryRequest
 from backend.app.services.cube_query_service import CubeQueryService
 
 _HELP_ITEMS = [
+    "GitNexus / 仓库图谱 / 代码关系",
     "组合概览 / 资产规模 / 总览",
     "损益 / 收益 / PnL",
     "久期 / DV01 / 风险",
@@ -29,6 +30,7 @@ _HELP_ITEMS = [
 ]
 
 _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
+    ("gitnexus_status", ("gitnexus", "仓库图谱", "代码图谱", "repo graph", "code graph", "影响分析")),
     ("product_pnl", ("产品损益", "ftp")),
     ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
@@ -209,7 +211,7 @@ class AnalysisViewTool:
         )
         return AgentEnvelope(
             **self._finalize_envelope(
-                answer="暂不支持该类查询。当前支持：组合概览、PnL、久期风险、信用暴露、产品损益、桥接、风险张量、宏观市场、新闻事件。",
+                answer="暂不支持该类查询。当前支持：GitNexus 仓库图谱、组合概览、PnL、久期风险、信用暴露、产品损益、桥接、风险张量、宏观市场、新闻事件。",
                 cards=[
                     AgentCard(
                         type="help",

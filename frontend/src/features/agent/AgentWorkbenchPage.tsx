@@ -268,7 +268,7 @@ export default function AgentWorkbenchPage() {
       >
         <input
           type="text"
-          placeholder="例如：组合概览、损益汇总、久期风险、信用集中度..."
+          placeholder="例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱..."
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           style={{

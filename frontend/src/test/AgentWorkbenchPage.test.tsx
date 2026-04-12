@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 
+const AGENT_PLACEHOLDER =
+  "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...";
+
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
     status,
@@ -21,6 +24,16 @@ describe("AgentWorkbenchPage", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("advertises GitNexus repo graph as a supported query example", () => {
+    render(<AgentWorkbenchPage />);
+
+    expect(
+      screen.getByPlaceholderText(
+        AGENT_PLACEHOLDER,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("shows validation error when submitting with empty input", async () => {
@@ -52,7 +65,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "test",
     );
@@ -73,7 +86,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "q",
     );
@@ -92,7 +105,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "q",
     );
@@ -111,7 +124,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "q",
     );
@@ -153,7 +166,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "久期",
     );
@@ -210,7 +223,7 @@ describe("AgentWorkbenchPage", () => {
 
     await user.type(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        AGENT_PLACEHOLDER,
       ),
       "x",
     );
