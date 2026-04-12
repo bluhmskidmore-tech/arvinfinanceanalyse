@@ -298,7 +298,68 @@ def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):
     assert any(card.title == "Processes" and card.value == "300" for card in envelope.cards)
     assert any(card.title == "MCP GitNexus" and card.value == "enabled" for card in envelope.cards)
     assert any(card.title == "Wiki Documents" and card.value == "2" for card in envelope.cards)
+    assert any(
+        card.title == "GitNexus Context"
+        and card.value == f"gitnexus://repo/{repo_path.name}/context"
+        for card in envelope.cards
+    )
+    assert any(
+        card.title == "GitNexus Processes"
+        and card.value == f"gitnexus://repo/{repo_path.name}/processes"
+        for card in envelope.cards
+    )
     assert "GitNexus 索引状态已返回" in envelope.answer
+
+
+def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tmp_path):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    wrong_repo = tmp_path / "wrong-repo"
+    right_repo = tmp_path / "right-repo"
+    for repo_path, nodes in ((wrong_repo, 11), (right_repo, 22)):
+        gitnexus_dir = repo_path / ".gitnexus"
+        gitnexus_dir.mkdir(parents=True)
+        (gitnexus_dir / "meta.json").write_text(
+            json.dumps(
+                {
+                    "repoPath": str(repo_path),
+                    "indexedAt": "2026-03-15T13:33:15.839Z",
+                    "stats": {
+                        "nodes": nodes,
+                        "edges": 99,
+                        "communities": 3,
+                        "processes": 4,
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question=rf"{wrong_repo}\.gitnexus 请给我看 GitNexus processes",
+            filters={"repo_path": str(right_repo)},
+        )
+    )
+
+    assert envelope.result_meta.filters_applied["repo_path"] == str(right_repo)
+    assert any(card.title == "Nodes" and card.value == "22" for card in envelope.cards)
 
 
 def test_unknown_intent_returns_help_message(tmp_path):

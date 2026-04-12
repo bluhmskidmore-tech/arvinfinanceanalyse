@@ -6,6 +6,9 @@ import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 
 const AGENT_PLACEHOLDER =
   "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...";
+const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
+const GITNEXUS_CONTEXT_BUTTON = "GitNexus context";
+const GITNEXUS_PROCESSES_BUTTON = "GitNexus processes";
 
 function buildJsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -34,6 +37,74 @@ describe("AgentWorkbenchPage", () => {
         AGENT_PLACEHOLDER,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("renders explicit repo_path input and GitNexus quick examples", () => {
+    render(<AgentWorkbenchPage />);
+
+    expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: GITNEXUS_STATUS_BUTTON })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: GITNEXUS_CONTEXT_BUTTON })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON })).toBeInTheDocument();
+  });
+
+  it("submits explicit repo_path in filters when provided", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "GitNexus ok",
+        cards: [],
+        evidence: {
+          tables_used: [".gitnexus/meta.json"],
+          filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_gitnexus",
+          basis: "analytical",
+          generated_at: "2026-04-12T09:00:00Z",
+        },
+        next_drill: [],
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
+    await user.type(
+      screen.getByPlaceholderText(AGENT_PLACEHOLDER),
+      "请给我看 GitNexus context",
+    );
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/agent/query",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            question: "请给我看 GitNexus context",
+            basis: "formal",
+            filters: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+            position_scope: "all",
+            currency_basis: "CNY",
+            context: {
+              user_id: "web-user",
+            },
+          }),
+        }),
+      );
+    });
+  });
+
+  it("clicking GitNexus quick example fills the query box", async () => {
+    const user = userEvent.setup();
+    render(<AgentWorkbenchPage />);
+
+    await user.click(screen.getByRole("button", { name: GITNEXUS_PROCESSES_BUTTON }));
+
+    expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue("请给我看 GitNexus processes");
   });
 
   it("shows validation error when submitting with empty input", async () => {

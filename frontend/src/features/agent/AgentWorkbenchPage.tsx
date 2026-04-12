@@ -161,8 +161,15 @@ function formatMetaValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+const GITNEXUS_QUICK_EXAMPLES = [
+  "请给我看 GitNexus 状态",
+  "请给我看 GitNexus context",
+  "请给我看 GitNexus processes",
+] as const;
+
 export default function AgentWorkbenchPage() {
   const [query, setQuery] = useState("");
+  const [repoPath, setRepoPath] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
@@ -192,7 +199,7 @@ export default function AgentWorkbenchPage() {
         body: JSON.stringify({
           question,
           basis: "formal",
-          filters: {},
+          filters: repoPath.trim().length > 0 ? { repo_path: repoPath.trim() } : {},
           position_scope: "all",
           currency_basis: "CNY",
           context: {
@@ -231,6 +238,11 @@ export default function AgentWorkbenchPage() {
     }
   }
 
+  function applyQuickExample(nextQuery: string) {
+    setQuery(nextQuery);
+    setError(null);
+  }
+
   return (
     <section>
       <h1
@@ -256,6 +268,71 @@ export default function AgentWorkbenchPage() {
       >
         输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。
       </p>
+
+      <div
+        style={{
+          marginTop: 16,
+          marginBottom: 20,
+          display: "grid",
+          gap: 10,
+        }}
+      >
+        <label
+          style={{
+            display: "grid",
+            gap: 8,
+            color: t.colorTextSecondary,
+            fontSize: 13,
+          }}
+        >
+          <span>GitNexus Repo Path</span>
+          <input
+            aria-label="repo-path-input"
+            type="text"
+            placeholder="例如：F:\\MOSS-SYSTEM-V1"
+            value={repoPath}
+            onChange={(event) => setRepoPath(event.target.value)}
+            style={{
+              padding: "11px 14px",
+              borderRadius: 14,
+              border: `1px solid ${t.colorBorder}`,
+              background: t.colorBgCanvas,
+              color: t.colorTextPrimary,
+              fontSize: 14,
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+        </label>
+
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+          }}
+        >
+          {GITNEXUS_QUICK_EXAMPLES.map((example) => (
+            <button
+              key={example}
+              type="button"
+              onClick={() => applyQuickExample(example)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: `1px solid ${t.colorBorder}`,
+                background: t.colorBgCanvas,
+                color: t.colorTextSecondary,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {example.replace("请给我看 ", "").replace("GitNexus ", "GitNexus ")}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <form
         onSubmit={(event) => void handleSubmit(event)}
