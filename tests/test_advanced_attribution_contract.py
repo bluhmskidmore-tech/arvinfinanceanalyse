@@ -63,12 +63,53 @@ def test_advanced_attribution_endpoint_returns_analytical_not_ready_contract():
     assert "explained_pnl" not in result
 
 
+def test_advanced_attribution_endpoint_switches_to_scenario_contract_when_explicit_shocks_are_given():
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/advanced-attribution",
+        params={
+            "report_date": "2025-12-31",
+            "treasury_shift_bp": 25,
+            "scenario_name": "parallel_up_25bp",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    meta = body["result_meta"]
+    assert meta["basis"] == "scenario"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is True
+
+    result = body["result"]
+    assert result["report_date"] == "2025-12-31"
+    assert result["status"] == "not_ready"
+    assert result["mode"] == "scenario"
+    assert result["scenario_name"] == "parallel_up_25bp"
+    assert result["scenario_inputs"]["treasury_shift_bp"] == 25
+    assert "roll_down" not in result
+    assert "explained_pnl" not in result
+
+
 def test_advanced_attribution_meta_basis_is_never_formal():
     from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
 
     env = advanced_attribution_bundle_envelope(report_date="2025-06-30")
     assert env["result_meta"]["basis"] == "analytical"
     assert env["result_meta"]["basis"] != "formal"
+
+
+def test_advanced_attribution_meta_can_be_scenario_but_never_formal():
+    from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
+
+    env = advanced_attribution_bundle_envelope(
+        report_date="2025-06-30",
+        scenario_name="parallel_up_25bp",
+        treasury_shift_bp=25,
+    )
+    assert env["result_meta"]["basis"] == "scenario"
+    assert env["result_meta"]["basis"] != "formal"
+    assert env["result_meta"]["scenario_flag"] is True
 
 
 def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, monkeypatch):

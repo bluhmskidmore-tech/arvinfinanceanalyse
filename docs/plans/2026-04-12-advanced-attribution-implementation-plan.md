@@ -67,6 +67,7 @@
 
 - 单一 endpoint 返回 **结构化 `not_ready`**：`missing_inputs[]`、`blocked_components[]`（映射 `PHASE3_WARNING` 中的组件），**不返回**看似真实的分解数值。
 - 与 `build_bond_action_attribution_placeholder_envelope` 模式对齐：**占位必须显式**，禁止静默零值冒充完成。
+- 若请求显式给出 scenario shock 输入（例如 `treasury_shift_bp` / `spread_shift_bp`），则允许返回 **`basis=scenario` 且 `scenario_flag=true` 的 `not_ready` 合同**；默认无 shock 时仍返回 `analytical`。
 
 ### Slice C — 只读拼接（数据就绪后）
 

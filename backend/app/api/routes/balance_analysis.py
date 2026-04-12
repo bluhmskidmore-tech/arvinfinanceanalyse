@@ -154,10 +154,27 @@ def summary_by_basis(
 @router.get("/advanced-attribution")
 def advanced_attribution(
     report_date: str = Query(..., description="Report date (YYYY-MM-DD) for the not_ready attribution contract."),
+    scenario_name: str | None = Query(
+        None,
+        description="Optional scenario label; treated as scenario only when explicit shock inputs are supplied.",
+    ),
+    treasury_shift_bp: int | None = Query(
+        None,
+        description="Optional treasury curve shock in basis points; activates scenario semantics when provided.",
+    ),
+    spread_shift_bp: int | None = Query(
+        None,
+        description="Optional spread shock in basis points; activates scenario semantics when provided.",
+    ),
 ) -> dict[str, object]:
-    """Analytical-only advanced attribution bundle; not part of the governed workbook tables."""
+    """Analytical/scenario advanced attribution contract; never part of the governed workbook tables."""
     normalized = _require_balance_analysis_report_date_qs(report_date)
-    return advanced_attribution_bundle_envelope(report_date=normalized)
+    return advanced_attribution_bundle_envelope(
+        report_date=normalized,
+        scenario_name=scenario_name,
+        treasury_shift_bp=treasury_shift_bp,
+        spread_shift_bp=spread_shift_bp,
+    )
 
 
 @router.get("/workbook")
