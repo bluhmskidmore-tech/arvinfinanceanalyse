@@ -153,7 +153,8 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["rule_version"] == "rv_bridge"
     assert payload["result_meta"]["cache_version"] == (
         "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
-        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
+        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["rows"]) == 1
@@ -167,11 +168,11 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
         "Missing current balance row; ending_dirty_mv defaults to 0.",
         "Missing prior balance row; beginning_dirty_mv defaults to 0.",
     ]
-    assert payload["result"]["warnings"] == [
-        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack.",
-        "Current balance rows unavailable; ending_dirty_mv defaults to 0 where balance data is missing.",
-        "No prior balance report date found; beginning_dirty_mv defaults to 0 where prior balance data is missing.",
-    ]
+    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert "Current balance rows unavailable" in payload["result"]["warnings"][1]
+    assert "No prior balance report date found" in payload["result"]["warnings"][2]
+    assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
+    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     summary = payload["result"]["summary"]
     assert summary["row_count"] == 1
     assert summary["total_carry"] == "12.50000000"
@@ -213,7 +214,8 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert payload["result_meta"]["vendor_version"] == "vv_bridge_balance__vv_none"
     assert payload["result_meta"]["cache_version"] == (
         "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
-        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
+        "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
     row = payload["result"]["rows"][0]
     assert row["instrument_code"] == "240001.IB"
@@ -236,11 +238,17 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert summary["total_explained_pnl"] == "11.50000000"
     assert summary["total_actual_pnl"] == "11.50000000"
     assert summary["total_residual"] == "0.00000000"
-    assert payload["result"]["warnings"] == [
-        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack.",
-        "Balance lineage fallback used for report_date=2025-12-31; completed balance-analysis build record unavailable.",
-        "Balance lineage fallback used for prior_report_date=2025-10-31; completed balance-analysis build record unavailable.",
-    ]
+    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert any(
+        "Balance lineage fallback used for report_date=2025-12-31" in warning
+        for warning in payload["result"]["warnings"]
+    )
+    assert any(
+        "Balance lineage fallback used for prior_report_date=2025-10-31" in warning
+        for warning in payload["result"]["warnings"]
+    )
+    assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
+    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -327,9 +335,9 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
         "rv_balance_current__rv_balance_prior__rv_pnl_bridge_meta"
     )
     assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_pnl_bridge_meta"
-    assert payload["result"]["warnings"] == [
-        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack."
-    ]
+    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
+    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 

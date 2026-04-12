@@ -27,6 +27,7 @@ def decimal_to_str(value: Decimal) -> str:
 
 RATE_KEYWORDS = ("国债", "国开", "政金", "政策性", "地方政府", "央票", "treasury", "government", "policy")
 CREDIT_KEYWORDS = ("企业债", "公司债", "中票", "短融", "超短融", "PPN", "ABS", "corporate", "credit")
+CDB_KEYWORDS = ("国开", "政策性", "政金", "cdb", "policy bank")
 
 
 def classify_asset_class(sub_type: str) -> str:
@@ -38,6 +39,13 @@ def classify_asset_class(sub_type: str) -> str:
         if kw in lower:
             return "credit"
     return "other"
+
+
+def infer_curve_type(*surfaces: object) -> str:
+    combined = " ".join(str(surface or "").lower() for surface in surfaces)
+    if any(keyword in combined for keyword in CDB_KEYWORDS):
+        return "cdb"
+    return "treasury"
 
 
 # --- Accounting classification ---
@@ -166,7 +174,7 @@ def estimate_convexity(
 # --- Curve utilities ---
 
 TENOR_YEARS: dict[str, float] = {
-    "1M": 1 / 12, "3M": 0.25, "6M": 0.5,
+    "1M": 1 / 12, "3M": 0.25, "6M": 0.5, "9M": 0.75,
     "1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "5Y": 5.0,
     "7Y": 7.0, "10Y": 10.0, "15Y": 15.0, "20Y": 20.0, "30Y": 30.0,
 }
@@ -227,7 +235,7 @@ def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:
     if not raw_curve:
         return {}
     points = build_curve_points(raw_curve)
-    all_tenors = ["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
+    all_tenors = ["3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
     full: dict[str, Decimal] = {}
     for tenor in all_tenors:
         if tenor in raw_curve:

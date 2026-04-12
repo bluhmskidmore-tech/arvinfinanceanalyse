@@ -37,7 +37,7 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert result["total_market_value"] == "330.00000000"
     assert result["carry"] == "1.01917808"
     assert result["actual_pnl"] == "1.01917808"
-    assert result["warnings"] == [service_mod.PHASE3_WARNING]
+    assert service_mod.PHASE3_WARNING in result["warnings"]
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",

@@ -6,7 +6,13 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from backend.app.core_finance.bond_analytics.common import STANDARD_SCENARIOS
+from backend.app.core_finance.bond_analytics.common import (
+    STANDARD_SCENARIOS,
+    build_curve_points,
+    build_full_curve,
+    infer_curve_type,
+    interpolate_rate,
+)
 from backend.app.core_finance.bond_analytics.engine import ENGINE_RULE_VERSION
 from backend.app.core_finance.bond_analytics.common import safe_decimal
 
@@ -18,21 +24,63 @@ def summarize_return_decomposition(
     *,
     period_start: date,
     period_end: date,
+    treasury_curve_current: dict[str, Decimal] | None = None,
+    treasury_curve_prior: dict[str, Decimal] | None = None,
+    cdb_curve_current: dict[str, Decimal] | None = None,
+    cdb_curve_prior: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     days = Decimal((period_end - period_start).days + 1)
     detail_rows = []
     carry_total = ZERO
+    roll_down_total = ZERO
+    rate_effect_total = ZERO
     for row in rows:
         carry = safe_decimal(row.get("coupon_rate")) * safe_decimal(row.get("face_value")) * days / Decimal("365")
+        curve_type = infer_curve_type(
+            row.get("instrument_name"),
+            row.get("bond_type"),
+            row.get("asset_class_raw"),
+        )
+        current_curve = cdb_curve_current if curve_type == "cdb" else treasury_curve_current
+        prior_curve = cdb_curve_prior if curve_type == "cdb" else treasury_curve_prior
+        years_to_maturity = _to_years(row.get("years_to_maturity"))
+        modified_duration = safe_decimal(row.get("modified_duration"))
+        market_value = safe_decimal(row.get("market_value"))
+        roll_down = _curve_roll_down(
+            current_curve=current_curve,
+            years_to_maturity=years_to_maturity,
+            period_days=int(days),
+            modified_duration=modified_duration,
+            market_value=market_value,
+        )
+        rate_effect = _curve_rate_effect(
+            current_curve=current_curve,
+            prior_curve=prior_curve,
+            years_to_maturity=years_to_maturity,
+            modified_duration=modified_duration,
+            market_value=market_value,
+        )
         carry_total += carry
-        detail_rows.append({**row, "carry": carry})
+        roll_down_total += roll_down
+        rate_effect_total += rate_effect
+        detail_rows.append(
+            {
+                **row,
+                "carry": carry,
+                "roll_down": roll_down,
+                "rate_effect": rate_effect,
+                "total": carry + roll_down + rate_effect,
+            }
+        )
     return {
         "carry_total": carry_total,
+        "roll_down_total": roll_down_total,
+        "rate_effect_total": rate_effect_total,
         "total_market_value": _sum(rows, "market_value"),
         "bond_count": len(rows),
         "bond_details": detail_rows,
-        "by_asset_class": _aggregate_carry(detail_rows, "asset_class_std"),
-        "by_accounting_class": _aggregate_carry(detail_rows, "accounting_class"),
+        "by_asset_class": _aggregate_return(detail_rows, "asset_class_std"),
+        "by_accounting_class": _aggregate_return(detail_rows, "accounting_class"),
     }
 
 
@@ -186,6 +234,79 @@ def _aggregate_carry(rows: list[dict[str, Any]], field_name: str) -> list[dict[s
         bucket["market_value"] += safe_decimal(row["market_value"])
         bucket["bond_count"] += 1
     return list(grouped.values())
+
+
+def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        key = str(row[field_name])
+        bucket = grouped.setdefault(
+            key,
+            {
+                "key": key,
+                "carry": ZERO,
+                "roll_down": ZERO,
+                "rate_effect": ZERO,
+                "market_value": ZERO,
+                "bond_count": 0,
+                "total": ZERO,
+            },
+        )
+        bucket["carry"] += safe_decimal(row["carry"])
+        bucket["roll_down"] += safe_decimal(row.get("roll_down"))
+        bucket["rate_effect"] += safe_decimal(row.get("rate_effect"))
+        bucket["market_value"] += safe_decimal(row["market_value"])
+        bucket["bond_count"] += 1
+        bucket["total"] += safe_decimal(row.get("total"))
+    return list(grouped.values())
+
+
+def _curve_roll_down(
+    *,
+    current_curve: dict[str, Decimal] | None,
+    years_to_maturity: Decimal,
+    period_days: int,
+    modified_duration: Decimal,
+    market_value: Decimal,
+) -> Decimal:
+    if not current_curve or years_to_maturity <= ZERO or modified_duration == ZERO or market_value == ZERO:
+        return ZERO
+    current_rate = _curve_rate(current_curve, years_to_maturity)
+    rolled_years = max(float(years_to_maturity) - (period_days / 365), 0.0)
+    rolled_rate = _curve_rate(current_curve, Decimal(str(rolled_years)))
+    return ((current_rate - rolled_rate) / Decimal("100")) * modified_duration * market_value
+
+
+def _curve_rate_effect(
+    *,
+    current_curve: dict[str, Decimal] | None,
+    prior_curve: dict[str, Decimal] | None,
+    years_to_maturity: Decimal,
+    modified_duration: Decimal,
+    market_value: Decimal,
+) -> Decimal:
+    if (
+        not current_curve
+        or not prior_curve
+        or years_to_maturity <= ZERO
+        or modified_duration == ZERO
+        or market_value == ZERO
+    ):
+        return ZERO
+    current_rate = _curve_rate(current_curve, years_to_maturity)
+    prior_rate = _curve_rate(prior_curve, years_to_maturity)
+    return -(((current_rate - prior_rate) / Decimal("100")) * modified_duration * market_value)
+
+
+def _curve_rate(curve: dict[str, Decimal], years_to_maturity: Decimal) -> Decimal:
+    points = build_curve_points(build_full_curve(curve))
+    return interpolate_rate(points, float(years_to_maturity))
+
+
+def _to_years(value: Any) -> Decimal:
+    if value in (None, ""):
+        return ZERO
+    return safe_decimal(value)
 
 
 def _build_curve_scenario(rows: list[dict[str, Any]], scenario: dict[str, Any]) -> dict[str, Any]:

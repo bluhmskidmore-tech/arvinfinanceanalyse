@@ -1,4 +1,5 @@
 import pytest
+import builtins
 
 from tests.helpers import load_module
 
@@ -53,9 +54,13 @@ def test_vendor_preflight_reports_typed_missing_config_state(
 
     assert isinstance(result, preflight_model)
     assert result.vendor_name == expected_vendor
-    assert result.ok is False
-    assert result.status == "missing_config"
-    assert result.supports_live_fetch is False
+    if expected_vendor == "choice":
+        assert result.ok is False
+        assert result.status == "missing_config"
+        assert result.supports_live_fetch is False
+    else:
+        assert result.vendor_name == "akshare"
+        assert result.status in {"missing_config", "config_present"}
 
 
 def test_choice_preflight_uses_settings_emquant_parent_without_env(monkeypatch):
@@ -94,3 +99,48 @@ def test_choice_preflight_uses_settings_emquant_parent_without_env(monkeypatch):
     assert result.ok is True
     assert result.status == "config_present"
     assert called["emquant_parent"] == "F:/EMQuantAPI_Python/python3"
+
+
+def test_akshare_preflight_reports_missing_config_when_local_import_unavailable(monkeypatch):
+    adapter_module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "akshare":
+            raise ImportError("akshare missing")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delenv("MOSS_AKSHARE_BASE_URL", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    result = adapter_module.VendorAdapter().preflight()
+
+    assert result.ok is False
+    assert result.status == "missing_config"
+    assert result.supports_live_fetch is False
+
+
+def test_akshare_preflight_uses_local_import_without_proxy(monkeypatch):
+    adapter_module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    real_import = builtins.__import__
+
+    def _fake_import(name, *args, **kwargs):
+        if name == "akshare":
+            return object()
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.delenv("MOSS_AKSHARE_BASE_URL", raising=False)
+    monkeypatch.setattr(builtins, "__import__", _fake_import)
+
+    result = adapter_module.VendorAdapter().preflight()
+
+    assert result.ok is True
+    assert result.status == "config_present"
+    assert result.supports_live_fetch is True

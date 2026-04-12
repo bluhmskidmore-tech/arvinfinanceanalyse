@@ -1,0 +1,218 @@
+from __future__ import annotations
+
+import json
+import sys
+from decimal import Decimal
+
+import duckdb
+import pytest
+
+from tests.helpers import load_module
+
+
+def _load_yield_curve_task_module():
+    task_mod = sys.modules.get("backend.app.tasks.yield_curve_materialize")
+    if task_mod is None:
+        task_mod = load_module(
+            "backend.app.tasks.yield_curve_materialize",
+            "backend/app/tasks/yield_curve_materialize.py",
+        )
+    return task_mod
+
+
+def _read_jsonl(path) -> list[dict[str, object]]:
+    if not path.exists():
+        return []
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _curve_snapshot(schema_module, *, curve_type: str, vendor_name: str, source_version: str, vendor_version: str):
+    return schema_module.YieldCurveSnapshot(
+        curve_type=curve_type,
+        trade_date="2026-04-10",
+        points=[
+            schema_module.YieldCurvePoint("1Y", Decimal("1.10")),
+            schema_module.YieldCurvePoint("3Y", Decimal("1.30")),
+            schema_module.YieldCurvePoint("5Y", Decimal("1.50")),
+            schema_module.YieldCurvePoint("10Y", Decimal("1.80")),
+            schema_module.YieldCurvePoint("20Y", Decimal("2.10")),
+            schema_module.YieldCurvePoint("30Y", Decimal("2.40")),
+            schema_module.YieldCurvePoint("6M", Decimal("1.00")),
+        ],
+        vendor_name=vendor_name,
+        vendor_version=vendor_version,
+        source_version=source_version,
+    )
+
+
+def test_materialize_yield_curve_rejects_aaa_credit_for_this_stream(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    with pytest.raises(RuntimeError, match="Unsupported curve_type"):
+        task_mod.materialize_yield_curve.fn(
+            trade_date="2026-04-10",
+            curve_types=["aaa_credit"],
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_materialize_yield_curve_dual_failure_writes_no_rows(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def fail_fetch(*, curve_type: str, trade_date: str):
+        raise RuntimeError(f"{curve_type} unavailable")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fail_fetch)
+
+    with pytest.raises(RuntimeError, match="Failed to materialize treasury curve"):
+        task_mod.materialize_yield_curve.fn(
+            trade_date="2026-04-10",
+            curve_types=["treasury", "cdb"],
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    if duckdb_path.exists():
+        conn = duckdb.connect(str(duckdb_path), read_only=True)
+        try:
+            row = conn.execute(
+                """
+                select count(*)
+                from information_schema.tables
+                where table_name = 'fact_formal_yield_curve_daily'
+                """
+            ).fetchone()
+            if row and row[0]:
+                count = conn.execute(
+                    "select count(*) from fact_formal_yield_curve_daily"
+                ).fetchone()[0]
+                assert count == 0
+        finally:
+            conn.close()
+
+    build_runs = _read_jsonl(governance_dir / "cache_build_run.jsonl")
+    manifests = _read_jsonl(governance_dir / "cache_manifest.jsonl")
+    assert [record["status"] for record in build_runs] == ["running", "failed"]
+    assert manifests == []
+
+
+def test_materialize_yield_curve_persists_supported_curves(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        if curve_type == "treasury":
+            return _curve_snapshot(
+                schema_mod,
+                curve_type=curve_type,
+                vendor_name="akshare",
+                source_version="sv_treasury",
+                vendor_version="vv_treasury",
+            )
+        return _curve_snapshot(
+            schema_mod,
+            curve_type=curve_type,
+            vendor_name="choice",
+            source_version="sv_cdb",
+            vendor_version="vv_cdb",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["treasury", "cdb"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["curve_types"] == ["treasury", "cdb"]
+    assert payload["point_count"] == 14
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select curve_type, count(*), min(vendor_name), max(source_version)
+            from fact_formal_yield_curve_daily
+            group by curve_type
+            order by curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("cdb", 7, "choice", "sv_cdb"),
+        ("treasury", 7, "akshare", "sv_treasury"),
+    ]
+
+
+def test_materialize_yield_curve_supports_single_curve_request(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        assert curve_type == "treasury"
+        return _curve_snapshot(
+            schema_mod,
+            curve_type=curve_type,
+            vendor_name="akshare",
+            source_version="sv_treasury",
+            vendor_version="vv_treasury",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["treasury"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["curve_types"] == ["treasury"]
+    assert payload["point_count"] == 7
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select distinct curve_type
+            from fact_formal_yield_curve_daily
+            order by curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [("treasury",)]
