@@ -3,10 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import hashlib
+from io import StringIO
 import json
 import os
 from decimal import Decimal
 
+import pandas as pd
 import requests
 
 from backend.app.repositories.choice_client import ChoiceClient
@@ -62,9 +64,25 @@ CHOICE_CURVE_CODES = {
     },
 }
 
+CHINABOND_GKH_URL = "https://yield.chinabond.com.cn/gkh/yield"
+CHINABOND_GKH_CURVE_NAME = "中债国开债收益率曲线（到期）"
+CHINABOND_GKH_TENOR_MAP = {
+    "1": "1Y",
+    "3": "3Y",
+    "5": "5Y",
+    "7": "7Y",
+    "10": "10Y",
+}
+
+MIN_OBSERVED_TENORS_BY_TYPE = {
+    "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
+    "cdb": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "aaa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+}
+
 MIN_REQUIRED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
-    "cdb": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "10Y", "20Y"}),
+    "cdb": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "10Y", "20Y", "30Y"}),
     "aaa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
 }
 
@@ -162,18 +180,61 @@ class VendorAdapter(VendorAdapterBase):
             and _normalize_record_trade_date(record.get("日期")) == trade_date
         ]
         if not matches:
+            if curve_type == "cdb":
+                return self._fetch_chinabond_gkh_curve(trade_date)
             return None
-        points = _enrich_curve_points(
+        points = _prepare_curve_points(
             curve_type=curve_type,
-            points=_validate_points(
-                curve_type=curve_type,
-                points=_build_points_from_columns(matches[-1], AKSHARE_TENOR_COLUMNS),
-            ),
+            points=_build_points_from_columns(matches[-1], AKSHARE_TENOR_COLUMNS),
         )
         return _snapshot_from_points(
             curve_type=curve_type,
             trade_date=trade_date,
             vendor_name="akshare",
+            points=points,
+        )
+
+    def _fetch_chinabond_gkh_curve(self, trade_date: str) -> YieldCurveSnapshot | None:
+        response = requests.post(
+            CHINABOND_GKH_URL,
+            data={"searchDate": trade_date},
+            timeout=20,
+        )
+        response.raise_for_status()
+        frames = pd.read_html(StringIO(response.text))
+        target_frame = None
+        for frame in frames:
+            columns = {str(column) for column in frame.columns}
+            if "曲线名称" in columns and "关键期限(年)" in columns and "查询日收益率(%)" in columns:
+                target_frame = frame
+                break
+        if target_frame is None:
+            return None
+        points: list[YieldCurvePoint] = []
+        for _, row in target_frame.iterrows():
+            curve_name = str(row.get("曲线名称") or "").strip()
+            if curve_name != CHINABOND_GKH_CURVE_NAME:
+                continue
+            tenor_key = str(row.get("关键期限(年)") or "").strip()
+            tenor = CHINABOND_GKH_TENOR_MAP.get(tenor_key)
+            if tenor is None:
+                continue
+            value = row.get("查询日收益率(%)")
+            if value in (None, ""):
+                continue
+            points.append(
+                YieldCurvePoint(
+                    tenor=tenor,
+                    rate_pct=Decimal(str(value)),
+                )
+            )
+        if not points:
+            return None
+        points = _prepare_curve_points(curve_type="cdb", points=points)
+        return _snapshot_from_points(
+            curve_type="cdb",
+            trade_date=trade_date,
+            vendor_name="chinabond_gkh",
             points=points,
         )
 
@@ -232,10 +293,7 @@ class VendorAdapter(VendorAdapterBase):
                     rate_pct=Decimal(str(value)),
                 )
             )
-        points = _enrich_curve_points(
-            curve_type=curve_type,
-            points=_validate_points(curve_type=curve_type, points=points),
-        )
+        points = _prepare_curve_points(curve_type=curve_type, points=points)
         return _snapshot_from_points(
             curve_type=curve_type,
             trade_date=trade_date,
@@ -268,6 +326,17 @@ def _build_points_from_columns(
 
 
 def _validate_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
+    observed = {point.tenor for point in points}
+    required_observed = MIN_OBSERVED_TENORS_BY_TYPE[curve_type]
+    missing_observed = sorted(required_observed - observed)
+    if missing_observed:
+        raise ValueError(
+            f"{curve_type} curve missing minimum observed tenors: {', '.join(missing_observed)}"
+        )
+    return points
+
+
+def _validate_standardized_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
     if not points:
         raise ValueError(f"{curve_type} curve returned no usable points.")
     available_tenors = {point.tenor for point in points}
@@ -284,17 +353,38 @@ def _enrich_curve_points(*, curve_type: str, points: list[YieldCurvePoint]) -> l
     if curve_type != "cdb":
         return points
     tenor_map = {point.tenor: point for point in points}
-    if "30Y" in tenor_map:
-        return points
+    enriched = dict(tenor_map)
+    point_1y = tenor_map.get("1Y")
+    point_3y = tenor_map.get("3Y")
+    point_7y = tenor_map.get("7Y")
     point_10y = tenor_map.get("10Y")
     point_20y = tenor_map.get("20Y")
-    if point_10y is None or point_20y is None:
-        raise ValueError("cdb curve cannot synthesize 30Y without 10Y and 20Y points.")
-    synthesized_30y = YieldCurvePoint(
-        tenor="30Y",
-        rate_pct=point_20y.rate_pct + (point_20y.rate_pct - point_10y.rate_pct),
-    )
-    return [*points, synthesized_30y]
+    if "6M" not in enriched and point_1y is not None:
+        enriched["6M"] = YieldCurvePoint(tenor="6M", rate_pct=point_1y.rate_pct)
+    if "2Y" not in enriched and point_1y is not None and point_3y is not None:
+        enriched["2Y"] = YieldCurvePoint(
+            tenor="2Y",
+            rate_pct=point_1y.rate_pct + (point_3y.rate_pct - point_1y.rate_pct) / Decimal("2"),
+        )
+    if "20Y" not in enriched and point_7y is not None and point_10y is not None:
+        slope_per_year = (point_10y.rate_pct - point_7y.rate_pct) / Decimal("3")
+        enriched["20Y"] = YieldCurvePoint(
+            tenor="20Y",
+            rate_pct=point_10y.rate_pct + slope_per_year * Decimal("10"),
+        )
+        point_20y = enriched["20Y"]
+    if "30Y" not in enriched and point_20y is not None and point_10y is not None:
+        enriched["30Y"] = YieldCurvePoint(
+            tenor="30Y",
+            rate_pct=point_20y.rate_pct + (point_20y.rate_pct - point_10y.rate_pct),
+        )
+    return sorted(enriched.values(), key=lambda point: point.tenor)
+
+
+def _prepare_curve_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
+    observed = _validate_points(curve_type=curve_type, points=points)
+    enriched = _enrich_curve_points(curve_type=curve_type, points=observed)
+    return _validate_standardized_points(curve_type=curve_type, points=enriched)
 
 
 def _choice_rows_from_result(raw_result: object) -> list[dict[str, object]]:
