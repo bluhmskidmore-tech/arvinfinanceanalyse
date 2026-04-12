@@ -25,9 +25,19 @@ class BalanceAnalysisRepository:
             reverse=True,
         )
 
-    def load_zqtz_snapshot_rows(self, report_date: str) -> list[ZqtzSnapshotRow]:
+    def load_zqtz_snapshot_rows(
+        self,
+        report_date: str,
+        *,
+        ingest_batch_id: str | None = None,
+    ) -> list[ZqtzSnapshotRow]:
+        where_parts = ["report_date = ?"]
+        params: list[object] = [report_date]
+        if ingest_batch_id:
+            where_parts.append("ingest_batch_id = ?")
+            params.append(ingest_batch_id)
         rows = self._fetch_rows(
-            """
+            f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                    account_category, asset_class, bond_type, issuer_name, industry_name, rating,
                    currency_code, face_value_native, market_value_native, amortized_cost_native,
@@ -35,10 +45,10 @@ class BalanceAnalysisRepository:
                    overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
                    ingest_batch_id, trace_id, value_date, customer_attribute
             from zqtz_bond_daily_snapshot
-            where report_date = ?
+            where {' and '.join(where_parts)}
             order by instrument_code, portfolio_name, cost_center, currency_code
             """,
-            [report_date],
+            params,
         )
         return [
             ZqtzSnapshotRow(
@@ -74,18 +84,28 @@ class BalanceAnalysisRepository:
             for row in rows
         ]
 
-    def load_tyw_snapshot_rows(self, report_date: str) -> list[TywSnapshotRow]:
+    def load_tyw_snapshot_rows(
+        self,
+        report_date: str,
+        *,
+        ingest_batch_id: str | None = None,
+    ) -> list[TywSnapshotRow]:
+        where_parts = ["report_date = ?"]
+        params: list[object] = [report_date]
+        if ingest_batch_id:
+            where_parts.append("ingest_batch_id = ?")
+            params.append(ingest_batch_id)
         rows = self._fetch_rows(
-            """
+            f"""
             select report_date, position_id, product_type, position_side, counterparty_name,
                    account_type, special_account_type, core_customer_type, currency_code,
                    principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
                    source_version, rule_version, ingest_batch_id, trace_id
             from tyw_interbank_daily_snapshot
-            where report_date = ?
+            where {' and '.join(where_parts)}
             order by position_id
             """,
-            [report_date],
+            params,
         )
         return [
             TywSnapshotRow(
@@ -109,6 +129,74 @@ class BalanceAnalysisRepository:
             )
             for row in rows
         ]
+
+    def list_zqtz_snapshot_ingest_batch_ids(self, report_date: str) -> list[str]:
+        rows = self._fetch_rows(
+            """
+            select distinct ingest_batch_id
+            from zqtz_bond_daily_snapshot
+            where report_date = ?
+              and coalesce(trim(ingest_batch_id), '') <> ''
+            order by ingest_batch_id
+            """,
+            [report_date],
+        )
+        return [str(row[0]) for row in rows]
+
+    def list_tyw_snapshot_ingest_batch_ids(self, report_date: str) -> list[str]:
+        rows = self._fetch_rows(
+            """
+            select distinct ingest_batch_id
+            from tyw_interbank_daily_snapshot
+            where report_date = ?
+              and coalesce(trim(ingest_batch_id), '') <> ''
+            order by ingest_batch_id
+            """,
+            [report_date],
+        )
+        return [str(row[0]) for row in rows]
+
+    def count_zqtz_snapshot_rows(
+        self,
+        report_date: str,
+        *,
+        ingest_batch_id: str | None = None,
+    ) -> int:
+        where_parts = ["report_date = ?"]
+        params: list[object] = [report_date]
+        if ingest_batch_id:
+            where_parts.append("ingest_batch_id = ?")
+            params.append(ingest_batch_id)
+        rows = self._fetch_rows(
+            f"""
+            select count(*)
+            from zqtz_bond_daily_snapshot
+            where {' and '.join(where_parts)}
+            """,
+            params,
+        )
+        return int(rows[0][0])
+
+    def count_tyw_snapshot_rows(
+        self,
+        report_date: str,
+        *,
+        ingest_batch_id: str | None = None,
+    ) -> int:
+        where_parts = ["report_date = ?"]
+        params: list[object] = [report_date]
+        if ingest_batch_id:
+            where_parts.append("ingest_batch_id = ?")
+            params.append(ingest_batch_id)
+        rows = self._fetch_rows(
+            f"""
+            select count(*)
+            from tyw_interbank_daily_snapshot
+            where {' and '.join(where_parts)}
+            """,
+            params,
+        )
+        return int(rows[0][0])
 
     def lookup_fx_rate(self, *, report_date: str, base_currency: str) -> tuple[Decimal, str]:
         base_currency_normalized = normalize_currency_code(base_currency)

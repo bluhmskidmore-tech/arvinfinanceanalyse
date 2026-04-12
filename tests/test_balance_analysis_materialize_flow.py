@@ -643,3 +643,563 @@ def test_balance_analysis_materialize_accepts_explicit_data_root_and_fx_source_p
     assert payload["zqtz_rows"] == 2
     assert payload["tyw_rows"] == 2
     get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_exists(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+    fx_mod = sys.modules.get("backend.app.tasks.fx_mid_materialize")
+    if fx_mod is None:
+        fx_mod = load_module(
+            "backend.app.tasks.fx_mid_materialize",
+            "backend/app/tasks/fx_mid_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    data_input_root = tmp_path / "data_input"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2025-12-31"]
+        Data = {"EMM00058124": [[Decimal("7.20")]]}
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            return _ChoiceResult()
+
+    monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
+    monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_input_root),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_scopes_snapshot_rows_to_requested_ingest_batch_id(
+    tmp_path,
+):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-current'")
+        conn.execute("update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-current'")
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2025-12-31",
+                "240099.IB",
+                "债券旧批次",
+                "组合旧",
+                "CC999",
+                "可供出售债券",
+                "债券类",
+                "国债",
+                "发行人旧",
+                "主权",
+                "AAA",
+                "USD",
+                Decimal("50"),
+                Decimal("50"),
+                Decimal("45"),
+                Decimal("2"),
+                Decimal("0.020"),
+                Decimal("0.025"),
+                "2027-12-31",
+                None,
+                0,
+                False,
+                "固定",
+                "sv-z-old",
+                "rv-snap-1",
+                "ib-old",
+                "trace-z-old",
+            ],
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, currency_code,
+              principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
+              pledged_bond_code, source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2025-12-31",
+                "pos-old",
+                "持有至到期同业存单",
+                "liability",
+                "银行旧",
+                "负债账户",
+                "一般",
+                "股份制银行",
+                "USD",
+                Decimal("8"),
+                Decimal("1"),
+                Decimal("0.010"),
+                "2026-05-31",
+                None,
+                "sv-t-old",
+                "rv-snap-1",
+                "ib-old",
+                "trace-t-old",
+            ],
+        )
+    finally:
+        conn.close()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        ingest_batch_id="ib-current",
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    zqtz_rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+    tyw_rows = repo.fetch_formal_tyw_rows(
+        report_date="2025-12-31",
+        position_scope="liability",
+        currency_basis="CNY",
+    )
+
+    assert {row["ingest_batch_id"] for row in zqtz_rows} == {"ib-current"}
+    assert {row["ingest_batch_id"] for row in tyw_rows} == {"ib-current"}
+    assert {row["source_version"] for row in zqtz_rows} == {"sv-z-1"}
+    assert {row["source_version"] for row in tyw_rows} == {"sv-t-1"}
+
+
+def test_balance_analysis_materialize_uses_latest_manifest_batches_when_ingest_batch_id_is_omitted(
+    tmp_path,
+):
+    repo_mod, task_mod = _load_modules()
+    governance_repo_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    manifest_repo_mod = load_module(
+        "backend.app.repositories.source_manifest_repo",
+        "backend/app/repositories/source_manifest_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-current-z'")
+        conn.execute("update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-current-t'")
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2025-12-31",
+                "240099.IB",
+                "债券旧批次",
+                "组合旧",
+                "CC999",
+                "可供出售债券",
+                "债券类",
+                "国债",
+                "发行人旧",
+                "主权",
+                "AAA",
+                "USD",
+                Decimal("50"),
+                Decimal("50"),
+                Decimal("45"),
+                Decimal("2"),
+                Decimal("0.020"),
+                Decimal("0.025"),
+                "2027-12-31",
+                None,
+                0,
+                False,
+                "固定",
+                "sv-z-old",
+                "rv-snap-1",
+                "ib-old-z",
+                "trace-z-old",
+            ],
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, currency_code,
+              principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
+              pledged_bond_code, source_version, rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2025-12-31",
+                "pos-old",
+                "持有至到期同业存单",
+                "liability",
+                "银行旧",
+                "负债账户",
+                "一般",
+                "股份制银行",
+                "USD",
+                Decimal("8"),
+                Decimal("1"),
+                Decimal("0.010"),
+                "2026-05-31",
+                None,
+                "sv-t-old",
+                "rv-snap-1",
+                "ib-old-t",
+                "trace-t-old",
+            ],
+        )
+    finally:
+        conn.close()
+
+    manifest_repo = manifest_repo_mod.SourceManifestRepository(
+        governance_repo=governance_repo_mod.GovernanceRepository(base_dir=governance_dir),
+    )
+    manifest_repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "source_file": "ZQTZSHOW-old.xls",
+                "source_version": "sv-z-old",
+                "ingest_batch_id": "ib-old-z",
+                "archived_path": "/archive/zqtz/old.xls",
+            },
+            {
+                "source_family": "tyw",
+                "report_date": "2025-12-31",
+                "source_file": "TYWLSHOW-old.xls",
+                "source_version": "sv-t-old",
+                "ingest_batch_id": "ib-old-t",
+                "archived_path": "/archive/tyw/old.xls",
+            },
+        ]
+    )
+    manifest_repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "source_file": "ZQTZSHOW-current.xls",
+                "source_version": "sv-z-1",
+                "ingest_batch_id": "ib-current-z",
+                "archived_path": "/archive/zqtz/current.xls",
+            },
+            {
+                "source_family": "tyw",
+                "report_date": "2025-12-31",
+                "source_file": "TYWLSHOW-current.xls",
+                "source_version": "sv-t-1",
+                "ingest_batch_id": "ib-current-t",
+                "archived_path": "/archive/tyw/current.xls",
+            },
+        ]
+    )
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    zqtz_rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+    tyw_rows = repo.fetch_formal_tyw_rows(
+        report_date="2025-12-31",
+        position_scope="liability",
+        currency_basis="CNY",
+    )
+
+    assert {row["ingest_batch_id"] for row in zqtz_rows} == {"ib-current-z"}
+    assert {row["ingest_batch_id"] for row in tyw_rows} == {"ib-current-t"}
+    assert {row["source_version"] for row in zqtz_rows} == {"sv-z-1"}
+    assert {row["source_version"] for row in tyw_rows} == {"sv-t-1"}
+
+
+def test_balance_analysis_materialize_fails_closed_when_multiple_snapshot_batches_exist_without_manifest_or_explicit_batch(
+    tmp_path,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-current-z'")
+        conn.execute("update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-current-t'")
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+              currency_code, face_value_native, market_value_native, amortized_cost_native,
+              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+              ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2025-12-31",
+                "240199.IB",
+                "债券歧义批次",
+                "组合歧义",
+                "CC888",
+                "可供出售债券",
+                "债券类",
+                "国债",
+                "发行人歧义",
+                "主权",
+                "AAA",
+                "USD",
+                Decimal("40"),
+                Decimal("40"),
+                Decimal("36"),
+                Decimal("1"),
+                Decimal("0.018"),
+                Decimal("0.022"),
+                "2027-10-31",
+                None,
+                0,
+                False,
+                "固定",
+                "sv-z-ambiguous",
+                "rv-snap-1",
+                "ib-old-z",
+                "trace-z-ambiguous",
+            ],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match="explicit ingest_batch_id required"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_balance_analysis_materialize_fails_closed_when_latest_manifest_batch_has_no_snapshot_rows(
+    tmp_path,
+):
+    _repo_mod, task_mod = _load_modules()
+    governance_repo_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    manifest_repo_mod = load_module(
+        "backend.app.repositories.source_manifest_repo",
+        "backend/app/repositories/source_manifest_repo.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-current-z'")
+        conn.execute("update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-current-t'")
+    finally:
+        conn.close()
+
+    manifest_repo = manifest_repo_mod.SourceManifestRepository(
+        governance_repo=governance_repo_mod.GovernanceRepository(base_dir=governance_dir),
+    )
+    manifest_repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "source_file": "ZQTZSHOW-current.xls",
+                "source_version": "sv-z-1",
+                "ingest_batch_id": "ib-current-z",
+                "archived_path": "/archive/zqtz/current.xls",
+            },
+            {
+                "source_family": "tyw",
+                "report_date": "2025-12-31",
+                "source_file": "TYWLSHOW-current.xls",
+                "source_version": "sv-t-1",
+                "ingest_batch_id": "ib-current-t",
+                "archived_path": "/archive/tyw/current.xls",
+            },
+        ]
+    )
+    manifest_repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "source_file": "ZQTZSHOW-latest.xls",
+                "source_version": "sv-z-latest",
+                "ingest_batch_id": "ib-latest-z",
+                "archived_path": "/archive/zqtz/latest.xls",
+            },
+            {
+                "source_family": "tyw",
+                "report_date": "2025-12-31",
+                "source_file": "TYWLSHOW-latest.xls",
+                "source_version": "sv-t-latest",
+                "ingest_batch_id": "ib-latest-t",
+                "archived_path": "/archive/tyw/latest.xls",
+            },
+        ]
+    )
+
+    with pytest.raises(ValueError, match="has no materialized snapshot rows"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_balance_analysis_materialize_fails_closed_when_explicit_batch_lacks_one_required_family(
+    tmp_path,
+):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-current'")
+        conn.execute("update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-current'")
+        conn.execute("delete from tyw_interbank_daily_snapshot where ingest_batch_id = 'ib-current'")
+        repo_mod.ensure_balance_analysis_tables(conn)
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
+              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "pos-existing",
+                "持有至到期同业存单",
+                "liability",
+                "银行存量",
+                "负债账户",
+                "一般",
+                "股份制银行",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "USD",
+                Decimal("72"),
+                Decimal("2"),
+                Decimal("0.015"),
+                "2026-06-30",
+                "sv-existing",
+                "rv-existing",
+                "ib-existing",
+                "trace-existing",
+            ],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match="Explicit ingest_batch_id=ib-current"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            ingest_batch_id="ib-current",
+        )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        remaining_tyw_fact_rows = conn.execute(
+            """
+            select count(*)
+            from fact_formal_tyw_balance_daily
+            where report_date = '2025-12-31'
+            """
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert remaining_tyw_fact_rows == 1

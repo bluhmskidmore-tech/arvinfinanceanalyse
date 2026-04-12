@@ -10,12 +10,14 @@ from backend.app.core_finance.module_contracts import FormalComputeModuleDescrip
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
+from backend.app.repositories.governance_repo import GovernanceRepository
+from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
     FormalComputeMaterializeResult,
 )
 from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_rows, resolve_fx_mid_csv_path
+from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
 BALANCE_ANALYSIS_MODULE = ensure_formal_module(
@@ -49,33 +51,131 @@ _DIRECT_ZQTZ_INVEST_TYPE_LABELS = frozenset(
     {"持有至到期类资产", "可供出售类资产", "交易性资产", "应收投资款项", "发行类债劵", "发行类债券"}
 )
 
+def _resolve_snapshot_ingest_batch_id(
+    *,
+    family: str,
+    report_date: str,
+    requested_ingest_batch_id: str | None,
+    governance_dir: str,
+    repo: BalanceAnalysisRepository,
+) -> str | None:
+    if family == "zqtz":
+        count_rows_for_batch = repo.count_zqtz_snapshot_rows
+        list_batch_ids = repo.list_zqtz_snapshot_ingest_batch_ids
+        count_rows_for_report_date = repo.count_zqtz_snapshot_rows
+    else:
+        count_rows_for_batch = repo.count_tyw_snapshot_rows
+        list_batch_ids = repo.list_tyw_snapshot_ingest_batch_ids
+        count_rows_for_report_date = repo.count_tyw_snapshot_rows
+
+    if requested_ingest_batch_id:
+        requested_row_count = count_rows_for_batch(
+            report_date,
+            ingest_batch_id=requested_ingest_batch_id,
+        )
+        if requested_row_count <= 0:
+            raise ValueError(
+                f"Explicit ingest_batch_id={requested_ingest_batch_id} for family={family} report_date={report_date} has no materialized snapshot rows."
+            )
+        return requested_ingest_batch_id
+
+    manifest_repo = SourceManifestRepository(
+        governance_repo=GovernanceRepository(base_dir=Path(governance_dir)),
+    )
+    manifest_rows = manifest_repo.select_for_snapshot_materialization(
+        source_families=[family],
+        report_date=report_date,
+    )
+    manifest_batch_ids = sorted(
+        {
+            str(row.get("ingest_batch_id") or "").strip()
+            for row in manifest_rows
+            if str(row.get("ingest_batch_id") or "").strip()
+        }
+    )
+    if len(manifest_batch_ids) == 1:
+        manifest_batch_id = manifest_batch_ids[0]
+        if family == "zqtz":
+            manifest_snapshot_row_count = repo.count_zqtz_snapshot_rows(
+                report_date,
+                ingest_batch_id=manifest_batch_id,
+            )
+        else:
+            manifest_snapshot_row_count = repo.count_tyw_snapshot_rows(
+                report_date,
+                ingest_batch_id=manifest_batch_id,
+            )
+        if manifest_snapshot_row_count <= 0:
+            raise ValueError(
+                f"Manifest-selected ingest_batch_id={manifest_batch_id} for family={family} report_date={report_date} has no materialized snapshot rows."
+            )
+        return manifest_batch_id
+    if len(manifest_batch_ids) > 1:
+        raise ValueError(
+            f"Multiple manifest ingest_batch_id values found for family={family} report_date={report_date}."
+        )
+
+    snapshot_batch_ids = list_batch_ids(report_date)
+    snapshot_row_count = count_rows_for_report_date(report_date)
+
+    if len(snapshot_batch_ids) == 1:
+        return snapshot_batch_ids[0]
+    if len(snapshot_batch_ids) > 1:
+        raise ValueError(
+            f"Multiple snapshot ingest_batch_id values found for family={family} report_date={report_date}; explicit ingest_batch_id required."
+        )
+    if snapshot_row_count > 0:
+        raise ValueError(
+            f"Snapshot rows for family={family} report_date={report_date} are missing governed ingest_batch_id lineage."
+        )
+    return None
+
 
 def _execute_balance_analysis_materialization(
     *,
     report_date: str,
     duckdb_file: Path,
+    ingest_batch_id: str | None = None,
+    governance_dir: str,
     data_root: str | None = None,
     fx_source_path: str | None = None,
 ) -> FormalComputeMaterializeResult:
     settings = get_settings()
-    fx_mid_csv_path = resolve_fx_mid_csv_path(
+    materialize_fx_mid_for_report_date.fn(
+        report_date=report_date,
+        duckdb_path=str(duckdb_file),
+        data_input_root=str(data_root or settings.data_input_root),
         official_csv_path=str(
             fx_source_path
             or getattr(settings, "fx_official_source_path", "")
             or ""
         ),
         explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
-        data_input_root=Path(data_root or settings.data_input_root),
     )
-    if fx_mid_csv_path is not None:
-        materialize_fx_mid_rows.fn(
-            csv_path=str(fx_mid_csv_path),
-            duckdb_path=str(duckdb_file),
-        )
 
     repo = BalanceAnalysisRepository(str(duckdb_file))
-    zqtz_snapshot_rows = repo.load_zqtz_snapshot_rows(report_date)
-    tyw_snapshot_rows = repo.load_tyw_snapshot_rows(report_date)
+    zqtz_ingest_batch_id = _resolve_snapshot_ingest_batch_id(
+        family="zqtz",
+        report_date=report_date,
+        requested_ingest_batch_id=ingest_batch_id,
+        governance_dir=governance_dir,
+        repo=repo,
+    )
+    tyw_ingest_batch_id = _resolve_snapshot_ingest_batch_id(
+        family="tyw",
+        report_date=report_date,
+        requested_ingest_batch_id=ingest_batch_id,
+        governance_dir=governance_dir,
+        repo=repo,
+    )
+    zqtz_snapshot_rows = repo.load_zqtz_snapshot_rows(
+        report_date,
+        ingest_batch_id=zqtz_ingest_batch_id,
+    )
+    tyw_snapshot_rows = repo.load_tyw_snapshot_rows(
+        report_date,
+        ingest_batch_id=tyw_ingest_batch_id,
+    )
 
     zqtz_fact_rows = []
     tyw_fact_rows = []
@@ -175,6 +275,7 @@ def _materialize_balance_analysis_facts(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     run_id: str | None = None,
+    ingest_batch_id: str | None = None,
     data_root: str | None = None,
     fx_source_path: str | None = None,
 ) -> dict[str, object]:
@@ -193,6 +294,8 @@ def _materialize_balance_analysis_facts(
         execute_materialization=lambda: _execute_balance_analysis_materialization(
             report_date=report_date,
             duckdb_file=duckdb_file,
+            ingest_batch_id=ingest_batch_id,
+            governance_dir=str(governance_path),
             data_root=data_root,
             fx_source_path=fx_source_path,
         ),

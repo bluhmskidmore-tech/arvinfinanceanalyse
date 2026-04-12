@@ -25,17 +25,21 @@ def _run_formal_balance_pipeline(
         archive_dir=archive_dir,
         source_family_allowlist=source_families,
     )
+    ingest_batch_id = str(ingest_payload.get("ingest_batch_id") or "").strip()
+    if not ingest_batch_id:
+        raise ValueError("Formal balance pipeline requires a non-empty ingest_batch_id from ingest.")
     snapshot_payload = materialize_standard_snapshots.fn(
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
         source_families=source_families,
-        ingest_batch_id=str(ingest_payload.get("ingest_batch_id") or ""),
+        ingest_batch_id=ingest_batch_id,
         report_date=report_date,
     )
     balance_payload = materialize_balance_analysis_facts.fn(
         report_date=report_date,
         duckdb_path=duckdb_path,
         governance_dir=governance_dir,
+        ingest_batch_id=ingest_batch_id,
         data_root=data_root,
         fx_source_path=fx_source_path,
     )
