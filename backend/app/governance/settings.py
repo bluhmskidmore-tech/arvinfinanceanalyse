@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILES, env_prefix="MOSS_", extra="ignore")
 
     environment: str = "development"
+    agent_enabled: bool = False
     postgres_dsn: str = "postgresql://moss:moss@localhost:5432/moss"
     governance_sql_dsn: str = ""
     source_preview_governance_backend: str = "jsonl"

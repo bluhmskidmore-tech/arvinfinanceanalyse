@@ -1,7 +1,78 @@
+from __future__ import annotations
+
+import json
+
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
 from tests.helpers import load_module
+
+
+def _sample_agent_envelope():
+    schema_module = load_module(
+        "backend.app.agent.schemas.agent_response",
+        "backend/app/agent/schemas/agent_response.py",
+    )
+    return schema_module.AgentEnvelope(
+        answer="PnL summary is available.",
+        cards=[
+            schema_module.AgentCard(
+                type="metric",
+                title="Total PnL",
+                value="123.45",
+            )
+        ],
+        evidence=schema_module.AgentEvidence(
+            tables_used=["fact_formal_pnl_fi"],
+            filters_applied={"report_date": "2026-03-31"},
+            evidence_rows=2,
+            quality_flag="ok",
+        ),
+        result_meta=schema_module.AgentResultMeta(
+            trace_id="tr_agent_api_contract",
+            basis="formal",
+            result_kind="agent.pnl_summary",
+            formal_use_allowed=True,
+            source_version="sv_agent_test",
+            vendor_version="vv_none",
+            rule_version="rv_agent_mvp_v1",
+            cache_version="cv_agent_pnl_summary_v1",
+            quality_flag="ok",
+            scenario_flag=False,
+            tables_used=["fact_formal_pnl_fi"],
+            filters_applied={"report_date": "2026-03-31"},
+            sql_executed=[],
+            evidence_rows=2,
+        ),
+    )
+
+
+def _client_with_stubbed_agent(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "duckdb_path": "test.duckdb",
+                "governance_path": "test-governance",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_agent_query",
+        lambda request, duckdb_path, governance_dir: _sample_agent_envelope(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    return TestClient(app)
 
 
 def test_agent_request_schema_defines_phase1_contract():
@@ -35,10 +106,58 @@ def test_agent_response_schema_exposes_target_state_and_disabled_contracts():
     assert {"enabled", "phase", "detail"} <= set(disabled.model_fields)
 
 
-def test_agent_query_endpoint_is_registered_but_disabled_in_phase1():
-    client = TestClient(app)
+def test_agent_query_returns_200_with_envelope(monkeypatch, tmp_path):
+    client = _client_with_stubbed_agent(monkeypatch)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
-    response = client.post("/api/agent/query", json={"question": "月均市值怎么查"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["answer"] == "PnL summary is available."
+    assert payload["cards"][0]["title"] == "Total PnL"
+
+def test_agent_query_envelope_has_evidence(monkeypatch, tmp_path):
+    client = _client_with_stubbed_agent(monkeypatch)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi"]
+    assert payload["evidence"]["filters_applied"] == {"report_date": "2026-03-31"}
+    assert payload["evidence"]["evidence_rows"] == 2
+
+def test_agent_query_envelope_has_result_meta(monkeypatch, tmp_path):
+    client = _client_with_stubbed_agent(monkeypatch)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["trace_id"] == "tr_agent_api_contract"
+    assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
+    assert payload["result_meta"]["tables_used"] == ["fact_formal_pnl_fi"]
+    assert payload["result_meta"]["evidence_rows"] == 2
+
+def test_agent_query_returns_disabled_fallback_when_agent_is_off(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": False,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
     assert response.status_code == 503
     assert response.json() == {
@@ -46,4 +165,32 @@ def test_agent_query_endpoint_is_registered_but_disabled_in_phase1():
         "phase": "phase1",
         "detail": "Agent endpoint is planned but disabled in Phase 1.",
     }
+def test_disabled_agent_query_appends_audit_log(monkeypatch, tmp_path):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": False,
+                "duckdb_path": str(tmp_path / "moss.duckdb"),
+                "governance_path": str(tmp_path / "governance"),
+            },
+        )(),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
 
+    assert response.status_code == 503
+    content = (tmp_path / "governance" / "agent_audit.jsonl").read_text(encoding="utf-8")
+    payload = json.loads(content.splitlines()[-1])
+    assert payload["query_text"] == "PnL summary"
+    assert payload["tools_used"] == ["agent_disabled"]
+    assert payload["result_meta"]["result_kind"] == "agent.disabled"
