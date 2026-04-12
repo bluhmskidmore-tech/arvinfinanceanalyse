@@ -25,6 +25,10 @@ def test_safe_component_strips_unsafe_chars_and_empty_fallback():
     assert repo._safe_component("") == "artifact"
 
 
+def test_safe_component_static_method_matches_instance():
+    assert ObjectStoreRepository._safe_component("a b") == "a_b"
+
+
 def test_build_archived_filename_suffix_digest_batch_and_deterministic():
     repo = ObjectStoreRepository(
         endpoint="localhost:9000",
@@ -123,6 +127,23 @@ def test_healthcheck_minio_connection_error(monkeypatch):
         mode="minio",
     )
     assert repo.healthcheck()["ok"] is False
+
+
+def test_healthcheck_minio_default_port_when_endpoint_has_no_colon(monkeypatch):
+    cm = MagicMock()
+    cm.__enter__.return_value = None
+    cm.__exit__.return_value = None
+    mock_conn = MagicMock(return_value=cm)
+    monkeypatch.setattr(socket, "create_connection", mock_conn)
+    repo = ObjectStoreRepository(
+        endpoint="10.0.0.1",
+        access_key="k",
+        secret_key="s",
+        bucket="buck",
+        mode="minio",
+    )
+    assert repo.healthcheck()["ok"] is True
+    mock_conn.assert_called_once_with(("10.0.0.1", 9000), timeout=0.2)
 
 
 def test_archive_file_not_implemented_for_minio(tmp_path):

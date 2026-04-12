@@ -93,24 +93,40 @@ def _ensure_zqtz_enrichment_columns(conn: duckdb.DuckDBPyConnection) -> None:
         conn.execute(f"alter table {ZQTZ_TABLE} add column customer_attribute varchar")
 
 
-def delete_zqtz_snapshots_for_batches(conn: duckdb.DuckDBPyConnection, ingest_batch_ids: list[str]) -> None:
+def delete_zqtz_snapshots_for_batches(
+    conn: duckdb.DuckDBPyConnection,
+    ingest_batch_ids: list[str],
+    *,
+    report_dates: list[object] | None = None,
+) -> None:
     if not ingest_batch_ids:
         return
     placeholders = ",".join(["?"] * len(ingest_batch_ids))
-    conn.execute(
-        f"delete from {ZQTZ_TABLE} where ingest_batch_id in ({placeholders})",
-        ingest_batch_ids,
-    )
+    params: list[object] = list(ingest_batch_ids)
+    where_clause = f"ingest_batch_id in ({placeholders})"
+    if report_dates:
+        report_placeholders = ",".join(["?"] * len(report_dates))
+        where_clause += f" and report_date in ({report_placeholders})"
+        params.extend(report_dates)
+    conn.execute(f"delete from {ZQTZ_TABLE} where {where_clause}", params)
 
 
-def delete_tyw_snapshots_for_batches(conn: duckdb.DuckDBPyConnection, ingest_batch_ids: list[str]) -> None:
+def delete_tyw_snapshots_for_batches(
+    conn: duckdb.DuckDBPyConnection,
+    ingest_batch_ids: list[str],
+    *,
+    report_dates: list[object] | None = None,
+) -> None:
     if not ingest_batch_ids:
         return
     placeholders = ",".join(["?"] * len(ingest_batch_ids))
-    conn.execute(
-        f"delete from {TYW_TABLE} where ingest_batch_id in ({placeholders})",
-        ingest_batch_ids,
-    )
+    params: list[object] = list(ingest_batch_ids)
+    where_clause = f"ingest_batch_id in ({placeholders})"
+    if report_dates:
+        report_placeholders = ",".join(["?"] * len(report_dates))
+        where_clause += f" and report_date in ({report_placeholders})"
+        params.extend(report_dates)
+    conn.execute(f"delete from {TYW_TABLE} where {where_clause}", params)
 
 
 def _sql_value(value: object) -> object:
@@ -124,8 +140,9 @@ def replace_zqtz_snapshot_rows(
     rows: list[dict[str, Any]],
     *,
     ingest_batch_ids: list[str],
+    report_dates: list[object] | None = None,
 ) -> int:
-    delete_zqtz_snapshots_for_batches(conn, ingest_batch_ids)
+    delete_zqtz_snapshots_for_batches(conn, ingest_batch_ids, report_dates=report_dates)
     if not rows:
         return 0
     conn.executemany(
@@ -177,8 +194,9 @@ def replace_tyw_snapshot_rows(
     rows: list[dict[str, Any]],
     *,
     ingest_batch_ids: list[str],
+    report_dates: list[object] | None = None,
 ) -> int:
-    delete_tyw_snapshots_for_batches(conn, ingest_batch_ids)
+    delete_tyw_snapshots_for_batches(conn, ingest_batch_ids, report_dates=report_dates)
     if not rows:
         return 0
     conn.executemany(

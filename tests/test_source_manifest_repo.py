@@ -89,11 +89,49 @@ def test_add_many_second_same_identity_is_rerun_with_rerun_of_batch_id():
     assert second[0]["rerun_of_batch_id"] == "ib-first"
 
 
+def test_add_many_rerun_uses_file_name_when_source_file_missing():
+    """_source_identity falls back to file_name; reruns must match that identity."""
+    repo = SourceManifestRepository()
+    repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "file_name": "legacy.xls",
+                "source_version": "sv",
+                "ingest_batch_id": "ib-1",
+            }
+        ]
+    )
+    second = repo.add_many(
+        [
+            {
+                "source_family": "zqtz",
+                "report_date": "2025-12-31",
+                "file_name": "legacy.xls",
+                "source_version": "sv",
+                "ingest_batch_id": "ib-2",
+            }
+        ]
+    )
+    assert second[0]["status"] == "rerun"
+    assert second[0]["rerun_of_batch_id"] == "ib-1"
+
+
 def test_load_all_uses_governance_repo_when_set():
     inner = _FakeGovernanceRepo()
     inner.rows = [{"ingest_batch_id": "x", "from": "gov"}]
     repo = SourceManifestRepository(rows=[{"ingest_batch_id": "y", "from": "memory"}], governance_repo=inner)
     assert repo.load_all() == inner.rows
+
+
+def test_load_all_returns_in_memory_rows_when_governance_repo_none():
+    seed = [{"ingest_batch_id": "mem-only", "source_family": "zqtz"}]
+    repo = SourceManifestRepository(rows=list(seed))
+    assert repo.governance_repo is None
+    assert repo.load_all() == seed
+    # load_all wraps rows in a new list via list(self.rows)
+    assert repo.load_all() is not repo.rows
 
 
 def test_load_by_batch_filters_by_ingest_batch_id():
@@ -213,11 +251,65 @@ def test_select_latest_per_family_uses_max_created_at_and_ingest_batch_id():
 def test_select_by_source_family_and_report_date_delegate_to_select_for_snapshot_materialization():
     repo = SourceManifestRepository()
     repo.rows = [
-        _base_row(source_family="tyw", archived_path="/p/1", ingest_batch_id="i1", source_file="tyw.xls"),
+        _base_row(
+            source_family="tyw",
+            archived_path="/p/1",
+            ingest_batch_id="i1",
+            source_file="tyw.xls",
+            status="completed",
+        ),
     ]
     a = repo.select_by_source_family("tyw", report_date="2025-12-31")
     b = repo.select_for_snapshot_materialization(source_families=["tyw"], report_date="2025-12-31")
     assert a == b
+
+
+def test_select_by_report_date_matches_select_for_snapshot_materialization():
+    repo = SourceManifestRepository()
+    repo.rows = [
+        _base_row(
+            source_family="zqtz",
+            archived_path="/z/1",
+            ingest_batch_id="z1",
+            status="completed",
+        ),
+        _base_row(
+            source_family="tyw",
+            archived_path="/t/1",
+            ingest_batch_id="t1",
+            source_file="tyw.xls",
+            status="completed",
+        ),
+    ]
+    a = repo.select_by_report_date("2025-12-31", source_families=["tyw"])
+    b = repo.select_for_snapshot_materialization(source_families=["tyw"], report_date="2025-12-31")
+    assert a == b
+
+
+def test_select_for_snapshot_materialization_ingest_batch_sorts_by_archived_path():
+    repo = SourceManifestRepository()
+    repo.rows = [
+        _base_row(ingest_batch_id="b", archived_path="/z/b", status="completed", created_at="t0"),
+        _base_row(
+            ingest_batch_id="b",
+            archived_path="/z/a",
+            source_file="other.xls",
+            status="completed",
+            created_at="t0",
+        ),
+    ]
+    out = repo.select_for_snapshot_materialization(ingest_batch_id="b")
+    assert [r["archived_path"] for r in out] == ["/z/a", "/z/b"]
+
+
+def test_select_for_snapshot_materialization_rerun_status_eligible():
+    repo = SourceManifestRepository()
+    repo.rows = [
+        _base_row(ingest_batch_id="r1", archived_path="/r/1", status="rerun"),
+    ]
+    out = repo.select_for_snapshot_materialization()
+    assert len(out) == 1
+    assert out[0]["ingest_batch_id"] == "r1"
 
 
 def test_manifest_eligible_statuses_frozen():

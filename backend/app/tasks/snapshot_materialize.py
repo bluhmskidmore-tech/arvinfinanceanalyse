@@ -125,6 +125,13 @@ def _materialize_standard_snapshots(
                 tyw_total = 0
                 if zqtz_manifests:
                     z_batches = sorted({str(m["ingest_batch_id"]) for m in zqtz_manifests})
+                    z_report_dates = sorted(
+                        {
+                            str(m.get("report_date") or "").strip()
+                            for m in zqtz_manifests
+                            if str(m.get("report_date") or "").strip()
+                        }
+                    )
                     ordered_rows: list[dict[str, object]] = []
                     for manifest_row in sorted(
                         zqtz_manifests,
@@ -170,10 +177,18 @@ def _materialize_standard_snapshots(
                         conn,
                         merged_z,
                         ingest_batch_ids=z_batches,
+                        report_dates=z_report_dates,
                     )
 
                 if tyw_manifests:
                     t_batches = sorted({str(m["ingest_batch_id"]) for m in tyw_manifests})
+                    t_report_dates = sorted(
+                        {
+                            str(m.get("report_date") or "").strip()
+                            for m in tyw_manifests
+                            if str(m.get("report_date") or "").strip()
+                        }
+                    )
                     ordered_tyw: list[dict[str, object]] = []
                     for manifest_row in sorted(
                         tyw_manifests,
@@ -219,6 +234,7 @@ def _materialize_standard_snapshots(
                         conn,
                         merged_t,
                         ingest_batch_ids=t_batches,
+                        report_dates=t_report_dates,
                     )
 
                 conn.execute("commit")
