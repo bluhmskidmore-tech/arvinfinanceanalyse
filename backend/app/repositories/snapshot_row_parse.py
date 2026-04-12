@@ -8,6 +8,7 @@ from uuid import uuid4
 
 import xlrd
 
+from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.services.source_rules import describe_source_file
 
 ZQTZ_BOND_CODE = "债券代号"
@@ -149,7 +150,7 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "issuer_name": _text(raw_row, ZQTZ_ISSUER) or None,
                 "industry_name": _text(raw_row, ZQTZ_INDUSTRY) or None,
                 "rating": _text(raw_row, ZQTZ_RATING) or None,
-                "currency_code": _text(raw_row, ZQTZ_CURRENCY),
+                "currency_code": normalize_currency_code(raw_row.get(ZQTZ_CURRENCY)),
                 "face_value_native": _decimal_required(raw_row.get(ZQTZ_FACE_VALUE)),
                 "market_value_native": _decimal_required(raw_row.get(ZQTZ_FAIR_VALUE)),
                 "amortized_cost_native": _decimal_required(raw_row.get(ZQTZ_AMORTIZED)),
@@ -208,7 +209,7 @@ def parse_tyw_snapshot_rows_from_bytes(
                 "account_type": _text(raw_row, TYW_ACCOUNT_TYPE) or None,
                 "special_account_type": _text(raw_row, TYW_SPECIAL_ACCOUNT) or None,
                 "core_customer_type": _text(raw_row, TYW_CORE_CUSTOMER) or None,
-                "currency_code": _text(raw_row, TYW_CURRENCY),
+                "currency_code": normalize_currency_code(raw_row.get(TYW_CURRENCY)),
                 "principal_native": _decimal_required(raw_row.get(TYW_PRINCIPAL)),
                 "accrued_interest_native": _decimal_required(raw_row.get(TYW_ACCRUED)),
                 "funding_cost_rate": _decimal(raw_row.get(TYW_RATE)),

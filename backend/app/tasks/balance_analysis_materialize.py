@@ -15,6 +15,7 @@ from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeResult,
 )
 from backend.app.tasks.broker import register_actor_once
+from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_rows
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
 BALANCE_ANALYSIS_MODULE = ensure_formal_module(
@@ -54,6 +55,14 @@ def _execute_balance_analysis_materialization(
     report_date: str,
     duckdb_file: Path,
 ) -> FormalComputeMaterializeResult:
+    settings = get_settings()
+    fx_mid_csv_path = str(getattr(settings, "fx_mid_csv_path", "") or "").strip()
+    if fx_mid_csv_path:
+        materialize_fx_mid_rows.fn(
+            csv_path=fx_mid_csv_path,
+            duckdb_path=str(duckdb_file),
+        )
+
     repo = BalanceAnalysisRepository(str(duckdb_file))
     zqtz_snapshot_rows = repo.load_zqtz_snapshot_rows(report_date)
     tyw_snapshot_rows = repo.load_tyw_snapshot_rows(report_date)

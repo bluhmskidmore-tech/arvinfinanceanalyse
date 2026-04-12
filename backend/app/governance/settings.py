@@ -1,5 +1,4 @@
 from decimal import Decimal
-from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,12 +41,18 @@ class Settings(BaseSettings):
     choice_macro_commands_file: str = ""
     choice_news_topics_file: str = "config/choice_news_topics.json"
     choice_timeout_seconds: float = 10.0
+    fx_mid_csv_path: str = ""
     product_category_source_dir: Path = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     ftp_rate_pct: Decimal = Decimal("1.75")
     formal_pnl_enabled: bool = False
     formal_pnl_scope_json: str = "[]"
 
-
-@lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def _cache_clear() -> None:
+    return None
+
+
+get_settings.cache_clear = _cache_clear

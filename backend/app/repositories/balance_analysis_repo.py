@@ -11,6 +11,7 @@ from backend.app.core_finance.balance_analysis import (
     TywSnapshotRow,
     ZqtzSnapshotRow,
 )
+from backend.app.repositories.currency_codes import normalize_currency_code
 
 
 @dataclass
@@ -52,7 +53,7 @@ class BalanceAnalysisRepository:
                 issuer_name=row[8] or "",
                 industry_name=row[9] or "",
                 rating=row[10] or "",
-                currency_code=row[11] or "",
+                currency_code=normalize_currency_code(row[11] or ""),
                 face_value_native=row[12],
                 market_value_native=row[13],
                 amortized_cost_native=row[14],
@@ -96,7 +97,7 @@ class BalanceAnalysisRepository:
                 account_type=row[5] or "",
                 special_account_type=row[6] or "",
                 core_customer_type=row[7] or "",
-                currency_code=row[8] or "",
+                currency_code=normalize_currency_code(row[8] or ""),
                 principal_native=row[9],
                 accrued_interest_native=row[10],
                 funding_cost_rate=row[11],
@@ -110,7 +111,8 @@ class BalanceAnalysisRepository:
         ]
 
     def lookup_fx_rate(self, *, report_date: str, base_currency: str) -> tuple[Decimal, str]:
-        if str(base_currency).upper() == "CNY":
+        base_currency_normalized = normalize_currency_code(base_currency)
+        if base_currency_normalized in {"CNY", "CNX"}:
             return Decimal("1"), "sv_fx_identity"
         rows = self._fetch_rows(
             """
@@ -121,10 +123,12 @@ class BalanceAnalysisRepository:
               and upper(quote_currency) = 'CNY'
             limit 1
             """,
-            [report_date, base_currency],
+            [report_date, base_currency_normalized],
         )
         if not rows:
-            raise ValueError(f"Missing fx rate for base_currency={base_currency} report_date={report_date}")
+            raise ValueError(
+                f"Missing fx rate for base_currency={base_currency_normalized} report_date={report_date}"
+            )
         return rows[0][0], rows[0][1] or ""
 
     def replace_formal_balance_rows(
