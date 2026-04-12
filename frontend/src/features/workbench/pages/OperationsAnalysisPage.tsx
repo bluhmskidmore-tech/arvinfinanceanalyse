@@ -20,6 +20,16 @@ const hubGridStyle = {
   marginTop: 18,
 } as const;
 
+const cardStyle = {
+  padding: 24,
+  borderRadius: 20,
+  background: "#fbfcfe",
+  border: "1px solid #e4ebf5",
+  boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+  display: "grid",
+  gap: 12,
+} as const;
+
 const linkStyle = {
   color: "#1f5eff",
   fontWeight: 600,
@@ -61,7 +71,7 @@ function buildPnlRefreshStatusText(payload: {
     payload.source_version ? `source ${payload.source_version}` : null,
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(" 路 ");
 }
 
 export default function OperationsAnalysisPage() {
@@ -70,6 +80,7 @@ export default function OperationsAnalysisPage() {
   const [pnlRefreshError, setPnlRefreshError] = useState<string | null>(null);
   const [lastPnlRefreshRunId, setLastPnlRefreshRunId] = useState<string | null>(null);
   const [lastPnlRefreshStatus, setLastPnlRefreshStatus] = useState<string | null>(null);
+
   const sourceQuery = useQuery({
     queryKey: ["operations-entry", "source-preview", client.mode],
     queryFn: () => client.getSourceFoundation(),
@@ -83,6 +94,11 @@ export default function OperationsAnalysisPage() {
   const macroLatestQuery = useQuery({
     queryKey: ["operations-entry", "macro-latest", client.mode],
     queryFn: () => client.getChoiceMacroLatest(),
+    retry: false,
+  });
+  const fxFormalStatusQuery = useQuery({
+    queryKey: ["operations-entry", "fx-formal-status", client.mode],
+    queryFn: () => client.getFxFormalStatus(),
     retry: false,
   });
   const newsQuery = useQuery({
@@ -106,6 +122,12 @@ export default function OperationsAnalysisPage() {
   const macroLatest = useMemo(
     () => macroLatestQuery.data?.result.series ?? [],
     [macroLatestQuery.data?.result.series],
+  );
+  const fxFormalStatus = fxFormalStatusQuery.data?.result;
+  const fxFormalRows = useMemo(() => fxFormalStatus?.rows ?? [], [fxFormalStatus?.rows]);
+  const missingFxRows = useMemo(
+    () => fxFormalRows.filter((row) => row.status === "missing"),
+    [fxFormalRows],
   );
   const newsEvents = useMemo(
     () => newsQuery.data?.result.events ?? [],
@@ -140,7 +162,7 @@ export default function OperationsAnalysisPage() {
         throw new Error(`${hint}${rid}`);
       }
     } catch (error) {
-      setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 表失败");
+      setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 失败");
     } finally {
       setIsPnlRefreshing(false);
     }
@@ -178,7 +200,8 @@ export default function OperationsAnalysisPage() {
               lineHeight: 1.75,
             }}
           >
-            将 source preview、macro、news 三个只读分析面收口到同一入口。页面只消费现有后端只读契约，不在前端补算任何正式金融指标。
+            页面汇聚 source preview、macro/news 观察与 formal FX 状态。所有读面均直接消费后端契约；
+            formal FX 的可用性只展示后端状态，不在浏览器侧补算中间价。
           </p>
         </div>
         <span
@@ -221,6 +244,13 @@ export default function OperationsAnalysisPage() {
             detail="来自 Choice news 事件流的当前查询总行数。"
           />
         </div>
+        <div data-testid="operations-entry-formal-fx-count">
+          <PlaceholderCard
+            title="Formal FX status"
+            value={`${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`}
+            detail={`latest_trade_date ${fxFormalStatus?.latest_trade_date ?? "pending"} 路 carry_forward_count ${fxFormalStatus?.carry_forward_count ?? 0}`}
+          />
+        </div>
       </div>
 
       <div style={hubGridStyle}>
@@ -251,7 +281,7 @@ export default function OperationsAnalysisPage() {
               >
                 <strong>{summary.source_family.toUpperCase()}</strong>
                 <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                  报告日期 {summary.report_date ?? "—"} · 行数 {summary.total_rows} · 人工复核{" "}
+                  报告日期 {summary.report_date ?? "—"} 路 行数 {summary.total_rows} 路 人工复核{" "}
                   {summary.manual_review_count}
                 </div>
                 <div style={{ color: "#8090a8", fontSize: 12 }}>
@@ -298,7 +328,7 @@ export default function OperationsAnalysisPage() {
               >
                 <strong>{point.series_name}</strong>
                 <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                  {point.trade_date} · {point.value_numeric.toFixed(2)} {point.unit}
+                  {point.trade_date} 路 {point.value_numeric.toFixed(2)} {point.unit}
                 </div>
                 <div style={{ color: "#8090a8", fontSize: 12 }}>
                   source_version {point.source_version}
@@ -335,7 +365,7 @@ export default function OperationsAnalysisPage() {
               >
                 <strong>{event.topic_code}</strong>
                 <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                  {event.group_id} · {event.received_at}
+                  {event.group_id} 路 {event.received_at}
                 </div>
                 <div style={{ color: "#162033", fontSize: 14, lineHeight: 1.6 }}>
                   {summarizeNewsPayload(event)}
@@ -345,22 +375,83 @@ export default function OperationsAnalysisPage() {
           </div>
         </AsyncSection>
 
-        <section
-          style={{
-            padding: 24,
-            borderRadius: 20,
-            background: "#fbfcfe",
-            border: "1px solid #e4ebf5",
-            boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-            display: "grid",
-            gap: 12,
-          }}
+        <AsyncSection
+          title="Formal FX middle-rate status"
+          isLoading={fxFormalStatusQuery.isLoading}
+          isError={fxFormalStatusQuery.isError}
+          isEmpty={!fxFormalStatusQuery.isLoading && !fxFormalStatusQuery.isError && fxFormalRows.length === 0}
+          onRetry={() => void fxFormalStatusQuery.refetch()}
         >
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+          <div data-testid="operations-entry-formal-fx-status" style={cardStyle}>
+            <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+              Formal FX middle-rate status comes directly from the backend formal read model and is
+              displayed separately from analytical market observations.
+            </div>
+            <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
+              <div>
+                latest_trade_date {fxFormalStatus?.latest_trade_date ?? "pending"}
+              </div>
+              <div>
+                carry_forward_count {fxFormalStatus?.carry_forward_count ?? 0}
+              </div>
+              <div>
+                vendor_priority {(fxFormalStatus?.vendor_priority ?? []).join(" > ") || "pending"}
+              </div>
+              <div>
+                trace_id {fxFormalStatusQuery.data?.result_meta.trace_id ?? "pending"}
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {fxFormalRows.map((row) => (
+                <div
+                  key={`${row.base_currency}:${row.quote_currency}`}
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    padding: 14,
+                    borderRadius: 16,
+                    border: "1px solid #e4ebf5",
+                    background: "#ffffff",
+                  }}
+                >
+                  <strong>{row.pair_label}</strong>
+                  <div style={{ color: "#5c6b82", fontSize: 13 }}>
+                    status {row.status} 路 trade_date {row.trade_date ?? "pending"} 路 observed{" "}
+                    {row.observed_trade_date ?? "pending"}
+                  </div>
+                  <div style={{ color: "#8090a8", fontSize: 12 }}>
+                    {row.status === "missing"
+                      ? `missing ${row.pair_label}`
+                      : `mid_rate ${row.mid_rate ?? "n/a"} 路 vendor ${row.vendor_name ?? "n/a"} 路 carry_forward ${row.is_carry_forward ?? false}`}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {missingFxRows.length > 0 ? (
+              <div style={{ color: "#b42318", fontSize: 13 }}>
+                Missing formal FX pairs: {missingFxRows.map((row) => row.pair_label).join(", ")}
+              </div>
+            ) : null}
+          </div>
+        </AsyncSection>
+
+        <section style={cardStyle}>
+          <div
+            style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}
+          >
             <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>PnL 表刷新</h2>
-              <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
- 手动触发正式损益（PnL）物化任务，与数据源预览刷新相互独立。该入口只负责发起刷新与显示任务状态，不在当前页面渲染正式损益大表。
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>PnL 表刷新</h2>
+              <p
+                style={{
+                  marginTop: 8,
+                  marginBottom: 0,
+                  color: "#5c6b82",
+                  fontSize: 13,
+                  lineHeight: 1.7,
+                }}
+              >
+                手动触发正式损益（PnL）物化任务，与 formal FX 状态读面相互独立。该入口只负责发起刷新与展示任务状态，
+                不在当前页面演绎正式损益大表。
               </p>
               {lastPnlRefreshRunId ? (
                 <p
@@ -400,7 +491,7 @@ export default function OperationsAnalysisPage() {
                 opacity: isPnlRefreshing ? 0.7 : 1,
               }}
             >
-            {isPnlRefreshing ? "刷新中..." : "刷新 PnL 表"}
+              {isPnlRefreshing ? "刷新中..." : "刷新 PnL 表"}
             </button>
           </div>
         </section>

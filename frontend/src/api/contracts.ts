@@ -307,6 +307,68 @@ export type ChoiceMacroLatestPayload = {
   series: ChoiceMacroLatestPoint[];
 };
 
+export type FxAnalyticalGroupKey = "middle_rate" | "fx_index" | "fx_swap_curve";
+
+export type FxFormalStatusRow = {
+  base_currency: string;
+  quote_currency: string;
+  pair_label: string;
+  series_id: string;
+  series_name: string;
+  vendor_series_code: string;
+  trade_date: string | null;
+  observed_trade_date: string | null;
+  mid_rate: number | null;
+  source_name: string | null;
+  vendor_name: string | null;
+  vendor_version: string | null;
+  source_version: string | null;
+  is_business_day: boolean | null;
+  is_carry_forward: boolean | null;
+  status: "ok" | "missing";
+};
+
+export type FxFormalStatusPayload = {
+  read_target: "duckdb";
+  vendor_priority: string[];
+  candidate_count: number;
+  materialized_count: number;
+  latest_trade_date: string | null;
+  carry_forward_count: number;
+  rows: FxFormalStatusRow[];
+};
+
+export type FxAnalyticalSeriesPoint = {
+  group_key: FxAnalyticalGroupKey;
+  series_id: string;
+  series_name: string;
+  trade_date: string;
+  value_numeric: number;
+  frequency: string;
+  unit: string;
+  source_version: string;
+  vendor_version: string;
+  refresh_tier?: "stable" | "fallback" | "isolated" | null;
+  fetch_mode?: "date_slice" | "latest" | null;
+  fetch_granularity?: "batch" | "single" | null;
+  policy_note?: string | null;
+  quality_flag?: ApiQuality;
+  latest_change?: number | null;
+  recent_points?: ChoiceMacroRecentPoint[];
+};
+
+export type FxAnalyticalGroup = {
+  group_key: FxAnalyticalGroupKey;
+  title: string;
+  description: string;
+  series: FxAnalyticalSeriesPoint[];
+};
+
+export type FxAnalyticalPayload = {
+  read_target: "duckdb";
+  groups: FxAnalyticalGroup[];
+};
+
 export type ChoiceNewsEvent = {
   event_key: string;
   received_at: string;

@@ -213,6 +213,125 @@ describe("MarketDataPage", () => {
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("renders analytical FX groups separately from the macro sections", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getFxAnalytical = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_fx_analytical_test",
+        basis: "analytical" as const,
+        result_kind: "fx.analytical.groups",
+        formal_use_allowed: false,
+        source_version: "sv_fx_analytical_test",
+        vendor_version: "vv_fx_analytical_test",
+        rule_version: "rv_fx_analytical_v1",
+        cache_version: "cv_fx_analytical_v1",
+        quality_flag: "warning" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "latest_snapshot" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-12T09:10:00Z",
+      },
+      result: {
+        read_target: "duckdb" as const,
+        groups: [
+          {
+            group_key: "middle_rate" as const,
+            title: "Analytical FX: middle-rates",
+            description:
+              "Catalog-observed middle-rate series remain analytical views and do not redefine the formal seam.",
+            series: [
+              {
+                group_key: "middle_rate" as const,
+                series_id: "FX.USD.CNY",
+                series_name: "USD/CNY middle-rate observation",
+                trade_date: "2026-04-11",
+                value_numeric: 7.21,
+                frequency: "daily",
+                unit: "CNY",
+                source_version: "sv_fx_analytical_test",
+                vendor_version: "vv_fx_analytical_test",
+                refresh_tier: "stable" as const,
+                fetch_mode: "date_slice" as const,
+                fetch_granularity: "batch" as const,
+                policy_note: "analytical middle-rate observation only",
+                quality_flag: "ok" as const,
+                latest_change: 0.01,
+                recent_points: [
+                  {
+                    trade_date: "2026-04-11",
+                    value_numeric: 7.21,
+                    source_version: "sv_fx_analytical_test",
+                    vendor_version: "vv_fx_analytical_test",
+                    quality_flag: "ok" as const,
+                  },
+                  {
+                    trade_date: "2026-04-10",
+                    value_numeric: 7.2,
+                    source_version: "sv_fx_analytical_prev",
+                    vendor_version: "vv_fx_analytical_prev",
+                    quality_flag: "ok" as const,
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            group_key: "fx_index" as const,
+            title: "Analytical FX: indices",
+            description:
+              "RMB index / estimate index series stay analytical-only and never flow into formal FX.",
+            series: [
+              {
+                group_key: "fx_index" as const,
+                series_id: "FX.RMB.INDEX",
+                series_name: "RMB basket index",
+                trade_date: "2026-04-11",
+                value_numeric: 101.32,
+                frequency: "daily",
+                unit: "index",
+                source_version: "sv_fx_analytical_test",
+                vendor_version: "vv_fx_analytical_test",
+                refresh_tier: "fallback" as const,
+                fetch_mode: "latest" as const,
+                fetch_granularity: "single" as const,
+                policy_note: "analytical index observation only",
+                quality_flag: "warning" as const,
+                latest_change: null,
+                recent_points: [],
+              },
+            ],
+          },
+        ],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getFxAnalytical,
+    });
+
+    expect(await screen.findByText("Analytical FX: middle-rates")).toBeInTheDocument();
+    expect(screen.getByText("Analytical FX: indices")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-fx-analytical-group-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("market-data-fx-analytical-series-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("market-data-fx-group-middle_rate")).toHaveTextContent(
+      "USD/CNY middle-rate observation",
+    );
+    expect(screen.getByTestId("market-data-fx-group-middle_rate")).toHaveTextContent(
+      "analytical middle-rate observation only",
+    );
+    expect(screen.getByTestId("market-data-fx-group-fx_index")).toHaveTextContent(
+      "RMB basket index",
+    );
+    expect(screen.getByTestId("market-data-fx-analytical-meta")).toHaveTextContent(
+      "tr_fx_analytical_test",
+    );
+
+    await waitFor(() => {
+      expect(getFxAnalytical).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 

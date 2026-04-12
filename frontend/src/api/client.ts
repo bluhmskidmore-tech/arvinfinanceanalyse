@@ -28,6 +28,8 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceNewsEventsPayload,
   ContributionPayload,
+  FxAnalyticalPayload,
+  FxFormalStatusPayload,
   FormalPnlRefreshPayload,
   HealthResponse,
   MacroVendorPayload,
@@ -110,6 +112,8 @@ export type ApiClient = {
   }) => Promise<ApiEnvelope<SourcePreviewTracesPayload>>;
   getMacroFoundation: () => Promise<ApiEnvelope<MacroVendorPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
+  getFxFormalStatus: () => Promise<ApiEnvelope<FxFormalStatusPayload>>;
+  getFxAnalytical: () => Promise<ApiEnvelope<FxAnalyticalPayload>>;
   getChoiceNewsEvents: (options: {
     limit: number;
     offset: number;
@@ -406,6 +410,178 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       fetch_mode: "date_slice",
       fetch_granularity: "batch",
       policy_note: "main refresh date-slice lane",
+    },
+  ],
+};
+
+const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
+  read_target: "duckdb",
+  vendor_priority: ["choice", "akshare", "fail_closed"],
+  candidate_count: 3,
+  materialized_count: 2,
+  latest_trade_date: "2026-04-10",
+  carry_forward_count: 1,
+  rows: [
+    {
+      base_currency: "USD",
+      quote_currency: "CNY",
+      pair_label: "USD/CNY",
+      series_id: "FX.USD.CNY",
+      series_name: "USD/CNY middle rate",
+      vendor_series_code: "USD/CNY",
+      trade_date: "2026-04-10",
+      observed_trade_date: "2026-04-09",
+      mid_rate: 7.2,
+      source_name: "fx_daily_mid",
+      vendor_name: "choice",
+      vendor_version: "vv_fx_formal_mock",
+      source_version: "sv_fx_formal_mock",
+      is_business_day: false,
+      is_carry_forward: true,
+      status: "ok",
+    },
+    {
+      base_currency: "EUR",
+      quote_currency: "CNY",
+      pair_label: "EUR/CNY",
+      series_id: "FX.EUR.CNY",
+      series_name: "EUR/CNY middle rate",
+      vendor_series_code: "EUR/CNY",
+      trade_date: "2026-04-10",
+      observed_trade_date: "2026-04-10",
+      mid_rate: 7.88,
+      source_name: "fx_daily_mid",
+      vendor_name: "akshare",
+      vendor_version: "vv_fx_formal_mock",
+      source_version: "sv_fx_formal_mock",
+      is_business_day: true,
+      is_carry_forward: false,
+      status: "ok",
+    },
+    {
+      base_currency: "JPY",
+      quote_currency: "CNY",
+      pair_label: "JPY/CNY",
+      series_id: "FX.JPY.CNY",
+      series_name: "JPY/CNY middle rate",
+      vendor_series_code: "JPY/CNY",
+      trade_date: null,
+      observed_trade_date: null,
+      mid_rate: null,
+      source_name: null,
+      vendor_name: null,
+      vendor_version: null,
+      source_version: null,
+      is_business_day: null,
+      is_carry_forward: null,
+      status: "missing",
+    },
+  ],
+};
+
+const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
+  read_target: "duckdb",
+  groups: [
+    {
+      group_key: "middle_rate",
+      title: "Analytical FX: middle-rates",
+      description:
+        "Catalog-observed middle-rate series remain analytical views and do not redefine the formal seam.",
+      series: [
+        {
+          group_key: "middle_rate",
+          series_id: "FX.USD.CNY.OBS",
+          series_name: "USD/CNY middle-rate observation",
+          trade_date: "2026-04-10",
+          value_numeric: 7.2,
+          frequency: "daily",
+          unit: "CNY",
+          source_version: "sv_fx_analytical_mock",
+          vendor_version: "vv_fx_analytical_mock",
+          refresh_tier: "stable",
+          fetch_mode: "date_slice",
+          fetch_granularity: "batch",
+          policy_note: "analytical middle-rate observation only",
+          quality_flag: "ok",
+          latest_change: 0.02,
+          recent_points: [
+            {
+              trade_date: "2026-04-10",
+              value_numeric: 7.2,
+              source_version: "sv_fx_analytical_mock",
+              vendor_version: "vv_fx_analytical_mock",
+              quality_flag: "ok",
+            },
+            {
+              trade_date: "2026-04-09",
+              value_numeric: 7.18,
+              source_version: "sv_fx_analytical_prev",
+              vendor_version: "vv_fx_analytical_prev",
+              quality_flag: "ok",
+            },
+          ],
+        },
+      ],
+    },
+    {
+      group_key: "fx_index",
+      title: "Analytical FX: indices",
+      description:
+        "RMB index / estimate index series stay analytical-only and never flow into formal FX.",
+      series: [
+        {
+          group_key: "fx_index",
+          series_id: "FX.CFETS.RMB",
+          series_name: "CFETS RMB basket index",
+          trade_date: "2026-04-10",
+          value_numeric: 101.3,
+          frequency: "daily",
+          unit: "index",
+          source_version: "sv_fx_analytical_mock",
+          vendor_version: "vv_fx_analytical_mock",
+          refresh_tier: "fallback",
+          fetch_mode: "latest",
+          fetch_granularity: "single",
+          policy_note: "analytical index observation only",
+          quality_flag: "warning",
+          latest_change: null,
+          recent_points: [],
+        },
+      ],
+    },
+    {
+      group_key: "fx_swap_curve",
+      title: "Analytical FX: swap curves",
+      description:
+        "FX swap / C-Swap series stay analytical-only and never write into formal FX.",
+      series: [
+        {
+          group_key: "fx_swap_curve",
+          series_id: "FX.SWAP.1Y",
+          series_name: "USD/CNY 1Y FX swap",
+          trade_date: "2026-04-10",
+          value_numeric: 125.0,
+          frequency: "daily",
+          unit: "bp",
+          source_version: "sv_fx_analytical_mock",
+          vendor_version: "vv_fx_analytical_mock",
+          refresh_tier: "stable",
+          fetch_mode: "date_slice",
+          fetch_granularity: "batch",
+          policy_note: "analytical swap observation only",
+          quality_flag: "ok",
+          latest_change: -3,
+          recent_points: [
+            {
+              trade_date: "2026-04-10",
+              value_numeric: 125.0,
+              source_version: "sv_fx_analytical_mock",
+              vendor_version: "vv_fx_analytical_mock",
+              quality_flag: "ok",
+            },
+          ],
+        },
+      ],
     },
   ],
 };
@@ -2149,6 +2325,42 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
     },
+    async getFxFormalStatus() {
+      await delay();
+      return buildMockApiEnvelope(
+        "fx.formal.status",
+        MOCK_FX_FORMAL_STATUS_PAYLOAD,
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: "sv_fx_formal_mock",
+          vendor_version: "vv_fx_formal_mock",
+          rule_version: "rv_fx_formal_mid_v1",
+          cache_version: "cv_fx_formal_mid_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+        },
+      );
+    },
+    async getFxAnalytical() {
+      await delay();
+      return buildMockApiEnvelope(
+        "fx.analytical.groups",
+        MOCK_FX_ANALYTICAL_PAYLOAD,
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_fx_analytical_mock",
+          vendor_version: "vv_fx_analytical_mock",
+          rule_version: "rv_fx_analytical_v1",
+          cache_version: "cv_fx_analytical_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "latest_snapshot",
+        },
+      );
+    },
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
@@ -2728,6 +2940,18 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         "/ui/macro/choice-series/latest",
+      ),
+    getFxFormalStatus: () =>
+      requestJson<FxFormalStatusPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/fx/formal-status",
+      ),
+    getFxAnalytical: () =>
+      requestJson<FxAnalyticalPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/fx/analytical",
       ),
     getChoiceNewsEvents: ({
       limit,

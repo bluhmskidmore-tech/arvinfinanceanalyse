@@ -524,22 +524,30 @@ lineage for contract-level pass/fail evidence：
 
 ### 4.8 fx_daily_mid
 
-用途：正式 FX 中间价。
+???governed formal FX middle-rate storage.
 
-关键字段：
+?????
 - `trade_date`
 - `base_currency`
 - `quote_currency`
 - `mid_rate`
-- `source_name`   # CFETS / SAFE / internal
+- `source_name`
 - `is_business_day`
 - `is_carry_forward`
 - `source_version`
+- `vendor_name`
+- `vendor_version`
+- `vendor_series_code`
+- `observed_trade_date`
 
-规则：
-- 正式 USD/CNY 使用官方中间价
-- 周末/节假日允许沿用前一营业日
-- 缺失营业日中间价时，formal 失败，不静默补值
+???
+- ?? FX normal path = `Choice -> AkShare -> fail closed`
+- Formal candidate discovery must be driven by repo-owned Choice catalog assets
+- Formal candidates only include genuine `middle-rate` FX series
+- Persisted formal rows must normalize to `base_currency -> CNY`
+- Reverse supplier orientation must be inverted before persistence
+- Missing required formal middle-rates fail closed
+- Explicit CSV/manual overrides remain allowed only when configured directly; they are not the normal governed path
 
 ### 4.9 choice_market_snapshot / choice_market_curve
 
@@ -655,12 +663,16 @@ lineage for contract-level pass/fail evidence：
 
 ## 11. FX Source Drop Contract
 
-- 当前 `zqtz / tyw` formal balance stream 的 FX 原始落点契约以 [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md) 为准。
-- 当前主获取路径：Choice API
-- 当前 USD/CNY official-mid series code：`EMM00058124`
-- 显式官方路径变量：`MOSS_FX_OFFICIAL_SOURCE_PATH`
-- 兼容旧显式路径变量：`MOSS_FX_MID_CSV_PATH`
-- 标准 CSV 落点：`data_input/fx/fx_daily_mid.csv`
-- 兼容 CSV 落点：`data_input/fx_daily_mid.csv`
-- 当前运行策略：Choice API first，失败时回落到受控 CSV 落点。
-- 当前仓库未包含真实官方非 CSV 原始样例；若后续收到 `xls/xlsx/pdf` 原件，必须基于样例补最小 parser / ingest 适配并补测试，不能静默猜测格式。
+- Current `zqtz / tyw` formal balance FX acquisition contract is defined by [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md).
+- Current normal governed formal route: `Choice catalog-driven middle-rate discovery -> Choice live fetch -> AkShare fallback -> fail closed`.
+- Current first-wave formal candidate set is catalog-derived and normalizes to `AUD/EUR/USD/CAD/HKD -> CNY`.
+- Reverse vendor orientation such as `??????` must be inverted before persistence so DuckDB formal reads continue to use `base_currency -> CNY`.
+- Current repo-owned authority files:
+  - `config/choice_macro_catalog.json`
+  - `config/choice_macro_commands_2026-04-09.txt`
+- Current explicit manual override variables retained for controlled replay:
+  - `MOSS_FX_OFFICIAL_SOURCE_PATH`
+  - `MOSS_FX_MID_CSV_PATH`
+- There is no silent `data_input/fx/fx_daily_mid.csv` fallback on the governed normal path.
+- Non-middle-rate FX observations (for example RMB indices / FX swap curves) stay analytical-only and must not write into `fx_daily_mid`.
+- If a future delivery provides the raw official source only as `xls/xlsx/pdf`, that becomes a bounded parser task and must be sample-driven plus test-locked.

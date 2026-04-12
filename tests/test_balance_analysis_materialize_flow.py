@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 import sys
@@ -26,6 +26,45 @@ def _load_modules():
             "backend/app/tasks/balance_analysis_materialize.py",
         )
     return repo_mod, task_mod
+
+
+def _load_fx_module():
+    fx_mod = sys.modules.get("backend.app.tasks.fx_mid_materialize")
+    if fx_mod is None:
+        fx_mod = load_module(
+            "backend.app.tasks.fx_mid_materialize",
+            "backend/app/tasks/fx_mid_materialize.py",
+        )
+    return fx_mod
+
+
+def _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch):
+    monkeypatch.setattr(
+        fx_mod,
+        "_load_formal_fx_candidates",
+        lambda: [
+            fx_mod.FormalFxCandidate(
+                series_id="EMM00058124",
+                series_name="中间价:美元兑人民币",
+                vendor_series_code="EMM00058124",
+                base_currency="USD",
+                quote_currency="CNY",
+                invert_result=False,
+            )
+        ],
+    )
+
+
+def _patch_skip_fx_refresh(task_mod, monkeypatch):
+    monkeypatch.setattr(
+        task_mod.materialize_fx_mid_for_report_date,
+        "fn",
+        lambda **_kwargs: {
+            "status": "completed",
+            "row_count": 0,
+            "source_kind": "stub",
+        },
+    )
 
 
 def _seed_snapshot_and_fx_tables(duckdb_path: str) -> None:
@@ -147,12 +186,13 @@ def _seed_snapshot_and_fx_tables(duckdb_path: str) -> None:
         conn.close()
 
 
-def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_records(tmp_path):
+def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_records(tmp_path, monkeypatch):
     repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     payload = task_mod.materialize_balance_analysis_facts.fn(
         report_date="2025-12-31",
@@ -219,6 +259,7 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
 
 def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp_path):
     _repo_mod, task_mod = _load_modules()
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -230,12 +271,28 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
     finally:
         conn.close()
 
-    with pytest.raises(ValueError, match="fx"):
-        task_mod.materialize_balance_analysis_facts.fn(
-            report_date="2025-12-31",
-            duckdb_path=str(duckdb_path),
-            governance_dir=str(governance_dir),
+    # Use controlled vendor failures instead of live Choice calls.
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+        monkeypatch.setattr(
+            fx_mod,
+            "ChoiceClient",
+            lambda: type("FailingChoiceClient", (), {"edb": lambda self, codes, options="": (_ for _ in ()).throw(RuntimeError("choice unavailable"))})(),
         )
+        monkeypatch.setattr(
+            fx_mod,
+            "AkShareVendorAdapter",
+            lambda: type("FailingAkShareVendor", (), {"fetch_fx_mid_snapshot": lambda self, **_kwargs: (_ for _ in ()).throw(RuntimeError("akshare unavailable"))})(),
+        )
+        with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
+            task_mod.materialize_balance_analysis_facts.fn(
+                report_date="2025-12-31",
+                duckdb_path=str(duckdb_path),
+                governance_dir=str(governance_dir),
+            )
+    finally:
+        monkeypatch.undo()
 
 
 def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fails(tmp_path, monkeypatch):
@@ -244,6 +301,7 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     def _fail_replace(self, **_kwargs):
         raise RuntimeError("synthetic write failure")
@@ -262,12 +320,13 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
         )
 
 
-def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path):
+def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path, monkeypatch):
     repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -336,6 +395,7 @@ def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path):
 
 def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exists(tmp_path):
     _repo_mod, task_mod = _load_modules()
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -362,16 +422,32 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
     finally:
         conn.close()
 
-    with pytest.raises(ValueError, match="fx"):
-        task_mod.materialize_balance_analysis_facts.fn(
-            report_date="2025-12-31",
-            duckdb_path=str(duckdb_path),
-            governance_dir=str(governance_dir),
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+        monkeypatch.setattr(
+            fx_mod,
+            "ChoiceClient",
+            lambda: type("FailingChoiceClient", (), {"edb": lambda self, codes, options="": (_ for _ in ()).throw(RuntimeError("choice unavailable"))})(),
         )
+        monkeypatch.setattr(
+            fx_mod,
+            "AkShareVendorAdapter",
+            lambda: type("FailingAkShareVendor", (), {"fetch_fx_mid_snapshot": lambda self, **_kwargs: (_ for _ in ()).throw(RuntimeError("akshare unavailable"))})(),
+        )
+        with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
+            task_mod.materialize_balance_analysis_facts.fn(
+                report_date="2025-12-31",
+                duckdb_path=str(duckdb_path),
+                governance_dir=str(governance_dir),
+            )
+    finally:
+        monkeypatch.undo()
 
 
 def test_balance_analysis_materialize_normalizes_snapshot_currency_labels_for_fx_lookup(tmp_path):
     repo_mod, task_mod = _load_modules()
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -384,11 +460,27 @@ def test_balance_analysis_materialize_normalizes_snapshot_currency_labels_for_fx
     finally:
         conn.close()
 
-    payload = task_mod.materialize_balance_analysis_facts.fn(
-        report_date="2025-12-31",
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2025-12-31"]
+        Data = {"EMM00058124": [[Decimal("7.20")]]}
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            return _ChoiceResult()
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+        monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+        payload = task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        monkeypatch.undo()
 
     assert payload["status"] == "completed"
 
@@ -440,6 +532,7 @@ def test_balance_analysis_materialize_auto_populates_fx_from_csv_when_table_is_m
 
 def test_balance_analysis_materialize_treats_cnx_as_identity_not_spot_fx(tmp_path):
     repo_mod, task_mod = _load_modules()
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -451,11 +544,27 @@ def test_balance_analysis_materialize_treats_cnx_as_identity_not_spot_fx(tmp_pat
     finally:
         conn.close()
 
-    payload = task_mod.materialize_balance_analysis_facts.fn(
-        report_date="2025-12-31",
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2025-12-31"]
+        Data = {"EMM00058124": [[Decimal("7.20")]]}
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            return _ChoiceResult()
+
+    monkeypatch = pytest.MonkeyPatch()
+    try:
+        _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+        monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+        payload = task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+    finally:
+        monkeypatch.undo()
 
     assert payload["status"] == "completed"
 
@@ -470,8 +579,9 @@ def test_balance_analysis_materialize_treats_cnx_as_identity_not_spot_fx(tmp_pat
     assert rows[0]["market_value_amount"] == Decimal("100.00000000")
 
 
-def test_balance_analysis_materialize_discovers_fx_csv_from_data_input_root(tmp_path, monkeypatch):
+def test_balance_analysis_materialize_does_not_autodiscover_fx_csv_from_data_input_root(tmp_path, monkeypatch):
     _repo_mod, task_mod = _load_modules()
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -496,19 +606,29 @@ def test_balance_analysis_materialize_discovers_fx_csv_from_data_input_root(tmp_
         encoding="utf-8",
     )
 
+    class _FailingChoiceClient:
+        def edb(self, codes, options=""):
+            raise RuntimeError("choice unavailable")
+
+    class _FailingAkShareVendor:
+        def fetch_fx_mid_snapshot(self, **_kwargs):
+            raise RuntimeError("akshare unavailable")
+
     monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
     monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_input_root))
+    _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
     get_settings.cache_clear()
 
-    payload = task_mod.materialize_balance_analysis_facts.fn(
-        report_date="2025-12-31",
-        duckdb_path=str(duckdb_path),
-        governance_dir=str(governance_dir),
-    )
+    with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
 
-    assert payload["status"] == "completed"
-    assert payload["zqtz_rows"] == 2
-    assert payload["tyw_rows"] == 2
     get_settings.cache_clear()
 
 
@@ -651,12 +771,7 @@ def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_
     monkeypatch,
 ):
     _repo_mod, task_mod = _load_modules()
-    fx_mod = sys.modules.get("backend.app.tasks.fx_mid_materialize")
-    if fx_mod is None:
-        fx_mod = load_module(
-            "backend.app.tasks.fx_mid_materialize",
-            "backend/app/tasks/fx_mid_materialize.py",
-        )
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -678,6 +793,7 @@ def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_
         def edb(self, codes, options=""):
             return _ChoiceResult()
 
+    _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
     monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
     monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
@@ -701,12 +817,7 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
     monkeypatch,
 ):
     _repo_mod, task_mod = _load_modules()
-    fx_mod = sys.modules.get("backend.app.tasks.fx_mid_materialize")
-    if fx_mod is None:
-        fx_mod = load_module(
-            "backend.app.tasks.fx_mid_materialize",
-            "backend/app/tasks/fx_mid_materialize.py",
-        )
+    fx_mod = _load_fx_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -736,6 +847,7 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
 
     fake_client = _FakeChoiceClient()
 
+    _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
     monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
     monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: fake_client)
@@ -770,12 +882,14 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
 
 def test_balance_analysis_materialize_scopes_snapshot_rows_to_requested_ingest_batch_id(
     tmp_path,
+    monkeypatch,
 ):
     repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -890,6 +1004,7 @@ def test_balance_analysis_materialize_scopes_snapshot_rows_to_requested_ingest_b
 
 def test_balance_analysis_materialize_uses_latest_manifest_batches_when_ingest_batch_id_is_omitted(
     tmp_path,
+    monkeypatch,
 ):
     repo_mod, task_mod = _load_modules()
     governance_repo_mod = load_module(
@@ -904,6 +1019,7 @@ def test_balance_analysis_materialize_uses_latest_manifest_batches_when_ingest_b
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1061,12 +1177,14 @@ def test_balance_analysis_materialize_uses_latest_manifest_batches_when_ingest_b
 
 def test_balance_analysis_materialize_fails_closed_when_multiple_snapshot_batches_exist_without_manifest_or_explicit_batch(
     tmp_path,
+    monkeypatch,
 ):
     _repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1128,6 +1246,7 @@ def test_balance_analysis_materialize_fails_closed_when_multiple_snapshot_batche
 
 def test_balance_analysis_materialize_fails_closed_when_latest_manifest_batch_has_no_snapshot_rows(
     tmp_path,
+    monkeypatch,
 ):
     _repo_mod, task_mod = _load_modules()
     governance_repo_mod = load_module(
@@ -1142,6 +1261,7 @@ def test_balance_analysis_materialize_fails_closed_when_latest_manifest_batch_ha
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -1204,12 +1324,14 @@ def test_balance_analysis_materialize_fails_closed_when_latest_manifest_batch_ha
 
 def test_balance_analysis_materialize_fails_closed_when_explicit_batch_lacks_one_required_family(
     tmp_path,
+    monkeypatch,
 ):
     repo_mod, task_mod = _load_modules()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
     _seed_snapshot_and_fx_tables(str(duckdb_path))
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:

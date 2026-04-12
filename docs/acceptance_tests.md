@@ -56,10 +56,15 @@
 - `position_scope=all` 保留全量
 
 ### 3.4 FX
-- USD 债券逐日人民币换算正确
-- 周末沿用前一营业日中间价
-- 缺失营业日中间价时 Formal 失败
-- 不允许先均值后换算
+- formal FX normal path uses `Choice -> AkShare -> fail closed`
+- governed formal FX no longer silently falls back to repo-discovered CSV files
+- Choice candidate selection includes only genuine `middle-rate` FX series from the repo-owned catalog
+- reverse-direction vendor pairs such as `??????` are normalized and persisted as `HKD -> CNY`
+- multiple currencies can populate `fx_daily_mid` while `BalanceAnalysisRepository.lookup_fx_rate()` continues to read normalized `base_currency -> CNY`
+- weekends/holidays may carry forward the prior observed trade date with explicit `is_carry_forward=true`
+- missing required formal middle-rates still fail closed
+- non-middle-rate FX observations (indices / swap curves) remain analytical-only and do not write into `fx_daily_mid`
+- a worker-safe historical backfill path exists and reruns are idempotent
 
 ### 3.5 日均金额
 - `observed`、`locf`、`calendar_zero` 三种 basis 结果可区分

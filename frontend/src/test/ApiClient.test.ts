@@ -251,6 +251,109 @@ describe("createApiClient", () => {
     );
   });
 
+  it("keeps formal FX status separate from analytical FX observations in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const formalPayload = await client.getFxFormalStatus();
+    const analyticalPayload = await client.getFxAnalytical();
+
+    expect(formalPayload.result_meta.basis).toBe("formal");
+    expect(formalPayload.result_meta.formal_use_allowed).toBe(true);
+    expect(formalPayload.result.read_target).toBe("duckdb");
+    expect(formalPayload.result.rows.length).toBeGreaterThan(0);
+
+    expect(analyticalPayload.result_meta.basis).toBe("analytical");
+    expect(analyticalPayload.result_meta.formal_use_allowed).toBe(false);
+    expect(analyticalPayload.result.read_target).toBe("duckdb");
+    expect(analyticalPayload.result.groups.length).toBeGreaterThan(0);
+  });
+
+  it("uses real mode to fetch formal FX status and analytical FX observation endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_fx_formal",
+            basis: "formal",
+            result_kind: "fx.formal.status",
+            formal_use_allowed: true,
+            source_version: "sv_fx_formal",
+            vendor_version: "vv_fx_formal",
+            rule_version: "rv_fx_formal",
+            cache_version: "cv_fx_formal",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-12T09:00:00Z",
+          },
+          result: {
+            read_target: "duckdb",
+            vendor_priority: ["choice", "akshare", "fail_closed"],
+            candidate_count: 2,
+            materialized_count: 2,
+            latest_trade_date: "2026-04-11",
+            carry_forward_count: 0,
+            rows: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_fx_analytical",
+            basis: "analytical",
+            result_kind: "fx.analytical.groups",
+            formal_use_allowed: false,
+            source_version: "sv_fx_analytical",
+            vendor_version: "vv_fx_analytical",
+            rule_version: "rv_fx_analytical",
+            cache_version: "cv_fx_analytical",
+            quality_flag: "warning",
+            vendor_status: "ok",
+            fallback_mode: "latest_snapshot",
+            scenario_flag: false,
+            generated_at: "2026-04-12T09:05:00Z",
+          },
+          result: {
+            read_target: "duckdb",
+            groups: [],
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFxFormalStatus();
+    await client.getFxAnalytical();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/market-data/fx/formal-status",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/market-data/fx/analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch source preview history endpoint", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

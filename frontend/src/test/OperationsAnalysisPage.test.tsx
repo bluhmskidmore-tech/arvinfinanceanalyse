@@ -249,6 +249,105 @@ describe("OperationsAnalysisPage", () => {
     });
   });
 
+  it("surfaces formal FX status separately from analytical market observations", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getFxFormalStatus = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_fx_formal_status_test",
+        basis: "formal" as const,
+        result_kind: "fx.formal.status",
+        formal_use_allowed: true,
+        source_version: "sv_fx_formal_status_test",
+        vendor_version: "vv_fx_formal_status_test",
+        rule_version: "rv_fx_formal_mid_v1",
+        cache_version: "cv_fx_formal_mid_v1",
+        quality_flag: "warning" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "latest_snapshot" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-12T09:20:00Z",
+      },
+      result: {
+        read_target: "duckdb" as const,
+        vendor_priority: ["choice", "akshare", "fail_closed"],
+        candidate_count: 3,
+        materialized_count: 2,
+        latest_trade_date: "2026-04-11",
+        carry_forward_count: 1,
+        rows: [
+          {
+            base_currency: "USD",
+            quote_currency: "CNY",
+            pair_label: "USD/CNY",
+            series_id: "FX.USD.CNY",
+            series_name: "USD/CNY middle rate",
+            vendor_series_code: "USD/CNY",
+            trade_date: "2026-04-11",
+            observed_trade_date: "2026-04-10",
+            mid_rate: 7.21,
+            source_name: "fx_daily_mid",
+            vendor_name: "choice",
+            vendor_version: "vv_fx_formal_status_test",
+            source_version: "sv_fx_formal_status_test",
+            is_business_day: false,
+            is_carry_forward: true,
+            status: "ok" as const,
+          },
+          {
+            base_currency: "EUR",
+            quote_currency: "CNY",
+            pair_label: "EUR/CNY",
+            series_id: "FX.EUR.CNY",
+            series_name: "EUR/CNY middle rate",
+            vendor_series_code: "EUR/CNY",
+            trade_date: null,
+            observed_trade_date: null,
+            mid_rate: null,
+            source_name: null,
+            vendor_name: null,
+            vendor_version: null,
+            source_version: null,
+            is_business_day: null,
+            is_carry_forward: null,
+            status: "missing" as const,
+          },
+        ],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getFxFormalStatus,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-formal-fx-count")).toHaveTextContent(
+        "2 / 3",
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "Formal FX middle-rate status",
+      );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "latest_trade_date 2026-04-11",
+      );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "carry_forward_count 1",
+      );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "missing EUR/CNY",
+      );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "tr_fx_formal_status_test",
+      );
+    });
+
+    await waitFor(() => {
+      expect(getFxFormalStatus).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("polls formal pnl refresh status and shows the latest run id", async () => {
     const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });

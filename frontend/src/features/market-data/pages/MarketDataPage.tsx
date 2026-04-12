@@ -2,7 +2,12 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
-import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../api/contracts";
+import type {
+  ChoiceMacroLatestPoint,
+  ChoiceMacroRecentPoint,
+  FxAnalyticalSeriesPoint,
+  ResultMeta,
+} from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
 
@@ -18,6 +23,16 @@ const sectionGridStyle = {
   gap: 18,
   marginTop: 18,
 } as const;
+
+const detailPanelStyle = {
+  padding: 24,
+  borderRadius: 20,
+  background: "#fbfcfe",
+  border: "1px solid #e4ebf5",
+  boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+} as const;
+
+type MarketObservationPoint = ChoiceMacroLatestPoint | FxAnalyticalSeriesPoint;
 
 function formatPointValue(value: number, unit: string) {
   return `${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
@@ -35,19 +50,19 @@ function formatRecentPoint(point: ChoiceMacroRecentPoint) {
   return `${point.trade_date} ${formatPointValue(point.value_numeric, "")}`;
 }
 
-function seriesRecentPoints(point: ChoiceMacroLatestPoint) {
+function seriesRecentPoints(point: MarketObservationPoint) {
   return point.recent_points ?? [];
 }
 
-function seriesRefreshTier(point: ChoiceMacroLatestPoint) {
+function seriesRefreshTier(point: MarketObservationPoint) {
   return point.refresh_tier ?? "stable";
 }
 
-function seriesPolicyNote(point: ChoiceMacroLatestPoint) {
+function seriesPolicyNote(point: MarketObservationPoint) {
   return point.policy_note?.trim() || "analytical read path";
 }
 
-function seriesFetchModeLabel(point: ChoiceMacroLatestPoint) {
+function seriesFetchModeLabel(point: MarketObservationPoint) {
   const fetchMode = point.fetch_mode ?? "date_slice";
   const granularity = point.fetch_granularity ?? "batch";
   return `${fetchMode} / ${granularity}`;
@@ -57,13 +72,18 @@ function catalogRefreshTier(series: { refresh_tier?: "stable" | "fallback" | "is
   return series.refresh_tier ?? "stable";
 }
 
-function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
+function renderSeriesCards(
+  series: MarketObservationPoint[],
+  options?: { testIdPrefix?: string },
+) {
+  const testIdPrefix = options?.testIdPrefix ?? "market-data-series";
+
   return (
     <div style={{ display: "grid", gap: 12 }}>
       {series.map((point) => (
         <div
           key={point.series_id}
-          data-testid={`market-data-series-${point.series_id}`}
+          data-testid={`${testIdPrefix}-${point.series_id}`}
           style={{
             display: "grid",
             gap: 10,
@@ -84,9 +104,7 @@ function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
           >
             <div>
               <div style={{ fontWeight: 600 }}>{point.series_name}</div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>
-                {point.series_id}
-              </div>
+              <div style={{ color: "#8090a8", fontSize: 12 }}>{point.series_id}</div>
             </div>
             <div
               style={{
@@ -102,7 +120,7 @@ function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
               }}
             >
               <span>{`tier ${seriesRefreshTier(point)}`}</span>
-              <span>·</span>
+              <span>路</span>
               <span>{point.quality_flag ?? "warning"}</span>
             </div>
           </div>
@@ -135,7 +153,7 @@ function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
           </div>
 
           <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.7 }}>
-            source {point.source_version} · vendor {point.vendor_version}
+            source {point.source_version} 路 vendor {point.vendor_version}
           </div>
           <div style={{ color: "#31425b", fontSize: 13, lineHeight: 1.7 }}>
             {seriesPolicyNote(point)}
@@ -166,6 +184,44 @@ function renderSeriesCards(series: ChoiceMacroLatestPoint[]) {
   );
 }
 
+function MetadataPanel({
+  title,
+  meta,
+  extraLine,
+  testId,
+}: {
+  title: string;
+  meta: ResultMeta | undefined;
+  extraLine?: string;
+  testId: string;
+}) {
+  return (
+    <section data-testid={testId} style={detailPanelStyle}>
+      <h2
+        style={{
+          marginTop: 0,
+          marginBottom: 12,
+          fontSize: 18,
+          fontWeight: 600,
+        }}
+      >
+        {title}
+      </h2>
+      <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
+        <div>trace_id: {meta?.trace_id ?? "pending"}</div>
+        <div>basis: {meta?.basis ?? "pending"}</div>
+        <div>result_kind: {meta?.result_kind ?? "pending"}</div>
+        <div>source_version: {meta?.source_version ?? "pending"}</div>
+        <div>vendor_version: {meta?.vendor_version ?? "pending"}</div>
+        <div>rule_version: {meta?.rule_version ?? "pending"}</div>
+        <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
+        <div>generated_at: {meta?.generated_at ?? "pending"}</div>
+        {extraLine ? <div>{extraLine}</div> : null}
+      </div>
+    </section>
+  );
+}
+
 export default function MarketDataPage() {
   const client = useApiClient();
   const catalogQuery = useQuery({
@@ -178,11 +234,23 @@ export default function MarketDataPage() {
     queryFn: () => client.getChoiceMacroLatest(),
     retry: false,
   });
+  const fxAnalyticalQuery = useQuery({
+    queryKey: ["market-data", "fx-analytical", client.mode],
+    queryFn: () => client.getFxAnalytical(),
+    retry: false,
+  });
 
-  const catalog = useMemo(() => catalogQuery.data?.result.series ?? [], [catalogQuery.data?.result.series]);
+  const catalog = useMemo(
+    () => catalogQuery.data?.result.series ?? [],
+    [catalogQuery.data?.result.series],
+  );
   const latestSeries = useMemo(
     () => latestQuery.data?.result.series ?? [],
     [latestQuery.data?.result.series],
+  );
+  const fxAnalyticalGroups = useMemo(
+    () => fxAnalyticalQuery.data?.result.groups ?? [],
+    [fxAnalyticalQuery.data?.result.groups],
   );
   const visibleLatestSeries = useMemo(
     () => latestSeries.filter((point) => seriesRefreshTier(point) !== "isolated"),
@@ -216,7 +284,12 @@ export default function MarketDataPage() {
     () => [...new Set(visibleLatestSeries.map((point) => point.vendor_version))],
     [visibleLatestSeries],
   );
-  const meta = latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
+  const fxAnalyticalSeriesCount = useMemo(
+    () => fxAnalyticalGroups.reduce((total, group) => total + group.series.length, 0),
+    [fxAnalyticalGroups],
+  );
+  const macroMeta = latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
+  const fxAnalyticalMeta = fxAnalyticalQuery.data?.result_meta;
 
   return (
     <section>
@@ -250,7 +323,8 @@ export default function MarketDataPage() {
               lineHeight: 1.75,
             }}
           >
-            读取 DuckDB 物化后的宏观目录与最新 Choice 点位，仅作为分析增强视图使用，不在前端拼接正式金融口径。
+            页面同时展示宏观观察与 analytical FX 观察，但 formal FX 中间价状态仍保持为单独的后端治理读面，
+            不在浏览器侧推导、不混入 macro latest sections。
           </p>
         </div>
         <span
@@ -305,7 +379,21 @@ export default function MarketDataPage() {
           <PlaceholderCard
             title="稳定缺口"
             value={String(missingStableSeries.length)}
-            detail="目录中 stable 但当前未回收的序列数量。"
+            detail="目录中属于 stable 但当前尚未回收的序列数量。"
+          />
+        </div>
+        <div data-testid="market-data-fx-analytical-group-count">
+          <PlaceholderCard
+            title="FX analytical groups"
+            value={String(fxAnalyticalGroups.length)}
+            detail="后端返回的 analytical FX 分组数量。"
+          />
+        </div>
+        <div data-testid="market-data-fx-analytical-series-count">
+          <PlaceholderCard
+            title="FX analytical series"
+            value={String(fxAnalyticalSeriesCount)}
+            detail="Analytical FX 观察值与 formal FX 状态保持分离。"
           />
         </div>
       </div>
@@ -352,7 +440,7 @@ export default function MarketDataPage() {
                     >
                       <strong>{series.series_name}</strong>
                       <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                        {series.series_id} · {catalogRefreshTier(series)} · {series.fetch_mode ?? "date_slice"} /{" "}
+                        {series.series_id} 路 {catalogRefreshTier(series)} 路 {series.fetch_mode ?? "date_slice"} /{" "}
                         {series.fetch_granularity ?? "batch"}
                       </div>
                       <div style={{ color: "#31425b", fontSize: 13 }}>
@@ -405,6 +493,47 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
+      <div style={{ marginTop: 18 }}>
+        <AsyncSection
+          title="FX analytical observations"
+          isLoading={fxAnalyticalQuery.isLoading}
+          isError={fxAnalyticalQuery.isError}
+          isEmpty={
+            !fxAnalyticalQuery.isLoading &&
+            !fxAnalyticalQuery.isError &&
+            fxAnalyticalGroups.length === 0
+          }
+          onRetry={() => void fxAnalyticalQuery.refetch()}
+        >
+          <div style={{ display: "grid", gap: 24 }}>
+            {fxAnalyticalGroups.map((group) => (
+              <section
+                key={group.group_key}
+                data-testid={`market-data-fx-group-${group.group_key}`}
+              >
+                <div style={{ marginBottom: 12 }}>
+                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{group.title}</h2>
+                  <p
+                    style={{
+                      marginTop: 8,
+                      marginBottom: 0,
+                      color: "#5c6b82",
+                      fontSize: 14,
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    {group.description}
+                  </p>
+                </div>
+                {renderSeriesCards(group.series, {
+                  testIdPrefix: `market-data-fx-series-${group.group_key}`,
+                })}
+              </section>
+            ))}
+          </div>
+        </AsyncSection>
+      </div>
+
       <div style={sectionGridStyle}>
         <AsyncSection
           title="宏观序列目录"
@@ -428,7 +557,7 @@ export default function MarketDataPage() {
               >
                 <strong>{series.series_name}</strong>
                 <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                  {series.series_id} · {series.vendor_name} · {series.frequency} · {series.unit}
+                  {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
                 </div>
                 <div style={{ color: "#8090a8", fontSize: 12 }}>
                   vendor_version {series.vendor_version}
@@ -438,52 +567,18 @@ export default function MarketDataPage() {
           </div>
         </AsyncSection>
 
-        <section
-          data-testid="market-data-result-meta"
-          style={{
-            padding: 24,
-            borderRadius: 20,
-            background: "#fbfcfe",
-            border: "1px solid #e4ebf5",
-            boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-          }}
-        >
-          <h2
-            style={{
-              marginTop: 0,
-              marginBottom: 12,
-              fontSize: 18,
-              fontWeight: 600,
-            }}
-          >
-            Result metadata
-          </h2>
-          <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
-            <div>trace_id: {meta?.trace_id ?? "pending"}</div>
-            <div>basis: {meta?.basis ?? "pending"}</div>
-            <div>result_kind: {meta?.result_kind ?? "pending"}</div>
-            <div>source_version: {meta?.source_version ?? "pending"}</div>
-            <div>vendor_version: {meta?.vendor_version ?? "pending"}</div>
-            <div>rule_version: {meta?.rule_version ?? "pending"}</div>
-            <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
-            <div>generated_at: {meta?.generated_at ?? "pending"}</div>
-            <div>visible_vendor_versions: {vendorVersions.join(", ") || "暂无"}</div>
-          </div>
-          <div
-            style={{
-              marginTop: 16,
-              padding: 14,
-              borderRadius: 16,
-              background: "#ffffff",
-              border: "1px solid #e4ebf5",
-              color: "#5c6b82",
-              fontSize: 13,
-              lineHeight: 1.7,
-            }}
-          >
-            宏观视图仅用于分析增强和外部数据观察，不承载 formal finance 口径；待供应商确认的 isolated 序列不会进入当前读面。
-          </div>
-        </section>
+        <MetadataPanel
+          title="Result metadata"
+          meta={macroMeta}
+          extraLine={`visible_vendor_versions: ${vendorVersions.join(", ") || "暂无"}`}
+          testId="market-data-result-meta"
+        />
+
+        <MetadataPanel
+          title="FX analytical metadata"
+          meta={fxAnalyticalMeta}
+          testId="market-data-fx-analytical-meta"
+        />
       </div>
     </section>
   );

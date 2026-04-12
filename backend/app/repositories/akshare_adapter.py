@@ -40,6 +40,12 @@ AKSHARE_TENOR_COLUMNS = {
     "30年": "30Y",
 }
 
+AKSHARE_FX_HTTP_PATH = "/api/public/fx_spot_daily"
+AKSHARE_FX_PAIR_FIELD_CANDIDATES = ("pair", "currency_pair", "symbol", "名称", "货币对")
+AKSHARE_FX_VALUE_FIELD_CANDIDATES = ("mid_rate", "rate", "price", "最新价", "中间价")
+AKSHARE_FX_DATE_FIELD_CANDIDATES = ("trade_date", "日期", "date")
+AKSHARE_FX_SOURCE_FIELD_CANDIDATES = ("source_name", "source", "来源")
+
 CHOICE_CURVE_CODES = {
     "treasury": {
         "3M": "EMM00166455",
@@ -192,6 +198,44 @@ class VendorAdapter(VendorAdapterBase):
             else:
                 errors.append("ChinaBond gkh returned no matching curve snapshot.")
         raise RuntimeError(" ".join(errors))
+
+    def fetch_fx_mid_snapshot(
+        self,
+        *,
+        report_date: str,
+        candidates: list[dict[str, object]],
+    ) -> dict[str, object]:
+        normalized_report_date = date.fromisoformat(str(report_date)).isoformat()
+        records = (
+            self._fetch_akshare_fx_records_via_http(normalized_report_date)
+            if os.getenv("MOSS_AKSHARE_BASE_URL", "").strip()
+            else self._fetch_akshare_fx_records_locally(normalized_report_date)
+        )
+        matched_rows: list[dict[str, object]] = []
+        for candidate in candidates:
+            matched = self._match_akshare_fx_candidate(
+                records=records,
+                report_date=normalized_report_date,
+                candidate=candidate,
+            )
+            if matched is None:
+                raise RuntimeError(
+                    f"AkShare returned no formal FX middle-rate for {candidate.get('base_currency')}/CNY on {normalized_report_date}."
+                )
+            matched_rows.append(matched)
+
+        vendor_version = _build_fx_vendor_version(
+            vendor_name=self.vendor_name,
+            report_date=normalized_report_date,
+            rows=matched_rows,
+        )
+        source_version = f"sv_fx_akshare_{hashlib.sha256(json.dumps(matched_rows, ensure_ascii=False, sort_keys=True, default=str).encode('utf-8')).hexdigest()[:12]}"
+        return {
+            "vendor_name": self.vendor_name,
+            "vendor_version": vendor_version,
+            "source_version": source_version,
+            "rows": matched_rows,
+        }
 
     def _fetch_aaa_credit_curve(self, trade_date: str) -> YieldCurveSnapshot:
         primary_error: Exception | None = None
@@ -359,6 +403,103 @@ class VendorAdapter(VendorAdapterBase):
             vendor_name="choice",
             points=points,
         )
+
+    def _fetch_akshare_fx_records_via_http(self, trade_date: str) -> list[dict[str, object]]:
+        base_url = os.getenv("MOSS_AKSHARE_BASE_URL", "").strip().rstrip("/")
+        if not base_url:
+            raise RuntimeError("MOSS_AKSHARE_BASE_URL is required for AkShare FX HTTP proxy mode.")
+        response = requests.get(
+            f"{base_url}{AKSHARE_FX_HTTP_PATH}",
+            params={"trade_date": trade_date},
+            timeout=20,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, list):
+            return [dict(item) for item in payload]
+        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            return [dict(item) for item in payload["data"]]
+        raise RuntimeError("Unexpected AkShare FX proxy payload shape.")
+
+    def _fetch_akshare_fx_records_locally(self, trade_date: str) -> list[dict[str, object]]:
+        import akshare as ak  # type: ignore
+
+        loader_names = [
+            "currency_boc_safe",
+            "fx_spot_quote",
+            "currency_latest",
+        ]
+        last_error: Exception | None = None
+        for loader_name in loader_names:
+            loader = getattr(ak, loader_name, None)
+            if loader is None:
+                continue
+            for kwargs in (
+                {"trade_date": trade_date},
+                {"date": trade_date},
+                {"trade_date": trade_date.replace("-", "")},
+                {"date": trade_date.replace("-", "")},
+                {},
+            ):
+                try:
+                    frame = loader(**kwargs)
+                except TypeError:
+                    continue
+                except Exception as exc:
+                    last_error = exc
+                    continue
+                if frame is None:
+                    continue
+                if hasattr(frame, "to_dict"):
+                    return [dict(item) for item in frame.to_dict(orient="records")]
+                if isinstance(frame, list):
+                    return [dict(item) for item in frame]
+        if last_error is not None:
+            raise RuntimeError(f"AkShare FX local fetch failed: {last_error}")
+        raise RuntimeError("No supported local AkShare FX loader is available.")
+
+    def _match_akshare_fx_candidate(
+        self,
+        *,
+        records: list[dict[str, object]],
+        report_date: str,
+        candidate: dict[str, object],
+    ) -> dict[str, object] | None:
+        base_currency = str(candidate.get("base_currency") or "").upper()
+        if not base_currency:
+            return None
+        expected_pairs = _candidate_pair_aliases(candidate)
+        for record in records:
+            pair_value = _lookup_record_value(record, AKSHARE_FX_PAIR_FIELD_CANDIDATES)
+            if pair_value is None:
+                continue
+            normalized_pair = _normalize_fx_pair_text(str(pair_value))
+            if normalized_pair not in expected_pairs:
+                continue
+            trade_value = _lookup_record_value(record, AKSHARE_FX_DATE_FIELD_CANDIDATES)
+            observed_trade_date = (
+                _normalize_record_trade_date(trade_value)
+                if trade_value not in (None, "")
+                else report_date
+            )
+            rate_value = _lookup_record_value(record, AKSHARE_FX_VALUE_FIELD_CANDIDATES)
+            if rate_value in (None, ""):
+                continue
+            rate = Decimal(str(rate_value))
+            if bool(candidate.get("invert_result")):
+                if rate == 0:
+                    raise RuntimeError(
+                        f"AkShare FX returned zero for reverse pair {normalized_pair} on {observed_trade_date}."
+                    )
+                rate = Decimal("1") / rate
+            return {
+                "base_currency": base_currency,
+                "mid_rate": rate,
+                "observed_trade_date": observed_trade_date,
+                "source_name": _lookup_record_value(record, AKSHARE_FX_SOURCE_FIELD_CANDIDATES) or "AKSHARE",
+                "pair_value": str(pair_value),
+            }
+        return None
 
 
 def _normalize_curve_type(curve_type: str) -> str:
@@ -547,3 +688,48 @@ def _normalize_record_trade_date(value: object) -> str:
     if " " in text:
         text = text.split(" ", 1)[0]
     return date.fromisoformat(text).isoformat()
+
+
+def _lookup_record_value(record: dict[str, object], candidate_keys: tuple[str, ...]) -> object | None:
+    for key in candidate_keys:
+        if key in record and record[key] not in (None, ""):
+            return record[key]
+    return None
+
+
+def _normalize_fx_pair_text(value: str) -> str:
+    return str(value or "").strip().upper().replace(" ", "").replace("-", "/").replace("_", "/")
+
+
+def _candidate_pair_aliases(candidate: dict[str, object]) -> set[str]:
+    base_currency = str(candidate.get("base_currency") or "").upper()
+    if not base_currency:
+        return set()
+    aliases = {
+        f"{base_currency}/CNY",
+        f"CNY/{base_currency}",
+        f"{base_currency}CNY",
+        f"CNY{base_currency}",
+    }
+    return {_normalize_fx_pair_text(item) for item in aliases}
+
+
+def _build_fx_vendor_version(
+    *,
+    vendor_name: str,
+    report_date: str,
+    rows: list[dict[str, object]],
+) -> str:
+    digest = hashlib.sha256(
+        json.dumps(
+            {
+                "vendor_name": vendor_name,
+                "report_date": report_date,
+                "rows": rows,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"vv_{vendor_name}_fx_{report_date.replace('-', '')}_{digest}"
