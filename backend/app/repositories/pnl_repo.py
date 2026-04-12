@@ -104,6 +104,28 @@ class PnlRepository:
             return Decimal("0")
         return Decimal(str(row[0]))
 
+    def sum_formal_total_pnl_through_report_date(self, report_date: str) -> Decimal:
+        year = str(report_date)[:4]
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            row = conn.execute(
+                """
+                select coalesce(sum(total_pnl), 0)
+                from fact_formal_pnl_fi
+                where substr(cast(report_date as varchar), 1, 4) = ?
+                  and cast(report_date as varchar) <= ?
+                """,
+                [year, report_date],
+            ).fetchone()
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal pnl storage is unavailable.") from exc
+        finally:
+            if "conn" in locals():
+                conn.close()
+        if row is None:
+            return Decimal("0")
+        return Decimal(str(row[0]))
+
     def _list_report_dates(self, table_name: str) -> list[str]:
         try:
             conn = duckdb.connect(self.path, read_only=True)

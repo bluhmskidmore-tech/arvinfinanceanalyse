@@ -7,6 +7,8 @@ from decimal import Decimal
 import duckdb
 import pytest
 
+from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
+
 from tests.helpers import load_module
 
 
@@ -72,6 +74,179 @@ def test_materialize_yield_curve_aaa_credit_fail_closed_when_fetch_fails(tmp_pat
             duckdb_path=str(duckdb_path),
             governance_dir=str(governance_dir),
         )
+
+
+def test_materialize_yield_curve_treasury_akshare_unavailable_choice_fallback_persists(tmp_path, monkeypatch):
+    """Regression: treasury primary is AkShare; when AkShare returns no snapshot, Choice must succeed."""
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def akshare_empty(self, *, curve_type: str, trade_date: str):
+        return None
+
+    def choice_ok(self, *, curve_type: str, trade_date: str):
+        return _curve_snapshot(
+            schema_mod,
+            curve_type=curve_type,
+            vendor_name="choice",
+            source_version="sv_treasury_choice_fb",
+            vendor_version="vv_choice_fb",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_akshare_curve", akshare_empty)
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_choice_curve", choice_ok)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["treasury"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["curve_types"] == ["treasury"]
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select vendor_name, source_version
+            from fact_formal_yield_curve_daily
+            where curve_type = 'treasury'
+            limit 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("choice", "sv_treasury_choice_fb")
+
+
+def test_materialize_yield_curve_cdb_akshare_unavailable_choice_fallback_persists(tmp_path, monkeypatch):
+    """Regression: cdb tries AkShare, then Choice, then ChinaBond gkh; stop after Choice when it succeeds."""
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def akshare_empty(self, *, curve_type: str, trade_date: str):
+        return None
+
+    def choice_ok(self, *, curve_type: str, trade_date: str):
+        return _curve_snapshot(
+            schema_mod,
+            curve_type=curve_type,
+            vendor_name="choice",
+            source_version="sv_cdb_choice_fb",
+            vendor_version="vv_cdb_choice_fb",
+        )
+
+    def gkh_must_not_run(self, trade_date: str):
+        raise AssertionError("ChinaBond gkh must not run when Choice fallback succeeds")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_akshare_curve", akshare_empty)
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_choice_curve", choice_ok)
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_chinabond_gkh_curve", gkh_must_not_run)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["cdb"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        row = conn.execute(
+            """
+            select vendor_name, source_version
+            from fact_formal_yield_curve_daily
+            where curve_type = 'cdb'
+            limit 1
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == ("choice", "sv_cdb_choice_fb")
+
+
+def test_materialize_yield_curve_unsupported_curve_type_fails_closed(tmp_path):
+    task_mod = _load_yield_curve_task_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    with pytest.raises(FormalComputeMaterializeFailure, match="Unsupported curve_type"):
+        task_mod.materialize_yield_curve.fn(
+            trade_date="2026-04-10",
+            curve_types=["not_a_supported_curve"],
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
+def test_materialize_aaa_credit_live_choice_before_akshare(tmp_path, monkeypatch):
+    """Follow-on: Choice primary — live EDB before exact-family AkShare when DuckDB has no landed AAA."""
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    monkeypatch.setattr(
+        task_mod,
+        "_load_aaa_credit_curve_from_choice_snapshot",
+        lambda **_kwargs: None,
+    )
+
+    snap = schema_mod.YieldCurveSnapshot(
+        curve_type="aaa_credit",
+        trade_date="2026-04-10",
+        points=[
+            schema_mod.YieldCurvePoint("6M", Decimal("1.00")),
+            schema_mod.YieldCurvePoint("1Y", Decimal("1.10")),
+            schema_mod.YieldCurvePoint("2Y", Decimal("1.20")),
+            schema_mod.YieldCurvePoint("3Y", Decimal("1.30")),
+            schema_mod.YieldCurvePoint("5Y", Decimal("1.50")),
+            schema_mod.YieldCurvePoint("7Y", Decimal("1.70")),
+            schema_mod.YieldCurvePoint("10Y", Decimal("2.00")),
+        ],
+        vendor_name="choice",
+        vendor_version="vv_choice_live",
+        source_version="sv_choice_live_aaa",
+    )
+
+    def choice_live(self, *, curve_type: str, trade_date: str):
+        assert curve_type == "aaa_credit"
+        assert trade_date == "2026-04-10"
+        return snap
+
+    def akshare_must_not_run(self, *, curve_type: str, trade_date: str):
+        raise AssertionError("AkShare must not run when live Choice returns aaa_credit")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_choice_curve", choice_live)
+    monkeypatch.setattr(task_mod.VendorAdapter, "_fetch_akshare_curve", akshare_must_not_run)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aaa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["source_version"] == "sv_choice_live_aaa"
+    assert payload["vendor_version"] == "vv_choice_live"
 
 
 def test_materialize_yield_curve_dual_failure_writes_no_rows(tmp_path, monkeypatch):

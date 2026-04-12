@@ -1,6 +1,16 @@
+import uuid
+
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+def _load_executive_routes_module():
+    """Isolated routes module (avoids clobbering ``backend.app.api.routes.executive`` in sys.modules)."""
+    return load_module(
+        f"tests._exec_routes.executive_{uuid.uuid4().hex}",
+        "backend/app/api/routes/executive.py",
+    )
 
 
 def test_fastapi_application_exposes_executive_dashboard_routes():
@@ -17,10 +27,7 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
 
 
 def test_executive_dashboard_endpoints_return_result_meta_envelopes():
-    module = load_module(
-        "backend.app.api.routes.executive",
-        "backend/app/api/routes/executive.py",
-    )
+    module = _load_executive_routes_module()
 
     for name in (
         "overview",
@@ -64,3 +71,50 @@ def test_executive_dashboard_http_routes_return_200_with_result_envelope():
     assert "executive.risk-overview" in kinds
     assert "executive.contribution" in kinds
     assert "executive.alerts" in kinds
+
+
+def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
+    module = _load_executive_routes_module()
+
+    calls: list[tuple[str, str | None]] = []
+
+    def _stub(name: str):
+        def _inner(report_date: str | None = None):
+            calls.append((name, report_date))
+            return {"result_meta": {"result_kind": f"executive.{name}"}, "result": {}}
+
+        return _inner
+
+    monkeypatch.setattr(module, "executive_overview", _stub("overview"))
+    monkeypatch.setattr(module, "executive_pnl_attribution", _stub("pnl-attribution"))
+    monkeypatch.setattr(module, "executive_risk_overview", _stub("risk-overview"))
+    monkeypatch.setattr(module, "executive_contribution", _stub("contribution"))
+    monkeypatch.setattr(module, "executive_alerts", _stub("alerts"))
+
+    assert module.overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.overview"
+    assert module.pnl_attribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.pnl-attribution"
+    assert module.risk_overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.risk-overview"
+    assert module.contribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.contribution"
+    assert module.alerts(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.alerts"
+
+    assert calls == [
+        ("overview", "2025-11-20"),
+        ("pnl-attribution", "2025-11-20"),
+        ("risk-overview", "2025-11-20"),
+        ("contribution", "2025-11-20"),
+        ("alerts", "2025-11-20"),
+    ]
+
+
+def test_executive_dashboard_http_routes_reject_invalid_report_date():
+    main = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main.app)
+    for path in (
+        "/ui/home/overview",
+        "/ui/pnl/attribution",
+        "/ui/risk/overview",
+        "/ui/home/contribution",
+        "/ui/home/alerts",
+    ):
+        response = client.get(path, params={"report_date": "2025-99-99"})
+        assert response.status_code == 422, path

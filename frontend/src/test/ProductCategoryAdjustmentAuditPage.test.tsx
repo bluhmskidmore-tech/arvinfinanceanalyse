@@ -731,7 +731,8 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
 
     expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
     await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "mapping_adjustment");
-    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-target"), "12301");
+    await user.type(screen.getByTestId("monthly-operating-analysis-mapping-account-code"), "12301");
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-mapping-field"), "industry_name");
     await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "农业");
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
 
@@ -739,12 +740,205 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       expect(createSpy).toHaveBeenCalledWith({
         report_month: "202602",
         adjustment_class: "mapping_adjustment",
-        target: { target: "12301" },
+        target: { account_code: "12301", field: "industry_name" },
         operator: "OVERRIDE",
         value: "农业",
         approval_status: "approved",
       });
       expect(screen.getByText(/moa-1/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows structured Chinese guidance for mapping adjustments", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit?branch=monthly_operating_analysis"]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <ApiClientProvider
+        client={{
+          ...baseClient,
+          getQdbGlMonthlyAnalysisDates: async () => ({
+            result_meta: {
+              trace_id: "tr_qdb_dates",
+              basis: "analytical" as const,
+              result_kind: "qdb-gl-monthly-analysis.dates",
+              formal_use_allowed: false,
+              source_version: "sv_qdb_test",
+              vendor_version: "vv_none",
+              rule_version: "rv_qdb_gl_monthly_analysis_v1",
+              cache_version: "cv_qdb_gl_monthly_analysis_v1",
+              quality_flag: "ok" as const,
+              vendor_status: "ok" as const,
+              fallback_mode: "none" as const,
+              scenario_flag: false,
+              generated_at: "2026-04-12T00:00:00Z",
+            },
+            result: { report_months: ["202602"] },
+          }),
+          getQdbGlMonthlyAnalysisManualAdjustments: async () => ({
+            report_month: "202602",
+            adjustment_count: 0,
+            adjustments: [],
+            events: [],
+          }),
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "mapping_adjustment");
+
+    expect(screen.getByText("映射目标")).toBeInTheDocument();
+    expect(screen.getByLabelText("映射科目代码")).toBeInTheDocument();
+    expect(screen.getByLabelText("映射字段")).toBeInTheDocument();
+    expect(screen.getByText("用于修正名称类映射，不直接改分析结果。")).toBeInTheDocument();
+  });
+
+  it("validates structured analysis adjustment fields before submit", async () => {
+    const user = userEvent.setup();
+    const createSpy = vi.fn();
+    const baseClient = createApiClient({ mode: "mock" });
+    const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit?branch=monthly_operating_analysis"]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <ApiClientProvider
+        client={{
+          ...baseClient,
+          getQdbGlMonthlyAnalysisDates: async () => ({
+            result_meta: {
+              trace_id: "tr_qdb_dates",
+              basis: "analytical" as const,
+              result_kind: "qdb-gl-monthly-analysis.dates",
+              formal_use_allowed: false,
+              source_version: "sv_qdb_test",
+              vendor_version: "vv_none",
+              rule_version: "rv_qdb_gl_monthly_analysis_v1",
+              cache_version: "cv_qdb_gl_monthly_analysis_v1",
+              quality_flag: "ok" as const,
+              vendor_status: "ok" as const,
+              fallback_mode: "none" as const,
+              scenario_flag: false,
+              generated_at: "2026-04-12T00:00:00Z",
+            },
+            result: { report_months: ["202602"] },
+          }),
+          getQdbGlMonthlyAnalysisManualAdjustments: async () => ({
+            report_month: "202602",
+            adjustment_count: 0,
+            adjustments: [],
+            events: [],
+          }),
+          createQdbGlMonthlyAnalysisManualAdjustment: createSpy,
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "analysis_adjustment");
+    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override");
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
+
+    expect(createSpy).not.toHaveBeenCalled();
+    expect(screen.getByText("请完整填写分析调整的工作表、行标识和指标标识。")).toBeInTheDocument();
+  });
+
+  it("uses controlled analysis target options and submits structured payload", async () => {
+    const user = userEvent.setup();
+    const createSpy = vi.fn(async () => ({
+      adjustment_id: "moa-analysis-1",
+      event_type: "created",
+      created_at: "2026-04-12T00:00:00Z",
+      stream: "monthly_operating_analysis_adjustments",
+      report_month: "202602",
+      adjustment_class: "analysis_adjustment" as const,
+      target: {
+        section_key: "overview",
+        row_key: "loan_ratio",
+        metric_key: "value",
+      },
+      operator: "OVERRIDE",
+      value: "70.5",
+      approval_status: "approved",
+    }));
+    const baseClient = createApiClient({ mode: "mock" });
+    const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit?branch=monthly_operating_analysis"]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <ApiClientProvider
+        client={{
+          ...baseClient,
+          getQdbGlMonthlyAnalysisDates: async () => ({
+            result_meta: {
+              trace_id: "tr_qdb_dates",
+              basis: "analytical" as const,
+              result_kind: "qdb-gl-monthly-analysis.dates",
+              formal_use_allowed: false,
+              source_version: "sv_qdb_test",
+              vendor_version: "vv_none",
+              rule_version: "rv_qdb_gl_monthly_analysis_v1",
+              cache_version: "cv_qdb_gl_monthly_analysis_v1",
+              quality_flag: "ok" as const,
+              vendor_status: "ok" as const,
+              fallback_mode: "none" as const,
+              scenario_flag: false,
+              generated_at: "2026-04-12T00:00:00Z",
+            },
+            result: { report_months: ["202602"] },
+          }),
+          getQdbGlMonthlyAnalysisManualAdjustments: async () => ({
+            report_month: "202602",
+            adjustment_count: 0,
+            adjustments: [],
+            events: [],
+          }),
+          createQdbGlMonthlyAnalysisManualAdjustment: createSpy,
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "analysis_adjustment");
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-analysis-section-key"), "overview");
+    await user.type(screen.getByTestId("monthly-operating-analysis-analysis-row-key"), "loan_ratio");
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-analysis-metric-key"), "value");
+    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "70.5");
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
+
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledWith({
+        report_month: "202602",
+        adjustment_class: "analysis_adjustment",
+        target: {
+          section_key: "overview",
+          row_key: "loan_ratio",
+          metric_key: "value",
+        },
+        operator: "OVERRIDE",
+        value: "70.5",
+        approval_status: "approved",
+      });
     });
   });
 
@@ -758,7 +952,11 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       stream: "monthly_operating_analysis_adjustments",
       report_month: "202602",
       adjustment_class: "analysis_adjustment" as const,
-      target: { target: "alerts.14001000001" },
+      target: {
+        section_key: "alerts",
+        row_key: "14001000001",
+        metric_key: "alert_level",
+      },
       operator: "OVERRIDE",
       value: "manual_override",
       approval_status: "approved",
@@ -864,6 +1062,9 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       await screen.findByTestId("monthly-operating-analysis-adjustment-row-moa-1"),
     ).toBeInTheDocument();
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-edit-moa-1"));
+    expect(screen.getByTestId("monthly-operating-analysis-analysis-section-key")).toHaveValue("alerts");
+    expect(screen.getByTestId("monthly-operating-analysis-analysis-row-key")).toHaveValue("14001000001");
+    expect(screen.getByTestId("monthly-operating-analysis-analysis-metric-key")).toHaveValue("alert_level");
     await user.clear(screen.getByTestId("monthly-operating-analysis-adjustment-value"));
     await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override_updated");
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
@@ -872,7 +1073,11 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       expect(updateSpy).toHaveBeenCalledWith("moa-1", {
         report_month: "202602",
         adjustment_class: "analysis_adjustment",
-        target: { target: "alerts.14001000001" },
+        target: {
+          section_key: "alerts",
+          row_key: "14001000001",
+          metric_key: "alert_level",
+        },
         operator: "OVERRIDE",
         value: "manual_override_updated",
         approval_status: "approved",

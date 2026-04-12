@@ -5,6 +5,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
+from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.core_finance.bond_analytics.common import (
@@ -17,13 +18,18 @@ from backend.app.core_finance.bond_analytics.read_models import (
     build_concentration,
     build_curve_scenarios,
     build_krd_distribution,
+    compute_benchmark_excess,
     summarize_accounting_audit,
     summarize_credit,
     summarize_portfolio_risk,
     summarize_return_decomposition,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.yield_curve_repo import YieldCurveRepository
+from backend.app.repositories.yield_curve_repo import (
+    YIELD_CURVE_LATEST_FALLBACK_PREFIX,
+    YieldCurveRepository,
+    format_yield_curve_latest_fallback_warning,
+)
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
@@ -72,6 +78,11 @@ BENCHMARK_NAMES = {
     "AAA_CREDIT_INDEX": "中债AAA信用债指数",
 }
 PENDING_SOURCE_VERSION = "sv_bond_analytics_pending"
+BENCHMARK_CURVE_TYPES = {
+    "TREASURY_INDEX": "treasury",
+    "CDB_INDEX": "cdb",
+    "AAA_CREDIT_INDEX": "aaa_credit",
+}
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 
@@ -146,6 +157,45 @@ def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
         source_version=lineage["source_version"],
         rule_version=lineage["rule_version"],
         vendor_version=lineage["vendor_version"],
+    )
+
+
+def bond_analytics_dates_envelope() -> dict[str, object]:
+    report_dates = _repo().list_report_dates()
+    if report_dates:
+        try:
+            manifest = resolve_formal_manifest_lineage(
+                governance_dir=str(get_settings().governance_path),
+                cache_key=CACHE_KEY,
+            )
+            lineage = {
+                "source_version": str(manifest["source_version"]),
+                "rule_version": str(manifest["rule_version"]),
+                "cache_version": str(manifest.get("cache_version") or "").strip() or CACHE_VERSION,
+                "vendor_version": str(manifest.get("vendor_version") or "").strip() or "vv_none",
+            }
+        except RuntimeError:
+            rows = _repo().fetch_bond_analytics_rows(report_date=report_dates[0])
+            lineage = _lineage(report_dates[0], rows)
+    else:
+        lineage = {
+            "source_version": EMPTY_SOURCE_VERSION,
+            "rule_version": RULE_VERSION,
+            "cache_version": CACHE_VERSION,
+            "vendor_version": "vv_none",
+        }
+
+    meta = build_formal_result_meta(
+        trace_id=_trace_id(),
+        result_kind="bond_analytics.dates",
+        cache_version=lineage["cache_version"],
+        source_version=lineage["source_version"],
+        rule_version=lineage["rule_version"],
+        vendor_version=lineage["vendor_version"],
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"report_dates": report_dates},
     )
 
 
@@ -264,6 +314,8 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         meta = _meta("bond_analytics.return_decomposition", report_date, rows)
         return _empty_return_response(meta, report_date, period_type, period_start, period_end)
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+    fx_rates_current = curve_repo.fetch_fx_rates(report_date.isoformat()) or None
+    fx_rates_prior = curve_repo.fetch_fx_rates(period_start.isoformat()) or None
     required_curve_types = _required_curve_types_for_return_rows(rows)
     treasury_current, treasury_current_warning = _resolve_curve_pair_if_needed(
         curve_type="treasury",
@@ -307,7 +359,7 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         aaa_prior_warning=aaa_prior_warning,
     )
     curve_latest_fallback = any(
-        w and "Using latest available" in w
+        w and YIELD_CURVE_LATEST_FALLBACK_PREFIX in w
         for w in relevant_curve_warnings
     )
     curve_unavailable = any(
@@ -359,12 +411,16 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
         aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
         aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
+        fx_rates_current=fx_rates_current,
+        fx_rates_prior=fx_rates_prior,
     )
     explained_total = (
         summary["carry_total"]
         + summary["roll_down_total"]
         + summary["rate_effect_total"]
         + summary["spread_effect_total"]
+        + summary["convexity_effect_total"]
+        + summary.get("fx_effect_total", ZERO)
     )
     payload = ReturnDecompositionResponse(
         report_date=report_date,
@@ -376,8 +432,8 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         rate_effect=_text(summary["rate_effect_total"]),
         spread_effect=_text(summary["spread_effect_total"]),
         trading=_text(ZERO),
-        fx_effect=_text(ZERO),
-        convexity_effect=_text(ZERO),
+        fx_effect=_text(summary.get("fx_effect_total", ZERO)),
+        convexity_effect=_text(summary.get("convexity_effect_total", ZERO)),
         explained_pnl=_text(explained_total),
         explained_pnl_accounting=_text(explained_total),
         explained_pnl_economic=_text(explained_total),
@@ -385,9 +441,9 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         actual_pnl=_text(explained_total),
         recon_error=_text(ZERO),
         recon_error_pct=_text(ZERO),
-        by_asset_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), trading=_text(ZERO), total=_text(row["total"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_asset_class"]],
-        by_accounting_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), trading=_text(ZERO), total=_text(row["total"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_accounting_class"]],
-        bond_details=[BondLevelDecomposition(bond_code=str(row["instrument_code"]), bond_name=str(row.get("instrument_name") or ""), asset_class=str(row["asset_class_std"]), accounting_class=str(row["accounting_class"]), market_value=_text(row["market_value"]), carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), trading=_text(ZERO), total=_text(row["total"]), explained_for_recon=_text(row["total"]), economic_only_effects=_text(row["roll_down"] + row["rate_effect"] + row["spread_effect"])) for row in summary["bond_details"]],
+        by_asset_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), convexity_effect=_text(row.get("convexity_effect", ZERO)), trading=_text(ZERO), total=_text(row["total"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_asset_class"]],
+        by_accounting_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), convexity_effect=_text(row.get("convexity_effect", ZERO)), trading=_text(ZERO), total=_text(row["total"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_accounting_class"]],
+        bond_details=[BondLevelDecomposition(bond_code=str(row["instrument_code"]), bond_name=str(row.get("instrument_name") or ""), asset_class=str(row["asset_class_std"]), accounting_class=str(row["accounting_class"]), market_value=_text(row["market_value"]), carry=_text(row["carry"]), roll_down=_text(row["roll_down"]), rate_effect=_text(row["rate_effect"]), spread_effect=_text(row["spread_effect"]), convexity_effect=_text(row.get("convexity_effect", ZERO)), trading=_text(ZERO), total=_text(row["total"]), explained_for_recon=_text(row["total"]), economic_only_effects=_text(row["roll_down"] + row["rate_effect"] + row["spread_effect"] + row.get("convexity_effect", ZERO) + row.get("fx_effect", ZERO))) for row in summary["bond_details"]],
         bond_count=int(summary["bond_count"]),
         total_market_value=_text(summary["total_market_value"]),
         computed_at=meta.generated_at.isoformat(),
@@ -428,7 +484,11 @@ def _resolve_curve_for_service(
         return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; affected components remain 0."
     return (
         latest_snapshot,
-        f"Using latest available {curve_type} curve from trade_date={latest_trade_date} for requested trade_date={requested_trade_date}.",
+        format_yield_curve_latest_fallback_warning(
+            curve_type=curve_type,
+            resolved_trade_date=latest_trade_date,
+            requested_trade_date=requested_trade_date,
+        ),
     )
 
 
@@ -534,7 +594,147 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     meta = _meta("bond_analytics.benchmark_excess", report_date, rows)
-    risk = summarize_portfolio_risk(rows)
+    curve_type = BENCHMARK_CURVE_TYPES.get(benchmark_id, "cdb")
+    current_curve = None
+    prior_curve = None
+    current_warning = None
+    prior_warning = None
+    treasury_current = None
+    treasury_prior = None
+    treasury_current_warning = None
+    treasury_prior_warning = None
+    aaa_current = None
+    aaa_prior = None
+    aaa_current_warning = None
+    aaa_prior_warning = None
+    curve_snapshots: list[dict[str, object]] = []
+    curve_latest_fallback = False
+    curve_unavailable = False
+    needs_credit_curves = any(str(row.get("asset_class_std")) == "credit" for row in rows)
+    if rows:
+        curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+        current_curve, current_warning = _resolve_curve_for_service(
+            repo=curve_repo,
+            requested_trade_date=report_date.isoformat(),
+            curve_type=curve_type,
+        )
+        prior_curve, prior_warning = _resolve_curve_for_service(
+            repo=curve_repo,
+            requested_trade_date=period_start.isoformat(),
+            curve_type=curve_type,
+        )
+        if needs_credit_curves:
+            if curve_type == "treasury":
+                treasury_current = current_curve
+                treasury_prior = prior_curve
+            else:
+                treasury_current, treasury_current_warning = _resolve_curve_for_service(
+                    repo=curve_repo,
+                    requested_trade_date=report_date.isoformat(),
+                    curve_type="treasury",
+                )
+                treasury_prior, treasury_prior_warning = _resolve_curve_for_service(
+                    repo=curve_repo,
+                    requested_trade_date=period_start.isoformat(),
+                    curve_type="treasury",
+                )
+            if curve_type == "aaa_credit":
+                aaa_current = current_curve
+                aaa_prior = prior_curve
+            else:
+                aaa_current, aaa_current_warning = _resolve_curve_for_service(
+                    repo=curve_repo,
+                    requested_trade_date=report_date.isoformat(),
+                    curve_type="aaa_credit",
+                )
+                aaa_prior, aaa_prior_warning = _resolve_curve_for_service(
+                    repo=curve_repo,
+                    requested_trade_date=period_start.isoformat(),
+                    curve_type="aaa_credit",
+                )
+        curve_snapshots = [
+            snapshot
+            for snapshot in (current_curve, prior_curve, treasury_current, treasury_prior, aaa_current, aaa_prior)
+            if snapshot is not None
+        ]
+        curve_latest_fallback = any(
+            warning and YIELD_CURVE_LATEST_FALLBACK_PREFIX in warning
+            for warning in (
+                current_warning,
+                prior_warning,
+                treasury_current_warning,
+                treasury_prior_warning,
+                aaa_current_warning,
+                aaa_prior_warning,
+            )
+        )
+        curve_unavailable = any(
+            warning and warning.startswith("No ")
+            for warning in (
+                current_warning,
+                prior_warning,
+                treasury_current_warning,
+                treasury_prior_warning,
+                aaa_current_warning,
+                aaa_prior_warning,
+            )
+        )
+    if curve_snapshots:
+        meta = meta.model_copy(
+            update={
+                "source_version": _merge_lineage_values(
+                    meta.source_version,
+                    *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
+                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
+                ),
+                "rule_version": _merge_lineage_values(
+                    meta.rule_version,
+                    *[str(snapshot.get("rule_version") or "") for snapshot in curve_snapshots],
+                ),
+                "vendor_version": _merge_lineage_values(
+                    meta.vendor_version,
+                    *[str(snapshot.get("vendor_version") or "") for snapshot in curve_snapshots],
+                )
+                or "vv_none",
+                "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
+                **(
+                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+                    if curve_unavailable
+                    else (
+                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
+                        if curve_latest_fallback
+                        else {}
+                    )
+                ),
+            }
+        )
+    elif curve_unavailable:
+        meta = meta.model_copy(
+            update={"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+        )
+    summary = compute_benchmark_excess(
+        rows,
+        period_start=period_start,
+        period_end=period_end,
+        benchmark_id=benchmark_id,
+        benchmark_curve_current=current_curve["curve"] if current_curve and prior_curve else None,
+        benchmark_curve_prior=prior_curve["curve"] if current_curve and prior_curve else None,
+        treasury_curve_current=treasury_current["curve"] if treasury_current and treasury_prior else None,
+        treasury_curve_prior=treasury_prior["curve"] if treasury_current and treasury_prior else None,
+        aaa_credit_curve_current=aaa_current["curve"] if aaa_current and aaa_prior else None,
+        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_current and aaa_prior else None,
+    )
+    warnings = [EMPTY_WARNING] if not rows else _compact_warnings(
+        [
+            BENCHMARK_WARNING if not current_curve or not prior_curve else None,
+            current_warning,
+            prior_warning,
+            treasury_current_warning if needs_credit_curves else None,
+            treasury_prior_warning if needs_credit_curves else None,
+            aaa_current_warning if needs_credit_curves else None,
+            aaa_prior_warning if needs_credit_curves else None,
+        ]
+    )
     payload = BenchmarkExcessResponse(
         report_date=report_date,
         period_type=period_type,
@@ -542,21 +742,28 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         period_end=period_end,
         benchmark_id=benchmark_id,
         benchmark_name=BENCHMARK_NAMES.get(benchmark_id, benchmark_id),
-        portfolio_return=_text(ZERO),
-        benchmark_return=_text(ZERO),
-        excess_return=_text(ZERO),
-        duration_effect=_text(ZERO),
-        curve_effect=_text(ZERO),
-        spread_effect=_text(ZERO),
-        selection_effect=_text(ZERO),
-        allocation_effect=_text(ZERO),
-        explained_excess=_text(ZERO),
-        recon_error=_text(ZERO),
-        portfolio_duration=_text(risk["portfolio_duration"]),
-        benchmark_duration=_text(ZERO),
-        duration_diff=_text(risk["portfolio_duration"]),
+        portfolio_return=_text(summary["portfolio_return"]),
+        benchmark_return=_text(summary["benchmark_return"]),
+        excess_return=_text(summary["excess_return"]),
+        duration_effect=_text(summary["duration_effect"]),
+        curve_effect=_text(summary["curve_effect"]),
+        spread_effect=_text(summary["spread_effect"]),
+        selection_effect=_text(summary["selection_effect"]),
+        allocation_effect=_text(summary["allocation_effect"]),
+        explained_excess=_text(summary["explained_excess"]),
+        recon_error=_text(summary["recon_error"]),
+        portfolio_duration=_text(summary["portfolio_duration"]),
+        benchmark_duration=_text(summary["benchmark_duration"]),
+        duration_diff=_text(summary["duration_diff"]),
+        excess_sources=[
+            {
+                **row,
+                "contribution": _text(Decimal(str(row["contribution"]))),
+            }
+            for row in summary["excess_sources"]
+        ],
         computed_at=meta.generated_at.isoformat(),
-        warnings=[EMPTY_WARNING if not rows else BENCHMARK_WARNING],
+        warnings=warnings,
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
@@ -605,7 +812,7 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
         )
         curve_snapshots = [snapshot for snapshot in (treasury_current, aaa_current) if snapshot is not None]
         curve_latest_fallback = any(
-            warning and "Using latest available" in warning
+            warning and YIELD_CURVE_LATEST_FALLBACK_PREFIX in warning
             for warning in (aaa_warning, treasury_warning)
         )
         curve_unavailable = any(
@@ -618,6 +825,7 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
                 "source_version": _merge_lineage_values(
                     meta.source_version,
                     *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
+                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
                 ),
                 "rule_version": _merge_lineage_values(
                     meta.rule_version,

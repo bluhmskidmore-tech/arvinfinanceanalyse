@@ -1,6 +1,7 @@
 """Portfolio risk tensor from formal bond analytics fact rows (pure calculations)."""
 from __future__ import annotations
 
+import calendar
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -134,6 +135,12 @@ def _aggregate_krd_values(
     return krd_values
 
 
+def _resolve_face_value(row: dict[str, Any]) -> Decimal:
+    if row.get("face_value") is not None:
+        return _safe_decimal(row.get("face_value"))
+    return _safe_decimal(row.get("market_value"))
+
+
 def _issuer_concentration_metrics(
     rows: list[dict[str, Any]],
     total_market_value: Decimal,
@@ -157,27 +164,54 @@ def _compute_liquidity_gaps(
     gap_30d = ZERO
     gap_90d = ZERO
     missing_maturity_dates = 0
+    unsupported_interest_modes: set[str] = set()
+    optionality_warning_needed = False
 
     for row in rows:
         maturity_date = _coerce_date(row.get("maturity_date"))
         if maturity_date is None:
             missing_maturity_dates += 1
             continue
-
-        days_to_maturity = (maturity_date - report_date).days
-        if days_to_maturity < 0:
+        if maturity_date < report_date:
             continue
 
-        market_value = _safe_decimal(row.get("market_value"))
-        if days_to_maturity <= 30:
-            gap_30d += market_value
-        if days_to_maturity <= 90:
-            gap_90d += market_value
+        face_value = _resolve_face_value(row)
+        coupon_rate = _safe_decimal(row.get("coupon_rate"))
+        interest_mode = _normalize_interest_mode(
+            row.get("interest_mode"),
+            unsupported_interest_modes=unsupported_interest_modes,
+        )
+        if _has_optionality_inputs(row):
+            optionality_warning_needed = True
+
+        if _is_within_window(report_date, maturity_date, window_days=30):
+            gap_30d += face_value
+        if _is_within_window(report_date, maturity_date, window_days=90):
+            gap_90d += face_value
+
+        coupon_cashflow_30d, coupon_cashflow_90d = _estimate_coupon_cashflows(
+            report_date=report_date,
+            maturity_date=maturity_date,
+            face_value=face_value,
+            coupon_rate=coupon_rate,
+            interest_mode=interest_mode,
+        )
+        gap_30d += coupon_cashflow_30d
+        gap_90d += coupon_cashflow_90d
 
     warnings: list[str] = []
     if missing_maturity_dates:
         warnings.append(
             f"Excluded {missing_maturity_dates} rows without maturity_date from liquidity gap calculation."
+        )
+    if unsupported_interest_modes:
+        warnings.append(
+            "Unsupported interest_mode defaulted to annual coupon frequency for liquidity gaps: "
+            + ", ".join(sorted(unsupported_interest_modes))
+        )
+    if optionality_warning_needed:
+        warnings.append(
+            "Embedded optionality is excluded from liquidity gaps; put/call/prepayment cash flows are not modeled."
         )
 
     return gap_30d, gap_90d, warnings
@@ -205,6 +239,113 @@ def _is_credit(value: object) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "t", "yes", "y"}
+
+
+def _estimate_coupon_cashflows(
+    *,
+    report_date: date,
+    maturity_date: date,
+    face_value: Decimal,
+    coupon_rate: Decimal,
+    interest_mode: str,
+) -> tuple[Decimal, Decimal]:
+    if coupon_rate == ZERO or face_value == ZERO:
+        return ZERO, ZERO
+
+    if interest_mode == "bullet":
+        coupon_amount = face_value * coupon_rate
+        coupon_30d = coupon_amount if _is_within_window(report_date, maturity_date, window_days=30) else ZERO
+        coupon_90d = coupon_amount if _is_within_window(report_date, maturity_date, window_days=90) else ZERO
+        return coupon_30d, coupon_90d
+
+    coupon_frequency = {
+        "annual": Decimal("1"),
+        "semi-annual": Decimal("2"),
+        "quarterly": Decimal("4"),
+    }.get(interest_mode, Decimal("1"))
+    next_coupon_date = _find_next_coupon_date(
+        report_date=report_date,
+        maturity_date=maturity_date,
+        interval_months=int(Decimal("12") / coupon_frequency),
+    )
+    if next_coupon_date is None:
+        return ZERO, ZERO
+
+    coupon_amount = face_value * coupon_rate / coupon_frequency
+    coupon_30d = coupon_amount if _is_within_window(report_date, next_coupon_date, window_days=30) else ZERO
+    coupon_90d = coupon_amount if _is_within_window(report_date, next_coupon_date, window_days=90) else ZERO
+    return coupon_30d, coupon_90d
+
+
+def _find_next_coupon_date(
+    *,
+    report_date: date,
+    maturity_date: date,
+    interval_months: int,
+) -> date | None:
+    if interval_months <= 0 or maturity_date < report_date:
+        return None
+
+    candidate = maturity_date
+    next_coupon_date: date | None = None
+    while candidate > report_date:
+        next_coupon_date = candidate
+        candidate = _shift_months(candidate, -interval_months)
+    return next_coupon_date
+
+
+def _shift_months(value: date, months: int) -> date:
+    month_index = (value.year * 12 + (value.month - 1)) + months
+    year = month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _is_within_window(report_date: date, cashflow_date: date, *, window_days: int) -> bool:
+    days = (cashflow_date - report_date).days
+    return 0 <= days <= window_days
+
+
+def _normalize_interest_mode(
+    value: object,
+    *,
+    unsupported_interest_modes: set[str],
+) -> str:
+    raw = str(value or "").strip()
+    normalized = raw.lower().replace("_", "-").replace(" ", "")
+    if normalized in {"bullet", "maturitybullet", "到期一次还本付息", "到期还本付息", "到期付息"}:
+        return "bullet"
+    if normalized in {"semi-annual", "semiannual", "semiannualcoupon", "半年付息"}:
+        return "semi-annual"
+    if normalized in {"quarterly", "quarterlycoupon", "季付息"}:
+        return "quarterly"
+    if normalized in {
+        "",
+        "annual",
+        "annualcoupon",
+        "年付息",
+        "fixed",
+        "固定",
+        "固定利率",
+        "固定计息",
+    }:
+        return "annual"
+    unsupported_interest_modes.add(raw or "unknown")
+    return "annual"
+
+
+def _has_optionality_inputs(row: dict[str, Any]) -> bool:
+    for field_name in ("next_call_date", "put_date", "put_option_date", "prepayment_date"):
+        if row.get(field_name):
+            return True
+    for field_name in ("has_put_option", "has_call_option", "has_prepayment_option"):
+        value = row.get(field_name)
+        if isinstance(value, bool) and value:
+            return True
+        if str(value or "").strip().lower() in {"1", "true", "t", "yes", "y"}:
+            return True
+    return False
 
 
 def _coerce_date(value: object) -> date | None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.repositories.risk_tensor_repo import (
     RiskTensorRepository,
     load_latest_bond_analytics_lineage,
@@ -12,7 +13,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
-from backend.app.tasks.risk_tensor_materialize import CACHE_VERSION, RULE_VERSION
+from backend.app.tasks.risk_tensor_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
 
 
 def risk_tensor_dates_envelope(
@@ -20,25 +21,38 @@ def risk_tensor_dates_envelope(
     governance_dir: str,
 ) -> dict[str, object]:
     report_dates = RiskTensorRepository(str(duckdb_path)).list_report_dates()
-    latest_source_version = ""
+    cache_version_value = CACHE_VERSION
+    source_version_value = ""
+    rule_version_value = RULE_VERSION
+    vendor_version_value = "vv_none"
     if report_dates:
         try:
-            latest_lineage = load_latest_bond_analytics_lineage(
+            manifest = resolve_formal_manifest_lineage(
                 governance_dir=governance_dir,
-                report_date=report_dates[0],
+                cache_key=CACHE_KEY,
             )
+            cache_version_value = str(manifest.get("cache_version") or "").strip() or CACHE_VERSION
+            source_version_value = str(manifest.get("source_version") or "").strip()
+            rule_version_value = str(manifest.get("rule_version") or "").strip() or RULE_VERSION
+            vendor_version_value = str(manifest.get("vendor_version") or "").strip() or "vv_none"
         except RuntimeError:
-            latest_lineage = None
-        if latest_lineage is not None:
-            latest_source_version = str(latest_lineage.get("source_version") or "")
+            try:
+                latest_lineage = load_latest_bond_analytics_lineage(
+                    governance_dir=governance_dir,
+                    report_date=report_dates[0],
+                )
+            except RuntimeError:
+                latest_lineage = None
+            if latest_lineage is not None:
+                source_version_value = str(latest_lineage.get("source_version") or "")
 
     meta = build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind="risk.tensor.dates",
-        cache_version=CACHE_VERSION,
-        source_version=latest_source_version or "sv_risk_tensor_empty",
-        rule_version=RULE_VERSION,
-        vendor_version="vv_none",
+        cache_version=cache_version_value,
+        source_version=source_version_value or "sv_risk_tensor_empty",
+        rule_version=rule_version_value,
+        vendor_version=vendor_version_value,
     )
     return build_formal_result_envelope(
         result_meta=meta,

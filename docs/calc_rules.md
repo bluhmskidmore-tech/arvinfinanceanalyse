@@ -173,6 +173,14 @@ PnL Bridge 结构：
 - `issuer_concentration`
 - `liquidity_gap`
 
+流动性缺口规则：
+- `liquidity_gap_30d` / `liquidity_gap_90d` 必须按未来 30 / 90 天现金流口径计算，不得再按 `maturity_date` 对 `market_value` 做简单过滤。
+- 到期本金现金流：`maturity_date` 落入窗口时计入 `face_value`。
+- 票息现金流：按 `coupon_rate` 与 `interest_mode` 估算下一次付息；`annual` 计全年票息，`semi-annual` 计半年度票息，`quarterly` 计季度票息。
+- 付息日估算锚点为 `maturity_date` 的月日（半年 / 季度按固定月间隔回推）；只计从 `report_date` 起最近一次付息日是否落入窗口。
+- `bullet`（到期一次还本付息）只允许在到期日同时计入本金与票息现金流。
+- 回售权 / 提前偿还现金流当前不进入 formal 风险张量；若输入行显式带有相关可选性字段，必须输出 warning，且不得静默并入口径。
+
 ## 11. result_meta
 
 所有正式结果必须返回：

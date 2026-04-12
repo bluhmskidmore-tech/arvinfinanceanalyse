@@ -454,7 +454,7 @@ def test_bridge_zero_actual_pnl():
 
 
 def test_bridge_phase3_stubs_are_zero():
-    """roll_down, treasury_curve, credit_spread, fx_translation must all be 0."""
+    """Without curves or FX inputs, curve effects and fx_translation remain 0."""
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=[
             {

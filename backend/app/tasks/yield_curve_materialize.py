@@ -71,14 +71,19 @@ def _execute_yield_curve_materialization(
     for curve_type in curve_types:
         try:
             if curve_type == "aaa_credit":
+                # Choice primary: landed DuckDB macro first, then live Choice EDB, then exact-family AkShare only.
                 snapshot = _load_aaa_credit_curve_from_choice_snapshot(
                     duckdb_path=str(duckdb_file),
                     trade_date=trade_date,
                 )
                 if snapshot is None:
+                    snapshot = adapter._fetch_choice_curve(curve_type="aaa_credit", trade_date=trade_date)
+                if snapshot is None:
                     snapshot = adapter._fetch_akshare_curve(curve_type=curve_type, trade_date=trade_date)
                     if snapshot is None:
-                        raise RuntimeError("AkShare returned no matching curve snapshot.")
+                        raise RuntimeError(
+                            "No aaa_credit curve: Choice (landed or live) and AkShare enterprise-AAA family both unavailable."
+                        )
                 snapshots.append(snapshot)
             else:
                 snapshots.append(adapter.fetch_yield_curve(curve_type=curve_type, trade_date=trade_date))

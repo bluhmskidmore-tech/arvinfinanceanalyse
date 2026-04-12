@@ -102,6 +102,10 @@ export type BondAnalyticsRefreshPayload = {
   [key: string]: unknown;
 };
 
+export type BondAnalyticsDatesPayload = {
+  report_dates: string[];
+};
+
 export type RiskSignal = {
   id: string;
   label: string;

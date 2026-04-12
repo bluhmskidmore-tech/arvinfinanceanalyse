@@ -1,4 +1,4 @@
-"""Unit tests for bond analytics shared helpers (`core_finance.bond_analytics.common`)."""
+"""Unit tests for bond analytics shared helpers and read models."""
 from __future__ import annotations
 
 from datetime import date
@@ -7,6 +7,18 @@ from decimal import Decimal
 import pytest
 
 from backend.app.core_finance.bond_analytics import common
+from backend.app.core_finance.bond_analytics.read_models import (
+    compute_benchmark_excess,
+    summarize_return_decomposition,
+)
+from tests.helpers import load_module
+
+
+def _read_models_module():
+    return load_module(
+        "backend.app.core_finance.bond_analytics.read_models",
+        "backend/app/core_finance/bond_analytics/read_models.py",
+    )
 
 
 def test_safe_decimal_coerces_and_handles_bad_input() -> None:
@@ -82,3 +94,264 @@ def test_resolve_period_mom_ytd_ttm(
 )
 def test_get_tenor_bucket(years: float, bucket: str) -> None:
     assert common.get_tenor_bucket(years) == bucket
+
+
+def test_convexity_effect_with_curve_data() -> None:
+    summary = summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 5Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        treasury_curve_current={"5Y": Decimal("3.00")},
+        treasury_curve_prior={"5Y": Decimal("1.00")},
+    )
+
+    expected = Decimal("0.5") * Decimal("2") * Decimal("0.02") * Decimal("0.02") * Decimal("100")
+
+    assert summary["convexity_effect_total"] == expected
+    assert summary["bond_details"][0]["convexity_effect"] == expected
+
+
+def test_convexity_effect_without_curve_data_is_zero() -> None:
+    summary = summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 5Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+
+    assert summary["convexity_effect_total"] == Decimal("0")
+    assert summary["bond_details"][0]["convexity_effect"] == Decimal("0")
+
+
+def test_fx_effect_zero_for_cny_bonds() -> None:
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 5Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    assert summary["fx_effect_total"] == Decimal("0")
+    assert summary["bond_details"][0]["fx_effect"] == Decimal("0")
+
+
+def test_fx_effect_positive_when_usd_appreciates() -> None:
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "USD Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "USD",
+                "face_value": Decimal("1000"),
+                "market_value": Decimal("1000"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    assert summary["fx_effect_total"] == Decimal("41.35000000")
+    assert summary["bond_details"][0]["fx_effect"] == Decimal("41.35000000")
+
+
+def test_portfolio_return_is_invariant_across_benchmark_choice() -> None:
+    read_models = _read_models_module()
+    rows = [
+        {
+            "instrument_code": "R1",
+            "instrument_name": "Treasury 1Y",
+            "asset_class_raw": "rate",
+            "asset_class_std": "rate",
+            "bond_type": "treasury",
+            "accounting_class": "AC",
+            "currency_code": "CNY",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("100"),
+            "coupon_rate": Decimal("0.10"),
+            "years_to_maturity": Decimal("1"),
+            "tenor_bucket": "1Y",
+            "macaulay_duration": Decimal("1"),
+            "modified_duration": Decimal("1"),
+            "convexity": Decimal("0"),
+            "dv01": Decimal("0"),
+        },
+        {
+            "instrument_code": "C1",
+            "instrument_name": "Credit 5Y",
+            "asset_class_raw": "credit",
+            "asset_class_std": "credit",
+            "bond_type": "credit",
+            "accounting_class": "OCI",
+            "currency_code": "CNY",
+            "face_value": Decimal("100"),
+            "market_value": Decimal("100"),
+            "coupon_rate": Decimal("0.20"),
+            "years_to_maturity": Decimal("5"),
+            "tenor_bucket": "5Y",
+            "macaulay_duration": Decimal("4"),
+            "modified_duration": Decimal("4"),
+            "convexity": Decimal("0"),
+            "dv01": Decimal("0"),
+        },
+    ]
+    treasury_current = {"1Y": Decimal("2.00"), "5Y": Decimal("2.00")}
+    treasury_prior = {"1Y": Decimal("1.00"), "5Y": Decimal("1.00")}
+    cdb_current = {"1Y": Decimal("2.50"), "5Y": Decimal("2.50")}
+    cdb_prior = {"1Y": Decimal("1.50"), "5Y": Decimal("1.50")}
+    aaa_current = {"1Y": Decimal("4.00"), "5Y": Decimal("4.00")}
+    aaa_prior = {"1Y": Decimal("2.00"), "5Y": Decimal("2.00")}
+
+    treasury_summary = read_models.compute_benchmark_excess(
+        rows,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current=treasury_current,
+        benchmark_curve_prior=treasury_prior,
+        treasury_curve_current=treasury_current,
+        treasury_curve_prior=treasury_prior,
+        cdb_curve_current=cdb_current,
+        cdb_curve_prior=cdb_prior,
+        aaa_credit_curve_current=aaa_current,
+        aaa_credit_curve_prior=aaa_prior,
+    )
+    cdb_summary = read_models.compute_benchmark_excess(
+        rows,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="CDB_INDEX",
+        benchmark_curve_current=cdb_current,
+        benchmark_curve_prior=cdb_prior,
+        treasury_curve_current=treasury_current,
+        treasury_curve_prior=treasury_prior,
+        cdb_curve_current=cdb_current,
+        cdb_curve_prior=cdb_prior,
+        aaa_credit_curve_current=aaa_current,
+        aaa_credit_curve_prior=aaa_prior,
+    )
+    aaa_summary = read_models.compute_benchmark_excess(
+        rows,
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="AAA_CREDIT_INDEX",
+        benchmark_curve_current=aaa_current,
+        benchmark_curve_prior=aaa_prior,
+        treasury_curve_current=treasury_current,
+        treasury_curve_prior=treasury_prior,
+        cdb_curve_current=cdb_current,
+        cdb_curve_prior=cdb_prior,
+        aaa_credit_curve_current=aaa_current,
+        aaa_credit_curve_prior=aaa_prior,
+    )
+
+    assert treasury_summary["portfolio_return"] == cdb_summary["portfolio_return"] == aaa_summary["portfolio_return"]
+
+
+def test_allocation_effect_sums_correctly() -> None:
+    summary = _read_models_module().compute_benchmark_excess(
+        [
+            {
+                "instrument_code": "R1",
+                "instrument_name": "Treasury 1Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0.10"),
+                "years_to_maturity": Decimal("1"),
+                "tenor_bucket": "1Y",
+                "macaulay_duration": Decimal("0"),
+                "modified_duration": Decimal("0"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+            {
+                "instrument_code": "C1",
+                "instrument_name": "Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0.20"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "macaulay_duration": Decimal("0"),
+                "modified_duration": Decimal("0"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+        ],
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+        benchmark_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+    )
+
+    assert summary["allocation_effect"] == Decimal("0")

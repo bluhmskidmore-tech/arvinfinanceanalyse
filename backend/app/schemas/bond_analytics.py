@@ -48,6 +48,7 @@ class AssetClassBreakdown(BaseModel):
     roll_down: str = "0"
     rate_effect: str = "0"
     spread_effect: str = "0"
+    convexity_effect: str = "0"
     trading: str = "0"
     total: str = "0"
     bond_count: int = 0
@@ -66,6 +67,7 @@ class BondLevelDecomposition(BaseModel):
     roll_down: str = "0"
     rate_effect: str = "0"
     spread_effect: str = "0"
+    convexity_effect: str = "0"
     trading: str = "0"
     total: str = "0"
     explained_for_recon: str = "0"

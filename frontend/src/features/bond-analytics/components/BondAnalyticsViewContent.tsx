@@ -7,6 +7,7 @@ import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewMod
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { useSearchParams } from "react-router-dom";
 
 const BondAnalyticsOverviewPanels = lazy(() => import("./BondAnalyticsOverviewPanels"));
 
@@ -16,27 +17,28 @@ const BondAnalyticsDetailSection = lazy(() =>
   })),
 );
 
-function generateRecentDates(): { value: string; label: string }[] {
-  const dates: { value: string; label: string }[] = [];
-  const now = new Date();
-
-  for (let i = 1; i <= 12; i += 1) {
-    const date = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-    const value = date.toISOString().slice(0, 10);
-    dates.push({
-      value,
-      label: value,
-    });
-  }
-
-  return dates;
-}
-
 export function BondAnalyticsViewContent() {
   const client = useApiClient();
   const queryClient = useQueryClient();
-  const dateOptions = useMemo(() => generateRecentDates(), []);
-  const [reportDate, setReportDate] = useState(dateOptions[0]?.value ?? "");
+  const [searchParams] = useSearchParams();
+  const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+  const datesQuery = useQuery({
+    queryKey: [...bondAnalyticsQueryKeyRoot, "dates", client.mode],
+    queryFn: () => client.getBondAnalyticsDates(),
+    retry: false,
+  });
+  const dateOptions = useMemo(() => {
+    const reportDates = datesQuery.data?.result.report_dates ?? [];
+    const options = reportDates.map((value) => ({ value, label: value }));
+    if (
+      explicitReportDate &&
+      !options.some((option) => option.value === explicitReportDate)
+    ) {
+      return [{ value: explicitReportDate, label: explicitReportDate }, ...options];
+    }
+    return options;
+  }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+  const [reportDate, setReportDate] = useState("");
   const [periodType, setPeriodType] = useState<PeriodType>("MoM");
   const [activeTab, setActiveTab] =
     useState<BondAnalyticsModuleKey>("action-attribution");
@@ -49,16 +51,31 @@ export function BondAnalyticsViewContent() {
   >(null);
   const [detailRemountKey, setDetailRemountKey] = useState(0);
 
+  const resolvedReportDate = useMemo(() => {
+    if (explicitReportDate) {
+      return explicitReportDate;
+    }
+    return datesQuery.data?.result.report_dates[0] ?? "";
+  }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+
+  const effectiveReportDate = reportDate || resolvedReportDate;
+  const datesEmpty =
+    !explicitReportDate &&
+    !datesQuery.isLoading &&
+    !datesQuery.isError &&
+    (datesQuery.data?.result.report_dates.length ?? 0) === 0;
+  const showDatesErrorState = datesQuery.isError && !effectiveReportDate;
+
   const actionAttributionQuery = useQuery({
     queryKey: [
       ...bondAnalyticsQueryKeyRoot,
       "overview-action-attribution",
-      reportDate,
+      effectiveReportDate,
       periodType,
     ],
     queryFn: async (): Promise<ApiEnvelope<ActionAttributionResponse>> => {
       const params = new URLSearchParams({
-        report_date: reportDate,
+        report_date: effectiveReportDate,
         period_type: periodType,
       });
       const response = await fetch(
@@ -72,7 +89,7 @@ export function BondAnalyticsViewContent() {
       const json = await response.json();
       return json as ApiEnvelope<ActionAttributionResponse>;
     },
-    enabled: Boolean(reportDate),
+    enabled: Boolean(effectiveReportDate),
     retry: false,
   });
 
@@ -82,14 +99,14 @@ export function BondAnalyticsViewContent() {
       : null;
 
   async function handleBondAnalyticsRefresh() {
-    if (!reportDate) {
+    if (!effectiveReportDate) {
       return;
     }
     setIsBondAnalyticsRefreshing(true);
     setBondAnalyticsRefreshError(null);
     try {
       const payload = await runPollingTask({
-        start: () => client.refreshBondAnalytics(reportDate),
+        start: () => client.refreshBondAnalytics(effectiveReportDate),
         getStatus: (runId) => client.getBondAnalyticsRefreshStatus(runId),
         onUpdate: (nextPayload) => {
           if (nextPayload.run_id) {
@@ -117,13 +134,56 @@ export function BondAnalyticsViewContent() {
   }
 
   const overviewModel = buildBondAnalyticsOverviewModel({
-    reportDate,
+    reportDate: effectiveReportDate,
     periodType,
     activeModuleKey: activeTab,
     actionAttributionEnvelope: actionAttributionQuery.data ?? null,
     actionAttributionLoading: actionAttributionQuery.isFetching,
     actionAttributionError: actionAttributionErrorMessage,
   });
+
+  if (showDatesErrorState) {
+    return (
+      <section
+        style={{
+          padding: 24,
+          borderRadius: 20,
+          background: "#fbfcfe",
+          border: "1px solid #e4ebf5",
+          boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#162033" }}>债券分析日期载入失败。</div>
+        <div style={{ color: "#5c6b82", lineHeight: 1.7 }}>
+          无法确定可用报告日，当前不启动 Bond Analytics 默认首屏查询。请重试或通过 URL 显式传入
+          <code style={{ fontSize: 12, marginLeft: 4 }}>?report_date=YYYY-MM-DD</code>。
+        </div>
+      </section>
+    );
+  }
+
+  if (datesEmpty && !effectiveReportDate) {
+    return (
+      <section
+        style={{
+          padding: 24,
+          borderRadius: 20,
+          background: "#fbfcfe",
+          border: "1px solid #e4ebf5",
+          boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+          display: "grid",
+          gap: 12,
+        }}
+      >
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#162033" }}>债券分析暂无可用报告日。</div>
+        <div style={{ color: "#5c6b82", lineHeight: 1.7 }}>
+          后端尚未返回可消费的 Bond Analytics 报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
+        </div>
+      </section>
+    );
+  }
 
   return (
     <div
@@ -139,7 +199,7 @@ export function BondAnalyticsViewContent() {
       >
         <BondAnalyticsOverviewPanels
           dateOptions={dateOptions}
-          reportDate={reportDate}
+          reportDate={effectiveReportDate}
           onReportDateChange={setReportDate}
           periodType={periodType}
           onPeriodTypeChange={setPeriodType}
@@ -166,7 +226,7 @@ export function BondAnalyticsViewContent() {
             <BondAnalyticsDetailSection
               activeTab={activeTab}
               onActiveTabChange={setActiveTab}
-              reportDate={reportDate}
+              reportDate={effectiveReportDate}
               periodType={periodType}
             />
           </div>

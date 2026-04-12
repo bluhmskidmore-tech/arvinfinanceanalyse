@@ -18,6 +18,10 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () =
   ),
 }));
 
+vi.mock("../features/bond-analytics/components/BondAnalyticsView", () => ({
+  default: () => <section data-testid="bond-analysis-route-shell">mocked bond analytics route</section>,
+}));
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
@@ -76,6 +80,45 @@ describe("RouteRegistry", () => {
               }),
             };
           }
+          if (url.includes("/api/bond-analytics/action-attribution")) {
+            return {
+              ok: true,
+              json: async () => ({
+                result_meta: {
+                  trace_id: "tr_action_attr",
+                  basis: "formal",
+                  result_kind: "bond_analytics.action_attribution",
+                  formal_use_allowed: true,
+                  source_version: "sv_action_attr",
+                  vendor_version: "vv_none",
+                  rule_version: "rv_action_attr",
+                  cache_version: "cv_action_attr",
+                  quality_flag: "ok",
+                  vendor_status: "ok",
+                  fallback_mode: "none",
+                  scenario_flag: false,
+                  generated_at: "2026-04-12T00:00:00Z",
+                },
+                result: {
+                  report_date: "2025-12-31",
+                  period_type: "MoM",
+                  period_start: "2025-12-01",
+                  period_end: "2025-12-31",
+                  total_actions: 2,
+                  total_pnl_from_actions: "100",
+                  by_action_type: [],
+                  action_details: [],
+                  period_start_duration: "3.1",
+                  period_end_duration: "3.0",
+                  duration_change_from_actions: "-0.1",
+                  period_start_dv01: "10",
+                  period_end_dv01: "9",
+                  warnings: [],
+                  computed_at: "2026-04-12T00:00:00Z",
+                },
+              }),
+            };
+          }
           return { ok: false, status: 404, json: async () => ({}) };
         }),
       );
@@ -86,12 +129,16 @@ describe("RouteRegistry", () => {
     });
 
     it("renders the risk-overview route as the live governed page", async () => {
-      renderWorkbenchApp(["/risk-overview"]);
+      renderWorkbenchApp(["/risk-overview"], {
+        client: createApiClient({ mode: "mock" }),
+      });
 
       expect(
         await screen.findByRole("heading", { name: "风险总览" }, { timeout: 10000 }),
       ).toBeInTheDocument();
-      expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
+      expect(
+        await screen.findByText(/主指标来自正式风险张量接口/),
+      ).toBeInTheDocument();
       expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
     });
   });
@@ -136,13 +183,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
 
-  it("renders the bond-analysis route as a reserved placeholder", async () => {
+  it("renders the bond-analysis route as the live governed cockpit", async () => {
     renderWorkbenchApp(["/bond-analysis"]);
 
-    expect(
-      await screen.findByRole("heading", { name: "债券分析" }),
-    ).toBeInTheDocument();
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("bond-analysis-route-shell")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the product-category adjustment audit route", async () => {

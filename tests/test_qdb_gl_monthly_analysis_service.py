@@ -137,6 +137,47 @@ def test_service_workbook_envelope_applies_approved_analysis_adjustments(tmp_pat
     assert target_row[level_key] == "manual_override"
 
 
+def test_service_workbook_envelope_applies_approved_mapping_adjustments(tmp_path):
+    module = load_module(
+        "backend.app.services.qdb_gl_monthly_analysis_service",
+        "backend/app/services/qdb_gl_monthly_analysis_service.py",
+    )
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    governance_dir = tmp_path / "governance"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602")
+
+    module.create_qdb_gl_monthly_analysis_manual_adjustment(
+        governance_dir=str(governance_dir),
+        payload={
+            "report_month": "202602",
+            "adjustment_class": "mapping_adjustment",
+            "target": {
+                "account_code": "14001000001",
+                "field": "account_name",
+            },
+            "operator": "OVERRIDE",
+            "value": "买入返售-人工修正",
+            "approval_status": "approved",
+        },
+    )
+
+    envelope = module.qdb_gl_monthly_analysis_workbook_envelope(
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+        report_month="202602",
+    )
+
+    alerts_sheet = next(
+        sheet for sheet in envelope["result"]["sheets"] if sheet["key"] == "alerts"
+    )
+    code_key = alerts_sheet["columns"][0]
+    name_key = alerts_sheet["columns"][1]
+    target_row = next(row for row in alerts_sheet["rows"] if str(row[code_key]) == "14001000001")
+
+    assert target_row[name_key] == "买入返售-人工修正"
+
+
 def test_service_scenario_envelope_returns_rebuilt_workbook_payload_with_override_effects(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_monthly_analysis_service",

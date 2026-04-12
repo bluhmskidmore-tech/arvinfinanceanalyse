@@ -1,3 +1,11 @@
+"""
+Choice macro / EDB adapters for governed ingest.
+
+Yield-curve **enterprise AAA** (and other curve types) for `fact_formal_yield_curve_daily` use
+`backend.app.repositories.akshare_adapter.VendorAdapter._fetch_choice_curve` with
+`CHOICE_CURVE_CODES` — not this module. This file covers macro snapshot fetch paths.
+"""
+
 import math
 from dataclasses import dataclass
 

@@ -26,6 +26,12 @@ from backend.app.schemas.executive_dashboard import (
 from backend.app.schemas.result_meta import ResultMeta
 
 
+def _normalize_report_date(report_date: str | None) -> str | None:
+    if report_date is None:
+        return None
+    return date.fromisoformat(str(report_date).strip()).isoformat()
+
+
 def _envelope(result_kind: str, result: object) -> dict[str, object]:
     meta = ResultMeta(
         trace_id=f"tr_{result_kind.replace('.', '_')}",
@@ -79,12 +85,19 @@ _CATEGORY_ID_TO_ATTRIBUTION_SEGMENT: dict[str, str] = {
 }
 
 
-def _level1_monthly_rows(repo: ProductCategoryPnlRepository) -> tuple[str, list[dict[str, object]]] | None:
+def _level1_monthly_rows(
+    repo: ProductCategoryPnlRepository,
+    report_date: str | None = None,
+) -> tuple[str, list[dict[str, object]]] | None:
     dates = repo.list_report_dates()
-    if not dates:
+    target_report_date = _normalize_report_date(report_date)
+    if target_report_date is None:
+        if not dates:
+            return None
+        target_report_date = dates[0]
+    elif dates and target_report_date not in dates:
         return None
-    report_date = dates[0]
-    rows = repo.fetch_rows(report_date, "monthly")
+    rows = repo.fetch_rows(target_report_date, "monthly")
     level1 = [
         r
         for r in rows
@@ -92,7 +105,7 @@ def _level1_monthly_rows(repo: ProductCategoryPnlRepository) -> tuple[str, list[
     ]
     if not level1:
         return None
-    return report_date, level1
+    return target_report_date, level1
 
 
 def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, float]:
@@ -109,8 +122,11 @@ def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, 
     return totals
 
 
-def _build_pnl_attribution_from_repo(repo: ProductCategoryPnlRepository) -> PnlAttributionPayload | None:
-    packed = _level1_monthly_rows(repo)
+def _build_pnl_attribution_from_repo(
+    repo: ProductCategoryPnlRepository,
+    report_date: str | None = None,
+) -> PnlAttributionPayload | None:
+    packed = _level1_monthly_rows(repo, report_date)
     if packed is None:
         return None
     _report_date, rows = packed
@@ -140,8 +156,11 @@ def _build_pnl_attribution_from_repo(repo: ProductCategoryPnlRepository) -> PnlA
     )
 
 
-def _build_contribution_from_repo(repo: ProductCategoryPnlRepository) -> ContributionPayload | None:
-    packed = _level1_monthly_rows(repo)
+def _build_contribution_from_repo(
+    repo: ProductCategoryPnlRepository,
+    report_date: str | None = None,
+) -> ContributionPayload | None:
+    packed = _level1_monthly_rows(repo, report_date)
     if packed is None:
         return None
     report_date, rows = packed
@@ -187,25 +206,33 @@ def _build_contribution_from_repo(repo: ProductCategoryPnlRepository) -> Contrib
     )
 
 
-def executive_overview() -> dict[str, object]:
+def executive_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    normalized_report_date = _normalize_report_date(report_date)
     aum_raw: float | None = None
     ytd_raw: float | None = None
 
     try:
-        row = FormalZqtzBalanceMetricsRepository(
-            str(settings.duckdb_path)
-        ).fetch_latest_zqtz_asset_market_value(currency_basis="CNY")
+        balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
+        row = (
+            balance_repo.fetch_zqtz_asset_market_value(
+                report_date=normalized_report_date,
+                currency_basis="CNY",
+            )
+            if normalized_report_date is not None
+            else balance_repo.fetch_latest_zqtz_asset_market_value(currency_basis="CNY")
+        )
         if row is not None:
             aum_raw = float(row["total_market_value_amount"])
     except (RuntimeError, OSError, TypeError, ValueError):
         aum_raw = None
 
     try:
+        pnl_repo = PnlRepository(str(settings.duckdb_path))
         ytd_raw = float(
-            PnlRepository(str(settings.duckdb_path)).sum_formal_total_pnl_for_year(
-                date.today().year
-            )
+            pnl_repo.sum_formal_total_pnl_through_report_date(normalized_report_date)
+            if normalized_report_date is not None
+            else pnl_repo.sum_formal_total_pnl_for_year(date.today().year)
         )
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
@@ -216,7 +243,11 @@ def executive_overview() -> dict[str, object]:
         else "1,023.47 亿"
     )
     aum_detail = (
-        "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
+        (
+            f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
+            if normalized_report_date is not None
+            else "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
+        )
         if aum_raw is not None
         else "较上月保持温和扩张，当前仅提供受控展示值。"
     )
@@ -226,7 +257,11 @@ def executive_overview() -> dict[str, object]:
         else "+12.63 亿"
     )
     ytd_detail = (
-        f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
+        (
+            f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
+            if normalized_report_date is not None
+            else f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
+        )
         if ytd_raw is not None
         else "收益口径后续由正式服务替换，当前为受控演示值。"
     )
@@ -302,11 +337,11 @@ def executive_summary() -> dict[str, object]:
     return _envelope("executive.summary", payload)
 
 
-def executive_pnl_attribution() -> dict[str, object]:
+def executive_pnl_attribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     try:
         repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-        built = _build_pnl_attribution_from_repo(repo)
+        built = _build_pnl_attribution_from_repo(repo, report_date)
         if built is not None:
             return _envelope("executive.pnl-attribution", built)
     except (RuntimeError, OSError, TypeError, ValueError, KeyError):
@@ -356,12 +391,59 @@ def executive_pnl_attribution() -> dict[str, object]:
     return _envelope("executive.pnl-attribution", payload)
 
 
-def executive_risk_overview() -> dict[str, object]:
+def executive_risk_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    normalized_report_date = _normalize_report_date(report_date)
     try:
-        snapshot = BondAnalyticsRepository(
-            str(settings.duckdb_path)
-        ).fetch_latest_risk_overview_snapshot()
+        repo = BondAnalyticsRepository(str(settings.duckdb_path))
+        if normalized_report_date is not None:
+            available_bond_dates = repo.list_report_dates()
+            if available_bond_dates and normalized_report_date not in available_bond_dates:
+                detail_txt = (
+                    f"指定日期 {normalized_report_date} 无可用债券分析快照，"
+                    "未回退到演示占位百分比。"
+                )
+                return _envelope(
+                    "executive.risk-overview",
+                    RiskOverviewPayload(
+                        title="风险全景",
+                        signals=[
+                            RiskSignal(
+                                id="duration",
+                                label="久期风险",
+                                value="—",
+                                status="warning",
+                                detail=detail_txt,
+                            ),
+                            RiskSignal(
+                                id="leverage",
+                                label="杠杆风险",
+                                value="—",
+                                status="warning",
+                                detail=detail_txt,
+                            ),
+                            RiskSignal(
+                                id="credit",
+                                label="信用集中度",
+                                value="—",
+                                status="warning",
+                                detail=detail_txt,
+                            ),
+                            RiskSignal(
+                                id="liquidity",
+                                label="流动性风险",
+                                value="—",
+                                status="warning",
+                                detail=detail_txt,
+                            ),
+                        ],
+                    ),
+                )
+        snapshot = (
+            repo.fetch_risk_overview_snapshot(report_date=normalized_report_date)
+            if normalized_report_date is not None
+            else repo.fetch_latest_risk_overview_snapshot()
+        )
         if snapshot is not None and snapshot["report_date"] is not None:
             wdur = snapshot["portfolio_modified_duration"]
             sum_dv01 = snapshot["portfolio_dv01"]
@@ -373,6 +455,11 @@ def executive_risk_overview() -> dict[str, object]:
                 cred_f = float(cred_pct) if cred_pct is not None else 0.0
                 ytm_f = float(w_ytm) if w_ytm is not None else 0.0
                 asof_date = str(snapshot["report_date"])
+                asof_label = (
+                    f"指定日期 {asof_date}"
+                    if normalized_report_date is not None
+                    else f"最新日期 {asof_date}"
+                )
                 payload = RiskOverviewPayload(
                     title="风险全景",
                     signals=[
@@ -381,28 +468,28 @@ def executive_risk_overview() -> dict[str, object]:
                             label="久期风险",
                             value=f"{wdur_f:.2f} 年",
                             status="stable",
-                            detail=f"最新日期 {asof_date}，组合市值加权修正久期（modified_duration）。",
+                            detail=f"{asof_label}，组合市值加权修正久期（modified_duration）。",
                         ),
                         RiskSignal(
                             id="leverage",
                             label="杠杆风险",
                             value=f"{dv01_f:,.0f}",
                             status="watch",
-                            detail=f"最新日期 {asof_date}，DV01 合计（元口径聚合）。",
+                            detail=f"{asof_label}，DV01 合计（元口径聚合）。",
                         ),
                         RiskSignal(
                             id="credit",
                             label="信用集中度",
                             value=f"{cred_f:.1f}%",
                             status="warning",
-                            detail=f"最新日期 {asof_date}，信用类债券市值占组合市值比重。",
+                            detail=f"{asof_label}，信用类债券市值占组合市值比重。",
                         ),
                         RiskSignal(
                             id="liquidity",
                             label="流动性风险",
                             value=f"{ytm_f:.2f} 年",
                             status="stable",
-                            detail=f"最新日期 {asof_date}，市值加权平均剩余期限（years_to_maturity）。",
+                            detail=f"{asof_label}，市值加权平均剩余期限（years_to_maturity）。",
                         ),
                     ],
                 )
@@ -446,11 +533,11 @@ def executive_risk_overview() -> dict[str, object]:
     return _envelope("executive.risk-overview", payload)
 
 
-def executive_contribution() -> dict[str, object]:
+def executive_contribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     try:
         repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-        built = _build_contribution_from_repo(repo)
+        built = _build_contribution_from_repo(repo, report_date)
         if built is not None:
             return _envelope("executive.contribution", built)
     except (RuntimeError, OSError, TypeError, ValueError, KeyError):
@@ -518,16 +605,38 @@ def _fallback_executive_alerts() -> dict[str, object]:
     return _envelope("executive.alerts", payload)
 
 
-def executive_alerts() -> dict[str, object]:
+def executive_alerts(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     try:
         repo = BondAnalyticsRepository(str(settings.duckdb_path))
-        dates = repo.list_report_dates()
-        if not dates:
-            return _fallback_executive_alerts()
-        report_date = date.fromisoformat(dates[0])
-        rows = repo.fetch_bond_analytics_rows(report_date=report_date.isoformat())
-        tensor = compute_portfolio_risk_tensor(rows, report_date=report_date)
+        normalized_report_date = _normalize_report_date(report_date)
+        if normalized_report_date is None:
+            dates = repo.list_report_dates()
+            if not dates:
+                return _fallback_executive_alerts()
+            normalized_report_date = dates[0]
+        elif normalized_report_date not in repo.list_report_dates():
+            return _envelope(
+                "executive.alerts",
+                AlertsPayload(
+                    title="预警与事件",
+                    items=[
+                        AlertItem(
+                            id="governed-date-miss",
+                            severity="medium",
+                            title="指定日期无债券分析数据",
+                            occurred_at="--:--",
+                            detail=(
+                                f"report_date={normalized_report_date} 不在可用日期列表中，"
+                                "未回退到演示占位预警。"
+                            ),
+                        )
+                    ],
+                ),
+            )
+        report_date_value = date.fromisoformat(normalized_report_date)
+        rows = repo.fetch_bond_analytics_rows(report_date=report_date_value.isoformat())
+        tensor = compute_portfolio_risk_tensor(rows, report_date=report_date_value)
         raw = evaluate_alerts(tensor)
         occurred_at = datetime.now().strftime("%H:%M")
         items = [

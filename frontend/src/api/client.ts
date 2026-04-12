@@ -20,6 +20,7 @@ import type {
   BalanceAnalysisWorkbookPayload,
   BalancePositionScope,
   BalanceAnalysisRefreshPayload,
+  BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
   BalanceAnalysisSummaryExportPayload,
   BalanceAnalysisWorkbookExportPayload,
@@ -250,6 +251,7 @@ export type ApiClient = {
   getBalanceAnalysisRefreshStatus: (
     runId: string,
   ) => Promise<BalanceAnalysisRefreshPayload>;
+  getBondAnalyticsDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsRefreshStatus: (
     runId: string,
@@ -3005,6 +3007,16 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         report_date: reportDate,
       };
     },
+    async getBondAnalyticsDates() {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.dates",
+        {
+          report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getBondAnalyticsRefreshStatus(runId: string) {
       await delay();
       return {
@@ -3093,6 +3105,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsDates: () =>
+      requestJson<BondAnalyticsDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/api/bond-analytics/dates",
       ),
     getContribution: () =>
       requestJson<ContributionPayload>(

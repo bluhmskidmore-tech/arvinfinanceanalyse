@@ -219,6 +219,68 @@ class BalanceAnalysisRepository:
             )
         return rows[0][0], rows[0][1] or ""
 
+    def fetch_zqtz_snapshot_native_face_values(
+        self,
+        *,
+        report_date: str,
+    ) -> dict[tuple[str, str, str, str], Decimal]:
+        """Face values from raw zqtz snapshot (for pnl.bridge native column enrichment)."""
+        if not self._table_exists("zqtz_bond_daily_snapshot"):
+            return {}
+        rows = self._fetch_rows(
+            """
+            select instrument_code, portfolio_name, cost_center, currency_code, face_value_native
+            from zqtz_bond_daily_snapshot
+            where report_date = ?
+            """,
+            [report_date],
+        )
+        return {
+            (
+                str(instrument_code or ""),
+                str(portfolio_name or ""),
+                str(cost_center or ""),
+                str(currency_code or "").upper(),
+            ): Decimal(str(face_value_native))
+            for instrument_code, portfolio_name, cost_center, currency_code, face_value_native in rows
+            if face_value_native is not None
+        }
+
+    def resolve_fx_mid_rates_map(self, *, report_date: str) -> dict[str, Decimal] | None:
+        """Map upper currency code to CNY mid rate for ``report_date`` (with trade_date LOCF fallback)."""
+        if not self._table_exists("fx_daily_mid"):
+            return None
+        rows = self._fetch_rows(
+            """
+            select base_currency, mid_rate
+            from fx_daily_mid
+            where trade_date = ?
+              and quote_currency = 'CNY'
+            """,
+            [report_date],
+        )
+        if not rows:
+            rows = self._fetch_rows(
+                """
+                select base_currency, mid_rate
+                from fx_daily_mid
+                where trade_date <= ?
+                  and quote_currency = 'CNY'
+                order by trade_date desc
+                limit 10
+                """,
+                [report_date],
+            )
+        if not rows:
+            return None
+        resolved: dict[str, Decimal] = {}
+        for base_currency, mid_rate in rows:
+            base = str(base_currency or "").upper().strip()
+            if not base or base in resolved:
+                continue
+            resolved[base] = Decimal(str(mid_rate))
+        return resolved or None
+
     def replace_formal_balance_rows(
         self,
         *,

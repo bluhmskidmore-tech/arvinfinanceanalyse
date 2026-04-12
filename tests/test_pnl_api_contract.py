@@ -168,7 +168,9 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
         "Missing current balance row; ending_dirty_mv defaults to 0.",
         "Missing prior balance row; beginning_dirty_mv defaults to 0.",
     ]
-    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert payload["result"]["warnings"][0] == (
+        "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
+    )
     assert "Current balance rows unavailable" in payload["result"]["warnings"][1]
     assert "No prior balance report date found" in payload["result"]["warnings"][2]
     summary = payload["result"]["summary"]
@@ -236,7 +238,9 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert summary["total_explained_pnl"] == "11.50000000"
     assert summary["total_actual_pnl"] == "11.50000000"
     assert summary["total_residual"] == "0.00000000"
-    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert payload["result"]["warnings"][0] == (
+        "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
+    )
     assert any(
         "Balance lineage fallback used for report_date=2025-12-31" in warning
         for warning in payload["result"]["warnings"]
@@ -332,8 +336,34 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
         "rv_balance_current__rv_balance_prior__rv_pnl_bridge_meta"
     )
     assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_pnl_bridge_meta"
-    assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
+    assert payload["result"]["warnings"][0] == (
+        "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
+    )
     assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge_fx",
+        vendor_version="vv_bridge_fx",
+        rule_version="rv_bridge_fx",
+    )
+    _seed_usd_pnl_bridge_balance_rows(duckdb_path)
+    _seed_pnl_bridge_snapshot_face_values(duckdb_path)
+    _seed_pnl_bridge_fx_rates(duckdb_path)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    row = payload["result"]["rows"][0]
+    assert row["fx_translation"] == "41.35000000"
+    assert payload["result"]["summary"]["total_fx_translation"] == "41.35000000"
     get_settings.cache_clear()
 
 
@@ -1132,6 +1162,131 @@ def _seed_pnl_bridge_balance_rows(
                     "trace-z-unusable",
                 ],
             )
+    finally:
+        conn.close()
+
+
+def _seed_usd_pnl_bridge_balance_rows(duckdb_path: Path) -> None:
+    repo_module = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        repo_module.ensure_balance_analysis_tables(conn)
+        conn.execute(
+            "update fact_formal_pnl_fi set currency_basis = 'USD' where report_date = '2025-12-31' and instrument_code = '240001.IB'"
+        )
+        conn.execute("delete from fact_formal_zqtz_balance_daily")
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "2025-12-31",
+                    "240001.IB",
+                    "FI Desk",
+                    "CC100",
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "USD",
+                    "100.00000000",
+                    "99.00000000",
+                    "2.00000000",
+                    False,
+                    "sv-z-current-usd",
+                    "rv-z-current-usd",
+                    "ib-z-current-usd",
+                    "trace-z-current-usd",
+                ),
+                (
+                    "2025-10-31",
+                    "240001.IB",
+                    "FI Desk",
+                    "CC100",
+                    "T",
+                    "FVTPL",
+                    "asset",
+                    "CNY",
+                    "USD",
+                    "90.00000000",
+                    "89.00000000",
+                    "1.00000000",
+                    False,
+                    "sv-z-prior-usd",
+                    "rv-z-prior-usd",
+                    "ib-z-prior-usd",
+                    "trace-z-prior-usd",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _seed_pnl_bridge_snapshot_face_values(duckdb_path: Path) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists zqtz_bond_daily_snapshot (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              currency_code varchar,
+              face_value_native decimal(24, 8)
+            )
+            """
+        )
+        conn.execute("delete from zqtz_bond_daily_snapshot")
+        conn.executemany(
+            """
+            insert into zqtz_bond_daily_snapshot (
+              report_date, instrument_code, portfolio_name, cost_center, currency_code, face_value_native
+            ) values (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2025-12-31", "240001.IB", "FI Desk", "CC100", "USD", "1000.00000000"),
+                ("2025-10-31", "240001.IB", "FI Desk", "CC100", "USD", "1000.00000000"),
+            ],
+        )
+    finally:
+        conn.close()
+
+
+def _seed_pnl_bridge_fx_rates(duckdb_path: Path) -> None:
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(18, 8)
+            )
+            """
+        )
+        conn.execute("delete from fx_daily_mid")
+        conn.executemany(
+            """
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate)
+            values (?, ?, ?, ?)
+            """,
+            [
+                ("2025-12-31", "USD", "CNY", "7.08270000"),
+                ("2025-10-31", "USD", "CNY", "7.04135000"),
+            ],
+        )
     finally:
         conn.close()
 

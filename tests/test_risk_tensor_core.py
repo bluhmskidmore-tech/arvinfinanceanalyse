@@ -21,6 +21,9 @@ def _row(
     spread_dv01: str = "0",
     convexity: str = "0",
     market_value: str = "0",
+    face_value: str | None = None,
+    coupon_rate: str = "0",
+    interest_mode: str = "annual",
     issuer_name: str = "Issuer A",
     maturity_date: date | None = None,
 ) -> dict[str, object]:
@@ -31,6 +34,9 @@ def _row(
         "spread_dv01": Decimal(spread_dv01),
         "convexity": Decimal(convexity),
         "market_value": Decimal(market_value),
+        "face_value": Decimal(face_value if face_value is not None else market_value),
+        "coupon_rate": Decimal(coupon_rate),
+        "interest_mode": interest_mode,
         "issuer_name": issuer_name,
         "maturity_date": maturity_date,
     }

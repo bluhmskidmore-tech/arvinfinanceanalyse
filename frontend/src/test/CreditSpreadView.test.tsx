@@ -117,6 +117,7 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("加权平均利差")).toBeInTheDocument();
 
     expect(screen.getByText("利差情景冲击")).toBeInTheDocument();
+    expect(screen.getByText("信用债分布")).toBeInTheDocument();
     expect(screen.getByText("spr_25w")).toBeInTheDocument();
 
     expect(screen.getByText("评级迁徙情景")).toBeInTheDocument();

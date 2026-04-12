@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 from uuid import uuid4
 
@@ -488,10 +489,25 @@ def _requested_report_date(request: AgentQueryRequest) -> str | None:
     return None
 
 
+def _coerce_iso_report_date(raw: str) -> str:
+    return date.fromisoformat(str(raw).strip()).isoformat()
+
+
 def _latest_or_requested(request: AgentQueryRequest, available_dates: list[str]) -> str | None:
     requested = _requested_report_date(request)
     if requested is not None:
-        return requested
+        normalized = _coerce_iso_report_date(requested)
+        if not available_dates:
+            raise ValueError("No governed report dates are available for this query.")
+        available_normalized = {
+            date.fromisoformat(str(d).strip()).isoformat() for d in available_dates
+        }
+        if normalized not in available_normalized:
+            raise ValueError(
+                f"Requested report_date={normalized} is not in available governed dates "
+                f"{sorted(available_normalized)}."
+            )
+        return normalized
     if not available_dates:
         return None
     return str(available_dates[0])

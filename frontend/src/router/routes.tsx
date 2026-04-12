@@ -48,6 +48,9 @@ const RiskTensorPage = lazy(
 const RiskOverviewPage = lazy(
   () => import("../features/risk-overview/RiskOverviewPage"),
 );
+const BondAnalyticsView = lazy(
+  () => import("../features/bond-analytics/components/BondAnalyticsView"),
+);
 
 function routeElement(element: ReactNode) {
   return (
@@ -144,6 +147,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<MarketDataPage />),
+      };
+    }
+
+    if (section.path === "/bond-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<BondAnalyticsView />),
       };
     }
 

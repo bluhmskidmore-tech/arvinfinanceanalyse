@@ -18,6 +18,7 @@ from backend.app.core_finance.bond_analytics.common import (
 
 ZERO = Decimal("0")
 HUNDRED = Decimal("100")
+AMOUNT_SCALE = Decimal("0.00000001")
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,6 +59,8 @@ def build_pnl_bridge_rows(
     cdb_curve_prior: dict[str, Decimal] | None = None,
     aaa_credit_curve_current: dict[str, Decimal] | None = None,
     aaa_credit_curve_prior: dict[str, Decimal] | None = None,
+    fx_rates_current: dict[str, Decimal] | None = None,
+    fx_rates_prior: dict[str, Decimal] | None = None,
 ) -> list[PnlBridgeRow]:
     current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
     prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
@@ -121,7 +124,16 @@ def build_pnl_bridge_rows(
             aaa_credit_curve_current=aaa_credit_curve_current,
             aaa_credit_curve_prior=aaa_credit_curve_prior,
         )
-        fx_translation = ZERO
+        fx_translation = _calculate_fx_translation(
+            currency_basis=currency_basis,
+            face_value_native=_coerce_decimal(
+                current_balance.get("face_value_native", ZERO)
+            )
+            if current_balance
+            else ZERO,
+            fx_rate_current=fx_rates_current,
+            fx_rate_prior=fx_rates_prior,
+        )
         realized_trading = _coerce_decimal(raw_row.get("capital_gain_517", ZERO))
         unrealized_fv = _coerce_decimal(raw_row.get("fair_value_change_516", ZERO))
         manual_adjustment = _coerce_decimal(raw_row.get("manual_adjustment", ZERO))
@@ -278,6 +290,10 @@ def _calculate_credit_spread_shift(
     aaa_credit_curve_current: dict[str, Decimal] | None,
     aaa_credit_curve_prior: dict[str, Decimal] | None,
 ) -> Decimal:
+    """
+    Credit PnL from change in (AAA enterprise curve − benchmark treasury/CDB curve) spread,
+    for credit book rows, when governed curves exist for both dates.
+    """
     if current_balance is None or not _is_credit_row(current_balance):
         return ZERO
     if (
@@ -304,6 +320,31 @@ def _calculate_credit_spread_shift(
         return ZERO
     spread_delta = (current_spread - prior_spread) / HUNDRED
     return -(spread_delta * modified_duration * market_value)
+
+
+def _calculate_fx_translation(
+    *,
+    currency_basis: str,
+    face_value_native: Decimal,
+    fx_rate_current: dict[str, Decimal] | None,
+    fx_rate_prior: dict[str, Decimal] | None,
+) -> Decimal:
+    """
+    FX translation = face_value_native * (current_rate - prior_rate).
+
+    - CNY/CNX/RMB rows have no FX translation.
+    - Missing FX dictionaries or missing base-currency rates default to 0.
+    """
+    if not fx_rate_current or not fx_rate_prior:
+        return ZERO
+    base = currency_basis.upper().strip()
+    if base in ("", "CNY", "CNX", "RMB"):
+        return ZERO
+    current_rate = fx_rate_current.get(base)
+    prior_rate = fx_rate_prior.get(base)
+    if current_rate is None or prior_rate is None:
+        return ZERO
+    return (face_value_native * (current_rate - prior_rate)).quantize(AMOUNT_SCALE)
 
 
 def _curve_rate(curve: dict[str, Decimal], target_years: float) -> Decimal:

@@ -26,12 +26,18 @@ def _seed_curve_rows(duckdb_path: str) -> None:
                 ("2026-03-31", "treasury", "1Y", Decimal("2.00"), "akshare", "vv_curve_current", "sv_curve_current", "rv_curve"),
                 ("2026-03-31", "treasury", "2Y", Decimal("3.00"), "akshare", "vv_curve_current", "sv_curve_current", "rv_curve"),
                 ("2026-03-31", "treasury", "3Y", Decimal("4.00"), "akshare", "vv_curve_current", "sv_curve_current", "rv_curve"),
+                ("2026-03-31", "cdb", "1Y", Decimal("2.20"), "choice", "vv_cdb_current", "sv_cdb_current", "rv_curve"),
+                ("2026-03-31", "cdb", "2Y", Decimal("3.20"), "choice", "vv_cdb_current", "sv_cdb_current", "rv_curve"),
+                ("2026-03-31", "cdb", "3Y", Decimal("4.20"), "choice", "vv_cdb_current", "sv_cdb_current", "rv_curve"),
                 ("2026-03-31", "aaa_credit", "1Y", Decimal("4.00"), "choice", "vv_aaa_current", "sv_aaa_current", "rv_curve"),
                 ("2026-03-31", "aaa_credit", "2Y", Decimal("5.00"), "choice", "vv_aaa_current", "sv_aaa_current", "rv_curve"),
                 ("2026-03-31", "aaa_credit", "3Y", Decimal("6.00"), "choice", "vv_aaa_current", "sv_aaa_current", "rv_curve"),
                 ("2026-03-01", "treasury", "1Y", Decimal("1.00"), "choice", "vv_curve_prior", "sv_curve_prior", "rv_curve"),
                 ("2026-03-01", "treasury", "2Y", Decimal("2.00"), "choice", "vv_curve_prior", "sv_curve_prior", "rv_curve"),
                 ("2026-03-01", "treasury", "3Y", Decimal("3.00"), "choice", "vv_curve_prior", "sv_curve_prior", "rv_curve"),
+                ("2026-03-01", "cdb", "1Y", Decimal("1.20"), "choice", "vv_cdb_prior", "sv_cdb_prior", "rv_curve"),
+                ("2026-03-01", "cdb", "2Y", Decimal("2.20"), "choice", "vv_cdb_prior", "sv_cdb_prior", "rv_curve"),
+                ("2026-03-01", "cdb", "3Y", Decimal("3.20"), "choice", "vv_cdb_prior", "sv_cdb_prior", "rv_curve"),
                 ("2026-03-01", "aaa_credit", "1Y", Decimal("2.00"), "choice", "vv_aaa_prior", "sv_aaa_prior", "rv_curve"),
                 ("2026-03-01", "aaa_credit", "2Y", Decimal("3.00"), "choice", "vv_aaa_prior", "sv_aaa_prior", "rv_curve"),
                 ("2026-03-01", "aaa_credit", "3Y", Decimal("4.00"), "choice", "vv_aaa_prior", "sv_aaa_prior", "rv_curve"),
@@ -82,9 +88,15 @@ def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, mo
 
     assert Decimal(result["roll_down"]) > Decimal("0")
     assert Decimal(result["rate_effect"]) < Decimal("0")
+    assert Decimal(result["convexity_effect"]) > Decimal("0")
     assert abs(
         Decimal(result["explained_pnl"])
-        - (Decimal(result["carry"]) + Decimal(result["roll_down"]) + Decimal(result["rate_effect"]))
+        - (
+            Decimal(result["carry"])
+            + Decimal(result["roll_down"])
+            + Decimal(result["rate_effect"])
+            + Decimal(result["convexity_effect"])
+        )
     ) <= Decimal("0.00000001")
     assert "sv_curve_current" in payload["result_meta"]["source_version"]
     assert "sv_curve_prior" in payload["result_meta"]["source_version"]
@@ -125,6 +137,37 @@ def test_return_decomposition_uses_spread_effect_for_credit_rows(tmp_path, monke
 
     assert Decimal(payload["result"]["spread_effect"]) < Decimal("0")
     assert any(Decimal(row["spread_effect"]) != Decimal("0") for row in payload["result"]["bond_details"])
+    get_settings.cache_clear()
+
+
+def test_convexity_effect_appears_in_return_decomposition_response(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    _seed_curve_rows(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date(2026, 3, 31), "MoM", "credit", "all")
+
+    assert Decimal(payload["result"]["convexity_effect"]) > Decimal("0")
+    assert any(Decimal(row["convexity_effect"]) > Decimal("0") for row in payload["result"]["bond_details"])
     get_settings.cache_clear()
 
 

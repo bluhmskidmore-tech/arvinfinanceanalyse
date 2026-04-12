@@ -114,7 +114,7 @@ describe("ProductCategoryPnlPage branch switching", () => {
         "aria-pressed",
         "true",
       );
-      expect(screen.getByRole("heading", { name: "Monthly Operating Analysis" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "月度经营分析" })).toBeInTheDocument();
       expect(screen.getByText("Overview")).toBeInTheDocument();
       expect(screen.getByText("Alerts")).toBeInTheDocument();
       expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();

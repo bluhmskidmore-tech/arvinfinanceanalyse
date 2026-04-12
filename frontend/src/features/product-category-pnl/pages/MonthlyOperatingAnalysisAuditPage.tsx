@@ -7,6 +7,54 @@ import type {
   QdbGlMonthlyAnalysisManualAdjustmentRequest,
 } from "../../../api/contracts";
 
+const COPY = {
+  title: "\u6708\u5ea6\u7ecf\u8425\u5206\u6790\u8c03\u6574\u5ba1\u8ba1",
+  subtitle: "\u67e5\u770b\u5e76\u64cd\u4f5c\u6708\u5ea6\u7ecf\u8425\u5206\u6790\u5206\u652f\u7684\u624b\u5de5\u8c03\u6574\u3002",
+  reportMonth: "\u62a5\u544a\u6708\u4efd",
+  exportAudit: "\u5bfc\u51fa\u5ba1\u8ba1",
+  adjustmentClass: "\u8c03\u6574\u7c7b\u578b",
+  mappingTarget: "\u6620\u5c04\u76ee\u6807",
+  mappingHint: "\u7528\u4e8e\u4fee\u6b63\u540d\u79f0\u7c7b\u6620\u5c04\uff0c\u4e0d\u76f4\u63a5\u6539\u5206\u6790\u7ed3\u679c\u3002",
+  mappingAccountCode: "\u6620\u5c04\u79d1\u76ee\u4ee3\u7801",
+  mappingField: "\u6620\u5c04\u5b57\u6bb5",
+  analysisTarget: "\u5206\u6790\u76ee\u6807",
+  analysisHint: "\u76f4\u63a5\u4fee\u6b63\u5206\u6790\u7ed3\u679c\u4e2d\u7684\u6307\u5b9a\u5355\u5143\u683c\u3002",
+  sectionKey: "\u5de5\u4f5c\u8868\u6807\u8bc6",
+  rowKey: "\u884c\u6807\u8bc6",
+  metricKey: "\u6307\u6807\u6807\u8bc6",
+  adjustmentValue: "\u8c03\u6574\u503c",
+  createAdjustment: "\u65b0\u589e\u8c03\u6574",
+  saveAdjustment: "\u4fdd\u5b58\u8c03\u6574",
+  edit: "\u7f16\u8f91",
+  revoke: "\u64a4\u9500",
+  restore: "\u6062\u590d",
+  empty: "\u5f53\u524d\u6ca1\u6709\u8c03\u6574\u8bb0\u5f55\u3002",
+  submitFailed: "\u63d0\u4ea4\u8c03\u6574\u5931\u8d25",
+  revokeFailed: "\u64a4\u9500\u5931\u8d25",
+  restoreFailed: "\u6062\u590d\u5931\u8d25",
+  exportFailed: "\u5bfc\u51fa\u5ba1\u8ba1\u5931\u8d25",
+  requiredValue: "\u8bf7\u586b\u5199\u8c03\u6574\u503c\u3002",
+  requiredMapping: "\u8bf7\u5b8c\u6574\u586b\u5199\u6620\u5c04\u8c03\u6574\u7684\u79d1\u76ee\u4ee3\u7801\u548c\u6620\u5c04\u5b57\u6bb5\u3002",
+  requiredAnalysis:
+    "\u8bf7\u5b8c\u6574\u586b\u5199\u5206\u6790\u8c03\u6574\u7684\u5de5\u4f5c\u8868\u3001\u884c\u6807\u8bc6\u548c\u6307\u6807\u6807\u8bc6\u3002",
+};
+
+const MAPPING_FIELD_OPTIONS = [
+  { value: "industry_name", label: "\u884c\u4e1a\u540d\u79f0" },
+  { value: "category_name", label: "\u5206\u7c7b\u540d\u79f0" },
+  { value: "account_name", label: "\u79d1\u76ee\u540d\u79f0" },
+] as const;
+
+const ANALYSIS_SECTION_OPTIONS = [
+  { value: "overview", label: "overview" },
+  { value: "alerts", label: "alerts" },
+] as const;
+
+const ANALYSIS_METRIC_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  overview: [{ value: "value", label: "value" }],
+  alerts: [{ value: "alert_level", label: "alert_level" }],
+};
+
 function downloadAuditCsv(filename: string, content: string) {
   const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
@@ -23,7 +71,10 @@ function buildDraft(reportMonth: string): QdbGlMonthlyAnalysisManualAdjustmentRe
   return {
     report_month: reportMonth,
     adjustment_class: "mapping_adjustment",
-    target: { target: "" },
+    target: {
+      account_code: "",
+      field: "industry_name",
+    },
     operator: "OVERRIDE",
     value: "",
     approval_status: "approved",
@@ -32,8 +83,15 @@ function buildDraft(reportMonth: string): QdbGlMonthlyAnalysisManualAdjustmentRe
 
 function serializeTarget(item: QdbGlMonthlyAnalysisManualAdjustmentPayload): string {
   const target = item.target;
-  if (typeof target?.target === "string") {
-    return target.target;
+  if (typeof target?.account_code === "string" && typeof target?.field === "string") {
+    return `${target.account_code} / ${target.field}`;
+  }
+  if (
+    typeof target?.section_key === "string" &&
+    typeof target?.row_key === "string" &&
+    typeof target?.metric_key === "string"
+  ) {
+    return `${target.section_key} / ${target.row_key} / ${target.metric_key}`;
   }
   return JSON.stringify(target ?? {});
 }
@@ -73,6 +131,10 @@ export default function MonthlyOperatingAnalysisAuditPage() {
     retry: false,
   });
 
+  const isMappingAdjustment = draft.adjustment_class === "mapping_adjustment";
+  const selectedSectionKey = String(draft.target.section_key ?? ANALYSIS_SECTION_OPTIONS[0]?.value ?? "overview");
+  const metricOptions = ANALYSIS_METRIC_OPTIONS[selectedSectionKey] ?? [];
+
   function updateDraft<K extends keyof QdbGlMonthlyAnalysisManualAdjustmentRequest>(
     key: K,
     value: QdbGlMonthlyAnalysisManualAdjustmentRequest[K],
@@ -83,7 +145,33 @@ export default function MonthlyOperatingAnalysisAuditPage() {
     }));
   }
 
+  function validateDraft(): string | null {
+    if (!draft.value.trim()) {
+      return COPY.requiredValue;
+    }
+    if (isMappingAdjustment) {
+      const accountCode = String(draft.target.account_code ?? "").trim();
+      const field = String(draft.target.field ?? "").trim();
+      if (!accountCode || !field) {
+        return COPY.requiredMapping;
+      }
+      return null;
+    }
+    const sectionKey = String(draft.target.section_key ?? "").trim();
+    const rowKey = String(draft.target.row_key ?? "").trim();
+    const metricKey = String(draft.target.metric_key ?? "").trim();
+    if (!sectionKey || !rowKey || !metricKey) {
+      return COPY.requiredAnalysis;
+    }
+    return null;
+  }
+
   async function handleSubmitAdjustment() {
+    const validationError = validateDraft();
+    if (validationError) {
+      setErrorMessage(validationError);
+      return;
+    }
     setErrorMessage(null);
     try {
       const payload = {
@@ -98,7 +186,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       setDraft(buildDraft(selectedMonth));
       await adjustmentsQuery.refetch();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "submit failed");
+      setErrorMessage(error instanceof Error ? error.message : COPY.submitFailed);
     }
   }
 
@@ -109,7 +197,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       setLastActionId(response.adjustment_id);
       await adjustmentsQuery.refetch();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "revoke failed");
+      setErrorMessage(error instanceof Error ? error.message : COPY.revokeFailed);
     }
   }
 
@@ -120,7 +208,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       setLastActionId(response.adjustment_id);
       await adjustmentsQuery.refetch();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "restore failed");
+      setErrorMessage(error instanceof Error ? error.message : COPY.restoreFailed);
     }
   }
 
@@ -130,7 +218,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       const payload = await client.exportQdbGlMonthlyAnalysisManualAdjustmentsCsv(selectedMonth);
       downloadAuditCsv(payload.filename, payload.content);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "export failed");
+      setErrorMessage(error instanceof Error ? error.message : COPY.exportFailed);
     }
   }
 
@@ -150,11 +238,9 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>
-            Monthly Operating Analysis Audit
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{COPY.title}</h1>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
-            Review and operate on branch-specific manual adjustments.
+            {COPY.subtitle}
           </p>
           {lastActionId ? (
             <p style={{ margin: "8px 0 0", color: "#5c6b82", fontSize: 12 }}>{lastActionId}</p>
@@ -165,7 +251,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "end" }}>
           <label style={{ display: "grid", gap: 8 }}>
-            Report Month
+            {COPY.reportMonth}
             <select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
               {(datesQuery.data?.result.report_months ?? []).map((reportMonth) => (
                 <option key={reportMonth} value={reportMonth}>
@@ -179,7 +265,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             data-testid="monthly-operating-analysis-adjustment-export"
             onClick={() => void handleExport()}
           >
-            Export Audit
+            {COPY.exportAudit}
           </button>
         </div>
       </div>
@@ -188,7 +274,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr auto",
+            gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
             gap: 12,
             padding: 12,
             borderRadius: 12,
@@ -196,38 +282,160 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             background: "#fbfcfe",
           }}
         >
-          <select
-            data-testid="monthly-operating-analysis-adjustment-class"
-            value={draft.adjustment_class}
-            onChange={(event) =>
-              updateDraft(
-                "adjustment_class",
-                event.target.value as "mapping_adjustment" | "analysis_adjustment",
-              )
-            }
-          >
-            <option value="mapping_adjustment">mapping_adjustment</option>
-            <option value="analysis_adjustment">analysis_adjustment</option>
-          </select>
-          <input
-            data-testid="monthly-operating-analysis-adjustment-target"
-            value={String(draft.target.target ?? "")}
-            onChange={(event) => updateDraft("target", { target: event.target.value })}
-            placeholder="target"
-          />
-          <input
-            data-testid="monthly-operating-analysis-adjustment-value"
-            value={draft.value}
-            onChange={(event) => updateDraft("value", event.target.value)}
-            placeholder="value"
-          />
-          <button
-            type="button"
-            data-testid="monthly-operating-analysis-adjustment-submit"
-            onClick={() => void handleSubmitAdjustment()}
-          >
-            {editingAdjustmentId ? "Save Adjustment" : "Create Adjustment"}
-          </button>
+          <label style={{ display: "grid", gap: 6 }}>
+            {COPY.adjustmentClass}
+            <select
+              data-testid="monthly-operating-analysis-adjustment-class"
+              value={draft.adjustment_class}
+              onChange={(event) => {
+                const adjustmentClass = event.target.value as "mapping_adjustment" | "analysis_adjustment";
+                setDraft((current) => ({
+                  ...current,
+                  adjustment_class: adjustmentClass,
+                  target:
+                    adjustmentClass === "mapping_adjustment"
+                      ? {
+                          account_code:
+                            typeof current.target.account_code === "string" ? current.target.account_code : "",
+                          field: typeof current.target.field === "string" ? current.target.field : "industry_name",
+                        }
+                      : {
+                          section_key: "overview",
+                          row_key: "",
+                          metric_key: "value",
+                        },
+                }));
+              }}
+            >
+              <option value="mapping_adjustment">mapping_adjustment</option>
+              <option value="analysis_adjustment">analysis_adjustment</option>
+            </select>
+          </label>
+
+          {isMappingAdjustment ? (
+            <>
+              <div style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.mappingTarget}</span>
+                <span style={{ color: "#5c6b82", fontSize: 12 }}>{COPY.mappingHint}</span>
+              </div>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.mappingAccountCode}</span>
+                <input
+                  aria-label={COPY.mappingAccountCode}
+                  data-testid="monthly-operating-analysis-mapping-account-code"
+                  value={String(draft.target.account_code ?? "")}
+                  onChange={(event) =>
+                    updateDraft("target", {
+                      account_code: event.target.value,
+                      field: String(draft.target.field ?? "industry_name"),
+                    })
+                  }
+                  placeholder="如 12301 或 14001000001"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.mappingField}</span>
+                <select
+                  aria-label={COPY.mappingField}
+                  data-testid="monthly-operating-analysis-mapping-field"
+                  value={String(draft.target.field ?? "industry_name")}
+                  onChange={(event) =>
+                    updateDraft("target", {
+                      account_code: String(draft.target.account_code ?? ""),
+                      field: event.target.value,
+                    })
+                  }
+                >
+                  {MAPPING_FIELD_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <div style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.analysisTarget}</span>
+                <span style={{ color: "#5c6b82", fontSize: 12 }}>{COPY.analysisHint}</span>
+              </div>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.sectionKey}</span>
+                <select
+                  data-testid="monthly-operating-analysis-analysis-section-key"
+                  value={selectedSectionKey}
+                  onChange={(event) =>
+                    updateDraft("target", {
+                      section_key: event.target.value,
+                      row_key: String(draft.target.row_key ?? ""),
+                      metric_key: ANALYSIS_METRIC_OPTIONS[event.target.value]?.[0]?.value ?? "",
+                    })
+                  }
+                >
+                  {ANALYSIS_SECTION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.rowKey}</span>
+                <input
+                  data-testid="monthly-operating-analysis-analysis-row-key"
+                  value={String(draft.target.row_key ?? "")}
+                  onChange={(event) =>
+                    updateDraft("target", {
+                      section_key: selectedSectionKey,
+                      row_key: event.target.value,
+                      metric_key: String(draft.target.metric_key ?? metricOptions[0]?.value ?? ""),
+                    })
+                  }
+                  placeholder="如 14001000001 或 overview row key"
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span>{COPY.metricKey}</span>
+                <select
+                  data-testid="monthly-operating-analysis-analysis-metric-key"
+                  value={String(draft.target.metric_key ?? metricOptions[0]?.value ?? "")}
+                  onChange={(event) =>
+                    updateDraft("target", {
+                      section_key: selectedSectionKey,
+                      row_key: String(draft.target.row_key ?? ""),
+                      metric_key: event.target.value,
+                    })
+                  }
+                >
+                  {metricOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          )}
+
+          <label style={{ display: "grid", gap: 6 }}>
+            <span>{COPY.adjustmentValue}</span>
+            <input
+              data-testid="monthly-operating-analysis-adjustment-value"
+              value={draft.value}
+              onChange={(event) => updateDraft("value", event.target.value)}
+              placeholder="value"
+            />
+          </label>
+          <div style={{ display: "flex", alignItems: "end" }}>
+            <button
+              type="button"
+              data-testid="monthly-operating-analysis-adjustment-submit"
+              onClick={() => void handleSubmitAdjustment()}
+            >
+              {editingAdjustmentId ? COPY.saveAdjustment : COPY.createAdjustment}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -261,14 +469,28 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                 setDraft({
                   report_month: item.report_month,
                   adjustment_class: item.adjustment_class,
-                  target: { target: serializeTarget(item) },
+                  target:
+                    item.adjustment_class === "mapping_adjustment"
+                      ? {
+                          account_code: String(item.target.account_code ?? ""),
+                          field: String(item.target.field ?? "industry_name"),
+                        }
+                      : {
+                          section_key: String(item.target.section_key ?? "overview"),
+                          row_key: String(item.target.row_key ?? ""),
+                          metric_key: String(
+                            item.target.metric_key ??
+                              ANALYSIS_METRIC_OPTIONS[String(item.target.section_key ?? "overview")]?.[0]?.value ??
+                              "",
+                          ),
+                        },
                   operator: item.operator as "ADD" | "DELTA" | "OVERRIDE",
                   value: item.value,
                   approval_status: item.approval_status as "approved" | "pending" | "rejected",
                 });
               }}
             >
-              Edit
+              {COPY.edit}
             </button>
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -276,20 +498,20 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                 data-testid={`monthly-operating-analysis-adjustment-revoke-${item.adjustment_id}`}
                 onClick={() => void handleRevoke(item.adjustment_id)}
               >
-                Revoke
+                {COPY.revoke}
               </button>
               <button
                 type="button"
                 data-testid={`monthly-operating-analysis-adjustment-restore-${item.adjustment_id}`}
                 onClick={() => void handleRestore(item.adjustment_id)}
               >
-                Restore
+                {COPY.restore}
               </button>
             </div>
           </div>
         ))}
         {(adjustmentsQuery.data?.adjustments ?? []).length === 0 ? (
-          <div style={{ color: "#8090a8", fontSize: 13 }}>No adjustments found.</div>
+          <div style={{ color: "#8090a8", fontSize: 13 }}>{COPY.empty}</div>
         ) : null}
       </div>
 

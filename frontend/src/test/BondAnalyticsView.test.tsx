@@ -1,24 +1,26 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ApiClientProvider, createApiClient } from "../api/client";
+import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { BondAnalyticsView } from "../features/bond-analytics/components/BondAnalyticsView";
 
-function renderBondAnalyticsView() {
+function renderBondAnalyticsView(client?: ApiClient) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, refetchOnWindowFocus: false },
     },
   });
-  const client = createApiClient({ mode: "mock" });
   return render(
-    <ApiClientProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        <BondAnalyticsView />
-      </QueryClientProvider>
-    </ApiClientProvider>,
+    <MemoryRouter initialEntries={["/bond-analysis"]}>
+      <ApiClientProvider client={client ?? createApiClient({ mode: "mock" })}>
+        <QueryClientProvider client={queryClient}>
+          <BondAnalyticsView />
+        </QueryClientProvider>
+      </ApiClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -260,6 +262,107 @@ describe("BondAnalyticsView", () => {
         "data-module-key",
         "action-attribution",
       );
+    });
+  });
+
+  it("loads the default bond-analysis landing date from backend dates instead of client-generated month ends", async () => {
+    const fetchSequence: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        fetchSequence.push(url);
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                result_kind: "bond_analytics.dates",
+              }),
+              result: {
+                report_dates: ["2026-02-28", "2025-12-31"],
+              },
+            }),
+          };
+        }
+
+        if (url.includes("/api/bond-analytics/action-attribution")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                quality_flag: "warning",
+                fallback_mode: "latest_snapshot",
+              }),
+              result: createActionAttributionResult({
+                report_date: "2026-02-28",
+                warnings: ["DuckDB fact tables not yet populated - returning empty attribution"],
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    renderBondAnalyticsView(
+      createApiClient({ mode: "real" }),
+    );
+
+    const topCockpit = await screen.findByTestId("bond-analysis-top-cockpit");
+    expect(topCockpit).toBeInTheDocument();
+    expect((await within(topCockpit).findAllByText("2026-02-28")).length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
+      expect(
+        fetchSequence.some((url) =>
+          url.includes("/api/bond-analytics/action-attribution?report_date=2026-02-28"),
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("shows an explicit error state when bond-analysis dates fail to load and no report_date is provided", async () => {
+    const fetchSequence: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        fetchSequence.push(url);
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ detail: "dates backend unavailable" }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    renderBondAnalyticsView(createApiClient({ mode: "real" }));
+
+    expect(await screen.findByText("债券分析日期载入失败。")).toBeInTheDocument();
+    expect(screen.getByText(/无法确定可用报告日/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
+      expect(
+        fetchSequence.some((url) => url.includes("/api/bond-analytics/action-attribution")),
+      ).toBe(false);
     });
   });
 });

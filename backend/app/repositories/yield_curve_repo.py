@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+"""
+Yield curve DuckDB access.
+
+`YieldCurveRepository.fetch_curve_snapshot` is the **governed snapshot-lineage read surface**
+for materialized curves (`fact_formal_yield_curve_daily`): consumers must use it when they
+need vendor/source/rule lineage together with tenor points. Read-only views such as
+`yield_curve_daily` omit `rule_version` and are not a substitute for lineage-aware reads.
+"""
+
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -10,6 +19,23 @@ from backend.app.schemas.yield_curve import YieldCurveSnapshot
 
 FORMAL_FACT_TABLE = "fact_formal_yield_curve_daily"
 READ_VIEW = "yield_curve_daily"
+FX_TABLE = "fx_daily_mid"
+
+# Token embedded in user-visible fallback warnings (PnL bridge, bond analytics). Keep stable for tests.
+YIELD_CURVE_LATEST_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
+
+
+def format_yield_curve_latest_fallback_warning(
+    *,
+    curve_type: str,
+    resolved_trade_date: str,
+    requested_trade_date: str,
+) -> str:
+    """Exact-date snapshot missing; consumer used `resolved_trade_date` (must surface as warning, not silent)."""
+    return (
+        f"{YIELD_CURVE_LATEST_FALLBACK_PREFIX}: Using latest available {curve_type} curve "
+        f"from trade_date={resolved_trade_date} for requested_trade_date={requested_trade_date}."
+    )
 
 
 @dataclass(slots=True)
@@ -100,7 +126,64 @@ class YieldCurveRepository:
         finally:
             conn.close()
 
+    def fetch_fx_rates(self, trade_date: str) -> dict[str, Decimal]:
+        conn = _connect(self.path, read_only=True)
+        if conn is None:
+            return {}
+        try:
+            if not _relation_exists(conn, FX_TABLE):
+                return {}
+            rows = conn.execute(
+                f"""
+                select upper(base_currency) as base_currency, mid_rate
+                from {FX_TABLE}
+                where cast(trade_date as varchar) = ?
+                  and upper(quote_currency) = 'CNY'
+                order by upper(base_currency)
+                """,
+                [trade_date],
+            ).fetchall()
+            if not rows:
+                rows = conn.execute(
+                    f"""
+                    with ranked as (
+                      select
+                        upper(base_currency) as base_currency,
+                        mid_rate,
+                        row_number() over (
+                          partition by upper(base_currency)
+                          order by cast(trade_date as varchar) desc
+                        ) as row_num
+                      from {FX_TABLE}
+                      where cast(trade_date as varchar) <= ?
+                        and upper(quote_currency) = 'CNY'
+                    )
+                    select base_currency, mid_rate
+                    from ranked
+                    where row_num = 1
+                    order by base_currency
+                    """,
+                    [trade_date],
+                ).fetchall()
+            return {
+                str(base_currency): Decimal(str(mid_rate))
+                for base_currency, mid_rate in rows
+                if base_currency not in (None, "") and mid_rate is not None
+            }
+        finally:
+            conn.close()
+
     def fetch_curve_snapshot(self, trade_date: str, curve_type: str) -> dict[str, object] | None:
+        """
+        Snapshot-lineage read surface for one `(trade_date, curve_type)` grain in `fact_formal_yield_curve_daily`.
+
+        Returns ``None`` when there is no snapshot, or when lineage fields disagree across tenors
+        (data corruption). On success, the mapping includes:
+
+        - ``trade_date``, ``curve_type``
+        - ``curve``: tenor -> ``Decimal`` rate
+        - ``vendor_name``, ``vendor_version``, ``source_version``, ``rule_version`` (uniform across tenors)
+        """
         conn = _connect(self.path, read_only=True)
         if conn is None:
             return None

@@ -34,6 +34,39 @@ def _configure_upstream(tmp_path):
     return duckdb_path, governance_dir, bond_task_mod
 
 
+def _configure_upstream_with_semiannual_coupon(tmp_path):
+    duckdb_path = tmp_path / "moss.semiannual.duckdb"
+    governance_dir = tmp_path / "governance.semiannual"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    import duckdb
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set maturity_date = ?, coupon_rate = ?, interest_mode = ?
+            where report_date = ?
+              and instrument_code = 'CB-001'
+            """,
+            ["2028-12-15", "0.08", "semi-annual", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    bond_task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    bond_task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    return duckdb_path, governance_dir, bond_task_mod
+
+
 def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     duckdb_path, governance_dir, bond_task_mod = _configure_upstream(tmp_path)
     risk_task_mod = load_module(
@@ -132,3 +165,27 @@ def test_risk_tensor_module_descriptor_registers_without_collision():
     assert descriptor.cache_key == risk_task_mod.CACHE_KEY
     assert descriptor.cache_key != bond_task_mod.CACHE_KEY
     assert descriptor.lock_key != bond_task_mod.BOND_ANALYTICS_LOCK.key
+
+
+def test_risk_tensor_materialize_uses_materialized_interest_mode_for_coupon_windows(tmp_path):
+    duckdb_path, governance_dir, _bond_task_mod = _configure_upstream_with_semiannual_coupon(tmp_path)
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+
+    risk_task_mod.materialize_risk_tensor_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    row = repo_mod.RiskTensorRepository(str(duckdb_path)).fetch_risk_tensor_row(REPORT_DATE)
+
+    assert row is not None
+    assert row["liquidity_gap_30d"] == 0
+    assert row["liquidity_gap_90d"] == 8

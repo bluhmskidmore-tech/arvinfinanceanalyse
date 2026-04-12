@@ -102,6 +102,11 @@ The current user thread additionally authorizes a narrow follow-on slice for `aa
 - `pnl_bridge_service.py` merges used curve snapshot lineage into `result_meta`
 - `bond_analytics_service.py` merges used curve snapshot lineage into `result_meta`
 
+## Related documentation (normative alignment)
+
+- **Phase 1 / Phase 2 regression acceptance (Chinese):** [acceptance_tests.md](acceptance_tests.md) section **3.5A** (yield curve and curve effects).
+- **Governed snapshot-lineage read surface:** `YieldCurveRepository.fetch_curve_snapshot()` in [backend/app/repositories/yield_curve_repo.py](../backend/app/repositories/yield_curve_repo.py) (returns `curve`, `vendor_name`, `vendor_version`, `source_version`, `rule_version`).
+
 ## Risks
 
 - Vendor payload drift in AkShare or Choice can break curve-point extraction without changing repository/service code.

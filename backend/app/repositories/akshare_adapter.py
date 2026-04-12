@@ -20,11 +20,14 @@ from backend.app.schemas.vendor import (
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
 
 
+# AkShare `bond_china_yield` curve names. For `aaa_credit`, only this enterprise-AAA family is allowed
+# (no cross-family AAA substitution — matches must equal this string exactly).
 AKSHARE_CURVE_NAME_BY_TYPE = {
     "treasury": "中债国债收益率曲线",
     "cdb": "中债政策性金融债收益率曲线(国开行)",
     "aaa_credit": "中债企业债收益率曲线(AAA)",
 }
+AKSHARE_ENTERPRISE_AAA_CREDIT_CURVE_NAME = AKSHARE_CURVE_NAME_BY_TYPE["aaa_credit"]
 
 AKSHARE_TENOR_COLUMNS = {
     "3月": "3M",

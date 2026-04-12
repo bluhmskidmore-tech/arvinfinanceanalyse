@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
-from backend.app.main import app
 from tests.helpers import load_module
 from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
 
@@ -20,6 +19,10 @@ from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
 REPORT_DATE = "2026-03-31"
 
 _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
+    (
+        "/api/bond-analytics/dates",
+        {},
+    ),
     (
         "/api/bond-analytics/return-decomposition",
         {"report_date": REPORT_DATE, "period_type": "MoM"},
@@ -60,12 +63,17 @@ def _assert_envelope(payload: dict[str, Any]) -> None:
         assert meta[key] not in (None, ""), f"result_meta.{key} must be non-empty"
 
     result = payload["result"]
+    # `/dates` returns only ``report_dates``; other payloads may include both lists and ``report_date``.
+    if "report_dates" in result and "report_date" not in result:
+        assert isinstance(result["report_dates"], list)
+        return
     for key in ("report_date", "computed_at", "warnings"):
         assert key in result, f"result missing {key!r}"
 
 
 async def _check_all_endpoints() -> None:
-    transport = ASGITransport(app=app)
+    current_app = load_module("backend.app.main", "backend/app/main.py").app
+    transport = ASGITransport(app=current_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         for path, params in _BOND_ANALYTICS_CASES:
             response = await client.get(path, params=params)
@@ -84,7 +92,36 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 6
+    assert len(paths) == len(set(paths)) == 7
+
+
+def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_bond_snapshot_rows(str(duckdb_path))
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/bond-analytics/dates")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dates"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
 
 
 def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):

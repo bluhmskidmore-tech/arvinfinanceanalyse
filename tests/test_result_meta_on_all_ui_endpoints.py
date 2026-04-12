@@ -1,10 +1,10 @@
 from fastapi.testclient import TestClient
 
-from backend.app.main import app
+from tests.helpers import load_module
 
 
 def test_all_ui_placeholder_endpoints_return_result_meta():
-    client = TestClient(app)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     for path in (
         "/ui/home/overview",
         "/ui/home/summary",

@@ -94,13 +94,13 @@ export default function MonthlyOperatingAnalysisBranch() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>Monthly Operating Analysis</h1>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>月度经营分析</h1>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
-            Analytical workbook rebuilt from the QDB GL ledger reconciliation and daily average month pair.
+            基于总账对账与日均月度配对文件重建月度经营分析工作簿。
           </p>
         </div>
         <label style={{ display: "grid", gap: 8 }}>
-          Report Month
+          报告月份
           <select
             data-testid="monthly-operating-analysis-month-select"
             value={selectedMonth}
@@ -129,16 +129,16 @@ export default function MonthlyOperatingAnalysisBranch() {
           data-testid="monthly-operating-analysis-refresh-button"
           onClick={() => void handleRefresh()}
         >
-          Refresh Analysis
+          刷新月度经营分析
         </button>
         <a
           data-testid="monthly-operating-analysis-audit-link"
           href="/product-category-pnl/audit?branch=monthly_operating_analysis"
         >
-          Open Audit
+          查看调整审计
         </a>
         <label style={{ display: "grid", gap: 6 }}>
-          Warn
+          偏离预警阈值
           <input
             data-testid="monthly-operating-analysis-scenario-warn"
             value={scenarioWarn}
@@ -146,7 +146,7 @@ export default function MonthlyOperatingAnalysisBranch() {
           />
         </label>
         <label style={{ display: "grid", gap: 6 }}>
-          Alert
+          偏离告警阈值
           <input
             data-testid="monthly-operating-analysis-scenario-alert"
             value={scenarioAlert}
@@ -154,7 +154,7 @@ export default function MonthlyOperatingAnalysisBranch() {
           />
         </label>
         <label style={{ display: "grid", gap: 6 }}>
-          Critical
+          偏离严重阈值
           <input
             data-testid="monthly-operating-analysis-scenario-critical"
             value={scenarioCritical}
@@ -166,7 +166,7 @@ export default function MonthlyOperatingAnalysisBranch() {
           data-testid="monthly-operating-analysis-apply-scenario"
           onClick={() => void handleApplyScenario()}
         >
-          Apply Scenario
+          应用情景
         </button>
       </div>
 
@@ -205,7 +205,7 @@ export default function MonthlyOperatingAnalysisBranch() {
                 ))}
               </div>
             ) : (
-              <div style={{ color: "#8090a8", fontSize: 13 }}>No data in the current sheet.</div>
+              <div style={{ color: "#8090a8", fontSize: 13 }}>当前没有可展示数据。</div>
             )}
           </section>
         ))}

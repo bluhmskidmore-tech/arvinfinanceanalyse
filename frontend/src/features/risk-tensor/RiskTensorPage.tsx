@@ -4,10 +4,45 @@ import { useSearchParams } from "react-router-dom";
 
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
+import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
 
 const FALLBACK_REPORT_DATE = "2025-12-31";
+
+/** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
+const RADAR_META = [
+  { key: "duration" as const, name: "久期", max: 10 },
+  { key: "dv01" as const, name: "DV01", max: "dynamic_dv01" as const },
+  { key: "convexity" as const, name: "凸性", max: 200 },
+  { key: "cs01" as const, name: "CS01", max: "dynamic_cs01" as const },
+  { key: "hhi" as const, name: "集中度", max: 1 },
+  { key: "liq_ratio" as const, name: "流动性缺口", max: 1 },
+] as const;
+
+const chartRowStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: 16,
+  marginTop: 24,
+  alignItems: "stretch" as const,
+} as const;
+
+const chartColumnStyle = {
+  flex: "1 1 calc(50% - 8px)",
+  minWidth: 280,
+  maxWidth: "100%",
+} as const;
+
+const radarCardStyle = {
+  height: "100%",
+  minHeight: 400,
+  padding: 20,
+  borderRadius: 18,
+  background: t.colorBgCanvas,
+  border: `1px solid ${t.colorBorderSoft}`,
+  boxShadow: t.shadowPanel,
+} as const;
 
 const summaryGridStyle = {
   display: "grid",
@@ -33,6 +68,14 @@ function displayStr(value: string | undefined) {
 function chartMagnitude(value: string) {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function dynamicAxisMax(raw: number, fallback: number) {
+  const base = Math.abs(raw) * 1.5;
+  if (!Number.isFinite(base) || base === 0) {
+    return fallback;
+  }
+  return base;
 }
 
 export default function RiskTensorPage() {
@@ -103,6 +146,76 @@ export default function RiskTensorPage() {
           type: "bar",
           data,
           itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
+        },
+      ],
+    };
+  }, [result]);
+
+  const radarChartOption = useMemo((): EChartsOption | null => {
+    if (!result) {
+      return null;
+    }
+    const duration = chartMagnitude(result.portfolio_modified_duration);
+    const dv01 = chartMagnitude(result.portfolio_dv01);
+    const convexity = chartMagnitude(result.portfolio_convexity);
+    const cs01 = chartMagnitude(result.cs01);
+    const hhi = chartMagnitude(result.issuer_concentration_hhi);
+    const liqRatio = chartMagnitude(result.liquidity_gap_30d_ratio);
+
+    const dv01Max = dynamicAxisMax(dv01, 1);
+    const cs01Max = dynamicAxisMax(cs01, 1);
+
+    const indicator = RADAR_META.map((m) => {
+      if (m.max === "dynamic_dv01") {
+        return { name: m.name, max: dv01Max };
+      }
+      if (m.max === "dynamic_cs01") {
+        return { name: m.name, max: cs01Max };
+      }
+      return { name: m.name, max: m.max };
+    });
+
+    const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
+
+    return {
+      color: ["#1f5eff"],
+      tooltip: {
+        trigger: "item",
+        borderColor: t.colorBorderSoft,
+        textStyle: { color: t.colorTextPrimary, fontSize: 13 },
+      },
+      radar: {
+        indicator,
+        radius: "66%",
+        center: ["50%", "54%"],
+        axisName: {
+          color: t.colorTextSecondary,
+          fontSize: 12,
+        },
+        splitLine: {
+          lineStyle: { color: t.colorBorderSoft },
+        },
+        splitArea: { show: false },
+        axisLine: { lineStyle: { color: t.colorBorderSoft } },
+      },
+      series: [
+        {
+          type: "radar",
+          symbolSize: 5,
+          lineStyle: { width: 1.5, color: "#1f5eff" },
+          areaStyle: {
+            color: "rgba(31, 94, 255, 0.15)",
+          },
+          itemStyle: {
+            color: "#1f5eff",
+            borderColor: "#1f5eff",
+          },
+          data: [
+            {
+              value: radarValues,
+              name: "组合",
+            },
+          ],
         },
       ],
     };
@@ -194,19 +307,43 @@ export default function RiskTensorPage() {
               />
             </div>
 
-            <h2
-              style={{
-                margin: "24px 0 12px",
-                fontSize: 16,
-                fontWeight: 600,
-                color: "#162033",
-              }}
-            >
-              KRD 分档（DV01）
-            </h2>
-            {krdChartOption ? (
-              <ReactECharts option={krdChartOption} style={{ height: 320 }} />
-            ) : null}
+            <div style={chartRowStyle}>
+              <div style={chartColumnStyle}>
+                <div data-testid="risk-tensor-radar-card" style={radarCardStyle}>
+                  <div
+                    style={{
+                      marginBottom: 8,
+                      fontSize: 15,
+                      fontWeight: 600,
+                      color: t.colorTextPrimary,
+                    }}
+                  >
+                    风险张量雷达
+                  </div>
+                  {radarChartOption ? (
+                    <ReactECharts
+                      option={radarChartOption}
+                      style={{ height: 400, width: "100%" }}
+                    />
+                  ) : null}
+                </div>
+              </div>
+              <div style={chartColumnStyle}>
+                <h2
+                  style={{
+                    margin: "0 0 12px",
+                    fontSize: 16,
+                    fontWeight: 600,
+                    color: "#162033",
+                  }}
+                >
+                  KRD 分档（DV01）
+                </h2>
+                {krdChartOption ? (
+                  <ReactECharts option={krdChartOption} style={{ height: 320, width: "100%" }} />
+                ) : null}
+              </div>
+            </div>
 
             <h2
               style={{

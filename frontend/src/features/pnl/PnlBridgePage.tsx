@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Card } from "antd";
 import { AgGridReact } from "ag-grid-react";
 import type { CellClassParams, ColDef, ValueFormatterParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
@@ -8,6 +9,7 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import { formatWan } from "../bond-analytics/utils/formatters";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
@@ -35,27 +37,32 @@ const controlStyle = {
   color: "#162033",
 } as const;
 
-const POS_COLOR = "#5b8ff9";
-const NEG_COLOR = "#e8684a";
+const BRIDGE_CATEGORIES = [
+  "票息",
+  "骑乘",
+  "国债曲线",
+  "信用利差",
+  "汇兑",
+  "已实现交易",
+  "未实现公允",
+  "人工调整",
+  "解释合计",
+  "实际PnL",
+] as const;
 
-/** 仅将后端字符串解析为坐标轴数值，不做损益重算。 */
+const TRANSPARENT_BAR = {
+  borderColor: "transparent",
+  color: "rgba(0,0,0,0)",
+  borderWidth: 0,
+} as const;
+
+/** 仅将后端字符串解析为坐标轴绘图值，不做损益重算。 */
 function chartAxisNumber(value: string): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
 }
 
 function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
-  const categoryLabels = [
-    "Carry",
-    "Roll-down",
-    "利率曲线",
-    "信用利差",
-    "外汇",
-    "已实现交易",
-    "未实现公允",
-    "手工调整",
-    "合计",
-  ];
   const displayStrings = [
     summary.total_carry,
     summary.total_roll_down,
@@ -66,8 +73,10 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     summary.total_unrealized_fv,
     summary.total_manual_adjustment,
     summary.total_explained_pnl,
+    summary.total_actual_pnl,
   ];
-  const drivers = [
+
+  const stepValues = [
     chartAxisNumber(summary.total_carry),
     chartAxisNumber(summary.total_roll_down),
     chartAxisNumber(summary.total_treasury_curve),
@@ -77,63 +86,51 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     chartAxisNumber(summary.total_unrealized_fv),
     chartAxisNumber(summary.total_manual_adjustment),
   ];
-  const totalExplained = chartAxisNumber(summary.total_explained_pnl);
 
-  const help: number[] = [];
-  const upward: (number | string)[] = [];
-  const downward: (number | string)[] = [];
-  let acc = 0;
-  for (const v of drivers) {
+  const helperRaw: number[] = [];
+  const valueRaw: number[] = [];
+  const barColors: string[] = [];
+
+  let running = 0;
+  for (const v of stepValues) {
     if (v >= 0) {
-      help.push(acc);
-      upward.push(v);
-      downward.push("-");
-      acc += v;
+      helperRaw.push(running);
+      valueRaw.push(v);
+      barColors.push("#cf1322");
+      running += v;
     } else {
-      help.push(acc + v);
-      upward.push("-");
-      downward.push(-v);
-      acc += v;
+      helperRaw.push(running + v);
+      valueRaw.push(-v);
+      barColors.push("#3f8600");
+      running += v;
     }
   }
-  if (totalExplained >= 0) {
-    help.push(0);
-    upward.push(totalExplained);
-    downward.push("-");
-  } else {
-    help.push(totalExplained);
-    upward.push("-");
-    downward.push(-totalExplained);
-  }
+
+  helperRaw.push(0);
+  valueRaw.push(chartAxisNumber(summary.total_explained_pnl));
+  barColors.push("#1f5eff");
+
+  helperRaw.push(0);
+  valueRaw.push(chartAxisNumber(summary.total_actual_pnl));
+  barColors.push("#1f5eff");
 
   return {
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
-      formatter: (params: unknown) => {
-        if (!Array.isArray(params) || params.length === 0) {
-          return "";
-        }
-        const first = params[0] as { dataIndex?: number };
-        const idx = first.dataIndex;
-        if (typeof idx !== "number" || idx < 0 || idx >= categoryLabels.length) {
-          return "";
-        }
-        const name = categoryLabels[idx];
-        const text = displayStrings[idx] ?? "";
-        return `${name}<br/>${text}`;
+      formatter: (items: unknown) => {
+        const list = Array.isArray(items) ? items : [items];
+        const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
+        const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
+        const label = BRIDGE_CATEGORIES[idx] ?? "";
+        return `${label}<br/>${formatWan(String(displayStrings[idx] ?? "0"))}`;
       },
     },
-    legend: {
-      data: ["正向", "负向"],
-      bottom: 0,
-      textStyle: { fontSize: 11 },
-    },
-    grid: { left: 56, right: 20, top: 28, bottom: 72 },
+    grid: { left: 48, right: 24, top: 24, bottom: 44, containLabel: true },
     xAxis: {
       type: "category",
-      data: categoryLabels,
-      axisLabel: { interval: 0, rotate: 28, fontSize: 11, color: "#5c6b82" },
+      data: [...BRIDGE_CATEGORIES],
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: "#5c6b82" },
     },
     yAxis: {
       type: "value",
@@ -142,37 +139,22 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     },
     series: [
       {
-        name: "placeholder",
+        name: "辅助",
         type: "bar",
-        stack: "wf",
+        stack: "waterfall",
         silent: true,
-        itemStyle: {
-          borderColor: "transparent",
-          color: "transparent",
-        },
-        emphasis: {
-          itemStyle: {
-            borderColor: "transparent",
-            color: "transparent",
-          },
-        },
-        data: help,
+        itemStyle: TRANSPARENT_BAR,
+        emphasis: { itemStyle: TRANSPARENT_BAR },
+        data: helperRaw,
       },
       {
-        name: "正向",
+        name: "效应",
         type: "bar",
-        stack: "wf",
-        label: { show: true, position: "top", fontSize: 10, color: "#162033" },
-        itemStyle: { color: POS_COLOR },
-        data: upward,
-      },
-      {
-        name: "负向",
-        type: "bar",
-        stack: "wf",
-        label: { show: true, position: "bottom", fontSize: 10, color: "#162033" },
-        itemStyle: { color: NEG_COLOR },
-        data: downward,
+        stack: "waterfall",
+        data: valueRaw.map((val, i) => ({
+          value: val,
+          itemStyle: { color: barColors[i] },
+        })),
       },
     ],
   };
@@ -198,6 +180,14 @@ function thousandsValueFormatter(params: ValueFormatterParams) {
   return n.toLocaleString("zh-CN");
 }
 
+function fxTranslationValueFormatter(params: ValueFormatterParams) {
+  const v = params.value;
+  if (v === null || v === undefined || v === "") {
+    return "—";
+  }
+  return formatWan(String(v).replace(/,/g, ""));
+}
+
 const bridgeGridDefaultColDef: ColDef = {
   sortable: true,
   filter: true,
@@ -219,6 +209,13 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "roll_down", headerName: "Roll-down", width: 110, type: "numericColumn" },
   { field: "treasury_curve", headerName: "国债曲线", width: 110, type: "numericColumn" },
   { field: "credit_spread", headerName: "信用利差", width: 110, type: "numericColumn" },
+  {
+    field: "fx_translation",
+    headerName: "汇兑效应",
+    width: 110,
+    type: "numericColumn",
+    valueFormatter: fxTranslationValueFormatter,
+  },
   { field: "realized_trading", headerName: "已实现交易", width: 120, type: "numericColumn" },
   { field: "unrealized_fv", headerName: "未实现公允", width: 120, type: "numericColumn" },
   { field: "manual_adjustment", headerName: "手工调整", width: 120, type: "numericColumn" },
@@ -276,9 +273,15 @@ export default function PnlBridgePage() {
 
   const bridgeColDefs = useMemo<ColDef<PnlBridgeRow>[]>(
     () =>
-      bridgeColumnDefsBase.map((def) =>
-        def.type === "numericColumn" ? { ...def, valueFormatter: thousandsValueFormatter } : def,
-      ),
+      bridgeColumnDefsBase.map((def) => {
+        if (def.type !== "numericColumn") {
+          return def;
+        }
+        if (def.valueFormatter) {
+          return def;
+        }
+        return { ...def, valueFormatter: thousandsValueFormatter };
+      }),
     [],
   );
 
@@ -426,12 +429,27 @@ export default function PnlBridgePage() {
               </div>
 
               {chartOption ? (
-                <div style={{ marginTop: 24 }}>
-                  <div style={{ marginBottom: 8, fontWeight: 600, color: "#162033" }}>
-                    桥接分解（汇总分项，瀑布图）
+                <Card
+                  data-testid="pnl-bridge-waterfall-card"
+                  title="PnL Bridge 效应拆解"
+                  size="small"
+                  style={{
+                    marginTop: 24,
+                    borderRadius: 18,
+                    border: "1px solid #e8edf4",
+                    boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+                    background: "#ffffff",
+                  }}
+                  styles={{ body: { padding: "12px 16px 16px" } }}
+                >
+                  <div style={{ height: 400 }}>
+                    <ReactECharts
+                      option={chartOption}
+                      style={{ height: "100%", width: "100%" }}
+                      opts={{ renderer: "canvas" }}
+                    />
                   </div>
-                  <ReactECharts option={chartOption} style={{ height: 360, width: "100%" }} />
-                </div>
+                </Card>
               ) : null}
 
               {warnings.length > 0 ? (

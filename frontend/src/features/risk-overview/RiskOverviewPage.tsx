@@ -11,9 +11,6 @@ import type {
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
 
-/** 默认报告日；也可通过 URL `?report_date=YYYY-MM-DD` 覆盖。 */
-const DEFAULT_REPORT_DATE = "2025-12-31";
-
 const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -119,26 +116,45 @@ function chartMagnitude(value: string) {
 export default function RiskOverviewPage() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
+  const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+
+  const datesQuery = useQuery({
+    queryKey: ["risk-overview", "risk-tensor-dates", client.mode],
+    queryFn: () => client.getRiskTensorDates(),
+    retry: false,
+  });
+
   const reportDate = useMemo(() => {
-    const fromUrl = searchParams.get("report_date")?.trim();
-    return fromUrl || DEFAULT_REPORT_DATE;
-  }, [searchParams]);
+    if (explicitReportDate) {
+      return explicitReportDate;
+    }
+    return datesQuery.data?.result.report_dates[0] ?? "";
+  }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+
+  const datesEmpty =
+    !explicitReportDate &&
+    !datesQuery.isLoading &&
+    !datesQuery.isError &&
+    (datesQuery.data?.result.report_dates.length ?? 0) === 0;
 
   const tensorQuery = useQuery({
     queryKey: ["risk-overview", "risk-tensor", reportDate],
     queryFn: () => client.getRiskTensor(reportDate),
+    enabled: Boolean(reportDate),
     retry: false,
   });
 
   const krdQuery = useQuery({
     queryKey: ["risk-overview", "krd-curve-risk", reportDate],
     queryFn: () => fetchKrdCurveRisk(reportDate),
+    enabled: Boolean(reportDate),
     retry: false,
   });
 
   const creditQuery = useQuery({
     queryKey: ["risk-overview", "credit-spread-migration", reportDate],
     queryFn: () => fetchCreditSpreadMigration(reportDate),
+    enabled: Boolean(reportDate),
     retry: false,
   });
 
@@ -232,20 +248,29 @@ export default function RiskOverviewPage() {
             fontSize: 14,
           }}
         >
-          报告日：<strong>{reportDate}</strong>
-          <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
-            （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 指定）
-          </span>
+          {datesEmpty ? (
+            <span>后端未返回可用风险报告日。</span>
+          ) : (
+            <>
+              报告日：<strong>{reportDate}</strong>
+              <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
+                （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 指定）
+              </span>
+            </>
+          )}
         </div>
       </div>
 
       <div style={{ marginTop: 8 }}>
         <AsyncSection
           title="正式风险张量（主数据）"
-          isLoading={tensorQuery.isLoading}
-          isError={tensorQuery.isError}
-          isEmpty={tensorEmpty}
-          onRetry={() => void tensorQuery.refetch()}
+          isLoading={datesQuery.isLoading || tensorQuery.isLoading}
+          isError={datesQuery.isError || tensorQuery.isError}
+          isEmpty={datesEmpty || tensorEmpty}
+          onRetry={() => {
+            void datesQuery.refetch();
+            void tensorQuery.refetch();
+          }}
         >
           {tensorResult && (
             <>
@@ -391,10 +416,13 @@ export default function RiskOverviewPage() {
       <div style={{ marginTop: 8 }}>
         <AsyncSection
           title="利率曲线与 KRD 风险（物化下钻）"
-          isLoading={krdQuery.isLoading}
-          isError={krdQuery.isError}
-          isEmpty={false}
-          onRetry={() => void krdQuery.refetch()}
+          isLoading={datesQuery.isLoading || krdQuery.isLoading}
+          isError={datesQuery.isError || krdQuery.isError}
+          isEmpty={datesEmpty}
+          onRetry={() => {
+            void datesQuery.refetch();
+            void krdQuery.refetch();
+          }}
         >
           <div data-testid="risk-overview-bond-krd-kpi-grid" style={summaryGridStyle}>
             <PlaceholderCard
@@ -525,10 +553,13 @@ export default function RiskOverviewPage() {
       <div style={{ marginTop: 24 }}>
         <AsyncSection
           title="信用利差迁移（物化下钻）"
-          isLoading={creditQuery.isLoading}
-          isError={creditQuery.isError}
-          isEmpty={false}
-          onRetry={() => void creditQuery.refetch()}
+          isLoading={datesQuery.isLoading || creditQuery.isLoading}
+          isError={datesQuery.isError || creditQuery.isError}
+          isEmpty={datesEmpty}
+          onRetry={() => {
+            void datesQuery.refetch();
+            void creditQuery.refetch();
+          }}
         >
           <div style={summaryGridStyle}>
             <PlaceholderCard

@@ -248,3 +248,47 @@ def test_api_workbook_rebuild_applies_approved_monthly_analysis_adjustments(tmp_
     assert target_row[level_key] == "manual_override"
 
     get_settings.cache_clear()
+
+
+def test_api_workbook_rebuild_applies_approved_mapping_adjustments(tmp_path, monkeypatch):
+    source_dir = tmp_path / "data_input" / "pnl_总账对账-日均"
+    governance_dir = tmp_path / "governance"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602")
+
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    created = client.post(
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        json={
+            "report_month": "202602",
+            "adjustment_class": "mapping_adjustment",
+            "target": {
+                "account_code": "14001000001",
+                "field": "account_name",
+            },
+            "operator": "OVERRIDE",
+            "value": "买入返售-人工修正",
+            "approval_status": "approved",
+        },
+    )
+    assert created.status_code == 200
+
+    workbook = client.get(
+        "/ui/qdb-gl-monthly-analysis/workbook",
+        params={"report_month": "202602"},
+    )
+    assert workbook.status_code == 200
+    alerts_sheet = next(
+        sheet for sheet in workbook.json()["result"]["sheets"] if sheet["key"] == "alerts"
+    )
+    code_key = alerts_sheet["columns"][0]
+    name_key = alerts_sheet["columns"][1]
+    target_row = next(row for row in alerts_sheet["rows"] if str(row[code_key]) == "14001000001")
+    assert target_row[name_key] == "买入返售-人工修正"
+
+    get_settings.cache_clear()

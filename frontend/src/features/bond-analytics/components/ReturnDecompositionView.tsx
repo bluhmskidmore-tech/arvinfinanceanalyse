@@ -4,7 +4,16 @@ import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import type { PeriodType, ReturnDecompositionResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 
-const WATERFALL_CATEGORIES = ["Carry", "Roll-down", "利率效应", "利差效应", "交易", "合计"] as const;
+const WATERFALL_CATEGORIES = [
+  "Carry",
+  "Roll-down",
+  "利率效应",
+  "利差效应",
+  "FX效应",
+  "凸性效应",
+  "交易",
+  "合计",
+] as const;
 
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
@@ -18,9 +27,13 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
   const rateEffect = parseFloat(d.rate_effect);
   const spreadEffect = parseFloat(d.spread_effect);
   const trading = parseFloat(d.trading);
+  const fxEffect = parseFloat(d.fx_effect);
+  const convexityEffect = parseFloat(d.convexity_effect);
   const explained = parseFloat(d.explained_pnl);
 
-  const stepValues = [carry, rollDown, rateEffect, spreadEffect, trading].map((v) => (Number.isFinite(v) ? v : 0));
+  const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
+    Number.isFinite(v) ? v : 0,
+  );
 
   const helperRaw: number[] = [];
   const valueRaw: number[] = [];
@@ -50,6 +63,8 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
     d.roll_down,
     d.rate_effect,
     d.spread_effect,
+    d.fx_effect,
+    d.convexity_effect,
     d.trading,
     d.explained_pnl,
   ];
@@ -107,6 +122,8 @@ const effectColumns = [
   { title: "Roll-down（骑乘）", dataIndex: "roll_down", key: "roll_down", render: formatWan },
   { title: "利率效应", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
   { title: "利差效应", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
+  { title: "FX效应", dataIndex: "fx_effect", key: "fx_effect", render: formatWan },
+  { title: "凸性效应", dataIndex: "convexity_effect", key: "convexity_effect", render: formatWan },
   { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
   { title: "合计", dataIndex: "total", key: "total", render: formatWan },
   { title: "债券数", dataIndex: "bond_count", key: "bond_count" },
@@ -155,6 +172,8 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
     { label: "Roll-down（骑乘）", value: data.roll_down },
     { label: "利率效应", value: data.rate_effect },
     { label: "利差效应", value: data.spread_effect },
+    { label: "FX效应", value: data.fx_effect },
+    { label: "凸性效应", value: data.convexity_effect },
     { label: "交易", value: data.trading },
   ];
 
@@ -197,7 +216,7 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
           <div style={{ marginTop: 16 }}>
             <ReactECharts
               option={waterfallOption}
-              style={{ height: 280, width: "100%" }}
+              style={{ height: 380, width: "100%" }}
               opts={{ renderer: "canvas" }}
             />
           </div>

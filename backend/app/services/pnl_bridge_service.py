@@ -15,7 +15,11 @@ from backend.app.core_finance.pnl_bridge import (
     required_curve_types_for_pnl_bridge,
 )
 from backend.app.repositories.pnl_repo import PnlRepository
-from backend.app.repositories.yield_curve_repo import YieldCurveRepository
+from backend.app.repositories.yield_curve_repo import (
+    YIELD_CURVE_LATEST_FALLBACK_PREFIX,
+    YieldCurveRepository,
+    format_yield_curve_latest_fallback_warning,
+)
 from backend.app.schemas.pnl_bridge import (
     PnlBridgePayload,
     PnlBridgeRowSchema,
@@ -36,7 +40,7 @@ from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CUR
 
 
 PHASE3_WARNING = (
-    "Phase 3 partial delivery: fx_translation remains fixed at 0; roll_down / treasury_curve / credit_spread use governed curves when available."
+    "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
 )
 BRIDGE_CACHE_VERSION = (
     f"cv_pnl_bridge_start_pack_v1__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
@@ -52,11 +56,23 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         raise ValueError(f"No pnl bridge data found for report_date={report_date} in fact_formal_pnl_fi.")
 
     pnl_fi_rows = pnl_repo.fetch_formal_fi_rows(report_date)
-    current_balance_rows = balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=report_date)
+    current_balance_rows = _attach_native_face_values(
+        balance_repo=balance_repo,
+        report_date=report_date,
+        balance_rows=balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=report_date),
+    )
     prior_date = balance_repo.resolve_prior_pnl_bridge_balance_report_date(report_date=report_date)
     prior_balance_rows = (
-        balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=prior_date) if prior_date else []
+        _attach_native_face_values(
+            balance_repo=balance_repo,
+            report_date=prior_date,
+            balance_rows=balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=prior_date),
+        )
+        if prior_date
+        else []
     )
+    fx_current = balance_repo.resolve_fx_mid_rates_map(report_date=report_date)
+    fx_prior = balance_repo.resolve_fx_mid_rates_map(report_date=prior_date) if prior_date else None
     required_curve_types = required_curve_types_for_pnl_bridge(
         pnl_fi_rows=pnl_fi_rows,
         balance_rows_current=current_balance_rows,
@@ -100,7 +116,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         aaa_prior_warning=aaa_prior_warning,
     )
     curve_latest_fallback = any(
-        w and "Using latest available" in w
+        w and YIELD_CURVE_LATEST_FALLBACK_PREFIX in w
         for w in relevant_curve_warnings
     )
     curve_unavailable = any(
@@ -118,6 +134,8 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
         aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
         aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
+        fx_rates_current=fx_current,
+        fx_rates_prior=fx_prior,
     )
     summary = _build_summary(rows)
     lineage, lineage_warnings = _resolve_bridge_lineage(
@@ -395,7 +413,11 @@ def _resolve_curve_for_service(
         return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; curve effect remains 0."
     return (
         latest_snapshot,
-        f"Using latest available {curve_type} curve from trade_date={latest_trade_date} for requested trade_date={requested_trade_date}.",
+        format_yield_curve_latest_fallback_warning(
+            curve_type=curve_type,
+            resolved_trade_date=latest_trade_date,
+            requested_trade_date=requested_trade_date,
+        ),
     )
 
 
@@ -485,3 +507,30 @@ def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:
             f"Canonical pnl lineage malformed for cache_key={PNL_CACHE_KEY}: missing {', '.join(missing)}."
         )
     return latest
+
+
+def _attach_native_face_values(
+    *,
+    balance_repo: BalanceAnalysisRepository,
+    report_date: str,
+    balance_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if not balance_rows:
+        return balance_rows
+    native_face_values = balance_repo.fetch_zqtz_snapshot_native_face_values(report_date=report_date)
+    if not native_face_values:
+        return balance_rows
+    enriched_rows: list[dict[str, object]] = []
+    for row in balance_rows:
+        key = (
+            str(row.get("instrument_code") or ""),
+            str(row.get("portfolio_name") or ""),
+            str(row.get("cost_center") or ""),
+            str(row.get("currency_code") or "").upper(),
+        )
+        face_value_native = native_face_values.get(key)
+        if face_value_native is None:
+            enriched_rows.append(row)
+            continue
+        enriched_rows.append({**row, "face_value_native": face_value_native})
+    return enriched_rows

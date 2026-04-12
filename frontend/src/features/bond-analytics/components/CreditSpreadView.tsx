@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import type { ConcentrationMetrics, CreditSpreadMigrationResponse } from "../types";
+import type {
+  ConcentrationMetrics,
+  CreditSpreadBondDetailRow,
+  CreditSpreadMigrationResponse,
+} from "../types";
 import { formatWan, formatBp } from "../utils/formatters";
 
 interface Props {
@@ -46,6 +50,193 @@ const CONCENTRATION_KEYS = [
 
 function hasAnyConcentrationField(data: CreditSpreadMigrationResponse): boolean {
   return CONCENTRATION_KEYS.some((k) => data[k] != null);
+}
+
+/** X 轴期限桶（与后端 tenor_bucket 对齐后映射到此顺序） */
+const CREDIT_DIST_TENOR_LABELS = ["1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"] as const;
+
+/** Y 轴评级桶 */
+const CREDIT_DIST_RATING_LABELS = ["AAA", "AA+", "AA", "AA-", "A+", "其他"] as const;
+
+const PRIMARY_RATING_SET = new Set<string>(CREDIT_DIST_RATING_LABELS.filter((r) => r !== "其他"));
+
+function mapTenorBucketToXIndex(raw: string | undefined): number | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const t = String(raw).trim().toUpperCase();
+  const table: Record<string, number> = {
+    "1M": 0,
+    "3M": 0,
+    "6M": 0,
+    "9M": 0,
+    "1Y": 0,
+    "2Y": 1,
+    "3Y": 2,
+    "4Y": 2,
+    "5Y": 3,
+    "6Y": 3,
+    "7Y": 4,
+    "10Y": 5,
+    "15Y": 5,
+    "20Y": 6,
+    "30Y": 7,
+  };
+  const idx = table[t];
+  return idx === undefined ? null : idx;
+}
+
+function mapRatingToBucket(raw: string | undefined): string | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const up = String(raw).trim().toUpperCase();
+  if (PRIMARY_RATING_SET.has(up)) return up;
+  return "其他";
+}
+
+/** 将 bond 明细按评级×期限累加市值，再按信用债总市值换算占比（仅展示层聚合） */
+function buildRatingTenorHeatmapData(
+  bondDetails: CreditSpreadBondDetailRow[],
+  creditMarketValueStr: string,
+): { seriesData: [number, number, number][]; maxPct: number } | null {
+  const denom = parseFloat(creditMarketValueStr);
+  if (!Number.isFinite(denom) || denom <= 0) return null;
+
+  const sums = new Map<string, number>();
+  let anyMapped = false;
+  for (const row of bondDetails) {
+    const yKey = mapRatingToBucket(row.rating);
+    const xi = mapTenorBucketToXIndex(row.tenor_bucket);
+    if (yKey == null || xi == null) continue;
+    const mv = parseFloat(row.market_value);
+    if (!Number.isFinite(mv) || mv <= 0) continue;
+    anyMapped = true;
+    const key = `${yKey}|${xi}`;
+    sums.set(key, (sums.get(key) ?? 0) + mv);
+  }
+  if (!anyMapped) return null;
+
+  const seriesData: [number, number, number][] = [];
+  let maxPct = 0;
+  for (let yi = 0; yi < CREDIT_DIST_RATING_LABELS.length; yi++) {
+    const rating = CREDIT_DIST_RATING_LABELS[yi];
+    for (let xi = 0; xi < CREDIT_DIST_TENOR_LABELS.length; xi++) {
+      const v = sums.get(`${rating}|${xi}`) ?? 0;
+      const pct = (v / denom) * 100;
+      if (pct > maxPct) maxPct = pct;
+      seriesData.push([xi, yi, Number(pct.toFixed(4))]);
+    }
+  }
+  if (maxPct <= 0) return null;
+  return { seriesData, maxPct };
+}
+
+function concentrationBarOption(
+  metrics: ConcentrationMetrics | undefined,
+  color: string,
+  yAxisName: string,
+): EChartsOption | null {
+  const items = metrics?.top_items;
+  if (!items?.length) return null;
+  const names = items.map((it) => it.name);
+  const pcts = items.map((it) => {
+    const w = parseFloat(it.weight);
+    return Number.isFinite(w) ? Number((w * 100).toFixed(4)) : 0;
+  });
+  return {
+    grid: { left: 48, right: 12, top: 28, bottom: names.some((n) => n.length > 6) ? 52 : 36, containLabel: false },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (params: unknown) => {
+        const list = Array.isArray(params) ? params : [params];
+        const p = list[0] as { name?: string; value?: number };
+        return `${p.name ?? ""}<br/>${yAxisName}：${p.value ?? 0}%`;
+      },
+    },
+    xAxis: {
+      type: "category",
+      data: names,
+      axisLabel: { color: "#5c6b82", fontSize: 11, interval: 0, rotate: names.length > 5 ? 28 : 0 },
+    },
+    yAxis: {
+      type: "value",
+      name: yAxisName,
+      nameTextStyle: { color: "#8c8c8c", fontSize: 11 },
+      axisLabel: { color: "#5c6b82", fontSize: 11, formatter: "{value}%" },
+      splitLine: { lineStyle: { type: "dashed", opacity: 0.35 } },
+    },
+    series: [
+      {
+        type: "bar",
+        name: yAxisName,
+        barMaxWidth: 40,
+        itemStyle: { color },
+        data: pcts,
+      },
+    ],
+  };
+}
+
+function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct: number): EChartsOption {
+  const vmax = Math.max(maxPct, 1e-6);
+  return {
+    tooltip: {
+      position: "top",
+      formatter: (raw: unknown) => {
+        const p = raw as { value?: [number, number, number] | number };
+        const val = Array.isArray(p.value) ? p.value : [];
+        const xi = Number(val[0]);
+        const yi = Number(val[1]);
+        const v = Number(val[2]);
+        const tenor = CREDIT_DIST_TENOR_LABELS[xi] ?? "";
+        const rating = CREDIT_DIST_RATING_LABELS[yi] ?? "";
+        return `${rating} × ${tenor}<br/>市值占比：${Number.isFinite(v) ? v.toFixed(2) : "—"}%`;
+      },
+    },
+    grid: { left: 56, right: 24, top: 16, bottom: 56, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: [...CREDIT_DIST_TENOR_LABELS],
+      splitArea: { show: true },
+      axisLabel: { color: "#5c6b82", fontSize: 11 },
+    },
+    yAxis: {
+      type: "category",
+      data: [...CREDIT_DIST_RATING_LABELS],
+      splitArea: { show: true },
+      axisLabel: { color: "#5c6b82", fontSize: 11 },
+    },
+    visualMap: {
+      min: 0,
+      max: vmax,
+      calculable: true,
+      orient: "horizontal",
+      left: "center",
+      bottom: 4,
+      itemWidth: 12,
+      itemHeight: 120,
+      inRange: { color: ["#dfe8ff", "#1f5eff"] },
+      textStyle: { fontSize: 11, color: "#5c6b82" },
+      formatter: (v: number) => `${v.toFixed(1)}%`,
+    },
+    series: [
+      {
+        type: "heatmap",
+        data: seriesData,
+        label: {
+          show: true,
+          fontSize: 10,
+          color: "#262626",
+          formatter: (params: { value?: [number, number, number] }) => {
+            const v = params.value?.[2];
+            if (v == null || v === 0) return "";
+            return v < 0.05 ? "" : `${v.toFixed(1)}%`;
+          },
+        },
+        emphasis: {
+          itemStyle: { shadowBlur: 8, shadowColor: "rgba(0, 0, 0, 0.12)" },
+        },
+      },
+    ],
+  };
 }
 
 const ISSUER_SLICE_COLORS = ["#1f5eff", "#ff7a45", "#2f8f63", "#cc7a1a", "#8c8c8c"];
@@ -236,6 +427,26 @@ export function CreditSpreadView({ reportDate }: Props) {
     return buildIssuerConcentrationPieOption(data.concentration_by_issuer);
   }, [data]);
 
+  const creditDistributionView = useMemo(() => {
+    if (!data) return { kind: "empty" as const };
+    const heat =
+      data.bond_details && data.bond_details.length > 0
+        ? buildRatingTenorHeatmapData(data.bond_details, data.credit_market_value)
+        : null;
+    if (heat) {
+      return {
+        kind: "heatmap" as const,
+        option: ratingTenorHeatmapOption(heat.seriesData, heat.maxPct),
+      };
+    }
+    const ratingOpt = concentrationBarOption(data.concentration_by_rating, "#1f5eff", "市值占比");
+    const tenorOpt = concentrationBarOption(data.concentration_by_tenor, "#ff7a45", "市值占比");
+    if (ratingOpt || tenorOpt) {
+      return { kind: "bars" as const, ratingOption: ratingOpt, tenorOption: tenorOpt };
+    }
+    return { kind: "empty" as const };
+  }, [data]);
+
   if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
@@ -303,6 +514,95 @@ export function CreditSpreadView({ reportDate }: Props) {
           />
         </Card>
       )}
+
+      <Card title="信用债分布" size="small">
+        {creditDistributionView.kind === "heatmap" && (
+          <ReactECharts
+            option={creditDistributionView.option}
+            style={{ height: 400, width: "100%" }}
+            opts={{ renderer: "canvas" }}
+          />
+        )}
+        {creditDistributionView.kind === "bars" && (
+          <Row gutter={16}>
+            <Col xs={24} lg={12}>
+              <div
+                style={{
+                  marginBottom: 8,
+                  fontSize: 12,
+                  color: "rgba(0,0,0,0.65)",
+                  textAlign: "center",
+                }}
+              >
+                {data.concentration_by_rating?.dimension ?? "评级"}（Top 市值）
+              </div>
+              {creditDistributionView.ratingOption ? (
+                <ReactECharts
+                  option={creditDistributionView.ratingOption}
+                  style={{ height: 300, width: "100%" }}
+                  opts={{ renderer: "canvas" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    height: 300,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "rgba(0,0,0,0.45)",
+                  }}
+                >
+                  暂无评级分布
+                </div>
+              )}
+            </Col>
+            <Col xs={24} lg={12}>
+              <div
+                style={{
+                  marginBottom: 8,
+                  fontSize: 12,
+                  color: "rgba(0,0,0,0.65)",
+                  textAlign: "center",
+                }}
+              >
+                {data.concentration_by_tenor?.dimension ?? "期限"}（Top 市值）
+              </div>
+              {creditDistributionView.tenorOption ? (
+                <ReactECharts
+                  option={creditDistributionView.tenorOption}
+                  style={{ height: 300, width: "100%" }}
+                  opts={{ renderer: "canvas" }}
+                />
+              ) : (
+                <div
+                  style={{
+                    height: 300,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "rgba(0,0,0,0.45)",
+                  }}
+                >
+                  暂无期限分布
+                </div>
+              )}
+            </Col>
+          </Row>
+        )}
+        {creditDistributionView.kind === "empty" && (
+          <div
+            style={{
+              minHeight: 120,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "rgba(0,0,0,0.45)",
+            }}
+          >
+            暂无评级×期限明细或集中度数据，无法展示分布图
+          </div>
+        )}
+      </Card>
 
       {hasAnyConcentrationField(data) && (
         <Card title="信用集中度" size="small">

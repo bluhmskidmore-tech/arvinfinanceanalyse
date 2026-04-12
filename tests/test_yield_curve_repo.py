@@ -119,6 +119,8 @@ def test_fetch_curve_snapshot_exposes_lineage(tmp_path):
     assert snapshot["vendor_version"] == "vv_cdb"
     assert snapshot["source_version"] == "sv_cdb"
     assert snapshot["rule_version"] == "rv_curve"
+    assert snapshot["trade_date"] == "2026-04-10"
+    assert snapshot["curve_type"] == "cdb"
 
 
 def test_fetch_curve_snapshot_rejects_mismatched_lineage_across_tenors(tmp_path):

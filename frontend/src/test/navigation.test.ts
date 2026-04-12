@@ -42,6 +42,13 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
   });
 
+  it("promotes bond-analysis into the live primary navigation", () => {
+    const bondAnalysis = workbenchNavigation.find((s) => s.key === "bond-analysis");
+    expect(bondAnalysis?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "bond-analysis")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "bond-analysis")).toBe(false);
+  });
+
   it("tracks reserved modules outside the live primary navigation", () => {
     expect(secondaryWorkbenchNavigation.length).toBeGreaterThan(0);
     expect(

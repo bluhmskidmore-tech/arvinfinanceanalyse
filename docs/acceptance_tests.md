@@ -81,9 +81,11 @@
 - `pnl.bridge` 在 governed curve 可用时，`roll_down / treasury_curve` 不再固定为 0
 - `bond_analytics.return_decomposition` 在 governed curve 可用时，`roll_down / rate_effect` 不再固定为 0
 - `credit_spread` 在当前 slice 已进入正式实现边界：当 AAA credit 与 treasury 曲线可用时不得固定为 0
-- `fx_translation` 在当前 slice 仍允许保持 0，但必须有显式 warning
+- 当存在匹配的 `fx_daily_mid` 与外币债券时，`fx_translation` 不得固定为 0
+- 缺少 FX 数据时，`fx_translation` 可回退为 0，但不得报错
 - 短端点位 `3M / 6M / 9M` 不得在插值前被丢弃
 - 至少一组固定 fixture/reference 需要对 `roll_down / treasury_curve / rate_effect` 做数值断言，不能只验非 0
+- 授权切片、测试矩阵与「substrate closeout / regression-hardening」边界说明见 [CURRENT_EXECUTION_UPDATE_2026-04-12.md](CURRENT_EXECUTION_UPDATE_2026-04-12.md)
 
 ### 3.6 Formal / Scenario / Analytical 隔离
 - `basis=formal` 的结果必须同时满足 `formal_use_allowed=true` 且 `scenario_flag=false`
@@ -306,6 +308,11 @@
 ### 4.3 Risk Tensor
 - 输出 DV01 / KRD / CS01 / convexity
 - 支持发行人、组合、期限桶分组
+- `liquidity_gap_30d` / `liquidity_gap_90d` 必须按现金流窗口计算，而不是按到期日对 `market_value` 做简单过滤
+- 到期本金必须按 `face_value` 计入窗口现金流
+- `annual` / `semi-annual` / `quarterly` 必须按估算出的最近付息日将票息计入 30d / 90d 窗口
+- `bullet` 必须只在到期日计入还本付息现金流
+- 若输入显式带有回售 / 提前偿还相关字段，结果必须带 warning 说明该类现金流尚未建模
 
 ## 5. Phase 4：前端验收
 

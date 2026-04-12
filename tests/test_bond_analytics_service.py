@@ -7,6 +7,7 @@ import pytest
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
+from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE, _seed_bond_snapshot_rows
 
 
@@ -48,6 +49,22 @@ def test_bond_analytics_service_returns_empty_warning_without_fact_data(tmp_path
     get_settings.cache_clear()
 
 
+def test_bond_analytics_service_returns_available_report_dates(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.bond_analytics_dates_envelope()
+
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "bond_analytics.dates"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -79,8 +96,34 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     get_settings.cache_clear()
 
 
-def test_bond_analytics_benchmark_excess_uses_portfolio_risk_and_warns_for_missing_benchmark(tmp_path, monkeypatch):
+def test_benchmark_excess_with_curve_data(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "TREASURY_INDEX")
+    result = payload["result"]
+
+    assert Decimal(result["portfolio_duration"]) > Decimal("0")
+    assert Decimal(result["benchmark_duration"]) > Decimal("0")
+    assert Decimal(result["portfolio_return"]) != Decimal("0")
+    assert Decimal(result["benchmark_return"]) != Decimal("0")
+    assert Decimal(result["excess_return"]) != Decimal("0")
+    assert Decimal(result["explained_excess"]) != Decimal("0")
+    assert any(
+        Decimal(result[field]) != Decimal("0")
+        for field in ("duration_effect", "curve_effect", "selection_effect")
+    )
+    assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_with_cdb_curve_data(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
@@ -89,9 +132,51 @@ def test_bond_analytics_benchmark_excess_uses_portfolio_risk_and_warns_for_missi
     payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
     result = payload["result"]
 
+    assert Decimal(result["benchmark_duration"]) > Decimal("0")
+    assert Decimal(result["benchmark_return"]) != Decimal("0")
+    assert Decimal(result["excess_return"]) != Decimal("0")
+    assert payload["result_meta"].get("vendor_status", "ok") == "ok"
+    assert "sv_cdb_current" in payload["result_meta"]["source_version"]
+    assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_with_aaa_curve_data(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "AAA_CREDIT_INDEX")
+    result = payload["result"]
+
+    assert Decimal(result["benchmark_duration"]) > Decimal("0")
+    assert Decimal(result["benchmark_return"]) != Decimal("0")
+    assert Decimal(result["spread_effect"]) != Decimal("0")
+    assert payload["result_meta"].get("vendor_status", "ok") == "ok"
+    assert "sv_aaa_current" in payload["result_meta"]["source_version"]
+    assert result["warnings"] == []
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_without_curve_data_returns_zero_with_warning(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "TREASURY_INDEX")
+    result = payload["result"]
+
     assert Decimal(result["portfolio_duration"]) > Decimal("0")
     assert result["benchmark_duration"] == "0.00000000"
-    assert any("Benchmark index data not yet available" in warning for warning in result["warnings"])
+    assert result["portfolio_return"] == "0.00000000"
+    assert result["benchmark_return"] == "0.00000000"
+    assert result["excess_return"] == "0.00000000"
+    assert any("Benchmark" in warning or "curve" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 

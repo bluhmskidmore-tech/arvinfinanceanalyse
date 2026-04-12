@@ -55,7 +55,7 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
 }
 
 describe("PnlBridgePage", () => {
-  it("renders summary cards, warnings, detail grid, and waterfall section heading", async () => {
+  it("renders summary cards, waterfall card, warnings, and detail grid", async () => {
     const base = createApiClient({ mode: "mock" });
 
     const datesPayload: PnlDatesPayload = {
@@ -133,7 +133,8 @@ describe("PnlBridgePage", () => {
     const warnings = await screen.findByTestId("pnl-bridge-warnings");
     expect(warnings).toHaveTextContent("Residual spike on instrument IC-1");
 
-    expect(screen.getByText("桥接分解（汇总分项，瀑布图）")).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-bridge-waterfall-card")).toBeInTheDocument();
+    expect(screen.getByText("PnL Bridge 效应拆解")).toBeInTheDocument();
 
     const detail = await screen.findByTestId("pnl-bridge-detail-table");
     expect(detail).toHaveTextContent("IC-1");

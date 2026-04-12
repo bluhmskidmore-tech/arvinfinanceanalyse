@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
 
 import duckdb
 
@@ -112,8 +111,16 @@ class BondAnalyticsRepository:
             if rows:
                 conn.executemany(
                     f"""
-                    insert into {FACT_TABLE} values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                    insert into {FACT_TABLE} (
+                      report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+                      asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
+                      accounting_class, accounting_rule_id, currency_code, face_value, market_value,
+                      amortized_cost, accrued_interest, coupon_rate, interest_mode, ytm, maturity_date,
+                      years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
+                      convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
+                      ingest_batch_id, trace_id
+                    ) values (
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     [
@@ -137,6 +144,7 @@ class BondAnalyticsRepository:
                             row.amortized_cost,
                             row.accrued_interest,
                             row.coupon_rate,
+                            row.interest_mode,
                             row.ytm,
                             row.maturity_date.isoformat() if row.maturity_date else None,
                             row.years_to_maturity,
@@ -175,6 +183,11 @@ class BondAnalyticsRepository:
         try:
             if not _table_exists(conn, FACT_TABLE):
                 return []
+            interest_mode_expr = (
+                "interest_mode"
+                if _column_exists(conn, FACT_TABLE, "interest_mode")
+                else "'' as interest_mode"
+            )
             where_parts = ["report_date = ?"]
             params: list[object] = [report_date]
             if asset_class != "all":
@@ -188,7 +201,7 @@ class BondAnalyticsRepository:
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
                        accounting_class, accounting_rule_id, currency_code, face_value, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, ytm, maturity_date,
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, ytm, maturity_date,
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -218,6 +231,7 @@ class BondAnalyticsRepository:
                 "amortized_cost",
                 "accrued_interest",
                 "coupon_rate",
+                "interest_mode",
                 "ytm",
                 "maturity_date",
                 "years_to_maturity",
@@ -270,7 +284,7 @@ class BondAnalyticsRepository:
         rows = self.fetch_bond_analytics_rows(report_date=report_date)
         return summarize_accounting_audit(rows)["rows"]
 
-    def fetch_latest_risk_overview_snapshot(self) -> dict[str, object] | None:
+    def fetch_risk_overview_snapshot(self, *, report_date: str) -> dict[str, object] | None:
         conn = _connect_read_only(self.path)
         if conn is None:
             return None
@@ -279,21 +293,17 @@ class BondAnalyticsRepository:
                 return None
             row = conn.execute(
                 f"""
-                with latest as (
-                  select max(cast(report_date as varchar)) as report_date
-                  from {FACT_TABLE}
-                )
                 select
-                  latest.report_date,
-                  sum(f.modified_duration * f.market_value) / nullif(sum(f.market_value), 0) as portfolio_modified_duration,
-                  sum(f.dv01) as portfolio_dv01,
-                  sum(case when f.is_credit then f.market_value else 0 end) / nullif(sum(f.market_value), 0) * 100 as credit_market_value_ratio_pct,
-                  sum(f.years_to_maturity * f.market_value) / nullif(sum(f.market_value), 0) as weighted_years_to_maturity
-                from {FACT_TABLE} as f
-                cross join latest
-                where cast(f.report_date as varchar) = latest.report_date
-                group by latest.report_date
-                """
+                  cast(report_date as varchar) as report_date,
+                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  sum(dv01) as portfolio_dv01,
+                  sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
+                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                from {FACT_TABLE}
+                where cast(report_date as varchar) = ?
+                group by report_date
+                """,
+                [report_date],
             ).fetchone()
             if row is None or row[0] is None:
                 return None
@@ -307,6 +317,12 @@ class BondAnalyticsRepository:
             return dict(zip(columns, row, strict=True))
         finally:
             conn.close()
+
+    def fetch_latest_risk_overview_snapshot(self) -> dict[str, object] | None:
+        report_dates = self.list_report_dates()
+        if not report_dates:
+            return None
+        return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
 
 
 def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -332,6 +348,7 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
             amortized_cost      decimal(24, 8),
             accrued_interest    decimal(24, 8),
             coupon_rate         decimal(18, 8),
+            interest_mode       varchar,
             ytm                 decimal(18, 8),
             maturity_date       date,
             years_to_maturity   decimal(18, 8),
@@ -349,6 +366,12 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    conn.execute(
+        f"""
+        alter table {FACT_TABLE}
+        add column if not exists interest_mode varchar
+        """
+    )
 
 
 def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
@@ -360,6 +383,20 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
         limit 1
         """,
         [table_name],
+    ).fetchone()
+    return row is not None
+
+
+def _column_exists(conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.columns
+        where table_name = ?
+          and column_name = ?
+        limit 1
+        """,
+        [table_name, column_name],
     ).fetchone()
     return row is not None
 

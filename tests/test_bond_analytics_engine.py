@@ -40,6 +40,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
             "coupon_rate": Decimal("0.03"),
             "ytm_value": Decimal("0.035"),
             "maturity_date": date(2031, 3, 31),
+            "interest_mode": "半年付息",
             "is_issuance_like": False,
             "source_version": "sv_snapshot_1",
             "rule_version": "rv_snapshot_1",
@@ -93,6 +94,7 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.asset_class_std == "credit"
     assert row.accounting_class == "OCI"
     assert row.accounting_rule_id == "R010"
+    assert row.interest_mode == "半年付息"
     assert row.years_to_maturity == expected_years
     assert row.tenor_bucket == "5Y"
     assert row.macaulay_duration == expected_macaulay

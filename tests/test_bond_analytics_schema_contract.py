@@ -25,6 +25,7 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
+from tests.helpers import load_module
 
 
 def test_period_type_enum_values():
@@ -39,9 +40,14 @@ def test_action_type_names_contains_core_keys():
 
 
 def test_asset_class_breakdown_defaults():
-    row = AssetClassBreakdown(asset_class="rate")
+    schema_module = load_module(
+        "backend.app.schemas.bond_analytics",
+        "backend/app/schemas/bond_analytics.py",
+    )
+    row = schema_module.AssetClassBreakdown(asset_class="rate")
     assert row.carry == "0"
     assert row.roll_down == "0"
+    assert row.convexity_effect == "0"
     assert row.bond_count == 0
     assert row.market_value == "0"
 
@@ -54,6 +60,7 @@ def test_bond_level_decomposition_defaults_and_optional():
         market_value="100",
     )
     assert row.carry == "0"
+    assert row.convexity_effect == "0"
     assert row.bond_name is None
 
 

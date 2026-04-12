@@ -11,6 +11,37 @@ class FormalZqtzBalanceMetricsRepository:
 
     path: str
 
+    def fetch_zqtz_asset_market_value(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNY",
+    ) -> dict[str, object] | None:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            try:
+                row = conn.execute(
+                    """
+                    select cast(report_date as varchar), coalesce(sum(market_value_amount), 0) as total_market_value_amount
+                    from fact_formal_zqtz_balance_daily
+                    where position_scope = 'asset'
+                      and currency_basis = ?
+                      and cast(report_date as varchar) = ?
+                    group by report_date
+                    """,
+                    [currency_basis, report_date],
+                ).fetchone()
+            finally:
+                conn.close()
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
+        if row is None:
+            return None
+        return {
+            "report_date": str(row[0]),
+            "total_market_value_amount": row[1],
+        }
+
     def fetch_latest_zqtz_asset_market_value(
         self,
         *,

@@ -17,6 +17,38 @@ from backend.app.core_finance.bond_analytics.engine import ENGINE_RULE_VERSION
 from backend.app.core_finance.bond_analytics.common import safe_decimal
 
 ZERO = Decimal("0")
+BENCHMARK_DURATION_ASSUMPTIONS: dict[str, Decimal] = {
+    "TREASURY_INDEX": Decimal("6"),
+    "CDB_INDEX": Decimal("5"),
+    "AAA_CREDIT_INDEX": Decimal("4"),
+}
+BENCHMARK_BUCKET_WEIGHTS: dict[str, dict[str, Decimal]] = {
+    "TREASURY_INDEX": {
+        "1Y": Decimal("0.10"),
+        "2Y": Decimal("0.15"),
+        "3Y": Decimal("0.20"),
+        "5Y": Decimal("0.25"),
+        "7Y": Decimal("0.15"),
+        "10Y": Decimal("0.10"),
+        "20Y": Decimal("0.03"),
+        "30Y": Decimal("0.02"),
+    },
+    "CDB_INDEX": {
+        "1Y": Decimal("0.10"),
+        "2Y": Decimal("0.20"),
+        "3Y": Decimal("0.25"),
+        "5Y": Decimal("0.25"),
+        "7Y": Decimal("0.10"),
+        "10Y": Decimal("0.10"),
+    },
+    "AAA_CREDIT_INDEX": {
+        "1Y": Decimal("0.15"),
+        "2Y": Decimal("0.25"),
+        "3Y": Decimal("0.30"),
+        "5Y": Decimal("0.20"),
+        "7Y": Decimal("0.10"),
+    },
+}
 
 
 def summarize_return_decomposition(
@@ -30,6 +62,8 @@ def summarize_return_decomposition(
     cdb_curve_prior: dict[str, Decimal] | None = None,
     aaa_credit_curve_current: dict[str, Decimal] | None = None,
     aaa_credit_curve_prior: dict[str, Decimal] | None = None,
+    fx_rates_current: dict[str, Decimal] | None = None,
+    fx_rates_prior: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     days = Decimal((period_end - period_start).days + 1)
     detail_rows = []
@@ -37,6 +71,8 @@ def summarize_return_decomposition(
     roll_down_total = ZERO
     rate_effect_total = ZERO
     spread_effect_total = ZERO
+    convexity_effect_total = ZERO
+    fx_effect_total = ZERO
     for row in rows:
         carry = safe_decimal(row.get("coupon_rate")) * safe_decimal(row.get("face_value")) * days / Decimal("365")
         curve_type = infer_curve_type(
@@ -63,6 +99,12 @@ def summarize_return_decomposition(
             modified_duration=modified_duration,
             market_value=market_value,
         )
+        convexity_effect = _convexity_effect(
+            row=row,
+            current_curve=current_curve,
+            prior_curve=prior_curve,
+            market_value=market_value,
+        )
         spread_effect = _spread_effect(
             row=row,
             treasury_curve_current=treasury_curve_current,
@@ -73,10 +115,17 @@ def summarize_return_decomposition(
             modified_duration=modified_duration,
             market_value=market_value,
         )
+        fx_effect = _fx_effect(
+            row=row,
+            fx_rates_current=fx_rates_current,
+            fx_rates_prior=fx_rates_prior,
+        )
         carry_total += carry
         roll_down_total += roll_down
         rate_effect_total += rate_effect
         spread_effect_total += spread_effect
+        convexity_effect_total += convexity_effect
+        fx_effect_total += fx_effect
         detail_rows.append(
             {
                 **row,
@@ -84,7 +133,9 @@ def summarize_return_decomposition(
                 "roll_down": roll_down,
                 "rate_effect": rate_effect,
                 "spread_effect": spread_effect,
-                "total": carry + roll_down + rate_effect + spread_effect,
+                "convexity_effect": convexity_effect,
+                "fx_effect": fx_effect,
+                "total": carry + roll_down + rate_effect + spread_effect + convexity_effect + fx_effect,
             }
         )
     return {
@@ -92,11 +143,138 @@ def summarize_return_decomposition(
         "roll_down_total": roll_down_total,
         "rate_effect_total": rate_effect_total,
         "spread_effect_total": spread_effect_total,
+        "convexity_effect_total": convexity_effect_total,
+        "fx_effect_total": fx_effect_total,
         "total_market_value": _sum(rows, "market_value"),
         "bond_count": len(rows),
         "bond_details": detail_rows,
         "by_asset_class": _aggregate_return(detail_rows, "asset_class_std"),
         "by_accounting_class": _aggregate_return(detail_rows, "accounting_class"),
+    }
+
+
+def compute_benchmark_excess(
+    rows: list[dict[str, Any]],
+    *,
+    period_start: date,
+    period_end: date,
+    benchmark_id: str,
+    benchmark_curve_current: dict[str, Decimal] | None,
+    benchmark_curve_prior: dict[str, Decimal] | None,
+    treasury_curve_current: dict[str, Decimal] | None = None,
+    treasury_curve_prior: dict[str, Decimal] | None = None,
+    aaa_credit_curve_current: dict[str, Decimal] | None = None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None = None,
+) -> dict[str, Any]:
+    risk = summarize_portfolio_risk(rows)
+    total_market_value = safe_decimal(risk["total_market_value"])
+    portfolio_duration = safe_decimal(risk["portfolio_modified_duration"])
+    benchmark_duration = _benchmark_duration(benchmark_id)
+    zero_result = {
+        "portfolio_return": ZERO,
+        "benchmark_return": ZERO,
+        "excess_return": ZERO,
+        "duration_effect": ZERO,
+        "curve_effect": ZERO,
+        "spread_effect": ZERO,
+        "selection_effect": ZERO,
+        "allocation_effect": ZERO,
+        "explained_excess": ZERO,
+        "recon_error": ZERO,
+        "portfolio_duration": portfolio_duration,
+        "benchmark_duration": ZERO,
+        "duration_diff": portfolio_duration,
+        "excess_sources": _excess_sources(
+            duration_effect=ZERO,
+            curve_effect=ZERO,
+            spread_effect=ZERO,
+            selection_effect=ZERO,
+            allocation_effect=ZERO,
+        ),
+    }
+    if (
+        not rows
+        or total_market_value == ZERO
+        or not benchmark_curve_current
+        or not benchmark_curve_prior
+    ):
+        return zero_result
+
+    delta_by_bucket = _curve_delta_by_bucket(
+        benchmark_curve_current=benchmark_curve_current,
+        benchmark_curve_prior=benchmark_curve_prior,
+    )
+    portfolio_krd = _portfolio_krd_by_bucket(rows, total_market_value=total_market_value)
+    benchmark_krd = _benchmark_krd_by_bucket(benchmark_id, benchmark_duration=benchmark_duration)
+    all_buckets = sorted(set(delta_by_bucket) | set(portfolio_krd) | set(benchmark_krd))
+
+    carry_total = summarize_return_decomposition(
+        rows,
+        period_start=period_start,
+        period_end=period_end,
+    )["carry_total"]
+    carry_return = ZERO if total_market_value == ZERO else (carry_total / total_market_value) * Decimal("100")
+    portfolio_curve_return = -sum(
+        (portfolio_krd.get(bucket, ZERO) * delta_by_bucket.get(bucket, ZERO) for bucket in all_buckets),
+        ZERO,
+    )
+    benchmark_return = -sum(
+        (benchmark_krd.get(bucket, ZERO) * delta_by_bucket.get(bucket, ZERO) for bucket in all_buckets),
+        ZERO,
+    )
+    portfolio_return = carry_return + portfolio_curve_return
+    excess_return = (portfolio_return - benchmark_return) * Decimal("100")
+    benchmark_delta = ZERO if benchmark_duration == ZERO else -(benchmark_return / benchmark_duration)
+    duration_effect = -((portfolio_duration - benchmark_duration) * benchmark_delta * Decimal("100"))
+    curve_effect = -sum(
+        (
+            (portfolio_krd.get(bucket, ZERO) - benchmark_krd.get(bucket, ZERO))
+            * (delta_by_bucket.get(bucket, ZERO) - benchmark_delta)
+            for bucket in all_buckets
+        ),
+        ZERO,
+    ) * Decimal("100")
+    credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
+    spread_effect = _weighted_spread_change(
+        credit_rows,
+        aaa_credit_curve_current=aaa_credit_curve_current,
+        aaa_credit_curve_prior=aaa_credit_curve_prior,
+        treasury_curve_current=treasury_curve_current,
+        treasury_curve_prior=treasury_curve_prior,
+        total_market_value=total_market_value,
+    ) * Decimal("100")
+    allocation_effect = _compute_allocation_effect(
+        rows,
+        benchmark_id=benchmark_id,
+        benchmark_return=benchmark_return,
+        total_market_value=total_market_value,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    selection_effect = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
+    explained_excess = duration_effect + curve_effect + spread_effect + selection_effect + allocation_effect
+    recon_error = excess_return - explained_excess
+    return {
+        "portfolio_return": portfolio_return,
+        "benchmark_return": benchmark_return,
+        "excess_return": excess_return,
+        "duration_effect": duration_effect,
+        "curve_effect": curve_effect,
+        "spread_effect": spread_effect,
+        "selection_effect": selection_effect,
+        "allocation_effect": allocation_effect,
+        "explained_excess": explained_excess,
+        "recon_error": recon_error,
+        "portfolio_duration": portfolio_duration,
+        "benchmark_duration": benchmark_duration,
+        "duration_diff": portfolio_duration - benchmark_duration,
+        "excess_sources": _excess_sources(
+            duration_effect=duration_effect,
+            curve_effect=curve_effect,
+            spread_effect=spread_effect,
+            selection_effect=selection_effect,
+            allocation_effect=allocation_effect,
+        ),
     }
 
 
@@ -275,6 +453,8 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
                 "roll_down": ZERO,
                 "rate_effect": ZERO,
                 "spread_effect": ZERO,
+                "convexity_effect": ZERO,
+                "fx_effect": ZERO,
                 "market_value": ZERO,
                 "bond_count": 0,
                 "total": ZERO,
@@ -284,6 +464,8 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
         bucket["roll_down"] += safe_decimal(row.get("roll_down"))
         bucket["rate_effect"] += safe_decimal(row.get("rate_effect"))
         bucket["spread_effect"] += safe_decimal(row.get("spread_effect"))
+        bucket["convexity_effect"] += safe_decimal(row.get("convexity_effect"))
+        bucket["fx_effect"] += safe_decimal(row.get("fx_effect"))
         bucket["market_value"] += safe_decimal(row["market_value"])
         bucket["bond_count"] += 1
         bucket["total"] += safe_decimal(row.get("total"))
@@ -327,6 +509,35 @@ def _curve_rate_effect(
     return -(((current_rate - prior_rate) / Decimal("100")) * modified_duration * market_value)
 
 
+def _convexity_effect(
+    *,
+    row: dict[str, Any],
+    current_curve: dict[str, Decimal] | None,
+    prior_curve: dict[str, Decimal] | None,
+    market_value: Decimal,
+) -> Decimal:
+    convexity_val = safe_decimal(row.get("convexity"))
+    if not current_curve or not prior_curve or convexity_val == ZERO or market_value == ZERO:
+        return ZERO
+    tenor = str(row.get("tenor_bucket") or "")
+    current_y = _interpolate_from_curve(current_curve, tenor)
+    prior_y = _interpolate_from_curve(prior_curve, tenor)
+    if current_y is None or prior_y is None:
+        return ZERO
+    delta_y = (current_y - prior_y) / Decimal("100")
+    return Decimal("0.5") * convexity_val * delta_y * delta_y * market_value
+
+
+def _interpolate_from_curve(curve: dict[str, Decimal], tenor_bucket: str) -> Decimal | None:
+    """Return the tenor-bucket rate from a curve after filling standard buckets."""
+    if not curve or not tenor_bucket:
+        return None
+    val = build_full_curve(curve).get(tenor_bucket)
+    if val is None:
+        return None
+    return safe_decimal(val)
+
+
 def _spread_effect(
     *,
     row: dict[str, Any],
@@ -357,6 +568,27 @@ def _spread_effect(
         treasury_curve_prior, years_to_maturity
     )
     return -(((current_spread - prior_spread) / Decimal("100")) * modified_duration * market_value)
+
+
+def _fx_effect(
+    *,
+    row: dict[str, Any],
+    fx_rates_current: dict[str, Decimal] | None,
+    fx_rates_prior: dict[str, Decimal] | None,
+) -> Decimal:
+    currency_code = str(row.get("currency_code") or "CNY").upper().strip()
+    if currency_code in {"", "CNY", "CNX", "RMB"} or not fx_rates_current or not fx_rates_prior:
+        return ZERO
+    current_rate = safe_decimal(fx_rates_current.get(currency_code))
+    prior_rate = safe_decimal(fx_rates_prior.get(currency_code))
+    if current_rate == ZERO or prior_rate == ZERO:
+        return ZERO
+    market_value_native = safe_decimal(row.get("market_value_native"))
+    if market_value_native == ZERO:
+        market_value_native = safe_decimal(row.get("market_value"))
+    if market_value_native == ZERO:
+        return ZERO
+    return market_value_native * (current_rate - prior_rate)
 
 
 def _curve_rate(curve: dict[str, Decimal], years_to_maturity: Decimal) -> Decimal:
@@ -392,6 +624,68 @@ def _weighted_average_spread(
         )
         weighted_spread += spread * market_value
     return weighted_spread / total_market_value
+
+
+def _weighted_spread_change(
+    rows: list[dict[str, Any]],
+    *,
+    aaa_credit_curve_current: dict[str, Decimal] | None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None,
+    treasury_curve_current: dict[str, Decimal] | None,
+    treasury_curve_prior: dict[str, Decimal] | None,
+    total_market_value: Decimal,
+) -> Decimal:
+    if not rows or total_market_value == ZERO:
+        return ZERO
+    total_spread_effect = ZERO
+    for row in rows:
+        market_value = safe_decimal(row.get("market_value"))
+        total_spread_effect += _spread_effect(
+            row=row,
+            treasury_curve_current=treasury_curve_current,
+            treasury_curve_prior=treasury_curve_prior,
+            aaa_credit_curve_current=aaa_credit_curve_current,
+            aaa_credit_curve_prior=aaa_credit_curve_prior,
+            years_to_maturity=_to_years(row.get("years_to_maturity")),
+            modified_duration=safe_decimal(row.get("modified_duration")),
+            market_value=market_value,
+        )
+    return total_spread_effect / total_market_value
+
+
+def _compute_allocation_effect(
+    rows: list[dict[str, Any]],
+    *,
+    benchmark_id: str,
+    benchmark_return: Decimal,
+    total_market_value: Decimal,
+    period_start: date,
+    period_end: date,
+) -> Decimal:
+    if not rows or total_market_value == ZERO:
+        return ZERO
+    grouped_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        grouped_rows[str(row.get("asset_class_std") or "other")].append(row)
+    benchmark_weights = _benchmark_asset_class_weights(benchmark_id)
+    allocation_effect = ZERO
+    for asset_class in sorted(set(grouped_rows) | set(benchmark_weights)):
+        sector_rows = grouped_rows.get(asset_class, [])
+        sector_market_value = _sum(sector_rows, "market_value")
+        portfolio_weight = ZERO if total_market_value == ZERO else sector_market_value / total_market_value
+        benchmark_weight = benchmark_weights.get(asset_class, ZERO)
+        if sector_market_value == ZERO and benchmark_weight == ZERO:
+            continue
+        sector_return = ZERO
+        if sector_market_value != ZERO:
+            sector_summary = summarize_return_decomposition(
+                sector_rows,
+                period_start=period_start,
+                period_end=period_end,
+            )
+            sector_return = (sector_summary["carry_total"] / sector_market_value) * Decimal("100")
+        allocation_effect += (portfolio_weight - benchmark_weight) * (sector_return - benchmark_return)
+    return allocation_effect * Decimal("100")
 
 
 def _build_curve_scenario(rows: list[dict[str, Any]], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -445,3 +739,89 @@ def _weighted(rows: list[dict[str, Any]], field_name: str, *, weight_field: str 
 
 def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:
     return ZERO if denominator == ZERO else numerator / denominator
+
+
+def _benchmark_duration(benchmark_id: str) -> Decimal:
+    return BENCHMARK_DURATION_ASSUMPTIONS.get(benchmark_id, Decimal("5"))
+
+
+def _benchmark_asset_class_weights(benchmark_id: str) -> dict[str, Decimal]:
+    if benchmark_id == "AAA_CREDIT_INDEX":
+        return {"credit": Decimal("1"), "rate": ZERO}
+    return {"rate": Decimal("1"), "credit": ZERO}
+
+
+def _benchmark_krd_by_bucket(benchmark_id: str, *, benchmark_duration: Decimal) -> dict[str, Decimal]:
+    weights = BENCHMARK_BUCKET_WEIGHTS.get(benchmark_id, BENCHMARK_BUCKET_WEIGHTS["CDB_INDEX"])
+    return {
+        bucket: benchmark_duration * weight
+        for bucket, weight in weights.items()
+    }
+
+
+def _portfolio_krd_by_bucket(
+    rows: list[dict[str, Any]],
+    *,
+    total_market_value: Decimal,
+) -> dict[str, Decimal]:
+    bucket_krd: dict[str, Decimal] = defaultdict(lambda: ZERO)
+    if total_market_value == ZERO:
+        return {}
+    for row in rows:
+        bucket = str(row.get("tenor_bucket") or "5Y")
+        bucket_krd[bucket] += (
+            safe_decimal(row.get("modified_duration"))
+            * safe_decimal(row.get("market_value"))
+            / total_market_value
+        )
+    return dict(bucket_krd)
+
+
+def _curve_delta_by_bucket(
+    *,
+    benchmark_curve_current: dict[str, Decimal],
+    benchmark_curve_prior: dict[str, Decimal],
+) -> dict[str, Decimal]:
+    current_curve = build_full_curve(benchmark_curve_current)
+    prior_curve = build_full_curve(benchmark_curve_prior)
+    return {
+        bucket: safe_decimal(current_curve.get(bucket)) - safe_decimal(prior_curve.get(bucket))
+        for bucket in sorted(set(current_curve) | set(prior_curve))
+    }
+
+
+def _excess_sources(
+    *,
+    duration_effect: Decimal,
+    curve_effect: Decimal,
+    spread_effect: Decimal,
+    selection_effect: Decimal,
+    allocation_effect: Decimal,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "source": "duration",
+            "contribution": duration_effect,
+            "description": "Duration mismatch against benchmark parallel shift.",
+        },
+        {
+            "source": "curve",
+            "contribution": curve_effect,
+            "description": "Bucketed KRD mismatch against benchmark curve shape move.",
+        },
+        {
+            "source": "spread",
+            "contribution": spread_effect,
+            "description": "Portfolio-weighted credit spread move using AAA credit versus treasury curves.",
+        },
+        {
+            "source": "selection",
+            "contribution": selection_effect,
+            "description": "Residual selection effect after duration and curve attribution.",
+        },
+        {
+            "source": "allocation",
+            "contribution": allocation_effect,
+            "description": "Asset-class allocation effect versus simplified benchmark sector weights.",
+        },
+    ]

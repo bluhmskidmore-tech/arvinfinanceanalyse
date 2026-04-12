@@ -395,7 +395,7 @@ def _apply_mapping_adjustments(
                     continue
                 if not _row_matches_code(row, account_code):
                     continue
-                _apply_mapping_field(row, field, adjustment.get("value"))
+                _apply_mapping_field_structured(row, field, adjustment.get("value"))
 
 
 def _apply_mapping_field(row: dict[str, Any], field: str, value: Any) -> None:
@@ -416,6 +416,18 @@ def _row_matches_code(row: dict[str, Any], account_code: str) -> bool:
         if text == account_code:
             return True
     return False
+
+
+def _apply_mapping_field_structured(row: dict[str, Any], field: str, value: Any) -> None:
+    field_map = {
+        "industry_name": ["行业名称"],
+        "category_name": ["名称"],
+        "account_name": ["科目名称", "名称"],
+    }
+    for candidate_key in field_map.get(field, []):
+        if candidate_key in row:
+            row[candidate_key] = value
+            return
 
 
 def _apply_analysis_adjustments(

@@ -524,30 +524,40 @@ lineage for contract-level pass/fail evidence：
 
 ### 4.8 fx_daily_mid
 
-???governed formal FX middle-rate storage.
+用途：受治理的正式外汇中间价逐日存储表，为 `zqtz / tyw` formal balance 等正式读路径提供 `lookup_fx_rate` 类查询的事实基础。
 
-?????
-- `trade_date`
-- `base_currency`
-- `quote_currency`
-- `mid_rate`
-- `source_name`
-- `is_business_day`
-- `is_carry_forward`
+层级归属：
+- 属于由 `backend/app/tasks/` 物化写入的 DuckDB 表（API 路径只读）
+- 不是 raw 文件层；不是 preview 输出
+- 与 [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md) 中描述的受控写入与候选发现规则一致
+
+关键字段（与 `backend/app/tasks/fx_mid_materialize.py` 中表定义对齐）：
+- `trade_date` date
+- `base_currency` varchar
+- `quote_currency` varchar
+- `mid_rate` decimal(24, 8)
+- `source_name` varchar
+- `is_business_day` boolean
+- `is_carry_forward` boolean
+- `source_version` varchar
+- `vendor_name` varchar
+- `vendor_version` varchar
+- `vendor_series_code` varchar
+- `observed_trade_date` date
+
+hard-required lineage（行级语义）：
 - `source_version`
-- `vendor_name`
-- `vendor_version`
-- `vendor_series_code`
-- `observed_trade_date`
+- 供应商侧字段：`vendor_name`、`vendor_version`、`vendor_series_code`（在受治理路径可用时必须填充；缺失策略以实现为准，且不得静默冒充正式中间价）
 
-???
-- ?? FX normal path = `Choice -> AkShare -> fail closed`
-- Formal candidate discovery must be driven by repo-owned Choice catalog assets
-- Formal candidates only include genuine `middle-rate` FX series
-- Persisted formal rows must normalize to `base_currency -> CNY`
-- Reverse supplier orientation must be inverted before persistence
-- Missing required formal middle-rates fail closed
-- Explicit CSV/manual overrides remain allowed only when configured directly; they are not the normal governed path
+canonical grain：
+- `(trade_date, base_currency, quote_currency)`
+
+规则：
+- 正常受治理路径：`Choice` 目录驱动候选发现 → `Choice` 拉取 → `AkShare` 回退 → 仍缺失则 fail closed（详见上述 runbook）
+- 正式候选仅包含真实的 `middle-rate` 序列；非中间价观测（例如人民币指数、外汇掉期曲线等）保持分析用途，不得回灌本表
+- 持久化行必须规范为 `base_currency -> CNY`（`quote_currency='CNY'`）；供应商反向报价须在写入前反转
+- 缺失营业日所需正式中间价时 fail closed，不得静默用无关序列填数
+- 显式 CSV / 手动覆盖仅允许在配置中直接声明时使用（`MOSS_FX_OFFICIAL_SOURCE_PATH`、`MOSS_FX_MID_CSV_PATH`），不是正常受治理路径的默认回退
 
 ### 4.9 choice_market_snapshot / choice_market_curve
 

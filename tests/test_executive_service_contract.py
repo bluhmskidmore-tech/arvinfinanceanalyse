@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 from types import SimpleNamespace
 
 import pytest
@@ -13,7 +14,7 @@ from tests.helpers import load_module
 def _exec_service_module():
     """Fresh load of executive_service for patching (avoids mutating canonical import)."""
     return load_module(
-        "tests._exec_service_contract.executive_service",
+        f"tests._exec_service_contract.executive_service_{uuid.uuid4().hex}",
         "backend/app/services/executive_service.py",
     )
 
@@ -112,6 +113,37 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     assert metrics["yield"]["value"] == "+12.63 亿"
     assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
     assert "fact_formal_pnl_fi 当年" in metrics["yield"]["detail"]
+
+
+def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[tuple[str, object]] = []
+
+    class FormalRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            calls.append(("aum", report_date))
+            assert currency_basis == "CNY"
+            return {"report_date": report_date, "total_market_value_amount": 321.0e8}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("pnl", report_date))
+            return 6.5e8
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", FormalRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+
+    out = exec_mod.executive_overview(report_date="2025-11-20")
+
+    assert calls == [("aum", "2025-11-20"), ("pnl", "2025-11-20")]
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert "2025-11-20" in metrics["aum"]["detail"]
+    assert "截至 2025-11-20" in metrics["yield"]["detail"]
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
@@ -214,6 +246,34 @@ def test_executive_pnl_attribution_repo_aggregation_contract(monkeypatch, exec_m
     assert out["result"]["total"] == "+1.75 亿"
 
 
+def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[tuple[str, str]] = []
+
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2025-11-20"]
+
+        def fetch_rows(self, rd, grain):
+            calls.append((rd, grain))
+            return [
+                {
+                    "level": 1,
+                    "is_total": False,
+                    "category_id": "bond_ac",
+                    "business_net_income": 2e8,
+                }
+            ]
+
+    monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
+    out = exec_mod.executive_pnl_attribution(report_date="2025-11-20")
+
+    assert calls == [("2025-11-20", "monthly")]
+    assert out["result"]["total"] == "+2.00 亿"
+
+
 def test_executive_contribution_fallback(monkeypatch, exec_mod):
     class BadRepo:
         def __init__(self, *_a, **_k):
@@ -266,6 +326,32 @@ def test_executive_contribution_repo_grouping_and_status(monkeypatch, exec_mod):
     assert by_id["trading"]["status"] == "波动偏大"
 
 
+def test_executive_contribution_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[tuple[str, str]] = []
+
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2025-11-20"]
+
+        def fetch_rows(self, rd, grain):
+            calls.append((rd, grain))
+            return [
+                {"level": 1, "is_total": False, "category_id": "bond_tpl", "business_net_income": 1e8},
+                {"level": 1, "is_total": False, "category_id": "bond_ac", "business_net_income": 3e8},
+            ]
+
+    monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
+    out = exec_mod.executive_contribution(report_date="2025-11-20")
+
+    assert calls == [("2025-11-20", "monthly")]
+    rows = {row["id"]: row for row in out["result"]["rows"]}
+    assert rows["rates"]["contribution"] == "+3.00 亿"
+    assert rows["trading"]["contribution"] == "+1.00 亿"
+
+
 def test_executive_risk_overview_fallback(monkeypatch, exec_mod):
     class BadBond:
         def __init__(self, *_a, **_k):
@@ -308,6 +394,31 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
     assert "3.21" in by_label["流动性风险"]["value"]
     for sig in out["result"]["signals"]:
         assert "最新日期" in sig["detail"]
+
+
+def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[str] = []
+
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            calls.append(report_date)
+            return {
+                "report_date": report_date,
+                "portfolio_modified_duration": 2.34,
+                "portfolio_dv01": 456789.0,
+                "credit_market_value_ratio_pct": 11.1,
+                "weighted_years_to_maturity": 4.56,
+            }
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Repo)
+    out = exec_mod.executive_risk_overview(report_date="2025-11-20")
+
+    assert calls == ["2025-11-20"]
+    for sig in out["result"]["signals"]:
+        assert "2025-11-20" in sig["detail"]
 
 
 def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
@@ -388,3 +499,47 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
     assert items[0]["detail"] == "D1"
     assert items[0]["occurred_at"] == "14:30"
     assert items[1]["id"] == "rule-b"
+
+
+def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[str] = []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2025-11-20"]
+
+        def fetch_bond_analytics_rows(self, report_date: str):
+            calls.append(report_date)
+            return [{"market_value": 1, "dv01": 0}]
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_portfolio_risk_tensor",
+        lambda rows, report_date: SimpleNamespace(report_date=report_date),
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "evaluate_alerts",
+        lambda tensor, rules=None: [
+            {
+                "rule_id": "rule-hist",
+                "severity": "medium",
+                "title": "Historical",
+                "detail": f"as of {tensor.report_date.isoformat()}",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "datetime",
+        SimpleNamespace(now=lambda: dt.datetime(2025, 11, 20, 9, 45, 0)),
+    )
+
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert calls == ["2025-11-20"]
+    assert out["result"]["items"][0]["detail"] == "as of 2025-11-20"

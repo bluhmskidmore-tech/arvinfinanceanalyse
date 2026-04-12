@@ -9,6 +9,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
     BondAnalyticsRefreshServiceError,
+    bond_analytics_dates_envelope,
     bond_analytics_refresh_status,
     refresh_bond_analytics,
     get_accounting_class_audit,
@@ -20,6 +21,11 @@ from backend.app.services.bond_analytics_service import (
 )
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
+
+
+@router.get("/dates")
+def dates():
+    return bond_analytics_dates_envelope()
 
 
 @router.get("/return-decomposition")

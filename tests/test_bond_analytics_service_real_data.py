@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date
+from decimal import Decimal
 
+import duckdb
 import pytest
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
+from tests.test_bond_analytics_curve_effects import _seed_curve_rows
 from tests.test_bond_analytics_materialize_flow import REPORT_DATE
 from tests.test_bond_analytics_service import _configure_and_materialize
 
@@ -14,13 +18,40 @@ from tests.test_bond_analytics_service import _configure_and_materialize
 def service_mod(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     module = load_module(
-        "backend.app.services.bond_analytics_service",
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
     )
     try:
         yield module
     finally:
         get_settings.cache_clear()
+
+
+def _seed_fx_rows(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(18, 8)
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate)
+            values (?, ?, ?, ?)
+            """,
+            [
+                ("2026-03-31", "USD", "CNY", Decimal("7.08270000")),
+                ("2026-03-01", "USD", "CNY", Decimal("7.04135000")),
+            ],
+        )
+    finally:
+        conn.close()
 
 
 def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_rows(service_mod):
@@ -45,6 +76,7 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
+            "convexity_effect": "0.00000000",
             "trading": "0.00000000",
             "total": "1.01917808",
             "bond_count": 2,
@@ -58,6 +90,7 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
+            "convexity_effect": "0.00000000",
             "trading": "0.00000000",
             "total": "0.50958904",
             "bond_count": 1,
@@ -69,6 +102,7 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
             "roll_down": "0.00000000",
             "rate_effect": "0.00000000",
             "spread_effect": "0.00000000",
+            "convexity_effect": "0.00000000",
             "trading": "0.00000000",
             "total": "0.50958904",
             "bond_count": 1,
@@ -76,6 +110,50 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
         },
     ]
     assert [row["bond_code"] for row in result["bond_details"]] == ["CB-001", "CB-002"]
+
+
+def test_return_decomposition_fx_effect_nonzero_for_usd_bonds(tmp_path, monkeypatch):
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_fx_rows(str(duckdb_path))
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_bond_analytics_daily
+            set currency_code = 'USD',
+                face_value = ?,
+                market_value = ?
+            where report_date = ? and instrument_code = ?
+            """,
+            [Decimal("1000.00000000"), Decimal("1000.00000000"), REPORT_DATE, "CB-001"],
+        )
+    finally:
+        conn.close()
+    service_mod = load_module(
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date.fromisoformat(REPORT_DATE), "MoM", "credit", "all")
+    result = payload["result"]
+
+    assert result["fx_effect"] == "41.35000000"
+    assert Decimal(result["explained_pnl"]) == Decimal(result["carry"]) + Decimal(result["fx_effect"])
+    get_settings.cache_clear()
+
+
+def test_benchmark_excess_spread_effect_nonzero_with_curves(tmp_path, monkeypatch):
+    duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(duckdb_path))
+    service_mod = load_module(
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_benchmark_excess(date.fromisoformat(REPORT_DATE), "MoM", "TREASURY_INDEX")
+
+    assert Decimal(payload["result"]["spread_effect"]) != Decimal("0")
+    get_settings.cache_clear()
 
 
 def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_outputs(service_mod):

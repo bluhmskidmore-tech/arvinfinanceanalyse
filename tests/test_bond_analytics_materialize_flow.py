@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import date
 from decimal import Decimal
 
 import duckdb
@@ -230,11 +229,17 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
 
     repo = repo_mod.BondAnalyticsRepository(str(duckdb_path))
     assert repo.list_report_dates() == [REPORT_DATE]
-    assert [row["instrument_code"] for row in repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)] == [
+    fetched_rows = repo.fetch_bond_analytics_rows(report_date=REPORT_DATE)
+    assert [row["instrument_code"] for row in fetched_rows] == [
         "CB-001",
         "CB-002",
         "TB-001",
     ]
+    assert {row["instrument_code"]: row["interest_mode"] for row in fetched_rows} == {
+        "CB-001": "固定",
+        "CB-002": "固定",
+        "TB-001": "固定",
+    }
     assert [row["instrument_code"] for row in repo.fetch_bond_analytics_rows(report_date=REPORT_DATE, asset_class="credit")] == [
         "CB-001",
         "CB-002",

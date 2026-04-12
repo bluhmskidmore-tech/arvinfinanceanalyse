@@ -79,9 +79,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/bond-analysis",
     icon: "bond",
     description: "债券工作台入口",
-    readiness: "gated",
-    readinessLabel: "Not Ready",
-    readinessNote: "债券分析物化表尚未就绪，当前页面属于预留入口。",
+    readiness: "live",
+    readinessLabel: "Live",
+    readinessNote: "已接 governed bond analytics cockpit，页面内按模块 readiness 展示已落地与待晋升能力。",
   },
   {
     key: "balance-analysis",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import date
+from datetime import timedelta
 from pathlib import Path
 
 
@@ -98,18 +99,26 @@ def backfill_curve(
     trade_date: str,
     curve_type: str,
     rule_version: str,
+    max_backtrack_days: int,
 ) -> tuple[bool, str]:
-    """Fetch and persist a single curve snapshot."""
-    try:
-        snapshot = adapter.fetch_yield_curve(curve_type=curve_type, trade_date=trade_date)
-        repo.replace_curve_snapshots(
-            trade_date=trade_date,
-            snapshots=[snapshot],
-            rule_version=rule_version,
-        )
-        return True, snapshot.vendor_name
-    except Exception as exc:
-        return False, str(exc)
+    """Fetch and persist a single curve snapshot, walking backward when the anchor date is unavailable."""
+    anchor = date.fromisoformat(trade_date)
+    failures: list[str] = []
+    for offset in range(max_backtrack_days + 1):
+        candidate_date = (anchor - timedelta(days=offset)).isoformat()
+        try:
+            snapshot = adapter.fetch_yield_curve(curve_type=curve_type, trade_date=candidate_date)
+            repo.replace_curve_snapshots(
+                trade_date=snapshot.trade_date,
+                snapshots=[snapshot],
+                rule_version=rule_version,
+            )
+            if snapshot.trade_date == trade_date:
+                return True, f"{snapshot.vendor_name} @ {snapshot.trade_date}"
+            return True, f"{snapshot.vendor_name} @ {snapshot.trade_date} (fallback from {trade_date})"
+        except Exception as exc:
+            failures.append(f"{candidate_date}: {exc}")
+    return False, " | ".join(failures[-3:])
 
 
 def main() -> int:
@@ -122,6 +131,12 @@ def main() -> int:
         default="treasury,cdb,aaa_credit",
         help="Comma-separated curve types.",
     )
+    parser.add_argument(
+        "--max-backtrack-days",
+        type=int,
+        default=40,
+        help="How many calendar days to walk backward when the anchor date has no curve snapshot.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print resolved month-end dates without writing data.")
     args = parser.parse_args()
 
@@ -131,6 +146,8 @@ def main() -> int:
         if end < start:
             raise ValueError("end_date must be on or after start_date.")
         curve_types = _normalize_curve_types(args.curve_types)
+        if args.max_backtrack_days < 0:
+            raise ValueError("max_backtrack_days must be non-negative.")
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -152,6 +169,7 @@ def main() -> int:
     print(f"Month-end dates: {len(dates)}")
     print(f"Curve types: {', '.join(curve_types)}")
     print(f"Rule version: {RULE_VERSION}")
+    print(f"Max backtrack days: {args.max_backtrack_days}")
     print()
 
     if not dates:
@@ -194,6 +212,7 @@ def main() -> int:
                 trade_date=trade_date,
                 curve_type=curve_type,
                 rule_version=RULE_VERSION,
+                max_backtrack_days=args.max_backtrack_days,
             )
             if ok:
                 print(f"  OK   {curve_type}: written via {detail}")

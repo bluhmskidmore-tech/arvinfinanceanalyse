@@ -6,6 +6,8 @@ export interface AssetClassBreakdown {
   roll_down: string;
   rate_effect: string;
   spread_effect: string;
+  fx_effect?: string;
+  convexity_effect?: string;
   trading: string;
   total: string;
   bond_count: number;
@@ -163,6 +165,13 @@ export interface ConcentrationMetrics {
   top_items: ConcentrationItem[];
 }
 
+/** Optional per-bond rows for rating×tenor heatmap; server may omit. */
+export interface CreditSpreadBondDetailRow {
+  market_value: string;
+  rating?: string;
+  tenor_bucket?: string;
+}
+
 export interface CreditSpreadMigrationResponse {
   report_date: string;
   credit_bond_count: number;
@@ -177,6 +186,8 @@ export interface CreditSpreadMigrationResponse {
   concentration_by_industry?: ConcentrationMetrics;
   concentration_by_rating?: ConcentrationMetrics;
   concentration_by_tenor?: ConcentrationMetrics;
+  /** When present with rating + tenor_bucket, UI can build rating×tenor heatmap. */
+  bond_details?: CreditSpreadBondDetailRow[];
   oci_credit_exposure: string;
   oci_spread_dv01: string;
   oci_sensitivity_25bp: string;

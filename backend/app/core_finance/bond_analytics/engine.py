@@ -45,6 +45,7 @@ class BondAnalyticsRow:
     amortized_cost: Decimal
     accrued_interest: Decimal
     coupon_rate: Decimal | None
+    interest_mode: str
     ytm: Decimal | None
     maturity_date: date | None
     years_to_maturity: Decimal
@@ -146,6 +147,7 @@ def compute_bond_analytics_rows(
                 amortized_cost=safe_decimal(snapshot_row.get("amortized_cost_native")),
                 accrued_interest=safe_decimal(snapshot_row.get("accrued_interest_native")),
                 coupon_rate=coupon_rate,
+                interest_mode=_as_text(snapshot_row.get("interest_mode")),
                 ytm=ytm,
                 maturity_date=maturity_date,
                 years_to_maturity=years_to_maturity,
