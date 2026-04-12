@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 from decimal import Decimal
 
 import duckdb
@@ -692,6 +693,78 @@ def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_
     assert payload["status"] == "completed"
     assert payload["zqtz_rows"] == 2
     assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_business_day_is_used(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+    fx_mod = sys.modules.get("backend.app.tasks.fx_mid_materialize")
+    if fx_mod is None:
+        fx_mod = load_module(
+            "backend.app.tasks.fx_mid_materialize",
+            "backend/app/tasks/fx_mid_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    data_input_root = tmp_path / "data_input"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2025-12-30"]
+        Data = {"EMM00058124": [[Decimal("7.10")]]}
+
+    class _FakeChoiceClient:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def edb(self, codes, options=""):
+            self.calls.append(options)
+            if "StartDate=2025-12-31" in options:
+                return type("EmptyChoiceResult", (), {"Codes": [], "Dates": [], "Data": {}})()
+            return _ChoiceResult()
+
+    fake_client = _FakeChoiceClient()
+
+    monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
+    monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: fake_client)
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_input_root),
+    )
+
+    assert payload["status"] == "completed"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, mid_rate, is_business_day, is_carry_forward
+            from fx_daily_mid
+            where trade_date = '2025-12-31'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [(date(2025, 12, 31), Decimal("7.10000000"), False, True)]
+    assert any("StartDate=2025-12-31" in call for call in fake_client.calls)
+    assert any("StartDate=2025-12-30" in call for call in fake_client.calls)
     get_settings.cache_clear()
 
 

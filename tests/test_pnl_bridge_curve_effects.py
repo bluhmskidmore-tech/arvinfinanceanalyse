@@ -71,13 +71,50 @@ def test_pnl_bridge_warns_when_latest_curve_fallback_is_used_and_merges_lineage(
     payload = response.json()
     warnings = payload["result"]["warnings"]
     assert any("latest available treasury curve from trade_date=2025-12-30" in warning for warning in warnings)
-    assert any("latest available cdb curve from trade_date=2025-12-30" in warning for warning in warnings)
     assert "sv_treasury_latest" in payload["result_meta"]["source_version"]
     assert "sv_treasury_prior" in payload["result_meta"]["source_version"]
     assert "sv_cdb_latest" in payload["result_meta"]["source_version"]
     assert "sv_cdb_prior" in payload["result_meta"]["source_version"]
     assert "vv_treasury_latest" in payload["result_meta"]["vendor_version"]
     assert "vv_cdb_latest" in payload["result_meta"]["vendor_version"]
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_keeps_fresh_metadata_when_missing_credit_curve_is_irrelevant(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_curve",
+        vendor_version="vv_pnl_curve",
+        rule_version="rv_pnl_curve",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+    _seed_curve_rows(
+        duckdb_path,
+        [
+            ("2025-12-31", "treasury", "1Y", Decimal("2.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "2Y", Decimal("3.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "3Y", Decimal("4.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-10-31", "treasury", "1Y", Decimal("1.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+            ("2025-10-31", "treasury", "2Y", Decimal("2.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+            ("2025-10-31", "treasury", "3Y", Decimal("3.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+        ],
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    assert not any("aaa_credit" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -115,4 +152,30 @@ def test_pnl_bridge_fails_closed_when_same_day_curve_snapshot_lineage_is_corrupt
             governance_dir=str(governance_dir),
             report_date="2025-12-31",
         )
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_marks_result_meta_unavailable_when_credit_curve_missing(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_curve",
+        vendor_version="vv_pnl_curve",
+        rule_version="rv_pnl_curve",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert payload["result_meta"]["fallback_mode"] == "none"
     get_settings.cache_clear()

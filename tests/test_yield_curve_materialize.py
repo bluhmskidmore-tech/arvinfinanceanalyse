@@ -49,13 +49,18 @@ def _curve_snapshot(schema_module, *, curve_type: str, vendor_name: str, source_
     )
 
 
-def test_materialize_yield_curve_rejects_aaa_credit_for_this_stream(tmp_path, monkeypatch):
+def test_materialize_yield_curve_aaa_credit_fail_closed_when_fetch_fails(tmp_path, monkeypatch):
     task_mod = _load_yield_curve_task_module()
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
 
-    with pytest.raises(RuntimeError, match="Unsupported curve_type"):
+    def fail_fetch(*, curve_type: str, trade_date: str):
+        raise RuntimeError(f"{curve_type} unavailable")
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fail_fetch)
+
+    with pytest.raises(RuntimeError, match="Failed to materialize aaa_credit curve"):
         task_mod.materialize_yield_curve.fn(
             trade_date="2026-04-10",
             curve_types=["aaa_credit"],
@@ -216,3 +221,54 @@ def test_materialize_yield_curve_supports_single_curve_request(tmp_path, monkeyp
         conn.close()
 
     assert rows == [("treasury",)]
+
+
+def test_materialize_yield_curve_supports_aaa_credit_request(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    aaa_snapshot = schema_mod.YieldCurveSnapshot(
+        curve_type="aaa_credit",
+        trade_date="2026-04-10",
+        points=[
+            schema_mod.YieldCurvePoint("6M", Decimal("1.20")),
+            schema_mod.YieldCurvePoint("1Y", Decimal("1.30")),
+            schema_mod.YieldCurvePoint("2Y", Decimal("1.40")),
+            schema_mod.YieldCurvePoint("3Y", Decimal("1.50")),
+            schema_mod.YieldCurvePoint("5Y", Decimal("1.70")),
+            schema_mod.YieldCurvePoint("7Y", Decimal("1.85")),
+            schema_mod.YieldCurvePoint("10Y", Decimal("2.00")),
+        ],
+        vendor_name="choice",
+        vendor_version="vv_aaa",
+        source_version="sv_aaa",
+    )
+
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "fetch_yield_curve",
+        lambda _self, curve_type, trade_date: aaa_snapshot,
+    )
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aaa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["curve_types"] == ["aaa_credit"]
+    assert payload["point_count"] == 7
+
+
+def test_yield_curve_module_declares_chinabond_gkh_input_source():
+    task_mod = _load_yield_curve_task_module()
+
+    assert "chinabond_gkh_yield_curve" in task_mod.YIELD_CURVE_MODULE.input_sources

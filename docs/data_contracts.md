@@ -652,3 +652,15 @@ lineage for contract-level pass/fail evidence：
 - 不允许在前端写任何 H/A/T、FX、月均金额正式公式
 - 不允许把 `CNX` 当成币种代码处理
 - 不允许把 `516` 的符号逻辑留到展示层
+
+## 11. FX Source Drop Contract
+
+- 当前 `zqtz / tyw` formal balance stream 的 FX 原始落点契约以 [BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md](BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md) 为准。
+- 当前主获取路径：Choice API
+- 当前 USD/CNY official-mid series code：`EMM00058124`
+- 显式官方路径变量：`MOSS_FX_OFFICIAL_SOURCE_PATH`
+- 兼容旧显式路径变量：`MOSS_FX_MID_CSV_PATH`
+- 标准 CSV 落点：`data_input/fx/fx_daily_mid.csv`
+- 兼容 CSV 落点：`data_input/fx_daily_mid.csv`
+- 当前运行策略：Choice API first，失败时回落到受控 CSV 落点。
+- 当前仓库未包含真实官方非 CSV 原始样例；若后续收到 `xls/xlsx/pdf` 原件，必须基于样例补最小 parser / ingest 适配并补测试，不能静默猜测格式。

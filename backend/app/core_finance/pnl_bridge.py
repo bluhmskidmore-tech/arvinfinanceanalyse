@@ -8,6 +8,7 @@ from typing import Mapping
 from backend.app.core_finance.bond_analytics.common import (
     build_curve_points,
     build_full_curve,
+    classify_asset_class,
     estimate_duration,
     estimate_modified_duration,
     infer_curve_type,
@@ -55,6 +56,8 @@ def build_pnl_bridge_rows(
     treasury_curve_prior: dict[str, Decimal] | None = None,
     cdb_curve_current: dict[str, Decimal] | None = None,
     cdb_curve_prior: dict[str, Decimal] | None = None,
+    aaa_credit_curve_current: dict[str, Decimal] | None = None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> list[PnlBridgeRow]:
     current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
     prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
@@ -110,7 +113,14 @@ def build_pnl_bridge_rows(
             current_curve=current_curve,
             prior_curve=prior_curve,
         )
-        credit_spread = ZERO
+        credit_spread = _calculate_credit_spread_shift(
+            report_date=report_date,
+            current_balance=current_balance,
+            current_curve=current_curve,
+            prior_curve=prior_curve,
+            aaa_credit_curve_current=aaa_credit_curve_current,
+            aaa_credit_curve_prior=aaa_credit_curve_prior,
+        )
         fx_translation = ZERO
         realized_trading = _coerce_decimal(raw_row.get("capital_gain_517", ZERO))
         unrealized_fv = _coerce_decimal(raw_row.get("fair_value_change_516", ZERO))
@@ -210,6 +220,43 @@ def _calculate_curve_shift(
     return -(rate_delta * modified_duration * market_value)
 
 
+def _calculate_credit_spread_shift(
+    *,
+    report_date: date,
+    current_balance: Mapping[str, object] | None,
+    current_curve: dict[str, Decimal] | None,
+    prior_curve: dict[str, Decimal] | None,
+    aaa_credit_curve_current: dict[str, Decimal] | None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None,
+) -> Decimal:
+    if current_balance is None or not _is_credit_row(current_balance):
+        return ZERO
+    if (
+        not current_curve
+        or not prior_curve
+        or not aaa_credit_curve_current
+        or not aaa_credit_curve_prior
+    ):
+        return ZERO
+    years_to_maturity = _years_to_maturity(report_date=report_date, row=current_balance)
+    if years_to_maturity <= 0:
+        return ZERO
+    current_spread = (
+        _curve_rate(aaa_credit_curve_current, years_to_maturity)
+        - _curve_rate(current_curve, years_to_maturity)
+    )
+    prior_spread = (
+        _curve_rate(aaa_credit_curve_prior, years_to_maturity)
+        - _curve_rate(prior_curve, years_to_maturity)
+    )
+    modified_duration = _modified_duration(report_date=report_date, row=current_balance)
+    market_value = _curve_market_value(current_balance)
+    if modified_duration == ZERO or market_value == ZERO:
+        return ZERO
+    spread_delta = (current_spread - prior_spread) / HUNDRED
+    return -(spread_delta * modified_duration * market_value)
+
+
 def _curve_rate(curve: dict[str, Decimal], target_years: float) -> Decimal:
     if not curve:
         return ZERO
@@ -259,6 +306,18 @@ def _curve_market_value(row: Mapping[str, object]) -> Decimal:
     return _coerce_decimal(
         row.get("market_value_amount", row.get("market_value", row.get("market_value_native", ZERO)))
     )
+
+
+def _is_credit_row(row: Mapping[str, object]) -> bool:
+    surface = " ".join(
+        str(value or "")
+        for value in (
+            row.get("asset_class"),
+            row.get("bond_type"),
+            row.get("instrument_name"),
+        )
+    )
+    return classify_asset_class(surface) == "credit"
 
 
 def _build_balance_diagnostics(

@@ -9,6 +9,9 @@ It does not authorize unrelated Phase 2 work, Agent MVP work, or broad frontend 
 
 Current repo-executable contract:
 
+- Primary acquisition path: Choice API
+- Current USD/CNY official-middle-rate series code: `EMM00058124`
+
 - Preferred drop path: `data_input/fx/fx_daily_mid.csv`
 - Compatibility drop path: `data_input/fx_daily_mid.csv`
 - Explicit override: `MOSS_FX_OFFICIAL_SOURCE_PATH`
@@ -18,10 +21,13 @@ Current repo-executable contract:
 
 Notes:
 
+- When Choice API is available, the runtime first tries the Choice API series above for the requested `report_date`.
+- If Choice returns a prior business day within the bounded lookback window, the row is materialized onto the requested `report_date` with `is_carry_forward=true`.
+- If Choice is unavailable or returns no usable row, runtime falls back to the normalized CSV landing contract below.
 - The executable ingest contract for this stream is a normalized CSV landing file.
 - `source_name` should reflect the official source family, for example `CFETS` or `SAFE`.
 - When an explicit path is configured, the path must exist; the pipeline fails closed and does not silently fall back.
-- The repo currently has no raw official non-CSV sample. In other words, there is no checked-in `xls`, `xlsx`, or `pdf` source specimen that proves a bounded parser contract. Because the raw official non-CSV sample is absent, the current runtime supports only the normalized CSV landing contract above.
+- The repo currently has no raw official non-CSV sample. In other words, there is no checked-in `xls`, `xlsx`, or `pdf` source specimen that proves a bounded parser contract. The current runtime supports Choice API plus the normalized CSV landing contract above.
 
 ## Standard Entrypoint
 

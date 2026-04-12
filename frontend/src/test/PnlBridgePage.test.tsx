@@ -138,6 +138,7 @@ describe("PnlBridgePage", () => {
     const detail = await screen.findByTestId("pnl-bridge-detail-table");
     expect(detail).toHaveTextContent("IC-1");
     expect(detail).toHaveTextContent("桥接组合");
+    expect(detail).toHaveTextContent("手工调整");
 
     await waitFor(() => {
       expect(getPnlBridge).toHaveBeenCalledWith("2025-12-31");

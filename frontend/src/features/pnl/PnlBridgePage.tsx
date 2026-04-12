@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AgGridReact } from "ag-grid-react";
-import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
+import type { CellClassParams, ColDef, ValueFormatterParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
 
@@ -34,13 +35,6 @@ const controlStyle = {
   color: "#162033",
 } as const;
 
-const tableShellStyle = {
-  overflowX: "auto",
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
-} as const;
-
 const POS_COLOR = "#5b8ff9";
 const NEG_COLOR = "#e8684a";
 
@@ -48,21 +42,6 @@ const NEG_COLOR = "#e8684a";
 function chartAxisNumber(value: string): number {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
-}
-
-function qualityBadgeStyle(flag: PnlBridgeQuality) {
-  const bg =
-    flag === "ok" ? "#e8f6ee" : flag === "warning" ? "#fffbeb" : "#fff0f0";
-  const color = flag === "ok" ? "#1f6f4a" : flag === "warning" ? "#92400e" : "#9f1239";
-  return {
-    display: "inline-block",
-    padding: "2px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 600,
-    background: bg,
-    color,
-  } as const;
 }
 
 function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
@@ -223,9 +202,44 @@ const bridgeGridDefaultColDef: ColDef = {
   sortable: true,
   filter: true,
   resizable: true,
-  flex: 1,
-  minWidth: 120,
 };
+
+const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
+  { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
+  { field: "portfolio_name", headerName: "组合", width: 120 },
+  { field: "accounting_basis", headerName: "会计分类", width: 100 },
+  {
+    field: "beginning_dirty_mv",
+    headerName: "期初脏价市值",
+    width: 140,
+    type: "numericColumn",
+  },
+  { field: "ending_dirty_mv", headerName: "期末脏价市值", width: 140, type: "numericColumn" },
+  { field: "carry", headerName: "Carry", width: 110, type: "numericColumn" },
+  { field: "roll_down", headerName: "Roll-down", width: 110, type: "numericColumn" },
+  { field: "treasury_curve", headerName: "国债曲线", width: 110, type: "numericColumn" },
+  { field: "credit_spread", headerName: "信用利差", width: 110, type: "numericColumn" },
+  { field: "realized_trading", headerName: "已实现交易", width: 120, type: "numericColumn" },
+  { field: "unrealized_fv", headerName: "未实现公允", width: 120, type: "numericColumn" },
+  { field: "manual_adjustment", headerName: "手工调整", width: 120, type: "numericColumn" },
+  { field: "explained_pnl", headerName: "可解释损益", width: 130, type: "numericColumn" },
+  { field: "actual_pnl", headerName: "实际损益", width: 120, type: "numericColumn" },
+  { field: "residual", headerName: "残差", width: 100, type: "numericColumn" },
+  {
+    field: "quality_flag",
+    headerName: "质量",
+    width: 80,
+    cellStyle: (params: CellClassParams<PnlBridgeRow, PnlBridgeQuality>) => ({
+      color:
+        params.value === "ok"
+          ? shellTokens.colorSuccess
+          : params.value === "warning"
+            ? shellTokens.colorWarning
+            : shellTokens.colorDanger,
+      fontWeight: 600,
+    }),
+  },
+];
 
 export default function PnlBridgePage() {
   const client = useApiClient();
@@ -261,67 +275,29 @@ export default function PnlBridgePage() {
   );
 
   const bridgeColDefs = useMemo<ColDef<PnlBridgeRow>[]>(
-    () => [
-      { field: "instrument_code", headerName: "instrument_code" },
-      { field: "portfolio_name", headerName: "portfolio_name" },
-      { field: "accounting_basis", headerName: "accounting_basis" },
-      {
-        field: "carry",
-        headerName: "carry",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "realized_trading",
-        headerName: "realized_trading",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "unrealized_fv",
-        headerName: "unrealized_fv",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "manual_adjustment",
-        headerName: "manual_adjustment",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "explained_pnl",
-        headerName: "explained_pnl",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "actual_pnl",
-        headerName: "actual_pnl",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "residual",
-        headerName: "residual",
-        headerClass: "ag-right-aligned-header",
-        cellClass: "ag-right-aligned-cell",
-        valueFormatter: thousandsValueFormatter,
-      },
-      {
-        field: "quality_flag",
-        headerName: "quality_flag",
-        cellRenderer: (params: ICellRendererParams<PnlBridgeRow, PnlBridgeQuality>) => (
-          <span style={qualityBadgeStyle(params.value ?? "error")}>{params.value}</span>
-        ),
-      },
-    ],
+    () =>
+      bridgeColumnDefsBase.map((def) =>
+        def.type === "numericColumn" ? { ...def, valueFormatter: thousandsValueFormatter } : def,
+      ),
+    [],
+  );
+
+  const agGridShellStyle = useMemo(
+    () =>
+      ({
+        height: 480,
+        width: "100%",
+        borderRadius: 16,
+        overflow: "hidden",
+        border: `1px solid ${shellTokens.colorBorderSoft}`,
+        marginTop: 18,
+        "--ag-header-background-color": shellTokens.colorBgMuted,
+        "--ag-header-foreground-color": shellTokens.colorTextSecondary,
+        "--ag-row-hover-color": shellTokens.colorBgMuted,
+        "--ag-border-color": shellTokens.colorBorderSoft,
+        "--ag-font-family": '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif',
+        "--ag-font-size": "13px",
+      }) as import("react").CSSProperties,
     [],
   );
 
@@ -493,15 +469,14 @@ export default function PnlBridgePage() {
           void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
         }}
       >
-        <div
-          className="ag-theme-alpine"
-          data-testid="pnl-bridge-detail-table"
-          style={{ ...tableShellStyle, height: 480, width: "100%", padding: 0 }}
-        >
+        <div className="ag-theme-alpine" data-testid="pnl-bridge-detail-table" style={agGridShellStyle}>
           <AgGridReact<PnlBridgeRow>
             rowData={rows}
             columnDefs={bridgeColDefs}
             defaultColDef={bridgeGridDefaultColDef}
+            animateRows
+            pagination
+            paginationPageSize={50}
             getRowId={(p) =>
               `${String(p.data.instrument_code)}-${String(p.data.portfolio_name)}-${String(p.data.accounting_basis)}`
             }

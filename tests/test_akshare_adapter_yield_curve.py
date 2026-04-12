@@ -57,6 +57,28 @@ class _TreasuryChoiceResult:
     }
 
 
+class _AaaCreditChoiceResult:
+    Codes = [
+        "EMM00166654",
+        "EMM00166655",
+        "EMM00166656",
+        "EMM00166657",
+        "EMM00166659",
+        "EMM00168470",
+        "EMM00166661",
+    ]
+    Dates = ["2026-04-10"]
+    Data = {
+        "EMM00166654": [[Decimal("1.20")]],
+        "EMM00166655": [[Decimal("1.30")]],
+        "EMM00166656": [[Decimal("1.40")]],
+        "EMM00166657": [[Decimal("1.50")]],
+        "EMM00166659": [[Decimal("1.70")]],
+        "EMM00168470": [[Decimal("1.80")]],
+        "EMM00166661": [[Decimal("2.00")]],
+    }
+
+
 def test_treasury_choice_fallback_returns_normalized_snapshot(monkeypatch):
     module = load_module(
         "backend.app.repositories.akshare_adapter",
@@ -281,6 +303,90 @@ def test_cdb_prefers_choice_before_gkh_when_akshare_has_no_match(monkeypatch):
     snapshot = module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
 
     assert snapshot.vendor_name == "choice"
+
+
+def test_aaa_credit_prefers_choice_primary(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    monkeypatch.setattr(module.ChoiceClient, "edb", lambda *args, **kwargs: _AaaCreditChoiceResult())
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("akshare should not be called when choice succeeds")),
+    )
+
+    snapshot = module.VendorAdapter().fetch_yield_curve("aaa_credit", "2026-04-10")
+
+    tenor_map = {point.tenor: point.rate_pct for point in snapshot.points}
+    assert snapshot.vendor_name == "choice"
+    assert tenor_map["2Y"] == Decimal("1.40")
+    assert tenor_map["7Y"] > tenor_map["6Y"]
+
+
+def test_aaa_credit_fails_closed_when_choice_unavailable_and_akshare_has_no_exact_family(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    class _ChoiceFailure:
+        def edb(self, *args, **kwargs):
+            raise RuntimeError("choice unavailable")
+
+    monkeypatch.setattr(module, "ChoiceClient", lambda: _ChoiceFailure())
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_records_locally",
+        lambda *args, **kwargs: [
+            {
+                "曲线名称": "中债中短期票据收益率曲线(AAA)",
+                "日期": "2026-04-10",
+                "1年": Decimal("1.20"),
+                "3年": Decimal("1.40"),
+                "5年": Decimal("1.60"),
+                "10年": Decimal("1.90"),
+            }
+        ],
+    )
+
+    with pytest.raises(RuntimeError):
+        module.VendorAdapter().fetch_yield_curve("aaa_credit", "2026-04-10")
+
+
+def test_aaa_credit_uses_exact_family_akshare_fallback(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    class _ChoiceFailure:
+        def edb(self, *args, **kwargs):
+            raise RuntimeError("choice unavailable")
+
+    monkeypatch.setattr(module, "ChoiceClient", lambda: _ChoiceFailure())
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_records_locally",
+        lambda *args, **kwargs: [
+            {
+                "曲线名称": module.AKSHARE_CURVE_NAME_BY_TYPE["aaa_credit"],
+                "日期": "2026-04-10",
+                "1年": Decimal("1.20"),
+                "3年": Decimal("1.40"),
+                "5年": Decimal("1.60"),
+                "10年": Decimal("1.90"),
+            }
+        ],
+    )
+
+    snapshot = module.VendorAdapter().fetch_yield_curve("aaa_credit", "2026-04-10")
+
+    tenor_map = {point.tenor: point.rate_pct for point in snapshot.points}
+    assert snapshot.vendor_name == "akshare"
+    assert tenor_map["2Y"] == Decimal("1.30")
+    assert tenor_map["7Y"] > tenor_map["5Y"]
 
 
 def test_cdb_uses_gkh_after_invalid_akshare_and_failed_choice(monkeypatch):

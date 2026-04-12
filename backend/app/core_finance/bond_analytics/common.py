@@ -175,7 +175,7 @@ def estimate_convexity(
 
 TENOR_YEARS: dict[str, float] = {
     "1M": 1 / 12, "3M": 0.25, "6M": 0.5, "9M": 0.75,
-    "1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "5Y": 5.0,
+    "1Y": 1.0, "2Y": 2.0, "3Y": 3.0, "4Y": 4.0, "5Y": 5.0, "6Y": 6.0,
     "7Y": 7.0, "10Y": 10.0, "15Y": 15.0, "20Y": 20.0, "30Y": 30.0,
 }
 
@@ -235,7 +235,7 @@ def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:
     if not raw_curve:
         return {}
     points = build_curve_points(raw_curve)
-    all_tenors = ["3M", "6M", "9M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
+    all_tenors = ["3M", "6M", "9M", "1Y", "2Y", "3Y", "4Y", "5Y", "6Y", "7Y", "10Y", "20Y", "30Y"]
     full: dict[str, Decimal] = {}
     for tenor in all_tenors:
         if tenor in raw_curve:

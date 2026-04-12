@@ -62,6 +62,16 @@ CHOICE_CURVE_CODES = {
         "10Y": "EMM00166502",
         "20Y": "EMM00166504",
     },
+    "aaa_credit": {
+        "6M": "EMM00166654",
+        "1Y": "EMM00166655",
+        "2Y": "EMM00166656",
+        "3Y": "EMM00166657",
+        "4Y": "EMM00166658",
+        "5Y": "EMM00166659",
+        "6Y": "EMM00168470",
+        "10Y": "EMM00166661",
+    },
 }
 
 CHINABOND_GKH_URL = "https://yield.chinabond.com.cn/gkh/yield"
@@ -83,7 +93,7 @@ MIN_OBSERVED_TENORS_BY_TYPE = {
 MIN_REQUIRED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
     "cdb": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "10Y", "20Y", "30Y"}),
-    "aaa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "aaa_credit": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y"}),
 }
 
 
@@ -133,6 +143,9 @@ class VendorAdapter(VendorAdapterBase):
         normalized_curve_type = _normalize_curve_type(curve_type)
         normalized_trade_date = date.fromisoformat(str(trade_date)).isoformat()
 
+        if normalized_curve_type == "aaa_credit":
+            return self._fetch_aaa_credit_curve(normalized_trade_date)
+
         primary_error: Exception | None = None
         try:
             primary = self._fetch_akshare_curve(
@@ -178,6 +191,40 @@ class VendorAdapter(VendorAdapterBase):
                 errors.append(f"ChinaBond gkh failed: {tertiary_error}")
             else:
                 errors.append("ChinaBond gkh returned no matching curve snapshot.")
+        raise RuntimeError(" ".join(errors))
+
+    def _fetch_aaa_credit_curve(self, trade_date: str) -> YieldCurveSnapshot:
+        primary_error: Exception | None = None
+        try:
+            primary = self._fetch_choice_curve(
+                curve_type="aaa_credit",
+                trade_date=trade_date,
+            )
+            if primary is not None:
+                return primary
+        except Exception as exc:
+            primary_error = exc
+
+        fallback_error: Exception | None = None
+        try:
+            fallback = self._fetch_akshare_curve(
+                curve_type="aaa_credit",
+                trade_date=trade_date,
+            )
+            if fallback is not None:
+                return fallback
+        except Exception as exc:
+            fallback_error = exc
+
+        errors = []
+        if primary_error is not None:
+            errors.append(f"Choice failed: {primary_error}")
+        else:
+            errors.append("Choice returned no matching curve snapshot.")
+        if fallback_error is not None:
+            errors.append(f"AkShare failed: {fallback_error}")
+        else:
+            errors.append("AkShare returned no matching curve snapshot.")
         raise RuntimeError(" ".join(errors))
 
     def _fetch_akshare_curve(self, *, curve_type: str, trade_date: str) -> YieldCurveSnapshot | None:
@@ -362,6 +409,32 @@ def _validate_standardized_points(*, curve_type: str, points: list[YieldCurvePoi
 
 
 def _enrich_curve_points(*, curve_type: str, points: list[YieldCurvePoint]) -> list[YieldCurvePoint]:
+    if curve_type == "aaa_credit":
+        tenor_map = {point.tenor: point for point in points}
+        enriched = dict(tenor_map)
+        point_1y = tenor_map.get("1Y")
+        point_3y = tenor_map.get("3Y")
+        point_5y = tenor_map.get("5Y")
+        point_6y = tenor_map.get("6Y")
+        point_10y = tenor_map.get("10Y")
+        if "6M" not in enriched and point_1y is not None:
+            enriched["6M"] = YieldCurvePoint(tenor="6M", rate_pct=point_1y.rate_pct)
+        if "2Y" not in enriched and point_1y is not None and point_3y is not None:
+            enriched["2Y"] = YieldCurvePoint(
+                tenor="2Y",
+                rate_pct=point_1y.rate_pct + (point_3y.rate_pct - point_1y.rate_pct) / Decimal("2"),
+            )
+        if "7Y" not in enriched and point_6y is not None and point_10y is not None:
+            enriched["7Y"] = YieldCurvePoint(
+                tenor="7Y",
+                rate_pct=point_6y.rate_pct + (point_10y.rate_pct - point_6y.rate_pct) / Decimal("4"),
+            )
+        elif "7Y" not in enriched and point_5y is not None and point_10y is not None:
+            enriched["7Y"] = YieldCurvePoint(
+                tenor="7Y",
+                rate_pct=point_5y.rate_pct + (point_10y.rate_pct - point_5y.rate_pct) * Decimal("0.4"),
+            )
+        return sorted(enriched.values(), key=lambda point: point.tenor)
     if curve_type != "cdb":
         return points
     tenor_map = {point.tenor: point for point in points}

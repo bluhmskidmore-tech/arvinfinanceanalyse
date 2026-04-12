@@ -52,9 +52,39 @@ function isAgentQueryResult(value: unknown): value is AgentQueryResult {
   return (
     typeof value.answer === "string" &&
     Array.isArray(value.cards) &&
-    isRecord(value.evidence) &&
+    value.cards.every(isAgentResultCard) &&
+    isAgentEvidence(value.evidence) &&
     Array.isArray(value.next_drill) &&
+    value.next_drill.every(isAgentNextDrill) &&
     isRecord(value.result_meta)
+  );
+}
+
+function isAgentResultCard(value: unknown): value is AgentResultCard {
+  return (
+    isRecord(value) &&
+    typeof value.title === "string" &&
+    typeof value.value === "string" &&
+    typeof value.type === "string"
+  );
+}
+
+function isAgentEvidence(value: unknown): value is AgentEvidence {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.tables_used) &&
+    value.tables_used.every((item) => typeof item === "string") &&
+    isRecord(value.filters_applied) &&
+    typeof value.evidence_rows === "number" &&
+    typeof value.quality_flag === "string"
+  );
+}
+
+function isAgentNextDrill(value: unknown): value is AgentNextDrill {
+  return (
+    isRecord(value) &&
+    typeof value.dimension === "string" &&
+    typeof value.label === "string"
   );
 }
 
@@ -78,6 +108,59 @@ function buildErrorMessage(error: unknown) {
   return "Agent 查询失败，请稍后重试。";
 }
 
+function hasEvidenceContent(evidence: AgentEvidence) {
+  return (
+    evidence.tables_used.length > 0 ||
+    Object.keys(evidence.filters_applied).length > 0 ||
+    evidence.evidence_rows > 0 ||
+    evidence.quality_flag.trim().length > 0
+  );
+}
+
+function hasRenderableResult(result: AgentQueryResult) {
+  return (
+    result.answer.trim().length > 0 ||
+    result.cards.length > 0 ||
+    hasEvidenceContent(result.evidence) ||
+    result.next_drill.length > 0
+  );
+}
+
+function buildResultMetaEntries(resultMeta: Record<string, unknown>) {
+  const orderedKeys = ["trace_id", "basis", "generated_at"];
+  const seen = new Set<string>();
+  const entries: Array<[string, unknown]> = [];
+
+  for (const key of orderedKeys) {
+    if (key in resultMeta) {
+      entries.push([key, resultMeta[key]]);
+      seen.add(key);
+    }
+  }
+
+  for (const [key, value] of Object.entries(resultMeta)) {
+    if (seen.has(key)) {
+      continue;
+    }
+    entries.push([key, value]);
+  }
+
+  return entries;
+}
+
+function formatMetaValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return "—";
+  }
+  if (typeof value === "string") {
+    return value.trim().length > 0 ? value : "—";
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return JSON.stringify(value);
+}
+
 export default function AgentWorkbenchPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -98,7 +181,6 @@ export default function AgentWorkbenchPage() {
     }
 
     setLoading(true);
-    setResult(null);
     setError(null);
 
     try {
@@ -216,7 +298,7 @@ export default function AgentWorkbenchPage() {
             opacity: loading ? 0.72 : 1,
           }}
         >
-          查询
+          {loading ? "查询中..." : "查询"}
         </button>
       </form>
 
@@ -259,42 +341,125 @@ export default function AgentWorkbenchPage() {
             gap: 18,
           }}
         >
-          <div
-            style={{
-              padding: 20,
-              borderRadius: 16,
-              border: `1px solid ${t.colorBorderSoft}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextPrimary,
-              fontSize: 15,
-              lineHeight: 1.75,
-            }}
-          >
-            {result.answer}
-          </div>
+          {hasRenderableResult(result) ? (
+            <>
+              {result.answer.trim().length > 0 ? (
+                <div
+                  style={{
+                    padding: 20,
+                    borderRadius: 16,
+                    border: `1px solid ${t.colorBorderSoft}`,
+                    background: t.colorBgCanvas,
+                    color: t.colorTextPrimary,
+                    fontSize: 15,
+                    lineHeight: 1.75,
+                  }}
+                >
+                  {result.answer}
+                </div>
+              ) : null}
 
-          {result.cards.length > 0 ? (
+              {result.cards.length > 0 ? (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                    gap: 14,
+                  }}
+                >
+                  {result.cards.map((card) => (
+                    <PlaceholderCard
+                      key={`${card.title}-${card.type}`}
+                      title={card.title}
+                      value={String(card.value)}
+                      detail={card.type}
+                    />
+                  ))}
+                </div>
+              ) : null}
+
+              {hasEvidenceContent(result.evidence) ? (
+                <div
+                  style={{
+                    marginTop: 18,
+                    padding: 16,
+                    borderRadius: 14,
+                    border: `1px solid ${t.colorBorderSoft}`,
+                    background: t.colorBgSurface,
+                  }}
+                >
+                  <div
+                    style={{
+                      color: t.colorTextMuted,
+                      fontSize: 12,
+                      marginBottom: 8,
+                    }}
+                  >
+                    证据链
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: t.colorTextSecondary,
+                      lineHeight: 1.7,
+                    }}
+                  >
+                    tables: {result.evidence.tables_used.join(", ")}
+                    <br />
+                    filters: {JSON.stringify(result.evidence.filters_applied)}
+                    <br />
+                    rows: {result.evidence.evidence_rows}
+                    <br />
+                    quality: {result.evidence.quality_flag}
+                  </div>
+                </div>
+              ) : null}
+
+              {result.next_drill.length > 0 ? (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    marginTop: 12,
+                  }}
+                >
+                  {result.next_drill.map((drill) => (
+                    <span
+                      key={drill.dimension}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        background: t.colorBgMuted,
+                        color: t.colorTextSecondary,
+                        fontSize: 12,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {drill.label}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                gap: 14,
+                padding: 20,
+                borderRadius: 16,
+                border: `1px solid ${t.colorBorderSoft}`,
+                background: t.colorBgCanvas,
+                color: t.colorTextSecondary,
+                fontSize: 15,
+                lineHeight: 1.75,
               }}
             >
-              {result.cards.map((card) => (
-                <PlaceholderCard
-                  key={`${card.title}-${card.type}`}
-                  title={card.title}
-                  value={String(card.value)}
-                  detail={card.type}
-                />
-              ))}
+              本次查询未返回可展示结果。请调整问题后重试。
             </div>
-          ) : null}
+          )}
 
           <div
             style={{
-              marginTop: 18,
               padding: 16,
               borderRadius: 14,
               border: `1px solid ${t.colorBorderSoft}`,
@@ -308,7 +473,7 @@ export default function AgentWorkbenchPage() {
                 marginBottom: 8,
               }}
             >
-              证据链
+              结果元信息
             </div>
             <div
               style={{
@@ -317,42 +482,13 @@ export default function AgentWorkbenchPage() {
                 lineHeight: 1.7,
               }}
             >
-              tables: {result.evidence.tables_used.join(", ")}
-              <br />
-              filters: {JSON.stringify(result.evidence.filters_applied)}
-              <br />
-              rows: {result.evidence.evidence_rows}
-              <br />
-              quality: {result.evidence.quality_flag}
-            </div>
-          </div>
-
-          {result.next_drill.length > 0 ? (
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-                marginTop: 12,
-              }}
-            >
-              {result.next_drill.map((drill) => (
-                <span
-                  key={drill.dimension}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: 999,
-                    background: t.colorBgMuted,
-                    color: t.colorTextSecondary,
-                    fontSize: 12,
-                    fontWeight: 500,
-                  }}
-                >
-                  {drill.label}
-                </span>
+              {buildResultMetaEntries(result.result_meta).map(([key, value]) => (
+                <div key={key}>
+                  {key}: {formatMetaValue(value)}
+                </div>
               ))}
             </div>
-          ) : null}
+          </div>
         </div>
       ) : null}
     </section>

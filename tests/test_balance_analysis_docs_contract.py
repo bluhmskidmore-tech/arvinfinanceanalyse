@@ -85,5 +85,19 @@ def test_fx_source_runbook_freezes_official_drop_contract_and_standard_entrypoin
     assert "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward" in runbook
     assert "MOSS_FX_OFFICIAL_SOURCE_PATH" in runbook
     assert "MOSS_FX_OFFICIAL_SOURCE_PATH=" in env_example
+    assert "Choice API" in runbook
+    assert "EMM00058124" in runbook
+    assert "Choice API plus the normalized CSV landing contract" in runbook
     assert "python -m backend.app.tasks.formal_balance_pipeline" in runbook
     assert "raw official non-CSV sample" in runbook
+
+
+def test_data_contracts_reference_fx_runbook_as_current_drop_contract_owner():
+    contracts = _read_doc("docs/data_contracts.md")
+
+    assert "BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md" in contracts
+    assert "MOSS_FX_OFFICIAL_SOURCE_PATH" in contracts
+    assert "MOSS_FX_MID_CSV_PATH" in contracts
+    assert "data_input/fx/fx_daily_mid.csv" in contracts
+    assert "Choice API" in contracts
+    assert "EMM00058124" in contracts

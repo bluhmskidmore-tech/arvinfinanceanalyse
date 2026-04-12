@@ -19,7 +19,7 @@ YIELD_CURVE_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(
         module_name="yield_curve",
         basis="formal",
-        input_sources=("akshare_yield_curve", "choice_yield_curve"),
+        input_sources=("akshare_yield_curve", "choice_yield_curve", "chinabond_gkh_yield_curve"),
         fact_tables=("fact_formal_yield_curve_daily",),
         rule_version="rv_yield_curve_formal_materialize_v1",
         cache_key_prefix="yield_curve:materialize",
@@ -34,7 +34,7 @@ CACHE_KEY = YIELD_CURVE_MODULE.cache_key
 RULE_VERSION = YIELD_CURVE_MODULE.rule_version
 CACHE_VERSION = YIELD_CURVE_MODULE.cache_version
 
-SUPPORTED_CURVE_TYPES = ("treasury", "cdb")
+SUPPORTED_CURVE_TYPES = ("treasury", "cdb", "aaa_credit")
 
 
 def _normalize_curve_types(curve_types: tuple[str, ...]) -> tuple[str, ...]:

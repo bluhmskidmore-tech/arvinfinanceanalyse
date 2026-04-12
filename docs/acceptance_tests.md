@@ -71,10 +71,12 @@
 - `treasury` 与 `cdb` 曲线物化结果必须同时带 `vendor_name / vendor_version / source_version`
 - `treasury` 默认走 AkShare 主路径
 - `cdb` 默认优先尝试 AkShare 聚合路径，再尝试 Choice；当两者均不可用时，允许回退到 ChinaBond `gkh` 公共页面作为受控 live fallback
+- `aaa_credit` 只允许使用企业债 AAA 同族曲线；不允许把其他 AAA 家族跨用为 `aaa_credit`
 - service/read path 只允许回退到“请求日及以前”的最近可用曲线，不允许 future-date fallback
 - `pnl.bridge` 在 governed curve 可用时，`roll_down / treasury_curve` 不再固定为 0
 - `bond_analytics.return_decomposition` 在 governed curve 可用时，`roll_down / rate_effect` 不再固定为 0
-- `credit_spread / fx_translation` 在当前 slice 仍允许保持 0，但必须有显式 warning
+- `credit_spread` 在当前 slice 已进入正式实现边界：当 AAA credit 与 treasury 曲线可用时不得固定为 0
+- `fx_translation` 在当前 slice 仍允许保持 0，但必须有显式 warning
 - 短端点位 `3M / 6M / 9M` 不得在插值前被丢弃
 - 至少一组固定 fixture/reference 需要对 `roll_down / treasury_curve / rate_effect` 做数值断言，不能只验非 0
 

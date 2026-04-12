@@ -133,7 +133,7 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     assert len(result["spread_scenarios"]) == 4
     assert result["oci_credit_exposure"] == "190.00000000"
     assert result["concentration_by_issuer"]["dimension"] == "issuer"
-    assert any("Spread level input unavailable" in warning for warning in result["warnings"])
+    assert any("No aaa_credit curve available" in warning or "No treasury curve available" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 

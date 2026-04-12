@@ -28,12 +28,15 @@ def summarize_return_decomposition(
     treasury_curve_prior: dict[str, Decimal] | None = None,
     cdb_curve_current: dict[str, Decimal] | None = None,
     cdb_curve_prior: dict[str, Decimal] | None = None,
+    aaa_credit_curve_current: dict[str, Decimal] | None = None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     days = Decimal((period_end - period_start).days + 1)
     detail_rows = []
     carry_total = ZERO
     roll_down_total = ZERO
     rate_effect_total = ZERO
+    spread_effect_total = ZERO
     for row in rows:
         carry = safe_decimal(row.get("coupon_rate")) * safe_decimal(row.get("face_value")) * days / Decimal("365")
         curve_type = infer_curve_type(
@@ -60,22 +63,35 @@ def summarize_return_decomposition(
             modified_duration=modified_duration,
             market_value=market_value,
         )
+        spread_effect = _spread_effect(
+            row=row,
+            treasury_curve_current=treasury_curve_current,
+            treasury_curve_prior=treasury_curve_prior,
+            aaa_credit_curve_current=aaa_credit_curve_current,
+            aaa_credit_curve_prior=aaa_credit_curve_prior,
+            years_to_maturity=years_to_maturity,
+            modified_duration=modified_duration,
+            market_value=market_value,
+        )
         carry_total += carry
         roll_down_total += roll_down
         rate_effect_total += rate_effect
+        spread_effect_total += spread_effect
         detail_rows.append(
             {
                 **row,
                 "carry": carry,
                 "roll_down": roll_down,
                 "rate_effect": rate_effect,
-                "total": carry + roll_down + rate_effect,
+                "spread_effect": spread_effect,
+                "total": carry + roll_down + rate_effect + spread_effect,
             }
         )
     return {
         "carry_total": carry_total,
         "roll_down_total": roll_down_total,
         "rate_effect_total": rate_effect_total,
+        "spread_effect_total": spread_effect_total,
         "total_market_value": _sum(rows, "market_value"),
         "bond_count": len(rows),
         "bond_details": detail_rows,
@@ -132,9 +148,20 @@ def build_asset_class_risk_summary(rows: list[dict[str, Any]]) -> list[dict[str,
     ]
 
 
-def summarize_credit(rows: list[dict[str, Any]], *, total_rows: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_credit(
+    rows: list[dict[str, Any]],
+    *,
+    total_rows: list[dict[str, Any]],
+    aaa_credit_curve_current: dict[str, Decimal] | None = None,
+    treasury_curve_current: dict[str, Decimal] | None = None,
+) -> dict[str, Any]:
     total_market_value = _sum(total_rows, "market_value")
     credit_market_value = _sum(rows, "market_value")
+    weighted_avg_spread = _weighted_average_spread(
+        rows,
+        aaa_credit_curve_current=aaa_credit_curve_current,
+        treasury_curve_current=treasury_curve_current,
+    )
     return {
         "total_market_value": total_market_value,
         "credit_bond_count": len(rows),
@@ -142,7 +169,7 @@ def summarize_credit(rows: list[dict[str, Any]], *, total_rows: list[dict[str, A
         "credit_weight": _ratio(credit_market_value, total_market_value),
         "spread_dv01": _sum(rows, "spread_dv01"),
         "weighted_avg_spread_duration": _weighted(rows, "modified_duration"),
-        "weighted_avg_spread": ZERO,
+        "weighted_avg_spread": weighted_avg_spread,
         "oci_credit_exposure": _sum([row for row in rows if str(row["accounting_class"]) == "OCI"], "market_value"),
         "oci_spread_dv01": _sum([row for row in rows if str(row["accounting_class"]) == "OCI"], "spread_dv01"),
         "tpl_spread_dv01": _sum([row for row in rows if str(row["accounting_class"]) == "TPL"], "spread_dv01"),
@@ -247,6 +274,7 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
                 "carry": ZERO,
                 "roll_down": ZERO,
                 "rate_effect": ZERO,
+                "spread_effect": ZERO,
                 "market_value": ZERO,
                 "bond_count": 0,
                 "total": ZERO,
@@ -255,6 +283,7 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
         bucket["carry"] += safe_decimal(row["carry"])
         bucket["roll_down"] += safe_decimal(row.get("roll_down"))
         bucket["rate_effect"] += safe_decimal(row.get("rate_effect"))
+        bucket["spread_effect"] += safe_decimal(row.get("spread_effect"))
         bucket["market_value"] += safe_decimal(row["market_value"])
         bucket["bond_count"] += 1
         bucket["total"] += safe_decimal(row.get("total"))
@@ -298,6 +327,38 @@ def _curve_rate_effect(
     return -(((current_rate - prior_rate) / Decimal("100")) * modified_duration * market_value)
 
 
+def _spread_effect(
+    *,
+    row: dict[str, Any],
+    treasury_curve_current: dict[str, Decimal] | None,
+    treasury_curve_prior: dict[str, Decimal] | None,
+    aaa_credit_curve_current: dict[str, Decimal] | None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None,
+    years_to_maturity: Decimal,
+    modified_duration: Decimal,
+    market_value: Decimal,
+) -> Decimal:
+    if str(row.get("asset_class_std")) != "credit":
+        return ZERO
+    if (
+        not treasury_curve_current
+        or not treasury_curve_prior
+        or not aaa_credit_curve_current
+        or not aaa_credit_curve_prior
+        or years_to_maturity <= ZERO
+        or modified_duration == ZERO
+        or market_value == ZERO
+    ):
+        return ZERO
+    current_spread = _curve_rate(aaa_credit_curve_current, years_to_maturity) - _curve_rate(
+        treasury_curve_current, years_to_maturity
+    )
+    prior_spread = _curve_rate(aaa_credit_curve_prior, years_to_maturity) - _curve_rate(
+        treasury_curve_prior, years_to_maturity
+    )
+    return -(((current_spread - prior_spread) / Decimal("100")) * modified_duration * market_value)
+
+
 def _curve_rate(curve: dict[str, Decimal], years_to_maturity: Decimal) -> Decimal:
     points = build_curve_points(build_full_curve(curve))
     return interpolate_rate(points, float(years_to_maturity))
@@ -307,6 +368,30 @@ def _to_years(value: Any) -> Decimal:
     if value in (None, ""):
         return ZERO
     return safe_decimal(value)
+
+
+def _weighted_average_spread(
+    rows: list[dict[str, Any]],
+    *,
+    aaa_credit_curve_current: dict[str, Decimal] | None,
+    treasury_curve_current: dict[str, Decimal] | None,
+) -> Decimal:
+    if not rows or not aaa_credit_curve_current or not treasury_curve_current:
+        return ZERO
+    total_market_value = _sum(rows, "market_value")
+    if total_market_value == ZERO:
+        return ZERO
+    weighted_spread = ZERO
+    for row in rows:
+        years_to_maturity = _to_years(row.get("years_to_maturity"))
+        market_value = safe_decimal(row.get("market_value"))
+        if years_to_maturity <= ZERO or market_value == ZERO:
+            continue
+        spread = _curve_rate(aaa_credit_curve_current, years_to_maturity) - _curve_rate(
+            treasury_curve_current, years_to_maturity
+        )
+        weighted_spread += spread * market_value
+    return weighted_spread / total_market_value
 
 
 def _build_curve_scenario(rows: list[dict[str, Any]], scenario: dict[str, Any]) -> dict[str, Any]:

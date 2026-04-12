@@ -183,7 +183,10 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
             },
         ],
     }
-    assert result["warnings"] == [service_mod.SPREAD_WARNING]
+    assert any(
+        "No aaa_credit curve available" in warning or "No treasury curve available" in warning
+        for warning in result["warnings"]
+    )
 
 
 def test_bond_analytics_accounting_audit_with_real_facts_returns_rule_trace_rows(service_mod):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from backend.app.core_finance.bond_analytics.common import classify_asset_class, infer_curve_type
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -31,7 +32,7 @@ from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CUR
 
 
 PHASE3_WARNING = (
-    "Phase 3 partial delivery: credit_spread / fx_translation remain fixed at 0; roll_down / treasury_curve use governed curves when available."
+    "Phase 3 partial delivery: fx_translation remains fixed at 0; roll_down / treasury_curve / credit_spread use governed curves when available."
 )
 BRIDGE_CACHE_VERSION = (
     f"cv_pnl_bridge_start_pack_v1__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
@@ -72,14 +73,33 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         requested_trade_date=prior_date,
         curve_type="cdb",
     )
+    aaa_current, aaa_current_warning = _resolve_curve_for_service(
+        repo=curve_repo,
+        requested_trade_date=report_date,
+        curve_type="aaa_credit",
+    )
+    aaa_prior, aaa_prior_warning = _resolve_curve_for_service(
+        repo=curve_repo,
+        requested_trade_date=prior_date,
+        curve_type="aaa_credit",
+    )
+    relevant_curve_warnings = _curve_warnings_for_bridge_rows(
+        current_balance_rows=current_balance_rows,
+        prior_balance_rows=prior_balance_rows,
+        treasury_current_warning=treasury_current_warning,
+        treasury_prior_warning=treasury_prior_warning,
+        cdb_current_warning=cdb_current_warning,
+        cdb_prior_warning=cdb_prior_warning,
+        aaa_current_warning=aaa_current_warning,
+        aaa_prior_warning=aaa_prior_warning,
+    )
     curve_latest_fallback = any(
         w and "Using latest available" in w
-        for w in (
-            treasury_current_warning,
-            treasury_prior_warning,
-            cdb_current_warning,
-            cdb_prior_warning,
-        )
+        for w in relevant_curve_warnings
+    )
+    curve_unavailable = any(
+        w and w.startswith("No ")
+        for w in relevant_curve_warnings
     )
 
     rows = build_pnl_bridge_rows(
@@ -90,6 +110,8 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         treasury_curve_prior=treasury_prior["curve"] if treasury_prior else None,
         cdb_curve_current=cdb_current["curve"] if cdb_current else None,
         cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
+        aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
+        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
     )
     summary = _build_summary(rows)
     lineage, lineage_warnings = _resolve_bridge_lineage(
@@ -100,7 +122,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         prior_balance_rows=prior_balance_rows,
         curve_snapshots=[
             snapshot
-            for snapshot in (treasury_current, treasury_prior, cdb_current, cdb_prior)
+            for snapshot in (treasury_current, treasury_prior, cdb_current, cdb_prior, aaa_current, aaa_prior)
             if snapshot is not None
         ],
     )
@@ -115,10 +137,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         )
         + _compact_warnings(
             [
-                treasury_current_warning,
-                treasury_prior_warning,
-                cdb_current_warning,
-                cdb_prior_warning,
+                *relevant_curve_warnings,
             ]
         )
         + lineage_warnings,
@@ -136,7 +155,11 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
             **(
                 {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
                 if curve_latest_fallback
-                else {}
+                else (
+                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+                    if curve_unavailable
+                    else {}
+                )
             ),
         }
     )
@@ -372,6 +395,43 @@ def _resolve_curve_for_service(
 
 def _compact_warnings(values: list[str | None]) -> list[str]:
     return [value for value in values if value]
+
+
+def _curve_warnings_for_bridge_rows(
+    *,
+    current_balance_rows: list[dict[str, object]],
+    prior_balance_rows: list[dict[str, object]],
+    treasury_current_warning: str | None,
+    treasury_prior_warning: str | None,
+    cdb_current_warning: str | None,
+    cdb_prior_warning: str | None,
+    aaa_current_warning: str | None,
+    aaa_prior_warning: str | None,
+) -> list[str | None]:
+    needs_treasury = False
+    needs_cdb = False
+    needs_aaa = False
+    for row in [*current_balance_rows, *prior_balance_rows]:
+        curve_type = infer_curve_type(
+            row.get("instrument_name"),
+            row.get("bond_type"),
+            row.get("asset_class"),
+        )
+        if classify_asset_class(" ".join(str(row.get(field) or "") for field in ("asset_class", "bond_type", "instrument_name"))) == "credit":
+            needs_aaa = True
+            needs_treasury = True
+        elif curve_type == "cdb":
+            needs_cdb = True
+        else:
+            needs_treasury = True
+    selected: list[str | None] = []
+    if needs_treasury:
+        selected.extend([treasury_current_warning, treasury_prior_warning])
+    if needs_cdb:
+        selected.extend([cdb_current_warning, cdb_prior_warning])
+    if needs_aaa:
+        selected.extend([aaa_current_warning, aaa_prior_warning])
+    return selected
 
 
 def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:

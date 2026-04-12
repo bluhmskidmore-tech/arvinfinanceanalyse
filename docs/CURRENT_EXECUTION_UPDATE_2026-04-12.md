@@ -52,10 +52,38 @@ This document records the current user-authorized execution boundary for the `yi
   - `backend/app/services/pnl_bridge_service.py`
   - `backend/app/services/bond_analytics_service.py`
 - Latest-date fallback is allowed only when the warning is explicit in the service payload; no silent same-day substitution is authorized.
-- Effect scope stays capped to:
+- Effect scope in the initial substrate-closeout slice stayed capped to:
   - `roll_down` and `treasury_curve` in PnL Bridge
   - existing `rate_effect` support in bond analytics
-  This round does not authorize `credit_spread`, `fx_translation`, `aaa_credit`, or broader curve consumers.
+  The follow-on `aaa_credit / credit_spread` extension below is the only authorized expansion beyond that initial cap.
+
+## Follow-on extension (same-thread authorization)
+
+The current user thread additionally authorizes a narrow follow-on slice for `aaa_credit / credit_spread`.
+
+### Allowed current execution
+
+- extend the governed yield-curve substrate to materialize `aaa_credit`
+- prefer Choice enterprise-AAA source when available
+- allow AkShare only when it exposes the same enterprise-AAA family; no cross-family AAA substitution is authorized
+- unlock `credit_spread` in `backend/app/core_finance/pnl_bridge.py`
+- unlock `spread_effect` in bond-analytics return decomposition
+- unlock non-zero `weighted_avg_spread` in `bond_analytics.credit_spread_migration`
+- add numeric fixture and fallback-warning tests for the above
+
+### Current non-goals for the extension
+
+- non-AAA credit families
+- frontend changes
+- API signature changes
+- `fx_translation`
+- trade-level `trading`
+- broader scenario/migration redesign
+
+### Additional stop conditions
+
+- stop if the implementation would require response-model expansion
+- stop if source strategy broadens beyond Choice primary + exact-family AkShare fallback for `aaa_credit`
 
 ## Test matrix
 
@@ -79,13 +107,10 @@ This document records the current user-authorized execution boundary for the `yi
 - Vendor payload drift in AkShare or Choice can break curve-point extraction without changing repository/service code.
 - Latest-fallback behavior can hide data freshness problems unless warning assertions remain strict.
 - Snapshot-lineage merge logic can drift between `pnl_bridge_service.py` and `bond_analytics_service.py` if hardened in only one place.
-- Broadening the scope beyond `roll_down` / `treasury_curve` would create unauthorized Phase-2-style spillover.
+- Broadening the scope beyond the explicitly authorized substrate-closeout slice plus the `aaa_credit / credit_spread` follow-on would create unauthorized Phase-2-style spillover.
 
 ## Stop conditions
 
 - Stop after the above substrate closeout and regression-hardening work is planned and bounded.
-- Stop if proposed work expands beyond:
-  - `roll_down` / `treasury_curve` in PnL Bridge
-  - existing `rate_effect` support in bond analytics
-- Stop if a change would require API signature changes, frontend work, response-model expansion, or `aaa_credit` enablement.
+- Stop if a change would require API signature changes, frontend work, or response-model expansion.
 - Stop if the implementation path starts treating latest fallback as silent substitution rather than explicit warning-bearing evidence.

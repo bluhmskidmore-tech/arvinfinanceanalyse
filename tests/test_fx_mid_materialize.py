@@ -222,3 +222,107 @@ def test_fx_mid_materialize_fails_when_required_header_contract_is_incomplete(tm
             csv_path=str(csv_path),
             duckdb_path=str(duckdb_path),
         )
+
+
+class _ChoiceUsdcnyResult:
+    Codes = ["EMM00058124"]
+    Dates = ["2026-02-27"]
+    Data = {
+        "EMM00058124": [[Decimal("7.24")]],
+    }
+
+
+def test_materialize_fx_mid_for_report_date_uses_choice_when_available(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    data_input_root = tmp_path / "data_input"
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            assert codes == ["EMM00058124"]
+            assert "StartDate=2026-02-27" in options
+            assert "EndDate=2026-02-27" in options
+            return _ChoiceUsdcnyResult()
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+    payload = fx_mod.materialize_fx_mid_for_report_date.fn(
+        report_date="2026-02-27",
+        duckdb_path=str(duckdb_path),
+        data_input_root=str(data_input_root),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["row_count"] == 1
+    assert payload["source_kind"] == "choice"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select trade_date, base_currency, quote_currency, mid_rate, source_name
+            from fx_daily_mid
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [(date(2026, 2, 27), "USD", "CNY", Decimal("7.24000000"), "CFETS")]
+
+
+def test_materialize_fx_mid_for_report_date_falls_back_to_csv_when_choice_unavailable(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    data_input_root = tmp_path / "data_input"
+    csv_path = data_input_root / "fx" / "fx_daily_mid.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    class _FailingChoiceClient:
+        def edb(self, codes, options=""):
+            raise RuntimeError("choice unavailable")
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+
+    payload = fx_mod.materialize_fx_mid_for_report_date.fn(
+        report_date="2026-02-27",
+        duckdb_path=str(duckdb_path),
+        data_input_root=str(data_input_root),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["row_count"] == 1
+    assert payload["source_kind"] == "csv"
+
+
+def test_materialize_fx_mid_for_report_date_still_fails_closed_for_missing_explicit_csv_even_if_choice_available(
+    tmp_path,
+    monkeypatch,
+):
+    fx_mod = _load_fx_task_module()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            return _ChoiceUsdcnyResult()
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+
+    with pytest.raises(FileNotFoundError):
+        fx_mod.materialize_fx_mid_for_report_date.fn(
+            report_date="2026-02-27",
+            duckdb_path=str(duckdb_path),
+            data_input_root=str(tmp_path / "data_input"),
+            explicit_csv_path=str(tmp_path / "missing.csv"),
+        )

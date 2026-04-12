@@ -171,8 +171,6 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
     assert "Current balance rows unavailable" in payload["result"]["warnings"][1]
     assert "No prior balance report date found" in payload["result"]["warnings"][2]
-    assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
-    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     summary = payload["result"]["summary"]
     assert summary["row_count"] == 1
     assert summary["total_carry"] == "12.50000000"
@@ -248,7 +246,6 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
         for warning in payload["result"]["warnings"]
     )
     assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
-    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -337,7 +334,6 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
     assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_pnl_bridge_meta"
     assert payload["result"]["warnings"][0].startswith("Phase 3 partial delivery:")
     assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
-    assert any("No cdb curve available" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
