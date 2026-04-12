@@ -32,14 +32,31 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", 
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsHeadlineZone", () => ({
-  BondAnalyticsHeadlineZone: (props: { onOpenModuleDetail: (key: string) => void }) => (
-    <button
-      type="button"
+  BondAnalyticsHeadlineZone: (props: {
+    headlineTile: { key: string; label: string } | null;
+    headlineCtaLabel: string | null;
+    promotedItems: { key: string }[];
+    warningItems: { key: string }[];
+    onOpenModuleDetail: (key: string) => void;
+  }) => (
+    <div
       data-testid="mock-bond-headline-zone"
-      onClick={() => props.onOpenModuleDetail("action-attribution")}
+      data-headline-key={props.headlineTile?.key ?? ""}
+      data-headline-label={props.headlineTile?.label ?? ""}
+      data-headline-cta={props.headlineCtaLabel ?? ""}
+      data-promoted-count={String(props.promotedItems.length)}
+      data-warning-count={String(props.warningItems.length)}
     >
-      headline drill
-    </button>
+      {props.headlineTile ? (
+        <button
+          type="button"
+          data-testid={`mock-bond-headline-open-${props.headlineTile.key}`}
+          onClick={() => props.onOpenModuleDetail(props.headlineTile!.key)}
+        >
+          headline drill
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -98,7 +115,15 @@ function createOverviewModel(): BondAnalyticsOverviewModel {
         { key: "basis", label: "Basis", value: "Formal", tone: "neutral" },
       ],
     },
-    headlineTiles: [],
+    headlineTiles: [
+      {
+        key: "action-attribution",
+        label: "Headline Action Attribution",
+        value: "12",
+        caption: "Caption",
+        detail: "Detail",
+      },
+    ],
     readinessItems: [
       createReadinessItem({
         key: "action-attribution",
@@ -164,13 +189,20 @@ describe("BondAnalyticsOverviewPanels", () => {
     expect(filter).toHaveAttribute("data-report-date", "2026-03-31");
     expect(filter).toHaveAttribute("data-period-type", "MoM");
 
+    const headline = screen.getByTestId("mock-bond-headline-zone");
+    expect(headline).toHaveAttribute("data-headline-key", "action-attribution");
+    expect(headline).toHaveAttribute("data-headline-label", "Headline Action Attribution");
+    expect(headline).toHaveAttribute("data-headline-cta", "Open Headline Action Attribution");
+    expect(headline).toHaveAttribute("data-promoted-count", "1");
+    expect(headline).toHaveAttribute("data-warning-count", "1");
+
     expect(screen.getByTestId("mock-bond-watchlist-card")).toHaveAttribute("data-anomaly-count", "1");
     expect(screen.getByTestId("mock-bond-future-panel")).toHaveAttribute("data-future-count", "1");
 
     await user.click(screen.getByTestId("mock-filter-refresh"));
     expect(onRefreshAnalytics).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByTestId("mock-bond-headline-zone"));
+    await user.click(screen.getByTestId("mock-bond-headline-open-action-attribution"));
     expect(onOpenModuleDetail).toHaveBeenCalledWith("action-attribution");
 
     await user.click(screen.getByTestId("mock-bond-readiness-matrix"));
