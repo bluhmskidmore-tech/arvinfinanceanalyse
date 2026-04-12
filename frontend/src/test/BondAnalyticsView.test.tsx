@@ -1,8 +1,26 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { BondAnalyticsView } from "../features/bond-analytics/components/BondAnalyticsView";
+
+function renderBondAnalyticsView() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false },
+    },
+  });
+  const client = createApiClient({ mode: "mock" });
+  return render(
+    <ApiClientProvider client={client}>
+      <QueryClientProvider client={queryClient}>
+        <BondAnalyticsView />
+      </QueryClientProvider>
+    </ApiClientProvider>,
+  );
+}
 
 function createReturnDecompositionResult() {
   return {
@@ -89,7 +107,7 @@ describe("BondAnalyticsView", () => {
   });
 
   it("renders the overview-first shell and downgrades placeholder summaries", async () => {
-    render(<BondAnalyticsView />);
+    renderBondAnalyticsView();
 
     expect(
       await screen.findByTestId("bond-analysis-overview", {}, { timeout: 10000 }),
@@ -156,7 +174,7 @@ describe("BondAnalyticsView", () => {
       }),
     );
 
-    render(<BondAnalyticsView />);
+    renderBondAnalyticsView();
 
     expect(
       await screen.findByTestId("bond-analysis-summary-action-attribution", {}, { timeout: 10000 }),

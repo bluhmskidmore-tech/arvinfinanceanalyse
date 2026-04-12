@@ -1,24 +1,27 @@
-"""Bond analytics service — orchestration layer between API and core_finance."""
+"""Bond analytics service — orchestrates fact reads and delegates finance logic to core_finance."""
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
-from decimal import Decimal
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 
-from backend.app.core_finance.bond_analytics.common import (
-    STANDARD_SCENARIOS,
-    classify_asset_class,
-    decimal_to_str,
-    estimate_convexity,
-    estimate_duration,
-    estimate_modified_duration,
-    get_accounting_rule_trace,
-    get_tenor_bucket,
-    infer_accounting_class,
-    map_accounting_class,
-    resolve_period,
-    safe_decimal,
+from backend.app.governance.locks import LockDefinition, acquire_lock
+from backend.app.governance.settings import Settings, get_settings
+from backend.app.core_finance.bond_analytics.common import STANDARD_SCENARIOS, resolve_period
+from backend.app.core_finance.bond_analytics.read_models import (
+    build_asset_class_risk_summary,
+    build_concentration,
+    build_curve_scenarios,
+    build_krd_distribution,
+    summarize_accounting_audit,
+    summarize_credit,
+    summarize_portfolio_risk,
+    summarize_return_decomposition,
 )
+from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
+from backend.app.schemas.analysis_service import AnalysisQuery
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.bond_analytics import (
     AccountingClassAuditItem,
     AccountingClassAuditResponse,
@@ -29,275 +32,400 @@ from backend.app.schemas.bond_analytics import (
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
     BondLevelDecomposition,
+    ConcentrationItem,
+    ConcentrationMetrics,
     CreditSpreadMigrationResponse,
-    ExcessSourceBreakdown,
     KRDBucket,
     KRDCurveRiskResponse,
-    MigrationScenarioResult,
     ReturnDecompositionResponse,
     ScenarioResult,
     SpreadScenarioResult,
 )
-from backend.app.schemas.analysis_service import AnalysisQuery
-from backend.app.schemas.result_meta import ResultMeta
-from backend.app.governance.settings import get_settings
-from backend.app.services.analysis_service import (
-    UnifiedAnalysisService,
-    build_default_analysis_service,
+from backend.app.services.analysis_service import UnifiedAnalysisService, build_default_analysis_service
+from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.tasks.bond_analytics_materialize import (
+    BOND_ANALYTICS_LOCK,
+    CACHE_KEY,
+    CACHE_VERSION,
+    RULE_VERSION,
+    materialize_bond_analytics_facts,
 )
+
+JOB_NAME = "bond_analytics_materialize"
+EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
+EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returning empty result"
+PHASE3_WARNING = "roll_down / rate_effect / spread_effect / trading require Phase 3 curve and trade data"
+BENCHMARK_WARNING = "Benchmark index data not yet available; benchmark-side fields remain zero"
+SPREAD_WARNING = "Spread level input unavailable; weighted_avg_spread set to 0"
+ACTION_WARNING = "Trade-level action data not yet available; returning placeholder attribution until trade records are integrated"
+Q8 = Decimal("0.00000001")
+ZERO = Decimal("0")
+BENCHMARK_NAMES = {
+    "TREASURY_INDEX": "中债国债总指数",
+    "CDB_INDEX": "中债国开债总指数",
+    "AAA_CREDIT_INDEX": "中债AAA信用债指数",
+}
+PENDING_SOURCE_VERSION = "sv_bond_analytics_pending"
+IN_FLIGHT_STATUSES = {"queued", "running"}
+STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
+
+
+class BondAnalyticsRefreshServiceError(RuntimeError):
+    pass
+
+
+class BondAnalyticsRefreshConflictError(RuntimeError):
+    pass
 
 
 def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _text(value: Decimal) -> str:
+    return format(value.quantize(Q8, rounding=ROUND_HALF_UP), "f")
 
 
-def _build_meta(result_kind: str) -> ResultMeta:
-    return ResultMeta(
+def build_analysis_service() -> UnifiedAnalysisService:
+    return build_default_analysis_service(duckdb_path=str(get_settings().duckdb_path))
+
+
+def _repo() -> BondAnalyticsRepository:
+    return BondAnalyticsRepository(str(get_settings().duckdb_path))
+
+
+def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
+    governance = GovernanceRepository(base_dir=get_settings().governance_path)
+    build_rows = [
+        row
+        for row in governance.read_all(CACHE_BUILD_RUN_STREAM)
+        if str(row.get("cache_key")) == CACHE_KEY
+        and str(row.get("job_name")) == JOB_NAME
+        and str(row.get("status")) == "completed"
+        and str(row.get("report_date")) == report_date
+    ]
+    if not rows and not build_rows:
+        return {
+            "source_version": EMPTY_SOURCE_VERSION,
+            "rule_version": RULE_VERSION,
+            "cache_version": CACHE_VERSION,
+            "vendor_version": "vv_none",
+        }
+    manifest_rows = [row for row in governance.read_all(CACHE_MANIFEST_STREAM) if str(row.get("cache_key")) == CACHE_KEY]
+    latest_build = build_rows[-1] if build_rows else {}
+    latest_manifest = manifest_rows[-1] if manifest_rows else {}
+    row_source_versions = sorted({str(row.get("source_version") or "").strip() for row in rows if str(row.get("source_version") or "").strip()})
+    return {
+        "source_version": next(
+            (value for value in (str(latest_build.get("source_version") or "").strip(), "__".join(row_source_versions), EMPTY_SOURCE_VERSION) if value),
+            EMPTY_SOURCE_VERSION,
+        ),
+        "rule_version": next(
+            (value for value in (str(latest_build.get("rule_version") or "").strip(), str(latest_manifest.get("rule_version") or "").strip(), RULE_VERSION) if value),
+            RULE_VERSION,
+        ),
+        "cache_version": next(
+            (value for value in (str(latest_build.get("cache_version") or "").strip(), str(latest_manifest.get("cache_version") or "").strip(), CACHE_VERSION) if value),
+            CACHE_VERSION,
+        ),
+        "vendor_version": next(
+            (value for value in (str(latest_build.get("vendor_version") or "").strip(), str(latest_manifest.get("vendor_version") or "").strip(), "vv_none") if value),
+            "vv_none",
+        ),
+    }
+
+
+def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
+    lineage = _lineage(report_date.isoformat(), rows)
+    return build_formal_result_meta(
         trace_id=_trace_id(),
-        basis="formal",
         result_kind=result_kind,
-        source_version="sv_bond_analytics_v1",
-        rule_version="rv_bond_analytics_v1",
-        cache_version="cv_none",
+        cache_version=lineage["cache_version"],
+        source_version=lineage["source_version"],
+        rule_version=lineage["rule_version"],
+        vendor_version=lineage["vendor_version"],
     )
 
 
-# ---------------------------------------------------------------------------
-# 1. Return Decomposition
-# ---------------------------------------------------------------------------
+def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str, object]:
+    try:
+        with acquire_lock(
+            _refresh_trigger_lock(report_date=report_date),
+            base_dir=settings.governance_path,
+            timeout_seconds=0.1,
+        ):
+            existing = _latest_inflight_refresh(settings, report_date=report_date)
+            if existing is not None:
+                raise BondAnalyticsRefreshConflictError(
+                    f"Bond analytics refresh already in progress for report_date={report_date}."
+                )
 
-def get_return_decomposition(
-    report_date: date,
-    period_type: str = "MoM",
-    asset_class: str = "all",
-    accounting_class: str = "all",
-) -> dict:
-    period_start, period_end = resolve_period(report_date, period_type)
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty decomposition"]
+            run_id = _build_run_id()
+            queued_at = datetime.now(timezone.utc).isoformat()
+            GovernanceRepository(base_dir=settings.governance_path).append(
+                CACHE_BUILD_RUN_STREAM,
+                {
+                    **CacheBuildRunRecord(
+                        run_id=run_id,
+                        job_name=JOB_NAME,
+                        status="queued",
+                        cache_key=CACHE_KEY,
+                        cache_version=CACHE_VERSION,
+                        lock=BOND_ANALYTICS_LOCK.key,
+                        source_version=PENDING_SOURCE_VERSION,
+                        vendor_version="vv_none",
+                    ).model_dump(),
+                    "report_date": report_date,
+                    "queued_at": queued_at,
+                },
+            )
+            try:
+                materialize_bond_analytics_facts.send(
+                    report_date=report_date,
+                    duckdb_path=str(settings.duckdb_path),
+                    governance_dir=str(settings.governance_path),
+                    run_id=run_id,
+                )
+            except Exception as exc:
+                _record_dispatch_failure(
+                    settings=settings,
+                    run_id=run_id,
+                    report_date=report_date,
+                    error_message="Bond analytics refresh queue dispatch failed.",
+                )
+                raise BondAnalyticsRefreshServiceError(
+                    "Bond analytics refresh queue dispatch failed."
+                ) from exc
 
-    response = ReturnDecompositionResponse(
+            return {
+                "status": "queued",
+                "run_id": run_id,
+                "job_name": JOB_NAME,
+                "trigger_mode": "async",
+                "cache_key": CACHE_KEY,
+                "report_date": report_date,
+            }
+    except TimeoutError as exc:
+        raise BondAnalyticsRefreshConflictError(
+            f"Bond analytics refresh already in progress for report_date={report_date}."
+        ) from exc
+
+
+def bond_analytics_refresh_status(settings: Settings, *, run_id: str) -> dict[str, object]:
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("cache_key")) == CACHE_KEY
+        and str(record.get("job_name")) == JOB_NAME
+        and str(record.get("run_id")) == run_id
+    ]
+    if not records:
+        raise ValueError(f"Unknown bond analytics refresh run_id={run_id}")
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
+    return {
+        **latest,
+        "trigger_mode": "async" if status in IN_FLIGHT_STATUSES else "terminal",
+    }
+
+
+def _empty_return_response(meta, report_date: date, period_type: str, period_start: date, period_end: date) -> dict:
+    payload = ReturnDecompositionResponse(
         report_date=report_date,
         period_type=period_type,
         period_start=period_start,
         period_end=period_end,
-        carry="0",
-        roll_down="0",
-        rate_effect="0",
-        spread_effect="0",
-        trading="0",
-        explained_pnl="0",
-        actual_pnl="0",
-        recon_error="0",
-        recon_error_pct="0",
-        computed_at=_now_iso(),
-        warnings=warnings,
+        carry=_text(ZERO),
+        roll_down=_text(ZERO),
+        rate_effect=_text(ZERO),
+        spread_effect=_text(ZERO),
+        trading=_text(ZERO),
+        explained_pnl=_text(ZERO),
+        actual_pnl=_text(ZERO),
+        recon_error=_text(ZERO),
+        recon_error_pct=_text(ZERO),
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[EMPTY_WARNING],
     )
-    return {
-        "result_meta": _build_meta("bond_analytics.return_decomposition").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
 
-# ---------------------------------------------------------------------------
-# 2. Benchmark Excess
-# ---------------------------------------------------------------------------
-
-BENCHMARK_NAMES = {
-    "TREASURY_INDEX": "中债国债总指数",
-    "CDB_INDEX": "中债国开债总指数",
-    "AAA_CREDIT_INDEX": "中债AAA信用债指数",
-}
-
-
-def get_benchmark_excess(
-    report_date: date,
-    period_type: str = "MoM",
-    benchmark_id: str = "CDB_INDEX",
-) -> dict:
+def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
     period_start, period_end = resolve_period(report_date, period_type)
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty excess"]
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
+    meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+    if not rows:
+        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
 
-    response = BenchmarkExcessResponse(
+    summary = summarize_return_decomposition(rows, period_start=period_start, period_end=period_end)
+    payload = ReturnDecompositionResponse(
+        report_date=report_date,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+        carry=_text(summary["carry_total"]),
+        roll_down=_text(ZERO),
+        rate_effect=_text(ZERO),
+        spread_effect=_text(ZERO),
+        trading=_text(ZERO),
+        fx_effect=_text(ZERO),
+        convexity_effect=_text(ZERO),
+        explained_pnl=_text(summary["carry_total"]),
+        explained_pnl_accounting=_text(summary["carry_total"]),
+        explained_pnl_economic=_text(summary["carry_total"]),
+        oci_reserve_impact=_text(ZERO),
+        actual_pnl=_text(summary["carry_total"]),
+        recon_error=_text(ZERO),
+        recon_error_pct=_text(ZERO),
+        by_asset_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(ZERO), rate_effect=_text(ZERO), spread_effect=_text(ZERO), trading=_text(ZERO), total=_text(row["carry"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_asset_class"]],
+        by_accounting_class=[AssetClassBreakdown(asset_class=row["key"], carry=_text(row["carry"]), roll_down=_text(ZERO), rate_effect=_text(ZERO), spread_effect=_text(ZERO), trading=_text(ZERO), total=_text(row["carry"]), bond_count=int(row["bond_count"]), market_value=_text(row["market_value"])) for row in summary["by_accounting_class"]],
+        bond_details=[BondLevelDecomposition(bond_code=str(row["instrument_code"]), bond_name=str(row.get("instrument_name") or ""), asset_class=str(row["asset_class_std"]), accounting_class=str(row["accounting_class"]), market_value=_text(row["market_value"]), carry=_text(row["carry"]), roll_down=_text(ZERO), rate_effect=_text(ZERO), spread_effect=_text(ZERO), trading=_text(ZERO), total=_text(row["carry"]), explained_for_recon=_text(row["carry"]), economic_only_effects=_text(ZERO)) for row in summary["bond_details"]],
+        bond_count=int(summary["bond_count"]),
+        total_market_value=_text(summary["total_market_value"]),
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[PHASE3_WARNING],
+    )
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+
+
+def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict:
+    period_start, period_end = resolve_period(report_date, period_type)
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.benchmark_excess", report_date, rows)
+    risk = summarize_portfolio_risk(rows)
+    payload = BenchmarkExcessResponse(
         report_date=report_date,
         period_type=period_type,
         period_start=period_start,
         period_end=period_end,
         benchmark_id=benchmark_id,
         benchmark_name=BENCHMARK_NAMES.get(benchmark_id, benchmark_id),
-        portfolio_return="0",
-        benchmark_return="0",
-        excess_return="0",
-        duration_effect="0",
-        curve_effect="0",
-        spread_effect="0",
-        selection_effect="0",
-        allocation_effect="0",
-        explained_excess="0",
-        recon_error="0",
-        portfolio_duration="0",
-        benchmark_duration="0",
-        duration_diff="0",
-        computed_at=_now_iso(),
-        warnings=warnings,
+        portfolio_return=_text(ZERO),
+        benchmark_return=_text(ZERO),
+        excess_return=_text(ZERO),
+        duration_effect=_text(ZERO),
+        curve_effect=_text(ZERO),
+        spread_effect=_text(ZERO),
+        selection_effect=_text(ZERO),
+        allocation_effect=_text(ZERO),
+        explained_excess=_text(ZERO),
+        recon_error=_text(ZERO),
+        portfolio_duration=_text(risk["portfolio_duration"]),
+        benchmark_duration=_text(ZERO),
+        duration_diff=_text(risk["portfolio_duration"]),
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[EMPTY_WARNING if not rows else BENCHMARK_WARNING],
     )
-    return {
-        "result_meta": _build_meta("bond_analytics.benchmark_excess").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
 
-# ---------------------------------------------------------------------------
-# 3. KRD Curve Risk
-# ---------------------------------------------------------------------------
+def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dict:
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.krd_curve_risk", report_date, rows)
+    risk = summarize_portfolio_risk(rows)
+    payload = KRDCurveRiskResponse(
+        report_date=report_date,
+        portfolio_duration=_text(risk["portfolio_duration"]),
+        portfolio_modified_duration=_text(risk["portfolio_modified_duration"]),
+        portfolio_dv01=_text(risk["portfolio_dv01"]),
+        portfolio_convexity=_text(risk["portfolio_convexity"]),
+        krd_buckets=[KRDBucket(tenor=row["tenor_bucket"], krd=_text(row["krd"]), dv01=_text(row["dv01"]), market_value_weight=_text(row["market_value"] / risk["total_market_value"] if risk["total_market_value"] else ZERO)) for row in build_krd_distribution(rows)],
+        scenarios=[ScenarioResult(scenario_name=row["scenario_name"], scenario_description=row["scenario_description"], shocks=row["shocks"], pnl_economic=_text(row["pnl_economic"]), pnl_oci=_text(row["pnl_oci"]), pnl_tpl=_text(row["pnl_tpl"]), rate_contribution=_text(row["rate_contribution"]), convexity_contribution=_text(row["convexity_contribution"]), by_asset_class={key: {metric: _text(value) for metric, value in values.items()} for key, values in row["by_asset_class"].items()}) for row in build_curve_scenarios(rows)],
+        by_asset_class=[AssetClassRiskSummary(asset_class=row["asset_class"], market_value=_text(row["market_value"]), duration=_text(row["duration"]), dv01=_text(row["dv01"]), weight=_text(row["weight"])) for row in build_asset_class_risk_summary(rows)],
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[EMPTY_WARNING] if not rows else [],
+    )
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
-def get_krd_curve_risk(
-    report_date: date,
-    scenario_set: str = "standard",
-) -> dict:
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty KRD"]
 
-    scenarios = []
-    for s in STANDARD_SCENARIOS:
-        scenarios.append(
-            ScenarioResult(
-                scenario_name=s["name"],
-                scenario_description=s["description"],
-                shocks=s["shocks"],
-                pnl_economic="0",
-                pnl_oci="0",
-                pnl_tpl="0",
-                rate_contribution="0",
-                convexity_contribution="0",
+def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,25,50") -> dict:
+    all_rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    credit_rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class="credit")
+    meta = _meta("bond_analytics.credit_spread_migration", report_date, all_rows)
+    summary = summarize_credit(credit_rows, total_rows=all_rows)
+    payload = CreditSpreadMigrationResponse(
+        report_date=report_date,
+        credit_bond_count=int(summary["credit_bond_count"]),
+        credit_market_value=_text(summary["credit_market_value"]),
+        credit_weight=_text(summary["credit_weight"]),
+        spread_dv01=_text(summary["spread_dv01"]),
+        weighted_avg_spread=_text(summary["weighted_avg_spread"]),
+        weighted_avg_spread_duration=_text(summary["weighted_avg_spread_duration"]),
+        spread_scenarios=[
+            SpreadScenarioResult(
+                scenario_name=f"利差{'走阔' if change_bp > 0 else '收窄'} {abs(change_bp)}bp",
+                spread_change_bp=float(change_bp),
+                pnl_impact=_text(-(summary["spread_dv01"] * Decimal(str(change_bp)))),
+                oci_impact=_text(-(summary["oci_spread_dv01"] * Decimal(str(change_bp)))),
+                tpl_impact=_text(-(summary["tpl_spread_dv01"] * Decimal(str(change_bp)))),
             )
-        )
-
-    response = KRDCurveRiskResponse(
-        report_date=report_date,
-        portfolio_duration="0",
-        portfolio_modified_duration="0",
-        portfolio_dv01="0",
-        portfolio_convexity="0",
-        scenarios=scenarios,
-        computed_at=_now_iso(),
-        warnings=warnings,
+            for bp in [int(value.strip()) for value in spread_scenarios.split(",") if value.strip()]
+            for change_bp in (bp, -bp)
+        ],
+        migration_scenarios=[],
+        concentration_by_issuer=_to_concentration_model(build_concentration(credit_rows, field_name="issuer_name", dimension="issuer")),
+        concentration_by_industry=_to_concentration_model(build_concentration(credit_rows, field_name="industry_name", dimension="industry")),
+        concentration_by_rating=_to_concentration_model(build_concentration(credit_rows, field_name="rating", dimension="rating")),
+        concentration_by_tenor=_to_concentration_model(build_concentration(credit_rows, field_name="tenor_bucket", dimension="tenor")),
+        oci_credit_exposure=_text(summary["oci_credit_exposure"]),
+        oci_spread_dv01=_text(summary["oci_spread_dv01"]),
+        oci_sensitivity_25bp=_text(-(summary["oci_spread_dv01"] * Decimal("25"))),
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[EMPTY_WARNING] if not all_rows else [SPREAD_WARNING],
     )
-    return {
-        "result_meta": _build_meta("bond_analytics.krd_curve_risk").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
 
-# ---------------------------------------------------------------------------
-# 4. Credit Spread Migration
-# ---------------------------------------------------------------------------
+def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationMetrics | None:
+    if payload is None:
+        return None
+    return ConcentrationMetrics(
+        dimension=str(payload["dimension"]),
+        hhi=_text(payload["hhi"]),
+        top5_concentration=_text(payload["top5_concentration"]),
+        top_items=[ConcentrationItem(name=str(row["name"]), weight=_text(row["weight"]), market_value=_text(row["market_value"])) for row in payload["top_items"]],
+    )
 
-def get_credit_spread_migration(
-    report_date: date,
-    spread_scenarios: str = "10,25,50",
-) -> dict:
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty spread"]
 
-    bp_values = [int(x.strip()) for x in spread_scenarios.split(",") if x.strip()]
-    spread_results = []
-    for bp in bp_values:
-        for sign, label in [(1, "走阔"), (-1, "收窄")]:
-            spread_results.append(
-                SpreadScenarioResult(
-                    scenario_name=f"利差{label} {bp}bp",
-                    spread_change_bp=float(sign * bp),
-                    pnl_impact="0",
-                    oci_impact="0",
-                    tpl_impact="0",
-                )
+def get_accounting_class_audit(report_date: date) -> dict:
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.accounting_class_audit", report_date, rows)
+    audit = summarize_accounting_audit(rows)
+    payload = AccountingClassAuditResponse(
+        report_date=report_date,
+        total_positions=int(audit["total_positions"]),
+        total_market_value=_text(audit["total_market_value"]),
+        distinct_asset_classes=int(audit["distinct_asset_classes"]),
+        divergent_asset_classes=int(audit["divergent_asset_classes"]),
+        divergent_position_count=int(audit["divergent_position_count"]),
+        divergent_market_value=_text(audit["divergent_market_value"]),
+        map_unclassified_asset_classes=int(audit["map_unclassified_asset_classes"]),
+        map_unclassified_position_count=int(audit["map_unclassified_position_count"]),
+        map_unclassified_market_value=_text(audit["map_unclassified_market_value"]),
+        rows=[
+            AccountingClassAuditItem(
+                asset_class=str(row["asset_class_raw"]),
+                position_count=int(row["position_count"]),
+                market_value=_text(row["market_value"]),
+                market_value_weight=_text(row["market_value_weight"]),
+                infer_accounting_class=str(row["infer_accounting_class"]),
+                map_accounting_class=str(row["map_accounting_class"]),
+                infer_rule_id=str(row["infer_rule_id"]),
+                infer_match=row["infer_match"],
+                map_rule_id=str(row["map_rule_id"]),
+                map_match=row["map_match"],
+                is_divergent=bool(row["is_divergent"]),
+                is_map_unclassified=bool(row["is_map_unclassified"]),
             )
-
-    response = CreditSpreadMigrationResponse(
-        report_date=report_date,
-        credit_bond_count=0,
-        credit_market_value="0",
-        credit_weight="0",
-        spread_dv01="0",
-        weighted_avg_spread="0",
-        weighted_avg_spread_duration="0",
-        spread_scenarios=spread_results,
-        oci_credit_exposure="0",
-        oci_spread_dv01="0",
-        oci_sensitivity_25bp="0",
-        computed_at=_now_iso(),
-        warnings=warnings,
+            for row in audit["rows"]
+        ],
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[EMPTY_WARNING] if not rows else [],
     )
-    return {
-        "result_meta": _build_meta("bond_analytics.credit_spread_migration").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
 
-# ---------------------------------------------------------------------------
-# 5. Legacy Action Attribution Placeholder
-# ---------------------------------------------------------------------------
-
-def _legacy_get_action_attribution(
-    report_date: date,
-    period_type: str = "MoM",
-) -> dict:
-    period_start, period_end = resolve_period(report_date, period_type)
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty attribution"]
-
-    response = ActionAttributionResponse(
-        report_date=report_date,
-        period_type=period_type,
-        period_start=period_start,
-        period_end=period_end,
-        total_actions=0,
-        total_pnl_from_actions="0",
-        period_start_duration="0",
-        period_end_duration="0",
-        duration_change_from_actions="0",
-        period_start_dv01="0",
-        period_end_dv01="0",
-        computed_at=_now_iso(),
-        warnings=warnings,
-    )
-    return {
-        "result_meta": _build_meta("bond_analytics.action_attribution").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
-
-
-# ---------------------------------------------------------------------------
-# 6. Accounting Class Audit
-# ---------------------------------------------------------------------------
-
-def get_accounting_class_audit(
-    report_date: date,
-) -> dict:
-    warnings: list[str] = ["DuckDB fact tables not yet populated — returning empty audit"]
-
-    response = AccountingClassAuditResponse(
-        report_date=report_date,
-        computed_at=_now_iso(),
-        warnings=warnings,
-    )
-    return {
-        "result_meta": _build_meta("bond_analytics.accounting_class_audit").model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
-
-
-def build_analysis_service() -> UnifiedAnalysisService:
-    return build_default_analysis_service(
-        duckdb_path=str(get_settings().duckdb_path)
-    )
-
-
-def get_action_attribution(
-    report_date: date,
-    period_type: str = "MoM",
-) -> dict:
+def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     analysis_envelope = build_analysis_service().execute(
         AnalysisQuery(
             consumer="bond_analytics.action_attribution",
@@ -308,6 +436,9 @@ def get_action_attribution(
         )
     )
     summary = analysis_envelope.result.summary
+    warnings = [warning.message for warning in analysis_envelope.result.warnings]
+    if int(summary["total_actions"]) == 0 and not analysis_envelope.result.facets.get("action_details") and ACTION_WARNING not in warnings:
+        warnings.append(ACTION_WARNING)
     response = ActionAttributionResponse(
         report_date=report_date,
         period_type=str(summary["period_type"]),
@@ -315,26 +446,122 @@ def get_action_attribution(
         period_end=date.fromisoformat(str(summary["period_end"])),
         total_actions=int(summary["total_actions"]),
         total_pnl_from_actions=str(summary["total_pnl_from_actions"]),
-        by_action_type=[
-            ActionTypeSummary.model_validate(item)
-            for item in analysis_envelope.result.facets.get("by_action_type", [])
-        ],
-        action_details=[
-            ActionDetail.model_validate(item)
-            for item in analysis_envelope.result.facets.get("action_details", [])
-        ],
+        by_action_type=[ActionTypeSummary.model_validate(item) for item in analysis_envelope.result.facets.get("by_action_type", [])],
+        action_details=[ActionDetail.model_validate(item) for item in analysis_envelope.result.facets.get("action_details", [])],
         period_start_duration=str(summary["period_start_duration"]),
         period_end_duration=str(summary["period_end_duration"]),
         duration_change_from_actions=str(summary["duration_change_from_actions"]),
         period_start_dv01=str(summary["period_start_dv01"]),
         period_end_dv01=str(summary["period_end_dv01"]),
-        computed_at=str(
-            summary.get("computed_at")
-            or analysis_envelope.result_meta.generated_at.isoformat()
-        ),
-        warnings=[warning.message for warning in analysis_envelope.result.warnings],
+        computed_at=str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
+        warnings=warnings,
     )
-    return {
-        "result_meta": analysis_envelope.result_meta.model_dump(mode="json"),
-        "result": response.model_dump(mode="json"),
-    }
+    return {"result_meta": analysis_envelope.result_meta.model_dump(mode="json"), "result": response.model_dump(mode="json")}
+
+
+def _refresh_trigger_lock(*, report_date: str) -> LockDefinition:
+    return LockDefinition(
+        key=f"{BOND_ANALYTICS_LOCK.key}:{report_date}:trigger",
+        ttl_seconds=30,
+    )
+
+
+def _load_refresh_run_records(settings: Settings) -> list[dict[str, object]]:
+    return [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(CACHE_BUILD_RUN_STREAM)
+        if str(record.get("cache_key")) == CACHE_KEY
+        and str(record.get("job_name")) == JOB_NAME
+    ]
+
+
+def _latest_inflight_refresh(settings: Settings, *, report_date: str) -> dict[str, object] | None:
+    by_run_id: dict[str, dict[str, object]] = {}
+    for record in _load_refresh_run_records(settings):
+        if str(record.get("report_date")) != report_date:
+            continue
+        by_run_id[str(record.get("run_id"))] = record
+    stale_records: list[dict[str, object]] = []
+    for record in reversed(list(by_run_id.values())):
+        if str(record.get("status")) in IN_FLIGHT_STATUSES:
+            if _is_stale_inflight_record(record):
+                stale_records.append(record)
+                continue
+            return record
+    for record in stale_records:
+        _mark_stale_inflight_run(
+            settings=settings,
+            run_id=str(record.get("run_id")),
+            report_date=report_date,
+            error_message="Marked stale bond analytics refresh run as failed.",
+        )
+    return None
+
+
+def _is_stale_inflight_record(record: dict[str, object]) -> bool:
+    for field_name in ("started_at", "queued_at", "created_at"):
+        raw_value = str(record.get(field_name) or "").strip()
+        if not raw_value:
+            continue
+        timestamp = _parse_timestamp(raw_value)
+        return datetime.now(timezone.utc) - timestamp > STALE_IN_FLIGHT_AFTER
+    return True
+
+
+def _parse_timestamp(raw_value: str) -> datetime:
+    normalized = raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
+    parsed = datetime.fromisoformat(normalized)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _record_dispatch_failure(
+    *,
+    settings: Settings,
+    run_id: str,
+    report_date: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": JOB_NAME,
+            "status": "failed",
+            "cache_key": CACHE_KEY,
+            "lock": BOND_ANALYTICS_LOCK.key,
+            "source_version": "sv_bond_analytics_failed",
+            "vendor_version": "vv_none",
+            "report_date": report_date,
+            "error_message": error_message,
+        },
+    )
+
+
+def _mark_stale_inflight_run(
+    *,
+    settings: Settings,
+    run_id: str,
+    report_date: str,
+    error_message: str,
+) -> None:
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": JOB_NAME,
+            "status": "failed",
+            "cache_key": CACHE_KEY,
+            "lock": BOND_ANALYTICS_LOCK.key,
+            "source_version": "sv_bond_analytics_stale",
+            "vendor_version": "vv_none",
+            "report_date": report_date,
+            "error_message": error_message,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+
+
+def _build_run_id() -> str:
+    return f"{JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"

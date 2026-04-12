@@ -3,13 +3,18 @@ from __future__ import annotations
 import csv
 import importlib
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from io import StringIO
-from typing import Literal
+from decimal import Decimal, InvalidOperation
+from io import BytesIO, StringIO
+from typing import Any, Literal
+
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.worksheet.worksheet import Worksheet
 
 from backend.app.core_finance.balance_analysis import FormalTywBalanceFactRow, FormalZqtzBalanceFactRow
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
+from backend.app.repositories.balance_analysis_decision_repo import BalanceAnalysisDecisionRepository
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
@@ -19,9 +24,19 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.balance_analysis import (
     BalanceAnalysisBasisBreakdownPayload,
     BalanceAnalysisBasisBreakdownRow,
+    BalanceAnalysisDecisionItemRow,
+    BalanceAnalysisDecisionItemStatusRow,
+    BalanceAnalysisDecisionItemsSection,
+    BalanceAnalysisDecisionItemsPayload,
+    BalanceAnalysisDecisionStatusRecord,
+    BalanceAnalysisDecisionStatusUpdateRequest,
     BalanceAnalysisDatesPayload,
     BalanceAnalysisDetailRow,
+    BalanceAnalysisEventCalendarRow,
+    BalanceAnalysisEventCalendarSection,
     BalanceAnalysisPayload,
+    BalanceAnalysisRiskAlertRow,
+    BalanceAnalysisRiskAlertsSection,
     BalanceAnalysisSummaryRow,
     BalanceAnalysisSummaryTablePayload,
     BalanceAnalysisTableRow,
@@ -49,6 +64,18 @@ ALLOWED_BALANCE_POSITION_SCOPES = frozenset({"asset", "liability", "all"})
 ALLOWED_BALANCE_CURRENCY_BASES = frozenset({"native", "CNY"})
 IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
+EXPORT_WORKBOOK_TABLES = (
+    ("债券持仓", ("zqtz_balance", "bond_business_types")),
+    ("同业持仓", ("tyw_balance", "counterparty_types")),
+    ("期限分布", ("maturity_distribution", "maturity_gap")),
+    ("利率分布", ("rate_distribution",)),
+)
+EXCEL_HEADER_FONT = Font(bold=True)
+EXCEL_RIGHT_ALIGNMENT = Alignment(horizontal="right")
+EXCEL_AMOUNT_FORMAT = "#,##0.00000000"
+EXCEL_NUMBER_FORMAT = "0.00000000"
+EXCEL_INTEGER_FORMAT = "0"
+DEFAULT_BALANCE_DECISION_UPDATED_BY = "balance-analysis-ui"
 
 
 class BalanceAnalysisRefreshServiceError(RuntimeError):
@@ -360,6 +387,25 @@ def export_balance_analysis_summary_csv(
     )
 
 
+def export_balance_analysis_workbook_xlsx(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"] = "all",
+    currency_basis: Literal["native", "CNY"] = "CNY",
+) -> tuple[str, bytes]:
+    workbook_payload = balance_analysis_workbook_envelope(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )["result"]
+    filename = f"资产负债分析_{report_date}.xlsx"
+    return filename, _build_balance_analysis_workbook_xlsx_bytes(workbook_payload)
+
+
 def balance_analysis_detail_envelope(
     *,
     duckdb_path: str,
@@ -430,43 +476,12 @@ def balance_analysis_workbook_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    repo = BalanceAnalysisRepository(duckdb_path)
-    if report_date not in repo.list_report_dates():
-        raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
-
-    zqtz_native_rows = [
-        _to_formal_zqtz_fact_row(row)
-        for row in repo.fetch_formal_zqtz_rows(
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis="native",
-        )
-    ]
-    tyw_native_rows = [
-        _to_formal_tyw_fact_row(row)
-        for row in repo.fetch_formal_tyw_rows(
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis="native",
-        )
-    ]
-    zqtz_currency_rows = [
-        _to_formal_zqtz_fact_row(row)
-        for row in repo.fetch_formal_zqtz_rows(
-            report_date=report_date,
-            position_scope=position_scope,
-            currency_basis="CNY",
-        )
-    ]
-    workbook_mod = importlib.import_module("backend.app.core_finance.balance_analysis_workbook")
-    workbook_mod = importlib.reload(workbook_mod)
-    workbook = workbook_mod.build_balance_analysis_workbook_payload(
-        report_date=zqtz_native_rows[0].report_date if zqtz_native_rows else tyw_native_rows[0].report_date,
+    workbook, build_lineage = _build_balance_workbook_payload(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
         position_scope=position_scope,
         currency_basis=currency_basis,
-        zqtz_rows=zqtz_native_rows,
-        tyw_rows=tyw_native_rows,
-        zqtz_currency_rows=zqtz_currency_rows,
     )
     payload = BalanceAnalysisWorkbookPayload(
         report_date=workbook["report_date"],
@@ -485,9 +500,44 @@ def balance_analysis_workbook_envelope(
                 rows=table["rows"],
             )
             for table in workbook["tables"]
+            if str(table.get("section_kind")) == "table"
+        ],
+        operational_sections=[
+            *[
+                BalanceAnalysisDecisionItemsSection(
+                    key="decision_items",
+                    title=str(section["title"]),
+                    section_kind="decision_items",
+                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                    rows=[BalanceAnalysisDecisionItemRow(**row) for row in section["rows"]],
+                )
+                for section in workbook["tables"]
+                if str(section.get("section_kind")) == "decision_items"
+            ],
+            *[
+                BalanceAnalysisEventCalendarSection(
+                    key="event_calendar",
+                    title=str(section["title"]),
+                    section_kind="event_calendar",
+                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                    rows=[BalanceAnalysisEventCalendarRow(**row) for row in section["rows"]],
+                )
+                for section in workbook["tables"]
+                if str(section.get("section_kind")) == "event_calendar"
+            ],
+            *[
+                BalanceAnalysisRiskAlertsSection(
+                    key="risk_alerts",
+                    title=str(section["title"]),
+                    section_kind="risk_alerts",
+                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                    rows=[BalanceAnalysisRiskAlertRow(**row) for row in section["rows"]],
+                )
+                for section in workbook["tables"]
+                if str(section.get("section_kind")) == "risk_alerts"
+            ],
         ],
     )
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
@@ -507,6 +557,108 @@ def balance_analysis_workbook_envelope(
         result_meta=meta,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def balance_analysis_decision_items_envelope(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"] = "all",
+    currency_basis: Literal["native", "CNY"] = "CNY",
+) -> dict[str, object]:
+    _validate_balance_overview_filters(
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+    workbook, build_lineage = _build_balance_workbook_payload(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+    decision_section = _extract_generated_decision_section(workbook)
+    latest_statuses = BalanceAnalysisDecisionRepository(governance_dir).list_latest_statuses(
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+    )
+    payload = BalanceAnalysisDecisionItemsPayload(
+        report_date=report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        columns=[
+            BalanceAnalysisWorkbookColumn(**column)
+            for column in decision_section.get("columns", [])
+        ],
+        rows=[
+            _to_decision_item_status_row(row, latest_statuses)
+            for row in decision_section.get("rows", [])
+        ],
+    )
+    meta = build_formal_result_meta(
+        trace_id=f"tr_balance_analysis_decision_items_{report_date}_{position_scope}_{currency_basis}",
+        result_kind="balance-analysis.decision-items",
+        cache_version=_resolve_balance_cache_version(build_lineage),
+        source_version=_require_balance_lineage_value(
+            build_lineage["source_version"] if build_lineage is not None else None,
+            report_date=report_date,
+            field_name="source_version",
+        ),
+        rule_version=_require_balance_lineage_value(
+            build_lineage["rule_version"] if build_lineage is not None else None,
+            report_date=report_date,
+            field_name="rule_version",
+        ),
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
+
+
+def update_balance_analysis_decision_status(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    update: BalanceAnalysisDecisionStatusUpdateRequest,
+    updated_by: str,
+) -> BalanceAnalysisDecisionStatusRecord:
+    workbook, _build_lineage = _build_balance_workbook_payload(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_date=update.report_date,
+        position_scope=update.position_scope,
+        currency_basis=update.currency_basis,
+    )
+    valid_decision_keys = {
+        _build_decision_key(row)
+        for row in _extract_generated_decision_section(workbook).get("rows", [])
+        if isinstance(row, dict)
+    }
+    if update.decision_key not in valid_decision_keys:
+        raise ValueError(
+            "Unknown balance-analysis decision_key for the requested report_date and filters."
+        )
+
+    record = BalanceAnalysisDecisionStatusRecord(
+        decision_key=update.decision_key,
+        status=update.status,
+        updated_at=datetime.now(timezone.utc).isoformat(),
+        updated_by=(updated_by or DEFAULT_BALANCE_DECISION_UPDATED_BY).strip()
+        or DEFAULT_BALANCE_DECISION_UPDATED_BY,
+        comment=update.comment,
+    )
+    BalanceAnalysisDecisionRepository(governance_dir).append_status(
+        {
+            "report_date": update.report_date,
+            "position_scope": update.position_scope,
+            "currency_basis": update.currency_basis,
+            **record.model_dump(mode="json"),
+        }
+    )
+    return record
 
 
 def _to_zqtz_detail_row(row: dict[str, object]) -> BalanceAnalysisDetailRow:
@@ -576,6 +728,105 @@ def _to_summary_table_row(row: dict[str, object]) -> BalanceAnalysisTableRow:
         market_value_amount=_as_decimal(row["market_value_amount"]),
         amortized_cost_amount=_as_decimal(row["amortized_cost_amount"]),
         accrued_interest_amount=_as_decimal(row["accrued_interest_amount"]),
+    )
+
+
+def _build_balance_workbook_payload(
+    *,
+    duckdb_path: str,
+    governance_dir: str,
+    report_date: str,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+) -> tuple[dict[str, Any], dict[str, object] | None]:
+    repo = BalanceAnalysisRepository(duckdb_path)
+    if report_date not in repo.list_report_dates():
+        raise ValueError(f"No balance-analysis data found for report_date={report_date}.")
+
+    zqtz_native_rows = [
+        _to_formal_zqtz_fact_row(row)
+        for row in repo.fetch_formal_zqtz_rows(
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis="native",
+        )
+    ]
+    tyw_native_rows = [
+        _to_formal_tyw_fact_row(row)
+        for row in repo.fetch_formal_tyw_rows(
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis="native",
+        )
+    ]
+    zqtz_currency_rows = [
+        _to_formal_zqtz_fact_row(row)
+        for row in repo.fetch_formal_zqtz_rows(
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis="CNY",
+        )
+    ]
+    workbook_mod = importlib.import_module("backend.app.core_finance.balance_analysis_workbook")
+    workbook_mod = importlib.reload(workbook_mod)
+    workbook = workbook_mod.build_balance_analysis_workbook_payload(
+        report_date=zqtz_native_rows[0].report_date if zqtz_native_rows else tyw_native_rows[0].report_date,
+        position_scope=position_scope,
+        currency_basis=currency_basis,
+        zqtz_rows=zqtz_native_rows,
+        tyw_rows=tyw_native_rows,
+        zqtz_currency_rows=zqtz_currency_rows,
+    )
+    return workbook, _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+
+
+def _extract_generated_decision_section(workbook: dict[str, Any]) -> dict[str, Any]:
+    for section in workbook.get("tables", []):
+        if str(section.get("section_kind")) == "decision_items":
+            return dict(section)
+    return {"columns": [], "rows": []}
+
+
+def _build_decision_key(row: dict[str, object]) -> str:
+    return "::".join(
+        [
+            str(row.get("rule_id") or "").strip(),
+            str(row.get("source_section") or "").strip(),
+            str(row.get("title") or "").strip(),
+        ]
+    )
+
+
+def _default_pending_decision_status(decision_key: str) -> BalanceAnalysisDecisionStatusRecord:
+    return BalanceAnalysisDecisionStatusRecord(
+        decision_key=decision_key,
+        status="pending",
+        updated_at=None,
+        updated_by=None,
+        comment=None,
+    )
+
+
+def _to_decision_item_status_row(
+    row: dict[str, object],
+    latest_statuses: dict[str, dict[str, object]],
+) -> BalanceAnalysisDecisionItemStatusRow:
+    decision_key = _build_decision_key(row)
+    latest_status = latest_statuses.get(decision_key)
+    return BalanceAnalysisDecisionItemStatusRow(
+        decision_key=decision_key,
+        title=str(row["title"]),
+        action_label=str(row["action_label"]),
+        severity=str(row["severity"]),
+        reason=str(row["reason"]),
+        source_section=str(row["source_section"]),
+        rule_id=str(row["rule_id"]),
+        rule_version=str(row["rule_version"]),
+        latest_status=(
+            BalanceAnalysisDecisionStatusRecord(**latest_status)
+            if latest_status is not None
+            else _default_pending_decision_status(decision_key)
+        ),
     )
 
 
@@ -721,6 +972,122 @@ def _build_balance_summary_csv(
             }
         )
     return output.getvalue()
+
+
+def _build_balance_analysis_workbook_xlsx_bytes(payload: dict[str, Any]) -> bytes:
+    workbook = Workbook()
+    overview_sheet = workbook.active
+    overview_sheet.title = "概览"
+    _write_workbook_cards_sheet(overview_sheet, payload.get("cards") or [])
+
+    for sheet_name, candidate_keys in EXPORT_WORKBOOK_TABLES:
+        table = _pick_workbook_export_table(payload, *candidate_keys)
+        sheet = workbook.create_sheet(title=sheet_name)
+        _write_workbook_table_sheet(sheet, table)
+
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _pick_workbook_export_table(payload: dict[str, Any], *candidate_keys: str) -> dict[str, Any]:
+    table_map = {
+        str(table.get("key")): table
+        for table in list(payload.get("tables") or [])
+        if isinstance(table, dict)
+    }
+    for key in candidate_keys:
+        if key in table_map:
+            return table_map[key]
+    raise RuntimeError(
+        "Balance-analysis workbook export table unavailable. "
+        f"Expected one of {candidate_keys!r}."
+    )
+
+
+def _write_workbook_cards_sheet(sheet: Worksheet, cards: list[dict[str, Any]]) -> None:
+    sheet.append(["label", "value"])
+    _style_header_row(sheet, column_count=2)
+    for card in cards:
+        value = _coerce_excel_value(card.get("value"))
+        sheet.append([card.get("label"), value])
+        _style_numeric_cell(sheet.cell(row=sheet.max_row, column=2), value, column_key="value")
+    _autosize_sheet_columns(sheet)
+
+
+def _write_workbook_table_sheet(sheet: Worksheet, table: dict[str, Any]) -> None:
+    columns = list(table.get("columns") or [])
+    rows = list(table.get("rows") or [])
+    headers = [str(column.get("label") or "") for column in columns]
+    column_keys = [str(column.get("key") or "") for column in columns]
+
+    sheet.append(headers)
+    _style_header_row(sheet, column_count=len(headers))
+
+    for row in rows:
+        values = []
+        coerced_values: list[object] = []
+        for column_key in column_keys:
+            coerced = _coerce_excel_value(row.get(column_key))
+            values.append(coerced)
+            coerced_values.append(coerced)
+        sheet.append(values)
+        for column_index, (column_key, value) in enumerate(zip(column_keys, coerced_values), start=1):
+            _style_numeric_cell(sheet.cell(row=sheet.max_row, column=column_index), value, column_key=column_key)
+
+    _autosize_sheet_columns(sheet)
+
+
+def _style_header_row(sheet: Worksheet, *, column_count: int) -> None:
+    for column_index in range(1, column_count + 1):
+        sheet.cell(row=1, column=column_index).font = EXCEL_HEADER_FONT
+
+
+def _style_numeric_cell(cell, value: object, *, column_key: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float, Decimal)):
+        return
+    cell.alignment = EXCEL_RIGHT_ALIGNMENT
+    if _is_amount_column(column_key):
+        cell.number_format = EXCEL_AMOUNT_FORMAT
+        return
+    if isinstance(value, int):
+        cell.number_format = EXCEL_INTEGER_FORMAT
+        return
+    if isinstance(value, Decimal) and value == value.to_integral_value():
+        cell.number_format = EXCEL_INTEGER_FORMAT
+        return
+    cell.number_format = EXCEL_NUMBER_FORMAT
+
+
+def _is_amount_column(column_key: str) -> bool:
+    normalized = column_key.lower()
+    return normalized == "value" or normalized.endswith("_amount") or normalized.endswith("_value")
+
+
+def _coerce_excel_value(value: object) -> object:
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float, Decimal)):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return ""
+        try:
+            return Decimal(stripped)
+        except InvalidOperation:
+            return value
+    return value
+
+
+def _autosize_sheet_columns(sheet: Worksheet) -> None:
+    for column_cells in sheet.columns:
+        values = ["" if cell.value is None else str(cell.value) for cell in column_cells]
+        max_length = max(len(value) for value in values) if values else 0
+        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 40)
 
 
 def _resolve_latest_balance_manifest_lineage(governance_dir: str) -> dict[str, object]:

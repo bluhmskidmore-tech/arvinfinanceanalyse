@@ -44,6 +44,23 @@ def data(
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
+@router.get("/pnl/bridge")
+def pnl_bridge(
+    report_date: str = Query(..., description="Requested report date for formal /pnl bridge."),
+) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        return import_module("backend.app.services.pnl_bridge_service").pnl_bridge_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            report_date=report_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.get("/pnl/overview")
 def overview(
     report_date: str = Query(..., description="Requested report date for formal /pnl overview."),

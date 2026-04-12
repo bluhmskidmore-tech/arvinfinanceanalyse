@@ -46,6 +46,25 @@ const groupsById = new Map(
   ]),
 );
 
+export type ChoiceNewsTopicFilterOption = {
+  topicCode: string;
+  label: string;
+};
+
+/** Flat topic list for filters (catalog order: group then topic). */
+export function listChoiceNewsTopicFilterOptions(): ChoiceNewsTopicFilterOption[] {
+  const options: ChoiceNewsTopicFilterOption[] = [];
+  for (const group of topicCatalog.groups) {
+    for (const topic of group.topics) {
+      options.push({
+        topicCode: topic.topic_code,
+        label: `${group.group_name} / ${topic.topic_name}`,
+      });
+    }
+  }
+  return options.sort((a, b) => a.label.localeCompare(b.label, "zh-CN"));
+}
+
 export function getChoiceNewsTopicPresentation({
   groupId,
   topicCode,

@@ -92,6 +92,16 @@ export type FormalPnlRefreshPayload = {
   error_message?: string | null;
 };
 
+export type BondAnalyticsRefreshPayload = {
+  status: string;
+  run_id: string;
+  job_name?: string;
+  cache_key?: string;
+  report_date?: string;
+  error_message?: string;
+  [key: string]: unknown;
+};
+
 export type RiskSignal = {
   id: string;
   label: string;
@@ -130,6 +140,30 @@ export type AlertItem = {
 export type AlertsPayload = {
   title: string;
   items: AlertItem[];
+};
+
+/** `/api/risk/tensor?report_date=` — `result` 内为风险张量载荷（小数字段为后端量化后的字符串）。 */
+export type RiskTensorPayload = {
+  report_date: string;
+  portfolio_dv01: string;
+  krd_1y: string;
+  krd_3y: string;
+  krd_5y: string;
+  krd_7y: string;
+  krd_10y: string;
+  krd_30y: string;
+  cs01: string;
+  portfolio_convexity: string;
+  portfolio_modified_duration: string;
+  issuer_concentration_hhi: string;
+  issuer_top5_weight: string;
+  liquidity_gap_30d: string;
+  liquidity_gap_90d: string;
+  liquidity_gap_30d_ratio: string;
+  total_market_value: string;
+  bond_count: number;
+  quality_flag: string;
+  warnings: string[];
 };
 
 export type PlaceholderSnapshot = {
@@ -350,6 +384,62 @@ export type PnlOverviewPayload = {
   total_pnl: string;
 };
 
+export type PnlBridgeQuality = "ok" | "warning" | "error";
+
+export type PnlBridgeRow = {
+  report_date?: string;
+  instrument_code: string;
+  portfolio_name: string;
+  cost_center?: string;
+  accounting_basis: string;
+  beginning_dirty_mv?: string;
+  ending_dirty_mv?: string;
+  carry: string;
+  roll_down: string;
+  treasury_curve: string;
+  credit_spread: string;
+  fx_translation: string;
+  realized_trading: string;
+  unrealized_fv: string;
+  manual_adjustment: string;
+  explained_pnl: string;
+  actual_pnl: string;
+  residual: string;
+  residual_ratio: string;
+  quality_flag: PnlBridgeQuality;
+  current_balance_found?: boolean;
+  prior_balance_found?: boolean;
+  balance_diagnostics?: string[];
+};
+
+export type PnlBridgeSummary = {
+  row_count: number;
+  ok_count: number;
+  warning_count: number;
+  error_count: number;
+  total_beginning_dirty_mv: string;
+  total_ending_dirty_mv: string;
+  total_carry: string;
+  total_roll_down: string;
+  total_treasury_curve: string;
+  total_credit_spread: string;
+  total_fx_translation: string;
+  total_realized_trading: string;
+  total_unrealized_fv: string;
+  total_manual_adjustment: string;
+  total_explained_pnl: string;
+  total_actual_pnl: string;
+  total_residual: string;
+  quality_flag: PnlBridgeQuality;
+};
+
+export type PnlBridgePayload = {
+  report_date: string;
+  rows: PnlBridgeRow[];
+  summary: PnlBridgeSummary;
+  warnings: string[];
+};
+
 export type DecimalLike = string | number;
 
 export type ProductCategoryPnlRow = {
@@ -502,12 +592,106 @@ export type BalanceAnalysisWorkbookSectionKind =
   | "event_calendar"
   | "risk_alerts";
 
+export type BalanceAnalysisSeverity = "low" | "medium" | "high";
+export type BalanceAnalysisDecisionStatus = "pending" | "confirmed" | "dismissed";
+
 export type BalanceAnalysisWorkbookTable = {
   key: string;
   title: string;
-  section_kind: BalanceAnalysisWorkbookSectionKind;
+  section_kind: "table";
   columns: BalanceAnalysisWorkbookColumn[];
-  rows: Array<Record<string, DecimalLike | null>>;
+  rows: Array<Record<string, unknown>>;
+};
+
+export type BalanceAnalysisDecisionItemRow = {
+  title: string;
+  action_label: string;
+  severity: BalanceAnalysisSeverity;
+  reason: string;
+  source_section: string;
+  rule_id: string;
+  rule_version: string;
+};
+
+export type BalanceAnalysisDecisionStatusRecord = {
+  decision_key: string;
+  status: BalanceAnalysisDecisionStatus;
+  updated_at: string | null;
+  updated_by: string | null;
+  comment?: string | null;
+};
+
+export type BalanceAnalysisCurrentUserPayload = {
+  user_id: string;
+  role: string;
+  identity_source: "header" | "env" | "system" | "fallback";
+};
+
+export type BalanceAnalysisDecisionItemStatusRow = {
+  decision_key: string;
+  title: string;
+  action_label: string;
+  severity: BalanceAnalysisSeverity;
+  reason: string;
+  source_section: string;
+  rule_id: string;
+  rule_version: string;
+  latest_status: BalanceAnalysisDecisionStatusRecord;
+};
+
+export type BalanceAnalysisDecisionItemsSection = {
+  key: "decision_items";
+  title: string;
+  section_kind: "decision_items";
+  columns: BalanceAnalysisWorkbookColumn[];
+  rows: BalanceAnalysisDecisionItemRow[];
+};
+
+export type BalanceAnalysisEventCalendarRow = {
+  event_date: string;
+  event_type: string;
+  title: string;
+  source: string;
+  impact_hint: string;
+  source_section: string;
+};
+
+export type BalanceAnalysisEventCalendarSection = {
+  key: "event_calendar";
+  title: string;
+  section_kind: "event_calendar";
+  columns: BalanceAnalysisWorkbookColumn[];
+  rows: BalanceAnalysisEventCalendarRow[];
+};
+
+export type BalanceAnalysisRiskAlertRow = {
+  title: string;
+  severity: BalanceAnalysisSeverity;
+  reason: string;
+  source_section: string;
+  rule_id: string;
+  rule_version: string;
+};
+
+export type BalanceAnalysisRiskAlertsSection = {
+  key: "risk_alerts";
+  title: string;
+  section_kind: "risk_alerts";
+  columns: BalanceAnalysisWorkbookColumn[];
+  rows: BalanceAnalysisRiskAlertRow[];
+};
+
+export type BalanceAnalysisWorkbookOperationalSection =
+  | BalanceAnalysisDecisionItemsSection
+  | BalanceAnalysisEventCalendarSection
+  | BalanceAnalysisRiskAlertsSection;
+
+export type BalanceAnalysisDecisionItemsPayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  columns: BalanceAnalysisWorkbookColumn[];
+  rows: BalanceAnalysisDecisionItemStatusRow[];
 };
 
 export type BalanceAnalysisWorkbookPayload = {
@@ -516,11 +700,17 @@ export type BalanceAnalysisWorkbookPayload = {
   currency_basis: BalanceCurrencyBasis;
   cards: BalanceAnalysisWorkbookCard[];
   tables: BalanceAnalysisWorkbookTable[];
+  operational_sections: BalanceAnalysisWorkbookOperationalSection[];
 };
 
 export type BalanceAnalysisSummaryExportPayload = {
   filename: string;
   content: string;
+};
+
+export type BalanceAnalysisWorkbookExportPayload = {
+  filename: string;
+  content: Blob;
 };
 
 export type BalanceAnalysisRefreshPayload = {

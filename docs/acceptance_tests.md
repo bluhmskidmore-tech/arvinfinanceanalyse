@@ -249,6 +249,8 @@
   - currency grouping
   - `reconciliation_contract = not_applicable`
 - `average_balance` 的最后一个 header block 允许无尾部 spacer。
+- `average_balance` 以 canonical tuple `(currency_raw, account_code_raw, avg_balance_raw)` 的 admissibility 为准。
+- row 内不组成 canonical tuple 的 auxiliary fragments 允许存在；但以有效币种开头的不完整 tuple 必须 fail。
 - contract evidence 必须带：
   - `source_file`
   - `source_kind`

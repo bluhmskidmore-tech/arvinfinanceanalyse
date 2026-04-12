@@ -1,10 +1,11 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ApiEnvelope, ChoiceNewsEventsPayload, ResultMeta } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -26,42 +27,49 @@ function createChoiceNewsEnvelope(overrides?: Partial<{
     payload_json: string | null;
   }>;
 }>) {
-  return {
-    result_meta: {
-      trace_id: "tr_choice_news_test",
-      basis: "analytical" as const,
-      result_kind: "news.choice.latest",
-      formal_use_allowed: false,
-      source_version: "sv_choice_news_test",
-      vendor_version: "vv_none",
-      rule_version: "rv_choice_news_v1",
-      cache_version: "cv_choice_news_v1",
-      quality_flag: "ok" as const,
-      scenario_flag: false,
-      generated_at: "2026-04-10T09:00:00Z",
-    },
-    result: {
-      total_rows: overrides?.totalRows ?? 1,
-      limit: 2,
-      offset: overrides?.offset ?? 0,
-      events: overrides?.events ?? [
-        {
-          event_key: "ce_filter_target",
-          received_at: "2026-04-10T09:00:00Z",
-          group_id: "news_cmd1",
-          content_type: "sectornews",
-          serial_id: 1001,
-          request_id: 500,
-          error_code: 0,
-          error_msg: "",
-          topic_code: "S888010007API",
-          item_index: 0,
-          payload_text: "Filtered policy update",
-          payload_json: null,
-        },
-      ],
-    },
+  const resultMeta: ResultMeta = {
+    trace_id: "tr_choice_news_test",
+    basis: "analytical",
+    result_kind: "news.choice.latest",
+    formal_use_allowed: false,
+    source_version: "sv_choice_news_test",
+    vendor_version: "vv_none",
+    rule_version: "rv_choice_news_v1",
+    cache_version: "cv_choice_news_v1",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-10T09:00:00Z",
   };
+  const result: ChoiceNewsEventsPayload = {
+    total_rows: overrides?.totalRows ?? 1,
+    limit: 2,
+    offset: overrides?.offset ?? 0,
+    events: overrides?.events ?? [
+      {
+        event_key: "ce_filter_target",
+        received_at: "2026-04-10T09:00:00Z",
+        group_id: "news_cmd1",
+        content_type: "sectornews",
+        serial_id: 1001,
+        request_id: 500,
+        error_code: 0,
+        error_msg: "",
+        topic_code: "S888010007API",
+        item_index: 0,
+        payload_text: "Filtered policy update",
+        payload_json: null,
+      },
+    ],
+  };
+
+  const envelope: ApiEnvelope<ChoiceNewsEventsPayload> = {
+    result_meta: resultMeta,
+    result,
+  };
+
+  return envelope;
 }
 
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
@@ -213,3 +221,5 @@ describe("AgentPlaceholderPage", () => {
     ).toBeInTheDocument();
   });
 });
+
+

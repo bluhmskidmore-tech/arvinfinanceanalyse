@@ -9,6 +9,7 @@ from backend.app.api.routes.macro_vendor import router as macro_vendor_router
 from backend.app.api.routes.pnl import router as pnl_router
 from backend.app.api.routes.product_category_pnl import router as product_category_pnl_router
 from backend.app.api.routes.bond_analytics import router as bond_analytics_router
+from backend.app.api.routes.risk_tensor import router as risk_tensor_router
 from backend.app.api.routes.source_preview import router as source_preview_router
 
 router = APIRouter()
@@ -21,4 +22,5 @@ router.include_router(macro_vendor_router, tags=["macro-preview"])
 router.include_router(executive_router, tags=["executive"])
 router.include_router(pnl_router, tags=["pnl"])
 router.include_router(product_category_pnl_router, tags=["product-category-pnl"])
+router.include_router(risk_tensor_router, tags=["risk"])
 router.include_router(source_preview_router, tags=["preview"])

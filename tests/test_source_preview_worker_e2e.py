@@ -14,6 +14,7 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from tests.helpers import ROOT, load_module
+from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
 from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
 from tests.test_product_category_pnl_flow import _write_month_pair
 
@@ -242,6 +243,75 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
         _reset_source_preview_modules()
 
 
+def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
+    redis_server = _redis_server_path()
+    if redis_server is None:
+        pytest.skip("redis-server is not available on this machine")
+
+    redis_port = _find_free_port()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    redis_dir = tmp_path / "redis"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    redis_dir.mkdir(parents=True, exist_ok=True)
+
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    monkeypatch.setenv("MOSS_REDIS_DSN", f"redis://127.0.0.1:{redis_port}/0")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    get_settings.cache_clear()
+    _reset_source_preview_modules()
+
+    redis_proc = _start_redis_server(redis_server=redis_server, port=redis_port, work_dir=redis_dir)
+    worker_proc = None
+    try:
+        _wait_for_port(redis_port)
+        worker_proc = _start_worker_subprocess(redis_port=redis_port)
+        time.sleep(1.5)
+
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        refresh_response = client.post(
+            "/api/bond-analytics/refresh",
+            params={"report_date": "2026-03-31"},
+        )
+
+        assert refresh_response.status_code == 200
+        refresh_payload = refresh_response.json()
+        assert refresh_payload["status"] == "queued"
+        assert refresh_payload["trigger_mode"] == "async"
+        run_id = refresh_payload["run_id"]
+
+        status_payload = _wait_for_completed_status(
+            client=client,
+            run_id=run_id,
+            path="/api/bond-analytics/refresh-status",
+        )
+        assert status_payload["status"] == "completed"
+        assert status_payload["run_id"] == run_id
+
+        risk_response = client.get(
+            "/api/bond-analytics/krd-curve-risk",
+            params={"report_date": "2026-03-31"},
+        )
+        assert risk_response.status_code == 200
+        risk_payload = risk_response.json()
+        assert risk_payload["result"]["portfolio_dv01"] != "0.00000000"
+        assert risk_payload["result"]["krd_buckets"]
+
+        governance_rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        matched = [row for row in governance_rows if row.get("run_id") == run_id]
+        assert {row["status"] for row in matched} >= {"queued", "running", "completed"}
+    finally:
+        _stop_process(worker_proc)
+        _stop_process(redis_proc)
+        get_settings.cache_clear()
+        _reset_source_preview_modules()
+
+
 def _redis_server_path() -> str | None:
     if os.name == "nt":
         candidate = Path(r"C:\Program Files\Redis\redis-server.exe")
@@ -356,12 +426,15 @@ def _reset_source_preview_modules() -> None:
     prefixes = (
         "backend.app.main",
         "backend.app.api",
+        "backend.app.schemas.balance_analysis",
         "backend.app.tasks.broker",
         "backend.app.tasks.source_preview_refresh",
         "backend.app.tasks.balance_analysis_materialize",
+        "backend.app.tasks.bond_analytics_materialize",
         "backend.app.tasks.product_category_pnl",
         "backend.app.services.source_preview_refresh_service",
         "backend.app.services.balance_analysis_service",
+        "backend.app.services.bond_analytics_service",
         "backend.app.services.product_category_pnl_service",
     )
     for module_name in list(sys.modules):

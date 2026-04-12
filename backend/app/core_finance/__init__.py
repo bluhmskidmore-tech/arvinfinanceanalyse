@@ -27,6 +27,7 @@ from backend.app.core_finance.pnl import (
     normalize_fi_pnl_records,
     normalize_nonstd_journal_entries,
 )
+from backend.app.core_finance.pnl_bridge import PnlBridgeRow, build_pnl_bridge_rows
 
 __all__ = [
     "BalanceCurrencyBasis",
@@ -41,10 +42,12 @@ __all__ = [
     "JournalType",
     "NonStdJournalEntry",
     "NonStdPnlBridgeRow",
+    "PnlBridgeRow",
     "TywSnapshotRow",
     "ZqtzSnapshotRow",
     "average_daily_cny_amounts",
     "build_formal_pnl_fi_fact_rows",
+    "build_pnl_bridge_rows",
     "build_nonstd_pnl_bridge_rows",
     "derive_accounting_basis",
     "derive_invest_type_std",

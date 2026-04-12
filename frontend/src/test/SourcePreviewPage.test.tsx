@@ -1,11 +1,11 @@
-import { useState, type ReactNode } from "react";
+﻿import { useState, type ReactNode } from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
-import type { SourcePreviewColumn, SourcePreviewSummary } from "../api/contracts";
+import type { ResultMeta, SourcePreviewColumn, SourcePreviewSummary } from "../api/contracts";
 import SourcePreviewPage from "../features/source-preview/pages/SourcePreviewPage";
 
 function renderPage(client: ApiClient) {
@@ -33,7 +33,7 @@ function renderPage(client: ApiClient) {
   );
 }
 
-function buildMeta(resultKind: string, sourceVersion: string) {
+function buildMeta(resultKind: string, sourceVersion: string): ResultMeta {
   return {
     trace_id: `tr_${resultKind}`,
     basis: "analytical" as const,
@@ -44,6 +44,8 @@ function buildMeta(resultKind: string, sourceVersion: string) {
     rule_version: "rv_preview",
     cache_version: "cv_preview",
     quality_flag: "ok" as const,
+    vendor_status: "ok" as const,
+    fallback_mode: "none" as const,
     scenario_flag: false,
     generated_at: "2026-04-10T09:00:00Z",
   };
@@ -932,3 +934,5 @@ describe("SourcePreviewPage", () => {
     pollingSpy.mockRestore();
   });
 });
+
+

@@ -40,10 +40,9 @@ describe("RouteRegistry", () => {
   it("renders the news-events route with the read-only news workbench", async () => {
     renderWorkbenchApp(["/news-events"]);
 
-    expect(
-      await screen.findByRole("heading", { name: "新闻事件工作台" }),
-    ).toBeInTheDocument();
-    expect(await screen.findByTestId("agent-news-event-list")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "新闻事件" })).toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-table")).toBeInTheDocument();
+    expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
 
   it("renders the product-category pnl route with page content", async () => {
@@ -99,5 +98,15 @@ describe("RouteRegistry", () => {
       }),
     ).toHaveAttribute("href", "/balance-analysis");
     expect(await screen.findByTestId("balance-analysis-table")).toBeInTheDocument();
+  });
+
+  it("renders the pnl-bridge route with the governed bridge shell", async () => {
+    renderWorkbenchApp(["/pnl-bridge"]);
+
+    expect(
+      await screen.findByRole("heading", { name: "损益桥接" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("汇总")).toBeInTheDocument();
+    expect(await screen.findByLabelText("pnl-bridge-report-date")).toBeInTheDocument();
   });
 });

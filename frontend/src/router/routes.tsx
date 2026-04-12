@@ -25,6 +25,8 @@ const MarketDataPage = lazy(
 const ProductCategoryPnlPage = lazy(
   () => import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
 );
+const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
+const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const BalanceAnalysisPage = lazy(
   () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
 );
@@ -37,8 +39,17 @@ const WorkbenchPlaceholderPage = lazy(
 const AgentPlaceholderPage = lazy(
   () => import("../features/agent/pages/AgentPlaceholderPage"),
 );
+const NewsEventsPage = lazy(
+  () => import("../features/news-events/NewsEventsPage"),
+);
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
+);
+const RiskOverviewPage = lazy(
+  () => import("../features/risk-overview/RiskOverviewPage"),
+);
+const RiskTensorPage = lazy(
+  () => import("../features/risk-tensor/RiskTensorPage"),
 );
 
 function routeElement(element: ReactNode) {
@@ -75,7 +86,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/news-events") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<AgentPlaceholderPage />),
+        element: routeElement(<NewsEventsPage />),
       };
     }
 
@@ -93,10 +104,38 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/pnl") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PnlPage />),
+      };
+    }
+
+    if (section.path === "/pnl-bridge") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PnlBridgePage />),
+      };
+    }
+
     if (section.path === "/balance-analysis") {
       return {
         path: section.path.slice(1),
         element: routeElement(<BalanceAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/risk-overview") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<RiskOverviewPage />),
+      };
+    }
+
+    if (section.path === "/risk-tensor") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<RiskTensorPage />),
       };
     }
 

@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
-import type { CreditSpreadMigrationResponse } from "../types";
+import ReactECharts from "echarts-for-react";
+import type { ConcentrationMetrics, CreditSpreadMigrationResponse } from "../types";
 import { formatWan, formatBp } from "../utils/formatters";
+import type { EChartsOption } from "echarts";
 
 interface Props {
   reportDate: string;
@@ -23,6 +25,77 @@ const migrationColumns = [
   { title: "涉及市值", dataIndex: "affected_market_value", key: "affected_market_value", render: formatWan },
   { title: "损益影响", dataIndex: "pnl_impact", key: "pnl_impact", render: formatWan },
 ];
+
+const CONCENTRATION_KEYS = [
+  "concentration_by_issuer",
+  "concentration_by_industry",
+  "concentration_by_rating",
+  "concentration_by_tenor",
+] as const satisfies readonly (keyof Pick<
+  CreditSpreadMigrationResponse,
+  | "concentration_by_issuer"
+  | "concentration_by_industry"
+  | "concentration_by_rating"
+  | "concentration_by_tenor"
+>)[];
+
+function hasAnyConcentrationField(data: CreditSpreadMigrationResponse): boolean {
+  return CONCENTRATION_KEYS.some((k) => data[k] != null);
+}
+
+function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
+  return {
+    title: {
+      text: `${metrics.dimension}  HHI ${metrics.hhi}  Top5 ${metrics.top5_concentration}`,
+      left: "center",
+      top: 4,
+      textStyle: { fontSize: 11 },
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (p) => {
+        const item = p as { name: string; value: number; percent: number };
+        return `${item.name}: ${formatWan(String(item.value))} (${item.percent}%)`;
+      },
+    },
+    series: [
+      {
+        type: "pie",
+        radius: "55%",
+        center: ["50%", "56%"],
+        data: metrics.top_items.map((it) => ({
+          name: it.name,
+          value: parseFloat(it.market_value) || 0,
+        })),
+      },
+    ],
+  };
+}
+
+function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetrics | undefined }) {
+  const option = useMemo(() => {
+    if (!metrics?.top_items?.length) return null;
+    return concentrationPieOption(metrics);
+  }, [metrics]);
+
+  if (!option) {
+    return (
+      <div
+        style={{
+          height: 200,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "rgba(0,0,0,0.45)",
+        }}
+      >
+        暂无数据
+      </div>
+    );
+  }
+
+  return <ReactECharts option={option} style={{ height: 200 }} />;
+}
 
 export function CreditSpreadView({ reportDate }: Props) {
   const [data, setData] = useState<CreditSpreadMigrationResponse | null>(null);
@@ -106,6 +179,25 @@ export function CreditSpreadView({ reportDate }: Props) {
             pagination={false}
             size="small"
           />
+        </Card>
+      )}
+
+      {hasAnyConcentrationField(data) && (
+        <Card title="信用集中度" size="small">
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <ConcentrationPieCell metrics={data.concentration_by_issuer} />
+            </Col>
+            <Col span={12}>
+              <ConcentrationPieCell metrics={data.concentration_by_industry} />
+            </Col>
+            <Col span={12}>
+              <ConcentrationPieCell metrics={data.concentration_by_rating} />
+            </Col>
+            <Col span={12}>
+              <ConcentrationPieCell metrics={data.concentration_by_tenor} />
+            </Col>
+          </Row>
         </Card>
       )}
 

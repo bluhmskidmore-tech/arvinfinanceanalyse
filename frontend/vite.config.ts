@@ -24,12 +24,49 @@ export default defineConfig({
             return undefined;
           }
 
-          if (id.includes("@tanstack/react-query")) {
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/") ||
+            id.includes("/react-router/") ||
+            id.includes("/react-router-dom/") ||
+            id.includes("/@remix-run/router/")
+          ) {
+            return "react-vendor";
+          }
+
+          if (
+            id.includes("/@tanstack/react-query/") ||
+            id.includes("/@tanstack/query-core/")
+          ) {
             return "query-vendor";
           }
 
-          if (id.includes("@ant-design/icons")) {
-            return "ant-icons";
+          if (id.includes("/echarts-for-react/")) {
+            return "charts-react";
+          }
+
+          if (id.includes("/zrender/")) {
+            return "zrender-vendor";
+          }
+
+          if (id.includes("/echarts/lib/chart/")) {
+            return "charts-series";
+          }
+
+          if (id.includes("/echarts/lib/component/")) {
+            return "charts-components";
+          }
+
+          if (
+            id.includes("/echarts/lib/coord/") ||
+            id.includes("/echarts/lib/feature/")
+          ) {
+            return "charts-components";
+          }
+
+          if (id.includes("/echarts/")) {
+            return "charts-core";
           }
 
           return undefined;

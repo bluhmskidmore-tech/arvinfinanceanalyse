@@ -1,10 +1,22 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type {
+  ApiEnvelope,
+  BalanceAnalysisCurrentUserPayload,
+  BalanceAnalysisDecisionItemsPayload,
+  BalanceAnalysisDetailRow,
+  BalanceAnalysisPayload,
+  BalanceAnalysisSummaryTablePayload,
+  BalanceAnalysisWorkbookOperationalSection,
+  BalanceAnalysisWorkbookPayload,
+  BalanceAnalysisWorkbookTable,
+  ResultMeta,
+} from "../api/contracts";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
 
@@ -28,7 +40,7 @@ function renderBalanceAnalysisWithClient(client: ReturnType<typeof createApiClie
   );
 }
 
-function buildMeta(resultKind: string, traceId: string) {
+function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
     trace_id: traceId,
     basis: "formal" as const,
@@ -39,13 +51,15 @@ function buildMeta(resultKind: string, traceId: string) {
     rule_version: "rv_balance",
     cache_version: "cv_balance",
     quality_flag: "ok" as const,
+    vendor_status: "ok",
+    fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-11T04:00:00Z",
   };
 }
 
-function buildSummaryResponse(offset: number) {
-  const rows =
+function buildSummaryResponse(offset: number): ApiEnvelope<BalanceAnalysisSummaryTablePayload> {
+  const rows: BalanceAnalysisSummaryTablePayload["rows"] =
     offset === 0
       ? [
           {
@@ -111,7 +125,213 @@ function buildSummaryResponse(offset: number) {
   };
 }
 
-function buildWorkbookResponse() {
+function buildWorkbookResponse(): ApiEnvelope<BalanceAnalysisWorkbookPayload> {
+  const tables: BalanceAnalysisWorkbookTable[] = [
+    {
+      key: "bond_business_types",
+      title: "债券业务种类",
+      section_kind: "table",
+      columns: [
+        { key: "bond_type", label: "业务种类" },
+        { key: "balance_amount", label: "面值/余额" },
+      ],
+      rows: [
+        {
+          bond_type: "政策性金融债",
+          balance_amount: "6482200.00",
+        },
+      ],
+    },
+    {
+      key: "rating_analysis",
+      title: "信用评级分析",
+      section_kind: "table",
+      columns: [
+        { key: "rating", label: "评级" },
+        { key: "balance_amount", label: "面值/余额" },
+      ],
+      rows: [
+        {
+          rating: "AAA",
+          balance_amount: "16960854.11",
+        },
+      ],
+    },
+    {
+      key: "maturity_gap",
+      title: "期限缺口分析",
+      section_kind: "table",
+      columns: [
+        { key: "bucket", label: "期限分类" },
+        { key: "gap_amount", label: "缺口" },
+      ],
+      rows: [
+        {
+          bucket: "1-2年",
+          gap_amount: "4290357.07",
+        },
+      ],
+    },
+    {
+      key: "issuance_business_types",
+      title: "发行类分析",
+      section_kind: "table",
+      columns: [
+        { key: "bond_type", label: "业务种类" },
+        { key: "balance_amount", label: "金额" },
+      ],
+      rows: [
+        {
+          bond_type: "同业存单",
+          balance_amount: "9933000.00",
+        },
+      ],
+    },
+    {
+      key: "industry_distribution",
+      title: "行业分布",
+      section_kind: "table",
+      columns: [
+        { key: "industry_name", label: "行业" },
+        { key: "balance_amount", label: "面值/余额" },
+      ],
+      rows: [
+        {
+          industry_name: "金融业",
+          balance_amount: "19483961.98",
+        },
+      ],
+    },
+    {
+      key: "rate_distribution",
+      title: "利率分布分析",
+      section_kind: "table",
+      columns: [
+        { key: "bucket", label: "利率区间" },
+        { key: "bond_amount", label: "债券面值" },
+        { key: "interbank_asset_amount", label: "同业资产" },
+        { key: "interbank_liability_amount", label: "同业负债" },
+      ],
+      rows: [
+        {
+          bucket: "1.5%-2.0%",
+          bond_amount: "9900751.47",
+          interbank_asset_amount: "958000.00",
+          interbank_liability_amount: "2206085.05",
+        },
+      ],
+    },
+    {
+      key: "counterparty_types",
+      title: "对手方类型",
+      section_kind: "table",
+      columns: [
+        { key: "counterparty_type", label: "对手方类型" },
+        { key: "asset_amount", label: "资产金额" },
+        { key: "liability_amount", label: "负债金额" },
+        { key: "net_position_amount", label: "净头寸" },
+      ],
+      rows: [
+        {
+          counterparty_type: "股份制银行",
+          asset_amount: "120000.00",
+          liability_amount: "86079.26",
+          net_position_amount: "33920.74",
+        },
+      ],
+    },
+    {
+      key: "interest_modes",
+      title: "计息方式",
+      section_kind: "table",
+      columns: [
+        { key: "interest_mode", label: "计息方式" },
+        { key: "balance_amount", label: "面值/余额" },
+      ],
+      rows: [
+        {
+          interest_mode: "固定",
+          balance_amount: "32874418.15",
+        },
+      ],
+    },
+  ];
+  const operationalSections: BalanceAnalysisWorkbookOperationalSection[] = [
+    {
+      key: "decision_items",
+      title: "决策事项",
+      section_kind: "decision_items",
+      columns: [
+        { key: "title", label: "Title" },
+        { key: "severity", label: "Severity" },
+      ],
+      rows: [
+        {
+          title: "Review 1-2 year gap positioning",
+          action_label: "Review gap",
+          severity: "high",
+          reason: "Bucket gap is 4290357.07 wan yuan.",
+          source_section: "maturity_gap",
+          rule_id: "bal_wb_decision_gap_001",
+          rule_version: "v1",
+        },
+      ],
+    },
+    {
+      key: "event_calendar",
+      title: "事件日历",
+      section_kind: "event_calendar",
+      columns: [
+        { key: "event_date", label: "Event Date" },
+        { key: "title", label: "Title" },
+      ],
+      rows: [
+        {
+          event_date: "2026-03-05",
+          event_type: "bond_maturity",
+          title: "240001.IB maturity",
+          source: "internal_governed_schedule",
+          impact_hint: "asset book / 政策性金融债",
+          source_section: "maturity_gap",
+        },
+        {
+          event_date: "2026-03-08",
+          event_type: "funding_rollover",
+          title: "repo-1 maturity",
+          source: "internal_governed_schedule",
+          impact_hint: "liability book / 卖出回购",
+          source_section: "maturity_gap",
+        },
+      ],
+    },
+    {
+      key: "risk_alerts",
+      title: "风险预警",
+      section_kind: "risk_alerts",
+      columns: [
+        { key: "title", label: "Title" },
+        { key: "severity", label: "Severity" },
+      ],
+      rows: [
+        {
+          title: "Negative gap in 1-2 year bucket",
+          severity: "high",
+          reason: "Gap dropped to -128000.00 wan yuan.",
+          source_section: "maturity_gap",
+          rule_id: "bal_wb_risk_gap_001",
+          rule_version: "v1",
+        },
+        {
+          title: "Issuance liabilities outstanding",
+          severity: "medium",
+          reason: "Issuance book totals 18.00 wan yuan.",
+          source_section: "issuance_business_types",
+          rule_id: "bal_wb_risk_issuance_001",
+          rule_version: "v1",
+        },
+      ],
+    },
+  ];
   return {
     result_meta: buildMeta("balance-analysis.workbook", "tr_balance_workbook"),
     result: {
@@ -132,195 +352,76 @@ function buildWorkbookResponse() {
           note: "TYW 负债端余额。",
         },
       ],
-      tables: [
+      tables,
+      operational_sections: operationalSections,
+    },
+  };
+}
+
+function buildDecisionItemsResponse(
+  overrides?: Partial<{
+    rows: Array<{
+      decision_key: string;
+      title: string;
+      action_label: string;
+      severity: "low" | "medium" | "high";
+      reason: string;
+      source_section: string;
+      rule_id: string;
+      rule_version: string;
+      latest_status: {
+        decision_key: string;
+        status: "pending" | "confirmed" | "dismissed";
+        updated_at: string | null;
+        updated_by: string | null;
+        comment: string | null;
+      };
+    }>;
+  }>,
+) : ApiEnvelope<BalanceAnalysisDecisionItemsPayload> {
+  return {
+    result_meta: buildMeta("balance-analysis.decision-items", "tr_balance_decisions"),
+    result: {
+      report_date: "2025-12-31",
+      position_scope: "all" as const,
+      currency_basis: "CNY" as const,
+      columns: [
+        { key: "title", label: "Title" },
+        { key: "action_label", label: "Action" },
+        { key: "severity", label: "Severity" },
+        { key: "reason", label: "Reason" },
+        { key: "source_section", label: "Source Section" },
+        { key: "rule_id", label: "Rule Id" },
+        { key: "rule_version", label: "Rule Version" },
+      ],
+      rows: overrides?.rows ?? [
         {
-          key: "bond_business_types",
-          title: "债券业务种类",
-          section_kind: "table" as const,
-          columns: [
-            { key: "bond_type", label: "业务种类" },
-            { key: "balance_amount", label: "面值/余额" },
-          ],
-          rows: [
-            {
-              bond_type: "政策性金融债",
-              balance_amount: "6482200.00",
-            },
-          ],
-        },
-        {
-          key: "rating_analysis",
-          title: "信用评级分析",
-          section_kind: "table" as const,
-          columns: [
-            { key: "rating", label: "评级" },
-            { key: "balance_amount", label: "面值/余额" },
-          ],
-          rows: [
-            {
-              rating: "AAA",
-              balance_amount: "16960854.11",
-            },
-          ],
-        },
-        {
-          key: "maturity_gap",
-          title: "期限缺口分析",
-          section_kind: "table" as const,
-          columns: [
-            { key: "bucket", label: "期限分类" },
-            { key: "gap_amount", label: "缺口" },
-          ],
-          rows: [
-            {
-              bucket: "1-2年",
-              gap_amount: "4290357.07",
-            },
-          ],
-        },
-        {
-          key: "issuance_business_types",
-          title: "发行类分析",
-          section_kind: "table" as const,
-          columns: [
-            { key: "bond_type", label: "业务种类" },
-            { key: "balance_amount", label: "金额" },
-          ],
-          rows: [
-            {
-              bond_type: "同业存单",
-              balance_amount: "9933000.00",
-            },
-          ],
-        },
-        {
-          key: "industry_distribution",
-          title: "行业分布",
-          section_kind: "table" as const,
-          columns: [
-            { key: "industry_name", label: "行业" },
-            { key: "balance_amount", label: "面值/余额" },
-          ],
-          rows: [
-            {
-              industry_name: "金融业",
-              balance_amount: "19483961.98",
-            },
-          ],
-        },
-        {
-          key: "rate_distribution",
-          title: "利率分布分析",
-          section_kind: "table" as const,
-          columns: [
-            { key: "bucket", label: "利率区间" },
-            { key: "bond_amount", label: "债券面值" },
-            { key: "interbank_asset_amount", label: "同业资产" },
-            { key: "interbank_liability_amount", label: "同业负债" },
-          ],
-          rows: [
-            {
-              bucket: "1.5%-2.0%",
-              bond_amount: "9900751.47",
-              interbank_asset_amount: "958000.00",
-              interbank_liability_amount: "2206085.05",
-            },
-          ],
-        },
-        {
-          key: "counterparty_types",
-          title: "对手方类型",
-          section_kind: "table" as const,
-          columns: [
-            { key: "counterparty_type", label: "对手方类型" },
-            { key: "asset_amount", label: "资产金额" },
-            { key: "liability_amount", label: "负债金额" },
-            { key: "net_position_amount", label: "净头寸" },
-          ],
-          rows: [
-            {
-              counterparty_type: "股份制银行",
-              asset_amount: "120000.00",
-              liability_amount: "86079.26",
-              net_position_amount: "33920.74",
-            },
-          ],
-        },
-        {
-          key: "interest_modes",
-          title: "计息方式",
-          section_kind: "table" as const,
-          columns: [
-            { key: "interest_mode", label: "计息方式" },
-            { key: "balance_amount", label: "面值/余额" },
-          ],
-          rows: [
-            {
-              interest_mode: "固定",
-              balance_amount: "32874418.15",
-            },
-          ],
-        },
-        {
-          key: "decision_items",
-          title: "决策事项",
-          section_kind: "decision_items" as const,
-          columns: [
-            { key: "title", label: "Title" },
-            { key: "severity", label: "Severity" },
-          ],
-          rows: [
-            {
-              title: "Review 1-2 year gap positioning",
-              action_label: "Review gap",
-              severity: "high",
-              reason: "Bucket gap is 4290357.07 wan yuan.",
-              source_section: "maturity_gap",
-              rule_id: "bal_wb_decision_gap_001",
-              rule_version: "v1",
-            },
-          ],
-        },
-        {
-          key: "event_calendar",
-          title: "事件日历",
-          section_kind: "event_calendar" as const,
-          columns: [
-            { key: "event_date", label: "Event Date" },
-            { key: "title", label: "Title" },
-          ],
-          rows: [
-            {
-              event_date: "2026-03-05",
-              event_type: "bond_maturity",
-              title: "240001.IB maturity",
-              source: "internal_governed_schedule",
-              impact_hint: "asset book / 政策性金融债",
-              source_section: "maturity_gap",
-            },
-          ],
-        },
-        {
-          key: "risk_alerts",
-          title: "风险预警",
-          section_kind: "risk_alerts" as const,
-          columns: [
-            { key: "title", label: "Title" },
-            { key: "severity", label: "Severity" },
-          ],
-          rows: [
-            {
-              title: "Negative gap in 1-2 year bucket",
-              severity: "high",
-              reason: "Gap dropped to -128000.00 wan yuan.",
-              source_section: "maturity_gap",
-              rule_id: "bal_wb_risk_gap_001",
-              rule_version: "v1",
-            },
-          ],
+          decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+          title: "Review 1-2 year gap positioning",
+          action_label: "Review gap",
+          severity: "high" as const,
+          reason: "Bucket gap is 4290357.07 wan yuan.",
+          source_section: "maturity_gap",
+          rule_id: "bal_wb_decision_gap_001",
+          rule_version: "v1",
+          latest_status: {
+            decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+            status: "pending" as const,
+            updated_at: null,
+            updated_by: null,
+            comment: null,
+          },
         },
       ],
     },
+  };
+}
+
+function buildCurrentUserResponse(): BalanceAnalysisCurrentUserPayload {
+  return {
+    user_id: "phase1-dev-user",
+    role: "admin",
+    identity_source: "fallback" as const,
   };
 }
 
@@ -346,31 +447,34 @@ describe("BalanceAnalysisPage", () => {
         total_accrued_interest_amount: "77.77",
       },
     }));
-    const getDetailSpy = vi.fn(async () => ({
-      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
-      result: {
-        report_date: "2025-12-31",
-        position_scope: "all" as const,
-        currency_basis: "CNY" as const,
-        details: [
-          {
-            source_family: "zqtz",
-            report_date: "2025-12-31",
-            row_key: "zqtz:detail-1",
-            display_name: "240001.IB",
-            position_scope: "asset",
-            currency_basis: "CNY",
-            invest_type_std: "A",
-            accounting_basis: "FVOCI",
-            market_value_amount: "720.00",
-            amortized_cost_amount: "648.00",
-            accrued_interest_amount: "36.00",
-            is_issuance_like: false,
-          },
-        ],
-        summary: [],
-      },
-    }));
+    const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
+      const details: BalanceAnalysisDetailRow[] = [
+        {
+          source_family: "zqtz",
+          report_date: "2025-12-31",
+          row_key: "zqtz:detail-1",
+          display_name: "240001.IB",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          invest_type_std: "A",
+          accounting_basis: "FVOCI",
+          market_value_amount: "720.00",
+          amortized_cost_amount: "648.00",
+          accrued_interest_amount: "36.00",
+          is_issuance_like: false,
+        },
+      ];
+      return {
+        result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
+        result: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          details,
+          summary: [],
+        },
+      };
+    });
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
     const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
 
@@ -534,6 +638,63 @@ describe("BalanceAnalysisPage", () => {
     }
   });
 
+  it("downloads the filtered workbook export as xlsx", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const workbookBlob = new Blob(["xlsx-binary"], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const exportSpy = vi.fn(async () => ({
+      filename: "资产负债分析_2025-12-31.xlsx",
+      content: workbookBlob,
+    }));
+    const createObjectUrl = vi.fn(() => "blob:balance-analysis-workbook");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const originalCreateElement = document.createElement.bind(document);
+
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string) => {
+      const element = originalCreateElement(tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          configurable: true,
+          value: clickSpy,
+        });
+      }
+      return element;
+    }) as typeof document.createElement);
+
+    try {
+      renderBalanceAnalysisWithClient({
+        ...baseClient,
+        exportBalanceAnalysisWorkbookXlsx: exportSpy,
+      });
+
+      await screen.findByTestId("balance-analysis-workbook-export-button");
+      await user.selectOptions(screen.getByLabelText("balance-position-scope"), "asset");
+      await user.click(screen.getByTestId("balance-analysis-workbook-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalledWith({
+          reportDate: "2025-12-31",
+          positionScope: "asset",
+          currencyBasis: "CNY",
+        });
+        expect(createObjectUrl).toHaveBeenCalledWith(workbookBlob);
+        expect(clickSpy).toHaveBeenCalledTimes(1);
+        expect(revokeObjectUrl).toHaveBeenCalledWith("blob:balance-analysis-workbook");
+      });
+    } finally {
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+      vi.restoreAllMocks();
+    }
+  });
+
   it("keeps the summary cockpit available when detail drill-down fails", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const getDetailSpy = vi.fn(async () => {
@@ -580,29 +741,25 @@ describe("BalanceAnalysisPage", () => {
 
   it("shows a contract mismatch warning when right-rail explainability fields are missing", async () => {
     const baseClient = createApiClient({ mode: "mock" });
-    const malformedWorkbook = buildWorkbookResponse();
-    malformedWorkbook.result.tables = malformedWorkbook.result.tables.map((table) => {
-      if (table.key === "decision_items") {
-        return {
-          ...table,
-          rows: [
-            {
-              title: "Review 1-2 year gap positioning",
-              action_label: "Review gap",
-              severity: "high",
-              reason: "Bucket gap is 4290357.07 wan yuan.",
-              source_section: "maturity_gap",
-              rule_id: "bal_wb_decision_gap_001",
-            },
-          ],
-        };
-      }
-      return table;
-    });
+    const malformedDecisionItems = buildDecisionItemsResponse() as {
+      result: { rows: Array<Record<string, unknown>> };
+    };
+    malformedDecisionItems.result.rows = [
+      {
+        decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+        title: "Review 1-2 year gap positioning",
+        action_label: "Review gap",
+        severity: "high",
+        reason: "Bucket gap is 4290357.07 wan yuan.",
+        source_section: "maturity_gap",
+        rule_id: "bal_wb_decision_gap_001",
+        rule_version: "v1",
+      },
+    ];
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
-      getBalanceAnalysisWorkbook: vi.fn(async () => malformedWorkbook),
+      getBalanceAnalysisDecisionItems: vi.fn(async () => malformedDecisionItems as never),
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
@@ -627,10 +784,24 @@ describe("BalanceAnalysisPage", () => {
       }
       return table;
     });
+    workbook.result.operational_sections = workbook.result.operational_sections.map((table) => {
+      if (
+        table.key === "decision_items" ||
+        table.key === "event_calendar" ||
+        table.key === "risk_alerts"
+      ) {
+        return { ...table, rows: [] };
+      }
+      return table;
+    });
+    const emptyDecisionItems = buildDecisionItemsResponse({
+      rows: [],
+    });
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
       getBalanceAnalysisWorkbook: vi.fn(async () => workbook),
+      getBalanceAnalysisDecisionItems: vi.fn(async () => emptyDecisionItems),
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
@@ -646,6 +817,256 @@ describe("BalanceAnalysisPage", () => {
         "No governed items.",
       );
       expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+    });
+  });
+
+  it("filters event calendar and risk alerts and shows drill-down details", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => buildWorkbookResponse()),
+    });
+
+    expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+
+    await user.selectOptions(await screen.findByLabelText("balance-event-type-filter"), "funding_rollover");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).toHaveTextContent(
+        "repo-1 maturity",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).not.toHaveTextContent(
+        "240001.IB maturity",
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: /repo-1 maturity/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-event")).toHaveTextContent(
+        "repo-1 maturity",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-event")).toHaveTextContent(
+        "funding_rollover",
+      );
+    });
+
+    await user.selectOptions(await screen.findByLabelText("balance-risk-severity-filter"), "medium");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).toHaveTextContent(
+        "Issuance liabilities outstanding",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).not.toHaveTextContent(
+        "Negative gap in 1-2 year bucket",
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: /Issuance liabilities outstanding/ }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-risk")).toHaveTextContent(
+        "Issuance liabilities outstanding",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-risk")).toHaveTextContent(
+        "bal_wb_risk_issuance_001",
+      );
+    });
+  });
+
+  it("confirms decision items and shows latest governed status in drill-down", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDecisionItemsSpy = vi
+      .fn()
+      .mockResolvedValueOnce(buildDecisionItemsResponse())
+      .mockResolvedValueOnce(
+        buildDecisionItemsResponse({
+          rows: [
+            {
+              decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+              title: "Review 1-2 year gap positioning",
+              action_label: "Review gap",
+              severity: "high",
+              reason: "Bucket gap is 4290357.07 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_decision_gap_001",
+              rule_version: "v1",
+              latest_status: {
+                decision_key:
+                  "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+                status: "confirmed",
+                updated_at: "2026-04-12T08:00:00Z",
+                updated_by: "phase1-dev-user",
+                comment: "Reviewed and accepted.",
+              },
+            },
+          ],
+        }),
+      );
+    const updateDecisionSpy = vi.fn(async () => ({
+      decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+      status: "confirmed" as const,
+      updated_at: "2026-04-12T08:00:00Z",
+      updated_by: "phase1-dev-user",
+      comment: "Reviewed and accepted.",
+    }));
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisWorkbook: vi.fn(async () => buildWorkbookResponse()),
+      getBalanceAnalysisCurrentUser: vi.fn(async () => buildCurrentUserResponse()),
+      getBalanceAnalysisDecisionItems: getDecisionItemsSpy,
+      updateBalanceAnalysisDecisionStatus: updateDecisionSpy,
+    });
+
+    expect(await screen.findByTestId("balance-analysis-right-rail")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-decision_items")).toHaveTextContent(
+        "Review 1-2 year gap positioning",
+      );
+      expect(screen.getByTestId("balance-analysis-current-user")).toHaveTextContent(
+        "phase1-dev-user",
+      );
+      expect(screen.getByTestId("balance-analysis-decision-view-status-0")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-decision-confirm-0")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-decision-dismiss-0")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByTestId("balance-analysis-decision-view-status-0"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "Bucket gap is 4290357.07 wan yuan.",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "bal_wb_decision_gap_001",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "pending",
+      );
+    });
+
+    await user.click(screen.getByTestId("balance-analysis-decision-confirm-0"));
+
+    await waitFor(() => {
+      expect(updateDecisionSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "all",
+        currencyBasis: "CNY",
+        decisionKey: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+        status: "confirmed",
+      });
+      expect(getDecisionItemsSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "confirmed",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "phase1-dev-user",
+      );
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "Reviewed and accepted.",
+      );
+    });
+  });
+
+  it("keeps the governed rail available when current-user lookup fails", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisCurrentUser: vi.fn(async () => {
+        throw new Error("current user unavailable");
+      }),
+      getBalanceAnalysisWorkbook: vi.fn(async () => buildWorkbookResponse()),
+      getBalanceAnalysisDecisionItems: vi.fn(async () => buildDecisionItemsResponse()),
+    });
+
+    expect(await screen.findByTestId("balance-analysis-right-rail")).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-decision_items")).toHaveTextContent(
+        "Review 1-2 year gap positioning",
+      );
+      expect(screen.queryByTestId("balance-analysis-current-user")).not.toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).toHaveTextContent(
+        "240001.IB maturity",
+      );
+    });
+  });
+
+  it("refreshes current-user identity after decision status updates", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const getCurrentUserSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        user_id: "phase1-dev-user",
+        role: "admin",
+        identity_source: "fallback" as const,
+      })
+      .mockResolvedValueOnce({
+        user_id: "header-user",
+        role: "reviewer",
+        identity_source: "header" as const,
+      });
+    const getDecisionItemsSpy = vi
+      .fn()
+      .mockResolvedValueOnce(buildDecisionItemsResponse())
+      .mockResolvedValueOnce(
+        buildDecisionItemsResponse({
+          rows: [
+            {
+              decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+              title: "Review 1-2 year gap positioning",
+              action_label: "Review gap",
+              severity: "high",
+              reason: "Bucket gap is 4290357.07 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_decision_gap_001",
+              rule_version: "v1",
+              latest_status: {
+                decision_key:
+                  "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+                status: "confirmed",
+                updated_at: "2026-04-12T08:00:00Z",
+                updated_by: "header-user",
+                comment: "Reviewed and accepted.",
+              },
+            },
+          ],
+        }),
+      );
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisCurrentUser: getCurrentUserSpy,
+      getBalanceAnalysisWorkbook: vi.fn(async () => buildWorkbookResponse()),
+      getBalanceAnalysisDecisionItems: getDecisionItemsSpy,
+      updateBalanceAnalysisDecisionStatus: vi.fn(async () => ({
+        decision_key: "bal_wb_decision_gap_001:maturity_gap:Review 1-2 year gap positioning",
+        status: "confirmed" as const,
+        updated_at: "2026-04-12T08:00:00Z",
+        updated_by: "header-user",
+        comment: "Reviewed and accepted.",
+      })),
+    });
+
+    expect(await screen.findByTestId("balance-analysis-current-user")).toHaveTextContent(
+      "phase1-dev-user",
+    );
+
+    await user.click(screen.getByTestId("balance-analysis-decision-confirm-0"));
+
+    await waitFor(() => {
+      expect(getCurrentUserSpy).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("balance-analysis-current-user")).toHaveTextContent("header-user");
+      expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
+        "header-user",
+      );
     });
   });
 
@@ -733,3 +1154,5 @@ describe("BalanceAnalysisPage", () => {
     });
   });
 });
+
+

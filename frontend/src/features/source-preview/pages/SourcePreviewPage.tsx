@@ -290,7 +290,7 @@ export default function SourcePreviewPage() {
         start: () => client.refreshSourcePreview(),
         getStatus: (runId) => client.getSourcePreviewRefreshStatus(runId),
         onUpdate: (nextPayload) => {
-          setLastRefreshRunId(nextPayload.run_id);
+          setLastRefreshRunId(nextPayload.run_id ?? null);
           setLastRefreshStatus(buildRefreshStatusText(nextPayload));
         },
       });

@@ -30,6 +30,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "风险工作台占位",
   },
   {
+    key: "risk-tensor",
+    label: "风险张量",
+    path: "/risk-tensor",
+    icon: "risk",
+    description: "正式组合风险张量",
+  },
+  {
     key: "team-performance",
     label: "团队绩效",
     path: "/team-performance",
@@ -63,6 +70,20 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/product-category-pnl",
     icon: "analysis",
     description: "产品类别损益与场景分析入口",
+  },
+  {
+    key: "pnl",
+    label: "损益明细",
+    path: "/pnl",
+    icon: "analysis",
+    description: "正式损益明细入口",
+  },
+  {
+    key: "pnl-bridge",
+    label: "损益桥接",
+    path: "/pnl-bridge",
+    icon: "analysis",
+    description: "正式口径损益桥接分解",
   },
   {
     key: "platform-config",

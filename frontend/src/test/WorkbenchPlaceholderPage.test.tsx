@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -23,6 +23,8 @@ const meta: ResultMeta = {
   rule_version: "rv_test",
   cache_version: "cv_test",
   quality_flag: "ok",
+  vendor_status: "ok",
+  fallback_mode: "none",
   scenario_flag: false,
   generated_at: "2026-04-09T10:30:00Z",
 };
@@ -123,3 +125,5 @@ describe("WorkbenchPlaceholderPage", () => {
     ).toBeInTheDocument();
   });
 });
+
+

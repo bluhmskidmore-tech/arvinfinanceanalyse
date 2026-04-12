@@ -267,9 +267,12 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
     assert workbook_response.status_code == 200
     workbook_payload = workbook_response.json()
     table_map = {table["key"]: table for table in workbook_payload["result"]["tables"]}
-    assert table_map["decision_items"]["section_kind"] == "decision_items"
-    assert table_map["event_calendar"]["section_kind"] == "event_calendar"
-    assert table_map["risk_alerts"]["section_kind"] == "risk_alerts"
+    operational_map = {
+        section["key"]: section for section in workbook_payload["result"]["operational_sections"]
+    }
+    assert operational_map["decision_items"]["section_kind"] == "decision_items"
+    assert operational_map["event_calendar"]["section_kind"] == "event_calendar"
+    assert operational_map["risk_alerts"]["section_kind"] == "risk_alerts"
     assert {
         "title",
         "action_label",
@@ -278,7 +281,7 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "source_section",
         "rule_id",
         "rule_version",
-    } <= set(table_map["decision_items"]["rows"][0])
+    } <= set(operational_map["decision_items"]["rows"][0])
     assert {
         "event_date",
         "event_type",
@@ -286,7 +289,7 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "source",
         "impact_hint",
         "source_section",
-    } <= set(table_map["event_calendar"]["rows"][0])
+    } <= set(operational_map["event_calendar"]["rows"][0])
     assert {
         "title",
         "severity",
@@ -294,289 +297,38 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "source_section",
         "rule_id",
         "rule_version",
-    } <= set(table_map["risk_alerts"]["rows"][0])
+    } <= set(operational_map["risk_alerts"]["rows"][0])
 
     get_settings.cache_clear()
 
 
 def test_balance_analysis_workbook_api_keeps_right_rail_sections_when_rows_are_empty(tmp_path, monkeypatch):
-    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
-
-    conn = duckdb.connect(str(duckdb_path), read_only=False)
-    try:
-        conn.execute(
-            """
-            insert into fact_formal_zqtz_balance_daily (
-              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
-              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
-              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-a",
-                "Neutral A",
-                "Portfolio A",
-                "CC100",
-                "可供出售类资产",
-                "政策性金融债",
-                "Issuer A",
-                "金融业",
-                "AAA",
-                "A",
-                "FVOCI",
-                "asset",
-                "CNY",
-                "CNY",
-                "100.00000000",
-                "100.00000000",
-                "100.00000000",
-                "1.00000000",
-                "2.00000000",
-                "2.00000000",
-                None,
-                "固定",
-                False,
-                "sv-neutral-z",
-                "rv-neutral-balance",
-                "ib-neutral-z",
-                "trace-neutral-z1",
-            ],
-        )
-        conn.execute(
-            """
-            insert into fact_formal_zqtz_balance_daily (
-              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
-              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
-              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-a",
-                "Neutral A",
-                "Portfolio A",
-                "CC100",
-                "可供出售类资产",
-                "政策性金融债",
-                "Issuer A",
-                "金融业",
-                "AAA",
-                "A",
-                "FVOCI",
-                "asset",
-                "native",
-                "CNY",
-                "100.00000000",
-                "100.00000000",
-                "100.00000000",
-                "1.00000000",
-                "2.00000000",
-                "2.00000000",
-                None,
-                "固定",
-                False,
-                "sv-neutral-z",
-                "rv-neutral-balance",
-                "ib-neutral-z",
-                "trace-neutral-z1-native",
-            ],
-        )
-        conn.execute(
-            """
-            insert into fact_formal_zqtz_balance_daily (
-              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
-              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
-              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-b",
-                "Neutral B",
-                "Portfolio B",
-                "CC200",
-                "可供出售类资产",
-                "国债",
-                "Issuer B",
-                "公共管理",
-                "AA+",
-                "A",
-                "FVOCI",
-                "asset",
-                "CNY",
-                "CNY",
-                "100.00000000",
-                "100.00000000",
-                "100.00000000",
-                "1.00000000",
-                "2.10000000",
-                "2.10000000",
-                None,
-                "固定",
-                False,
-                "sv-neutral-z",
-                "rv-neutral-balance",
-                "ib-neutral-z",
-                "trace-neutral-z2",
-            ],
-        )
-        conn.execute(
-            """
-            insert into fact_formal_zqtz_balance_daily (
-              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-              asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
-              market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
-              ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-b",
-                "Neutral B",
-                "Portfolio B",
-                "CC200",
-                "可供出售类资产",
-                "国债",
-                "Issuer B",
-                "公共管理",
-                "AA+",
-                "A",
-                "FVOCI",
-                "asset",
-                "native",
-                "CNY",
-                "100.00000000",
-                "100.00000000",
-                "100.00000000",
-                "1.00000000",
-                "2.10000000",
-                "2.10000000",
-                None,
-                "固定",
-                False,
-                "sv-neutral-z",
-                "rv-neutral-balance",
-                "ib-neutral-z",
-                "trace-neutral-z2-native",
-            ],
-        )
-        conn.execute(
-            """
-            insert into fact_formal_tyw_balance_daily (
-              report_date, position_id, product_type, position_side, counterparty_name,
-              account_type, special_account_type, core_customer_type, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
-              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-liability",
-                "同业存放",
-                "liability",
-                "Bank N",
-                "清算类",
-                "",
-                "股份制银行",
-                "H",
-                "AC",
-                "liability",
-                "CNY",
-                "CNY",
-                "200.00000000",
-                "2.00000000",
-                "1.50000000",
-                None,
-                "sv-neutral-t",
-                "rv-neutral-balance",
-                "ib-neutral-t",
-                "trace-neutral-t1",
-            ],
-        )
-        conn.execute(
-            """
-            insert into fact_formal_tyw_balance_daily (
-              report_date, position_id, product_type, position_side, counterparty_name,
-              account_type, special_account_type, core_customer_type, invest_type_std,
-              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
-              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
-              rule_version, ingest_batch_id, trace_id
-            ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            )
-            """,
-            [
-                "2026-01-15",
-                "neutral-liability",
-                "同业存放",
-                "liability",
-                "Bank N",
-                "清算类",
-                "",
-                "股份制银行",
-                "H",
-                "AC",
-                "liability",
-                "native",
-                "CNY",
-                "200.00000000",
-                "2.00000000",
-                "1.50000000",
-                None,
-                "sv-neutral-t",
-                "rv-neutral-balance",
-                "ib-neutral-t",
-                "trace-neutral-t1-native",
-            ],
-        )
-    finally:
-        conn.close()
-
-    GovernanceRepository(base_dir=governance_dir).append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            **CacheBuildRunRecord(
-                run_id="run-neutral",
-                job_name="balance_analysis_materialize",
-                status="completed",
-                cache_key="balance_analysis:materialize:formal",
-                lock="lock:duckdb:formal:balance-analysis:materialize",
-                source_version="sv-neutral-t__sv-neutral-z",
-                vendor_version="vv_none",
-                rule_version="rv-neutral-balance",
-            ).model_dump(),
-            "report_date": "2026-01-15",
-        },
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
     )
+    workbook_mod = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    original_builder = workbook_mod.build_balance_analysis_workbook_payload
+
+    def build_empty_right_rail(**kwargs):
+        payload = original_builder(**kwargs)
+        for table in payload["tables"]:
+            if table["section_kind"] in {"decision_items", "event_calendar", "risk_alerts"}:
+                table["rows"] = []
+        return payload
+
+    monkeypatch.setattr(workbook_mod, "build_balance_analysis_workbook_payload", build_empty_right_rail)
+    monkeypatch.setattr(service_mod.importlib, "reload", lambda module: module)
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
         "/ui/balance-analysis/workbook",
         params={
-            "report_date": "2026-01-15",
+            "report_date": "2025-12-31",
             "position_scope": "all",
             "currency_basis": "CNY",
         },
@@ -584,13 +336,160 @@ def test_balance_analysis_workbook_api_keeps_right_rail_sections_when_rows_are_e
 
     assert response.status_code == 200
     payload = response.json()
-    table_map = {table["key"]: table for table in payload["result"]["tables"]}
-    assert table_map["decision_items"]["section_kind"] == "decision_items"
-    assert table_map["decision_items"]["rows"] == []
-    assert table_map["event_calendar"]["section_kind"] == "event_calendar"
-    assert table_map["event_calendar"]["rows"] == []
-    assert table_map["risk_alerts"]["section_kind"] == "risk_alerts"
-    assert table_map["risk_alerts"]["rows"] == []
+    operational_map = {
+        section["key"]: section for section in payload["result"]["operational_sections"]
+    }
+    assert operational_map["decision_items"]["section_kind"] == "decision_items"
+    assert operational_map["decision_items"]["rows"] == []
+    assert operational_map["event_calendar"]["section_kind"] == "event_calendar"
+    assert operational_map["event_calendar"]["rows"] == []
+    assert operational_map["risk_alerts"]["section_kind"] == "risk_alerts"
+    assert operational_map["risk_alerts"]["rows"] == []
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_decision_items_api_returns_generated_items_with_pending_status(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
+    assert payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+    assert payload["result"]["report_date"] == "2025-12-31"
+    assert payload["result"]["position_scope"] == "all"
+    assert payload["result"]["currency_basis"] == "CNY"
+    assert payload["result"]["columns"] == [
+        {"key": "title", "label": "Title"},
+        {"key": "action_label", "label": "Action"},
+        {"key": "severity", "label": "Severity"},
+        {"key": "reason", "label": "Reason"},
+        {"key": "source_section", "label": "Source Section"},
+        {"key": "rule_id", "label": "Rule Id"},
+        {"key": "rule_version", "label": "Rule Version"},
+    ]
+    assert payload["result"]["rows"][0]["decision_key"]
+    assert payload["result"]["rows"][0]["latest_status"] == {
+        "decision_key": payload["result"]["rows"][0]["decision_key"],
+        "status": "pending",
+        "updated_at": None,
+        "updated_by": None,
+        "comment": None,
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_write(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/current-user",
+        headers={
+            "X-User-Id": "decision-owner",
+            "X-User-Role": "reviewer",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "decision-owner",
+        "role": "reviewer",
+        "identity_source": "header",
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_decision_status_update_overlays_latest_state(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    list_response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    decision_key = list_response.json()["result"]["rows"][0]["decision_key"]
+
+    update_response = client.post(
+        "/ui/balance-analysis/decision-items/status",
+        headers={"X-User-Id": "balance-owner"},
+        json={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+            "decision_key": decision_key,
+            "status": "confirmed",
+            "comment": "Reviewed and accepted.",
+        },
+    )
+
+    assert update_response.status_code == 200
+    update_payload = update_response.json()
+    assert update_payload["decision_key"] == decision_key
+    assert update_payload["status"] == "confirmed"
+    assert update_payload["updated_by"] == "balance-owner"
+    assert update_payload["comment"] == "Reviewed and accepted."
+    assert update_payload["updated_at"]
+
+    refreshed_response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+
+    assert refreshed_response.status_code == 200
+    refreshed_rows = refreshed_response.json()["result"]["rows"]
+    refreshed_row = next(row for row in refreshed_rows if row["decision_key"] == decision_key)
+    assert refreshed_row["latest_status"] == {
+        "decision_key": decision_key,
+        "status": "confirmed",
+        "updated_at": update_payload["updated_at"],
+        "updated_by": "balance-owner",
+        "comment": "Reviewed and accepted.",
+    }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_current_user_api_falls_back_to_env_identity(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_USER_ID", "env-balance-user")
+    monkeypatch.setenv("MOSS_USER_ROLE", "ops")
+    get_settings.cache_clear()
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/ui/balance-analysis/current-user")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user_id": "env-balance-user",
+        "role": "ops",
+        "identity_source": "env",
+    }
 
     get_settings.cache_clear()
 

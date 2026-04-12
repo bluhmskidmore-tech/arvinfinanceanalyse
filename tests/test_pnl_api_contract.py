@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from decimal import Decimal
 
+import duckdb
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
@@ -22,6 +23,7 @@ def test_fastapi_application_registers_pnl_routes():
 
     assert "/api/pnl/dates" in paths
     assert "/api/pnl/data" in paths
+    assert "/api/pnl/bridge" in paths
     assert "/api/pnl/overview" in paths
     assert "/api/data/refresh_pnl" in paths
     assert "/api/data/import_status/pnl" in paths
@@ -126,6 +128,204 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_manifest_lineage(tmp
         "manual_adjustment": "0.50",
         "total_pnl": "111.50",
     }
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavailable(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge",
+        vendor_version="vv_bridge",
+        rule_version="rv_bridge",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result_meta"]["result_kind"] == "pnl.bridge"
+    assert payload["result_meta"]["source_version"] == "sv_bridge"
+    assert payload["result_meta"]["vendor_version"] == "vv_bridge"
+    assert payload["result_meta"]["rule_version"] == "rv_bridge"
+    assert payload["result_meta"]["cache_version"] == (
+        "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+    )
+    assert payload["result"]["report_date"] == "2025-12-31"
+    assert len(payload["result"]["rows"]) == 1
+    assert payload["result"]["rows"][0]["instrument_code"] == "240001.IB"
+    assert payload["result"]["rows"][0]["carry"] == "12.50000000"
+    assert payload["result"]["rows"][0]["beginning_dirty_mv"] == "0"
+    assert payload["result"]["rows"][0]["ending_dirty_mv"] == "0"
+    assert payload["result"]["rows"][0]["current_balance_found"] is False
+    assert payload["result"]["rows"][0]["prior_balance_found"] is False
+    assert payload["result"]["rows"][0]["balance_diagnostics"] == [
+        "Missing current balance row; ending_dirty_mv defaults to 0.",
+        "Missing prior balance row; beginning_dirty_mv defaults to 0.",
+    ]
+    assert payload["result"]["warnings"] == [
+        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack.",
+        "Current balance rows unavailable; ending_dirty_mv defaults to 0 where balance data is missing.",
+        "No prior balance report date found; beginning_dirty_mv defaults to 0 where prior balance data is missing.",
+    ]
+    summary = payload["result"]["summary"]
+    assert summary["row_count"] == 1
+    assert summary["total_carry"] == "12.50000000"
+    assert summary["total_roll_down"] == "0"
+    assert summary["total_treasury_curve"] == "0"
+    assert summary["total_credit_spread"] == "0"
+    assert summary["total_fx_translation"] == "0"
+    assert summary["total_realized_trading"] == "1.75000000"
+    assert summary["total_unrealized_fv"] == "-3.25000000"
+    assert summary["total_manual_adjustment"] == "0.50000000"
+    assert summary["total_explained_pnl"] == "11.50000000"
+    assert summary["total_actual_pnl"] == "11.50000000"
+    assert summary["total_residual"] == "0.00000000"
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge_balance",
+        vendor_version="vv_bridge_balance",
+        rule_version="rv_bridge_balance",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=True,
+        include_unusable_zqtz_intermediate_prior=True,
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv-z-current__sv-z-prior__sv_bridge_balance"
+    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_bridge_balance"
+    assert payload["result_meta"]["vendor_version"] == "vv_bridge_balance__vv_none"
+    assert payload["result_meta"]["cache_version"] == (
+        "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
+    )
+    row = payload["result"]["rows"][0]
+    assert row["instrument_code"] == "240001.IB"
+    assert row["beginning_dirty_mv"] == "91.00000000"
+    assert row["ending_dirty_mv"] == "102.00000000"
+    assert row["current_balance_found"] is True
+    assert row["prior_balance_found"] is True
+    assert row["balance_diagnostics"] == []
+    summary = payload["result"]["summary"]
+    assert summary["total_beginning_dirty_mv"] == "91.00000000"
+    assert summary["total_ending_dirty_mv"] == "102.00000000"
+    assert summary["total_carry"] == "12.50000000"
+    assert summary["total_roll_down"] == "0"
+    assert summary["total_treasury_curve"] == "0"
+    assert summary["total_credit_spread"] == "0"
+    assert summary["total_fx_translation"] == "0"
+    assert summary["total_realized_trading"] == "1.75000000"
+    assert summary["total_unrealized_fv"] == "-3.25000000"
+    assert summary["total_manual_adjustment"] == "0.50000000"
+    assert summary["total_explained_pnl"] == "11.50000000"
+    assert summary["total_actual_pnl"] == "11.50000000"
+    assert summary["total_residual"] == "0.00000000"
+    assert payload["result"]["warnings"] == [
+        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack.",
+        "Balance lineage fallback used for report_date=2025-12-31; completed balance-analysis build record unavailable.",
+        "Balance lineage fallback used for prior_report_date=2025-10-31; completed balance-analysis build record unavailable.",
+    ]
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_returns_503_when_balance_query_fails(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_bridge",
+        vendor_version="vv_bridge",
+        rule_version="rv_bridge",
+    )
+    bridge_service = load_module(
+        "backend.app.services.pnl_bridge_service",
+        "backend/app/services/pnl_bridge_service.py",
+    )
+
+    def fail_balance_read(*_args, **_kwargs):
+        raise RuntimeError("Formal balance query failed for pnl.bridge.")
+
+    monkeypatch.setattr(bridge_service, "_load_balance_rows_direct", fail_balance_read)
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Formal balance query failed for pnl.bridge."
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineage(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_bridge_meta",
+        vendor_version="vv_pnl_bridge_meta",
+        rule_version="rv_pnl_bridge_meta",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-current",
+        report_date="2025-12-31",
+        source_version="sv_balance_current",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_current",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-prior",
+        report_date="2025-10-31",
+        source_version="sv_balance_prior",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_prior",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-newer-unrelated",
+        report_date="2026-01-31",
+        source_version="sv_balance_newer",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_newer",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == (
+        "sv_balance_current__sv_balance_prior__sv_pnl_bridge_meta"
+    )
+    assert payload["result_meta"]["rule_version"] == (
+        "rv_balance_current__rv_balance_prior__rv_pnl_bridge_meta"
+    )
+    assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_pnl_bridge_meta"
+    assert payload["result"]["warnings"] == [
+        "Phase 3 required: roll_down / treasury_curve / credit_spread / fx_translation are fixed at 0 in the start pack."
+    ]
     get_settings.cache_clear()
 
 
@@ -789,9 +989,143 @@ def _append_manifest_override(governance_dir, *, source_version: str, vendor_ver
                     "rule_version": rule_version,
                 },
                 ensure_ascii=False,
-            )
+        )
             + "\n"
         )
+
+
+def _seed_pnl_bridge_balance_rows(
+    duckdb_path: Path,
+    *,
+    include_tyw_only_intermediate_prior: bool,
+    include_unusable_zqtz_intermediate_prior: bool = False,
+) -> None:
+    repo_module = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        repo_module.ensure_balance_analysis_tables(conn)
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-12-31",
+                "240001.IB",
+                "FI Desk",
+                "CC100",
+                "T",
+                "FVTPL",
+                "asset",
+                "CNY",
+                "CNY",
+                "100.00000000",
+                "99.00000000",
+                "2.00000000",
+                False,
+                "sv-z-current",
+                "rv-z-current",
+                "ib-z-current",
+                "trace-z-current",
+            ],
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                "2025-10-31",
+                "240001.IB",
+                "FI Desk",
+                "CC100",
+                "T",
+                "FVTPL",
+                "asset",
+                "CNY",
+                "CNY",
+                "90.00000000",
+                "89.00000000",
+                "1.00000000",
+                False,
+                "sv-z-prior",
+                "rv-z-prior",
+                "ib-z-prior",
+                "trace-z-prior",
+            ],
+        )
+        if include_tyw_only_intermediate_prior:
+            conn.execute(
+                """
+                insert into fact_formal_tyw_balance_daily (
+                  report_date, position_id, product_type, position_side, counterparty_name,
+                  invest_type_std, accounting_basis, position_scope, currency_basis, currency_code,
+                  principal_amount, accrued_interest_amount, source_version, rule_version,
+                  ingest_batch_id, trace_id
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    "2025-11-30",
+                    "tyw-only-prior",
+                    "Interbank",
+                    "liability",
+                    "Bank A",
+                    "H",
+                    "AC",
+                    "liability",
+                    "CNY",
+                    "CNY",
+                    "50.00000000",
+                    "5.00000000",
+                    "sv-tyw-prior",
+                    "rv-tyw-prior",
+                    "ib-tyw-prior",
+                    "trace-tyw-prior",
+                ],
+            )
+        if include_unusable_zqtz_intermediate_prior:
+            conn.execute(
+                """
+                insert into fact_formal_zqtz_balance_daily (
+                  report_date, instrument_code, portfolio_name, cost_center, invest_type_std,
+                  accounting_basis, position_scope, currency_basis, currency_code,
+                  market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+                  source_version, rule_version, ingest_batch_id, trace_id
+                ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    "2025-11-30",
+                    "240001.IB",
+                    "FI Desk",
+                    "CC100",
+                    "T",
+                    "FVTPL",
+                    "liability",
+                    "native",
+                    "CNY",
+                    "999.00000000",
+                    "999.00000000",
+                    "9.00000000",
+                    True,
+                    "sv-z-unusable",
+                    "rv-z-unusable",
+                    "ib-z-unusable",
+                    "trace-z-unusable",
+                ],
+            )
+    finally:
+        conn.close()
 
 
 def _configure_refresh_sources(tmp_path, monkeypatch):
@@ -851,6 +1185,34 @@ def _append_pnl_build_run(
         if value is not None:
             record[key] = value
     GovernanceRepository(base_dir=governance_dir).append(CACHE_BUILD_RUN_STREAM, record)
+
+
+def _append_balance_build_run(
+    governance_dir,
+    *,
+    run_id: str,
+    report_date: str,
+    source_version: str,
+    vendor_version: str,
+    rule_version: str,
+):
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id=run_id,
+                job_name="balance_analysis_materialize",
+                status="completed",
+                cache_key="balance_analysis:materialize:formal",
+                cache_version="cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+                lock="lock:duckdb:formal:balance-analysis:materialize",
+                source_version=source_version,
+                vendor_version=vendor_version,
+                rule_version=rule_version,
+            ).model_dump(),
+            "report_date": report_date,
+        },
+    )
 
 
 def _write_nonstd_refresh_workbook(path: Path, *, include_prior_month_row: bool = False) -> None:

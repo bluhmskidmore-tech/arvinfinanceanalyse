@@ -908,6 +908,7 @@ def test_choice_macro_refresh_materializes_structured_catalog_metadata(tmp_path,
             "backend.app.tasks.choice_macro",
             "backend/app/tasks/choice_macro.py",
         )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
     macro_schema_module = load_module(
         "backend.app.schemas.macro_vendor",
         "backend/app/schemas/macro_vendor.py",

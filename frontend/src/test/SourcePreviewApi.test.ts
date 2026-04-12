@@ -18,6 +18,7 @@ function createMockClient(): ApiClient {
     getFormalPnlDates: vi.fn(),
     getFormalPnlData: vi.fn(),
     getFormalPnlOverview: vi.fn(),
+    getPnlBridge: vi.fn(),
     refreshFormalPnl: vi.fn(),
     getFormalPnlImportStatus: vi.fn(),
     getPnlAttribution: vi.fn(),

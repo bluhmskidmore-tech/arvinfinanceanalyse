@@ -466,7 +466,9 @@ source kind：
   - blank spacer
 - 最后一个 block 允许只有前 3 列，不强制追加尾部 spacer。
 - 数据行从 row 4 开始。
-- populated block 不允许缺字段，也不允许 spacer 列带值。
+- admissibility 以 canonical tuple `(currency_raw, account_code_raw, avg_balance_raw)` 为准。
+- row 内允许存在不组成 canonical tuple 的 auxiliary fragments / management-format cells；它们不单独决定 fail。
+- 当 row 出现以有效 `currency_raw` 开头、但后续 `account_code_raw` 或 `avg_balance_raw` 缺失的 partial tuple 时，必须 fail。
 
 `average_balance` required raw fields：
 - `currency_raw`

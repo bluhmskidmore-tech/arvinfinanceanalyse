@@ -1,9 +1,19 @@
+type PlaceholderCardSurfaceTone = "default" | "ok" | "warning" | "error";
+
 type PlaceholderCardProps = {
   title: string;
   value: string;
   detail: string;
   /** 列表型要点使用 text，大数字演示使用 metric（默认） */
   valueVariant?: "metric" | "text";
+  surfaceTone?: PlaceholderCardSurfaceTone;
+};
+
+const surfaceToneBackground: Record<PlaceholderCardSurfaceTone, string> = {
+  default: "#fbfcfe",
+  ok: "#e8f6ee",
+  warning: "#fffbeb",
+  error: "#fff0f0",
 };
 
 export function PlaceholderCard({
@@ -11,6 +21,7 @@ export function PlaceholderCard({
   value,
   detail,
   valueVariant = "metric",
+  surfaceTone = "default",
 }: PlaceholderCardProps) {
   const valueStyle =
     valueVariant === "text"
@@ -36,7 +47,7 @@ export function PlaceholderCard({
         minHeight: valueVariant === "text" ? 140 : 170,
         padding: 24,
         borderRadius: 18,
-        background: "#fbfcfe",
+        background: surfaceToneBackground[surfaceTone],
         border: "1px solid #e4ebf5",
         boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
       }}

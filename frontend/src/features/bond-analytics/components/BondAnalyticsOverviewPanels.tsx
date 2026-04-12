@@ -36,6 +36,10 @@ export interface BondAnalyticsOverviewPanelsProps {
   onPeriodTypeChange: (value: PeriodType) => void;
   overviewModel: BondAnalyticsOverviewModel;
   onOpenModuleDetail: (key: BondAnalyticsModuleKey) => void;
+  onRefreshAnalytics?: () => void;
+  isAnalyticsRefreshing?: boolean;
+  analyticsRefreshError?: string | null;
+  lastAnalyticsRefreshRunId?: string | null;
 }
 
 export function BondAnalyticsOverviewPanels({
@@ -46,6 +50,10 @@ export function BondAnalyticsOverviewPanels({
   onPeriodTypeChange,
   overviewModel,
   onOpenModuleDetail,
+  onRefreshAnalytics,
+  isAnalyticsRefreshing = false,
+  analyticsRefreshError = null,
+  lastAnalyticsRefreshRunId = null,
 }: BondAnalyticsOverviewPanelsProps) {
   return (
     <>
@@ -60,7 +68,36 @@ export function BondAnalyticsOverviewPanels({
           }}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Bond analytics</h2>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 12,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>Bond analytics</h2>
+              {onRefreshAnalytics ? (
+                <Button
+                  type="default"
+                  size="small"
+                  loading={isAnalyticsRefreshing}
+                  disabled={isAnalyticsRefreshing}
+                  onClick={() => onRefreshAnalytics()}
+                  data-testid="bond-analytics-refresh-button"
+                >
+                  刷新分析
+                </Button>
+              ) : null}
+            </div>
+            {lastAnalyticsRefreshRunId ? (
+              <div style={{ color: "#5c6b82", fontSize: 12 }}>
+                最近刷新任务：{lastAnalyticsRefreshRunId}
+              </div>
+            ) : null}
+            {analyticsRefreshError ? (
+              <div style={{ color: "#b42318", fontSize: 12 }}>{analyticsRefreshError}</div>
+            ) : null}
             <div style={{ color: "#5c6b82", fontSize: 13, maxWidth: 640 }}>
               Start with the overview, then drill into the active module only when it is
               relevant. The first screen stays summary-first and does not pretend

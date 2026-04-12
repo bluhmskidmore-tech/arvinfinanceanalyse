@@ -70,6 +70,32 @@ def test_validate_qdb_gl_ledger_source_emits_pass_evidence_with_lineage(tmp_path
     assert checks["reconciliation_contract"].status_label == "pass"
 
 
+def test_validate_qdb_gl_ledger_source_allows_auxiliary_trailing_columns(tmp_path):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+
+    path = tmp_path / "总账对账202602.xlsx"
+    _write_qdb_gl_ledger_workbook(path)
+
+    workbook = load_workbook(path)
+    worksheet = workbook["综本"]
+    worksheet["H7"] = "aux-balance"
+    worksheet["I7"] = 200000000
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    checks = {check.check_id: check for check in evidence.checks}
+
+    assert evidence.admissible is True
+    assert evidence.status_label == "pass"
+    assert checks["row_shape"].status_label == "pass"
+    assert checks["required_raw_fields"].status_label == "pass"
+    assert checks["reconciliation_contract"].status_label == "pass"
+
+
 def test_validate_qdb_gl_average_source_emits_pass_evidence_with_lineage(tmp_path):
     module = load_module(
         "backend.app.services.qdb_gl_input_validation_service",
@@ -95,6 +121,48 @@ def test_validate_qdb_gl_average_source_emits_pass_evidence_with_lineage(tmp_pat
     assert checks["account_code_text_preserved"].status_label == "pass"
     assert checks["currency_grouping"].status_label == "pass"
     assert checks["reconciliation_contract"].status_label == "not_applicable"
+
+
+def test_validate_qdb_gl_average_source_allows_auxiliary_only_rows(tmp_path):
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+
+    path = tmp_path / "日均202602.xlsx"
+    _write_qdb_gl_average_workbook(path)
+
+    workbook = load_workbook(path)
+    worksheet = workbook["年"]
+    worksheet["D6"] = "aux-note"
+    worksheet["H6"] = 123
+    workbook.save(path)
+    workbook.close()
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+    checks = {check.check_id: check for check in evidence.checks}
+
+    assert evidence.admissible is True
+    assert evidence.status_label == "pass"
+    assert checks["row_shape"].status_label == "pass"
+    assert checks["required_raw_fields"].status_label == "pass"
+
+
+def test_real_qdb_gl_average_fixture_is_admissible():
+    module = load_module(
+        "backend.app.services.qdb_gl_input_validation_service",
+        "backend/app/services/qdb_gl_input_validation_service.py",
+    )
+
+    path = ROOT / "data_input" / "pnl_总账对账-日均" / "日均202602.xlsx"
+
+    evidence = module.validate_qdb_gl_baseline_source(path)
+
+    assert evidence.binding_status == "bound"
+    assert evidence.source_kind == "average_balance"
+    assert evidence.admissible is True
+    assert evidence.status_label == "pass"
+    assert evidence.bound_currency_groups == ["CNX", "CNY"]
 
 
 def test_validate_qdb_gl_source_rejects_unrecognized_file_name(tmp_path):
@@ -174,7 +242,7 @@ def test_validate_qdb_gl_average_source_flags_row_shape_violations(tmp_path):
 
     workbook = load_workbook(path)
     worksheet = workbook["年"]
-    worksheet["D4"] = "unexpected"
+    worksheet["F4"] = None
     workbook.save(path)
     workbook.close()
 
@@ -184,7 +252,9 @@ def test_validate_qdb_gl_average_source_flags_row_shape_violations(tmp_path):
     assert evidence.admissible is False
     assert evidence.status_label == "fail"
     assert checks["row_shape"].status_label == "fail"
-    assert any(item.sheet_name == "年" and item.cell_ref == "D4" for item in checks["row_shape"].findings)
+    assert checks["required_raw_fields"].status_label == "fail"
+    assert any(item.sheet_name == "年" and item.cell_ref == "F4" for item in checks["row_shape"].findings)
+    assert any(item.sheet_name == "年" and item.cell_ref == "F4" for item in checks["required_raw_fields"].findings)
 
 
 def test_validate_qdb_gl_ledger_source_flags_required_field_account_code_currency_and_reconciliation_failures(

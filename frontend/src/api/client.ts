@@ -1,4 +1,4 @@
-import {
+﻿import {
   createContext,
   createElement,
   useContext,
@@ -9,6 +9,10 @@ import {
 import type {
   AlertsPayload,
   ApiEnvelope,
+  BalanceAnalysisCurrentUserPayload,
+  BalanceAnalysisDecisionItemsPayload,
+  BalanceAnalysisDecisionStatus,
+  BalanceAnalysisDecisionStatusRecord,
   BalanceAnalysisOverviewPayload,
   BalanceAnalysisDatesPayload,
   BalanceCurrencyBasis,
@@ -16,7 +20,9 @@ import type {
   BalanceAnalysisWorkbookPayload,
   BalancePositionScope,
   BalanceAnalysisRefreshPayload,
+  BondAnalyticsRefreshPayload,
   BalanceAnalysisSummaryExportPayload,
+  BalanceAnalysisWorkbookExportPayload,
   BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisTableRow,
   ChoiceMacroLatestPayload,
@@ -26,6 +32,7 @@ import type {
   HealthResponse,
   MacroVendorPayload,
   OverviewPayload,
+  PnlBridgePayload,
   PnlDataPayload,
   PnlDatesPayload,
   PnlOverviewPayload,
@@ -42,6 +49,7 @@ import type {
   PnlAttributionPayload,
   ResultMeta,
   RiskOverviewPayload,
+  RiskTensorPayload,
   SourcePreviewHistoryPayload,
   SourcePreviewRefreshPayload,
   SourcePreviewRowsPayload,
@@ -71,10 +79,12 @@ export type ApiClient = {
   getFormalPnlDates: () => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
   getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+  getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: () => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
+  getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
   getPlaceholderSnapshot: (key: string) => Promise<ApiEnvelope<PlaceholderSnapshot>>;
@@ -156,6 +166,20 @@ export type ApiClient = {
     positionScope: BalancePositionScope;
     currencyBasis: BalanceCurrencyBasis;
   }) => Promise<ApiEnvelope<BalanceAnalysisWorkbookPayload>>;
+  getBalanceAnalysisCurrentUser: () => Promise<BalanceAnalysisCurrentUserPayload>;
+  getBalanceAnalysisDecisionItems: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<ApiEnvelope<BalanceAnalysisDecisionItemsPayload>>;
+  updateBalanceAnalysisDecisionStatus: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+    decisionKey: string;
+    status: BalanceAnalysisDecisionStatus;
+    comment?: string;
+  }) => Promise<BalanceAnalysisDecisionStatusRecord>;
   getBalanceAnalysisDetail: (options: {
     reportDate: string;
     positionScope: BalancePositionScope;
@@ -166,10 +190,19 @@ export type ApiClient = {
     positionScope: BalancePositionScope;
     currencyBasis: BalanceCurrencyBasis;
   }) => Promise<BalanceAnalysisSummaryExportPayload>;
+  exportBalanceAnalysisWorkbookXlsx: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<BalanceAnalysisWorkbookExportPayload>;
   refreshBalanceAnalysis: (reportDate: string) => Promise<BalanceAnalysisRefreshPayload>;
   getBalanceAnalysisRefreshStatus: (
     runId: string,
   ) => Promise<BalanceAnalysisRefreshPayload>;
+  refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
+  getBondAnalyticsRefreshStatus: (
+    runId: string,
+  ) => Promise<BondAnalyticsRefreshPayload>;
 };
 
 type ApiClientOptions = {
@@ -197,6 +230,8 @@ const buildMockMeta = (resultKind: string): ResultMeta => ({
   rule_version: "rv_dashboard_mock_v2",
   cache_version: "cv_dashboard_mock_v2",
   quality_flag: "ok",
+  vendor_status: "ok",
+  fallback_mode: "none",
   scenario_flag: false,
   generated_at: "2026-04-09T10:30:00Z",
 });
@@ -1102,7 +1137,7 @@ function buildMockBalanceAnalysisTableRows(
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
 ): BalanceAnalysisTableRow[] {
-  return [
+  const rows: BalanceAnalysisTableRow[] = [
     {
       row_key: "zqtz:240001.IB:portfolio-a:cc-1:CNY:asset:A:FVOCI",
       source_family: "zqtz",
@@ -1148,7 +1183,8 @@ function buildMockBalanceAnalysisTableRows(
       amortized_cost_amount: "403.00",
       accrued_interest_amount: "20.00",
     },
-  ].filter((row) => {
+  ];
+  return rows.filter((row) => {
     const matchesScope = positionScope === "all" || row.position_scope === positionScope;
     const matchesBasis = row.currency_basis === currencyBasis;
     return matchesScope && matchesBasis;
@@ -1406,6 +1442,8 @@ function buildMockBalanceAnalysisWorkbook(
             },
           ],
         },
+      ],
+      operational_sections: [
         {
           key: "decision_items",
           title: "决策事项",
@@ -1447,6 +1485,14 @@ function buildMockBalanceAnalysisWorkbook(
               impact_hint: "asset book / 拆放同业",
               source_section: "maturity_gap",
             },
+            {
+              event_date: "2026-02-05",
+              event_type: "funding_rollover",
+              title: "repo-1 maturity",
+              source: "internal_governed_schedule",
+              impact_hint: "liability book / 卖出回购",
+              source_section: "maturity_gap",
+            },
           ],
         },
         {
@@ -1467,7 +1513,66 @@ function buildMockBalanceAnalysisWorkbook(
               rule_id: "bal_wb_risk_issuance_001",
               rule_version: "v1",
             },
+            {
+              title: "Negative gap in 1-2 year bucket",
+              severity: "high",
+              reason: "Gap dropped to -128.00 wan yuan.",
+              source_section: "maturity_gap",
+              rule_id: "bal_wb_risk_gap_001",
+              rule_version: "v1",
+            },
           ],
+        },
+      ],
+    },
+    {
+      basis: "formal",
+      formal_use_allowed: true,
+      source_version: "sv_balance_mock",
+      rule_version: "rv_balance_analysis_formal_materialize_v1",
+      cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    },
+  );
+}
+
+function buildMockBalanceAnalysisDecisionItems(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+): ApiEnvelope<BalanceAnalysisDecisionItemsPayload> {
+  return buildMockApiEnvelope(
+    "balance-analysis.decision-items",
+    {
+      report_date: reportDate,
+      position_scope: positionScope,
+      currency_basis: currencyBasis,
+      columns: [
+        { key: "title", label: "Title" },
+        { key: "action_label", label: "Action" },
+        { key: "severity", label: "Severity" },
+        { key: "reason", label: "Reason" },
+        { key: "source_section", label: "Source Section" },
+        { key: "rule_id", label: "Rule Id" },
+        { key: "rule_version", label: "Rule Version" },
+      ],
+      rows: [
+        {
+          decision_key: "bal_wb_decision_gap_001::maturity_gap::Review 1-2 year gap positioning",
+          title: "Review 1-2 year gap positioning",
+          action_label: "Review gap",
+          severity: "high",
+          reason: "Bucket gap is 648.00 wan yuan.",
+          source_section: "maturity_gap",
+          rule_id: "bal_wb_decision_gap_001",
+          rule_version: "v1",
+          latest_status: {
+            decision_key:
+              "bal_wb_decision_gap_001::maturity_gap::Review 1-2 year gap positioning",
+            status: "pending",
+            updated_at: null,
+            updated_by: null,
+            comment: null,
+          },
         },
       ],
     },
@@ -1670,10 +1775,46 @@ const requestText = async (
   }
 
   const contentDisposition = response.headers.get("Content-Disposition") ?? "";
-  const filenameMatch = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
   return {
     content: await response.text(),
-    filename: filenameMatch?.[1] ?? fallbackFilename,
+    filename: parseDownloadFilename(contentDisposition, fallbackFilename),
+  };
+};
+
+function parseDownloadFilename(contentDisposition: string, fallbackFilename: string) {
+  const utf8Match = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const filenameMatch = /filename=\"?([^\";]+)\"?/i.exec(contentDisposition);
+  return filenameMatch?.[1] ?? fallbackFilename;
+}
+
+const requestBlob = async (
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+  fallbackFilename = "download.bin",
+): Promise<{ content: Blob; filename: string }> => {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    headers: {
+      Accept:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream;q=0.9, */*;q=0.8",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${path} (${response.status})`);
+  }
+
+  const contentDisposition = response.headers.get("Content-Disposition") ?? "";
+  return {
+    content: await response.blob(),
+    filename: parseDownloadFilename(contentDisposition, fallbackFilename),
   };
 };
 
@@ -1761,6 +1902,38 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getPnlBridge(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl.bridge",
+        {
+          report_date: reportDate,
+          rows: [],
+          summary: {
+            row_count: 0,
+            ok_count: 0,
+            warning_count: 0,
+            error_count: 0,
+            total_beginning_dirty_mv: "0",
+            total_ending_dirty_mv: "0",
+            total_carry: "0",
+            total_roll_down: "0",
+            total_treasury_curve: "0",
+            total_credit_spread: "0",
+            total_fx_translation: "0",
+            total_realized_trading: "0",
+            total_unrealized_fv: "0",
+            total_manual_adjustment: "0",
+            total_explained_pnl: "0",
+            total_actual_pnl: "0",
+            total_residual: "0",
+            quality_flag: "ok",
+          },
+          warnings: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async refreshFormalPnl() {
       await delay();
       return {
@@ -1791,6 +1964,36 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getRiskOverview() {
       await delay();
       return buildMockApiEnvelope("executive.risk-overview", riskOverviewPayload);
+    },
+    async getRiskTensor(reportDate: string) {
+      await delay();
+      const zero = "0.00000000";
+      return buildMockApiEnvelope(
+        "risk.tensor",
+        {
+          report_date: reportDate,
+          portfolio_dv01: zero,
+          krd_1y: zero,
+          krd_3y: zero,
+          krd_5y: zero,
+          krd_7y: zero,
+          krd_10y: zero,
+          krd_30y: zero,
+          cs01: zero,
+          portfolio_convexity: zero,
+          portfolio_modified_duration: zero,
+          issuer_concentration_hhi: zero,
+          issuer_top5_weight: zero,
+          liquidity_gap_30d: zero,
+          liquidity_gap_90d: zero,
+          liquidity_gap_30d_ratio: zero,
+          total_market_value: zero,
+          bond_count: 0,
+          quality_flag: "ok",
+          warnings: [],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
     },
     async getContribution() {
       await delay();
@@ -2303,9 +2506,44 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockBalanceAnalysisWorkbook(reportDate, positionScope, currencyBasis);
     },
+    async getBalanceAnalysisCurrentUser() {
+      await delay();
+      return {
+        user_id: "phase1-dev-user",
+        role: "admin",
+        identity_source: "fallback",
+      };
+    },
+    async getBalanceAnalysisDecisionItems({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      return buildMockBalanceAnalysisDecisionItems(reportDate, positionScope, currencyBasis);
+    },
+    async updateBalanceAnalysisDecisionStatus({
+      decisionKey,
+      status,
+      comment,
+    }) {
+      await delay();
+      return {
+        decision_key: decisionKey,
+        status,
+        updated_at: "2026-04-12T08:00:00Z",
+        updated_by: "phase1-dev-user",
+        comment: comment ?? null,
+      };
+    },
     async exportBalanceAnalysisSummaryCsv({ reportDate, positionScope, currencyBasis }) {
       await delay();
       return buildMockBalanceAnalysisSummaryCsv(reportDate, positionScope, currencyBasis);
+    },
+    async exportBalanceAnalysisWorkbookXlsx({ reportDate }) {
+      await delay();
+      return {
+        filename: `资产负债分析_${reportDate}.xlsx`,
+        content: new Blob(["mock-workbook"], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      };
     },
     async refreshBalanceAnalysis(reportDate: string) {
       await delay();
@@ -2329,6 +2567,26 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         report_date: "2025-12-31",
         source_version: "sv_balance_mock",
         rule_version: "rv_balance_analysis_formal_materialize_v1",
+      };
+    },
+    async refreshBondAnalytics(reportDate: string) {
+      await delay();
+      return {
+        status: "queued",
+        run_id: "bond_analytics_refresh:mock-run",
+        job_name: "bond_analytics_refresh",
+        cache_key: "bond_analytics:materialize",
+        report_date: reportDate,
+      };
+    },
+    async getBondAnalyticsRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "bond_analytics_refresh",
+        cache_key: "bond_analytics:materialize",
+        report_date: "2025-12-31",
       };
     },
   };
@@ -2368,6 +2626,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getPnlBridge: (reportDate: string) =>
+      requestJson<PnlBridgePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/bridge?report_date=${encodeURIComponent(reportDate)}`,
+      ),
     refreshFormalPnl: () =>
       requestActionJson<FormalPnlRefreshPayload>(fetchImpl, baseUrl, "/api/data/refresh_pnl", {
         method: "POST",
@@ -2391,6 +2655,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         "/ui/risk/overview",
+      ),
+    getRiskTensor: (reportDate: string) =>
+      requestJson<RiskTensorPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/tensor?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getContribution: () =>
       requestJson<ContributionPayload>(
@@ -2632,6 +2902,51 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/ui/balance-analysis/workbook?${params.toString()}`,
       );
     },
+    getBalanceAnalysisCurrentUser: () =>
+      requestActionJson<BalanceAnalysisCurrentUserPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/balance-analysis/current-user",
+      ),
+    getBalanceAnalysisDecisionItems: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisDecisionItemsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/decision-items?${params.toString()}`,
+      );
+    },
+    updateBalanceAnalysisDecisionStatus: ({
+      reportDate,
+      positionScope,
+      currencyBasis,
+      decisionKey,
+      status,
+      comment,
+    }) =>
+      requestActionJson<BalanceAnalysisDecisionStatusRecord>(
+        fetchImpl,
+        baseUrl,
+        "/ui/balance-analysis/decision-items/status",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            report_date: reportDate,
+            position_scope: positionScope,
+            currency_basis: currencyBasis,
+            decision_key: decisionKey,
+            status,
+            comment,
+          }),
+        },
+      ),
     getBalanceAnalysisDetail: ({ reportDate, positionScope, currencyBasis }) => {
       const params = new URLSearchParams({
         report_date: reportDate,
@@ -2661,6 +2976,23 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         "balance-analysis-summary.csv",
       );
     },
+    exportBalanceAnalysisWorkbookXlsx: ({
+      reportDate,
+      positionScope,
+      currencyBasis,
+    }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestBlob(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/workbook/export?${params.toString()}`,
+        "balance-analysis-workbook.xlsx",
+      );
+    },
     refreshBalanceAnalysis: (reportDate: string) =>
       requestActionJson<BalanceAnalysisRefreshPayload>(
         fetchImpl,
@@ -2675,6 +3007,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/ui/balance-analysis/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
+    refreshBondAnalytics: (reportDate: string) =>
+      requestActionJson<BondAnalyticsRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/refresh?report_date=${encodeURIComponent(reportDate)}`,
+        {
+          method: "POST",
+        },
+      ),
+    getBondAnalyticsRefreshStatus: (runId: string) =>
+      requestActionJson<BondAnalyticsRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
   };
 }
@@ -2706,3 +3053,5 @@ export function useApiClient(): ApiClient {
 
   return client;
 }
+
+

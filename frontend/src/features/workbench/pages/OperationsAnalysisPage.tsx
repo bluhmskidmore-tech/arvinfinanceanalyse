@@ -129,7 +129,7 @@ export default function OperationsAnalysisPage() {
         start: () => client.refreshFormalPnl(),
         getStatus: (runId) => client.getFormalPnlImportStatus(runId),
         onUpdate: (nextPayload) => {
-          setLastPnlRefreshRunId(nextPayload.run_id);
+          setLastPnlRefreshRunId(nextPayload.run_id ?? null);
           setLastPnlRefreshStatus(buildPnlRefreshStatusText(nextPayload));
         },
       });

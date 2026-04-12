@@ -221,18 +221,6 @@ def _validate_ledger_rows(
             row_values.extend([None] * (7 - len(row_values)))
         if all(_is_blank(value) for value in row_values[:7]):
             continue
-        if any(not _is_blank(value) for value in row_values[7:]):
-            first_extra_index = next(
-                index for index, value in enumerate(row_values[7:], start=8) if not _is_blank(value)
-            )
-            _record_failure(
-                checks,
-                "row_shape",
-                message="Ledger row contains unexpected populated cells beyond column G.",
-                sheet_name=worksheet.title,
-                row_locator=row_index,
-                cell_ref=f"{get_column_letter(first_extra_index)}{row_index}",
-            )
 
         account_code_value, account_name, currency_value, beginning_value, debit_value, credit_value, ending_value = row_values[:7]
         required_cells = {
@@ -363,41 +351,43 @@ def _validate_average_rows(
     checks: dict[str, QdbGlContractCheck],
     bound_currency_groups: set[str],
 ) -> None:
-    header_row = list(next(worksheet.iter_rows(min_row=3, max_row=3, values_only=True), tuple()))
-    block_specs = _parse_average_block_specs(header_row, checks, worksheet.title)
     for row_index, row in enumerate(worksheet.iter_rows(min_row=4, values_only=True), start=4):
         row_values = list(row)
-        populated_in_row = False
-        for start_column, block_width in block_specs:
-            currency_value = row_values[start_column - 1] if len(row_values) >= start_column else None
-            account_code_value = row_values[start_column] if len(row_values) >= start_column + 1 else None
-            balance_value = row_values[start_column + 1] if len(row_values) >= start_column + 2 else None
-            spacer_value = row_values[start_column + 2] if block_width == 4 and len(row_values) >= start_column + 3 else None
+        if all(_is_blank(value) for value in row_values):
+            continue
 
-            if all(_is_blank(value) for value in (currency_value, account_code_value, balance_value, spacer_value)):
+        recognized_tuple = False
+        column_index = 0
+        while column_index < len(row_values):
+            currency_value = row_values[column_index]
+            currency_code = _normalize_currency(currency_value)
+            if currency_code is None:
+                column_index += 1
                 continue
-            populated_in_row = True
 
-            if block_width == 4 and not _is_blank(spacer_value):
+            account_code_value = row_values[column_index + 1] if len(row_values) > column_index + 1 else None
+            balance_value = row_values[column_index + 2] if len(row_values) > column_index + 2 else None
+            recognized_tuple = True
+
+            if _is_blank(account_code_value):
                 _record_failure(
                     checks,
                     "row_shape",
-                    message="Average data block spacer column must stay blank.",
+                    message="Average canonical tuple is missing account_code_raw after a valid currency marker.",
                     sheet_name=worksheet.title,
                     row_locator=row_index,
-                    cell_ref=f"{get_column_letter(start_column + 3)}{row_index}",
+                    cell_ref=f"{get_column_letter(column_index + 2)}{row_index}",
                 )
-
-            for offset, value in enumerate((currency_value, account_code_value, balance_value)):
-                if _is_blank(value):
-                    _record_failure(
-                        checks,
-                        "required_raw_fields",
-                        message="Average data block is missing a required raw field.",
-                        sheet_name=worksheet.title,
-                        row_locator=row_index,
-                        cell_ref=f"{get_column_letter(start_column + offset)}{row_index}",
-                    )
+                _record_failure(
+                    checks,
+                    "required_raw_fields",
+                    message="Average canonical tuple is missing required raw field account_code_raw.",
+                    sheet_name=worksheet.title,
+                    row_locator=row_index,
+                    cell_ref=f"{get_column_letter(column_index + 2)}{row_index}",
+                )
+                column_index += 1
+                continue
 
             account_code = _normalize_account_code(account_code_value)
             if account_code is None:
@@ -407,21 +397,28 @@ def _validate_average_rows(
                     message="Average workbook account code must remain a digit-only text value without scientific notation or fractional loss.",
                     sheet_name=worksheet.title,
                     row_locator=row_index,
-                    cell_ref=f"{get_column_letter(start_column + 1)}{row_index}",
+                    cell_ref=f"{get_column_letter(column_index + 2)}{row_index}",
                 )
 
-            currency_code = _normalize_currency(currency_value)
-            if currency_code is None:
+            if _is_blank(balance_value):
                 _record_failure(
                     checks,
-                    "currency_grouping",
-                    message="Average workbook currency code must be CNX or CNY.",
+                    "row_shape",
+                    message="Average canonical tuple is missing avg_balance_raw after currency/account_code.",
                     sheet_name=worksheet.title,
                     row_locator=row_index,
-                    cell_ref=f"{get_column_letter(start_column)}{row_index}",
+                    cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
                 )
-            else:
-                bound_currency_groups.add(currency_code)
+                _record_failure(
+                    checks,
+                    "required_raw_fields",
+                    message="Average canonical tuple is missing required raw field avg_balance_raw.",
+                    sheet_name=worksheet.title,
+                    row_locator=row_index,
+                    cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
+                )
+                column_index += 2
+                continue
 
             if _to_decimal(balance_value) is None:
                 _record_failure(
@@ -430,11 +427,14 @@ def _validate_average_rows(
                     message="Average workbook balance field must be numeric.",
                     sheet_name=worksheet.title,
                     row_locator=row_index,
-                    cell_ref=f"{get_column_letter(start_column + 2)}{row_index}",
+                    cell_ref=f"{get_column_letter(column_index + 3)}{row_index}",
                 )
+                column_index += 3
+                continue
 
-        if not populated_in_row:
-            continue
+            bound_currency_groups.add(currency_code)
+            column_index += 3
+
 
 
 def _build_default_checks(*, reconciliation_not_applicable: bool) -> dict[str, QdbGlContractCheck]:

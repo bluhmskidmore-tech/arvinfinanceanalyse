@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+﻿import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -7,7 +7,7 @@ import { vi } from "vitest";
 
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
-import type { ApiEnvelope, SourcePreviewPayload } from "../api/contracts";
+import type { ApiEnvelope, ResultMeta, SourcePreviewPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
 
@@ -41,20 +41,68 @@ function renderPage(client: ApiClient) {
 describe("OperationsAnalysisPage", () => {
   it("consolidates source preview, macro, and news into a single read-only workbench entry", async () => {
     const base = createApiClient({ mode: "mock" });
+    const sourcePreviewMeta: ResultMeta = {
+      trace_id: "tr_source_hub_test",
+      basis: "analytical",
+      result_kind: "preview.source-foundation",
+      formal_use_allowed: false,
+      source_version: "sv_source_hub_test",
+      vendor_version: "vv_none",
+      rule_version: "rv_source_preview_v1",
+      cache_version: "cv_source_preview_v1",
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      scenario_flag: false,
+      generated_at: "2026-04-10T09:00:00Z",
+    };
+    const macroFoundationMeta: ResultMeta = {
+      trace_id: "tr_macro_hub_test",
+      basis: "analytical",
+      result_kind: "preview.macro-foundation",
+      formal_use_allowed: false,
+      source_version: "sv_macro_hub_test",
+      vendor_version: "vv_choice_catalog_v1",
+      rule_version: "rv_phase1_macro_vendor_v1",
+      cache_version: "cv_phase1_macro_vendor_v1",
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      scenario_flag: false,
+      generated_at: "2026-04-10T09:02:00Z",
+    };
+    const macroLatestMeta: ResultMeta = {
+      trace_id: "tr_choice_macro_hub_test",
+      basis: "analytical",
+      result_kind: "macro.choice.latest",
+      formal_use_allowed: false,
+      source_version: "sv_choice_macro_hub_test",
+      vendor_version: "vv_choice_macro_20260410",
+      rule_version: "rv_choice_macro_thin_slice_v1",
+      cache_version: "cv_choice_macro_thin_slice_v1",
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      scenario_flag: false,
+      generated_at: "2026-04-10T09:03:00Z",
+    };
+    const choiceNewsMeta: ResultMeta = {
+      trace_id: "tr_choice_news_hub_test",
+      basis: "analytical",
+      result_kind: "news.choice.latest",
+      formal_use_allowed: false,
+      source_version: "sv_choice_news_hub_test",
+      vendor_version: "vv_none",
+      rule_version: "rv_choice_news_v1",
+      cache_version: "cv_choice_news_v1",
+      quality_flag: "ok",
+      vendor_status: "ok",
+      fallback_mode: "none",
+      scenario_flag: false,
+      generated_at: "2026-04-10T09:05:00Z",
+    };
     const sourceFoundationPayload: ApiEnvelope<SourcePreviewPayload> = {
-      result_meta: {
-        trace_id: "tr_source_hub_test",
-        basis: "analytical" as const,
-        result_kind: "preview.source-foundation",
-        formal_use_allowed: false,
-        source_version: "sv_source_hub_test",
-        vendor_version: "vv_none",
-        rule_version: "rv_source_preview_v1",
-        cache_version: "cv_source_preview_v1",
-        quality_flag: "ok" as const,
-        scenario_flag: false,
-        generated_at: "2026-04-10T09:00:00Z",
-      },
+      result_meta: sourcePreviewMeta,
       result: {
         sources: [
           {
@@ -88,19 +136,7 @@ describe("OperationsAnalysisPage", () => {
     };
     const getSourceFoundation = vi.fn(async () => sourceFoundationPayload);
     const getMacroFoundation = vi.fn(async () => ({
-      result_meta: {
-        trace_id: "tr_macro_hub_test",
-        basis: "analytical" as const,
-        result_kind: "preview.macro-foundation",
-        formal_use_allowed: false,
-        source_version: "sv_macro_hub_test",
-        vendor_version: "vv_choice_catalog_v1",
-        rule_version: "rv_phase1_macro_vendor_v1",
-        cache_version: "cv_phase1_macro_vendor_v1",
-        quality_flag: "ok" as const,
-        scenario_flag: false,
-        generated_at: "2026-04-10T09:02:00Z",
-      },
+      result_meta: macroFoundationMeta,
       result: {
         read_target: "duckdb" as const,
         series: [
@@ -116,19 +152,7 @@ describe("OperationsAnalysisPage", () => {
       },
     }));
     const getChoiceMacroLatest = vi.fn(async () => ({
-      result_meta: {
-        trace_id: "tr_choice_macro_hub_test",
-        basis: "analytical" as const,
-        result_kind: "macro.choice.latest",
-        formal_use_allowed: false,
-        source_version: "sv_choice_macro_hub_test",
-        vendor_version: "vv_choice_macro_20260410",
-        rule_version: "rv_choice_macro_thin_slice_v1",
-        cache_version: "cv_choice_macro_thin_slice_v1",
-        quality_flag: "ok" as const,
-        scenario_flag: false,
-        generated_at: "2026-04-10T09:03:00Z",
-      },
+      result_meta: macroLatestMeta,
       result: {
         read_target: "duckdb" as const,
         series: [
@@ -145,19 +169,7 @@ describe("OperationsAnalysisPage", () => {
       },
     }));
     const getChoiceNewsEvents = vi.fn(async () => ({
-      result_meta: {
-        trace_id: "tr_choice_news_hub_test",
-        basis: "analytical" as const,
-        result_kind: "news.choice.latest",
-        formal_use_allowed: false,
-        source_version: "sv_choice_news_hub_test",
-        vendor_version: "vv_none",
-        rule_version: "rv_choice_news_v1",
-        cache_version: "cv_choice_news_v1",
-        quality_flag: "ok" as const,
-        scenario_flag: false,
-        generated_at: "2026-04-10T09:05:00Z",
-      },
+      result_meta: choiceNewsMeta,
       result: {
         total_rows: 2,
         limit: 3,
@@ -356,3 +368,5 @@ describe("OperationsAnalysisPage", () => {
     pollingSpy.mockRestore();
   });
 });
+
+

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 
@@ -10,6 +10,15 @@ describe("createApiClient", () => {
 
     expect(payload.result_meta.basis).toBe("mock");
     expect(payload.result.title).toBe("经营总览（演示）");
+  });
+
+  it("includes required vendor metadata in mock envelopes", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const payload = await client.getOverview();
+
+    expect(payload.result_meta.vendor_status).toBe("ok");
+    expect(payload.result_meta.fallback_mode).toBe("none");
   });
 
   it("keeps mock manual-adjustment current state reduced while exposing full timeline", async () => {
@@ -169,6 +178,8 @@ describe("createApiClient", () => {
           rule_version: "rv_real",
           cache_version: "cv_real",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -211,6 +222,8 @@ describe("createApiClient", () => {
           rule_version: "rv_preview",
           cache_version: "cv_preview",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -252,6 +265,8 @@ describe("createApiClient", () => {
           rule_version: "rv_preview",
           cache_version: "cv_preview",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -296,6 +311,8 @@ describe("createApiClient", () => {
           rule_version: "rv_preview",
           cache_version: "cv_preview",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -641,6 +658,8 @@ describe("createApiClient", () => {
           rule_version: "rv_choice_news_v1",
           cache_version: "cv_choice_news_v1",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-10T09:00:00Z",
         },
@@ -693,6 +712,8 @@ describe("createApiClient", () => {
           rule_version: "rv_phase1_macro_vendor_v1",
           cache_version: "cv_phase1_macro_vendor_v1",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-10T09:00:00Z",
         },
@@ -735,6 +756,8 @@ describe("createApiClient", () => {
           rule_version: "rv_choice_macro_thin_slice_v1",
           cache_version: "cv_choice_macro_thin_slice_v1",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-10T09:00:00Z",
         },
@@ -780,6 +803,8 @@ describe("createApiClient", () => {
               rule_version: "rv_pnl",
               cache_version: "cv_pnl",
               quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
               scenario_flag: false,
               generated_at: "2026-04-11T03:00:00Z",
             },
@@ -805,6 +830,8 @@ describe("createApiClient", () => {
               rule_version: "rv_pnl",
               cache_version: "cv_pnl",
               quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
               scenario_flag: false,
               generated_at: "2026-04-11T03:00:00Z",
             },
@@ -829,6 +856,8 @@ describe("createApiClient", () => {
             rule_version: "rv_pnl",
             cache_version: "cv_pnl",
             quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-11T03:00:00Z",
           },
@@ -885,6 +914,71 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch formal pnl bridge envelope", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_pnl_bridge",
+          basis: "formal",
+          result_kind: "pnl.bridge",
+          formal_use_allowed: true,
+          source_version: "sv_pnl",
+          vendor_version: "vv_none",
+          rule_version: "rv_pnl",
+          cache_version: "cv_pnl_bridge",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-11T03:00:00Z",
+        },
+        result: {
+          report_date: "2026-02-28",
+          rows: [],
+          summary: {
+            row_count: 0,
+            ok_count: 0,
+            warning_count: 0,
+            error_count: 0,
+            total_beginning_dirty_mv: "0",
+            total_ending_dirty_mv: "0",
+            total_carry: "0",
+            total_roll_down: "0",
+            total_treasury_curve: "0",
+            total_credit_spread: "0",
+            total_fx_translation: "0",
+            total_realized_trading: "0",
+            total_unrealized_fv: "0",
+            total_manual_adjustment: "0",
+            total_explained_pnl: "0",
+            total_actual_pnl: "0",
+            total_residual: "0",
+            quality_flag: "ok",
+          },
+          warnings: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getPnlBridge("2026-02-28");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/pnl/bridge?report_date=2026-02-28",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch product-category pnl dates", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -899,6 +993,8 @@ describe("createApiClient", () => {
           rule_version: "rv_real",
           cache_version: "cv_real",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: false,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -1295,6 +1391,8 @@ describe("createApiClient", () => {
           rule_version: "rv_real",
           cache_version: "cv_real",
           quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
           scenario_flag: true,
           generated_at: "2026-04-09T09:00:00Z",
         },
@@ -1350,6 +1448,8 @@ describe("createApiClient", () => {
               rule_version: "rv_balance",
               cache_version: "cv_balance",
               quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
               scenario_flag: false,
               generated_at: "2026-04-11T04:00:00Z",
             },
@@ -1373,6 +1473,8 @@ describe("createApiClient", () => {
               rule_version: "rv_balance",
               cache_version: "cv_balance",
               quality_flag: "ok",
+              vendor_status: "ok",
+              fallback_mode: "none",
               scenario_flag: false,
               generated_at: "2026-04-11T04:00:00Z",
             },
@@ -1402,6 +1504,8 @@ describe("createApiClient", () => {
             rule_version: "rv_balance",
             cache_version: "cv_balance",
             quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-11T04:00:00Z",
           },
@@ -1489,6 +1593,8 @@ describe("createApiClient", () => {
             rule_version: "rv_balance",
             cache_version: "cv_balance",
             quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
             scenario_flag: false,
             generated_at: "2026-04-11T04:00:00Z",
           },
@@ -1559,6 +1665,119 @@ describe("createApiClient", () => {
       expect.objectContaining({
         headers: expect.objectContaining({
           Accept: "text/csv, text/plain;q=0.9, */*;q=0.8",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to update balance-analysis decision status without trusting client updated_by", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        decision_key: "bal_wb_decision_gap_001::maturity_gap::Review 1-2 year gap positioning",
+        status: "confirmed",
+        updated_at: "2026-04-12T08:00:00Z",
+        updated_by: "phase1-dev-user",
+        comment: "Reviewed and accepted.",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.updateBalanceAnalysisDecisionStatus({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+      decisionKey: "bal_wb_decision_gap_001::maturity_gap::Review 1-2 year gap positioning",
+      status: "confirmed",
+      comment: "Reviewed and accepted.",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/balance-analysis/decision-items/status",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          decision_key: "bal_wb_decision_gap_001::maturity_gap::Review 1-2 year gap positioning",
+          status: "confirmed",
+          comment: "Reviewed and accepted.",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch the current balance-analysis user identity", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        user_id: "decision-owner",
+        role: "reviewer",
+        identity_source: "header",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getBalanceAnalysisCurrentUser();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/balance-analysis/current-user",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("uses real mode to export balance-analysis workbook xlsx", async () => {
+    const workbookBlob = new Blob(["xlsx-binary"], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      headers: new Headers({
+        "Content-Disposition":
+          "attachment; filename=balance-analysis-workbook-2025-12-31.xlsx; filename*=UTF-8''%E8%B5%84%E4%BA%A7%E8%B4%9F%E5%80%BA%E5%88%86%E6%9E%90_2025-12-31.xlsx",
+      }),
+      blob: async () => workbookBlob,
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const exported = await client.exportBalanceAnalysisWorkbookXlsx({
+      reportDate: "2025-12-31",
+      positionScope: "asset",
+      currencyBasis: "CNY",
+    });
+
+    expect(exported.filename).toBe("资产负债分析_2025-12-31.xlsx");
+    expect(exported.content).toBe(workbookBlob);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/balance-analysis/workbook/export?report_date=2025-12-31&position_scope=asset&currency_basis=CNY",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/octet-stream;q=0.9, */*;q=0.8",
         }),
       }),
     );
@@ -1751,3 +1970,5 @@ describe("createApiClient", () => {
     );
   });
 });
+
+

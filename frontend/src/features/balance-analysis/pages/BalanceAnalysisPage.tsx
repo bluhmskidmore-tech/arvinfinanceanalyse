@@ -3,6 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceAnalysisDecisionItemStatusRow,
+  BalanceAnalysisEventCalendarRow,
+  BalanceAnalysisRiskAlertRow,
+  BalanceAnalysisSeverity,
+  BalanceAnalysisWorkbookOperationalSection,
   BalanceAnalysisWorkbookTable,
   BalanceCurrencyBasis,
   BalancePositionScope,
@@ -147,6 +152,59 @@ const workbookRightRailStyle = {
   alignContent: "start",
 } as const;
 
+const rightRailFilterRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 10,
+  marginBottom: 12,
+} as const;
+
+const rightRailFilterStyle = {
+  minWidth: 120,
+  padding: "8px 10px",
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#ffffff",
+  color: "#162033",
+} as const;
+
+const rightRailItemButtonStyle = {
+  width: "100%",
+  textAlign: "left",
+  border: "none",
+  background: "transparent",
+  padding: 0,
+  cursor: "pointer",
+} as const;
+
+const decisionActionRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+} as const;
+
+const decisionActionButtonStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #d7dfea",
+  background: "#ffffff",
+  color: "#162033",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+} as const;
+
+const currentUserCardStyle = {
+  marginBottom: 12,
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#f7f9fc",
+  color: "#334155",
+  padding: 12,
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
 const barTrackStyle = {
   width: "100%",
   height: 8,
@@ -169,7 +227,6 @@ const secondaryWorkbookPanelKeys = [
 ] as const;
 
 const rightRailWorkbookKeys = [
-  "decision_items",
   "event_calendar",
   "risk_alerts",
 ] as const;
@@ -188,15 +245,15 @@ const workbookSecondaryPanelNotes: Record<(typeof secondaryWorkbookPanelKeys)[nu
 };
 
 const workbookRightRailNotes: Record<(typeof rightRailWorkbookKeys)[number], string> = {
-  decision_items: "规则驱动的运营建议项，保留原因、来源分区和规则版本。",
   event_calendar: "内部治理事件日历，只展示由现有 formal/workbook 输入派生的事件。",
   risk_alerts: "阈值型风险预警，不在前端补正式金融判断。",
 };
 
+const decisionRailNote = "规则驱动的运营建议项通过治理状态流确认、忽略和跟踪，不把状态写回 formal facts。";
+
 const ratingBlockPalette = ["#2fbf93", "#5792ff", "#ff9c43", "#8f7cf7", "#ff6b6b", "#7cc4fa"];
 
-function downloadCsvFile(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+function downloadBlobFile(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -207,8 +264,12 @@ function downloadCsvFile(filename: string, content: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadCsvFile(filename: string, content: string) {
+  downloadBlobFile(filename, new Blob([content], { type: "text/csv;charset=utf-8;" }));
+}
+
 function parseWorkbookNumber(value: unknown) {
-  const text = String(value ?? "").replaceAll(",", "").trim();
+  const text = String(value ?? "").replace(/,/g, "").trim();
   const parsed = Number.parseFloat(text);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -220,7 +281,10 @@ function formatWorkbookValue(value: unknown) {
   return String(value);
 }
 
-function renderWorkbookContractMismatch(table: BalanceAnalysisWorkbookTable, message: string) {
+function renderWorkbookContractMismatch(
+  table: Pick<BalanceAnalysisWorkbookTable, "key"> | Pick<BalanceAnalysisWorkbookOperationalSection, "key">,
+  message: string,
+) {
   return (
     <div
       data-testid={`balance-analysis-workbook-table-${table.key}`}
@@ -580,36 +644,60 @@ function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
   );
 }
 
-function renderDecisionItemsPanel(table: BalanceAnalysisWorkbookTable) {
-  if (table.rows.length === 0) {
+function renderDecisionItemsPanel(
+  rows: BalanceAnalysisDecisionItemStatusRow[],
+  {
+    selectedKey,
+    updatingKey,
+    onSelect,
+    onUpdateStatus,
+  }: {
+    selectedKey: string | null;
+    updatingKey: string | null;
+    onSelect: (row: BalanceAnalysisDecisionItemStatusRow) => void;
+    onUpdateStatus: (
+      row: BalanceAnalysisDecisionItemStatusRow,
+      status: "confirmed" | "dismissed",
+    ) => void;
+  },
+) {
+  if (rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
-  if (
-    !hasWorkbookFields(table.rows, [
-      "title",
-      "action_label",
-      "severity",
-      "reason",
-      "source_section",
-      "rule_id",
-      "rule_version",
-    ])
-  ) {
-    return renderWorkbookContractMismatch(table, "Workbook contract mismatch：决策事项字段不完整。");
+  const hasRequiredFields = rows.every(
+    (row) =>
+      row.decision_key &&
+      row.title &&
+      row.action_label &&
+      row.severity &&
+      row.reason &&
+      row.source_section &&
+      row.rule_id &&
+      row.rule_version &&
+      row.latest_status &&
+      row.latest_status.decision_key &&
+      row.latest_status.status,
+  );
+  if (!hasRequiredFields) {
+    return renderWorkbookContractMismatch(
+      { key: "decision_items" },
+      "Workbook contract mismatch：决策事项字段不完整。",
+    );
   }
 
   return (
-    <div data-testid={`balance-analysis-workbook-table-${table.key}`} style={{ display: "grid", gap: 12 }}>
-      {table.rows.map((row, index) => (
+    <div data-testid="balance-analysis-workbook-table-decision_items" style={{ display: "grid", gap: 12 }}>
+      {rows.map((row, index) => (
         <article
-          key={`${table.key}-${index}`}
+          key={row.decision_key}
           style={{
             borderRadius: 16,
-            border: "1px solid #e4ebf5",
-            background: "#ffffff",
+            border:
+              selectedKey === row.decision_key ? "1px solid #1f5eff" : "1px solid #e4ebf5",
+            background: selectedKey === row.decision_key ? "#edf3ff" : "#ffffff",
             padding: 14,
             display: "grid",
-            gap: 8,
+            gap: 10,
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
@@ -625,13 +713,56 @@ function renderDecisionItemsPanel(table: BalanceAnalysisWorkbookTable) {
             <span>{formatWorkbookValue(row.rule_id)}</span>
             <span>{formatWorkbookValue(row.rule_version)}</span>
           </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#5c6b82" }}>
+            <span>Status: {row.latest_status.status}</span>
+            <span>
+              Updated by: {row.latest_status.updated_by ? row.latest_status.updated_by : "Not updated"}
+            </span>
+          </div>
+          <div style={decisionActionRowStyle}>
+            <button
+              data-testid={`balance-analysis-decision-confirm-${index}`}
+              type="button"
+              disabled={updatingKey === row.decision_key}
+              style={decisionActionButtonStyle}
+              onClick={() => onUpdateStatus(row, "confirmed")}
+            >
+              确认
+            </button>
+            <button
+              data-testid={`balance-analysis-decision-dismiss-${index}`}
+              type="button"
+              disabled={updatingKey === row.decision_key}
+              style={decisionActionButtonStyle}
+              onClick={() => onUpdateStatus(row, "dismissed")}
+            >
+              忽略
+            </button>
+            <button
+              data-testid={`balance-analysis-decision-view-status-${index}`}
+              type="button"
+              style={decisionActionButtonStyle}
+              onClick={() => onSelect(row)}
+            >
+              查看状态
+            </button>
+          </div>
         </article>
       ))}
     </div>
   );
 }
 
-function renderEventCalendarPanel(table: BalanceAnalysisWorkbookTable) {
+function renderEventCalendarPanel(
+  table: Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "event_calendar" }>,
+  {
+    onSelect,
+    selectedKey,
+  }: {
+    onSelect: (row: BalanceAnalysisEventCalendarRow) => void;
+    selectedKey: string | null;
+  },
+) {
   if (table.rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
@@ -651,34 +782,50 @@ function renderEventCalendarPanel(table: BalanceAnalysisWorkbookTable) {
   return (
     <div data-testid={`balance-analysis-workbook-table-${table.key}`} style={{ display: "grid", gap: 12 }}>
       {table.rows.map((row, index) => (
-        <article
+        <button
           key={`${table.key}-${index}`}
-          style={{
-            borderRadius: 16,
-            border: "1px solid #e4ebf5",
-            background: "#ffffff",
-            padding: 14,
-            display: "grid",
-            gap: 8,
-          }}
+          type="button"
+          onClick={() => onSelect(row)}
+          style={rightRailItemButtonStyle}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-            <div style={{ color: "#1f5eff", fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
-          </div>
-          <div style={{ color: "#5c6b82", fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
-            <span>{formatWorkbookValue(row.event_type)}</span>
-            <span>{formatWorkbookValue(row.source)}</span>
-            <span>{formatWorkbookValue(row.source_section)}</span>
-          </div>
-        </article>
+          <article
+            style={{
+              borderRadius: 16,
+              border:
+                selectedKey === `${row.event_date}:${row.title}` ? "1px solid #1f5eff" : "1px solid #e4ebf5",
+              background: selectedKey === `${row.event_date}:${row.title}` ? "#edf3ff" : "#ffffff",
+              padding: 14,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+              <div style={{ color: "#1f5eff", fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
+            </div>
+            <div style={{ color: "#5c6b82", fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+              <span>{formatWorkbookValue(row.event_type)}</span>
+              <span>{formatWorkbookValue(row.source)}</span>
+              <span>{formatWorkbookValue(row.source_section)}</span>
+            </div>
+          </article>
+        </button>
       ))}
     </div>
   );
 }
 
-function renderRiskAlertsPanel(table: BalanceAnalysisWorkbookTable) {
+function renderRiskAlertsPanel(
+  table: Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "risk_alerts" }>,
+  {
+    onSelect,
+    selectedKey,
+  }: {
+    onSelect: (row: BalanceAnalysisRiskAlertRow) => void;
+    selectedKey: string | null;
+  },
+) {
   if (table.rows.length === 0) {
     return renderWorkbookEmptyState("No governed items.");
   }
@@ -698,32 +845,39 @@ function renderRiskAlertsPanel(table: BalanceAnalysisWorkbookTable) {
   return (
     <div data-testid={`balance-analysis-workbook-table-${table.key}`} style={{ display: "grid", gap: 12 }}>
       {table.rows.map((row, index) => (
-        <article
+        <button
           key={`${table.key}-${index}`}
-          style={{
-            borderRadius: 16,
-            border: "1px solid #ffd8bf",
-            background: "#fff7f0",
-            padding: 14,
-            display: "grid",
-            gap: 8,
-          }}
+          type="button"
+          onClick={() => onSelect(row)}
+          style={rightRailItemButtonStyle}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-            <span style={{ ...workbookPanelBadgeStyle, background: "#ffe7d6", color: "#d9622b" }}>
-              {formatWorkbookValue(row.severity)}
-            </span>
-          </div>
-          <div style={{ color: "#a14a14", fontSize: 13, lineHeight: 1.6 }}>
-            {formatWorkbookValue(row.reason)}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
-            <span>{formatWorkbookValue(row.source_section)}</span>
-            <span>{formatWorkbookValue(row.rule_id)}</span>
-            <span>{formatWorkbookValue(row.rule_version)}</span>
-          </div>
-        </article>
+          <article
+            style={{
+              borderRadius: 16,
+              border:
+                selectedKey === `${row.severity}:${row.title}` ? "1px solid #d9622b" : "1px solid #ffd8bf",
+              background: selectedKey === `${row.severity}:${row.title}` ? "#fff0e4" : "#fff7f0",
+              padding: 14,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+              <span style={{ ...workbookPanelBadgeStyle, background: "#ffe7d6", color: "#d9622b" }}>
+                {formatWorkbookValue(row.severity)}
+              </span>
+            </div>
+            <div style={{ color: "#a14a14", fontSize: 13, lineHeight: 1.6 }}>
+              {formatWorkbookValue(row.reason)}
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
+              <span>{formatWorkbookValue(row.source_section)}</span>
+              <span>{formatWorkbookValue(row.rule_id)}</span>
+              <span>{formatWorkbookValue(row.rule_version)}</span>
+            </div>
+          </article>
+        </button>
       ))}
     </div>
   );
@@ -742,16 +896,8 @@ function renderWorkbookSecondaryPanel(table: BalanceAnalysisWorkbookTable) {
   return null;
 }
 
-function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookTable) {
-  if (table.section_kind === "decision_items") {
-    return renderDecisionItemsPanel(table);
-  }
-  if (table.section_kind === "event_calendar") {
-    return renderEventCalendarPanel(table);
-  }
-  if (table.section_kind === "risk_alerts") {
-    return renderRiskAlertsPanel(table);
-  }
+function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookOperationalSection) {
+  void table;
   return null;
 }
 
@@ -762,9 +908,17 @@ export default function BalanceAnalysisPage() {
   const [currencyBasis, setCurrencyBasis] = useState<BalanceCurrencyBasis>("CNY");
   const [summaryOffset, setSummaryOffset] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [isExportingCsv, setIsExportingCsv] = useState(false);
+  const [isExportingWorkbook, setIsExportingWorkbook] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [decisionActionError, setDecisionActionError] = useState<string | null>(null);
+  const [updatingDecisionKey, setUpdatingDecisionKey] = useState<string | null>(null);
+  const [eventTypeFilter, setEventTypeFilter] = useState("all");
+  const [riskSeverityFilter, setRiskSeverityFilter] = useState<"all" | BalanceAnalysisSeverity>("all");
+  const [selectedDecisionKey, setSelectedDecisionKey] = useState<string | null>(null);
+  const [selectedEventCalendarKey, setSelectedEventCalendarKey] = useState<string | null>(null);
+  const [selectedRiskAlertKey, setSelectedRiskAlertKey] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["balance-analysis", "dates", client.mode],
@@ -781,6 +935,13 @@ export default function BalanceAnalysisPage() {
 
   useEffect(() => {
     setSummaryOffset(0);
+  }, [selectedReportDate, positionScope, currencyBasis]);
+
+  useEffect(() => {
+    setDecisionActionError(null);
+    setSelectedDecisionKey(null);
+    setSelectedEventCalendarKey(null);
+    setSelectedRiskAlertKey(null);
   }, [selectedReportDate, positionScope, currencyBasis]);
 
   const overviewQuery = useQuery({
@@ -840,6 +1001,31 @@ export default function BalanceAnalysisPage() {
     retry: false,
   });
 
+  const currentUserQuery = useQuery({
+    queryKey: ["balance-analysis", "current-user", client.mode],
+    queryFn: () => client.getBalanceAnalysisCurrentUser(),
+    retry: false,
+  });
+
+  const decisionItemsQuery = useQuery({
+    queryKey: [
+      "balance-analysis",
+      "decision-items",
+      client.mode,
+      selectedReportDate,
+      positionScope,
+      currencyBasis,
+    ],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () =>
+      client.getBalanceAnalysisDecisionItems({
+        reportDate: selectedReportDate,
+        positionScope,
+        currencyBasis,
+      }),
+    retry: false,
+  });
+
   const summaryQuery = useQuery({
     queryKey: [
       "balance-analysis",
@@ -865,28 +1051,81 @@ export default function BalanceAnalysisPage() {
   const overview = overviewQuery.data?.result;
   const overviewMeta = overviewQuery.data?.result_meta;
   const detailMeta = detailQuery.data?.result_meta;
+  const decisionItemsMeta = decisionItemsQuery.data?.result_meta;
   const workbookMeta = workbookQuery.data?.result_meta;
   const summaryMeta = summaryQuery.data?.result_meta;
+  const currentUser = currentUserQuery.data;
+  const decisionItems = decisionItemsQuery.data?.result;
   const workbook = workbookQuery.data?.result;
   const summaryTable = summaryQuery.data?.result;
+  const decisionRows = decisionItems?.rows ?? [];
   const workbookTables = workbook?.tables ?? [];
+  const workbookOperationalSections = workbook?.operational_sections ?? [];
   const primaryWorkbookTables = primaryWorkbookTableKeys
     .map((tableKey) => workbookTables.find((table) => table.key === tableKey))
     .filter((table): table is BalanceAnalysisWorkbookTable => table !== undefined);
   const secondaryWorkbookPanelTables = secondaryWorkbookPanelKeys
     .map((tableKey) => workbookTables.find((table) => table.key === tableKey))
     .filter((table): table is BalanceAnalysisWorkbookTable => table !== undefined);
-  const rightRailWorkbookTables = workbookTables.filter((table) =>
+  const rightRailWorkbookTables = workbookOperationalSections.filter((table) =>
     rightRailWorkbookKeys.includes(table.section_kind as (typeof rightRailWorkbookKeys)[number]),
   );
+  const eventTypeOptions = Array.from(
+    new Set(
+      rightRailWorkbookTables
+        .filter(
+          (table): table is Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "event_calendar" }> =>
+            table.section_kind === "event_calendar",
+        )
+        .flatMap((table) => table.rows.map((row) => row.event_type)),
+    ),
+  );
+  const filteredRightRailWorkbookTables = rightRailWorkbookTables.map((table) => {
+    if (table.section_kind === "event_calendar") {
+      return {
+        ...table,
+        rows:
+          eventTypeFilter === "all"
+            ? table.rows
+            : table.rows.filter((row) => row.event_type === eventTypeFilter),
+      };
+    }
+    if (table.section_kind === "risk_alerts") {
+      return {
+        ...table,
+        rows:
+          riskSeverityFilter === "all"
+            ? table.rows
+            : table.rows.filter((row) => row.severity === riskSeverityFilter),
+      };
+    }
+    return table;
+  });
+  const selectedDecision = decisionRows.find((row) => row.decision_key === selectedDecisionKey);
+  const selectedEventCalendar = rightRailWorkbookTables
+    .filter(
+      (table): table is Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "event_calendar" }> =>
+        table.section_kind === "event_calendar",
+    )
+    .flatMap((table) => table.rows)
+    .find((row) => `${row.event_date}:${row.title}` === selectedEventCalendarKey);
+  const selectedRiskAlert = rightRailWorkbookTables
+    .filter(
+      (table): table is Extract<BalanceAnalysisWorkbookOperationalSection, { section_kind: "risk_alerts" }> =>
+        table.section_kind === "risk_alerts",
+    )
+    .flatMap((table) => table.rows)
+    .find((row) => `${row.severity}:${row.title}` === selectedRiskAlertKey);
   const secondaryWorkbookTables = workbookTables.filter(
     (table) =>
       !primaryWorkbookTableKeys.includes(table.key as (typeof primaryWorkbookTableKeys)[number]) &&
-      !secondaryWorkbookPanelKeys.includes(table.key as (typeof secondaryWorkbookPanelKeys)[number]) &&
-      !rightRailWorkbookKeys.includes(table.section_kind as (typeof rightRailWorkbookKeys)[number]),
+      !secondaryWorkbookPanelKeys.includes(table.key as (typeof secondaryWorkbookPanelKeys)[number]),
   );
   const resultMetaSections = [
     overviewMeta ? { key: "overview", title: "Overview Result Meta", meta: overviewMeta } : null,
+    decisionItemsMeta
+      ? { key: "decision-items", title: "Decision Result Meta", meta: decisionItemsMeta }
+      : null,
     workbookMeta ? { key: "workbook", title: "Workbook Result Meta", meta: workbookMeta } : null,
     summaryMeta ? { key: "summary", title: "Summary Result Meta", meta: summaryMeta } : null,
     detailMeta ? { key: "detail", title: "Detail Result Meta", meta: detailMeta } : null,
@@ -921,6 +1160,7 @@ export default function BalanceAnalysisPage() {
       await Promise.all([
         datesQuery.refetch(),
         overviewQuery.refetch(),
+        decisionItemsQuery.refetch(),
         workbookQuery.refetch(),
         detailQuery.refetch(),
         summaryQuery.refetch(),
@@ -932,11 +1172,39 @@ export default function BalanceAnalysisPage() {
     }
   }
 
+  async function handleDecisionStatusUpdate(
+    row: BalanceAnalysisDecisionItemStatusRow,
+    status: "confirmed" | "dismissed",
+  ) {
+    if (!selectedReportDate) {
+      return;
+    }
+    setDecisionActionError(null);
+    setUpdatingDecisionKey(row.decision_key);
+    setSelectedEventCalendarKey(null);
+    setSelectedRiskAlertKey(null);
+    setSelectedDecisionKey(row.decision_key);
+    try {
+      await client.updateBalanceAnalysisDecisionStatus({
+        reportDate: selectedReportDate,
+        positionScope,
+        currencyBasis,
+        decisionKey: row.decision_key,
+        status,
+      });
+      await Promise.all([decisionItemsQuery.refetch(), currentUserQuery.refetch()]);
+    } catch (error) {
+      setDecisionActionError(error instanceof Error ? error.message : "Decision status update failed.");
+    } finally {
+      setUpdatingDecisionKey(null);
+    }
+  }
+
   async function handleExport() {
     if (!selectedReportDate) {
       return;
     }
-    setIsExporting(true);
+    setIsExportingCsv(true);
     setRefreshError(null);
     try {
       const payload = await client.exportBalanceAnalysisSummaryCsv({
@@ -948,7 +1216,27 @@ export default function BalanceAnalysisPage() {
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "导出资产负债分析失败");
     } finally {
-      setIsExporting(false);
+      setIsExportingCsv(false);
+    }
+  }
+
+  async function handleWorkbookExport() {
+    if (!selectedReportDate) {
+      return;
+    }
+    setIsExportingWorkbook(true);
+    setRefreshError(null);
+    try {
+      const payload = await client.exportBalanceAnalysisWorkbookXlsx({
+        reportDate: selectedReportDate,
+        positionScope,
+        currencyBasis,
+      });
+      downloadBlobFile(payload.filename, payload.content);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "Balance-analysis workbook export failed.");
+    } finally {
+      setIsExportingWorkbook(false);
     }
   }
 
@@ -1042,10 +1330,19 @@ export default function BalanceAnalysisPage() {
           data-testid="balance-analysis-export-button"
           type="button"
           onClick={() => void handleExport()}
-          disabled={!selectedReportDate || isExporting}
+          disabled={!selectedReportDate || isExportingCsv}
           style={actionButtonStyle}
         >
-          {isExporting ? "导出中..." : "导出 CSV"}
+          {isExportingCsv ? "导出中..." : "导出 CSV"}
+        </button>
+        <button
+          data-testid="balance-analysis-workbook-export-button"
+          type="button"
+          onClick={() => void handleWorkbookExport()}
+          disabled={!selectedReportDate || isExportingWorkbook}
+          style={actionButtonStyle}
+        >
+          {isExportingWorkbook ? "导出中..." : "导出 Excel"}
         </button>
       </div>
 
@@ -1325,12 +1622,22 @@ export default function BalanceAnalysisPage() {
           title="Excel 参考模块"
           isLoading={
             datesQuery.isLoading ||
-            workbookQuery.isLoading
+            workbookQuery.isLoading ||
+            decisionItemsQuery.isLoading
           }
-          isError={datesQuery.isError || workbookQuery.isError}
+          isError={
+            datesQuery.isError ||
+            workbookQuery.isError ||
+            decisionItemsQuery.isError
+          }
           isEmpty={!workbookQuery.isLoading && (workbook?.tables.length ?? 0) === 0}
           onRetry={() => {
-            void Promise.all([datesQuery.refetch(), workbookQuery.refetch()]);
+            void Promise.all([
+              datesQuery.refetch(),
+              workbookQuery.refetch(),
+              currentUserQuery.refetch(),
+              decisionItemsQuery.refetch(),
+            ]);
           }}
         >
           <div data-testid="balance-analysis-workbook-cards" style={summaryGridStyle}>
@@ -1409,7 +1716,100 @@ export default function BalanceAnalysisPage() {
             </div>
 
             <aside data-testid="balance-analysis-right-rail" style={workbookRightRailStyle}>
-              {rightRailWorkbookTables.map((table) => (
+              <div style={rightRailFilterRowStyle}>
+                <label>
+                  <span style={{ display: "block", marginBottom: 6, color: "#5c6b82", fontSize: 12 }}>
+                    事件类型
+                  </span>
+                  <select
+                    aria-label="balance-event-type-filter"
+                    value={eventTypeFilter}
+                    onChange={(event) => setEventTypeFilter(event.target.value)}
+                    style={rightRailFilterStyle}
+                  >
+                    <option value="all">全部</option>
+                    {eventTypeOptions.map((eventType) => (
+                      <option key={eventType} value={eventType}>
+                        {eventType}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span style={{ display: "block", marginBottom: 6, color: "#5c6b82", fontSize: 12 }}>
+                    预警等级
+                  </span>
+                  <select
+                    aria-label="balance-risk-severity-filter"
+                    value={riskSeverityFilter}
+                    onChange={(event) => setRiskSeverityFilter(event.target.value as "all" | BalanceAnalysisSeverity)}
+                    style={rightRailFilterStyle}
+                  >
+                    <option value="all">全部</option>
+                    <option value="high">high</option>
+                    <option value="medium">medium</option>
+                    <option value="low">low</option>
+                  </select>
+                </label>
+              </div>
+              <article
+                data-testid="balance-analysis-right-rail-panel-decision_items"
+                style={workbookPanelStyle}
+              >
+                <div style={workbookPanelHeaderStyle}>
+                  <div>
+                    <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>决策事项</div>
+                    <p
+                      style={{
+                        marginTop: 6,
+                        marginBottom: 0,
+                        color: "#5c6b82",
+                        fontSize: 13,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {decisionRailNote}
+                    </p>
+                  </div>
+                  <span style={workbookPanelBadgeStyle}>Governed rail</span>
+                </div>
+                {decisionActionError ? (
+                  <div
+                    data-testid="balance-analysis-decision-error"
+                    style={{
+                      marginBottom: 12,
+                      borderRadius: 12,
+                      border: "1px solid #ffd8bf",
+                      background: "#fff7f0",
+                      color: "#a14a14",
+                      padding: 12,
+                      fontSize: 13,
+                    }}
+                  >
+                    {decisionActionError}
+                  </div>
+                ) : null}
+                {currentUser ? (
+                  <div data-testid="balance-analysis-current-user" style={currentUserCardStyle}>
+                    <div>当前操作人: {currentUser.user_id}</div>
+                    <div>角色: {currentUser.role}</div>
+                    <div>身份来源: {currentUser.identity_source}</div>
+                  </div>
+                ) : null}
+                {renderDecisionItemsPanel(decisionRows, {
+                  selectedKey: selectedDecisionKey,
+                  updatingKey: updatingDecisionKey,
+                  onSelect: (row) => {
+                    setSelectedEventCalendarKey(null);
+                    setSelectedRiskAlertKey(null);
+                    setSelectedDecisionKey(row.decision_key);
+                  },
+                  onUpdateStatus: (row, status) => {
+                    void handleDecisionStatusUpdate(row, status);
+                  },
+                })}
+              </article>
+              {filteredRightRailWorkbookTables.map((table) => (
                 <article
                   key={table.key}
                   data-testid={`balance-analysis-right-rail-panel-${table.key}`}
@@ -1432,9 +1832,105 @@ export default function BalanceAnalysisPage() {
                     </div>
                     <span style={workbookPanelBadgeStyle}>Governed rail</span>
                   </div>
-                  {renderWorkbookRightRailPanel(table)}
+                  {table.section_kind === "event_calendar"
+                    ? renderEventCalendarPanel(table, {
+                        onSelect: (row) => {
+                          setSelectedDecisionKey(null);
+                          setSelectedRiskAlertKey(null);
+                          setSelectedEventCalendarKey(`${row.event_date}:${row.title}`);
+                        },
+                        selectedKey: selectedEventCalendarKey,
+                      })
+                    : table.section_kind === "risk_alerts"
+                      ? renderRiskAlertsPanel(table, {
+                          onSelect: (row) => {
+                            setSelectedDecisionKey(null);
+                            setSelectedEventCalendarKey(null);
+                            setSelectedRiskAlertKey(`${row.severity}:${row.title}`);
+                          },
+                          selectedKey: selectedRiskAlertKey,
+                        })
+                      : renderWorkbookRightRailPanel(table)}
                 </article>
               ))}
+              <article data-testid="balance-analysis-right-rail-drilldown" style={workbookPanelStyle}>
+                <div style={workbookPanelHeaderStyle}>
+                  <div>
+                    <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>详情下钻</div>
+                    <p
+                      style={{
+                        marginTop: 6,
+                        marginBottom: 0,
+                        color: "#5c6b82",
+                        fontSize: 13,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      选择一条事件日历或风险预警后，在这里查看完整说明。
+                    </p>
+                  </div>
+                  <span style={workbookPanelBadgeStyle}>Drill-down</span>
+                </div>
+                {selectedDecision ? (
+                  <div data-testid="balance-analysis-right-rail-drilldown-decision" style={{ display: "grid", gap: 8 }}>
+                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedDecision.title}</div>
+                    <div style={{ color: "#1f5eff", fontSize: 13 }}>
+                      Latest status: {selectedDecision.latest_status.status}
+                    </div>
+                    <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.6 }}>
+                      {selectedDecision.reason}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+                      <span>{selectedDecision.source_section}</span>
+                      <span>{selectedDecision.rule_id}</span>
+                      <span>{selectedDecision.rule_version}</span>
+                    </div>
+                    <div style={{ display: "grid", gap: 4, fontSize: 12, color: "#5c6b82" }}>
+                      <span>
+                        Updated by:{" "}
+                        {selectedDecision.latest_status.updated_by
+                          ? selectedDecision.latest_status.updated_by
+                          : "Not updated"}
+                      </span>
+                      <span>
+                        Updated at:{" "}
+                        {selectedDecision.latest_status.updated_at
+                          ? selectedDecision.latest_status.updated_at
+                          : "Not updated"}
+                      </span>
+                      {selectedDecision.latest_status.comment ? (
+                        <span>{selectedDecision.latest_status.comment}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : selectedEventCalendar ? (
+                  <div data-testid="balance-analysis-right-rail-drilldown-event" style={{ display: "grid", gap: 8 }}>
+                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedEventCalendar.title}</div>
+                    <div style={{ color: "#1f5eff", fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
+                    <div style={{ color: "#5c6b82", fontSize: 13 }}>{selectedEventCalendar.impact_hint}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+                      <span>{selectedEventCalendar.event_type}</span>
+                      <span>{selectedEventCalendar.source}</span>
+                      <span>{selectedEventCalendar.source_section}</span>
+                    </div>
+                  </div>
+                ) : selectedRiskAlert ? (
+                  <div data-testid="balance-analysis-right-rail-drilldown-risk" style={{ display: "grid", gap: 8 }}>
+                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedRiskAlert.title}</div>
+                    <div style={{ color: "#d9622b", fontSize: 13 }}>{selectedRiskAlert.severity}</div>
+                    <div style={{ color: "#a14a14", fontSize: 13, lineHeight: 1.6 }}>
+                      {selectedRiskAlert.reason}
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
+                      <span>{selectedRiskAlert.source_section}</span>
+                      <span>{selectedRiskAlert.rule_id}</span>
+                      <span>{selectedRiskAlert.rule_version}</span>
+                    </div>
+                  </div>
+                ) : (
+                  renderWorkbookEmptyState("选择一条事件日历或风险预警后查看详情。")
+                )}
+              </article>
             </aside>
           </div>
 
