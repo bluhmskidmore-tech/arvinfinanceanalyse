@@ -584,26 +584,34 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
     all_rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     credit_rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class="credit")
     meta = _meta("bond_analytics.credit_spread_migration", report_date, all_rows)
-    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
-    treasury_current, treasury_warning = _resolve_curve_for_service(
-        repo=curve_repo,
-        requested_trade_date=report_date.isoformat(),
-        curve_type="treasury",
-    )
-    aaa_current, aaa_warning = _resolve_curve_for_service(
-        repo=curve_repo,
-        requested_trade_date=report_date.isoformat(),
-        curve_type="aaa_credit",
-    )
-    curve_snapshots = [snapshot for snapshot in (treasury_current, aaa_current) if snapshot is not None]
-    curve_latest_fallback = any(
-        warning and "Using latest available" in warning
-        for warning in (aaa_warning, treasury_warning)
-    )
-    curve_unavailable = any(
-        warning and warning.startswith("No ")
-        for warning in (aaa_warning, treasury_warning)
-    )
+    treasury_current = None
+    treasury_warning = None
+    aaa_current = None
+    aaa_warning = None
+    curve_snapshots: list[dict[str, object]] = []
+    curve_latest_fallback = False
+    curve_unavailable = False
+    if credit_rows:
+        curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+        treasury_current, treasury_warning = _resolve_curve_for_service(
+            repo=curve_repo,
+            requested_trade_date=report_date.isoformat(),
+            curve_type="treasury",
+        )
+        aaa_current, aaa_warning = _resolve_curve_for_service(
+            repo=curve_repo,
+            requested_trade_date=report_date.isoformat(),
+            curve_type="aaa_credit",
+        )
+        curve_snapshots = [snapshot for snapshot in (treasury_current, aaa_current) if snapshot is not None]
+        curve_latest_fallback = any(
+            warning and "Using latest available" in warning
+            for warning in (aaa_warning, treasury_warning)
+        )
+        curve_unavailable = any(
+            warning and warning.startswith("No ")
+            for warning in (aaa_warning, treasury_warning)
+        )
     if curve_snapshots:
         meta = meta.model_copy(
             update={
