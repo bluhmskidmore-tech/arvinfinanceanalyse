@@ -270,6 +270,44 @@ class BondAnalyticsRepository:
         rows = self.fetch_bond_analytics_rows(report_date=report_date)
         return summarize_accounting_audit(rows)["rows"]
 
+    def fetch_latest_risk_overview_snapshot(self) -> dict[str, object] | None:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return None
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return None
+            row = conn.execute(
+                f"""
+                with latest as (
+                  select max(cast(report_date as varchar)) as report_date
+                  from {FACT_TABLE}
+                )
+                select
+                  latest.report_date,
+                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
+                  sum(dv01) as portfolio_dv01,
+                  sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
+                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
+                from {FACT_TABLE}
+                cross join latest
+                where cast(report_date as varchar) = latest.report_date
+                group by latest.report_date
+                """
+            ).fetchone()
+            if row is None or row[0] is None:
+                return None
+            columns = [
+                "report_date",
+                "portfolio_modified_duration",
+                "portfolio_dv01",
+                "credit_market_value_ratio_pct",
+                "weighted_years_to_maturity",
+            ]
+            return dict(zip(columns, row, strict=True))
+        finally:
+            conn.close()
+
 
 def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(

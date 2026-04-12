@@ -1,5 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ApiEnvelope } from "../../../api/contracts";
 import type { ActionAttributionResponse, PeriodType } from "../types";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
@@ -38,7 +39,7 @@ export function BondAnalyticsViewContent() {
   const [reportDate, setReportDate] = useState(dateOptions[0]?.value ?? "");
   const [periodType, setPeriodType] = useState<PeriodType>("MoM");
   const [activeTab, setActiveTab] =
-    useState<BondAnalyticsModuleKey>("return-decomposition");
+    useState<BondAnalyticsModuleKey>("action-attribution");
   const [isBondAnalyticsRefreshing, setIsBondAnalyticsRefreshing] = useState(false);
   const [bondAnalyticsRefreshError, setBondAnalyticsRefreshError] = useState<string | null>(
     null,
@@ -55,7 +56,7 @@ export function BondAnalyticsViewContent() {
       reportDate,
       periodType,
     ],
-    queryFn: async (): Promise<ActionAttributionResponse> => {
+    queryFn: async (): Promise<ApiEnvelope<ActionAttributionResponse>> => {
       const params = new URLSearchParams({
         report_date: reportDate,
         period_type: periodType,
@@ -69,7 +70,7 @@ export function BondAnalyticsViewContent() {
       }
 
       const json = await response.json();
-      return json.result as ActionAttributionResponse;
+      return json as ApiEnvelope<ActionAttributionResponse>;
     },
     enabled: Boolean(reportDate),
     retry: false,
@@ -118,7 +119,8 @@ export function BondAnalyticsViewContent() {
   const overviewModel = buildBondAnalyticsOverviewModel({
     reportDate,
     periodType,
-    actionAttribution: actionAttributionQuery.data ?? null,
+    activeModuleKey: activeTab,
+    actionAttributionEnvelope: actionAttributionQuery.data ?? null,
     actionAttributionLoading: actionAttributionQuery.isFetching,
     actionAttributionError: actionAttributionErrorMessage,
   });

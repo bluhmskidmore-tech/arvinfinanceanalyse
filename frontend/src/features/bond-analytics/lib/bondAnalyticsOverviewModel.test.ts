@@ -1,7 +1,29 @@
 import { describe, expect, it } from "vitest";
 
+import type { ApiEnvelope, ResultMeta } from "../../../api/contracts";
 import type { ActionAttributionResponse } from "../types";
 import { buildBondAnalyticsOverviewModel } from "./bondAnalyticsOverviewModel";
+
+function createResultMeta(
+  overrides: Partial<ResultMeta> = {},
+): ResultMeta {
+  return {
+    trace_id: "tr_demo",
+    basis: "formal",
+    result_kind: "bond_analytics.action_attribution",
+    formal_use_allowed: true,
+    source_version: "sv_demo",
+    vendor_version: "vv_demo",
+    rule_version: "rv_demo",
+    cache_version: "cv_demo",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-10T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function createActionAttribution(
   overrides: Partial<ActionAttributionResponse> = {},
@@ -26,18 +48,29 @@ function createActionAttribution(
   };
 }
 
+function createActionAttributionEnvelope(
+  resultOverrides: Partial<ActionAttributionResponse> = {},
+  metaOverrides: Partial<ResultMeta> = {},
+): ApiEnvelope<ActionAttributionResponse> {
+  return {
+    result_meta: createResultMeta(metaOverrides),
+    result: createActionAttribution(resultOverrides),
+  };
+}
+
 describe("buildBondAnalyticsOverviewModel", () => {
-  it("promotes action attribution to summary when real content exists", () => {
+  it("builds a provenance-driven truth strip and promotes only eligible action attribution", () => {
     const model = buildBondAnalyticsOverviewModel({
       reportDate: "2026-03-31",
       periodType: "MoM",
-      actionAttribution: createActionAttribution({
+      activeModuleKey: "action-attribution",
+      actionAttributionEnvelope: createActionAttributionEnvelope({
         total_actions: 4,
         total_pnl_from_actions: "1500000",
         by_action_type: [
           {
             action_type: "ADD_DURATION",
-            action_type_name: "加久期",
+            action_type_name: "Add duration",
             action_count: 4,
             total_pnl_economic: "1500000",
             total_pnl_accounting: "1500000",
@@ -47,31 +80,77 @@ describe("buildBondAnalyticsOverviewModel", () => {
       }),
     });
 
-    const actionModule = model.currentModules.find(
-      (module) => module.key === "action-attribution",
+    expect(model.truthStrip.items.map((item) => item.key)).toEqual([
+      "basis",
+      "freshness",
+      "quality",
+      "coverage",
+    ]);
+    expect(model.truthStrip.items.find((item) => item.key === "basis")?.value).toBe(
+      "Formal",
     );
-
-    expect(actionModule?.tier).toBe("summary");
-    expect(actionModule?.summary?.primaryValue).toBe("4");
-    expect(actionModule?.summary?.secondaryValue).toBe("1500000");
-    expect(model.futureModules.length).toBeGreaterThan(0);
+    expect(model.headlineTiles).toHaveLength(1);
+    expect(model.headlineTiles[0]?.key).toBe("action-attribution");
+    expect(model.headlineTiles[0]?.value).toBe("4");
+    expect(model.readinessItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "return-decomposition",
+          statusLabel: "not-fetched-in-overview",
+          promotionDestination: "readiness-only",
+        }),
+        expect.objectContaining({
+          key: "accounting-audit",
+          statusLabel: "not-fetched-in-overview",
+          promotionDestination: "readiness-only",
+        }),
+      ]),
+    );
+    expect(model.futureVisibilityItems).toHaveLength(4);
+    expect(model.activeModuleContext.key).toBe("action-attribution");
   });
 
-  it("downgrades action attribution to status when the response is placeholder-only", () => {
+  it("blocks promotion when provenance is degraded even if action content exists", () => {
     const model = buildBondAnalyticsOverviewModel({
       reportDate: "2026-03-31",
       periodType: "MoM",
-      actionAttribution: createActionAttribution({
-        warnings: ["DuckDB fact tables not yet populated - returning empty attribution"],
-      }),
+      activeModuleKey: "action-attribution",
+      actionAttributionEnvelope: createActionAttributionEnvelope(
+        {
+          total_actions: 4,
+          total_pnl_from_actions: "1500000",
+          by_action_type: [
+            {
+              action_type: "ADD_DURATION",
+              action_type_name: "Add duration",
+              action_count: 4,
+              total_pnl_economic: "1500000",
+              total_pnl_accounting: "1500000",
+              avg_pnl_per_action: "375000",
+            },
+          ],
+        },
+        {
+          quality_flag: "warning",
+          fallback_mode: "latest_snapshot",
+        },
+      ),
     });
 
-    const actionModule = model.currentModules.find(
-      (module) => module.key === "action-attribution",
+    expect(model.headlineTiles).toHaveLength(0);
+    expect(model.readinessItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "action-attribution",
+          statusLabel: "warning",
+          promotionDestination: "readiness-only",
+        }),
+      ]),
     );
-
-    expect(actionModule?.tier).toBe("status");
-    expect(actionModule?.summary).toBeUndefined();
-    expect(actionModule?.statusReason).toMatch(/placeholder/i);
+    expect(model.topAnomalies).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/latest snapshot/i),
+      ]),
+    );
   });
 });

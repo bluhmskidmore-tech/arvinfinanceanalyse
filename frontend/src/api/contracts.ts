@@ -142,7 +142,10 @@ export type AlertsPayload = {
   items: AlertItem[];
 };
 
-/** `/api/risk/tensor?report_date=` — `result` 内为风险张量载荷（小数字段为后端量化后的字符串）。 */
+/**
+ * `/api/risk/tensor?report_date=` — `result` 内为风险张量载荷（小数字段为后端量化后的字符串）。
+ * 「风险总览」与「风险张量」页面均通过 `getRiskTensor` 消费同一载荷；不在前端补算指标。
+ */
 export type RiskTensorPayload = {
   report_date: string;
   portfolio_dv01: string;

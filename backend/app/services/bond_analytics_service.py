@@ -41,7 +41,7 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
-from backend.app.services.analysis_service import UnifiedAnalysisService, build_default_analysis_service
+from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
 from backend.app.tasks.bond_analytics_materialize import (
     BOND_ANALYTICS_LOCK,
@@ -84,10 +84,6 @@ def _trace_id() -> str:
 
 def _text(value: Decimal) -> str:
     return format(value.quantize(Q8, rounding=ROUND_HALF_UP), "f")
-
-
-def build_analysis_service() -> UnifiedAnalysisService:
-    return build_default_analysis_service(duckdb_path=str(get_settings().duckdb_path))
 
 
 def _repo() -> BondAnalyticsRepository:
@@ -426,7 +422,7 @@ def get_accounting_class_audit(report_date: date) -> dict:
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
-    analysis_envelope = build_analysis_service().execute(
+    analysis_envelope = build_bond_action_attribution_placeholder_envelope(
         AnalysisQuery(
             consumer="bond_analytics.action_attribution",
             analysis_key="bond_action_attribution",

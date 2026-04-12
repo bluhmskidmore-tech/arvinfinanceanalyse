@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
 
+import { useApiClient } from "../../api/client";
 import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
@@ -61,6 +63,17 @@ const blockTitleStyle = {
   color: "#162033",
 } as const;
 
+const drillDownIntroStyle = {
+  margin: "28px 0 12px",
+  padding: "14px 16px",
+  borderRadius: 14,
+  border: "1px solid #e4ebf5",
+  background: "#f6f9fc",
+  color: "#5c6b82",
+  fontSize: 14,
+  lineHeight: 1.65,
+} as const;
+
 async function fetchKrdCurveRisk(reportDate: string): Promise<KRDCurveRiskResponse> {
   const params = new URLSearchParams({ report_date: reportDate });
   const res = await fetch(`/api/bond-analytics/krd-curve-risk?${params}`);
@@ -90,12 +103,32 @@ function cellText(value: string | number | null | undefined) {
   return String(value);
 }
 
+function displayStr(value: string | undefined) {
+  if (value === undefined || value === "") {
+    return "—";
+  }
+  return value;
+}
+
+/** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
+function chartMagnitude(value: string) {
+  const n = Number.parseFloat(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 export default function RiskOverviewPage() {
+  const client = useApiClient();
   const [searchParams] = useSearchParams();
   const reportDate = useMemo(() => {
     const fromUrl = searchParams.get("report_date")?.trim();
     return fromUrl || DEFAULT_REPORT_DATE;
   }, [searchParams]);
+
+  const tensorQuery = useQuery({
+    queryKey: ["risk-overview", "risk-tensor", reportDate],
+    queryFn: () => client.getRiskTensor(reportDate),
+    retry: false,
+  });
 
   const krdQuery = useQuery({
     queryKey: ["risk-overview", "krd-curve-risk", reportDate],
@@ -109,8 +142,55 @@ export default function RiskOverviewPage() {
     retry: false,
   });
 
+  const tensorResult = tensorQuery.data?.result;
+  const tensorEmpty =
+    !tensorQuery.isLoading &&
+    !tensorQuery.isError &&
+    tensorResult !== undefined &&
+    tensorResult.bond_count === 0;
+
   const krd = krdQuery.data;
   const credit = creditQuery.data;
+
+  const krdChartOption = useMemo((): EChartsOption | null => {
+    if (!tensorResult) {
+      return null;
+    }
+    const labels = ["1Y", "3Y", "5Y", "7Y", "10Y", "30Y"];
+    const keys = [
+      "krd_1y",
+      "krd_3y",
+      "krd_5y",
+      "krd_7y",
+      "krd_10y",
+      "krd_30y",
+    ] as const;
+    const data = keys.map((k) => chartMagnitude(tensorResult[k]));
+    return {
+      grid: { left: 52, right: 16, top: 36, bottom: 28 },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+      },
+      xAxis: {
+        type: "category",
+        data: labels,
+        axisLabel: { color: "#5c6b82" },
+      },
+      yAxis: {
+        type: "value",
+        axisLabel: { color: "#5c6b82" },
+        splitLine: { lineStyle: { color: "#eef2f7" } },
+      },
+      series: [
+        {
+          type: "bar",
+          data,
+          itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
+        },
+      ],
+    };
+  }, [tensorResult]);
 
   return (
     <section>
@@ -135,7 +215,9 @@ export default function RiskOverviewPage() {
             lineHeight: 1.75,
           }}
         >
-          消费 Bond Analytics 物化结果：利率曲线 / KRD、情景与信用利差。不在浏览器端做金融重算。
+          主指标来自正式风险张量接口{" "}
+          <code style={{ fontSize: 13 }}>/api/risk/tensor</code>
+          （与「风险张量」页同一主链）。下方 Bond Analytics 物化结果为下钻与补充视图，不在浏览器端做金融重算。
         </p>
       </div>
 
@@ -159,17 +241,166 @@ export default function RiskOverviewPage() {
 
       <div style={{ marginTop: 8 }}>
         <AsyncSection
-          title="利率曲线与 KRD 风险"
+          title="正式风险张量（主数据）"
+          isLoading={tensorQuery.isLoading}
+          isError={tensorQuery.isError}
+          isEmpty={tensorEmpty}
+          onRetry={() => void tensorQuery.refetch()}
+        >
+          {tensorResult && (
+            <>
+              <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
+                <PlaceholderCard
+                  title="组合 DV01"
+                  value={displayStr(tensorResult.portfolio_dv01)}
+                  detail="portfolio_dv01，后端字符串口径。"
+                />
+                <PlaceholderCard
+                  title="修正久期"
+                  value={displayStr(tensorResult.portfolio_modified_duration)}
+                  detail="portfolio_modified_duration。"
+                />
+                <PlaceholderCard
+                  title="CS01"
+                  value={displayStr(tensorResult.cs01)}
+                  detail="cs01（信用 spread 敏感度聚合）。"
+                />
+                <PlaceholderCard
+                  title="组合凸性"
+                  value={displayStr(tensorResult.portfolio_convexity)}
+                  detail="portfolio_convexity。"
+                />
+                <PlaceholderCard
+                  title="债券只数"
+                  value={String(tensorResult.bond_count)}
+                  detail="bond_count。"
+                />
+                <PlaceholderCard
+                  title="总市值"
+                  value={displayStr(tensorResult.total_market_value)}
+                  detail="total_market_value。"
+                />
+              </div>
+
+              <h2
+                style={{
+                  margin: "24px 0 12px",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: "#162033",
+                }}
+              >
+                KRD 分桶（DV01）
+              </h2>
+              {krdChartOption ? (
+                <ReactECharts option={krdChartOption} style={{ height: 320 }} />
+              ) : null}
+
+              <h2
+                style={{
+                  margin: "24px 0 12px",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: "#162033",
+                }}
+              >
+                集中度
+              </h2>
+              <div style={summaryGridStyle}>
+                <PlaceholderCard
+                  title="发行人 HHI"
+                  value={displayStr(tensorResult.issuer_concentration_hhi)}
+                  detail="issuer_concentration_hhi。"
+                />
+                <PlaceholderCard
+                  title="前五大权重"
+                  value={displayStr(tensorResult.issuer_top5_weight)}
+                  detail="issuer_top5_weight。"
+                />
+              </div>
+
+              <h2
+                style={{
+                  margin: "24px 0 12px",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: "#162033",
+                }}
+              >
+                流动性缺口（市值）
+              </h2>
+              <div style={summaryGridStyle}>
+                <PlaceholderCard
+                  title="30 日内到期市值"
+                  value={displayStr(tensorResult.liquidity_gap_30d)}
+                  detail="liquidity_gap_30d。"
+                />
+                <PlaceholderCard
+                  title="90 日内到期市值"
+                  value={displayStr(tensorResult.liquidity_gap_90d)}
+                  detail="liquidity_gap_90d。"
+                />
+                <PlaceholderCard
+                  title="30 日流动性缺口占比"
+                  value={displayStr(tensorResult.liquidity_gap_30d_ratio)}
+                  detail="liquidity_gap_30d_ratio。"
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 20,
+                  padding: 12,
+                  borderRadius: 12,
+                  border:
+                    tensorResult.quality_flag === "ok"
+                      ? "1px solid #d7dfea"
+                      : "1px solid #e8d9a8",
+                  background:
+                    tensorResult.quality_flag === "ok" ? "#f6f9fc" : "#fffbeb",
+                  color: "#162033",
+                  fontSize: 14,
+                }}
+              >
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                  质量标记：{tensorResult.quality_flag}
+                </div>
+                {tensorResult.warnings.length === 0 ? (
+                  <div style={{ color: "#5c6b82" }}>无 warnings。</div>
+                ) : (
+                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                    {tensorResult.warnings.map((w, i) => (
+                      <li key={i}>{w}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          )}
+        </AsyncSection>
+      </div>
+
+      <div style={drillDownIntroStyle}>
+        <strong style={{ color: "#162033" }}>Bond Analytics 下钻与补充</strong>
+        ：以下接口来自{" "}
+        <code style={{ fontSize: 12 }}>/api/bond-analytics/krd-curve-risk</code> 与{" "}
+        <code style={{ fontSize: 12 }}>/api/bond-analytics/credit-spread-migration</code>
+        ，用于曲线/KRD 明细与信用利差迁移等物化视角，与主链风险张量并存时可对照阅读。
+      </div>
+
+      <div style={{ marginTop: 8 }}>
+        <AsyncSection
+          title="利率曲线与 KRD 风险（物化下钻）"
           isLoading={krdQuery.isLoading}
           isError={krdQuery.isError}
           isEmpty={false}
           onRetry={() => void krdQuery.refetch()}
         >
-          <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
+          <div data-testid="risk-overview-bond-krd-kpi-grid" style={summaryGridStyle}>
             <PlaceholderCard
               title="组合久期"
               value={cellText(krd?.portfolio_duration)}
-              detail="portfolio_duration，后端口径。"
+              detail="portfolio_duration，Bond Analytics 物化口径。"
             />
             <PlaceholderCard
               title="修正久期"
@@ -293,7 +524,7 @@ export default function RiskOverviewPage() {
 
       <div style={{ marginTop: 24 }}>
         <AsyncSection
-          title="信用利差"
+          title="信用利差迁移（物化下钻）"
           isLoading={creditQuery.isLoading}
           isError={creditQuery.isError}
           isEmpty={false}
