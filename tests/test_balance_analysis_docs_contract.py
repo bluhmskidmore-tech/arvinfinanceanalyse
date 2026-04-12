@@ -35,3 +35,42 @@ def test_acceptance_tests_track_registry_runtime_and_result_meta_contract_regres
     assert "tests/test_formal_compute_result_meta_contract.py" in acceptance
     assert "不构成放宽架构约束的授权" in acceptance
     assert "不得把 snapshot 直读或更多未落地能力写成已完成" in acceptance
+
+
+def test_balance_analysis_docs_distinguish_supported_workbook_sections_from_future_gap_sections():
+    spec = _read_doc("docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md")
+    reconciliation = _read_doc("docs/BALANCE_ANALYSIS_RECONCILIATION_2026-03-01.md")
+
+    assert "当前 governed workbook 已支持的 section keys" in spec
+    assert "`bond_business_types`" in spec
+    assert "`maturity_gap`" in spec
+    assert "`currency_split`" in spec
+    assert "`cashflow_calendar`" in spec
+    assert "`issuer_concentration`" in spec
+    assert "`account_category_comparison`" in spec
+    assert "`ifrs9_classification`" in spec
+    assert "`rule_reference`" in spec
+    assert "`regulatory_limits`" in spec
+    assert "`portfolio_comparison`" in spec
+    assert "当前尚未纳入 governed workbook 的 section keys" in spec
+    assert "`advanced_attribution_bundle`" in spec
+
+    assert "当前对账结论仅覆盖当前 governed workbook 已支持的 section" in reconciliation
+    assert "不等于 `资产负债分析_20260301_4.xlsx` 全量 1:1 对齐完成" in reconciliation
+
+
+def test_data_contracts_record_account_category_as_formal_zqtz_balance_field():
+    contracts = _read_doc("docs/data_contracts.md")
+
+    assert "### 4.3 fact_formal_zqtz_balance_daily" in contracts
+    assert "- `account_category`" in contracts
+    assert "- `overdue_principal_days`" in contracts
+    assert "- `value_date`" in contracts
+
+
+def test_balance_analysis_advanced_attribution_boundary_design_note_exists():
+    doc = _read_doc("docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md")
+
+    assert "advanced_attribution_bundle" in doc
+    assert "bond_analytics_service" in doc
+    assert "roll_down" in doc

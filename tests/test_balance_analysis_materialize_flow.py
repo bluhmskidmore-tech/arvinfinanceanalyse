@@ -259,12 +259,76 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
             governance_dir=str(governance_dir),
         )
 
+
+def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              asset_class varchar,
+              bond_type varchar,
+              issuer_name varchar,
+              industry_name varchar,
+              rating varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              coupon_rate decimal(18, 8),
+              ytm_value decimal(18, 8),
+              maturity_date varchar,
+              interest_mode varchar,
+              is_issuance_like boolean,
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="native",
+    )
+    assert rows
+    assert rows[0]["account_category"] == "可供出售债券"
+
     build_runs = [
         json.loads(line)
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_runs[-1]["status"] == "failed"
+    assert build_runs[-1]["status"] == "completed"
     assert build_runs[-1]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
 
 

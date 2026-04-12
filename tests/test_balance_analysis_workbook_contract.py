@@ -49,9 +49,9 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
               currency_code, face_value_native, market_value_native, amortized_cost_native,
               accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
               overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-              ingest_batch_id, trace_id
+              ingest_batch_id, trace_id, value_date, customer_attribute
             ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -82,6 +82,8 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 "rv-snap-1",
                 "ib-z-1",
                 "trace-z-1",
+                "2020-06-01",
+                "\u5bf9\u516c",
             ],
         )
         conn.execute(
@@ -92,9 +94,9 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
               currency_code, face_value_native, market_value_native, amortized_cost_native,
               accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
               overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-              ingest_batch_id, trace_id
+              ingest_batch_id, trace_id, value_date, customer_attribute
             ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -118,13 +120,15 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 Decimal("0"),
                 "2026-06-30",
                 None,
-                0,
+                5,
                 False,
                 FIXED,
                 "sv-z-1",
                 "rv-snap-1",
                 "ib-z-1",
                 "trace-z-2",
+                "2018-03-01",
+                "\u96f6\u552e",
             ],
         )
         conn.execute(
@@ -135,9 +139,9 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
               currency_code, face_value_native, market_value_native, amortized_cost_native,
               accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
               overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-              ingest_batch_id, trace_id
+              ingest_batch_id, trace_id, value_date, customer_attribute
             ) values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -168,6 +172,8 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
                 "rv-snap-1",
                 "ib-z-1",
                 "trace-z-3",
+                None,
+                "",
             ],
         )
         conn.execute(
@@ -271,6 +277,7 @@ def test_workbook_weighted_term_years_matches_365_25_day_basis():
             instrument_name="X1",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
             bond_type=OTHER_BOND,
             issuer_name="I",
@@ -297,6 +304,7 @@ def test_workbook_weighted_term_years_matches_365_25_day_basis():
             instrument_name="X2",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
             bond_type=OTHER_BOND,
             issuer_name="I",
@@ -348,6 +356,7 @@ def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity()
             instrument_name="A",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
             bond_type=OTHER_BOND,
             issuer_name="I",
@@ -374,6 +383,7 @@ def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity()
             instrument_name="B",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
             bond_type=OTHER_BOND,
             issuer_name="I",
@@ -400,6 +410,7 @@ def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity()
             instrument_name="C",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u4ea4\u6613\u6027\u8d44\u4ea7",
             bond_type=OTHER_BOND,
             issuer_name="I",
@@ -444,6 +455,7 @@ def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
             instrument_name="P",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u6301\u6709\u81f3\u5230\u671f\u7c7b\u8d44\u4ea7",
             bond_type=POLICY_BOND,
             issuer_name="I",
@@ -470,6 +482,7 @@ def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
             instrument_name="G",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
             bond_type="\u56fd\u503a",
             issuer_name="I",
@@ -496,6 +509,7 @@ def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
             instrument_name="C",
             portfolio_name="P",
             cost_center="C",
+            account_category="",
             asset_class="\u53ef\u4f9b\u51fa\u552e\u7c7b\u8d44\u4ea7",
             bond_type="\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a",
             issuer_name="I",
@@ -616,6 +630,15 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
         "campisi_breakdown",
         "cross_analysis",
         "interest_modes",
+        "liquidity_layers",
+        "regulatory_limits",
+        "overdue_credit_quality",
+        "overdue_credit_quality_ratings",
+        "vintage_analysis",
+        "customer_attribute_analysis",
+        "portfolio_comparison",
+        "ifrs9_position_scope",
+        "ifrs9_source_family",
     } <= table_keys
     table_map = {table["key"]: table for table in payload["result"]["tables"]}
     issuance_rows = table_map["issuance_business_types"]["rows"]
@@ -628,5 +651,372 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     assert Decimal(str(policy_row["balance_amount"])) < Decimal("1")
     other_row = next(row for row in bond_rows if row["bond_type"] == OTHER_BOND)
     assert Decimal(str(other_row["balance_amount"])) == Decimal("0.005")
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_keys = {table["key"] for table in payload["result"]["tables"]}
+
+    assert "liquidity_layers" in table_keys
+    assert "regulatory_limits" in table_keys
+    assert "advanced_attribution_bundle" not in table_keys
+
+    get_settings.cache_clear()
+
+
+def test_maturity_gap_includes_issuance_and_full_scope_liabilities(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    maturity_rows = table_map["maturity_gap"]["rows"]
+    row_3m = next(row for row in maturity_rows if row["bucket"] == "3个月以内")
+
+    assert Decimal(str(row_3m["issuance_amount"])) == Decimal("0.008")
+    assert Decimal(str(row_3m["full_scope_liability_amount"])) == Decimal("0.012")
+    assert Decimal(str(row_3m["gap_amount"])) == Decimal("-0.001")
+    assert Decimal(str(row_3m["full_scope_gap_amount"])) == Decimal("-0.009")
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_cashflow_calendar_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "cashflow_calendar" in table_map
+
+    rows = table_map["cashflow_calendar"]["rows"]
+    assert len(rows) == 12
+    feb_row = next(row for row in rows if row["month"] == "2026-02")
+    jan_row = next(row for row in rows if row["month"] == "2026-01")
+    mar_row = next(row for row in rows if row["month"] == "2026-03")
+
+    assert Decimal(str(feb_row["net_cashflow_amount"])) == Decimal("0")
+    assert Decimal(str(feb_row["cumulative_net_cashflow_amount"])) == Decimal("-0.001")
+    assert Decimal(str(jan_row["interbank_asset_maturity_amount"])) == Decimal("0.003")
+    assert Decimal(str(jan_row["interbank_liability_maturity_amount"])) == Decimal("0.004")
+    assert Decimal(str(jan_row["net_cashflow_amount"])) == Decimal("-0.001")
+    assert Decimal(str(mar_row["issuance_maturity_amount"])) == Decimal("0.008")
+    assert Decimal(str(mar_row["net_cashflow_amount"])) == Decimal("-0.008")
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_liquidity_layers_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "liquidity_layers" in table_map
+
+    rows = table_map["liquidity_layers"]["rows"]
+    assert [row["liquidity_layer"] for row in rows] == ["Level 1", "Level 2A", "Level 2B", "其他"]
+
+    layer_map = {row["liquidity_layer"]: row for row in rows}
+    total_bond = Decimal("0.015")
+    l1 = layer_map["Level 1"]
+    assert l1["row_count"] == 1
+    assert Decimal(str(l1["balance_amount"])) == Decimal("0.01")
+    assert Decimal(str(l1["share_of_bond_assets"])) == Decimal("0.01") / total_bond
+    assert Decimal(str(l1["weighted_rate_pct"])) == Decimal("2.5")
+    assert Decimal(str(l1["hqla_haircut"])) == Decimal("1")
+    assert Decimal(str(l1["hqla_amount"])) == Decimal("0.01")
+
+    l2a = layer_map["Level 2A"]
+    assert l2a["row_count"] == 0
+    assert Decimal(str(l2a["balance_amount"])) == Decimal("0")
+    assert Decimal(str(l2a["share_of_bond_assets"])) == Decimal("0")
+
+    l2b = layer_map["Level 2B"]
+    assert l2b["row_count"] == 0
+    assert Decimal(str(l2b["balance_amount"])) == Decimal("0")
+
+    other = layer_map["其他"]
+    assert other["row_count"] == 1
+    assert Decimal(str(other["balance_amount"])) == Decimal("0.005")
+    assert Decimal(str(other["share_of_bond_assets"])) == Decimal("0.005") / total_bond
+    assert Decimal(str(other["weighted_rate_pct"])) == Decimal("0")
+    assert Decimal(str(other["hqla_haircut"])) == Decimal("0")
+    assert Decimal(str(other["hqla_amount"])) == Decimal("0")
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_issuer_concentration_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "issuer_concentration" in table_map
+
+    rows = table_map["issuer_concentration"]["rows"]
+    issuer_a = next(row for row in rows if row["issuer_name"] == "IssuerA")
+    issuer_b = next(row for row in rows if row["issuer_name"] == "IssuerB")
+
+    assert issuer_a["count"] == 1
+    assert Decimal(str(issuer_a["balance_amount"])) == Decimal("0.01")
+    assert issuer_b["count"] == 1
+    assert Decimal(str(issuer_b["balance_amount"])) == Decimal("0.005")
+    assert all(row["issuer_name"] != "IssuerC" for row in rows)
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_rule_reference_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "rule_reference" in table_map
+
+    rows = table_map["rule_reference"]["rows"]
+    issuance_rule = next(row for row in rows if row["rule_id"] == "bal_scope_issuance_exclusion")
+
+    assert issuance_rule["rule_name"] == "发行类剔除"
+    assert issuance_rule["source_doc"] == "docs/calc_rules.md"
+    assert issuance_rule["source_section"] == "12.2 zqtz formal fact 规则"
+    assert "发行类" in str(issuance_rule["summary"])
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_ifrs9_classification_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "ifrs9_classification" in table_map
+
+    rows = table_map["ifrs9_classification"]["rows"]
+    columns = {column["key"] for column in table_map["ifrs9_classification"]["columns"]}
+    fvoci_asset = next(
+        row for row in rows
+        if row["source_family"] == "zqtz"
+        and row["position_scope"] == "asset"
+        and row["invest_type_std"] == "A"
+        and row["accounting_basis"] == "FVOCI"
+    )
+    ac_asset = next(
+        row for row in rows
+        if row["source_family"] == "zqtz"
+        and row["position_scope"] == "asset"
+        and row["invest_type_std"] == "H"
+        and row["accounting_basis"] == "AC"
+    )
+
+    assert "account_category" not in columns
+    assert "ecl_stage" not in columns
+    assert "share_of_total" in columns
+    assert fvoci_asset["row_count"] == 1
+    assert Decimal(str(fvoci_asset["balance_amount"])) == Decimal("0.01")
+    total_native_wan = sum(Decimal(str(r["balance_amount"])) for r in rows)
+    assert total_native_wan > Decimal("0")
+    assert Decimal(str(fvoci_asset["share_of_total"])) == Decimal(str(fvoci_asset["balance_amount"])) / total_native_wan
+    assert ac_asset["row_count"] == 1
+    assert Decimal(str(ac_asset["balance_amount"])) == Decimal("0.005")
+
+    assert "ifrs9_position_scope" in table_map
+    assert "ifrs9_source_family" in table_map
+
+    get_settings.cache_clear()
+
+
+def test_workbook_exposes_account_category_comparison_section(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    table_map = {table["key"]: table for table in payload["result"]["tables"]}
+    assert "account_category_comparison" in table_map
+
+    rows = table_map["account_category_comparison"]["rows"]
+    afs_row = next(row for row in rows if row["account_category"] == "可供出售债券")
+    bank_row = next(row for row in rows if row["account_category"] == "银行账户")
+
+    assert afs_row["row_count"] == 1
+    assert Decimal(str(afs_row["balance_amount"])) == Decimal("0.01")
+    assert bank_row["row_count"] == 1
+    assert Decimal(str(bank_row["balance_amount"])) == Decimal("0.005")
 
     get_settings.cache_clear()

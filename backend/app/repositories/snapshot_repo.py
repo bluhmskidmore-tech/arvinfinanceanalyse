@@ -45,6 +45,7 @@ def ensure_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    _ensure_zqtz_enrichment_columns(conn)
     conn.execute(
         f"""
         create table if not exists {TYW_TABLE} (
@@ -69,6 +70,27 @@ def ensure_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+
+
+def _snapshot_column_exists(conn: duckdb.DuckDBPyConnection, table_name: str, column_name: str) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.columns
+        where table_name = ?
+          and column_name = ?
+        limit 1
+        """,
+        [table_name, column_name],
+    ).fetchone()
+    return row is not None
+
+
+def _ensure_zqtz_enrichment_columns(conn: duckdb.DuckDBPyConnection) -> None:
+    if not _snapshot_column_exists(conn, ZQTZ_TABLE, "value_date"):
+        conn.execute(f"alter table {ZQTZ_TABLE} add column value_date date")
+    if not _snapshot_column_exists(conn, ZQTZ_TABLE, "customer_attribute"):
+        conn.execute(f"alter table {ZQTZ_TABLE} add column customer_attribute varchar")
 
 
 def delete_zqtz_snapshots_for_batches(conn: duckdb.DuckDBPyConnection, ingest_batch_ids: list[str]) -> None:
@@ -109,7 +131,7 @@ def replace_zqtz_snapshot_rows(
     conn.executemany(
         f"""
         insert into {ZQTZ_TABLE} values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -141,6 +163,8 @@ def replace_zqtz_snapshot_rows(
                 r["rule_version"],
                 r["ingest_batch_id"],
                 r["trace_id"],
+                _sql_value(r.get("value_date")),
+                r.get("customer_attribute") or "",
             )
             for r in rows
         ],

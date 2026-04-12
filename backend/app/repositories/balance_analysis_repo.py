@@ -30,8 +30,9 @@ class BalanceAnalysisRepository:
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                    account_category, asset_class, bond_type, issuer_name, industry_name, rating,
                    currency_code, face_value_native, market_value_native, amortized_cost_native,
-                   accrued_interest_native, coupon_rate, ytm_value, maturity_date, is_issuance_like,
-                   interest_mode, source_version, rule_version, ingest_batch_id, trace_id
+                   accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
+                   overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
+                   ingest_batch_id, trace_id, value_date, customer_attribute
             from zqtz_bond_daily_snapshot
             where report_date = ?
             order by instrument_code, portfolio_name, cost_center, currency_code
@@ -59,12 +60,15 @@ class BalanceAnalysisRepository:
                 coupon_rate=row[16],
                 ytm_value=row[17],
                 maturity_date=row[18],
-                is_issuance_like=bool(row[19]),
-                interest_mode=row[20] or "",
-                source_version=row[21] or "",
-                rule_version=row[22] or "",
-                ingest_batch_id=row[23] or "",
-                trace_id=row[24] or "",
+                overdue_days=row[20],
+                value_date=row[27],
+                customer_attribute=str(row[28] or ""),
+                is_issuance_like=bool(row[21]),
+                interest_mode=row[22] or "",
+                source_version=row[23] or "",
+                rule_version=row[24] or "",
+                ingest_batch_id=row[25] or "",
+                trace_id=row[26] or "",
             )
             for row in rows
         ]
@@ -145,8 +149,42 @@ class BalanceAnalysisRepository:
             if zqtz_rows:
                 conn.executemany(
                     """
-                    insert into fact_formal_zqtz_balance_daily values
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    insert into fact_formal_zqtz_balance_daily (
+                      report_date,
+                      instrument_code,
+                      instrument_name,
+                      portfolio_name,
+                      cost_center,
+                      account_category,
+                      asset_class,
+                      bond_type,
+                      issuer_name,
+                      industry_name,
+                      rating,
+                      invest_type_std,
+                      accounting_basis,
+                      position_scope,
+                      currency_basis,
+                      currency_code,
+                      face_value_amount,
+                      market_value_amount,
+                      amortized_cost_amount,
+                      accrued_interest_amount,
+                      coupon_rate,
+                      ytm_value,
+                      maturity_date,
+                      interest_mode,
+                      is_issuance_like,
+                      overdue_principal_days,
+                      overdue_interest_days,
+                      value_date,
+                      customer_attribute,
+                      source_version,
+                      rule_version,
+                      ingest_batch_id,
+                      trace_id
+                    ) values
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -155,6 +193,7 @@ class BalanceAnalysisRepository:
                             row.instrument_name,
                             row.portfolio_name,
                             row.cost_center,
+                            row.account_category,
                             row.asset_class,
                             row.bond_type,
                             row.issuer_name,
@@ -174,6 +213,10 @@ class BalanceAnalysisRepository:
                             row.maturity_date.isoformat() if row.maturity_date else None,
                             row.interest_mode,
                             row.is_issuance_like,
+                            row.overdue_principal_days,
+                            row.overdue_interest_days,
+                            row.value_date.isoformat() if row.value_date else None,
+                            row.customer_attribute,
                             row.source_version,
                             row.rule_version,
                             row.ingest_batch_id,
@@ -185,7 +228,29 @@ class BalanceAnalysisRepository:
             if tyw_rows:
                 conn.executemany(
                     """
-                    insert into fact_formal_tyw_balance_daily values
+                    insert into fact_formal_tyw_balance_daily (
+                      report_date,
+                      position_id,
+                      product_type,
+                      position_side,
+                      counterparty_name,
+                      account_type,
+                      special_account_type,
+                      core_customer_type,
+                      invest_type_std,
+                      accounting_basis,
+                      position_scope,
+                      currency_basis,
+                      currency_code,
+                      principal_amount,
+                      accrued_interest_amount,
+                      funding_cost_rate,
+                      maturity_date,
+                      source_version,
+                      rule_version,
+                      ingest_batch_id,
+                      trace_id
+                    ) values
                     (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
@@ -222,6 +287,44 @@ class BalanceAnalysisRepository:
         finally:
             conn.close()
 
+    def fetch_pnl_bridge_zqtz_balance_rows(self, *, report_date: str) -> list[dict[str, object]]:
+        """ZQTZ formal balance rows for pnl.bridge: asset scope, CNY basis."""
+        try:
+            if not self._table_exists("fact_formal_zqtz_balance_daily"):
+                return []
+            return self.fetch_formal_zqtz_rows(
+                report_date=report_date,
+                position_scope="asset",
+                currency_basis="CNY",
+            )
+        except OSError as exc:
+            raise RuntimeError("Formal balance storage is unavailable for pnl.bridge.") from exc
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal balance query failed for pnl.bridge.") from exc
+
+    def resolve_prior_pnl_bridge_balance_report_date(self, *, report_date: str) -> str | None:
+        """Most recent distinct balance report_date strictly before ``report_date`` (asset / CNY)."""
+        try:
+            if not self._table_exists("fact_formal_zqtz_balance_daily"):
+                return None
+            rows = self._fetch_rows(
+                """
+                select distinct cast(report_date as varchar) as rd
+                from fact_formal_zqtz_balance_daily
+                where cast(report_date as varchar) < ?
+                  and position_scope = 'asset'
+                  and currency_basis = 'CNY'
+                order by rd desc
+                limit 1
+                """,
+                [report_date],
+            )
+        except OSError as exc:
+            raise RuntimeError("Formal balance storage is unavailable for pnl.bridge.") from exc
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal balance query failed for pnl.bridge.") from exc
+        return str(rows[0][0]) if rows else None
+
     def fetch_formal_zqtz_rows(
         self,
         *,
@@ -237,10 +340,11 @@ class BalanceAnalysisRepository:
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+                   account_category, asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
                    accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
                    market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
-                   ytm_value, maturity_date, interest_mode, is_issuance_like, source_version,
+                   ytm_value, maturity_date, interest_mode, is_issuance_like, overdue_principal_days,
+                   overdue_interest_days, value_date, customer_attribute, source_version,
                    rule_version, ingest_batch_id, trace_id
             from fact_formal_zqtz_balance_daily
             where {' and '.join(where_parts)}
@@ -254,6 +358,7 @@ class BalanceAnalysisRepository:
             "instrument_name",
             "portfolio_name",
             "cost_center",
+            "account_category",
             "asset_class",
             "bond_type",
             "issuer_name",
@@ -273,6 +378,10 @@ class BalanceAnalysisRepository:
             "maturity_date",
             "interest_mode",
             "is_issuance_like",
+            "overdue_principal_days",
+            "overdue_interest_days",
+            "value_date",
+            "customer_attribute",
             "source_version",
             "rule_version",
             "ingest_batch_id",
@@ -650,6 +759,22 @@ class BalanceAnalysisRepository:
         finally:
             conn.close()
 
+    def _table_exists(self, table_name: str) -> bool:
+        conn = duckdb.connect(self.path, read_only=True)
+        try:
+            row = conn.execute(
+                """
+                select 1
+                from information_schema.tables
+                where table_name = ?
+                limit 1
+                """,
+                [table_name],
+            ).fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
 
 def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
@@ -660,6 +785,7 @@ def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
           instrument_name varchar,
           portfolio_name varchar,
           cost_center varchar,
+          account_category varchar,
           asset_class varchar,
           bond_type varchar,
           issuer_name varchar,
@@ -686,6 +812,7 @@ def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    _ensure_zqtz_formal_enrichment_columns(conn)
     conn.execute(
         """
         create table if not exists fact_formal_tyw_balance_daily (
@@ -713,3 +840,34 @@ def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    if not _column_exists(conn, "fact_formal_zqtz_balance_daily", "account_category"):
+        conn.execute("alter table fact_formal_zqtz_balance_daily add column account_category varchar")
+
+
+def _ensure_zqtz_formal_enrichment_columns(conn: duckdb.DuckDBPyConnection) -> None:
+    for column_name, ddl in (
+        ("overdue_principal_days", "integer"),
+        ("overdue_interest_days", "integer"),
+        ("value_date", "varchar"),
+        ("customer_attribute", "varchar"),
+    ):
+        if not _column_exists(conn, "fact_formal_zqtz_balance_daily", column_name):
+            conn.execute(f"alter table fact_formal_zqtz_balance_daily add column {column_name} {ddl}")
+
+
+def _column_exists(
+    conn: duckdb.DuckDBPyConnection,
+    table_name: str,
+    column_name: str,
+) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.columns
+        where table_name = ?
+          and column_name = ?
+        limit 1
+        """,
+        [table_name, column_name],
+    ).fetchone()
+    return row is not None

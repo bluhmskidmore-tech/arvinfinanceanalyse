@@ -133,6 +133,9 @@ Fresh full-suite evidence:
 
 ## Current Status
 
+当前对账结论仅覆盖当前 governed workbook 已支持的 section，
+不等于 `资产负债分析_20260301_4.xlsx` 全量 1:1 对齐完成。
+
 Current balance-analysis reconciliation status for `2026-03-01`:
 
 - workbook summary: aligned

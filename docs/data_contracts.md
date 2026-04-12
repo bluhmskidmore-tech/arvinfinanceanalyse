@@ -223,6 +223,7 @@ first-wave required now：
 - `instrument_code`
 - `portfolio_name`
 - `cost_center`
+- `account_category`
 - `invest_type_std`
 - `accounting_basis`
 - `position_scope`
@@ -237,6 +238,10 @@ first-wave required now：
 - `maturity_date`
 - `interest_mode`
 - `is_issuance_like`
+- `overdue_principal_days`
+- `overdue_interest_days`
+- `value_date`
+- `customer_attribute`
 - `source_version`
 - `rule_version`
 - `ingest_batch_id`

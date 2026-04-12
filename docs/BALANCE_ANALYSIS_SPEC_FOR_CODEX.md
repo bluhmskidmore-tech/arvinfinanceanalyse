@@ -113,7 +113,30 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ## 13. ZQTZ / TYW Formal Balance Analysis Boundary
 
-本节只用于划清 `product-category-pnl` 与当前已落地的 `zqtz / tyw formal balance-analysis` 的边界，避免把两条线混成同一个实现面。
+### 当前 governed workbook 已支持的 section keys
+
+当前 governed workbook 只覆盖已经落在 `balance-analysis` workbook 里的 section keys，不代表整份 Excel 的全部页签都已实现。已支持的 section keys 至少包括：
+
+- `bond_business_types`
+- `maturity_gap`
+- `cashflow_calendar`
+- `currency_split`
+- `issuer_concentration`
+- `liquidity_layers`
+- `regulatory_limits`
+- `overdue_credit_quality` / `overdue_credit_quality_ratings`
+- `vintage_analysis`
+- `customer_attribute_analysis`
+- `portfolio_comparison`
+- `account_category_comparison`
+- `ifrs9_classification` / `ifrs9_position_scope` / `ifrs9_source_family`
+- `rule_reference`
+
+### 当前尚未纳入 governed workbook 的 section keys
+
+以下能力仍属于后续 gap 或仅文档约束，不应被表述为已在 governed workbook 中实现：
+
+- `advanced_attribution_bundle`（高级归因 bundle；依赖 bond-analytics Phase 3 曲线/交易粒度，见 `docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md`）
 
 ### 13.1 产品类别损益已实现面
 

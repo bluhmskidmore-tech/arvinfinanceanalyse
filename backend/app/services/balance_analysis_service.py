@@ -838,6 +838,7 @@ def _to_formal_zqtz_fact_row(row: dict[str, object]) -> FormalZqtzBalanceFactRow
         instrument_name=str(row.get("instrument_name") or ""),
         portfolio_name=str(row.get("portfolio_name") or ""),
         cost_center=str(row.get("cost_center") or ""),
+        account_category=str(row.get("account_category") or ""),
         asset_class=str(row.get("asset_class") or ""),
         bond_type=str(row.get("bond_type") or ""),
         issuer_name=str(row.get("issuer_name") or ""),
@@ -857,6 +858,12 @@ def _to_formal_zqtz_fact_row(row: dict[str, object]) -> FormalZqtzBalanceFactRow
         maturity_date=_parse_date(maturity_date) if maturity_date else None,
         interest_mode=str(row.get("interest_mode") or ""),
         is_issuance_like=bool(row["is_issuance_like"]),
+        overdue_principal_days=_optional_nonnegative_int(row.get("overdue_principal_days")),
+        overdue_interest_days=_optional_nonnegative_int(row.get("overdue_interest_days")),
+        value_date=_parse_date(value_date_raw)
+        if (value_date_raw := str(row.get("value_date") or "").strip())
+        else None,
+        customer_attribute=str(row.get("customer_attribute") or ""),
         source_version=str(row.get("source_version") or ""),
         rule_version=str(row.get("rule_version") or ""),
         ingest_batch_id=str(row.get("ingest_batch_id") or ""),
@@ -1275,6 +1282,15 @@ def _optional_decimal(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
     return _as_decimal(value)
+
+
+def _optional_nonnegative_int(value: object) -> int:
+    if value in (None, ""):
+        return 0
+    try:
+        return max(0, int(Decimal(str(value))))
+    except (InvalidOperation, ValueError, TypeError):
+        return 0
 
 
 def _parse_date(raw_value: str):

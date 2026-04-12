@@ -49,6 +49,9 @@ class ZqtzSnapshotRow:
     ytm_value: Decimal | None
     maturity_date: date | None
     is_issuance_like: bool
+    overdue_days: int | None = None
+    value_date: date | None = None
+    customer_attribute: str = ""
     interest_mode: str = ""
     source_version: str = ""
     rule_version: str = ""
@@ -84,6 +87,7 @@ class FormalZqtzBalanceFactRow:
     instrument_name: str
     portfolio_name: str
     cost_center: str
+    account_category: str
     asset_class: str
     bond_type: str
     issuer_name: str
@@ -103,6 +107,10 @@ class FormalZqtzBalanceFactRow:
     maturity_date: date | None
     interest_mode: str
     is_issuance_like: bool
+    overdue_principal_days: int = 0
+    overdue_interest_days: int = 0
+    value_date: date | None = None
+    customer_attribute: str = ""
     source_version: str = ""
     rule_version: str = ""
     ingest_batch_id: str = ""
@@ -165,6 +173,19 @@ def average_daily_cny_amounts(daily_native_and_fx: list[tuple[Decimal, Decimal]]
     return total / Decimal(len(daily_native_and_fx))
 
 
+def _zqtz_overdue_days_split(row: ZqtzSnapshotRow) -> tuple[int, int]:
+    raw = row.overdue_days
+    if raw is None:
+        return 0, 0
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return 0, 0
+    if days <= 0:
+        return 0, 0
+    return days, 0
+
+
 def project_zqtz_formal_balance_row(
     row: ZqtzSnapshotRow,
     *,
@@ -202,12 +223,14 @@ def project_zqtz_formal_balance_row(
         currency_basis=currency_basis,
         fx_rate=fx_rate,
     )
+    overdue_principal_days, overdue_interest_days = _zqtz_overdue_days_split(row)
     return FormalZqtzBalanceFactRow(
         report_date=row.report_date,
         instrument_code=row.instrument_code,
         instrument_name=row.instrument_name,
         portfolio_name=row.portfolio_name,
         cost_center=row.cost_center,
+        account_category=row.account_category,
         asset_class=row.asset_class,
         bond_type=row.bond_type,
         issuer_name=row.issuer_name,
@@ -227,6 +250,10 @@ def project_zqtz_formal_balance_row(
         maturity_date=row.maturity_date,
         interest_mode=row.interest_mode,
         is_issuance_like=row.is_issuance_like,
+        overdue_principal_days=overdue_principal_days,
+        overdue_interest_days=overdue_interest_days,
+        value_date=row.value_date,
+        customer_attribute=str(row.customer_attribute or "").strip(),
         source_version=row.source_version,
         rule_version=row.rule_version,
         ingest_batch_id=row.ingest_batch_id,
