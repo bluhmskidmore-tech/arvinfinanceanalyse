@@ -172,6 +172,56 @@ def build_pnl_bridge_rows(
     return rows
 
 
+def required_curve_types_for_pnl_bridge(
+    pnl_fi_rows: list[dict],
+    balance_rows_current: list[dict],
+    balance_rows_prior: list[dict],
+) -> set[str]:
+    current_exact, current_exact_without_basis, current_fallback = _index_balance_rows(balance_rows_current)
+    prior_exact, prior_exact_without_basis, prior_fallback = _index_balance_rows(balance_rows_prior)
+    required: set[str] = set()
+    for raw_row in pnl_fi_rows:
+        currency_basis = str(raw_row.get("currency_basis") or "")
+        accounting_basis = str(raw_row.get("accounting_basis") or "")
+        instrument_code = str(raw_row.get("instrument_code") or "")
+        portfolio_name = str(raw_row.get("portfolio_name") or "")
+        cost_center = str(raw_row.get("cost_center") or "")
+        current_balance = _resolve_balance_row(
+            instrument_code=instrument_code,
+            portfolio_name=portfolio_name,
+            cost_center=cost_center,
+            currency_basis=currency_basis,
+            accounting_basis=accounting_basis,
+            exact=current_exact,
+            exact_without_basis=current_exact_without_basis,
+            fallback=current_fallback,
+        )
+        prior_balance = _resolve_balance_row(
+            instrument_code=instrument_code,
+            portfolio_name=portfolio_name,
+            cost_center=cost_center,
+            currency_basis=currency_basis,
+            accounting_basis=accounting_basis,
+            exact=prior_exact,
+            exact_without_basis=prior_exact_without_basis,
+            fallback=prior_fallback,
+        )
+        representative = current_balance or prior_balance
+        if representative is None:
+            required.add("treasury")
+            continue
+        if _is_credit_row(representative):
+            required.update({"treasury", "aaa_credit"})
+            continue
+        curve_type = infer_curve_type(
+            representative.get("instrument_name"),
+            representative.get("bond_type"),
+            representative.get("asset_class"),
+        )
+        required.add("cdb" if curve_type == "cdb" else "treasury")
+    return required
+
+
 def _calculate_roll_down(
     *,
     report_date: date,
@@ -425,4 +475,4 @@ def _coerce_decimal(value: object) -> Decimal:
     return Decimal(str(value))
 
 
-__all__ = ["PnlBridgeRow", "build_pnl_bridge_rows"]
+__all__ = ["PnlBridgeRow", "build_pnl_bridge_rows", "required_curve_types_for_pnl_bridge"]

@@ -115,6 +115,63 @@ def test_pnl_bridge_keeps_fresh_metadata_when_missing_credit_curve_is_irrelevant
     get_settings.cache_clear()
 
 
+def test_pnl_bridge_ignores_corrupt_irrelevant_credit_curve_lineage(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_curve",
+        vendor_version="vv_pnl_curve",
+        rule_version="rv_pnl_curve",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily (
+              report_date, instrument_code, portfolio_name, cost_center, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code,
+              market_value_amount, amortized_cost_amount, accrued_interest_amount, is_issuance_like,
+              source_version, rule_version, ingest_batch_id, trace_id, asset_class, bond_type
+            ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("2025-12-31", "CB-IRRELEVANT", "OTHER", "CC999", "A", "OCI", "asset", "CNY", "CNY", "50", "49", "1", False, "sv_irrel", "rv_irrel", "ib_irrel", "tr_irrel", "信用债", "企业债"),
+                ("2025-10-31", "CB-IRRELEVANT", "OTHER", "CC999", "A", "OCI", "asset", "CNY", "CNY", "48", "47", "1", False, "sv_irrel", "rv_irrel", "ib_irrel", "tr_irrel", "信用债", "企业债"),
+            ],
+        )
+    finally:
+        conn.close()
+    _seed_curve_rows(
+        duckdb_path,
+        [
+            ("2025-12-31", "treasury", "1Y", Decimal("2.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "2Y", Decimal("3.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "3Y", Decimal("4.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-10-31", "treasury", "1Y", Decimal("1.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+            ("2025-10-31", "treasury", "2Y", Decimal("2.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+            ("2025-10-31", "treasury", "3Y", Decimal("3.00"), "akshare", "vv_treasury_prior", "sv_treasury_prior", "rv_curve"),
+            ("2025-12-31", "aaa_credit", "1Y", Decimal("4.00"), "choice", "vv_a", "sv_a", "rv_curve"),
+            ("2025-12-31", "aaa_credit", "2Y", Decimal("5.00"), "other", "vv_a", "sv_a", "rv_curve"),
+        ],
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    get_settings.cache_clear()
+
+
 def test_pnl_bridge_fails_closed_when_same_day_curve_snapshot_lineage_is_corrupt(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"

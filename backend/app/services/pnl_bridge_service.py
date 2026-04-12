@@ -9,7 +9,11 @@ from backend.app.repositories.governance_repo import (
     CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
-from backend.app.core_finance.pnl_bridge import PnlBridgeRow, build_pnl_bridge_rows
+from backend.app.core_finance.pnl_bridge import (
+    PnlBridgeRow,
+    build_pnl_bridge_rows,
+    required_curve_types_for_pnl_bridge,
+)
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
 from backend.app.schemas.pnl_bridge import (
@@ -53,9 +57,10 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     prior_balance_rows = (
         balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=prior_date) if prior_date else []
     )
-    required_curve_types = _required_curve_types_for_bridge_rows(
-        current_balance_rows=current_balance_rows,
-        prior_balance_rows=prior_balance_rows,
+    required_curve_types = required_curve_types_for_pnl_bridge(
+        pnl_fi_rows=pnl_fi_rows,
+        balance_rows_current=current_balance_rows,
+        balance_rows_prior=prior_balance_rows,
     )
     treasury_current, treasury_current_warning = _resolve_curve_pair_if_needed(
         curve_type="treasury",
@@ -433,42 +438,6 @@ def _curve_warnings_for_bridge_rows(
     if needs_aaa:
         selected.extend([aaa_current_warning, aaa_prior_warning])
     return selected
-
-
-def _required_curve_types_for_bridge_rows(
-    *,
-    current_balance_rows: list[dict[str, object]],
-    prior_balance_rows: list[dict[str, object]],
-) -> set[str]:
-    needs_treasury = False
-    needs_cdb = False
-    needs_aaa = False
-    balance_rows = [*current_balance_rows, *prior_balance_rows]
-    if not balance_rows:
-        return {"treasury"}
-    for row in balance_rows:
-        surface = " ".join(str(row.get(field) or "") for field in ("asset_class", "bond_type", "instrument_name"))
-        if classify_asset_class(surface) == "credit":
-            needs_treasury = True
-            needs_aaa = True
-            continue
-        curve_type = infer_curve_type(
-            row.get("instrument_name"),
-            row.get("bond_type"),
-            row.get("asset_class"),
-        )
-        if curve_type == "cdb":
-            needs_cdb = True
-        else:
-            needs_treasury = True
-    required: set[str] = set()
-    if needs_treasury:
-        required.add("treasury")
-    if needs_cdb:
-        required.add("cdb")
-    if needs_aaa:
-        required.add("aaa_credit")
-    return required
 
 
 def _resolve_curve_pair_if_needed(
