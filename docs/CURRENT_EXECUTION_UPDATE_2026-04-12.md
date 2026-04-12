@@ -7,7 +7,9 @@ This document records the current user-authorized execution boundary for the `yi
 - This is a scoped override, not a repo-wide phase change.
 - The repo default boundary remains `Phase 1` outside this named workstream.
 - This round is **substrate closeout plus regression-hardening**, not first-time adapter/service wiring.
-- Effect scope remains capped to `roll_down` and `treasury_curve` only.
+- Effect scope remains capped to:
+  - `roll_down` and `treasury_curve` for PnL Bridge
+  - the already-landed bond-analytics `rate_effect` read from the same governed curves
 
 ## Active execution plan
 
@@ -50,7 +52,10 @@ This document records the current user-authorized execution boundary for the `yi
   - `backend/app/services/pnl_bridge_service.py`
   - `backend/app/services/bond_analytics_service.py`
 - Latest-date fallback is allowed only when the warning is explicit in the service payload; no silent same-day substitution is authorized.
-- Effect scope stays capped to `roll_down` and `treasury_curve`; this round does not authorize `credit_spread`, `fx_translation`, `aaa_credit`, or broader curve consumers.
+- Effect scope stays capped to:
+  - `roll_down` and `treasury_curve` in PnL Bridge
+  - existing `rate_effect` support in bond analytics
+  This round does not authorize `credit_spread`, `fx_translation`, `aaa_credit`, or broader curve consumers.
 
 ## Test matrix
 
@@ -79,6 +84,8 @@ This document records the current user-authorized execution boundary for the `yi
 ## Stop conditions
 
 - Stop after the above substrate closeout and regression-hardening work is planned and bounded.
-- Stop if proposed work expands beyond `roll_down` / `treasury_curve`.
+- Stop if proposed work expands beyond:
+  - `roll_down` / `treasury_curve` in PnL Bridge
+  - existing `rate_effect` support in bond analytics
 - Stop if a change would require API signature changes, frontend work, response-model expansion, or `aaa_credit` enablement.
 - Stop if the implementation path starts treating latest fallback as silent substitution rather than explicit warning-bearing evidence.

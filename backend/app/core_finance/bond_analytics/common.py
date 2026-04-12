@@ -235,7 +235,7 @@ def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:
     if not raw_curve:
         return {}
     points = build_curve_points(raw_curve)
-    all_tenors = ["3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
+    all_tenors = ["3M", "6M", "9M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"]
     full: dict[str, Decimal] = {}
     for tenor in all_tenors:
         if tenor in raw_curve:

@@ -239,6 +239,7 @@ def test_build_full_curve_preserves_short_end_nodes():
         {
             "3M": Decimal("1.10"),
             "6M": Decimal("1.20"),
+            "9M": Decimal("1.30"),
             "1Y": Decimal("1.40"),
             "3Y": Decimal("1.80"),
             "5Y": Decimal("2.10"),
@@ -249,6 +250,7 @@ def test_build_full_curve_preserves_short_end_nodes():
 
     assert curve["3M"] == Decimal("1.10")
     assert curve["6M"] == Decimal("1.20")
+    assert curve["9M"] == Decimal("1.30")
 
 
 def test_tenor_to_years_supports_9m():

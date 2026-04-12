@@ -292,6 +292,8 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         )
     )
     meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+    if not rows:
+        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
     if curve_snapshots:
         meta = meta.model_copy(
             update={
@@ -317,8 +319,6 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
                 ),
             }
         )
-    if not rows:
-        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
 
     summary = summarize_return_decomposition(
         rows,
@@ -379,11 +379,19 @@ def _resolve_curve_for_service(
     exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
     if exact_snapshot is not None:
         return exact_snapshot, None
+    if repo.fetch_curve(requested_trade_date, curve_type):
+        raise RuntimeError(
+            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
+        )
     latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
     if latest_trade_date is None:
         return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; affected components remain 0."
     latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
     if latest_snapshot is None:
+        if repo.fetch_curve(latest_trade_date, curve_type):
+            raise RuntimeError(
+                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
+            )
         return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}; affected components remain 0."
     return (
         latest_snapshot,

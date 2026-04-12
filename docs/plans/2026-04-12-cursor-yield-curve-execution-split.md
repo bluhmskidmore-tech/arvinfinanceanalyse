@@ -49,7 +49,9 @@ Hard constraints:
 - Stay inside the 2026-04-12 scoped override only.
 - No frontend changes.
 - No broad Agent MVP work.
-- No new effect scope beyond `roll_down` and `treasury_curve`.
+- No new effect scope beyond:
+  - `roll_down` and `treasury_curve` in PnL Bridge
+  - the already-landed bond-analytics `rate_effect`
 - Do not touch or revert these Codex-owned files:
   - backend/app/tasks/yield_curve_materialize.py
   - tests/test_yield_curve_materialize.py
