@@ -1,12 +1,20 @@
-import { useState, type FormEvent } from "react";
+﻿import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 
 import { shellTokens as t } from "../../theme/tokens";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { AgentAnswerPanel } from "./components/AgentAnswerPanel.tsx";
+import { AgentEvidencePanel } from "./components/AgentEvidencePanel.tsx";
+import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid.tsx";
+import { AgentQueryForm } from "./components/AgentQueryForm.tsx";
+import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel.tsx";
+import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel.tsx";
+import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView.tsx";
 
 type AgentResultCard = {
   title: string;
-  value: string;
+  value?: string;
   type: string;
+  data?: Record<string, unknown>[] | Record<string, unknown>;
+  spec?: Record<string, unknown>;
 };
 
 type AgentEvidence = {
@@ -64,8 +72,12 @@ function isAgentResultCard(value: unknown): value is AgentResultCard {
   return (
     isRecord(value) &&
     typeof value.title === "string" &&
-    typeof value.value === "string" &&
-    typeof value.type === "string"
+    (value.value === undefined || typeof value.value === "string") &&
+    typeof value.type === "string" &&
+    (value.data === undefined ||
+      isRecord(value.data) ||
+      (Array.isArray(value.data) && value.data.every(isRecord))) &&
+    (value.spec === undefined || isRecord(value.spec))
   );
 }
 
@@ -150,10 +162,10 @@ function buildResultMetaEntries(resultMeta: Record<string, unknown>) {
 
 function formatMetaValue(value: unknown) {
   if (value === null || value === undefined) {
-    return "—";
+    return "--";
   }
   if (typeof value === "string") {
-    return value.trim().length > 0 ? value : "—";
+    return value.trim().length > 0 ? value : "--";
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
@@ -166,30 +178,219 @@ const GITNEXUS_QUICK_EXAMPLES = [
   "请给我看 GitNexus context",
   "请给我看 GitNexus processes",
 ] as const;
+const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
+const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
+const MAX_RECENT_REPO_PATHS = 5;
+const MAX_PINNED_REPO_PATHS = 5;
+const GITNEXUS_PROCESS_CARD_TITLE = "GitNexus Processes Table";
+function normalizeStoredRepoPaths(paths: string[], limit: number) {
+  const normalizedPaths: string[] = [];
+  for (const path of paths) {
+    const normalized = path.trim();
+    if (!normalized || normalizedPaths.includes(normalized)) {
+      continue;
+    }
+    normalizedPaths.push(normalized);
+    if (normalizedPaths.length >= limit) {
+      break;
+    }
+  }
+  return normalizedPaths;
+}
+
+function loadStoredRepoPaths(storageKey: string, limit: number) {
+  if (typeof window === "undefined") {
+    return [] as string[];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return normalizeStoredRepoPaths(
+      parsed.filter((item): item is string => typeof item === "string"),
+      limit,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistStoredRepoPaths(storageKey: string, paths: string[]) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.setItem(storageKey, JSON.stringify(paths));
+}
+
+function isGitNexusCard(card: AgentResultCard) {
+  return card.title.startsWith("GitNexus ");
+}
+
+function isGitNexusResult(result: AgentQueryResult) {
+  return result.result_meta.result_kind === "agent.gitnexus_status";
+}
+
+function extractProcessNames(cards: AgentResultCard[]) {
+  const processCard = cards.find((card) => card.title === GITNEXUS_PROCESS_CARD_TITLE);
+  if (!processCard || !Array.isArray(processCard.data)) {
+    return [];
+  }
+  return processCard.data
+    .map((row) => (isRecord(row) && typeof row.name === "string" ? row.name : ""))
+    .filter((name) => name.trim().length > 0);
+}
+
+function buildFilters(question: string, repoPath: string, processName?: string) {
+  const filters: Record<string, string> = {};
+  if (repoPath.trim()) {
+    filters.repo_path = repoPath.trim();
+  }
+  if (
+    processName &&
+    processName.trim() &&
+    /gitnexus\s+process(?:\/|\s)/i.test(question) &&
+    !/gitnexus\s+processes/i.test(question)
+  ) {
+    filters.process_name = processName.trim();
+  }
+  return filters;
+}
+
+function loadRecentRepoPaths() {
+  return loadStoredRepoPaths(RECENT_REPO_PATHS_KEY, MAX_RECENT_REPO_PATHS);
+}
+
+function loadPinnedRepoPaths() {
+  return loadStoredRepoPaths(PINNED_REPO_PATHS_KEY, MAX_PINNED_REPO_PATHS);
+}
+
+function persistRecentRepoPaths(paths: string[]) {
+  persistStoredRepoPaths(RECENT_REPO_PATHS_KEY, paths);
+}
+
+function persistPinnedRepoPaths(paths: string[]) {
+  persistStoredRepoPaths(PINNED_REPO_PATHS_KEY, paths);
+}
+
+function rememberRepoPathValue(currentPaths: string[], nextPath: string, limit = MAX_RECENT_REPO_PATHS) {
+  const normalized = nextPath.trim();
+  if (!normalized) {
+    return currentPaths;
+  }
+  return normalizeStoredRepoPaths(
+    [normalized, ...currentPaths.filter((path) => path !== normalized)],
+    limit,
+  );
+}
+
+function pinRepoPathValue(currentPaths: string[], nextPath: string) {
+  return rememberRepoPathValue(currentPaths, nextPath, MAX_PINNED_REPO_PATHS);
+}
+
+function unpinRepoPathValue(currentPaths: string[], targetPath: string) {
+  return currentPaths.filter((path) => path !== targetPath);
+}
+
+function movePinnedRepoPathValue(
+  currentPaths: string[],
+  targetPath: string,
+  direction: "up" | "down",
+) {
+  const currentIndex = currentPaths.indexOf(targetPath);
+  if (currentIndex < 0) {
+    return currentPaths;
+  }
+
+  const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+  if (nextIndex < 0 || nextIndex >= currentPaths.length) {
+    return currentPaths;
+  }
+
+  const nextPaths = [...currentPaths];
+  [nextPaths[currentIndex], nextPaths[nextIndex]] = [nextPaths[nextIndex], nextPaths[currentIndex]];
+  return nextPaths;
+}
 
 export default function AgentWorkbenchPage() {
+  const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
+  const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
-  const [repoPath, setRepoPath] = useState("");
+  const [repoPath, setRepoPath] = useState(() => loadRecentRepoPaths()[0] ?? "");
+  const [availableProcesses, setAvailableProcesses] = useState<string[]>([]);
+  const [processSearch, setProcessSearch] = useState("");
+  const [selectedProcess, setSelectedProcess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [processLoading, setProcessLoading] = useState(false);
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
+  const deferredProcessSearch = useDeferredValue(processSearch);
+  const filteredProcesses = availableProcesses.filter((processName) =>
+    processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
+  );
+  const recentUnpinnedRepoPaths = recentRepoPaths.filter((path) => !pinnedRepoPaths.includes(path));
+  const isCurrentRepoPinned = pinnedRepoPaths.includes(repoPath.trim());
 
-  async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
+  function rememberRepoPath(nextRepoPath: string) {
+    setRecentRepoPaths((currentPaths) => {
+      const nextPaths = rememberRepoPathValue(currentPaths, nextRepoPath);
+      persistRecentRepoPaths(nextPaths);
+      return nextPaths;
+    });
+  }
 
-    const question = query.trim();
-    if (!question) {
-      setResult(null);
-      setError({
-        kind: "request",
-        message: "请输入查询问题。",
-      });
+  function pinRepoPath(nextRepoPath: string) {
+    setPinnedRepoPaths((currentPaths) => {
+      const nextPaths = pinRepoPathValue(currentPaths, nextRepoPath);
+      persistPinnedRepoPaths(nextPaths);
+      return nextPaths;
+    });
+  }
+
+  function unpinRepoPath(path: string) {
+    setPinnedRepoPaths((currentPaths) => {
+      const nextPaths = unpinRepoPathValue(currentPaths, path);
+      persistPinnedRepoPaths(nextPaths);
+      return nextPaths;
+    });
+  }
+
+  function movePinnedRepoPath(path: string, direction: "up" | "down") {
+    setPinnedRepoPaths((currentPaths) => {
+      const nextPaths = movePinnedRepoPathValue(currentPaths, path, direction);
+      persistPinnedRepoPaths(nextPaths);
+      return nextPaths;
+    });
+  }
+
+  useEffect(() => {
+    const normalizedRepoPath = repoPath.trim();
+    if (!normalizedRepoPath) {
+      setAvailableProcesses([]);
+      setSelectedProcess("");
       return;
     }
 
-    setLoading(true);
-    setError(null);
+    const timeoutId = window.setTimeout(() => {
+      void loadGitNexusProcesses(normalizedRepoPath);
+    }, 350);
+    return () => window.clearTimeout(timeoutId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce repo path changes only
+  }, [repoPath]);
 
+  useEffect(() => {
+    if (!filteredProcesses.length) {
+      setSelectedProcess("");
+      return;
+    }
+    if (!selectedProcess || !filteredProcesses.includes(selectedProcess)) {
+      setSelectedProcess(filteredProcesses[0] ?? "");
+    }
+  }, [filteredProcesses, selectedProcess]);
+
+  async function executeAgentQuery(question: string, mode: "query" | "processes" = "query") {
     try {
       const response = await fetch("/api/agent/query", {
         method: "POST",
@@ -199,7 +400,7 @@ export default function AgentWorkbenchPage() {
         body: JSON.stringify({
           question,
           basis: "formal",
-          filters: repoPath.trim().length > 0 ? { repo_path: repoPath.trim() } : {},
+          filters: buildFilters(question, repoPath, selectedProcess),
           position_scope: "all",
           currency_basis: "CNY",
           context: {
@@ -227,12 +428,117 @@ export default function AgentWorkbenchPage() {
         throw new Error("Agent 返回结果格式无效。");
       }
 
+      const nextProcesses = extractProcessNames(payload.cards);
+      if (nextProcesses.length > 0) {
+        setAvailableProcesses(nextProcesses);
+        setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
+      } else if (mode === "processes") {
+        setAvailableProcesses([]);
+        setSelectedProcess("");
+      }
+
+      if (repoPath.trim().length > 0) {
+        rememberRepoPath(repoPath);
+      }
+      setResult(payload);
+      return payload;
+    } catch (requestError) {
+      setError({
+        kind: "request",
+        message: buildErrorMessage(requestError),
+      });
+    }
+  }
+
+  async function handleSubmit(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    const question = query.trim();
+    if (!question) {
+      setResult(null);
+      setError({
+        kind: "request",
+        message: "请输入查询问题。",
+      });
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      await executeAgentQuery(question, "query");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadGitNexusProcesses(repoPathOverride: string) {
+    if (!repoPathOverride.trim()) {
+      setError({
+        kind: "request",
+        message: "请先输入 GitNexus Repo Path。",
+      });
+      return;
+    }
+
+    setProcessLoading(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/agent/query", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          question: "请给我看 GitNexus processes",
+          basis: "formal",
+          filters: { repo_path: repoPathOverride.trim() },
+          position_scope: "all",
+          currency_basis: "CNY",
+          context: {
+            user_id: "web-user",
+          },
+        }),
+      });
+
+      const payload = (await response.json()) as unknown;
+      if (!response.ok || !isAgentQueryResult(payload)) {
+        throw new Error(
+          !response.ok
+            ? `Agent 查询失败（${response.status}）`
+            : "Agent 返回结果格式无效。",
+        );
+      }
+
+      const nextProcesses = extractProcessNames(payload.cards);
+      setAvailableProcesses(nextProcesses);
+      setProcessSearch("");
+      setSelectedProcess(nextProcesses[0] ?? "");
+      rememberRepoPath(repoPathOverride);
       setResult(payload);
     } catch (requestError) {
       setError({
         kind: "request",
         message: buildErrorMessage(requestError),
       });
+    } finally {
+      setProcessLoading(false);
+    }
+  }
+
+  async function viewSelectedProcess() {
+    if (!selectedProcess) {
+      setError({
+        kind: "request",
+        message: "请先从 Processes 列表选择一个流程。",
+      });
+      return;
+    }
+    setQuery(`请给我看 GitNexus process/${selectedProcess}`);
+    setLoading(true);
+    setError(null);
+    try {
+      await executeAgentQuery(`请给我看 GitNexus process/${selectedProcess}`, "query");
     } finally {
       setLoading(false);
     }
@@ -241,6 +547,26 @@ export default function AgentWorkbenchPage() {
   function applyQuickExample(nextQuery: string) {
     setQuery(nextQuery);
     setError(null);
+  }
+
+  function applyRecentRepoPath(nextRepoPath: string) {
+    setRepoPath(nextRepoPath);
+  }
+
+  function pinCurrentRepo() {
+    const normalized = repoPath.trim();
+    if (!normalized) {
+      setError({
+        kind: "request",
+        message: "请先输入 GitNexus Repo Path。",
+      });
+      return;
+    }
+    pinRepoPath(normalized);
+  }
+
+  function unpinRepo(path: string) {
+    unpinRepoPath(path);
   }
 
   return (
@@ -269,115 +595,36 @@ export default function AgentWorkbenchPage() {
         输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。
       </p>
 
-      <div
-        style={{
-          marginTop: 16,
-          marginBottom: 20,
-          display: "grid",
-          gap: 10,
-        }}
-      >
-        <label
-          style={{
-            display: "grid",
-            gap: 8,
-            color: t.colorTextSecondary,
-            fontSize: 13,
-          }}
-        >
-          <span>GitNexus Repo Path</span>
-          <input
-            aria-label="repo-path-input"
-            type="text"
-            placeholder="例如：F:\\MOSS-SYSTEM-V1"
-            value={repoPath}
-            onChange={(event) => setRepoPath(event.target.value)}
-            style={{
-              padding: "11px 14px",
-              borderRadius: 14,
-              border: `1px solid ${t.colorBorder}`,
-              background: t.colorBgCanvas,
-              color: t.colorTextPrimary,
-              fontSize: 14,
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
-        </label>
+      <AgentQueryForm
+        repoPath={repoPath}
+        onRepoPathChange={setRepoPath}
+        quickExamples={GITNEXUS_QUICK_EXAMPLES}
+        onQuickExample={applyQuickExample}
+        isCurrentRepoPinned={isCurrentRepoPinned}
+        onPinCurrentRepo={pinCurrentRepo}
+        onUnpinCurrentRepo={() => unpinRepo(repoPath.trim())}
+        processLoading={processLoading}
+        onLoadProcesses={() => void loadGitNexusProcesses(repoPath)}
+        processSearch={processSearch}
+        onProcessSearchChange={setProcessSearch}
+        selectedProcess={selectedProcess}
+        filteredProcesses={filteredProcesses}
+        onSelectedProcessChange={setSelectedProcess}
+        onViewSelectedProcess={() => void viewSelectedProcess()}
+        loading={loading}
+        query={query}
+        onQueryChange={setQuery}
+        onSubmit={handleSubmit}
+      />
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          {GITNEXUS_QUICK_EXAMPLES.map((example) => (
-            <button
-              key={example}
-              type="button"
-              onClick={() => applyQuickExample(example)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: `1px solid ${t.colorBorder}`,
-                background: t.colorBgCanvas,
-                color: t.colorTextSecondary,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
-              {example.replace("请给我看 ", "").replace("GitNexus ", "GitNexus ")}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <form
-        onSubmit={(event) => void handleSubmit(event)}
-        style={{
-          display: "flex",
-          gap: 12,
-          marginTop: 20,
-          marginBottom: 24,
-        }}
-      >
-        <input
-          type="text"
-          placeholder="例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱..."
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          style={{
-            flex: 1,
-            padding: "12px 16px",
-            borderRadius: 14,
-            border: `1px solid ${t.colorBorder}`,
-            background: t.colorBgCanvas,
-            color: t.colorTextPrimary,
-            fontSize: 15,
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-        />
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "12px 24px",
-            borderRadius: 14,
-            border: "none",
-            background: t.colorAccent,
-            color: t.colorBgCanvas,
-            fontSize: 15,
-            fontWeight: 600,
-            cursor: loading ? "default" : "pointer",
-            opacity: loading ? 0.72 : 1,
-          }}
-        >
-          {loading ? "查询中..." : "查询"}
-        </button>
-      </form>
+      <AgentRepoMemoryPanel
+        pinnedRepoPaths={pinnedRepoPaths}
+        recentUnpinnedRepoPaths={recentUnpinnedRepoPaths}
+        onApplyRecentRepoPath={applyRecentRepoPath}
+        onMovePinnedRepoPath={movePinnedRepoPath}
+        onUnpinRepo={unpinRepo}
+        onPinRepoPath={pinRepoPath}
+      />
 
       {error?.kind === "disabled" ? (
         <div
@@ -420,76 +667,37 @@ export default function AgentWorkbenchPage() {
         >
           {hasRenderableResult(result) ? (
             <>
-              {result.answer.trim().length > 0 ? (
-                <div
-                  style={{
-                    padding: 20,
-                    borderRadius: 16,
-                    border: `1px solid ${t.colorBorderSoft}`,
-                    background: t.colorBgCanvas,
-                    color: t.colorTextPrimary,
-                    fontSize: 15,
-                    lineHeight: 1.75,
-                  }}
-                >
-                  {result.answer}
-                </div>
-              ) : null}
+              <AgentAnswerPanel answer={result.answer} />
 
               {result.cards.length > 0 ? (
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  {result.cards.map((card) => (
-                    <PlaceholderCard
-                      key={`${card.title}-${card.type}`}
-                      title={card.title}
-                      value={String(card.value)}
-                      detail={card.type}
-                    />
-                  ))}
-                </div>
+                (() => {
+                  const gitNexusCards = isGitNexusResult(result)
+                    ? result.cards
+                    : result.cards.filter(isGitNexusCard);
+                  const genericCards = isGitNexusResult(result)
+                    ? []
+                    : result.cards.filter((card) => !isGitNexusCard(card));
+                  return (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 14,
+                      }}
+                    >
+                      {gitNexusCards.length > 0 ? <AgentGitNexusResultView cards={gitNexusCards} /> : null}
+                      <AgentGenericCardsGrid cards={genericCards} formatValue={formatMetaValue} />
+                    </div>
+                  );
+                })()
               ) : null}
 
               {hasEvidenceContent(result.evidence) ? (
-                <div
-                  style={{
-                    marginTop: 18,
-                    padding: 16,
-                    borderRadius: 14,
-                    border: `1px solid ${t.colorBorderSoft}`,
-                    background: t.colorBgSurface,
-                  }}
-                >
-                  <div
-                    style={{
-                      color: t.colorTextMuted,
-                      fontSize: 12,
-                      marginBottom: 8,
-                    }}
-                  >
-                    证据链
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: t.colorTextSecondary,
-                      lineHeight: 1.7,
-                    }}
-                  >
-                    tables: {result.evidence.tables_used.join(", ")}
-                    <br />
-                    filters: {JSON.stringify(result.evidence.filters_applied)}
-                    <br />
-                    rows: {result.evidence.evidence_rows}
-                    <br />
-                    quality: {result.evidence.quality_flag}
-                  </div>
-                </div>
+                <AgentEvidencePanel
+                  tablesUsed={result.evidence.tables_used}
+                  filtersApplied={result.evidence.filters_applied}
+                  evidenceRows={result.evidence.evidence_rows}
+                  qualityFlag={result.evidence.quality_flag}
+                />
               ) : null}
 
               {result.next_drill.length > 0 ? (
@@ -535,37 +743,10 @@ export default function AgentWorkbenchPage() {
             </div>
           )}
 
-          <div
-            style={{
-              padding: 16,
-              borderRadius: 14,
-              border: `1px solid ${t.colorBorderSoft}`,
-              background: t.colorBgSurface,
-            }}
-          >
-            <div
-              style={{
-                color: t.colorTextMuted,
-                fontSize: 12,
-                marginBottom: 8,
-              }}
-            >
-              结果元信息
-            </div>
-            <div
-              style={{
-                fontSize: 13,
-                color: t.colorTextSecondary,
-                lineHeight: 1.7,
-              }}
-            >
-              {buildResultMetaEntries(result.result_meta).map(([key, value]) => (
-                <div key={key}>
-                  {key}: {formatMetaValue(value)}
-                </div>
-              ))}
-            </div>
-          </div>
+          <AgentResultMetaPanel
+            entries={buildResultMetaEntries(result.result_meta)}
+            formatValue={formatMetaValue}
+          />
         </div>
       ) : null}
     </section>

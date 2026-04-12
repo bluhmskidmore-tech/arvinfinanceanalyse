@@ -172,13 +172,18 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "risk-overview": {
     title: "风险总览",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "风险总览路由已保留，但当前风险张量与 Bond Analytics 下钻物化结果尚未进入可用状态。",
+    highlights: ["formal risk tensor 表未落地", "Bond Analytics 下钻结果未就绪", "当前阶段只保留入口与状态说明"],
+  },
+  "risk-tensor": {
+    title: "风险张量",
+    summary: "风险张量页依赖的 formal risk tensor 表尚未物化，当前不展示失败查询结果，只保留阶段说明。",
+    highlights: ["依赖表未落地", "不在前端补算风险指标", "完成物化后再切回真实页面"],
   },
   "team-performance": {
     title: "团队绩效",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "团队绩效仍是壳层占位模块，当前只保留入口和规划说明。",
+    highlights: ["无真实读链路", "无正式指标计算", "后续按治理面能力补齐"],
   },
   "decision-matters": {
     title: "决策事项",
@@ -187,13 +192,28 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "bond-analysis": {
     title: "债券分析",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "债券分析驾驶舱仍未到可展示阶段，当前不直接暴露未完成的 Bond Analytics 页面。",
+    highlights: ["bond analytics 物化表未就绪", "入口保留但不触发失败接口", "待治理读模型稳定后恢复"],
+  },
+  "product-category-pnl": {
+    title: "产品损益",
+    summary: "产品损益页面路由已搭好，但当前 read model 还没有可消费报告日，因此先落回占位说明。",
+    highlights: ["report_dates 为空", "不展示空表和错误态", "等 read model 物化后恢复"],
+  },
+  pnl: {
+    title: "损益明细",
+    summary: "PnL 明细依赖的 formal pnl 事实表尚未物化，当前页面不再发失败请求。",
+    highlights: ["fact_formal_pnl_fi 未落地", "fact_nonstd_pnl_bridge 未落地", "完成物化后恢复真实工作台"],
+  },
+  "pnl-bridge": {
+    title: "损益桥接",
+    summary: "PnL bridge 仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
+    highlights: ["桥接结果未稳定", "不暴露失败接口", "后续以正式读模型为准切回"],
   },
   "platform-config": {
     title: "中台配置",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "中台配置当前仍为占位入口，暂不展示未完成的治理页细节。",
+    highlights: ["仅保留入口", "不展示假数据", "待治理面成熟后恢复真实页面"],
   },
   "market-data": {
     title: "市场数据",

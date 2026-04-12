@@ -1,3 +1,4 @@
+import json
 import time
 from pathlib import Path
 
@@ -55,6 +56,73 @@ def test_append_many_atomic_rolls_back_without_deleting_existing_records(tmp_pat
 
     records = repo.read_all(module.CACHE_BUILD_RUN_STREAM)
     assert records == [{"job_name": "existing", "status": "completed"}]
+
+
+@pytest.mark.parametrize("backend_mode", ["sql-authority", "sql-shadow"])
+def test_append_many_atomic_sql_backends_roll_back_sql_and_jsonl_when_jsonl_write_fails(
+    tmp_path,
+    monkeypatch,
+    backend_mode,
+):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    sql_path = tmp_path / f"{backend_mode}.db"
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode=backend_mode,
+    )
+    existing_payload = {"job_name": "existing", "status": "completed"}
+    repo.append(module.CACHE_BUILD_RUN_STREAM, existing_payload)
+
+    original_append_unlocked = repo._append_unlocked
+
+    def failing_append_unlocked(stream: str, payload: dict[str, object]):
+        if stream == module.CACHE_MANIFEST_STREAM:
+            raise RuntimeError("manifest failed")
+        return original_append_unlocked(stream, payload)
+
+    monkeypatch.setattr(repo, "_append_unlocked", failing_append_unlocked)
+
+    with pytest.raises(RuntimeError, match="manifest failed"):
+        repo.append_many_atomic(
+            [
+                (
+                    module.CACHE_BUILD_RUN_STREAM,
+                    {
+                        "run_id": "run-new",
+                        "job_name": "source_preview_refresh",
+                        "status": "completed",
+                        "cache_key": "source_preview.foundation",
+                    },
+                ),
+                (
+                    module.CACHE_MANIFEST_STREAM,
+                    {
+                        "cache_key": "source_preview.foundation",
+                        "source_version": "sv_new",
+                        "rule_version": "rv_new",
+                    },
+                ),
+            ]
+        )
+
+    jsonl_build_runs = [
+        json.loads(line)
+        for line in (tmp_path / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert jsonl_build_runs == [existing_payload]
+
+    sql_repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    sql_build_runs = sql_repo.read_all(module.CACHE_BUILD_RUN_STREAM)
+    sql_manifests = sql_repo.read_all(module.CACHE_MANIFEST_STREAM)
+
+    assert sql_build_runs == [existing_payload]
+    assert sql_manifests == []
 
 
 def test_governance_batch_lock_uses_canonical_base_dir(tmp_path):
@@ -119,6 +187,46 @@ def test_governance_repository_sql_shadow_reads_jsonl_records_while_keeping_sql_
     assert repo.read_all(module.CACHE_MANIFEST_STREAM) == [
         {"cache_key": "jsonl-authority", "source_version": "sv_jsonl"}
     ]
+
+
+@pytest.mark.parametrize("backend_mode", ["sql-authority", "sql-shadow"])
+def test_governance_repository_append_rolls_back_sql_when_jsonl_write_fails(
+    tmp_path,
+    monkeypatch,
+    backend_mode,
+):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    sql_path = tmp_path / f"append-{backend_mode}.db"
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode=backend_mode,
+    )
+
+    monkeypatch.setattr(
+        repo,
+        "_append_unlocked",
+        lambda stream, payload: (_ for _ in ()).throw(RuntimeError("jsonl write failed")),
+    )
+
+    payload = {
+        "run_id": "run-append-fail",
+        "job_name": "source_preview_refresh",
+        "status": "queued",
+        "cache_key": "source_preview.foundation",
+    }
+
+    with pytest.raises(RuntimeError, match="jsonl write failed"):
+        repo.append(module.CACHE_BUILD_RUN_STREAM, payload)
+
+    assert not (tmp_path / "cache_build_run.jsonl").exists()
+
+    sql_repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    assert sql_repo.read_all(module.CACHE_BUILD_RUN_STREAM) == []
 
 
 def test_governance_repository_rejects_unknown_backend_mode(tmp_path):

@@ -208,7 +208,6 @@ def required_curve_types_for_pnl_bridge(
         )
         representative = current_balance or prior_balance
         if representative is None:
-            required.add("treasury")
             continue
         if _is_credit_row(representative):
             required.update({"treasury", "aaa_credit"})

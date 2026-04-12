@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import importlib
 import json
@@ -61,14 +61,14 @@ def _seed_agent_pnl_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_pnl_fi values
-            (?, 'BOND-001', '组合A', 'CC100', 'H', 'AC', 'CNX', 10, 5, 2, 0, 17, 'sv_fi_1', 'rv_fi_1', 'batch-1', 'tr-fi-1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNX', 10, 5, 2, 0, 17, 'sv_fi_1', 'rv_fi_1', 'batch-1', 'tr-fi-1')
             """,
             [REPORT_DATE],
         )
         conn.execute(
             """
             insert into fact_nonstd_pnl_bridge values
-            (?, 'NONSTD-001', '组合A', 'CC100', 3, 1, 0, 0, 4, 'sv_nonstd_1', 'rv_nonstd_1', 'batch-2', 'tr-nonstd-1')
+            (?, 'NONSTD-001', '缁勫悎A', 'CC100', 3, 1, 0, 0, 4, 'sv_nonstd_1', 'rv_nonstd_1', 'batch-2', 'tr-nonstd-1')
             """,
             [REPORT_DATE],
         )
@@ -119,14 +119,14 @@ def _seed_agent_balance_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_zqtz_balance_daily values
-            (?, 'BOND-001', '组合A', 'CC100', 'H', 'AC', 'asset', 'CNY', 1000, 950, 12, 'sv_balance_zqtz_1', 'rv_balance_1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'asset', 'CNY', 1000, 950, 12, 'sv_balance_zqtz_1', 'rv_balance_1')
             """,
             [REPORT_DATE],
         )
         conn.execute(
             """
             insert into fact_formal_tyw_balance_daily values
-            (?, 'TYW-001', '机构A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
+            (?, 'TYW-001', '鏈烘瀯A', 'repo', 'H', 'AC', 'asset', 'CNY', 500, 8, 'sv_balance_tyw_1', 'rv_balance_1')
             """,
             [REPORT_DATE],
         )
@@ -392,14 +392,14 @@ def _seed_agent_pnl_bridge_tables(duckdb_path: Path, governance_dir: Path) -> No
         conn.execute(
             """
             insert into fact_formal_pnl_fi values
-            (?, 'BOND-001', '组合A', 'CC100', 'H', 'AC', 'CNY', 10, 5, 2, 0, 17, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
+            (?, 'BOND-001', '缁勫悎A', 'CC100', 'H', 'AC', 'CNY', 10, 5, 2, 0, 17, 'sv_fi_bridge_1', 'rv_fi_bridge_1', 'batch-1', 'tr-fi-bridge-1')
             """,
             [REPORT_DATE],
         )
         conn.execute(
             """
             insert into fact_formal_zqtz_balance_daily values
-            (?, 'BOND-001', 'Bond 001', '组合A', 'CC100', '债券', 'bond', 'treasury', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
+            (?, 'BOND-001', 'Bond 001', '缁勫悎A', 'CC100', '鍊哄埜', 'bond', 'treasury', 'issuerA', 'industryA', 'AAA', 'H', 'AC', 'asset', 'CNY', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 'fixed', false, 0, 0, ?, 'normal', 'sv_balance_bridge_1', 'rv_balance_bridge_1', 'batch-balance-1', 'tr-balance-1')
             """,
             [REPORT_DATE, REPORT_DATE],
         )
@@ -437,8 +437,8 @@ def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_bond_analytics_daily values
-            (?, 'BOND-001', 'Treasury Bond', '组合A', 'CC100', 'bond', 'rates', 'gov', 'issuerA', 'industryA', 'AAA', 'TPL', 'rule-1', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 2.0, '2Y', 4.1, 4.0, 0.5, 12.34, false, 0.12, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-1'),
-            (?, 'BOND-002', 'Credit Bond', '组合A', 'CC100', 'bond', 'credit', 'corp', 'issuerB', 'industryB', 'AA+', 'OCI', 'rule-2', 'CNY', 500, 510, 505, 8, 3.2, 3.5, '2029-03-31', 3.0, '3Y', 5.2, 5.0, 0.8, 6.78, true, 0.45, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-2')
+            (?, 'BOND-001', 'Treasury Bond', '缁勫悎A', 'CC100', 'bond', 'rates', 'gov', 'issuerA', 'industryA', 'AAA', 'TPL', 'rule-1', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 2.0, '2Y', 4.1, 4.0, 0.5, 12.34, false, 0.12, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-1'),
+            (?, 'BOND-002', 'Credit Bond', '缁勫悎A', 'CC100', 'bond', 'credit', 'corp', 'issuerB', 'industryB', 'AA+', 'OCI', 'rule-2', 'CNY', 500, 510, 505, 8, 3.2, 3.5, '2029-03-31', 3.0, '3Y', 5.2, 5.0, 0.8, 6.78, true, 0.45, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-2')
             """,
             [REPORT_DATE, REPORT_DATE],
         )
@@ -638,8 +638,10 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result_meta"]["result_kind"] == "agent.market_data"
     assert payload["result_meta"]["formal_use_allowed"] is False
-    assert payload["evidence"]["tables_used"] == ["fact_choice_macro_daily"]
-    assert payload["evidence"]["evidence_rows"] == 1
+    assert payload["evidence"]["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
+    series_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Series Count"))
+    fx_formal_val = int(next(c["value"] for c in payload["cards"] if c["title"] == "Formal FX Candidates"))
+    assert payload["evidence"]["evidence_rows"] == series_val + fx_formal_val
     assert any(card["title"] == "Series Count" for card in payload["cards"])
 
     audit_path = governance_dir / "agent_audit.jsonl"
@@ -647,7 +649,7 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     audit_payload = json.loads(audit_path.read_text(encoding="utf-8").splitlines()[-1])
     assert audit_payload["user_id"] == "u_market"
     assert audit_payload["query_text"] == "market data"
-    assert audit_payload["tables_used"] == ["fact_choice_macro_daily"]
+    assert audit_payload["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
 
 
 def test_agent_query_enabled_path_returns_real_news_and_audit(tmp_path, monkeypatch):

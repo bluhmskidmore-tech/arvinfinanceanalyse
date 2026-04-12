@@ -16,6 +16,24 @@ FACT_TABLE = "fact_formal_risk_tensor_daily"
 class RiskTensorRepository:
     path: str
 
+    def list_report_dates(self) -> list[str]:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return []
+        try:
+            if not _table_exists(conn, FACT_TABLE):
+                return []
+            rows = conn.execute(
+                f"""
+                select distinct cast(report_date as varchar)
+                from {FACT_TABLE}
+                order by cast(report_date as varchar) desc
+                """
+            ).fetchall()
+            return [str(row[0]) for row in rows]
+        finally:
+            conn.close()
+
     def replace_risk_tensor_row(
         self,
         *,

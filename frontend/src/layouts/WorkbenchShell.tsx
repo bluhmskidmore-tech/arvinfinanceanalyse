@@ -1,17 +1,21 @@
 import {
-  AppstoreOutlined,
-  ApartmentOutlined,
   AlertOutlined,
-  BarChartOutlined,
+  ApartmentOutlined,
+  AppstoreOutlined,
   BankOutlined,
+  BarChartOutlined,
+  FundOutlined,
   SettingOutlined,
   TeamOutlined,
-  FundOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { primaryWorkbenchNavigation } from "../mocks/navigation";
+import {
+  primaryWorkbenchNavigation,
+  secondaryWorkbenchNavigation,
+  workbenchNavigation,
+} from "../mocks/navigation";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -24,15 +28,42 @@ const iconMap: Record<string, ReactNode> = {
   market: <FundOutlined />,
 };
 
+function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
+  if (kind === "live") {
+    return {
+      background: "#e8f6ee",
+      color: "#2f8f63",
+      border: "1px solid #c8e8d5",
+    } as const;
+  }
+
+  if (kind === "placeholder") {
+    return {
+      background: "#f6f0ff",
+      color: "#6d3bb3",
+      border: "1px solid #e4d6fb",
+    } as const;
+  }
+
+  return {
+    background: "#fff4e8",
+    color: "#b35a16",
+    border: "1px solid #f1d3b5",
+  } as const;
+}
+
 export function WorkbenchShell() {
   const location = useLocation();
+  const currentSection =
+    workbenchNavigation.find((item) => item.path === location.pathname) ??
+    workbenchNavigation[0];
 
   return (
     <div
       style={{
         minHeight: "100vh",
         display: "grid",
-        gridTemplateColumns: "264px minmax(0, 1fr)",
+        gridTemplateColumns: "300px minmax(0, 1fr)",
         gap: 18,
         padding: 18,
       }}
@@ -87,8 +118,32 @@ export function WorkbenchShell() {
                 fontSize: 12,
               }}
             >
-              工作台壳层
+              Phase 1 workbench shell
             </span>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 16,
+            borderBottom: "1px solid #e3e9f2",
+            background: "#f7f9fc",
+            display: "grid",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#8090a8",
+            }}
+          >
+            Current Scope
+          </span>
+          <div style={{ color: "#162033", fontSize: 13, lineHeight: 1.6 }}>
+            当前主导航只突出已接真实读链路的模块。其余页面保留入口，但明确标注为占位或未就绪。
           </div>
         </div>
 
@@ -116,24 +171,101 @@ export function WorkbenchShell() {
                   background: active ? "#e7efff" : "transparent",
                   color: active ? "#1f5eff" : "#485970",
                   fontWeight: active ? 600 : 500,
-                  border: active
-                    ? "1px solid #cddcff"
-                    : "1px solid transparent",
+                  border: active ? "1px solid #cddcff" : "1px solid transparent",
                   transition: "background-color 160ms ease, color 160ms ease",
                 }}
               >
                 <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
-                <span>{item.label}</span>
+                <span style={{ flex: 1 }}>{item.label}</span>
+                <span
+                  style={{
+                    ...readinessBadgeStyle(item.readiness),
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    fontSize: 11,
+                    fontWeight: 600,
+                  }}
+                >
+                  {item.readinessLabel}
+                </span>
               </NavLink>
             );
           })}
         </nav>
+
+        <div
+          style={{
+            padding: "0 16px 16px",
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              paddingTop: 8,
+              borderTop: "1px solid #e3e9f2",
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#8090a8",
+            }}
+          >
+            Reserved Modules
+          </div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {secondaryWorkbenchNavigation.map((item) => {
+              const active = location.pathname === item.path;
+
+              return (
+                <NavLink
+                  key={item.key}
+                  to={item.path}
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    padding: "12px 14px",
+                    borderRadius: 16,
+                    background: active ? "#f4f7fb" : "#ffffff",
+                    border: active ? "1px solid #d7dfea" : "1px solid #e8edf5",
+                    color: "#485970",
+                    textDecoration: "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
+                    <span style={{ flex: 1, fontWeight: 600 }}>{item.label}</span>
+                    <span
+                      style={{
+                        ...readinessBadgeStyle(item.readiness),
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {item.readinessLabel}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#708197" }}>
+                    {item.readinessNote}
+                  </div>
+                </NavLink>
+              );
+            })}
+          </div>
+        </div>
       </aside>
 
       <div
         style={{
           display: "grid",
-          gridTemplateRows: "84px minmax(0, 1fr)",
+          gridTemplateRows: "96px minmax(0, 1fr)",
           gap: 18,
         }}
       >
@@ -143,11 +275,12 @@ export function WorkbenchShell() {
             alignItems: "center",
             justifyContent: "space-between",
             padding: "0 24px",
-            height: 84,
+            minHeight: 96,
             border: "1px solid #d7dfea",
             borderRadius: 28,
             boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
             background: "#fbfcfe",
+            gap: 16,
           }}
         >
           <div>
@@ -160,34 +293,47 @@ export function WorkbenchShell() {
                 letterSpacing: "0.08em",
               }}
             >
-              管理工作台
+              Phase 1 Status
             </span>
             <div
               style={{
                 margin: "6px 0 0",
                 fontSize: 22,
                 fontWeight: 600,
+                color: "#162033",
               }}
             >
-              前端壳层（演示）
+              当前只突出可验证的真实读链路
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div
+            style={{
+              display: "grid",
+              justifyItems: "end",
+              gap: 8,
+            }}
+          >
             <span
               style={{
-                display: "block",
-                color: "#162033",
+                ...readinessBadgeStyle(currentSection.readiness),
+                borderRadius: 999,
+                padding: "6px 12px",
+                fontSize: 12,
                 fontWeight: 600,
               }}
             >
-              数据日期 2026-04-09
+              {currentSection.label} · {currentSection.readinessLabel}
             </span>
             <span
               style={{
+                maxWidth: 460,
                 color: "#5c6b82",
+                fontSize: 13,
+                lineHeight: 1.6,
+                textAlign: "right",
               }}
             >
-              健康检查与 result_meta 字段预留
+              {currentSection.readinessNote}
             </span>
           </div>
         </header>
@@ -199,8 +345,37 @@ export function WorkbenchShell() {
             borderRadius: 28,
             boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
             background: "#fbfcfe",
+            display: "grid",
+            gap: 18,
           }}
         >
+          {currentSection.readiness !== "live" ? (
+            <section
+              data-testid="workbench-readiness-banner"
+              style={{
+                borderRadius: 18,
+                border: "1px solid #e4ebf5",
+                background: currentSection.readiness === "placeholder" ? "#faf7ff" : "#fff8f1",
+                color: "#31425b",
+                padding: 18,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>
+                {currentSection.readiness === "placeholder"
+                  ? "当前页面仍是占位壳层"
+                  : "当前页面尚未物化真实数据链路"}
+              </div>
+              <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+                {currentSection.readinessNote}
+              </div>
+              <div style={{ fontSize: 13, color: "#708197" }}>
+                若需要先看可跑出数据的模块，请优先使用主导航中的 Live 页面。
+              </div>
+            </section>
+          ) : null}
+
           <Outlet />
         </main>
       </div>

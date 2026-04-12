@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
@@ -8,6 +9,7 @@ import type {
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage.tsx";
 
 const DEFAULT_FILTERS: ProductCategoryManualAdjustmentQuery = {
   adjustmentId: "",
@@ -107,7 +109,7 @@ function didFiltersChange<K extends keyof ProductCategoryManualAdjustmentQuery>(
   return keys.some((key) => hasValueChanged(left[key], right[key]));
 }
 
-export default function ProductCategoryAdjustmentAuditPage() {
+function LegacyProductCategoryAdjustmentAuditBody() {
   const client = useApiClient();
   const [selectedDate, setSelectedDate] = useState("");
   const [showManualForm, setShowManualForm] = useState(false);
@@ -941,4 +943,12 @@ export default function ProductCategoryAdjustmentAuditPage() {
       </AsyncSection>
     </section>
   );
+}
+
+export default function ProductCategoryAdjustmentAuditPage() {
+  const [searchParams] = useSearchParams();
+  if (searchParams.get("branch") === "monthly_operating_analysis") {
+    return <MonthlyOperatingAnalysisAuditPage />;
+  }
+  return <LegacyProductCategoryAdjustmentAuditBody />;
 }

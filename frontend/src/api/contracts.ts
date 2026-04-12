@@ -169,6 +169,10 @@ export type RiskTensorPayload = {
   warnings: string[];
 };
 
+export type RiskTensorDatesPayload = {
+  report_dates: string[];
+};
+
 export type PlaceholderSnapshot = {
   title: string;
   summary: string;
@@ -873,6 +877,66 @@ export type ProductCategoryManualAdjustmentQuery = {
 };
 
 export type ProductCategoryManualAdjustmentExportPayload = {
+  filename: string;
+  content: string;
+};
+
+export type QdbGlMonthlyAnalysisDatesPayload = {
+  report_months: string[];
+};
+
+export type QdbGlMonthlyAnalysisSheet = {
+  key: string;
+  title: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+};
+
+export type QdbGlMonthlyAnalysisWorkbookPayload = {
+  report_month: string;
+  sheets: QdbGlMonthlyAnalysisSheet[];
+};
+
+export type QdbGlMonthlyAnalysisScenarioPayload = QdbGlMonthlyAnalysisWorkbookPayload & {
+  scenario_name: string;
+  applied_overrides: Record<string, unknown>;
+};
+
+export type QdbGlMonthlyAnalysisWorkbookExportPayload = {
+  filename: string;
+  content: Blob;
+};
+
+export type QdbGlMonthlyAnalysisManualAdjustmentRequest = {
+  report_month: string;
+  adjustment_class: "mapping_adjustment" | "analysis_adjustment";
+  target: Record<string, unknown>;
+  operator: "ADD" | "DELTA" | "OVERRIDE";
+  value: string;
+  approval_status: "approved" | "pending" | "rejected";
+};
+
+export type QdbGlMonthlyAnalysisManualAdjustmentPayload = {
+  adjustment_id: string;
+  event_type: string;
+  created_at: string;
+  stream: string;
+  report_month: string;
+  adjustment_class: "mapping_adjustment" | "analysis_adjustment";
+  target: Record<string, unknown>;
+  operator: string;
+  value: string;
+  approval_status: string;
+};
+
+export type QdbGlMonthlyAnalysisManualAdjustmentListPayload = {
+  report_month: string;
+  adjustment_count: number;
+  adjustments: QdbGlMonthlyAnalysisManualAdjustmentPayload[];
+  events: QdbGlMonthlyAnalysisManualAdjustmentPayload[];
+};
+
+export type QdbGlMonthlyAnalysisManualAdjustmentExportPayload = {
   filename: string;
   content: string;
 };

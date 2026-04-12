@@ -123,7 +123,7 @@ def parse_zqtz_snapshot_rows_from_bytes(
             if headers[column]
         }
         report_cell = raw_row.get(ZQTZ_DATE)
-        report_date = _cell_to_iso_date(book, report_cell) or metadata.report_date
+        report_date = metadata.report_date or _cell_to_iso_date(book, report_cell)
         if not report_date:
             continue
 

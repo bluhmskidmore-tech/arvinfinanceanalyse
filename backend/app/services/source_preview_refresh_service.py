@@ -44,7 +44,8 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
             run_id = _build_run_id()
             lock_key = build_source_preview_refresh_lock_key(settings.duckdb_path)
             preview_sources = list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES)
-            _governance_repo(settings).append(
+            _append_governance_record(
+                settings,
                 CACHE_BUILD_RUN_STREAM,
                 {
                     "run_id": run_id,
@@ -56,6 +57,7 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
                     "vendor_version": "vv_none",
                     "preview_sources": preview_sources,
                 },
+                error_message="Source preview refresh governance write failed.",
             )
             _record_job_state_transition(
                 settings=settings,
@@ -169,7 +171,8 @@ def _record_dispatch_failure(
     lock_key: str,
     error_message: str,
 ) -> None:
-    _governance_repo(settings).append(
+    _append_governance_record(
+        settings,
         CACHE_BUILD_RUN_STREAM,
         {
             "run_id": run_id,
@@ -183,6 +186,7 @@ def _record_dispatch_failure(
             "error_message": error_message,
             "finished_at": datetime.now(timezone.utc).isoformat(),
         },
+        error_message="Source preview refresh governance write failed.",
     )
     _record_job_state_transition(
         settings=settings,
@@ -213,6 +217,19 @@ def _load_source_preview_refresh_records(settings: Settings) -> list[dict[str, o
         if str(record.get("cache_key")) == SOURCE_PREVIEW_REFRESH_CACHE_KEY
         and str(record.get("job_name")) == SOURCE_PREVIEW_REFRESH_JOB_NAME
     ]
+
+
+def _append_governance_record(
+    settings: Settings,
+    stream: str,
+    payload: dict[str, object],
+    *,
+    error_message: str,
+) -> None:
+    try:
+        _governance_repo(settings).append(stream, payload)
+    except Exception as exc:
+        raise SourcePreviewRefreshServiceError(error_message) from exc
 
 
 def _record_job_state_transition(

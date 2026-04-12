@@ -362,6 +362,244 @@ def test_gitnexus_intent_prefers_explicit_repo_path_filter_over_question_text(tm
     assert any(card.title == "Nodes" and card.value == "22" for card in envelope.cards)
 
 
+def test_gitnexus_intent_expands_mcp_context_and_processes_into_structured_cards(tmp_path, monkeypatch):
+    gitnexus_service_module = load_module(
+        "backend.app.services.gitnexus_service",
+        "backend/app/services/gitnexus_service.py",
+    )
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    repo_path = tmp_path / "mcp-repo"
+    gitnexus_dir = repo_path / ".gitnexus"
+    gitnexus_dir.mkdir(parents=True)
+    (gitnexus_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(repo_path),
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {"nodes": 100, "edges": 200, "communities": 3, "processes": 4},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (repo_path / ".mcp.json").write_text(
+        json.dumps({"mcpServers": {"gitnexus": {"command": "npx", "args": ["-y", "gitnexus@latest", "mcp"]}}}),
+        encoding="utf-8",
+    )
+
+    class StubGitNexusMcpClient:
+        def __init__(self, target_repo_path):
+            assert str(target_repo_path) == str(repo_path)
+
+        def read_bundle(self, process_name=None):
+            assert process_name is None
+            return {
+                "repo_name": "mcp-repo",
+                "context": {
+                    "project": "mcp-repo",
+                    "stats": {"files": 10, "symbols": 20, "processes": 4},
+                    "tools": [
+                        {"name": "query", "description": "Process-grouped code intelligence"},
+                        {"name": "context", "description": "360-degree symbol view"},
+                    ],
+                    "resources": [
+                        {"uri": "gitnexus://repo/mcp-repo/context", "description": "overview"},
+                        {"uri": "gitnexus://repo/mcp-repo/processes", "description": "flows"},
+                    ],
+                },
+                "processes": [
+                    {"name": "CheckoutFlow", "type": "cross_community", "steps": 6},
+                    {"name": "AuditFlow", "type": "intra_community", "steps": 3},
+                ],
+                "process": None,
+            }
+
+    monkeypatch.setattr(gitnexus_service_module, "GitNexusMcpClient", StubGitNexusMcpClient)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请给我看 GitNexus context 和 processes",
+            filters={"repo_path": str(repo_path)},
+        )
+    )
+
+    assert any(card.title == "GitNexus Tools" and card.type == "table" for card in envelope.cards)
+    assert any(card.title == "GitNexus Resources" and card.type == "table" for card in envelope.cards)
+    assert any(card.title == "GitNexus Processes Table" and card.type == "table" for card in envelope.cards)
+
+    tools_card = next(card for card in envelope.cards if card.title == "GitNexus Tools")
+    assert tools_card.data[0]["tool"] == "query"
+    processes_card = next(card for card in envelope.cards if card.title == "GitNexus Processes Table")
+    assert processes_card.data[0]["name"] == "CheckoutFlow"
+
+
+def test_gitnexus_intent_reads_specific_process_trace_from_mcp(tmp_path, monkeypatch):
+    gitnexus_service_module = load_module(
+        "backend.app.services.gitnexus_service",
+        "backend/app/services/gitnexus_service.py",
+    )
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    repo_path = tmp_path / "mcp-process-repo"
+    gitnexus_dir = repo_path / ".gitnexus"
+    gitnexus_dir.mkdir(parents=True)
+    (gitnexus_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(repo_path),
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {"nodes": 100, "edges": 200, "communities": 3, "processes": 4},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class StubGitNexusMcpClient:
+        def __init__(self, target_repo_path):
+            assert str(target_repo_path) == str(repo_path)
+
+        def read_bundle(self, process_name=None):
+            assert process_name == "CheckoutFlow"
+            return {
+                "repo_name": "mcp-process-repo",
+                "context": None,
+                "processes": [],
+                "process": {
+                    "name": "CheckoutFlow",
+                    "type": "cross_community",
+                    "step_count": 3,
+                    "trace": [
+                        {"step": 1, "symbol": "start_checkout", "file": "backend/app/api.py"},
+                        {"step": 2, "symbol": "calculate_total", "file": "backend/app/services/order.py"},
+                        {"step": 3, "symbol": "save_order", "file": "backend/app/repositories/order_repo.py"},
+                    ],
+                },
+            }
+
+    monkeypatch.setattr(gitnexus_service_module, "GitNexusMcpClient", StubGitNexusMcpClient)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请给我看 GitNexus process",
+            filters={"repo_path": str(repo_path), "process_name": "CheckoutFlow"},
+        )
+    )
+
+    process_card = next(card for card in envelope.cards if card.title == "GitNexus Process Trace")
+    assert process_card.type == "table"
+    assert process_card.data[1]["symbol"] == "calculate_total"
+    assert process_card.data[0]["module_group"] == "api"
+    assert process_card.data[0]["edge_label"] == "api -> services"
+    assert process_card.data[1]["module_group"] == "services"
+    assert process_card.data[1]["edge_label"] == "services -> repositories"
+    assert process_card.data[2]["module_group"] == "repositories"
+    assert process_card.data[2]["edge_label"] == ""
+    assert process_card.spec["columns"] == ["step", "symbol", "file", "module_group", "edge_label"]
+
+
+def test_gitnexus_intent_parses_process_name_from_question(tmp_path, monkeypatch):
+    gitnexus_service_module = load_module(
+        "backend.app.services.gitnexus_service",
+        "backend/app/services/gitnexus_service.py",
+    )
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    repo_path = tmp_path / "mcp-process-question-repo"
+    gitnexus_dir = repo_path / ".gitnexus"
+    gitnexus_dir.mkdir(parents=True)
+    (gitnexus_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "repoPath": str(repo_path),
+                "indexedAt": "2026-03-15T13:33:15.839Z",
+                "stats": {"nodes": 100, "edges": 200, "communities": 3, "processes": 4},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    class StubGitNexusMcpClient:
+        def __init__(self, target_repo_path):
+            assert str(target_repo_path) == str(repo_path)
+
+        def read_bundle(self, process_name=None):
+            assert process_name == "CheckoutFlow"
+            return {
+                "repo_name": "mcp-process-question-repo",
+                "context": None,
+                "processes": [],
+                "process": {
+                    "name": "CheckoutFlow",
+                    "type": "cross_community",
+                    "step_count": 1,
+                    "trace": [{"step": 1, "symbol": "start_checkout", "file": "backend/app/api.py"}],
+                },
+            }
+
+    monkeypatch.setattr(gitnexus_service_module, "GitNexusMcpClient", StubGitNexusMcpClient)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="请给我看 GitNexus process/CheckoutFlow",
+            filters={"repo_path": str(repo_path)},
+        )
+    )
+
+    assert envelope.result_meta.filters_applied["process_name"] == "CheckoutFlow"
+    process_card = next(card for card in envelope.cards if card.title == "GitNexus Process Trace")
+    assert process_card.data[0]["symbol"] == "start_checkout"
+    assert process_card.data[0]["module_group"] == "api"
+    assert process_card.data[0]["edge_label"] == ""
+
+
 def test_unknown_intent_returns_help_message(tmp_path):
     module = load_module(
         "backend.app.agent.tools.analysis_view_tool",

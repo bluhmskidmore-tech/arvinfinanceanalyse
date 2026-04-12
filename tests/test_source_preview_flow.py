@@ -478,6 +478,62 @@ def test_source_preview_refresh_returns_stable_503_when_sync_fallback_worker_fai
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_returns_stable_503_when_authority_governance_queue_write_fails(
+    tmp_path,
+    monkeypatch,
+):
+    for module_name in (
+        "backend.app.main",
+        "backend.app.api",
+        "backend.app.api.routes.source_preview",
+        "backend.app.services.source_preview_refresh_service",
+    ):
+        sys.modules.pop(module_name, None)
+
+    _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{(tmp_path / 'governance.db').as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    send_calls: list[dict[str, object]] = []
+
+    class _BrokenGovernanceRepo:
+        def read_all(self, stream: str) -> list[dict[str, object]]:
+            return []
+
+        def append(self, stream: str, payload: dict[str, object]) -> None:
+            raise RuntimeError(f"SQL governance write failed for stream={stream}")
+
+    monkeypatch.setattr(
+        refresh_module,
+        "_governance_repo",
+        lambda settings: _BrokenGovernanceRepo(),
+    )
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Source preview refresh governance write failed."
+    assert send_calls == []
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_status_run_id_returns_exact_terminal_record(tmp_path, monkeypatch):
     governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
 
@@ -582,6 +638,55 @@ def test_source_preview_refresh_sql_authority_status_reads_sql_governance_when_j
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_sql_authority_status_returns_503_when_sql_governance_read_fails(
+    tmp_path,
+    monkeypatch,
+):
+    for module_name in (
+        "backend.app.main",
+        "backend.app.api",
+        "backend.app.api.routes.source_preview",
+        "backend.app.services.source_preview_refresh_service",
+    ):
+        sys.modules.pop(module_name, None)
+
+    _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{(tmp_path / 'governance.db').as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    class _BrokenGovernanceRepo:
+        def read_all(self, stream: str) -> list[dict[str, object]]:
+            raise RuntimeError(f"SQL governance read failed for stream={stream}")
+
+    monkeypatch.setattr(
+        refresh_module,
+        "_governance_repo",
+        lambda settings: _BrokenGovernanceRepo(),
+    )
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": "source-preview-read-failure"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "SQL governance read failed for stream=cache_build_run"
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_sync_fallback_sql_authority_persists_manifest_via_sql_governance(
     tmp_path,
     monkeypatch,
@@ -624,6 +729,132 @@ def test_source_preview_refresh_sync_fallback_sql_authority_persists_manifest_vi
 
     assert payload["status"] == "completed"
     assert manifests
+    assert manifests[-1]["cache_key"] == "source_preview.foundation"
+    assert manifests[-1]["source_version"] == payload["source_version"]
+    assert manifests[-1]["rule_version"] == payload["rule_version"]
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_sql_shadow_status_prefers_jsonl_over_conflicting_sql_rows(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    sql_path = tmp_path / "governance.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-shadow")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.gov_sql_shadow_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: None,
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    run_id = refresh_response.json()["run_id"]
+
+    sql_repo = governance_module.GovernanceRepository(
+        base_dir=governance_dir,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    sql_only_payload = {
+        "run_id": run_id,
+        "job_name": "source_preview_refresh",
+        "status": "completed",
+        "cache_key": "source_preview.foundation",
+        "lock": "lock:duckdb:source-preview",
+        "source_version": "sv_preview_sql_completed",
+        "vendor_version": "vv_none",
+        "preview_sources": ["zqtz", "tyw"],
+        "finished_at": "2026-04-12T12:00:00+00:00",
+    }
+    with sql_repo._sql_engine.begin() as connection:  # type: ignore[union-attr]
+        sql_repo._append_sql_unlocked(  # pyright: ignore[reportPrivateUsage]
+            connection,
+            governance_module.CACHE_BUILD_RUN_STREAM,
+            sql_only_payload,
+        )
+
+    status_response = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": run_id},
+    )
+
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["run_id"] == run_id
+    assert status_payload["status"] == "queued"
+    assert status_payload["trigger_mode"] == "async"
+    assert status_payload["source_version"] == "sv_preview_pending"
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_sync_fallback_sql_shadow_dual_writes_jsonl_and_sql_governance(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    sql_path = tmp_path / "governance.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-shadow")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.gov_sql_shadow_repo_b",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    payload = refresh_response.json()
+    assert payload["status"] == "completed"
+    assert (governance_dir / "cache_build_run.jsonl").exists()
+    assert (governance_dir / "cache_manifest.jsonl").exists()
+
+    sql_repo = governance_module.GovernanceRepository(
+        base_dir=governance_dir,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    build_runs = sql_repo.read_all(governance_module.CACHE_BUILD_RUN_STREAM)
+    manifests = sql_repo.read_all(governance_module.CACHE_MANIFEST_STREAM)
+
+    assert build_runs
+    assert manifests
+    assert build_runs[-1]["run_id"] == payload["run_id"]
+    assert build_runs[-1]["status"] == "completed"
     assert manifests[-1]["cache_key"] == "source_preview.foundation"
     assert manifests[-1]["source_version"] == payload["source_version"]
     assert manifests[-1]["rule_version"] == payload["rule_version"]

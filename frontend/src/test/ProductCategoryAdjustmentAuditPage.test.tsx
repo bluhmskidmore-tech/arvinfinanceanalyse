@@ -670,4 +670,236 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       });
     });
   });
+
+  it("renders the monthly operating analysis audit branch and creates an adjustment", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const createSpy = vi.fn(async () => ({
+      adjustment_id: "moa-1",
+      event_type: "created",
+      created_at: "2026-04-12T00:00:00Z",
+      stream: "monthly_operating_analysis_adjustments",
+      report_month: "202602",
+      adjustment_class: "mapping_adjustment" as const,
+      target: { account_code: "12301", field: "industry_name" },
+      operator: "OVERRIDE",
+      value: "农业",
+      approval_status: "approved",
+    }));
+
+    const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit?branch=monthly_operating_analysis"]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <ApiClientProvider
+        client={{
+          ...baseClient,
+          getQdbGlMonthlyAnalysisDates: async () => ({
+            result_meta: {
+              trace_id: "tr_qdb_dates",
+              basis: "analytical" as const,
+              result_kind: "qdb-gl-monthly-analysis.dates",
+              formal_use_allowed: false,
+              source_version: "sv_qdb_test",
+              vendor_version: "vv_none",
+              rule_version: "rv_qdb_gl_monthly_analysis_v1",
+              cache_version: "cv_qdb_gl_monthly_analysis_v1",
+              quality_flag: "ok" as const,
+              vendor_status: "ok" as const,
+              fallback_mode: "none" as const,
+              scenario_flag: false,
+              generated_at: "2026-04-12T00:00:00Z",
+            },
+            result: { report_months: ["202602"] },
+          }),
+          getQdbGlMonthlyAnalysisManualAdjustments: async () => ({
+            report_month: "202602",
+            adjustment_count: 0,
+            adjustments: [],
+            events: [],
+          }),
+          createQdbGlMonthlyAnalysisManualAdjustment: createSpy,
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "mapping_adjustment");
+    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-target"), "12301");
+    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "农业");
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
+
+    await waitFor(() => {
+      expect(createSpy).toHaveBeenCalledWith({
+        report_month: "202602",
+        adjustment_class: "mapping_adjustment",
+        target: { target: "12301" },
+        operator: "OVERRIDE",
+        value: "农业",
+        approval_status: "approved",
+      });
+      expect(screen.getByText(/moa-1/)).toBeInTheDocument();
+    });
+  });
+
+  it("supports edit, revoke, restore, and export in the monthly operating analysis audit branch", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const adjustment = {
+      adjustment_id: "moa-1",
+      event_type: "created",
+      created_at: "2026-04-12T00:00:00Z",
+      stream: "monthly_operating_analysis_adjustments",
+      report_month: "202602",
+      adjustment_class: "analysis_adjustment" as const,
+      target: { target: "alerts.14001000001" },
+      operator: "OVERRIDE",
+      value: "manual_override",
+      approval_status: "approved",
+    };
+    const listSpy = vi.fn(async () => ({
+      report_month: "202602",
+      adjustment_count: 1,
+      adjustments: [adjustment],
+      events: [adjustment],
+    }));
+    const updateSpy = vi.fn(async () => ({
+      ...adjustment,
+      event_type: "edited",
+      value: "manual_override_updated",
+    }));
+    const revokeSpy = vi.fn(async () => ({
+      ...adjustment,
+      event_type: "revoked",
+      approval_status: "rejected",
+    }));
+    const restoreSpy = vi.fn(async () => ({
+      ...adjustment,
+      event_type: "restored",
+      approval_status: "approved",
+    }));
+    const exportSpy = vi.fn(async () => ({
+      filename: "monthly-operating-analysis-audit-202602.csv",
+      content: "adjustment_id,event_type\nmoa-1,edited\n",
+    }));
+
+    const OriginalBlob = globalThis.Blob;
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    class MockBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        this.size = parts.map((part) => String(part)).join("").length;
+        this.type = options?.type ?? "";
+      }
+    }
+    globalThis.Blob = MockBlob as unknown as typeof Blob;
+    const clickSpy = vi.fn();
+    const createObjectUrl = vi.fn(() => "blob:monthly-audit");
+    const revokeObjectUrl = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const element = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", {
+          value: clickSpy,
+          configurable: true,
+        });
+      }
+      return element as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+
+    const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit?branch=monthly_operating_analysis"]);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <ApiClientProvider
+        client={{
+          ...baseClient,
+          getQdbGlMonthlyAnalysisDates: async () => ({
+            result_meta: {
+              trace_id: "tr_qdb_dates",
+              basis: "analytical" as const,
+              result_kind: "qdb-gl-monthly-analysis.dates",
+              formal_use_allowed: false,
+              source_version: "sv_qdb_test",
+              vendor_version: "vv_none",
+              rule_version: "rv_qdb_gl_monthly_analysis_v1",
+              cache_version: "cv_qdb_gl_monthly_analysis_v1",
+              quality_flag: "ok" as const,
+              vendor_status: "ok" as const,
+              fallback_mode: "none" as const,
+              scenario_flag: false,
+              generated_at: "2026-04-12T00:00:00Z",
+            },
+            result: { report_months: ["202602"] },
+          }),
+          getQdbGlMonthlyAnalysisManualAdjustments: listSpy,
+          updateQdbGlMonthlyAnalysisManualAdjustment: updateSpy,
+          revokeQdbGlMonthlyAnalysisManualAdjustment: revokeSpy,
+          restoreQdbGlMonthlyAnalysisManualAdjustment: restoreSpy,
+          exportQdbGlMonthlyAnalysisManualAdjustmentsCsv: exportSpy,
+        }}
+      >
+        <QueryClientProvider client={queryClient}>
+          <RouterProvider router={router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    expect(
+      await screen.findByTestId("monthly-operating-analysis-adjustment-row-moa-1"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-edit-moa-1"));
+    await user.clear(screen.getByTestId("monthly-operating-analysis-adjustment-value"));
+    await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override_updated");
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));
+
+    await waitFor(() => {
+      expect(updateSpy).toHaveBeenCalledWith("moa-1", {
+        report_month: "202602",
+        adjustment_class: "analysis_adjustment",
+        target: { target: "alerts.14001000001" },
+        operator: "OVERRIDE",
+        value: "manual_override_updated",
+        approval_status: "approved",
+      });
+    });
+
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-revoke-moa-1"));
+    await waitFor(() => {
+      expect(revokeSpy).toHaveBeenCalledWith("moa-1");
+    });
+
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-restore-moa-1"));
+    await waitFor(() => {
+      expect(restoreSpy).toHaveBeenCalledWith("moa-1");
+    });
+
+    await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-export"));
+    await waitFor(() => {
+      expect(exportSpy).toHaveBeenCalledWith("202602");
+      expect(createObjectUrl).toHaveBeenCalledTimes(1);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:monthly-audit");
+    });
+
+    createElementSpy.mockRestore();
+    globalThis.URL.createObjectURL = originalCreateObjectURL;
+    globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    globalThis.Blob = OriginalBlob;
+  });
 });

@@ -20,7 +20,7 @@ from backend.app.repositories.currency_codes import normalize_currency_code
         ("CNX", "CNX"),
         ("usd", "USD"),
         ("EUR", "EUR"),
-        ("欧元", "欧元"),
+        ("欧元", "EUR"),
     ],
 )
 def test_normalize_currency_code_mapped_and_passthrough(value: object, expected: str) -> None:

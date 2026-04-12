@@ -76,7 +76,9 @@ def _execute_yield_curve_materialization(
                     trade_date=trade_date,
                 )
                 if snapshot is None:
-                    snapshot = adapter.fetch_yield_curve(curve_type=curve_type, trade_date=trade_date)
+                    snapshot = adapter._fetch_akshare_curve(curve_type=curve_type, trade_date=trade_date)
+                    if snapshot is None:
+                        raise RuntimeError("AkShare returned no matching curve snapshot.")
                 snapshots.append(snapshot)
             else:
                 snapshots.append(adapter.fetch_yield_curve(curve_type=curve_type, trade_date=trade_date))
@@ -167,13 +169,10 @@ def _load_aaa_credit_curve_from_choice_snapshot(
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "phase1_macro_vendor_catalog" not in tables:
             return None
-        source_table = "choice_market_snapshot" if "choice_market_snapshot" in tables else None
-        if source_table is None and "fact_choice_macro_daily" in tables:
-            source_table = "fact_choice_macro_daily"
-        if source_table is None:
-            return None
-        if source_table == "choice_market_snapshot":
-            rows = conn.execute(
+        snapshot_rows = []
+        fact_rows = []
+        if "choice_market_snapshot" in tables:
+            snapshot_rows = conn.execute(
                 """
                 select
                   cat.series_name,
@@ -190,8 +189,8 @@ def _load_aaa_credit_curve_from_choice_snapshot(
                 """,
                 [trade_date, f"{AAA_CREDIT_CHOICE_PREFIX}%"],
             ).fetchall()
-        else:
-            rows = conn.execute(
+        if "fact_choice_macro_daily" in tables:
+            fact_rows = conn.execute(
                 """
                 select
                   cat.series_name,
@@ -211,6 +210,27 @@ def _load_aaa_credit_curve_from_choice_snapshot(
     finally:
         conn.close()
 
+    snapshot_error: Exception | None = None
+    if snapshot_rows:
+        try:
+            return _build_aaa_credit_snapshot(rows=snapshot_rows, trade_date=trade_date)
+        except Exception as exc:
+            snapshot_error = exc
+    if fact_rows:
+        try:
+            return _build_aaa_credit_snapshot(rows=fact_rows, trade_date=trade_date)
+        except Exception:
+            pass
+    if snapshot_error is not None:
+        raise snapshot_error
+    return None
+
+
+def _build_aaa_credit_snapshot(
+    *,
+    rows: list[tuple[object, ...]],
+    trade_date: str,
+) -> YieldCurveSnapshot | None:
     if not rows:
         return None
 

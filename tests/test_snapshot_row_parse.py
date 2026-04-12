@@ -163,3 +163,16 @@ def test_parse_tyw_smoke_workbook_liability_product_and_optional_none():
     non_liab = next((row for row in rows if str(row.get("product_type", "")) not in liability_types), None)
     if non_liab is not None:
         assert non_liab["position_side"] == "asset"
+
+
+def test_parse_zqtz_prefers_source_file_report_date_over_stale_sheet_date():
+    path = ROOT / "data_input" / "ZQTZSHOW-2025.11.20.xls"
+    rows = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=path.read_bytes(),
+        ingest_batch_id="ib-zqtz-date-drift",
+        source_version="sv-zqtz-date-drift",
+        source_file=path.name,
+        rule_version="rv-zqtz-date-drift",
+    )
+    assert rows
+    assert {row["report_date"] for row in rows} == {"2025-11-20"}

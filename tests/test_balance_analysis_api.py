@@ -16,7 +16,10 @@ from backend.app.repositories.governance_repo import (
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
-from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
+from tests.test_balance_analysis_materialize_flow import (
+    _patch_skip_fx_refresh,
+    _seed_snapshot_and_fx_tables,
+)
 
 
 def _configure_and_materialize(tmp_path, monkeypatch):
@@ -30,6 +33,7 @@ def _configure_and_materialize(tmp_path, monkeypatch):
         "backend.app.tasks.balance_analysis_materialize",
         "backend/app/tasks/balance_analysis_materialize.py",
     )
+    _patch_skip_fx_refresh(task_mod, monkeypatch)
     task_mod.materialize_balance_analysis_facts.fn(
         report_date="2025-12-31",
         duckdb_path=str(duckdb_path),

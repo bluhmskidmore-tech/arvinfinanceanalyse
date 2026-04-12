@@ -68,20 +68,28 @@ def _resolve_snapshot_ingest_batch_id(
         list_batch_ids = repo.list_tyw_snapshot_ingest_batch_ids
         count_rows_for_report_date = repo.count_tyw_snapshot_rows
 
+    manifest_repo = SourceManifestRepository(
+        governance_repo=GovernanceRepository(base_dir=Path(governance_dir)),
+    )
+
     if requested_ingest_batch_id:
         requested_row_count = count_rows_for_batch(
             report_date,
             ingest_batch_id=requested_ingest_batch_id,
         )
         if requested_row_count <= 0:
-            raise ValueError(
-                f"Explicit ingest_batch_id={requested_ingest_batch_id} for family={family} report_date={report_date} has no materialized snapshot rows."
+            manifest_rows = manifest_repo.select_for_snapshot_materialization(
+                source_families=[family],
+                report_date=report_date,
+                ingest_batch_id=requested_ingest_batch_id,
             )
+            if manifest_rows:
+                raise ValueError(
+                    f"Explicit ingest_batch_id={requested_ingest_batch_id} for family={family} report_date={report_date} has no materialized snapshot rows."
+                )
+            return None
         return requested_ingest_batch_id
 
-    manifest_repo = SourceManifestRepository(
-        governance_repo=GovernanceRepository(base_dir=Path(governance_dir)),
-    )
     manifest_rows = manifest_repo.select_for_snapshot_materialization(
         source_families=[family],
         report_date=report_date,

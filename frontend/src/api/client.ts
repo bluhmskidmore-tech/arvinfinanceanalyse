@@ -40,6 +40,14 @@ import type {
   PnlOverviewPayload,
   PlaceholderSnapshot,
   ProductCategoryDatesPayload,
+  QdbGlMonthlyAnalysisDatesPayload,
+  QdbGlMonthlyAnalysisManualAdjustmentExportPayload,
+  QdbGlMonthlyAnalysisManualAdjustmentListPayload,
+  QdbGlMonthlyAnalysisManualAdjustmentPayload,
+  QdbGlMonthlyAnalysisManualAdjustmentRequest,
+  QdbGlMonthlyAnalysisScenarioPayload,
+  QdbGlMonthlyAnalysisWorkbookExportPayload,
+  QdbGlMonthlyAnalysisWorkbookPayload,
   ProductCategoryManualAdjustmentListPayload,
   ProductCategoryManualAdjustmentExportPayload,
   ProductCategoryManualAdjustmentPayload,
@@ -51,6 +59,7 @@ import type {
   PnlAttributionPayload,
   ResultMeta,
   RiskOverviewPayload,
+  RiskTensorDatesPayload,
   RiskTensorPayload,
   SourcePreviewHistoryPayload,
   SourcePreviewRefreshPayload,
@@ -86,6 +95,7 @@ export type ApiClient = {
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
+  getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
   getContribution: () => Promise<ApiEnvelope<ContributionPayload>>;
   getAlerts: () => Promise<ApiEnvelope<AlertsPayload>>;
@@ -152,6 +162,43 @@ export type ApiClient = {
     view: string;
     scenarioRatePct?: string;
   }) => Promise<ApiEnvelope<ProductCategoryPnlPayload>>;
+  getQdbGlMonthlyAnalysisDates: () => Promise<ApiEnvelope<QdbGlMonthlyAnalysisDatesPayload>>;
+  getQdbGlMonthlyAnalysisWorkbook: (options: {
+    reportMonth: string;
+  }) => Promise<ApiEnvelope<QdbGlMonthlyAnalysisWorkbookPayload>>;
+  exportQdbGlMonthlyAnalysisWorkbookXlsx: (options: {
+    reportMonth: string;
+  }) => Promise<QdbGlMonthlyAnalysisWorkbookExportPayload>;
+  refreshQdbGlMonthlyAnalysis: (options: {
+    reportMonth: string;
+  }) => Promise<{ status: string; run_id: string; job_name: string; trigger_mode: string; cache_key?: string; report_month?: string }>;
+  getQdbGlMonthlyAnalysisRefreshStatus: (runId: string) => Promise<{ status: string; run_id: string; job_name: string; trigger_mode: string; cache_key?: string }>;
+  getQdbGlMonthlyAnalysisScenario: (options: {
+    reportMonth: string;
+    scenarioName: string;
+    deviationWarn?: number;
+    deviationAlert?: number;
+    deviationCritical?: number;
+  }) => Promise<ApiEnvelope<QdbGlMonthlyAnalysisScenarioPayload>>;
+  createQdbGlMonthlyAnalysisManualAdjustment: (
+    payload: QdbGlMonthlyAnalysisManualAdjustmentRequest,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
+  updateQdbGlMonthlyAnalysisManualAdjustment: (
+    adjustmentId: string,
+    payload: QdbGlMonthlyAnalysisManualAdjustmentRequest,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
+  revokeQdbGlMonthlyAnalysisManualAdjustment: (
+    adjustmentId: string,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
+  restoreQdbGlMonthlyAnalysisManualAdjustment: (
+    adjustmentId: string,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentPayload>;
+  getQdbGlMonthlyAnalysisManualAdjustments: (
+    reportMonth: string,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentListPayload>;
+  exportQdbGlMonthlyAnalysisManualAdjustmentsCsv: (
+    reportMonth: string,
+  ) => Promise<QdbGlMonthlyAnalysisManualAdjustmentExportPayload>;
   getBalanceAnalysisDates: () => Promise<ApiEnvelope<BalanceAnalysisDatesPayload>>;
   getBalanceAnalysisOverview: (options: {
     reportDate: string;
@@ -223,6 +270,10 @@ type ApiClientProviderProps = {
 const defaultFetch = (...args: Parameters<typeof fetch>) => fetch(...args);
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
+
+function isFiniteNumber(value: number | undefined): value is number {
+  return value !== undefined && Number.isFinite(value);
+}
 
 const buildMockMeta = (resultKind: string): ResultMeta => ({
   trace_id: `mock_${resultKind}`,
@@ -2141,6 +2192,16 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockApiEnvelope("executive.risk-overview", riskOverviewPayload);
     },
+    async getRiskTensorDates() {
+      await delay();
+      return buildMockApiEnvelope(
+        "risk.tensor.dates",
+        {
+          report_dates: ["2026-02-28", "2026-01-31", "2025-12-31"],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getRiskTensor(reportDate: string) {
       await delay();
       const zero = "0.00000000";
@@ -2564,6 +2625,159 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockProductCategoryPnlEnvelope(options);
     },
+    async getQdbGlMonthlyAnalysisDates() {
+      await delay();
+      return buildMockApiEnvelope(
+        "qdb-gl-monthly-analysis.dates",
+        { report_months: [] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl_mock",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+        },
+      );
+    },
+    async getQdbGlMonthlyAnalysisWorkbook({ reportMonth }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "qdb-gl-monthly-analysis.workbook",
+        { report_month: reportMonth, sheets: [] },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl_mock",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+        },
+      );
+    },
+    async exportQdbGlMonthlyAnalysisWorkbookXlsx({ reportMonth }) {
+      await delay();
+      return {
+        filename: `analysis_report_${reportMonth}.xlsx`,
+        content: new Blob(["mock-qdb-workbook"], {
+          type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }),
+      };
+    },
+    async refreshQdbGlMonthlyAnalysis({ reportMonth }) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: `qdb_gl_monthly_analysis:${reportMonth}`,
+        job_name: "qdb_gl_monthly_analysis",
+        trigger_mode: "sync",
+        cache_key: "qdb_gl_monthly_analysis.analytical",
+        report_month: reportMonth,
+      };
+    },
+    async getQdbGlMonthlyAnalysisRefreshStatus(runId) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "qdb_gl_monthly_analysis",
+        trigger_mode: "terminal",
+        cache_key: "qdb_gl_monthly_analysis.analytical",
+      };
+    },
+    async getQdbGlMonthlyAnalysisScenario({
+      reportMonth,
+      scenarioName,
+      deviationWarn,
+      deviationAlert,
+      deviationCritical,
+    }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "qdb-gl-monthly-analysis.scenario",
+        {
+          report_month: reportMonth,
+          scenario_name: scenarioName,
+          applied_overrides: {
+            ...(deviationWarn === undefined ? {} : { DEVIATION_WARN: deviationWarn }),
+            ...(deviationAlert === undefined ? {} : { DEVIATION_ALERT: deviationAlert }),
+            ...(deviationCritical === undefined ? {} : { DEVIATION_CRITICAL: deviationCritical }),
+          },
+          sheets: [],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_qdb_gl_mock",
+          rule_version: "rv_qdb_gl_monthly_analysis_v1",
+          cache_version: "cv_qdb_gl_monthly_analysis_v1",
+        },
+      );
+    },
+    async createQdbGlMonthlyAnalysisManualAdjustment(payload) {
+      await delay();
+      return {
+        adjustment_id: "moa-mock-1",
+        event_type: "created",
+        created_at: "2026-04-12T00:00:00Z",
+        stream: "monthly_operating_analysis_adjustments",
+        ...payload,
+      };
+    },
+    async updateQdbGlMonthlyAnalysisManualAdjustment(adjustmentId, payload) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "edited",
+        created_at: "2026-04-12T00:10:00Z",
+        stream: "monthly_operating_analysis_adjustments",
+        ...payload,
+      };
+    },
+    async revokeQdbGlMonthlyAnalysisManualAdjustment(adjustmentId) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "revoked",
+        created_at: "2026-04-12T00:20:00Z",
+        stream: "monthly_operating_analysis_adjustments",
+        report_month: "202602",
+        adjustment_class: "analysis_adjustment",
+        target: {},
+        operator: "OVERRIDE",
+        value: "",
+        approval_status: "rejected",
+      };
+    },
+    async restoreQdbGlMonthlyAnalysisManualAdjustment(adjustmentId) {
+      await delay();
+      return {
+        adjustment_id: adjustmentId,
+        event_type: "restored",
+        created_at: "2026-04-12T00:30:00Z",
+        stream: "monthly_operating_analysis_adjustments",
+        report_month: "202602",
+        adjustment_class: "analysis_adjustment",
+        target: {},
+        operator: "OVERRIDE",
+        value: "",
+        approval_status: "approved",
+      };
+    },
+    async getQdbGlMonthlyAnalysisManualAdjustments(reportMonth) {
+      await delay();
+      return {
+        report_month: reportMonth,
+        adjustment_count: 0,
+        adjustments: [],
+        events: [],
+      };
+    },
+    async exportQdbGlMonthlyAnalysisManualAdjustmentsCsv(reportMonth) {
+      await delay();
+      return {
+        filename: `monthly-operating-analysis-audit-${reportMonth}.csv`,
+        content: "adjustment_id,event_type\n",
+      };
+    },
     async getBalanceAnalysisDates() {
       await delay();
       return buildMockApiEnvelope(
@@ -2868,6 +3082,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/ui/risk/overview",
       ),
+    getRiskTensorDates: () =>
+      requestJson<RiskTensorDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/api/risk/tensor/dates",
+      ),
     getRiskTensor: (reportDate: string) =>
       requestJson<RiskTensorPayload>(
         fetchImpl,
@@ -3076,6 +3296,105 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/ui/pnl/product-category?${params.toString()}`,
       );
     },
+    getQdbGlMonthlyAnalysisDates: () =>
+      requestJson<QdbGlMonthlyAnalysisDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/qdb-gl-monthly-analysis/dates",
+      ),
+    getQdbGlMonthlyAnalysisWorkbook: ({ reportMonth }) =>
+      requestJson<QdbGlMonthlyAnalysisWorkbookPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/workbook?report_month=${encodeURIComponent(reportMonth)}`,
+      ),
+    exportQdbGlMonthlyAnalysisWorkbookXlsx: ({ reportMonth }) =>
+      requestBlob(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/workbook/export?report_month=${encodeURIComponent(reportMonth)}`,
+        "qdb-gl-monthly-analysis.xlsx",
+      ),
+    refreshQdbGlMonthlyAnalysis: ({ reportMonth }) =>
+      requestActionJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/refresh?report_month=${encodeURIComponent(reportMonth)}`,
+        { method: "POST" },
+      ),
+    getQdbGlMonthlyAnalysisRefreshStatus: (runId) =>
+      requestActionJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
+    getQdbGlMonthlyAnalysisScenario: ({
+      reportMonth,
+      scenarioName,
+      deviationWarn,
+      deviationAlert,
+      deviationCritical,
+    }) => {
+      const params = new URLSearchParams({
+        report_month: reportMonth,
+        scenario_name: scenarioName,
+      });
+      if (isFiniteNumber(deviationWarn)) {
+        params.set("deviation_warn", String(deviationWarn));
+      }
+      if (isFiniteNumber(deviationAlert)) {
+        params.set("deviation_alert", String(deviationAlert));
+      }
+      if (isFiniteNumber(deviationCritical)) {
+        params.set("deviation_critical", String(deviationCritical));
+      }
+      return requestJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/scenario?${params.toString()}`,
+      );
+    },
+    createQdbGlMonthlyAnalysisManualAdjustment: (payload) =>
+      requestActionWithBody(
+        fetchImpl,
+        baseUrl,
+        "/ui/qdb-gl-monthly-analysis/manual-adjustments",
+        payload,
+      ),
+    updateQdbGlMonthlyAnalysisManualAdjustment: (adjustmentId, payload) =>
+      requestActionWithBody(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/manual-adjustments/${encodeURIComponent(adjustmentId)}/edit`,
+        payload,
+      ),
+    revokeQdbGlMonthlyAnalysisManualAdjustment: (adjustmentId) =>
+      requestActionJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/manual-adjustments/${encodeURIComponent(adjustmentId)}/revoke`,
+        { method: "POST" },
+      ),
+    restoreQdbGlMonthlyAnalysisManualAdjustment: (adjustmentId) =>
+      requestActionJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/manual-adjustments/${encodeURIComponent(adjustmentId)}/restore`,
+        { method: "POST" },
+      ),
+    getQdbGlMonthlyAnalysisManualAdjustments: (reportMonth) =>
+      requestActionJson(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/manual-adjustments?report_month=${encodeURIComponent(reportMonth)}`,
+      ),
+    exportQdbGlMonthlyAnalysisManualAdjustmentsCsv: (reportMonth) =>
+      requestText(
+        fetchImpl,
+        baseUrl,
+        `/ui/qdb-gl-monthly-analysis/manual-adjustments/export?report_month=${encodeURIComponent(reportMonth)}`,
+        "monthly-operating-analysis-audit.csv",
+      ),
     getBalanceAnalysisDates: () =>
       requestJson<BalanceAnalysisDatesPayload>(
         fetchImpl,

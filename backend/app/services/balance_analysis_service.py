@@ -12,13 +12,16 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from backend.app.core_finance.balance_analysis import FormalTywBalanceFactRow, FormalZqtzBalanceFactRow
+from backend.app.governance.formal_compute_lineage import (
+    resolve_completed_formal_build_lineage,
+    resolve_formal_manifest_lineage,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.balance_analysis_decision_repo import BalanceAnalysisDecisionRepository
 from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
-    CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
 from backend.app.schemas.balance_analysis import (
@@ -171,7 +174,10 @@ def balance_analysis_refresh_status(settings: Settings, *, run_id: str) -> dict[
 def balance_analysis_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, object]:
     repo = BalanceAnalysisRepository(duckdb_path)
     payload = BalanceAnalysisDatesPayload(report_dates=repo.list_report_dates())
-    lineage = _resolve_latest_balance_manifest_lineage(governance_dir)
+    lineage = resolve_formal_manifest_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+    )
     meta = build_formal_result_meta(
         trace_id="tr_balance_analysis_dates",
         result_kind="balance-analysis.dates",
@@ -206,7 +212,12 @@ def balance_analysis_overview_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
@@ -263,7 +274,12 @@ def balance_analysis_summary_envelope(
         limit=limit,
         offset=offset,
     )
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_summary_{report_date}_{position_scope}_{currency_basis}_{offset}_{limit}",
         result_kind="balance-analysis.summary",
@@ -315,7 +331,12 @@ def balance_analysis_basis_breakdown_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_analysis_basis_breakdown_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.basis-breakdown",
@@ -366,7 +387,12 @@ def export_balance_analysis_summary_csv(
         limit=None,
         offset=0,
     )
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
     source_version = _require_balance_lineage_value(
         build_lineage["source_version"] if build_lineage is not None else None,
         report_date=report_date,
@@ -434,7 +460,12 @@ def balance_analysis_detail_envelope(
         *[_to_tyw_detail_row(row) for row in tyw_rows],
     ]
     summary = _build_summary_rows(details)
-    build_lineage = _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
 
     payload = BalanceAnalysisPayload(
         report_date=report_date,
@@ -777,7 +808,12 @@ def _build_balance_workbook_payload(
         tyw_rows=tyw_native_rows,
         zqtz_currency_rows=zqtz_currency_rows,
     )
-    return workbook, _resolve_report_date_build_lineage(governance_dir, report_date=report_date)
+    return workbook, resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
 
 
 def _extract_generated_decision_section(workbook: dict[str, Any]) -> dict[str, Any]:
@@ -1095,39 +1131,6 @@ def _autosize_sheet_columns(sheet: Worksheet) -> None:
         values = ["" if cell.value is None else str(cell.value) for cell in column_cells]
         max_length = max(len(value) for value in values) if values else 0
         sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 40)
-
-
-def _resolve_latest_balance_manifest_lineage(governance_dir: str) -> dict[str, object]:
-    rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_MANIFEST_STREAM)
-    matches = [row for row in rows if str(row.get("cache_key")) == CACHE_KEY]
-    if not matches:
-        raise RuntimeError(f"Canonical balance-analysis lineage unavailable for cache_key={CACHE_KEY}.")
-    latest = matches[-1]
-    required = ("source_version", "vendor_version", "rule_version")
-    missing = [key for key in required if latest.get(key) in (None, "")]
-    if missing:
-        raise RuntimeError(
-            f"Canonical balance-analysis lineage malformed for cache_key={CACHE_KEY}: missing {', '.join(missing)}."
-        )
-    return latest
-
-
-def _resolve_report_date_build_lineage(
-    governance_dir: str,
-    *,
-    report_date: str,
-) -> dict[str, object] | None:
-    rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-    matches = [
-        row
-        for row in rows
-        if str(row.get("cache_key")) == CACHE_KEY
-        and str(row.get("job_name")) == BALANCE_ANALYSIS_JOB_NAME
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-        and str(row.get("source_version") or "").strip()
-    ]
-    return matches[-1] if matches else None
 
 
 def _resolve_balance_cache_version(lineage: dict[str, object] | None) -> str:

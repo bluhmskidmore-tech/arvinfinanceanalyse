@@ -9,6 +9,7 @@ import type {
   ProductCategoryPnlRow,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch.tsx";
 
 const DISPLAY_ORDER = [
   "interbank_lending_assets",
@@ -99,6 +100,7 @@ function toneForValue(value: DecimalLike | null | undefined) {
 
 export default function ProductCategoryPnlPage() {
   const client = useApiClient();
+  const [selectedBranch, setSelectedBranch] = useState<"product_category_pnl" | "monthly_operating_analysis">("product_category_pnl");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedView, setSelectedView] = useState("monthly");
   const [scenarioRate, setScenarioRate] = useState("1.75");
@@ -346,8 +348,64 @@ export default function ProductCategoryPnlPage() {
     </div>
   ) : null;
 
+  if (selectedBranch === "monthly_operating_analysis") {
+    return (
+      <section>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 16,
+          }}
+        >
+          <button
+            type="button"
+            data-testid="product-category-branch-product-category-pnl"
+            aria-pressed="false"
+            onClick={() => setSelectedBranch("product_category_pnl")}
+          >
+            产品分类损益
+          </button>
+          <button
+            type="button"
+            data-testid="product-category-branch-monthly-operating-analysis"
+            aria-pressed="true"
+            onClick={() => setSelectedBranch("monthly_operating_analysis")}
+          >
+            月度经营分析
+          </button>
+        </div>
+        <MonthlyOperatingAnalysisBranch />
+      </section>
+    );
+  }
+
   return (
     <section>
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
+        <button
+          type="button"
+          data-testid="product-category-branch-product-category-pnl"
+          aria-pressed="true"
+          onClick={() => setSelectedBranch("product_category_pnl")}
+        >
+          产品分类损益
+        </button>
+        <button
+          type="button"
+          data-testid="product-category-branch-monthly-operating-analysis"
+          aria-pressed="false"
+          onClick={() => setSelectedBranch("monthly_operating_analysis")}
+        >
+          月度经营分析
+        </button>
+      </div>
       <div
         style={{
           display: "flex",

@@ -73,3 +73,45 @@ def test_ingest_scan_enriches_manifest_rows_for_all_planned_pnl_source_families(
         "2025-12-31",
         "2025-12-31",
     ]
+
+
+def test_load_latest_pnl_refresh_input_keeps_manifest_report_date_for_archived_fi_names(tmp_path):
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    archived_fi = archive_dir / "FI_202602__archived.xls"
+    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    archived_fi.write_bytes(source_fi.read_bytes())
+
+    governance_repo = governance_module.GovernanceRepository(base_dir=tmp_path / "governance")
+    governance_repo.append(
+        governance_module.SOURCE_MANIFEST_STREAM,
+        {
+            "source_family": "pnl",
+            "report_date": "2026-02-28",
+            "source_file": "FI损益202602.xls",
+            "source_version": "sv_manifest_fi",
+            "ingest_batch_id": "ib_manifest_fi",
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+            "archived_path": str(archived_fi),
+        },
+    )
+
+    refresh = source_module.load_latest_pnl_refresh_input(
+        governance_dir=tmp_path / "governance",
+        data_root=tmp_path / "missing-data-root",
+        report_date="2026-02-28",
+    )
+
+    assert refresh.report_date == "2026-02-28"
+    assert refresh.fi_rows
+    assert refresh.fi_rows[0]["report_date"] == "2026-02-28"

@@ -360,20 +360,31 @@ def _risk_tensor_payload(
 
 
 def _market_data_payload(duckdb_path: str) -> dict[str, Any]:
-    from backend.app.services.macro_vendor_service import choice_macro_latest_envelope
+    from backend.app.services.macro_vendor_service import (
+        choice_macro_latest_envelope,
+        fx_analytical_envelope,
+        fx_formal_status_envelope,
+    )
 
-    upstream = choice_macro_latest_envelope(duckdb_path)
-    meta = dict(upstream.get("result_meta", {}))
-    series = list(upstream.get("result", {}).get("series", []))
+    macro_upstream = choice_macro_latest_envelope(duckdb_path)
+    fx_upstream = fx_analytical_envelope(duckdb_path)
+    fx_formal_upstream = fx_formal_status_envelope(duckdb_path)
+    meta = dict(macro_upstream.get("result_meta", {}))
+    series = list(macro_upstream.get("result", {}).get("series", []))
+    fx_groups = list(fx_upstream.get("result", {}).get("groups", []))
+    fx_rows = list(fx_formal_upstream.get("result", {}).get("rows", []))
     return {
-        "answer": "最新宏观/市场数据已返回。",
+        "answer": "Latest governed market-data payload returned, including macro series plus analytical and formal FX status surfaces.",
         "cards": [
             {"type": "metric", "title": "Series Count", "value": str(len(series))},
+            {"type": "metric", "title": "Formal FX Candidates", "value": str(len(fx_rows))},
+            {"type": "metric", "title": "Analytical FX Groups", "value": str(len(fx_groups))},
             {"type": "table", "title": "Latest Macro Series", "data": series[:10]},
+            {"type": "table", "title": "Formal FX Status", "data": fx_rows[:10]},
         ],
-        "tables_used": ["fact_choice_macro_daily"],
+        "tables_used": ["fact_choice_macro_daily", "fx_daily_mid"],
         "filters_applied": {},
-        "row_count": len(series),
+        "row_count": len(series) + len(fx_rows),
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "analytical"),
         "formal_use_allowed": bool(meta.get("formal_use_allowed", False)),
@@ -384,7 +395,7 @@ def _market_data_payload(duckdb_path: str) -> dict[str, Any]:
         "cache_version": str(meta.get("cache_version") or "cv_agent_market_data_v1"),
         "vendor_status": str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
-        "next_drill": [{"dimension": "series_id", "label": "按指标查看"}],
+        "next_drill": [{"dimension": "series_id", "label": "Inspect macro or FX series"}],
     }
 
 

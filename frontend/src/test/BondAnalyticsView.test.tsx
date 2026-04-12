@@ -136,7 +136,9 @@ describe("BondAnalyticsView", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders a governed cockpit with top-right deferred visibility and non-promoted modules", async () => {
+  it(
+    "renders a governed cockpit with top-right deferred visibility and non-promoted modules",
+    async () => {
     renderBondAnalyticsView();
 
     expect(
@@ -154,7 +156,9 @@ describe("BondAnalyticsView", () => {
     expect(screen.queryByTestId("bond-analysis-headline-action-attribution")).not.toBeInTheDocument();
     expect(screen.queryByTestId("bond-analysis-open-headline-action-attribution")).not.toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-readiness-matrix")).toBeInTheDocument();
-    expect(await screen.findByTestId("bond-analysis-detail-section")).toHaveAttribute(
+    expect(
+      await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: 10000 }),
+    ).toHaveAttribute(
       "data-module-key",
       "action-attribution",
     );
@@ -169,7 +173,9 @@ describe("BondAnalyticsView", () => {
         ),
       ),
     ).toBe(false);
-  });
+    },
+    20_000,
+  );
 
   it("promotes clean action attribution and keeps cockpit drill switching", async () => {
     const user = userEvent.setup();

@@ -32,7 +32,9 @@ describe("/agent route", () => {
       screen.getByText("输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。"),
     ).toBeInTheDocument();
     expect(
-      screen.getByPlaceholderText("例如：组合概览、损益汇总、久期风险、信用集中度..."),
+      screen.getByPlaceholderText(
+        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "查询" }),
@@ -71,7 +73,7 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
       ),
       "久期风险",
     );
@@ -140,7 +142,7 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
       ),
       "组合概览",
     );
@@ -175,7 +177,7 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     const input = await screen.findByPlaceholderText(
-      "例如：组合概览、损益汇总、久期风险、信用集中度...",
+      "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
     );
     await user.type(input, "组合概览{enter}");
 
@@ -208,7 +210,7 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
       ),
       "组合概览",
     );
@@ -252,7 +254,7 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     const input = await screen.findByPlaceholderText(
-      "例如：组合概览、损益汇总、久期风险、信用集中度...",
+      "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
     );
 
     await user.type(input, "组合概览");

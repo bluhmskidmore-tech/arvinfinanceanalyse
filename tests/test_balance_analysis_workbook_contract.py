@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
@@ -16,6 +17,16 @@ FIXED = "\u56fa\u5b9a"
 ISSUANCE_ASSET_CLASS = "\u53d1\u884c\u7c7b\u503a\u52b5"
 INTERBANK_DEPOSIT = "\u540c\u4e1a\u5b58\u653e"
 JOINT_STOCK_BANK = "\u80a1\u4efd\u5236\u94f6\u884c"
+
+
+@pytest.fixture(autouse=True)
+def _patch_fx_mid_materialize_for_workbook_contract(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Fixtures seed fx_daily_mid; skip live Choice/AkShare pulls (no credentials in CI)."""
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    monkeypatch.setattr(task_mod.materialize_fx_mid_for_report_date, "fn", lambda **kwargs: None)
 
 
 def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:

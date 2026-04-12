@@ -19,6 +19,22 @@ from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_t
 from tests.test_product_category_pnl_flow import _write_month_pair
 
 
+def _subprocess_creationflags() -> int:
+    # CREATE_NO_WINDOW + stdio redirects can raise OSError(50) on some Windows/Python builds.
+    if os.name == "nt":
+        return 0
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _write_minimal_fx_official_csv(path: Path) -> None:
+    """Formal FX path for worker e2e: bypass Choice/AkShare when credentials are absent."""
+    path.write_text(
+        "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward\n"
+        "2025-12-31,USD,CNY,7.20000000,TEST_CSV,true,false\n",
+        encoding="utf-8-sig",
+    )
+
+
 def test_source_preview_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_server = _redis_server_path()
     if redis_server is None:
@@ -185,11 +201,15 @@ def test_balance_analysis_refresh_real_worker_e2e(tmp_path, monkeypatch):
 
     _seed_snapshot_and_fx_tables(str(duckdb_path))
 
+    fx_csv = tmp_path / "fx_official.csv"
+    _write_minimal_fx_official_csv(fx_csv)
+
     monkeypatch.setenv("MOSS_REDIS_DSN", f"redis://127.0.0.1:{redis_port}/0")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
     monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", str(fx_csv))
     get_settings.cache_clear()
     _reset_source_preview_modules()
 
@@ -333,7 +353,7 @@ def _find_free_port() -> int:
 
 
 def _start_redis_server(*, redis_server: str, port: int, work_dir: Path) -> subprocess.Popen:
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    creationflags = _subprocess_creationflags()
     return subprocess.Popen(
         [
             redis_server,
@@ -357,7 +377,7 @@ def _start_redis_server(*, redis_server: str, port: int, work_dir: Path) -> subp
 def _start_worker_subprocess(*, redis_port: int) -> subprocess.Popen:
     env = os.environ.copy()
     env["MOSS_REDIS_DSN"] = f"redis://127.0.0.1:{redis_port}/0"
-    creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    creationflags = _subprocess_creationflags()
     return subprocess.Popen(
         [
             sys.executable,

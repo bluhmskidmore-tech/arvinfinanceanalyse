@@ -187,6 +187,8 @@ def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, 
         "backend.app.tasks.balance_analysis_materialize",
         "backend/app/tasks/balance_analysis_materialize.py",
     )
+    # Seed already inserts fx_daily_mid; avoid live Choice/AkShare in CI/local without credentials.
+    monkeypatch.setattr(task_mod.materialize_fx_mid_for_report_date, "fn", lambda **kwargs: None)
     task_mod.materialize_balance_analysis_facts.fn(
         report_date="2025-12-31",
         duckdb_path=str(duckdb_path),

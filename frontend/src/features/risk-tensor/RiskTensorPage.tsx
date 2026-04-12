@@ -1,14 +1,13 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
 
+import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
 
-/** 默认报告日；可通过 URL `?report_date=YYYY-MM-DD` 覆盖。 */
-const DEFAULT_REPORT_DATE = "2025-12-31";
+const FALLBACK_REPORT_DATE = "2025-12-31";
 
 const summaryGridStyle = {
   display: "grid",
@@ -26,12 +25,11 @@ const controlBarStyle = {
 
 function displayStr(value: string | undefined) {
   if (value === undefined || value === "") {
-    return "—";
+    return "-";
   }
   return value;
 }
 
-/** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
 function chartMagnitude(value: string) {
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : 0;
@@ -40,14 +38,25 @@ function chartMagnitude(value: string) {
 export default function RiskTensorPage() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
+  const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+
+  const datesQuery = useQuery({
+    queryKey: ["risk-tensor", "dates", client.mode],
+    queryFn: () => client.getRiskTensorDates(),
+    retry: false,
+  });
+
   const reportDate = useMemo(() => {
-    const fromUrl = searchParams.get("report_date")?.trim();
-    return fromUrl || DEFAULT_REPORT_DATE;
-  }, [searchParams]);
+    if (explicitReportDate) {
+      return explicitReportDate;
+    }
+    return datesQuery.data?.result.report_dates[0] ?? FALLBACK_REPORT_DATE;
+  }, [datesQuery.data?.result.report_dates, explicitReportDate]);
 
   const tensorQuery = useQuery({
     queryKey: ["risk-tensor", reportDate],
     queryFn: () => client.getRiskTensor(reportDate),
+    enabled: Boolean(reportDate),
     retry: false,
   });
 
@@ -72,7 +81,7 @@ export default function RiskTensorPage() {
       "krd_10y",
       "krd_30y",
     ] as const;
-    const data = keys.map((k) => chartMagnitude(result[k]));
+    const data = keys.map((key) => chartMagnitude(result[key]));
     return {
       grid: { left: 52, right: 16, top: 36, bottom: 28 },
       tooltip: {
@@ -122,8 +131,8 @@ export default function RiskTensorPage() {
             lineHeight: 1.75,
           }}
         >
-          消费正式风险张量接口；展示口径以后端{" "}
-          <code style={{ fontSize: 13 }}>/api/risk/tensor</code> 为准。
+          消费正式风险张量接口，展示口径以后端 <code style={{ fontSize: 13 }}>/api/risk/tensor</code> 与
+          <code style={{ fontSize: 13 }}> /api/risk/tensor/dates</code> 为准。
         </p>
       </div>
 
@@ -140,19 +149,22 @@ export default function RiskTensorPage() {
         >
           报告日：<strong>{reportDate}</strong>
           <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
-            （<code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code>）
+            （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 覆盖）
           </span>
         </div>
       </div>
 
       <AsyncSection
         title="组合风险张量"
-        isLoading={tensorQuery.isLoading}
-        isError={tensorQuery.isError}
+        isLoading={datesQuery.isLoading || tensorQuery.isLoading}
+        isError={datesQuery.isError || tensorQuery.isError}
         isEmpty={isEmpty}
-        onRetry={() => void tensorQuery.refetch()}
+        onRetry={() => {
+          void datesQuery.refetch();
+          void tensorQuery.refetch();
+        }}
       >
-        {result && (
+        {result ? (
           <>
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
               <PlaceholderCard
@@ -190,7 +202,7 @@ export default function RiskTensorPage() {
                 color: "#162033",
               }}
             >
-              KRD 分桶（DV01）
+              KRD 分档（DV01）
             </h2>
             {krdChartOption ? (
               <ReactECharts option={krdChartOption} style={{ height: 320 }} />
@@ -263,14 +275,14 @@ export default function RiskTensorPage() {
                 <div style={{ color: "#5c6b82" }}>无 warnings。</div>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
-                  {result.warnings.map((w, i) => (
-                    <li key={i}>{w}</li>
+                  {result.warnings.map((warning, index) => (
+                    <li key={index}>{warning}</li>
                   ))}
                 </ul>
               )}
             </div>
           </>
-        )}
+        ) : null}
       </AsyncSection>
     </section>
   );

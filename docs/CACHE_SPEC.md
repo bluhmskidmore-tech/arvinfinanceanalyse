@@ -144,6 +144,16 @@ lock_key       = lock:duckdb:formal:balance-analysis:materialize
 - 这些 identity 属于当前已落地的 formal-balance pilot，不自动推广为其他 formal module 的默认公开接口。
 - 共享 formal materialize runtime 允许复用 basis-scoped identity 规则，但不得绕过 per-module 的显式 descriptor 声明。
 
+### QDB GL 月度经营分析（analytical workbook）
+
+- API 前缀：`/ui/qdb-gl-monthly-analysis`（见实现路由 `backend/app/api/routes/qdb_gl_monthly_analysis.py`）。
+- 对外口径：`basis=analytical`，`formal_use_allowed=false`，`scenario_flag=false`（与本文「Analytical 结果」 envelope 一致）。
+- 稳定标识（与 service 常量对齐）：
+  - `cache_key`：`qdb_gl_monthly_analysis.analytical`
+  - `rule_version`：`rv_qdb_gl_monthly_analysis_v1`
+  - `cache_version`：`cv_qdb_gl_monthly_analysis_v1`
+- Refresh：`POST .../refresh` 仅向治理侧 `cache_build_run` 流追加完成记录（`GovernanceRepository` 文件流），**不**写入 DuckDB 分析物化表；工作簿在只读链路上由标准化源与人工调整拼装。底层 Excel 基线契约仍以 [data_contracts.md](data_contracts.md) 的 `qdb_gl_baseline_input` 为准。
+
 ## 4. result_meta 要求
 
 本节只定义 outward response / cache 语义，不定义底层 standardized snapshot 表身份。

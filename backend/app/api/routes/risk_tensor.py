@@ -5,9 +5,24 @@ from datetime import date
 from fastapi import APIRouter, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
-from backend.app.services.risk_tensor_service import risk_tensor_envelope
+from backend.app.services.risk_tensor_service import (
+    risk_tensor_dates_envelope,
+    risk_tensor_envelope,
+)
 
 router = APIRouter(prefix="/api/risk", tags=["risk"])
+
+
+@router.get("/tensor/dates")
+def risk_tensor_dates() -> dict:
+    settings = get_settings()
+    try:
+        return risk_tensor_dates_envelope(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/tensor")

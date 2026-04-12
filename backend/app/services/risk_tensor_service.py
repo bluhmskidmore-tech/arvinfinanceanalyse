@@ -15,6 +15,37 @@ from backend.app.services.formal_result_runtime import (
 from backend.app.tasks.risk_tensor_materialize import CACHE_VERSION, RULE_VERSION
 
 
+def risk_tensor_dates_envelope(
+    duckdb_path: str,
+    governance_dir: str,
+) -> dict[str, object]:
+    report_dates = RiskTensorRepository(str(duckdb_path)).list_report_dates()
+    latest_source_version = ""
+    if report_dates:
+        try:
+            latest_lineage = load_latest_bond_analytics_lineage(
+                governance_dir=governance_dir,
+                report_date=report_dates[0],
+            )
+        except RuntimeError:
+            latest_lineage = None
+        if latest_lineage is not None:
+            latest_source_version = str(latest_lineage.get("source_version") or "")
+
+    meta = build_formal_result_meta(
+        trace_id=_trace_id(),
+        result_kind="risk.tensor.dates",
+        cache_version=CACHE_VERSION,
+        source_version=latest_source_version or "sv_risk_tensor_empty",
+        rule_version=RULE_VERSION,
+        vendor_version="vv_none",
+    )
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload={"report_dates": report_dates},
+    )
+
+
 def risk_tensor_envelope(
     duckdb_path: str,
     governance_dir: str,

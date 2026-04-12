@@ -455,11 +455,14 @@ def _resolve_curve_pair_if_needed(
         requested_trade_date=report_date,
         curve_type=curve_type,
     )
-    prior_snapshot, prior_warning = _resolve_curve_for_service(
-        repo=repo,
-        requested_trade_date=prior_date,
-        curve_type=curve_type,
-    )
+    if prior_date is None:
+        prior_snapshot, prior_warning = None, None
+    else:
+        prior_snapshot, prior_warning = _resolve_curve_for_service(
+            repo=repo,
+            requested_trade_date=prior_date,
+            curve_type=curve_type,
+        )
     if current_snapshot is not None:
         current_snapshot = {
             **current_snapshot,

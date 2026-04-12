@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   primaryWorkbenchNavigation,
+  secondaryWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
 
@@ -24,8 +25,8 @@ describe("workbench navigation mocks", () => {
     expect(
       primaryWorkbenchNavigation.some((s) => s.navigationVisibility === "hidden"),
     ).toBe(false);
-    expect(primaryWorkbenchNavigation.length).toBeLessThan(
-      workbenchNavigation.length,
+    expect(primaryWorkbenchNavigation.every((s) => s.readiness === "live")).toBe(
+      true,
     );
   });
 
@@ -34,9 +35,20 @@ describe("workbench navigation mocks", () => {
     expect(dash?.path).toBe("/");
   });
 
-  it("has more total entries than visible primary entries", () => {
-    expect(primaryWorkbenchNavigation.length).toBeLessThan(
-      workbenchNavigation.length,
+  it("promotes risk-overview into the live primary navigation", () => {
+    const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
+    expect(riskOverview?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+  });
+
+  it("tracks reserved modules outside the live primary navigation", () => {
+    expect(secondaryWorkbenchNavigation.length).toBeGreaterThan(0);
+    expect(
+      secondaryWorkbenchNavigation.every((s) => s.readiness !== "live"),
+    ).toBe(true);
+    expect(primaryWorkbenchNavigation.length + secondaryWorkbenchNavigation.length).toBe(
+      workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
   });
 });

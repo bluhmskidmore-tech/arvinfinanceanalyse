@@ -320,6 +320,59 @@ def test_balance_analysis_materialize_preserves_computed_lineage_when_write_fail
         )
 
 
+def test_balance_analysis_materialize_allows_missing_family_when_no_manifest_exists_for_that_date(tmp_path):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    fx_csv_path = tmp_path / "fx_mid.csv"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from tyw_interbank_daily_snapshot")
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    fx_csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        ingest_batch_id="ib-z-only",
+        fx_source_path=str(fx_csv_path),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 0
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    zqtz_rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="native",
+    )
+    tyw_rows = repo.fetch_formal_tyw_rows(
+        report_date="2025-12-31",
+        position_scope="liability",
+        currency_basis="native",
+    )
+
+    assert len(zqtz_rows) == 1
+    assert tyw_rows == []
+
+
 def test_balance_analysis_materialize_migrates_old_formal_zqtz_schema(tmp_path, monkeypatch):
     repo_mod, task_mod = _load_modules()
 
@@ -1376,6 +1429,34 @@ def test_balance_analysis_materialize_fails_closed_when_explicit_batch_lacks_one
         )
     finally:
         conn.close()
+
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    (governance_dir / "source_manifest.jsonl").write_text(
+        json.dumps(
+            {
+                "source_name": "TYWLSHOW",
+                "source_family": "tyw",
+                "source_file": "TYWLSHOW-20251231.xls",
+                "file_name": "TYWLSHOW-20251231.xls",
+                "file_path": str(tmp_path / "TYWLSHOW-20251231.xls"),
+                "file_size": 1,
+                "report_date": "2025-12-31",
+                "report_start_date": "2025-12-31",
+                "report_end_date": "2025-12-31",
+                "report_granularity": "day",
+                "source_version": "sv-tyw-missing-snapshot",
+                "ingest_batch_id": "ib-current",
+                "archive_mode": "local",
+                "archived_path": str(tmp_path / "archive" / "TYWLSHOW-20251231.xls"),
+                "schema_version": "phase1.manifest.v1",
+                "created_at": "2026-04-12T00:00:00+00:00",
+                "status": "completed",
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
     with pytest.raises(ValueError, match="Explicit ingest_batch_id=ib-current"):
         task_mod.materialize_balance_analysis_facts.fn(

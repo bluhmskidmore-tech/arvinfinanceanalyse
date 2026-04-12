@@ -1820,6 +1820,58 @@ describe("createApiClient", () => {
     );
   });
 
+  it("omits invalid monthly operating analysis threshold params in real mode", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_qdb_scenario",
+          basis: "scenario",
+          result_kind: "qdb-gl-monthly-analysis.scenario",
+          formal_use_allowed: false,
+          source_version: "sv_real",
+          vendor_version: "vv_none",
+          rule_version: "rv_real",
+          cache_version: "cv_real",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: true,
+          generated_at: "2026-04-12T00:00:00Z",
+        },
+        result: {
+          report_month: "202602",
+          scenario_name: "threshold-stress",
+          applied_overrides: {},
+          sheets: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getQdbGlMonthlyAnalysisScenario({
+      reportMonth: "202602",
+      scenarioName: "threshold-stress",
+      deviationWarn: Number.NaN,
+      deviationAlert: Number.NaN,
+      deviationCritical: undefined,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/qdb-gl-monthly-analysis/scenario?report_month=202602&scenario_name=threshold-stress",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch the current balance-analysis user identity", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

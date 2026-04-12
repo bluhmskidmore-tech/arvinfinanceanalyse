@@ -220,6 +220,7 @@ def _latest_candidate_for_family(
 
 def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
     metadata = describe_source_file(snapshot.path.name)
+    report_date = snapshot.report_date or metadata.report_date
     workbook = xlrd.open_workbook(str(snapshot.path))
     sheet = workbook.sheet_by_index(0)
     headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
@@ -237,7 +238,7 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
 
         rows.append(
             {
-                "report_date": metadata.report_date,
+                "report_date": report_date,
                 "instrument_code": instrument_code,
                 "portfolio_name": _cell_text(raw_row.get("投资组合")),
                 "cost_center": _cell_text(raw_row.get("成本中心")),

@@ -22,9 +22,6 @@ const SourcePreviewPage = lazy(
 const MarketDataPage = lazy(
   () => import("../features/market-data/pages/MarketDataPage"),
 );
-const ProductCategoryPnlPage = lazy(
-  () => import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
-);
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const BalanceAnalysisPage = lazy(
@@ -33,14 +30,11 @@ const BalanceAnalysisPage = lazy(
 const ProductCategoryAdjustmentAuditPage = lazy(
   () => import("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage"),
 );
+const ProductCategoryPnlPage = lazy(
+  () => import("../features/product-category-pnl/pages/ProductCategoryPnlPage"),
+);
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
-);
-const TeamPerformancePage = lazy(
-  () => import("../features/team-performance/TeamPerformancePage"),
-);
-const PlatformConfigPage = lazy(
-  () => import("../features/platform-config/PlatformConfigPage"),
 );
 const AgentWorkbenchPage = lazy(
   () => import("../features/agent/AgentWorkbenchPage"),
@@ -48,14 +42,11 @@ const AgentWorkbenchPage = lazy(
 const NewsEventsPage = lazy(
   () => import("../features/news-events/NewsEventsPage"),
 );
-const BondAnalyticsView = lazy(
-  () => import("../features/bond-analytics/components/BondAnalyticsView"),
+const RiskTensorPage = lazy(
+  () => import("../features/risk-tensor/RiskTensorPage"),
 );
 const RiskOverviewPage = lazy(
   () => import("../features/risk-overview/RiskOverviewPage"),
-);
-const RiskTensorPage = lazy(
-  () => import("../features/risk-tensor/RiskTensorPage"),
 );
 
 function routeElement(element: ReactNode) {
@@ -66,6 +57,13 @@ function routeElement(element: ReactNode) {
   );
 }
 
+function placeholderRoute(section: WorkbenchSection): RouteObject {
+  return {
+    path: section.path.slice(1),
+    element: routeElement(<WorkbenchPlaceholderPage />),
+  };
+}
+
 function buildWorkbenchChildRoutes(): RouteObject[] {
   return workbenchNavigation.map((section) => {
     if (section.path === "/") {
@@ -73,6 +71,10 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
         index: true,
         element: routeElement(<DashboardPage />),
       };
+    }
+
+    if (section.readiness !== "live" && section.path !== "/agent") {
+      return placeholderRoute(section);
     }
 
     if (section.path === "/operations-analysis") {
@@ -96,17 +98,10 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.path === "/bond-analysis") {
+    if (section.path === "/balance-analysis") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BondAnalyticsView />),
-      };
-    }
-
-    if (section.path === "/product-category-pnl") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<ProductCategoryPnlPage />),
+        element: routeElement(<BalanceAnalysisPage />),
       };
     }
 
@@ -124,17 +119,10 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.path === "/balance-analysis") {
+    if (section.path === "/product-category-pnl") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<BalanceAnalysisPage />),
-      };
-    }
-
-    if (section.path === "/risk-overview") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<RiskOverviewPage />),
+        element: routeElement(<ProductCategoryPnlPage />),
       };
     }
 
@@ -145,24 +133,17 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/risk-overview") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<RiskOverviewPage />),
+      };
+    }
+
     if (section.path === "/market-data") {
       return {
         path: section.path.slice(1),
         element: routeElement(<MarketDataPage />),
-      };
-    }
-
-    if (section.path === "/team-performance") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<TeamPerformancePage />),
-      };
-    }
-
-    if (section.path === "/platform-config") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<PlatformConfigPage />),
       };
     }
 

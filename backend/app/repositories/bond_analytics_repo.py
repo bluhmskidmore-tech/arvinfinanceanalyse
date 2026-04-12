@@ -285,13 +285,13 @@ class BondAnalyticsRepository:
                 )
                 select
                   latest.report_date,
-                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as portfolio_modified_duration,
-                  sum(dv01) as portfolio_dv01,
-                  sum(case when is_credit then market_value else 0 end) / nullif(sum(market_value), 0) * 100 as credit_market_value_ratio_pct,
-                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as weighted_years_to_maturity
-                from {FACT_TABLE}
+                  sum(f.modified_duration * f.market_value) / nullif(sum(f.market_value), 0) as portfolio_modified_duration,
+                  sum(f.dv01) as portfolio_dv01,
+                  sum(case when f.is_credit then f.market_value else 0 end) / nullif(sum(f.market_value), 0) * 100 as credit_market_value_ratio_pct,
+                  sum(f.years_to_maturity * f.market_value) / nullif(sum(f.market_value), 0) as weighted_years_to_maturity
+                from {FACT_TABLE} as f
                 cross join latest
-                where cast(report_date as varchar) = latest.report_date
+                where cast(f.report_date as varchar) = latest.report_date
                 group by latest.report_date
                 """
             ).fetchone()

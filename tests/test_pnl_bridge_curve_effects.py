@@ -233,3 +233,41 @@ def test_pnl_bridge_marks_result_meta_unavailable_when_credit_curve_missing(tmp_
     assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert payload["result_meta"]["fallback_mode"] == "none"
     get_settings.cache_clear()
+
+
+def test_pnl_bridge_first_period_does_not_mark_vendor_unavailable_when_current_curve_exists(tmp_path, monkeypatch):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_curve",
+        vendor_version="vv_pnl_curve",
+        rule_version="rv_pnl_curve",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("delete from fact_formal_zqtz_balance_daily where report_date = '2025-10-31'")
+    finally:
+        conn.close()
+    _seed_curve_rows(
+        duckdb_path,
+        [
+            ("2025-12-31", "treasury", "1Y", Decimal("2.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "2Y", Decimal("3.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+            ("2025-12-31", "treasury", "3Y", Decimal("4.00"), "akshare", "vv_treasury_current", "sv_treasury_current", "rv_curve"),
+        ],
+    )
+
+    from fastapi.testclient import TestClient
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["vendor_status"] == "ok"
+    get_settings.cache_clear()

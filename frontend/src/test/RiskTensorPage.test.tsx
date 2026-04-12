@@ -55,7 +55,10 @@ function tensorResult(reportDate: string): RiskTensorPayload {
   };
 }
 
-function renderRiskTensorRoute(initialEntry: string, client: ReturnType<typeof createApiClient>) {
+function renderRiskTensorRoute(
+  initialEntry: string,
+  client: ReturnType<typeof createApiClient>,
+) {
   const router = createWorkbenchMemoryRouter([initialEntry]);
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -73,8 +76,12 @@ function renderRiskTensorRoute(initialEntry: string, client: ReturnType<typeof c
 }
 
 describe("RiskTensorPage", () => {
-  it("uses default report date when querystring is absent", async () => {
+  it("uses latest available report date when querystring is absent", async () => {
     const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates"),
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
+    }));
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
       result: tensorResult(reportDate),
@@ -82,12 +89,11 @@ describe("RiskTensorPage", () => {
 
     renderRiskTensorRoute("/risk-tensor", {
       ...base,
+      getRiskTensorDates,
       getRiskTensor,
     });
 
     expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
-    expect(screen.getByText("2025-12-31", { exact: false })).toBeInTheDocument();
-
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent("12.34");
     expect(kpi).toHaveTextContent("8.88");
@@ -96,12 +102,17 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(getRiskTensor).toHaveBeenCalledWith("2025-12-31");
+      expect(getRiskTensorDates).toHaveBeenCalled();
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
     });
   });
 
   it("honors report_date in the URL querystring", async () => {
     const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates"),
+      result: { report_dates: ["2026-02-28", "2026-01-31"] },
+    }));
     const getRiskTensor = vi.fn(async (reportDate: string) => ({
       result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
       result: tensorResult(reportDate),
@@ -109,12 +120,11 @@ describe("RiskTensorPage", () => {
 
     renderRiskTensorRoute("/risk-tensor?report_date=2026-03-15", {
       ...base,
+      getRiskTensorDates,
       getRiskTensor,
     });
 
     expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
-    expect(screen.getByText("2026-03-15", { exact: false })).toBeInTheDocument();
-
     await waitFor(() => {
       expect(getRiskTensor).toHaveBeenCalledWith("2026-03-15");
     });

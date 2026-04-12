@@ -54,11 +54,16 @@ def test_materialize_yield_curve_aaa_credit_fail_closed_when_fetch_fails(tmp_pat
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
-
-    def fail_fetch(*, curve_type: str, trade_date: str):
-        raise RuntimeError(f"{curve_type} unavailable")
-
-    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fail_fetch)
+    monkeypatch.setattr(
+        task_mod,
+        "_load_aaa_credit_curve_from_choice_snapshot",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda *_args, **_kwargs: None,
+    )
 
     with pytest.raises(RuntimeError, match="Failed to materialize aaa_credit curve"):
         task_mod.materialize_yield_curve.fn(
@@ -308,6 +313,267 @@ def test_materialize_yield_curve_supports_aaa_credit_request(tmp_path, monkeypat
     assert payload["point_count"] == 8
     assert payload["source_version"] == "sv_choice_macro"
     assert payload["vendor_version"] == "vv_choice_batch"
+
+
+def test_materialize_yield_curve_uses_fact_table_when_snapshot_table_has_no_requested_date(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)",
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "choice", "vv_choice_batch", "daily", "pct"),
+            ],
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+            ('EMM00166655','中债企业债到期收益率(AAA):1年','EMM00166655','choice','2026-04-09',1.30,'daily','pct','sv_old','vv_old','rv_old','run-old')
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "2026-04-10", 1.20, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "2026-04-10", 1.30, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "2026-04-10", 1.40, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "2026-04-10", 1.50, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "2026-04-10", 1.70, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "2026-04-10", 1.80, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "2026-04-10", 2.00, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "fetch_yield_curve",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("live vendor path should not be used")),
+    )
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aaa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["source_version"] == "sv_choice_fact"
+    assert payload["vendor_version"] == "vv_choice_fact"
+
+
+def test_materialize_yield_curve_prefers_complete_fact_when_same_day_snapshot_is_partial(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)",
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "choice", "vv_choice_batch", "daily", "pct"),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "EMM00166655", "choice", "2026-04-10", 1.30, "daily", "pct", "sv_partial", "vv_partial", "rv_choice_macro", "run-1"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "EMM00166657", "choice", "2026-04-10", 1.50, "daily", "pct", "sv_partial", "vv_partial", "rv_choice_macro", "run-1"),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "2026-04-10", 1.20, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "2026-04-10", 1.30, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "2026-04-10", 1.40, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "2026-04-10", 1.50, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "2026-04-10", 1.70, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "2026-04-10", 1.80, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "2026-04-10", 2.00, "daily", "pct", "sv_choice_fact", "vv_choice_fact", "rv_choice_macro", "ok", "run-1"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("exact-family akshare fallback should not be used")),
+    )
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aaa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["source_version"] == "sv_choice_fact"
+    assert payload["vendor_version"] == "vv_choice_fact"
+
+
+def test_materialize_yield_curve_aaa_credit_uses_exact_family_akshare_only_when_no_landed_choice(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "fetch_yield_curve",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("live Choice path must not be used for aaa_credit fallback")),
+    )
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda _self, curve_type, trade_date: schema_mod.YieldCurveSnapshot(
+            curve_type="aaa_credit",
+            trade_date=trade_date,
+            points=[
+                schema_mod.YieldCurvePoint("6M", Decimal("1.20")),
+                schema_mod.YieldCurvePoint("1Y", Decimal("1.30")),
+                schema_mod.YieldCurvePoint("2Y", Decimal("1.40")),
+                schema_mod.YieldCurvePoint("3Y", Decimal("1.50")),
+                schema_mod.YieldCurvePoint("5Y", Decimal("1.70")),
+                schema_mod.YieldCurvePoint("7Y", Decimal("1.85")),
+                schema_mod.YieldCurvePoint("10Y", Decimal("2.00")),
+            ],
+            vendor_name="akshare",
+            vendor_version="vv_aaa_akshare",
+            source_version="sv_aaa_akshare",
+        ),
+    )
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aaa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["vendor_version"] == "vv_aaa_akshare"
 
 
 def test_yield_curve_module_declares_chinabond_gkh_input_source():

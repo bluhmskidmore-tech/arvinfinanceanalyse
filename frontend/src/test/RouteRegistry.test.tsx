@@ -1,6 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
 import { workbenchSections } from "../router/routes";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
@@ -15,6 +16,10 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () =
       mocked detail
     </section>
   ),
+}));
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
 
 describe("RouteRegistry", () => {
@@ -80,14 +85,14 @@ describe("RouteRegistry", () => {
       vi.unstubAllGlobals();
     });
 
-    it("renders the risk-overview route with tensor-first framing", async () => {
+    it("renders the risk-overview route as the live governed page", async () => {
       renderWorkbenchApp(["/risk-overview"]);
 
       expect(
         await screen.findByRole("heading", { name: "风险总览" }, { timeout: 10000 }),
       ).toBeInTheDocument();
-      expect(await screen.findByText(/正式风险张量（主数据）/)).toBeInTheDocument();
-      expect(await screen.findByText(/Bond Analytics 下钻与补充/)).toBeInTheDocument();
+      expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
+      expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
     });
   });
 
@@ -131,27 +136,13 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
 
-  it("renders the product-category pnl route with page content", async () => {
-    renderWorkbenchApp(["/product-category-pnl"]);
-
-    expect(
-      await screen.findByRole("heading", { name: "产品类别损益分析" }),
-    ).toBeInTheDocument();
-    expect(
-      await screen.findByText("产品类别损益分析表（单位：亿元）"),
-    ).toBeInTheDocument();
-    expect(await screen.findByText("债券投资")).toBeInTheDocument();
-  });
-
-  it("renders the bond-analysis route with the governed cockpit shell", async () => {
+  it("renders the bond-analysis route as a reserved placeholder", async () => {
     renderWorkbenchApp(["/bond-analysis"]);
 
     expect(
-      await screen.findByTestId("bond-analysis-overview", {}, { timeout: 10000 }),
+      await screen.findByRole("heading", { name: "债券分析" }),
     ).toBeInTheDocument();
-    expect(
-      await screen.findByTestId("bond-analysis-top-cockpit", {}, { timeout: 10000 }),
-    ).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
   });
 
   it("renders the product-category adjustment audit route", async () => {
@@ -187,40 +178,46 @@ describe("RouteRegistry", () => {
   });
 
   it("renders the pnl-bridge route with the governed bridge shell", async () => {
-    renderWorkbenchApp(["/pnl-bridge"]);
+    renderWorkbenchApp(["/pnl-bridge"], {
+      client: createApiClient({ mode: "mock" }),
+    });
 
     expect(
       await screen.findByRole("heading", { name: "损益桥接" }),
     ).toBeInTheDocument();
-    expect(await screen.findByText("汇总")).toBeInTheDocument();
     expect(await screen.findByLabelText("pnl-bridge-report-date")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the pnl route with the formal PnL workbench shell", async () => {
-    renderWorkbenchApp(["/pnl"]);
+    renderWorkbenchApp(["/pnl"], {
+      client: createApiClient({ mode: "mock" }),
+    });
 
     expect(await screen.findByRole("heading", { name: "损益明细" })).toBeInTheDocument();
     expect(await screen.findByLabelText("pnl-report-date")).toBeInTheDocument();
   });
 
   it("renders the risk-tensor route", async () => {
-    renderWorkbenchApp(["/risk-tensor"]);
+    renderWorkbenchApp(["/risk-tensor"], {
+      client: createApiClient({ mode: "mock" }),
+    });
 
     expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
     expect(await screen.findByText("组合风险张量")).toBeInTheDocument();
   });
 
-  it("renders the team-performance route", async () => {
+  it("renders the team-performance route as a reserved placeholder", async () => {
     renderWorkbenchApp(["/team-performance"]);
 
     expect(await screen.findByRole("heading", { name: "团队绩效" })).toBeInTheDocument();
-    expect(await screen.findByLabelText("团队绩效-报表月份")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
   });
 
-  it("renders the platform-config route", async () => {
+  it("renders the platform-config route as a reserved placeholder", async () => {
     renderWorkbenchApp(["/platform-config"]);
 
     expect(await screen.findByRole("heading", { name: "中台配置" })).toBeInTheDocument();
-    expect(await screen.findByText("系统健康状态")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
   });
 });

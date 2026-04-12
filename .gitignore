@@ -16,9 +16,18 @@ __pycache__/
 *.pyc
 *.pyo
 *.log
+.tmp-pnl-refresh.json
+
+# Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
+.pytest_cache/
+.tmp_pytest/
+py_temp_pytest/
 
 # Accidental Windows reserved-name stub (cannot be indexed by Git on Windows)
 /CON
+
+# Local verification scratch (locks, catalogs)
+py_verify/
 
 # Ephemeral working directories
 tmphv10t71n/

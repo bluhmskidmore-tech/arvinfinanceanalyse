@@ -38,6 +38,22 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_risk_tensor_api_returns_available_report_dates(tmp_path, monkeypatch):
+    _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/risk/tensor/dates")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "formal"
+    assert payload["result_meta"]["result_kind"] == "risk.tensor.dates"
+    assert payload["result_meta"]["formal_use_allowed"] is True
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
+
+    get_settings.cache_clear()
+
+
 def test_risk_tensor_api_returns_404_for_absent_report_date(tmp_path, monkeypatch):
     _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
 
