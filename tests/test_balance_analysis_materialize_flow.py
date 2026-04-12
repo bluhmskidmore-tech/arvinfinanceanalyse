@@ -595,3 +595,51 @@ def test_balance_analysis_materialize_prefers_official_fx_source_path_over_legac
     assert payload["zqtz_rows"] == 2
     assert payload["tyw_rows"] == 2
     get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_accepts_explicit_data_root_and_fx_source_path_without_env(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    data_input_root = tmp_path / "data_input"
+    official_csv = data_input_root / "fx" / "fx_daily_mid.csv"
+    official_csv.parent.mkdir(parents=True, exist_ok=True)
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    official_csv.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("MOSS_FX_OFFICIAL_SOURCE_PATH", raising=False)
+    monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_input_root),
+        fx_source_path=str(official_csv),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()

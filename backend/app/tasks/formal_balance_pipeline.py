@@ -2,33 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-from contextlib import contextmanager
-from typing import Iterator
 
 from backend.app.tasks.balance_analysis_materialize import materialize_balance_analysis_facts
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import ingest_demo_manifest
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
-
-
-@contextmanager
-def _temporary_env(overrides: dict[str, str | None]) -> Iterator[None]:
-    previous: dict[str, str | None] = {}
-    for key, value in overrides.items():
-        previous[key] = os.environ.get(key)
-        if value is None:
-            os.environ.pop(key, None)
-        else:
-            os.environ[key] = value
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
 
 
 def _run_formal_balance_pipeline(
@@ -40,33 +18,27 @@ def _run_formal_balance_pipeline(
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
 ) -> dict[str, object]:
-    with _temporary_env(
-        {
-            "MOSS_DATA_INPUT_ROOT": data_root,
-            "MOSS_FX_OFFICIAL_SOURCE_PATH": fx_source_path,
-        }
-    ):
-        ingest_payload = ingest_demo_manifest.fn(
-            data_root=data_root,
-            governance_dir=governance_dir,
-            archive_dir=archive_dir,
-        )
-        source_families = [
-            source_family
-            for source_family in ingest_payload.get("source_families", [])
-            if source_family in {"zqtz", "tyw"}
-        ] or ["zqtz", "tyw"]
-        snapshot_payload = materialize_standard_snapshots.fn(
-            duckdb_path=duckdb_path,
-            governance_dir=governance_dir,
-            source_families=source_families,
-            report_date=report_date,
-        )
-        balance_payload = materialize_balance_analysis_facts.fn(
-            report_date=report_date,
-            duckdb_path=duckdb_path,
-            governance_dir=governance_dir,
-        )
+    source_families = ["zqtz", "tyw"]
+    ingest_payload = ingest_demo_manifest.fn(
+        data_root=data_root,
+        governance_dir=governance_dir,
+        archive_dir=archive_dir,
+        source_family_allowlist=source_families,
+    )
+    snapshot_payload = materialize_standard_snapshots.fn(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        source_families=source_families,
+        ingest_batch_id=str(ingest_payload.get("ingest_batch_id") or ""),
+        report_date=report_date,
+    )
+    balance_payload = materialize_balance_analysis_facts.fn(
+        report_date=report_date,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        data_root=data_root,
+        fx_source_path=fx_source_path,
+    )
     return {
         "status": "completed",
         "report_date": report_date,

@@ -155,6 +155,15 @@ class VendorAdapter(VendorAdapterBase):
         except Exception as exc:
             fallback_error = exc
 
+        tertiary_error: Exception | None = None
+        if normalized_curve_type == "cdb":
+            try:
+                tertiary = self._fetch_chinabond_gkh_curve(normalized_trade_date)
+                if tertiary is not None:
+                    return tertiary
+            except Exception as exc:
+                tertiary_error = exc
+
         errors = []
         if primary_error is not None:
             errors.append(f"AkShare failed: {primary_error}")
@@ -164,6 +173,11 @@ class VendorAdapter(VendorAdapterBase):
             errors.append(f"Choice failed: {fallback_error}")
         else:
             errors.append("Choice returned no matching curve snapshot.")
+        if normalized_curve_type == "cdb":
+            if tertiary_error is not None:
+                errors.append(f"ChinaBond gkh failed: {tertiary_error}")
+            else:
+                errors.append("ChinaBond gkh returned no matching curve snapshot.")
         raise RuntimeError(" ".join(errors))
 
     def _fetch_akshare_curve(self, *, curve_type: str, trade_date: str) -> YieldCurveSnapshot | None:
@@ -180,8 +194,6 @@ class VendorAdapter(VendorAdapterBase):
             and _normalize_record_trade_date(record.get("日期")) == trade_date
         ]
         if not matches:
-            if curve_type == "cdb":
-                return self._fetch_chinabond_gkh_curve(trade_date)
             return None
         points = _prepare_curve_points(
             curve_type=curve_type,

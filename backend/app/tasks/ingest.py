@@ -22,6 +22,7 @@ def _ingest_demo_manifest(
     data_root: str | None = None,
     governance_dir: str | None = None,
     archive_dir: str | None = None,
+    source_family_allowlist: list[str] | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     governance_path = Path(governance_dir or getattr(settings, "governance_path", Path("data/governance")))
@@ -39,7 +40,9 @@ def _ingest_demo_manifest(
             local_archive_path=str(archive_dir or settings.local_archive_path),
         ),
     )
-    service.source_family_allowlist = {"zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"}
+    service.source_family_allowlist = set(
+        source_family_allowlist or {"zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"}
+    )
     summary = service.run()
     return summary.model_dump(mode="json")
 

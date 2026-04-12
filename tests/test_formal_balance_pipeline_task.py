@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 
 from tests.helpers import load_module
@@ -18,18 +19,43 @@ def _load_pipeline_module():
 def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_path, monkeypatch):
     pipeline_mod = _load_pipeline_module()
 
-    calls: list[tuple[str, dict[str, object]]] = []
+    calls: list[tuple[str, dict[str, object], str | None, str | None]] = []
 
     def _fake_ingest(**kwargs):
-        calls.append(("ingest", kwargs))
-        return {"status": "completed", "source_families": ["zqtz", "tyw"]}
+        calls.append(
+            (
+                "ingest",
+                kwargs,
+                os.environ.get("MOSS_DATA_INPUT_ROOT"),
+                os.environ.get("MOSS_FX_OFFICIAL_SOURCE_PATH"),
+            )
+        )
+        return {
+            "status": "completed",
+            "ingest_batch_id": "ib-current",
+            "source_families": ["zqtz", "tyw"],
+        }
 
     def _fake_snapshot(**kwargs):
-        calls.append(("snapshot", kwargs))
+        calls.append(
+            (
+                "snapshot",
+                kwargs,
+                os.environ.get("MOSS_DATA_INPUT_ROOT"),
+                os.environ.get("MOSS_FX_OFFICIAL_SOURCE_PATH"),
+            )
+        )
         return {"status": "completed", "zqtz_rows": 1, "tyw_rows": 1}
 
     def _fake_balance(**kwargs):
-        calls.append(("balance", kwargs))
+        calls.append(
+            (
+                "balance",
+                kwargs,
+                os.environ.get("MOSS_DATA_INPUT_ROOT"),
+                os.environ.get("MOSS_FX_OFFICIAL_SOURCE_PATH"),
+            )
+        )
         return {"status": "completed", "zqtz_rows": 2, "tyw_rows": 2}
 
     monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
@@ -42,15 +68,26 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
         duckdb_path=str(tmp_path / "moss.duckdb"),
         governance_dir=str(tmp_path / "governance"),
         archive_dir=str(tmp_path / "archive"),
+        fx_source_path=str(tmp_path / "data_input" / "fx" / "fx_daily_mid.csv"),
     )
 
-    assert [name for name, _kwargs in calls] == ["ingest", "snapshot", "balance"]
+    assert [name for name, _kwargs, _data_root, _fx_path in calls] == ["ingest", "snapshot", "balance"]
     assert calls[0][1]["data_root"] == str(tmp_path / "data_input")
     assert calls[0][1]["governance_dir"] == str(tmp_path / "governance")
     assert calls[0][1]["archive_dir"] == str(tmp_path / "archive")
+    assert calls[0][1]["source_family_allowlist"] == ["zqtz", "tyw"]
+    assert calls[0][2] is None
+    assert calls[0][3] is None
     assert calls[1][1]["report_date"] == "2025-12-31"
     assert calls[1][1]["source_families"] == ["zqtz", "tyw"]
+    assert calls[1][1]["ingest_batch_id"] == "ib-current"
+    assert calls[1][2] is None
+    assert calls[1][3] is None
     assert calls[2][1]["report_date"] == "2025-12-31"
+    assert calls[2][1]["data_root"] == str(tmp_path / "data_input")
+    assert calls[2][1]["fx_source_path"] == str(tmp_path / "data_input" / "fx" / "fx_daily_mid.csv")
+    assert calls[2][2] is None
+    assert calls[2][3] is None
     assert payload["status"] == "completed"
     assert payload["steps"]["ingest"]["status"] == "completed"
     assert payload["steps"]["snapshot"]["status"] == "completed"

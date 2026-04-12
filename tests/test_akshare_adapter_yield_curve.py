@@ -155,11 +155,39 @@ def test_cdb_akshare_primary_synthesizes_30y_point(monkeypatch):
     assert tenor_map["30Y"] == Decimal("2.40")
 
 
-def test_partial_choice_curve_is_rejected(monkeypatch):
+def test_partial_choice_curve_falls_back_to_gkh(monkeypatch):
     module = load_module(
         "backend.app.repositories.akshare_adapter",
         "backend/app/repositories/akshare_adapter.py",
     )
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    html = """
+    <html>
+      <body>
+        <table id="conter">
+          <tr>
+            <th>曲线名称</th><th>关键期限(年)</th><th>查询日收益率(%)</th>
+            <th>5日均值收益率(%)</th><th>10日均值收益率(%)</th>
+            <th>15日均值收益率(%)</th><th>20日均值收益率(%)</th><th>上一年日均值收益率(%)</th>
+          </tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>1</td><td>1.42</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>3</td><td>1.58</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>5</td><td>1.68</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>7</td><td>1.81</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>10</td><td>1.91</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </body>
+    </html>
+    """
 
     class _PartialChoiceResult:
         Codes = ["EMM00166494"]
@@ -168,9 +196,11 @@ def test_partial_choice_curve_is_rejected(monkeypatch):
 
     monkeypatch.setattr(module.VendorAdapter, "_fetch_akshare_curve", lambda *args, **kwargs: None)
     monkeypatch.setattr(module.ChoiceClient, "edb", lambda *args, **kwargs: _PartialChoiceResult())
+    monkeypatch.setattr(module.requests, "post", lambda *args, **kwargs: _Response(html))
 
-    with pytest.raises(RuntimeError):
-        module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
+    snapshot = module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
+
+    assert snapshot.vendor_name == "chinabond_gkh"
 
 
 def test_cdb_gkh_fallback_returns_normalized_snapshot(monkeypatch):
@@ -228,3 +258,84 @@ def test_cdb_gkh_fallback_returns_normalized_snapshot(monkeypatch):
     assert tenor_map["2Y"] == Decimal("1.50")
     assert tenor_map["20Y"] > tenor_map["10Y"]
     assert tenor_map["30Y"] > tenor_map["20Y"]
+
+
+def test_cdb_prefers_choice_before_gkh_when_akshare_has_no_match(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_records_locally",
+        lambda *args, **kwargs: [{"曲线名称": "中债国债收益率曲线", "日期": "2026-04-10", "1年": Decimal("1.10")}],
+    )
+    monkeypatch.setattr(module.ChoiceClient, "edb", lambda *args, **kwargs: _ChoiceResult())
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("gkh should not be called")),
+    )
+
+    snapshot = module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
+
+    assert snapshot.vendor_name == "choice"
+
+
+def test_cdb_uses_gkh_after_invalid_akshare_and_failed_choice(monkeypatch):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    class _Response:
+        status_code = 200
+
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    html = """
+    <html>
+      <body>
+        <table id="conter">
+          <tr>
+            <th>曲线名称</th><th>关键期限(年)</th><th>查询日收益率(%)</th>
+            <th>5日均值收益率(%)</th><th>10日均值收益率(%)</th>
+            <th>15日均值收益率(%)</th><th>20日均值收益率(%)</th><th>上一年日均值收益率(%)</th>
+          </tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>1</td><td>1.42</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>3</td><td>1.58</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>5</td><td>1.68</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>7</td><td>1.81</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>10</td><td>1.91</td><td>0</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_records_locally",
+        lambda *args, **kwargs: [
+            {
+                "曲线名称": module.AKSHARE_CURVE_NAME_BY_TYPE["cdb"],
+                "日期": "2026-04-10",
+                "1年": Decimal("1.10"),
+            }
+        ],
+    )
+
+    class _ChoiceFailure:
+        def edb(self, *args, **kwargs):
+            raise RuntimeError("choice unavailable")
+
+    monkeypatch.setattr(module, "ChoiceClient", lambda: _ChoiceFailure())
+    monkeypatch.setattr(module.requests, "post", lambda *args, **kwargs: _Response(html))
+
+    snapshot = module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
+
+    assert snapshot.vendor_name == "chinabond_gkh"

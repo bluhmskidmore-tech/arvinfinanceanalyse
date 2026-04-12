@@ -54,12 +54,18 @@ def _execute_balance_analysis_materialization(
     *,
     report_date: str,
     duckdb_file: Path,
+    data_root: str | None = None,
+    fx_source_path: str | None = None,
 ) -> FormalComputeMaterializeResult:
     settings = get_settings()
     fx_mid_csv_path = resolve_fx_mid_csv_path(
-        official_csv_path=str(getattr(settings, "fx_official_source_path", "") or ""),
+        official_csv_path=str(
+            fx_source_path
+            or getattr(settings, "fx_official_source_path", "")
+            or ""
+        ),
         explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
-        data_input_root=Path(settings.data_input_root),
+        data_input_root=Path(data_root or settings.data_input_root),
     )
     if fx_mid_csv_path is not None:
         materialize_fx_mid_rows.fn(
@@ -169,6 +175,8 @@ def _materialize_balance_analysis_facts(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     run_id: str | None = None,
+    data_root: str | None = None,
+    fx_source_path: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -185,6 +193,8 @@ def _materialize_balance_analysis_facts(
         execute_materialization=lambda: _execute_balance_analysis_materialization(
             report_date=report_date,
             duckdb_file=duckdb_file,
+            data_root=data_root,
+            fx_source_path=fx_source_path,
         ),
     )
 
