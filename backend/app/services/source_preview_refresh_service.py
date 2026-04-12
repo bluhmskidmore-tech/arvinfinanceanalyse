@@ -44,7 +44,7 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
             run_id = _build_run_id()
             lock_key = build_source_preview_refresh_lock_key(settings.duckdb_path)
             preview_sources = list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES)
-            GovernanceRepository(base_dir=settings.governance_path).append(
+            _governance_repo(settings).append(
                 CACHE_BUILD_RUN_STREAM,
                 {
                     "run_id": run_id,
@@ -69,6 +69,8 @@ def refresh_source_preview(settings: Settings) -> dict[str, object]:
             actor_kwargs = {
                 "duckdb_path": str(settings.duckdb_path),
                 "governance_dir": str(settings.governance_path),
+                "governance_sql_dsn": settings.governance_sql_dsn,
+                "governance_backend_mode": settings.source_preview_governance_backend,
             }
             try:
                 refresh_source_preview_cache.send(run_id=run_id, **actor_kwargs)
@@ -167,7 +169,7 @@ def _record_dispatch_failure(
     lock_key: str,
     error_message: str,
 ) -> None:
-    GovernanceRepository(base_dir=settings.governance_path).append(
+    _governance_repo(settings).append(
         CACHE_BUILD_RUN_STREAM,
         {
             "run_id": run_id,
@@ -205,7 +207,7 @@ def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:
 def _load_source_preview_refresh_records(settings: Settings) -> list[dict[str, object]]:
     return [
         record
-        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(
+        for record in _governance_repo(settings).read_all(
             CACHE_BUILD_RUN_STREAM
         )
         if str(record.get("cache_key")) == SOURCE_PREVIEW_REFRESH_CACHE_KEY
@@ -239,4 +241,12 @@ def _record_job_state_transition(
         started_at=started_at,
         finished_at=finished_at,
         error_message=error_message,
+    )
+
+
+def _governance_repo(settings: Settings) -> GovernanceRepository:
+    return GovernanceRepository(
+        base_dir=settings.governance_path,
+        sql_dsn=settings.governance_sql_dsn,
+        backend_mode=settings.source_preview_governance_backend,
     )

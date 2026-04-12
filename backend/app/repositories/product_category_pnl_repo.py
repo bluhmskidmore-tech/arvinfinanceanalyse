@@ -11,8 +11,8 @@ class ProductCategoryPnlRepository:
     path: str
 
     def list_report_dates(self) -> list[str]:
-        conn = duckdb.connect(self.path, read_only=True)
         try:
+            conn = duckdb.connect(self.path, read_only=True)
             rows = conn.execute(
                 """
                 select distinct report_date
@@ -23,12 +23,13 @@ class ProductCategoryPnlRepository:
         except duckdb.Error:
             return []
         finally:
-            conn.close()
+            if "conn" in locals():
+                conn.close()
         return [str(row[0]) for row in rows]
 
     def latest_source_version(self) -> str:
-        conn = duckdb.connect(self.path, read_only=True)
         try:
+            conn = duckdb.connect(self.path, read_only=True)
             row = conn.execute(
                 """
                 select source_version
@@ -40,15 +41,16 @@ class ProductCategoryPnlRepository:
         except duckdb.Error:
             return "sv_product_category_empty"
         finally:
-            conn.close()
+            if "conn" in locals():
+                conn.close()
         if row is None:
             return "sv_product_category_empty"
         return str(row[0])
 
-    def fetch_rows(self, report_date: str, view: str, *, scenario: bool = False) -> list[dict[str, object]]:
-        table_name = "product_category_pnl_scenario_read_model" if scenario else "product_category_pnl_formal_read_model"
-        conn = duckdb.connect(self.path, read_only=True)
+    def fetch_rows(self, report_date: str, view: str) -> list[dict[str, object]]:
+        """Load persisted formal read-model rows only. Scenario FTP is overlaid in analysis_adapters, not stored here."""
         try:
+            conn = duckdb.connect(self.path, read_only=True)
             rows = conn.execute(
                 """
                 select
@@ -75,16 +77,17 @@ class ProductCategoryPnlRepository:
                   children_json,
                   source_version,
                   rule_version
-                from %s
+                from product_category_pnl_formal_read_model
                 where report_date = ? and view = ?
                 order by sort_order
-                """ % table_name,
+                """,
                 [report_date, view],
             ).fetchall()
         except duckdb.Error:
             return []
         finally:
-            conn.close()
+            if "conn" in locals():
+                conn.close()
 
         keys = [
             "category_id",

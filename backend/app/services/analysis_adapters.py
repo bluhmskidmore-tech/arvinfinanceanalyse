@@ -26,6 +26,8 @@ PRODUCT_CATEGORY_AVAILABLE_VIEWS = [
 
 
 class ProductCategoryPnlAnalysisAdapter:
+    """Product-category PnL: persisted formal read model + optional in-memory FTP scenario overlay."""
+
     analysis_key = "product_category_pnl"
 
     def __init__(self, duckdb_path: str):
@@ -36,19 +38,21 @@ class ProductCategoryPnlAnalysisAdapter:
             raise ValueError(
                 f"Unsupported basis={query.basis} for analysis_key={self.analysis_key}"
             )
+        if query.scenario_rate_pct is not None and query.basis != "scenario":
+            raise ValueError(
+                "scenario_rate_pct is only allowed when basis is 'scenario' "
+                f"(got basis={query.basis!r} for analysis_key={self.analysis_key})"
+            )
         view = query.view or "monthly"
-        rows = self._repo.fetch_rows(
-            query.report_date,
-            view,
-            scenario=query.basis == "scenario",
-        )
+        # Single storage path: formal read model. basis=="scenario" applies core_finance.apply_scenario_to_rows on top.
+        rows = self._repo.fetch_rows(query.report_date, view)
         if not rows:
             raise ValueError(
                 f"No product-category read model rows for report_date={query.report_date} view={view}"
             )
 
         typed_rows = [_to_product_category_row(row) for row in rows]
-        if query.scenario_rate_pct is not None:
+        if query.basis == "scenario" and query.scenario_rate_pct is not None:
             from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows
 
             typed_rows = [
@@ -98,66 +102,75 @@ class ProductCategoryPnlAnalysisAdapter:
         )
 
 
-class BondActionAttributionAdapter:
-    analysis_key = "bond_action_attribution"
+BOND_ACTION_ATTRIBUTION_KEY = "bond_action_attribution"
 
-    def execute(self, query: AnalysisQuery) -> AnalysisResultEnvelope:
-        if query.basis != "formal":
-            raise ValueError(
-                f"Unsupported basis={query.basis} for analysis_key={self.analysis_key}"
-            )
-        report_date = date.fromisoformat(query.report_date)
-        period_type = query.view or "MoM"
-        period_start, period_end = resolve_period(report_date, period_type)
-        warnings = [
-            AnalysisWarning(
-                code="bond_action_empty",
-                level="warning",
-                message="DuckDB fact tables not yet populated - returning empty attribution",
-            )
-        ]
-        return AnalysisResultEnvelope(
-            result_meta=ResultMeta(
-                trace_id=f"tr_{query.consumer}_{query.report_date}_{period_type}",
-                basis=query.basis,
-                result_kind=(
-                    "analysis.bond_action_attribution"
-                    if query.consumer == "analysis_service"
-                    else "bond_analytics.action_attribution"
-                ),
-                formal_use_allowed=True,
-                source_version="sv_bond_analytics_v1",
-                vendor_version="vv_none",
-                rule_version="rv_bond_analytics_v1",
-                cache_version="cv_none",
-                quality_flag="ok",
-                scenario_flag=False,
-            ),
-            result=AnalysisResultPayload(
-                report_date=query.report_date,
-                analysis_key=self.analysis_key,
-                basis=query.basis,
-                view=period_type,
-                summary={
-                    "period_type": period_type,
-                    "period_start": period_start.isoformat(),
-                    "period_end": period_end.isoformat(),
-                    "total_actions": 0,
-                    "total_pnl_from_actions": "0",
-                    "period_start_duration": "0",
-                    "period_end_duration": "0",
-                    "duration_change_from_actions": "0",
-                    "period_start_dv01": "0",
-                    "period_end_dv01": "0",
-                    "computed_at": query.report_date,
-                },
-                facets={
-                    "by_action_type": [],
-                    "action_details": [],
-                },
-                warnings=warnings,
-            ),
+
+def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> AnalysisResultEnvelope:
+    """Empty trade-level action attribution until DuckDB trade facts exist.
+
+    Intentionally not registered on :class:`UnifiedAnalysisService` — bond analytics
+    calls this directly so the unified bus only lists landed adapters.
+    """
+    if query.analysis_key != BOND_ACTION_ATTRIBUTION_KEY:
+        raise ValueError(
+            f"Unexpected analysis_key={query.analysis_key!r} for bond action placeholder"
         )
+    if query.basis != "formal":
+        raise ValueError(
+            f"Unsupported basis={query.basis} for analysis_key={BOND_ACTION_ATTRIBUTION_KEY}"
+        )
+    report_date = date.fromisoformat(query.report_date)
+    period_type = query.view or "MoM"
+    period_start, period_end = resolve_period(report_date, period_type)
+    warnings = [
+        AnalysisWarning(
+            code="bond_action_empty",
+            level="warning",
+            message="DuckDB fact tables not yet populated - returning empty attribution",
+        )
+    ]
+    return AnalysisResultEnvelope(
+        result_meta=ResultMeta(
+            trace_id=f"tr_{query.consumer}_{query.report_date}_{period_type}",
+            basis=query.basis,
+            result_kind=(
+                "analysis.bond_action_attribution"
+                if query.consumer == "analysis_service"
+                else "bond_analytics.action_attribution"
+            ),
+            formal_use_allowed=True,
+            source_version="sv_bond_analytics_v1",
+            vendor_version="vv_none",
+            rule_version="rv_bond_analytics_v1",
+            cache_version="cv_none",
+            quality_flag="ok",
+            scenario_flag=False,
+        ),
+        result=AnalysisResultPayload(
+            report_date=query.report_date,
+            analysis_key=BOND_ACTION_ATTRIBUTION_KEY,
+            basis=query.basis,
+            view=period_type,
+            summary={
+                "period_type": period_type,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "total_actions": 0,
+                "total_pnl_from_actions": "0",
+                "period_start_duration": "0",
+                "period_end_duration": "0",
+                "duration_change_from_actions": "0",
+                "period_start_dv01": "0",
+                "period_end_dv01": "0",
+                "computed_at": query.report_date,
+            },
+            facets={
+                "by_action_type": [],
+                "action_details": [],
+            },
+            warnings=warnings,
+        ),
+    )
 
 
 def _to_product_category_row(row: dict[str, object]) -> ProductCategoryPnlRow:

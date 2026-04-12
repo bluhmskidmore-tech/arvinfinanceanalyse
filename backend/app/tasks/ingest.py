@@ -14,7 +14,7 @@ def resolve_data_input_root() -> Path:
     configured_root = os.getenv("MOSS_DATA_INPUT_ROOT")
     if configured_root:
         return Path(configured_root).expanduser()
-    return Path(__file__).resolve().parents[3] / "data_input"
+    return Path(get_settings().data_input_root).expanduser()
 
 
 def _ingest_demo_manifest() -> dict[str, object]:

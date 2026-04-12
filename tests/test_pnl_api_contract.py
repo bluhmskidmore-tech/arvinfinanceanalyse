@@ -260,7 +260,11 @@ def test_pnl_bridge_returns_503_when_balance_query_fails(tmp_path, monkeypatch):
     def fail_balance_read(*_args, **_kwargs):
         raise RuntimeError("Formal balance query failed for pnl.bridge.")
 
-    monkeypatch.setattr(bridge_service, "_load_balance_rows_direct", fail_balance_read)
+    monkeypatch.setattr(
+        bridge_service.BalanceAnalysisRepository,
+        "fetch_pnl_bridge_zqtz_balance_rows",
+        fail_balance_read,
+    )
 
     client = TestClient(
         load_module("backend.app.main", "backend/app/main.py").app,

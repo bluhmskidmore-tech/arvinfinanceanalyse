@@ -81,15 +81,30 @@ def test_analysis_result_envelope_wraps_result_meta_and_normalized_payload():
     assert dumped["result"]["facets"]["details"][0]["id"] == "detail-1"
 
 
-def test_build_default_analysis_service_registers_known_adapters():
+def test_build_default_analysis_service_registers_only_landed_adapters():
     service_module = load_module(
         "backend.app.services.analysis_service",
         "backend/app/services/analysis_service.py",
     )
+    schema_module = load_module(
+        "backend.app.schemas.analysis_service",
+        "backend/app/schemas/analysis_service.py",
+    )
 
-    service = service_module.build_default_analysis_service(duckdb_path="placeholder.duckdb")
+    with_duckdb = service_module.build_default_analysis_service(duckdb_path="placeholder.duckdb")
+    assert with_duckdb.supported_analysis_keys() == {"product_category_pnl"}
+    assert "bond_action_attribution" not in with_duckdb.supported_analysis_keys()
 
-    assert service.supported_analysis_keys() == {
-        "bond_action_attribution",
-        "product_category_pnl",
-    }
+    empty = service_module.build_default_analysis_service(duckdb_path=None)
+    assert empty.supported_analysis_keys() == set()
+
+    with pytest.raises(ValueError, match="Unsupported analysis_key=bond_action_attribution"):
+        with_duckdb.execute(
+            schema_module.AnalysisQuery(
+                consumer="analysis_service",
+                analysis_key="bond_action_attribution",
+                report_date="2026-03-31",
+                basis="formal",
+                view="MoM",
+            )
+        )

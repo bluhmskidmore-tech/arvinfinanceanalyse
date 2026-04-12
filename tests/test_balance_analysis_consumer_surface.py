@@ -12,6 +12,14 @@ BALANCE_ANALYSIS_ROUTE = API_ROUTES_DIR / "balance_analysis.py"
 BALANCE_ANALYSIS_SERVICE_MODULE = "backend.app.services.balance_analysis_service"
 BALANCE_ANALYSIS_REPO_MODULE = "backend.app.repositories.balance_analysis_repo"
 
+# pnl.bridge reads formal zqtz balance facts for reconciliation; keep imports explicit here.
+_SERVICES_ALLOWED_TO_IMPORT_BALANCE_ANALYSIS_REPO = frozenset(
+    {
+        "balance_analysis_service.py",
+        "pnl_bridge_service.py",
+    }
+)
+
 
 def _imports_for(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -51,7 +59,7 @@ def test_balance_analysis_route_is_the_only_api_route_that_imports_balance_analy
 def test_balance_analysis_repo_is_not_imported_by_other_services():
     offenders: list[str] = []
     for path in SERVICES_DIR.glob("*.py"):
-        if path.name == "balance_analysis_service.py":
+        if path.name in _SERVICES_ALLOWED_TO_IMPORT_BALANCE_ANALYSIS_REPO:
             continue
         imports = _imports_for(path)
         if (

@@ -193,3 +193,38 @@ def test_ingest_task_resolves_data_root_from_runtime_environment(monkeypatch, tm
 
     assert payload["status"] == "completed"
     assert captured["data_root"] == runtime_root
+
+
+def test_ingest_task_resolves_data_root_from_settings_when_env_var_absent(monkeypatch, tmp_path):
+    ingest_task_module = sys.modules.get("backend.app.tasks.ingest")
+    if ingest_task_module is None:
+        ingest_task_module = load_module("backend.app.tasks.ingest", "backend/app/tasks/ingest.py")
+
+    runtime_root = tmp_path / "settings-data-input"
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.setattr(
+        ingest_task_module,
+        "get_settings",
+        lambda: SimpleNamespace(data_input_root=runtime_root),
+    )
+
+    assert ingest_task_module.resolve_data_input_root() == runtime_root
+
+
+def test_materialize_task_resolves_data_root_from_settings_when_env_var_absent(monkeypatch, tmp_path):
+    materialize_module = sys.modules.get("backend.app.tasks.materialize")
+    if materialize_module is None:
+        materialize_module = load_module(
+            "backend.app.tasks.materialize",
+            "backend/app/tasks/materialize.py",
+        )
+
+    runtime_root = tmp_path / "settings-materialize-input"
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.setattr(
+        materialize_module,
+        "get_settings",
+        lambda: SimpleNamespace(data_input_root=runtime_root),
+    )
+
+    assert materialize_module.resolve_data_input_root() == runtime_root

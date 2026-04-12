@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 import sys
 
+import duckdb
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
@@ -21,6 +22,14 @@ from tests.helpers import load_module
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
+
+
+def _load_product_category_pnl_service_module():
+    """Return the module object used by API code (patch attributes here, not via string paths)."""
+    return load_module(
+        "backend.app.services.product_category_pnl_service",
+        "backend/app/services/product_category_pnl_service.py",
+    )
 
 
 def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
@@ -65,6 +74,19 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
     assert payload["status"] == "completed"
     assert payload["month_count"] == 2
     assert payload["report_dates"] == ["2026-01-31", "2026-02-28"]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        formal_n = conn.execute(
+            "select count(*) from product_category_pnl_formal_read_model"
+        ).fetchone()[0]
+        scenario_n = conn.execute(
+            "select count(*) from product_category_pnl_scenario_read_model"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert formal_n > 0
+    assert scenario_n == 0
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
@@ -177,6 +199,45 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_product_category_pnl_identical_requests_yield_identical_result_payload(tmp_path, monkeypatch):
+    """同等条件（同库、同参数）下，计算结果负载 result 应逐字段一致；result_meta 含 generated_at 可能不同。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    params = {"report_date": "2026-01-31", "view": "monthly"}
+    first = client.get("/ui/pnl/product-category", params=params)
+    second = client.get("/ui/pnl/product-category", params=params)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    body1 = first.json()
+    body2 = second.json()
+    assert body1["result"] == body2["result"]
+
+
 def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_总账对账-日均"
@@ -204,10 +265,8 @@ def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
         queued_messages.append(kwargs)
         return None
 
-    monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
-        fake_send,
-    )
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(service_mod.materialize_product_category_pnl, "send", fake_send)
 
     main_module = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_module.app)
@@ -282,8 +341,10 @@ def test_product_category_refresh_returns_409_when_legacy_inflight_has_no_timest
     )
 
     queued_messages: list[dict[str, object]] = []
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        service_mod.materialize_product_category_pnl,
+        "send",
         lambda **kwargs: queued_messages.append(kwargs),
     )
 
@@ -338,8 +399,10 @@ def test_product_category_refresh_returns_409_when_refresh_is_already_in_progres
     )
 
     queued_messages: list[dict[str, object]] = []
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        service_mod.materialize_product_category_pnl,
+        "send",
         lambda **kwargs: queued_messages.append(kwargs),
     )
 
@@ -372,8 +435,10 @@ def test_product_category_refresh_sync_fallback_succeeds_when_queue_dispatch_fai
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        service_mod.materialize_product_category_pnl,
+        "send",
         lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
 
@@ -406,12 +471,15 @@ def test_product_category_refresh_returns_503_when_sync_fallback_fails(
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        service_mod.materialize_product_category_pnl,
+        "send",
         lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
     )
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.fn",
+        service_mod.materialize_product_category_pnl,
+        "fn",
         lambda **_: (_ for _ in ()).throw(RuntimeError("sync fallback failed")),
     )
 
@@ -466,8 +534,10 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     )
 
     queued_messages: list[dict[str, object]] = []
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
-        "backend.app.services.product_category_pnl_service.materialize_product_category_pnl.send",
+        service_mod.materialize_product_category_pnl,
+        "send",
         lambda **kwargs: queued_messages.append(kwargs),
     )
 
@@ -500,10 +570,7 @@ def test_product_category_refresh_status_returns_503_when_status_backend_fails(
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
 
-    service_mod = load_module(
-        "backend.app.services.product_category_pnl_service",
-        "backend/app/services/product_category_pnl_service.py",
-    )
+    service_mod = _load_product_category_pnl_service_module()
     monkeypatch.setattr(
         service_mod.GovernanceRepository,
         "read_all",

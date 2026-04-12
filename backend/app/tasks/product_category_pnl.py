@@ -116,14 +116,6 @@ def _materialize_product_category_pnl(
                         payload["rows"],
                         pair.source_version,
                     )
-                    _insert_rows(
-                        conn,
-                        "product_category_pnl_scenario_read_model",
-                        pair.report_date.isoformat(),
-                        view,
-                        payload["rows"],
-                        pair.source_version,
-                    )
 
             conn.execute("commit")
         except Exception:
@@ -201,6 +193,7 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
         )
         """
     )
+    # Scenario FTP adjustments are applied at read time (see analysis_adapters); keep empty table for DDL compatibility.
     for table_name in (
         "product_category_pnl_formal_read_model",
         "product_category_pnl_scenario_read_model",

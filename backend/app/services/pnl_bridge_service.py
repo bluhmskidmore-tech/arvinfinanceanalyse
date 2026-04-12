@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-import duckdb
-
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -37,26 +36,19 @@ BRIDGE_CACHE_VERSION = (
 )
 ZERO = Decimal("0")
 
-_BALANCE_COLUMNS = [
-    "report_date", "instrument_code", "instrument_name", "portfolio_name",
-    "cost_center", "asset_class", "bond_type", "issuer_name", "industry_name",
-    "rating", "invest_type_std", "accounting_basis", "position_scope",
-    "currency_basis", "currency_code", "face_value_amount", "market_value_amount",
-    "amortized_cost_amount", "accrued_interest_amount", "coupon_rate", "ytm_value",
-    "maturity_date", "interest_mode", "is_issuance_like", "source_version",
-    "rule_version", "ingest_batch_id", "trace_id",
-]
-
 
 def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
     pnl_repo = PnlRepository(duckdb_path)
+    balance_repo = BalanceAnalysisRepository(duckdb_path)
     if report_date not in pnl_repo.list_formal_fi_report_dates():
         raise ValueError(f"No pnl bridge data found for report_date={report_date} in fact_formal_pnl_fi.")
 
     pnl_fi_rows = pnl_repo.fetch_formal_fi_rows(report_date)
-    current_balance_rows = _load_balance_rows_direct(duckdb_path, report_date)
-    prior_date = _resolve_prior_report_date_direct(duckdb_path, report_date)
-    prior_balance_rows = _load_balance_rows_direct(duckdb_path, prior_date) if prior_date else []
+    current_balance_rows = balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=report_date)
+    prior_date = balance_repo.resolve_prior_pnl_bridge_balance_report_date(report_date=report_date)
+    prior_balance_rows = (
+        balance_repo.fetch_pnl_bridge_zqtz_balance_rows(report_date=prior_date) if prior_date else []
+    )
 
     rows = build_pnl_bridge_rows(
         pnl_fi_rows=pnl_fi_rows,
@@ -94,61 +86,6 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
     )
-
-
-def _load_balance_rows_direct(duckdb_path: str, report_date: str) -> list[dict[str, object]]:
-    """Read balance rows directly from DuckDB without importing BalanceAnalysisRepository."""
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-        try:
-            if not _table_exists(conn, "fact_formal_zqtz_balance_daily"):
-                return []
-            raw = conn.execute(
-                f"""
-                select {", ".join(_BALANCE_COLUMNS)}
-                from fact_formal_zqtz_balance_daily
-                where report_date = ?
-                  and position_scope = 'asset'
-                  and currency_basis = 'CNY'
-                order by instrument_code, portfolio_name, cost_center
-                """,
-                [report_date],
-            ).fetchall()
-        finally:
-            conn.close()
-    except OSError as exc:
-        raise RuntimeError("Formal balance storage is unavailable for pnl.bridge.") from exc
-    except duckdb.Error as exc:
-        raise RuntimeError("Formal balance query failed for pnl.bridge.") from exc
-    return [dict(zip(_BALANCE_COLUMNS, row, strict=True)) for row in raw]
-
-
-def _resolve_prior_report_date_direct(duckdb_path: str, report_date: str) -> str | None:
-    """Find the most recent balance report_date before the given date."""
-    try:
-        conn = duckdb.connect(duckdb_path, read_only=True)
-        try:
-            if not _table_exists(conn, "fact_formal_zqtz_balance_daily"):
-                return None
-            rows = conn.execute(
-                """
-                select distinct cast(report_date as varchar) as rd
-                from fact_formal_zqtz_balance_daily
-                where cast(report_date as varchar) < ?
-                  and position_scope = 'asset'
-                  and currency_basis = 'CNY'
-                order by rd desc
-                limit 1
-                """,
-                [report_date],
-            ).fetchall()
-        finally:
-            conn.close()
-    except OSError as exc:
-        raise RuntimeError("Formal balance storage is unavailable for pnl.bridge.") from exc
-    except duckdb.Error as exc:
-        raise RuntimeError("Formal balance query failed for pnl.bridge.") from exc
-    return str(rows[0][0]) if rows else None
 
 
 def _build_summary(rows: list[PnlBridgeRow]) -> PnlBridgeSummarySchema:
@@ -324,19 +261,6 @@ def _resolve_balance_lineage_component(
 def _merge_lineage_values(*values: str) -> str:
     merged = sorted({value.strip() for value in values if value and value.strip()})
     return "__".join(merged)
-
-
-def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.tables
-        where table_name = ?
-        limit 1
-        """,
-        [table_name],
-    ).fetchone()
-    return row is not None
 
 
 def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:

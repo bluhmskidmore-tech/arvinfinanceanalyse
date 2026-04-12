@@ -141,6 +141,49 @@ def test_preview_api_returns_real_source_preview_envelope(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
 
+    ingest_module = sys.modules.get("backend.app.tasks.ingest")
+    if ingest_module is None:
+        ingest_module = load_module(
+            "backend.app.tasks.ingest",
+            "backend/app/tasks/ingest.py",
+        )
+    materialize_module = sys.modules.get("backend.app.tasks.materialize")
+    if materialize_module is None:
+        materialize_module = load_module(
+            "backend.app.tasks.materialize",
+            "backend/app/tasks/materialize.py",
+        )
+
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    ingest_module.ingest_demo_manifest.fn()
+    materialize_module.materialize_cache_view.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+        data_root=str(data_root),
+    )
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+    response = client.get("/ui/preview/source-foundation")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "preview.source-foundation"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    sources = payload["result"]["sources"]
+    assert len(sources) == 2
+    assert {item["source_family"] for item in sources} == {"tyw", "zqtz"}
+    for item in sources:
+        assert item["total_rows"] > 0
+        assert isinstance(item.get("group_counts"), dict)
+        assert sum(item["group_counts"].values()) == item["total_rows"]
+    get_settings.cache_clear()
+
 
 def test_source_preview_refresh_queues_async_run_and_reports_latest_status(tmp_path, monkeypatch):
     _configure_source_preview_refresh_env(tmp_path, monkeypatch, include_pnl_preview_source=True)
@@ -494,47 +537,96 @@ def test_source_preview_refresh_status_run_id_returns_exact_terminal_record(tmp_
     assert payload["trigger_mode"] == "terminal"
     get_settings.cache_clear()
 
-    ingest_module = sys.modules.get("backend.app.tasks.ingest")
-    if ingest_module is None:
-        ingest_module = load_module(
-            "backend.app.tasks.ingest",
-            "backend/app/tasks/ingest.py",
-        )
-    materialize_module = sys.modules.get("backend.app.tasks.materialize")
-    if materialize_module is None:
-        materialize_module = load_module(
-            "backend.app.tasks.materialize",
-            "backend/app/tasks/materialize.py",
-        )
 
-    data_root = tmp_path / "data_input"
-    data_root.mkdir()
-    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
-        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
-
-    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
-    ingest_module.ingest_demo_manifest.fn()
-    materialize_module.materialize_cache_view.fn(
-        duckdb_path=str(tmp_path / "moss.duckdb"),
-        governance_dir=str(tmp_path / "governance"),
-        data_root=str(data_root),
+def test_source_preview_refresh_sql_authority_status_reads_sql_governance_when_jsonl_shadow_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    sql_path = tmp_path / "governance.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
     )
 
-    main_module = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(main_module.app)
-    response = client.get("/ui/preview/source-foundation")
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: None,
+    )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["result_meta"]["result_kind"] == "preview.source-foundation"
-    assert payload["result_meta"]["formal_use_allowed"] is False
-    sources = payload["result"]["sources"]
-    assert len(sources) == 2
-    assert {item["source_family"] for item in sources} == {"tyw", "zqtz"}
-    for item in sources:
-        assert item["total_rows"] > 0
-        assert isinstance(item.get("group_counts"), dict)
-        assert sum(item["group_counts"].values()) == item["total_rows"]
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    run_id = refresh_response.json()["run_id"]
+    (governance_dir / "cache_build_run.jsonl").unlink()
+
+    status_response = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": run_id},
+    )
+
+    assert status_response.status_code == 200
+    status_payload = status_response.json()
+    assert status_payload["run_id"] == run_id
+    assert status_payload["status"] == "queued"
+    assert status_payload["trigger_mode"] == "async"
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_sync_fallback_sql_authority_persists_manifest_via_sql_governance(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    sql_path = tmp_path / "governance.db"
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
+    monkeypatch.setenv("MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND", "sql-authority")
+    get_settings.cache_clear()
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    payload = refresh_response.json()
+    repo = governance_module.GovernanceRepository(
+        base_dir=governance_dir,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    manifests = repo.read_all(governance_module.CACHE_MANIFEST_STREAM)
+
+    assert payload["status"] == "completed"
+    assert manifests
+    assert manifests[-1]["cache_key"] == "source_preview.foundation"
+    assert manifests[-1]["source_version"] == payload["source_version"]
+    assert manifests[-1]["rule_version"] == payload["rule_version"]
     get_settings.cache_clear()
 
 

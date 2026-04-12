@@ -10,6 +10,8 @@ CORE_FILE = BACKEND_APP / "core_finance" / "product_category_pnl.py"
 SERVICE_FILE = BACKEND_APP / "services" / "product_category_pnl_service.py"
 SOURCE_SERVICE_FILE = BACKEND_APP / "services" / "product_category_source_service.py"
 ANALYSIS_ADAPTERS_FILE = BACKEND_APP / "services" / "analysis_adapters.py"
+TASK_FILE = BACKEND_APP / "tasks" / "product_category_pnl.py"
+PRODUCT_CATEGORY_REPO_FILE = BACKEND_APP / "repositories" / "product_category_pnl_repo.py"
 
 PRODUCT_CATEGORY_FORMAL_HELPERS = (
     "derive_monthly_pnl",
@@ -94,3 +96,24 @@ def test_only_allowed_services_touch_product_category_core_module():
         "Unexpected product-category core_finance imports outside the approved "
         "orchestration path:\n" + "\n".join(violations)
     )
+
+
+def test_product_category_task_does_not_materialize_duplicate_rows_into_scenario_read_model():
+    text = TASK_FILE.read_text(encoding="utf-8")
+    assert "_insert_rows" in text
+    assert (
+        '_insert_rows(\n                        conn,\n                        "product_category_pnl_scenario_read_model"'
+        not in text
+    ), "Formal rows must not be written to product_category_pnl_scenario_read_model"
+
+
+def test_product_category_repo_queries_formal_read_model_only():
+    text = PRODUCT_CATEGORY_REPO_FILE.read_text(encoding="utf-8")
+    assert "from product_category_pnl_formal_read_model" in text
+    assert "product_category_pnl_scenario_read_model" not in text
+
+
+def test_product_category_adapter_documents_overlay_without_second_storage_path():
+    text = ANALYSIS_ADAPTERS_FILE.read_text(encoding="utf-8")
+    assert "apply_scenario_to_rows" in text
+    assert "Single storage path" in text or "formal read model" in text

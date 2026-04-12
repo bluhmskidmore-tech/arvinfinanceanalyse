@@ -40,13 +40,20 @@ def _refresh_source_preview_cache(
     governance_dir: str | None = None,
     data_root: str | None = None,
     run_id: str | None = None,
+    governance_sql_dsn: str | None = None,
+    governance_backend_mode: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
     governance_path = Path(governance_dir or settings.governance_path)
     resolved_data_root = Path(data_root) if data_root is not None else resolve_data_input_root()
-    governance_repo = GovernanceRepository(base_dir=governance_path)
+    governance_repo = _governance_repo(
+        settings=settings,
+        governance_path=governance_path,
+        governance_sql_dsn=governance_sql_dsn,
+        governance_backend_mode=governance_backend_mode,
+    )
     materialize_lock = resolve_materialize_lock(duckdb_file)
     started_at = datetime.now(timezone.utc).isoformat()
     run_id = run_id or f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{started_at}"
@@ -83,6 +90,8 @@ def _refresh_source_preview_cache(
             settings=settings,
             governance_path=governance_path,
             data_root=resolved_data_root,
+            governance_sql_dsn=governance_sql_dsn,
+            governance_backend_mode=governance_backend_mode,
         )
         ingest_batch_id = str(ingest_summary.get("ingest_batch_id") or "")
         selected_ingest_batch_id = ingest_batch_id or "__source-preview-empty__"
@@ -205,11 +214,18 @@ def _run_source_preview_ingest(
     settings,
     governance_path: Path,
     data_root: Path,
+    governance_sql_dsn: str | None = None,
+    governance_backend_mode: str | None = None,
 ) -> dict[str, object]:
     service = IngestService(
         data_root=data_root,
         manifest_repo=SourceManifestRepository(
-            governance_repo=GovernanceRepository(base_dir=governance_path),
+            governance_repo=_governance_repo(
+                settings=settings,
+                governance_path=governance_path,
+                governance_sql_dsn=governance_sql_dsn,
+                governance_backend_mode=governance_backend_mode,
+            ),
         ),
         object_store_repo=ObjectStoreRepository(
             endpoint=settings.minio_endpoint,
@@ -268,4 +284,22 @@ def _record_job_state_transition(
         started_at=started_at,
         finished_at=finished_at,
         error_message=error_message,
+    )
+
+
+def _governance_repo(
+    *,
+    settings,
+    governance_path: Path,
+    governance_sql_dsn: str | None = None,
+    governance_backend_mode: str | None = None,
+) -> GovernanceRepository:
+    return GovernanceRepository(
+        base_dir=governance_path,
+        sql_dsn=governance_sql_dsn
+        if governance_sql_dsn is not None
+        else getattr(settings, "governance_sql_dsn", ""),
+        backend_mode=governance_backend_mode
+        if governance_backend_mode is not None
+        else getattr(settings, "source_preview_governance_backend", "jsonl"),
     )

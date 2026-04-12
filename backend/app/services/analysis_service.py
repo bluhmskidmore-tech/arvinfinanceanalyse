@@ -34,12 +34,11 @@ def build_default_analysis_service(
     *,
     duckdb_path: str | None = None,
 ) -> UnifiedAnalysisService:
-    from backend.app.services.analysis_adapters import (
-        BondActionAttributionAdapter,
-        ProductCategoryPnlAnalysisAdapter,
-    )
+    """Construct the unified analysis service with only registered, landed adapters."""
 
-    adapters: list[AnalysisAdapter] = [BondActionAttributionAdapter()]
+    from backend.app.services.analysis_adapters import ProductCategoryPnlAnalysisAdapter
+
+    adapters: list[AnalysisAdapter] = []
     if duckdb_path is not None:
         adapters.append(ProductCategoryPnlAnalysisAdapter(duckdb_path))
     return UnifiedAnalysisService(adapters)

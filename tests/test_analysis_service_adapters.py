@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 
 from tests.helpers import load_module
 
@@ -62,7 +63,88 @@ def test_product_category_adapter_returns_unified_analysis_envelope(tmp_path, mo
     assert result.result.attribution
 
 
-def test_bond_action_attribution_adapter_returns_unified_analysis_envelope():
+def test_product_category_adapter_scenario_basis_reads_formal_once_and_overlays_rate(
+    tmp_path, monkeypatch
+):
+    schema_module = load_module(
+        "backend.app.schemas.analysis_service",
+        "backend/app/schemas/analysis_service.py",
+    )
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    test_module = load_module(
+        "tests.test_product_category_pnl_flow",
+        "tests/test_product_category_pnl_flow.py",
+    )
+    adapter_module = load_module(
+        "backend.app.services.analysis_adapters",
+        "backend/app/services/analysis_adapters.py",
+    )
+
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+    test_module._write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    adapter = adapter_module.ProductCategoryPnlAnalysisAdapter(str(duckdb_path))
+    fetch_calls: list[tuple[object, ...]] = []
+    real_fetch = adapter._repo.fetch_rows
+
+    def capture_fetch(*args: object) -> list[dict[str, object]]:
+        fetch_calls.append(args)
+        return real_fetch(*args)
+
+    adapter._repo.fetch_rows = capture_fetch  # type: ignore[method-assign]
+
+    scenario_result = adapter.execute(
+        schema_module.AnalysisQuery(
+            consumer="analysis_service",
+            analysis_key="product_category_pnl",
+            report_date="2026-02-28",
+            basis="scenario",
+            view="monthly",
+            scenario_rate_pct=2.5,
+        )
+    )
+    assert len(fetch_calls) == 1
+    assert fetch_calls[0] == ("2026-02-28", "monthly")
+    assert scenario_result.result_meta.scenario_flag is True
+    assert scenario_result.result_meta.basis == "scenario"
+    formal_only = adapter_module.ProductCategoryPnlAnalysisAdapter(str(duckdb_path)).execute(
+        schema_module.AnalysisQuery(
+            consumer="analysis_service",
+            analysis_key="product_category_pnl",
+            report_date="2026-02-28",
+            basis="formal",
+            view="monthly",
+        )
+    )
+    def _asset_total_ftp(rows: list[dict[str, object]]) -> str:
+        for row in rows:
+            if row["category_id"] == "asset_total":
+                return str(row["cny_ftp"])
+        raise AssertionError("missing asset_total")
+
+    assert _asset_total_ftp(formal_only.result.rows) != _asset_total_ftp(scenario_result.result.rows)
+
+
+def test_bond_action_placeholder_envelope_shape():
     schema_module = load_module(
         "backend.app.schemas.analysis_service",
         "backend/app/schemas/analysis_service.py",
@@ -72,8 +154,7 @@ def test_bond_action_attribution_adapter_returns_unified_analysis_envelope():
         "backend/app/services/analysis_adapters.py",
     )
 
-    adapter = adapter_module.BondActionAttributionAdapter()
-    result = adapter.execute(
+    result = adapter_module.build_bond_action_attribution_placeholder_envelope(
         schema_module.AnalysisQuery(
             consumer="analysis_service",
             analysis_key="bond_action_attribution",
@@ -88,6 +169,30 @@ def test_bond_action_attribution_adapter_returns_unified_analysis_envelope():
     assert result.result.summary["total_actions"] == 0
     assert result.result.facets["action_details"] == []
     assert result.result.warnings
+
+
+def test_product_category_adapter_rejects_formal_basis_with_scenario_rate_pct():
+    """Adapter must reject formal+rate even if a caller bypasses AnalysisQuery validation."""
+    adapter_module = load_module(
+        "backend.app.services.analysis_adapters",
+        "backend/app/services/analysis_adapters.py",
+    )
+
+    adapter = adapter_module.ProductCategoryPnlAnalysisAdapter("placeholder.duckdb")
+
+    import pytest
+
+    bad_query = SimpleNamespace(
+        consumer="analysis_service",
+        analysis_key="product_category_pnl",
+        report_date="2026-02-28",
+        basis="formal",
+        view="monthly",
+        scenario_rate_pct=2.5,
+    )
+
+    with pytest.raises(ValueError, match="scenario_rate_pct is only allowed when basis"):
+        adapter.execute(bad_query)  # type: ignore[arg-type]
 
 
 def test_product_category_adapter_rejects_analytical_basis():
@@ -116,7 +221,7 @@ def test_product_category_adapter_rejects_analytical_basis():
         )
 
 
-def test_bond_action_adapter_rejects_scenario_basis():
+def test_bond_action_placeholder_rejects_scenario_basis():
     schema_module = load_module(
         "backend.app.schemas.analysis_service",
         "backend/app/schemas/analysis_service.py",
@@ -126,12 +231,10 @@ def test_bond_action_adapter_rejects_scenario_basis():
         "backend/app/services/analysis_adapters.py",
     )
 
-    adapter = adapter_module.BondActionAttributionAdapter()
-
     import pytest
 
     with pytest.raises(ValueError):
-        adapter.execute(
+        adapter_module.build_bond_action_attribution_placeholder_envelope(
             schema_module.AnalysisQuery(
                 consumer="analysis_service",
                 analysis_key="bond_action_attribution",
@@ -280,7 +383,7 @@ def test_product_category_service_delegates_to_unified_analysis_service(monkeypa
     assert payload["result_meta"]["result_kind"] == "product_category_pnl.detail"
 
 
-def test_bond_action_service_delegates_to_unified_analysis_service(monkeypatch):
+def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
     schema_module = load_module(
         "backend.app.schemas.analysis_service",
         "backend/app/schemas/analysis_service.py",
@@ -296,56 +399,55 @@ def test_bond_action_service_delegates_to_unified_analysis_service(monkeypatch):
 
     captured: dict[str, object] = {}
 
-    class FakeAnalysisService:
-        def execute(self, query):
-            captured["query"] = query
-            return schema_module.AnalysisResultEnvelope(
-                result_meta=result_meta_module.ResultMeta(
-                    trace_id="tr_bond_action_analysis",
-                    basis="formal",
-                    result_kind="bond_analytics.action_attribution",
-                    formal_use_allowed=True,
-                    source_version="sv_analysis",
-                    vendor_version="vv_none",
-                    rule_version="rv_analysis",
-                    cache_version="cv_analysis",
-                    quality_flag="ok",
-                    scenario_flag=False,
-                ),
-                result=schema_module.AnalysisResultPayload(
-                    report_date="2026-03-31",
-                    analysis_key="bond_action_attribution",
-                    basis="formal",
-                    summary={
-                        "period_type": "MoM",
-                        "period_start": "2026-03-01",
-                        "period_end": "2026-03-31",
-                        "total_actions": 0,
-                        "total_pnl_from_actions": "0",
-                        "period_start_duration": "0",
-                        "period_end_duration": "0",
-                        "duration_change_from_actions": "0",
-                        "period_start_dv01": "0",
-                        "period_end_dv01": "0",
-                    },
-                    facets={
-                        "by_action_type": [],
-                        "action_details": [],
-                    },
-                    warnings=[
-                        schema_module.AnalysisWarning(
-                            code="empty",
-                            level="warning",
-                            message="no attribution rows",
-                        )
-                    ],
-                ),
-            )
+    def fake_placeholder(query):
+        captured["query"] = query
+        return schema_module.AnalysisResultEnvelope(
+            result_meta=result_meta_module.ResultMeta(
+                trace_id="tr_bond_action_analysis",
+                basis="formal",
+                result_kind="bond_analytics.action_attribution",
+                formal_use_allowed=True,
+                source_version="sv_analysis",
+                vendor_version="vv_none",
+                rule_version="rv_analysis",
+                cache_version="cv_analysis",
+                quality_flag="ok",
+                scenario_flag=False,
+            ),
+            result=schema_module.AnalysisResultPayload(
+                report_date="2026-03-31",
+                analysis_key="bond_action_attribution",
+                basis="formal",
+                summary={
+                    "period_type": "MoM",
+                    "period_start": "2026-03-01",
+                    "period_end": "2026-03-31",
+                    "total_actions": 0,
+                    "total_pnl_from_actions": "0",
+                    "period_start_duration": "0",
+                    "period_end_duration": "0",
+                    "duration_change_from_actions": "0",
+                    "period_start_dv01": "0",
+                    "period_end_dv01": "0",
+                },
+                facets={
+                    "by_action_type": [],
+                    "action_details": [],
+                },
+                warnings=[
+                    schema_module.AnalysisWarning(
+                        code="empty",
+                        level="warning",
+                        message="no attribution rows",
+                    )
+                ],
+            ),
+        )
 
     monkeypatch.setattr(
         service_module,
-        "build_analysis_service",
-        lambda: FakeAnalysisService(),
+        "build_bond_action_attribution_placeholder_envelope",
+        fake_placeholder,
     )
 
     payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")

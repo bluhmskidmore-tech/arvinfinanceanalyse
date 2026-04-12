@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-import duckdb
-
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
+from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.executive_dashboard import (
     AlertsPayload,
@@ -193,45 +193,21 @@ def executive_overview() -> dict[str, object]:
     ytd_raw: float | None = None
 
     try:
-        conn = duckdb.connect(settings.duckdb_path, read_only=True)
-        try:
-            row = conn.execute(
-                """
-                with latest as (
-                  select max(report_date) as d
-                  from fact_formal_zqtz_balance_daily
-                )
-                select coalesce(sum(market_value_amount), 0)
-                from fact_formal_zqtz_balance_daily
-                where report_date = (select d from latest)
-                  and position_scope = 'asset'
-                  and currency_basis = 'CNY'
-                """
-            ).fetchone()
-            if row is not None:
-                aum_raw = float(row[0])
-        finally:
-            conn.close()
-    except (duckdb.Error, OSError, TypeError, ValueError):
+        row = FormalZqtzBalanceMetricsRepository(
+            str(settings.duckdb_path)
+        ).fetch_latest_zqtz_asset_market_value(currency_basis="CNY")
+        if row is not None:
+            aum_raw = float(row["total_market_value_amount"])
+    except (RuntimeError, OSError, TypeError, ValueError):
         aum_raw = None
 
     try:
-        conn = duckdb.connect(settings.duckdb_path, read_only=True)
-        try:
-            y = str(date.today().year)
-            row = conn.execute(
-                """
-                select coalesce(sum(total_pnl), 0)
-                from fact_formal_pnl_fi
-                where substr(cast(report_date as varchar), 1, 4) = ?
-                """,
-                [y],
-            ).fetchone()
-            if row is not None:
-                ytd_raw = float(row[0])
-        finally:
-            conn.close()
-    except (duckdb.Error, OSError, TypeError, ValueError):
+        ytd_raw = float(
+            PnlRepository(str(settings.duckdb_path)).sum_formal_total_pnl_for_year(
+                date.today().year
+            )
+        )
+    except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
 
     aum_value = (
@@ -329,11 +305,11 @@ def executive_summary() -> dict[str, object]:
 def executive_pnl_attribution() -> dict[str, object]:
     settings = get_settings()
     try:
-        repo = ProductCategoryPnlRepository(settings.duckdb_path)
+        repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
         built = _build_pnl_attribution_from_repo(repo)
         if built is not None:
             return _envelope("executive.pnl-attribution", built)
-    except (duckdb.Error, OSError, TypeError, ValueError, KeyError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
         pass
 
     payload = PnlAttributionPayload(
@@ -383,34 +359,20 @@ def executive_pnl_attribution() -> dict[str, object]:
 def executive_risk_overview() -> dict[str, object]:
     settings = get_settings()
     try:
-        conn = duckdb.connect(settings.duckdb_path, read_only=True)
-        try:
-            row = conn.execute(
-                """
-                with mx as (
-                  select max(cast(report_date as varchar)) as d
-                  from fact_formal_bond_analytics_daily
-                )
-                select
-                  (select d from mx) as asof_date,
-                  sum(modified_duration * market_value) / nullif(sum(market_value), 0) as w_mod_dur,
-                  sum(dv01) as sum_dv01,
-                  sum(case when is_credit then market_value else 0 end)
-                    / nullif(sum(market_value), 0) * 100 as credit_mv_pct,
-                  sum(years_to_maturity * market_value) / nullif(sum(market_value), 0) as w_ytm
-                from fact_formal_bond_analytics_daily
-                where cast(report_date as varchar) = (select d from mx)
-                """
-            ).fetchone()
-        finally:
-            conn.close()
-        if row is not None and row[0] is not None:
-            _asof, wdur, sum_dv01, cred_pct, w_ytm = row
+        snapshot = BondAnalyticsRepository(
+            str(settings.duckdb_path)
+        ).fetch_latest_risk_overview_snapshot()
+        if snapshot is not None and snapshot["report_date"] is not None:
+            wdur = snapshot["portfolio_modified_duration"]
+            sum_dv01 = snapshot["portfolio_dv01"]
+            cred_pct = snapshot["credit_market_value_ratio_pct"]
+            w_ytm = snapshot["weighted_years_to_maturity"]
             if wdur is not None and sum_dv01 is not None:
                 wdur_f = float(wdur)
                 dv01_f = float(sum_dv01)
                 cred_f = float(cred_pct) if cred_pct is not None else 0.0
                 ytm_f = float(w_ytm) if w_ytm is not None else 0.0
+                asof_date = str(snapshot["report_date"])
                 payload = RiskOverviewPayload(
                     title="风险全景",
                     signals=[
@@ -419,33 +381,33 @@ def executive_risk_overview() -> dict[str, object]:
                             label="久期风险",
                             value=f"{wdur_f:.2f} 年",
                             status="stable",
-                            detail=f"最新日期 {row[0]}，组合市值加权修正久期（modified_duration）。",
+                            detail=f"最新日期 {asof_date}，组合市值加权修正久期（modified_duration）。",
                         ),
                         RiskSignal(
                             id="leverage",
                             label="杠杆风险",
                             value=f"{dv01_f:,.0f}",
                             status="watch",
-                            detail=f"最新日期 {row[0]}，DV01 合计（元口径聚合）。",
+                            detail=f"最新日期 {asof_date}，DV01 合计（元口径聚合）。",
                         ),
                         RiskSignal(
                             id="credit",
                             label="信用集中度",
                             value=f"{cred_f:.1f}%",
                             status="warning",
-                            detail=f"最新日期 {row[0]}，信用类债券市值占组合市值比重。",
+                            detail=f"最新日期 {asof_date}，信用类债券市值占组合市值比重。",
                         ),
                         RiskSignal(
                             id="liquidity",
                             label="流动性风险",
                             value=f"{ytm_f:.2f} 年",
                             status="stable",
-                            detail=f"最新日期 {row[0]}，市值加权平均剩余期限（years_to_maturity）。",
+                            detail=f"最新日期 {asof_date}，市值加权平均剩余期限（years_to_maturity）。",
                         ),
                     ],
                 )
                 return _envelope("executive.risk-overview", payload)
-    except (duckdb.Error, OSError, TypeError, ValueError):
+    except (RuntimeError, OSError, TypeError, ValueError):
         pass
 
     payload = RiskOverviewPayload(
@@ -487,11 +449,11 @@ def executive_risk_overview() -> dict[str, object]:
 def executive_contribution() -> dict[str, object]:
     settings = get_settings()
     try:
-        repo = ProductCategoryPnlRepository(settings.duckdb_path)
+        repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
         built = _build_contribution_from_repo(repo)
         if built is not None:
             return _envelope("executive.contribution", built)
-    except (duckdb.Error, OSError, TypeError, ValueError, KeyError):
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
         pass
 
     payload = ContributionPayload(
@@ -580,5 +542,5 @@ def executive_alerts() -> dict[str, object]:
         ]
         payload = AlertsPayload(title="预警与事件", items=items)
         return _envelope("executive.alerts", payload)
-    except (duckdb.Error, OSError, TypeError, ValueError, AttributeError, KeyError):
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError, KeyError):
         return _fallback_executive_alerts()
