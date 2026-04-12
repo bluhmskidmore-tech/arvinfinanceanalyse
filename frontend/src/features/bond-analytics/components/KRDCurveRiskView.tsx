@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
-import ReactECharts from "echarts-for-react";
-import type { EChartsOption } from "echarts";
+import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { AssetClassRiskSummary, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 

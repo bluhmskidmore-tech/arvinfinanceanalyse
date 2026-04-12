@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "../../../lib/echarts";
 import type { PnlAttributionPayload } from "../../../api/contracts";
 import { AsyncSection } from "./AsyncSection";
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import ReactECharts from "echarts-for-react";
+import ReactECharts from "../../../lib/echarts";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import type { PeriodType, ReturnDecompositionResponse } from "../types";
 import { formatWan } from "../utils/formatters";

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
-import ReactECharts from "echarts-for-react";
+import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { ConcentrationMetrics, CreditSpreadMigrationResponse } from "../types";
 import { formatWan, formatBp } from "../utils/formatters";
-import type { EChartsOption } from "echarts";
 
 interface Props {
   reportDate: string;

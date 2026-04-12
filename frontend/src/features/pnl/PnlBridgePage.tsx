@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { EChartsOption } from "echarts";
-import ReactECharts from "echarts-for-react";
+import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
