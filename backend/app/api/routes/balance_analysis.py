@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 from urllib.parse import quote
 
@@ -9,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from backend.app.governance.settings import get_settings
 from backend.app.security.auth_stub import AuthContext, get_auth_context
+from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
 from backend.app.services.balance_analysis_service import (
     BalanceAnalysisRefreshConflictError,
     BalanceAnalysisRefreshServiceError,
@@ -33,6 +35,19 @@ router = APIRouter(prefix="/ui/balance-analysis")
 def _build_attachment_disposition(filename: str, *, fallback_filename: str | None = None) -> str:
     fallback = fallback_filename or filename
     return f"attachment; filename={fallback}; filename*=UTF-8''{quote(filename)}"
+
+
+def _require_balance_analysis_report_date_qs(report_date: str) -> str:
+    """YYYY-MM-DD calendar validation; aligned with balance_analysis_service._parse_date format."""
+    candidate = str(report_date).strip()
+    try:
+        datetime.strptime(candidate, "%Y-%m-%d")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="report_date must be a valid calendar date in YYYY-MM-DD format.",
+        ) from exc
+    return candidate
 
 
 @router.get("/dates")
@@ -133,6 +148,15 @@ def summary_by_basis(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/advanced-attribution")
+def advanced_attribution(
+    report_date: str = Query(..., description="Report date (YYYY-MM-DD) for the not_ready attribution contract."),
+) -> dict[str, object]:
+    """Analytical-only advanced attribution bundle; not part of the governed workbook tables."""
+    normalized = _require_balance_analysis_report_date_qs(report_date)
+    return advanced_attribution_bundle_envelope(report_date=normalized)
 
 
 @router.get("/workbook")
