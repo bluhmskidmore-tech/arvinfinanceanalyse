@@ -4,8 +4,10 @@ import csv
 import sys
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import duckdb
+import pytest
 
 from tests.helpers import load_module
 
@@ -151,3 +153,72 @@ def test_fx_mid_materialize_preserves_existing_unrelated_rows(tmp_path):
         (date(2026, 2, 26), "USD", "CNY", Decimal("7.20000000"), "sv_old"),
         (date(2026, 2, 27), "USD", "CNY", Decimal("7.24000000"), rows[1][4]),
     ]
+
+
+def test_resolve_fx_mid_csv_path_falls_back_to_data_input_fx_directory(tmp_path):
+    fx_mod = _load_fx_task_module()
+
+    data_input_root = tmp_path / "data_input"
+    csv_path = data_input_root / "fx" / "fx_daily_mid.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    resolved = fx_mod.resolve_fx_mid_csv_path(
+        explicit_csv_path="",
+        data_input_root=data_input_root,
+    )
+
+    assert resolved == csv_path
+
+
+def test_resolve_fx_mid_csv_path_fails_closed_when_explicit_path_is_missing(tmp_path):
+    fx_mod = _load_fx_task_module()
+
+    data_input_root = tmp_path / "data_input"
+    fallback_csv = data_input_root / "fx" / "fx_daily_mid.csv"
+    fallback_csv.parent.mkdir(parents=True, exist_ok=True)
+    fallback_csv.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2026-02-27,USD,CNY,7.24,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(FileNotFoundError):
+        fx_mod.resolve_fx_mid_csv_path(
+            explicit_csv_path=str(tmp_path / "missing.csv"),
+            data_input_root=data_input_root,
+        )
+
+
+def test_fx_mid_materialize_fails_when_required_header_contract_is_incomplete(tmp_path):
+    fx_mod = _load_fx_task_module()
+
+    csv_path = tmp_path / "fx_mid.csv"
+    duckdb_path = tmp_path / "moss.duckdb"
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day",
+                "2026-02-27,USD,CNY,7.24,CFETS,true",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="required headers"):
+        fx_mod.materialize_fx_mid_rows.fn(
+            csv_path=str(csv_path),
+            duckdb_path=str(duckdb_path),
+        )

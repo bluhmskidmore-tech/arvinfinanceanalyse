@@ -194,3 +194,73 @@ def test_disabled_agent_query_appends_audit_log(monkeypatch, tmp_path):
     assert payload["query_text"] == "PnL summary"
     assert payload["tools_used"] == ["agent_disabled"]
     assert payload["result_meta"]["result_kind"] == "agent.disabled"
+
+
+def test_agent_query_returns_404_with_detail_when_executor_raises_value_error(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "duckdb_path": "test.duckdb",
+                "governance_path": "test-governance",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_agent_query",
+        lambda request, duckdb_path, governance_dir: (_ for _ in ()).throw(
+            ValueError("No agent data found.")
+        ),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "No agent data found."}
+
+
+def test_agent_query_returns_runtime_error_detail_instead_of_disabled_payload(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.agent",
+        "backend/app/api/routes/agent.py",
+    )
+    monkeypatch.setattr(
+        route_module,
+        "get_settings",
+        lambda: type(
+            "SettingsStub",
+            (),
+            {
+                "agent_enabled": True,
+                "duckdb_path": "test.duckdb",
+                "governance_path": "test-governance",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        route_module,
+        "execute_agent_query",
+        lambda request, duckdb_path, governance_dir: (_ for _ in ()).throw(
+            RuntimeError("DuckDB read path unavailable.")
+        ),
+    )
+    app = FastAPI()
+    app.include_router(route_module.router)
+    client = TestClient(app)
+
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "DuckDB read path unavailable."}

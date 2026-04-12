@@ -1,5 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AgGridReact } from "ag-grid-react";
+import type { ColDef, ValueFormatterParams } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../api/client";
 import type { PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
@@ -36,12 +40,6 @@ const tableShellStyle = {
   background: "#ffffff",
 } as const;
 
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
-} as const;
-
 const tabBarStyle = {
   display: "flex",
   gap: 8,
@@ -68,6 +66,19 @@ function cellText(value: string | number | null | undefined) {
   return String(value);
 }
 
+function thousandsValueFormatter(params: ValueFormatterParams) {
+  const v = params.value;
+  if (v === null || v === undefined || v === "") {
+    return "—";
+  }
+  const raw = String(v).replace(/,/g, "");
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return String(v);
+  }
+  return n.toLocaleString("zh-CN");
+}
+
 const formalFiColumns: { key: keyof PnlFormalFiRow; label: string }[] = [
   { key: "report_date", label: "报告日" },
   { key: "instrument_code", label: "证券代码" },
@@ -75,17 +86,28 @@ const formalFiColumns: { key: keyof PnlFormalFiRow; label: string }[] = [
   { key: "cost_center", label: "成本中心" },
   { key: "invest_type_std", label: "投资类型" },
   { key: "accounting_basis", label: "会计口径" },
-  { key: "currency_basis", label: "币种口径" },
   { key: "interest_income_514", label: "利息收入(514)" },
   { key: "fair_value_change_516", label: "公允价值变动(516)" },
   { key: "capital_gain_517", label: "资本利得(517)" },
   { key: "manual_adjustment", label: "手工调整" },
   { key: "total_pnl", label: "损益合计" },
-  { key: "source_version", label: "source_version" },
-  { key: "rule_version", label: "rule_version" },
-  { key: "ingest_batch_id", label: "ingest_batch_id" },
-  { key: "trace_id", label: "trace_id" },
 ];
+
+const formalFiAmountFields = new Set<string>([
+  "interest_income_514",
+  "fair_value_change_516",
+  "capital_gain_517",
+  "manual_adjustment",
+  "total_pnl",
+]);
+
+const nonstdAmountFields = new Set<string>([
+  "interest_income_514",
+  "fair_value_change_516",
+  "capital_gain_517",
+  "manual_adjustment",
+  "total_pnl",
+]);
 
 const nonstdColumns: { key: keyof PnlNonStdBridgeRow; label: string }[] = [
   { key: "report_date", label: "报告日" },
@@ -105,10 +127,44 @@ const nonstdColumns: { key: keyof PnlNonStdBridgeRow; label: string }[] = [
 
 type DataTab = "fi" | "nonstd";
 
+const gridDefaultColDef: ColDef = {
+  sortable: true,
+  filter: true,
+  resizable: true,
+  flex: 1,
+  minWidth: 110,
+};
+
 export default function PnlPage() {
   const client = useApiClient();
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [dataTab, setDataTab] = useState<DataTab>("fi");
+
+  const formalFiColDefs = useMemo<ColDef<PnlFormalFiRow>[]>(
+    () =>
+      formalFiColumns.map((col) => ({
+        colId: col.key,
+        field: col.key,
+        headerName: col.label,
+        headerClass: formalFiAmountFields.has(col.key) ? "ag-right-aligned-header" : undefined,
+        cellClass: formalFiAmountFields.has(col.key) ? "ag-right-aligned-cell" : undefined,
+        valueFormatter: formalFiAmountFields.has(col.key) ? thousandsValueFormatter : undefined,
+      })),
+    [],
+  );
+
+  const nonstdColDefs = useMemo<ColDef<PnlNonStdBridgeRow>[]>(
+    () =>
+      nonstdColumns.map((col) => ({
+        colId: col.key,
+        field: col.key,
+        headerName: col.label,
+        headerClass: nonstdAmountFields.has(col.key) ? "ag-right-aligned-header" : undefined,
+        cellClass: nonstdAmountFields.has(col.key) ? "ag-right-aligned-cell" : undefined,
+        valueFormatter: nonstdAmountFields.has(col.key) ? thousandsValueFormatter : undefined,
+      })),
+    [],
+  );
 
   const datesQuery = useQuery({
     queryKey: ["pnl", "dates", client.mode],
@@ -283,88 +339,34 @@ export default function PnlPage() {
           }}
         >
           {dataTab === "fi" ? (
-            <div style={tableShellStyle}>
-              <table data-testid="pnl-formal-fi-table" style={tableStyle}>
-                <thead>
-                  <tr>
-                    {formalFiColumns.map((col) => (
-                      <th
-                        key={col.key}
-                        style={{
-                          textAlign: "left",
-                          padding: "10px 12px",
-                          borderBottom: "1px solid #e4ebf5",
-                          color: "#5c6b82",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {formalRows.map((row, rowIndex) => (
-                    <tr key={`${row.trace_id}-${row.instrument_code}-${rowIndex}`}>
-                      {formalFiColumns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{
-                            padding: "12px",
-                            borderBottom: "1px solid #eef2f7",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {cellText(row[col.key])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div
+              className="ag-theme-alpine"
+              data-testid="pnl-formal-fi-table"
+              style={{ ...tableShellStyle, height: 480, width: "100%", padding: 0 }}
+            >
+              <AgGridReact<PnlFormalFiRow>
+                rowData={formalRows}
+                columnDefs={formalFiColDefs}
+                defaultColDef={gridDefaultColDef}
+                getRowId={(p) =>
+                  `${String(p.data.trace_id)}-${String(p.data.instrument_code)}-${String(p.data.report_date)}`
+                }
+              />
             </div>
           ) : (
-            <div style={tableShellStyle}>
-              <table data-testid="pnl-nonstd-bridge-table" style={tableStyle}>
-                <thead>
-                  <tr>
-                    {nonstdColumns.map((col) => (
-                      <th
-                        key={col.key}
-                        style={{
-                          textAlign: "left",
-                          padding: "10px 12px",
-                          borderBottom: "1px solid #e4ebf5",
-                          color: "#5c6b82",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {col.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {nonstdRows.map((row, rowIndex) => (
-                    <tr key={`${row.trace_id}-${row.bond_code}-${rowIndex}`}>
-                      {nonstdColumns.map((col) => (
-                        <td
-                          key={col.key}
-                          style={{
-                            padding: "12px",
-                            borderBottom: "1px solid #eef2f7",
-                            fontVariantNumeric: "tabular-nums",
-                          }}
-                        >
-                          {cellText(row[col.key])}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div
+              className="ag-theme-alpine"
+              data-testid="pnl-nonstd-bridge-table"
+              style={{ ...tableShellStyle, height: 480, width: "100%", padding: 0 }}
+            >
+              <AgGridReact<PnlNonStdBridgeRow>
+                rowData={nonstdRows}
+                columnDefs={nonstdColDefs}
+                defaultColDef={gridDefaultColDef}
+                getRowId={(p) =>
+                  `${String(p.data.trace_id)}-${String(p.data.bond_code)}-${String(p.data.report_date)}`
+                }
+              />
             </div>
           )}
         </AsyncSection>

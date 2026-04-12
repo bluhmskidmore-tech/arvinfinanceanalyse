@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AgGridReact } from "ag-grid-react";
+import type { ColDef, ICellRendererParams, ValueFormatterParams } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
@@ -35,12 +39,6 @@ const tableShellStyle = {
   borderRadius: 16,
   border: "1px solid #e4ebf5",
   background: "#ffffff",
-} as const;
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
 } as const;
 
 const POS_COLOR = "#5b8ff9";
@@ -208,6 +206,27 @@ function cellText(value: string | number | null | undefined) {
   return String(value);
 }
 
+function thousandsValueFormatter(params: ValueFormatterParams) {
+  const v = params.value;
+  if (v === null || v === undefined || v === "") {
+    return "—";
+  }
+  const raw = String(v).replace(/,/g, "");
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return String(v);
+  }
+  return n.toLocaleString("zh-CN");
+}
+
+const bridgeGridDefaultColDef: ColDef = {
+  sortable: true,
+  filter: true,
+  resizable: true,
+  flex: 1,
+  minWidth: 120,
+};
+
 export default function PnlBridgePage() {
   const client = useApiClient();
   const [selectedReportDate, setSelectedReportDate] = useState("");
@@ -239,6 +258,71 @@ export default function PnlBridgePage() {
   const chartOption = useMemo(
     () => (summary ? buildWaterfallOption(summary) : null),
     [summary],
+  );
+
+  const bridgeColDefs = useMemo<ColDef<PnlBridgeRow>[]>(
+    () => [
+      { field: "instrument_code", headerName: "instrument_code" },
+      { field: "portfolio_name", headerName: "portfolio_name" },
+      { field: "accounting_basis", headerName: "accounting_basis" },
+      {
+        field: "carry",
+        headerName: "carry",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "realized_trading",
+        headerName: "realized_trading",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "unrealized_fv",
+        headerName: "unrealized_fv",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "manual_adjustment",
+        headerName: "manual_adjustment",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "explained_pnl",
+        headerName: "explained_pnl",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "actual_pnl",
+        headerName: "actual_pnl",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "residual",
+        headerName: "residual",
+        headerClass: "ag-right-aligned-header",
+        cellClass: "ag-right-aligned-cell",
+        valueFormatter: thousandsValueFormatter,
+      },
+      {
+        field: "quality_flag",
+        headerName: "quality_flag",
+        cellRenderer: (params: ICellRendererParams<PnlBridgeRow, PnlBridgeQuality>) => (
+          <span style={qualityBadgeStyle(params.value ?? "error")}>{params.value}</span>
+        ),
+      },
+    ],
+    [],
   );
 
   const summaryLoading =
@@ -409,77 +493,19 @@ export default function PnlBridgePage() {
           void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
         }}
       >
-        <div data-testid="pnl-bridge-detail-table" style={tableShellStyle}>
-          <table style={tableStyle}>
-            <thead>
-              <tr style={{ background: "#f4f7fb" }}>
-                {[
-                  "instrument_code",
-                  "portfolio_name",
-                  "accounting_basis",
-                  "carry",
-                  "realized_trading",
-                  "unrealized_fv",
-                  "manual_adjustment",
-                  "explained_pnl",
-                  "actual_pnl",
-                  "residual",
-                  "quality_flag",
-                ].map((col) => (
-                  <th
-                    key={col}
-                    style={{
-                      textAlign: "left",
-                      padding: "12px 14px",
-                      borderBottom: "1px solid #e4ebf5",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {col}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row: PnlBridgeRow, index: number) => (
-                <tr key={`${row.instrument_code}-${row.portfolio_name}-${index}`}>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.instrument_code}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.portfolio_name}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.accounting_basis}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.carry}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.realized_trading}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.unrealized_fv}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.manual_adjustment}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.explained_pnl}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.actual_pnl}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    {row.residual}
-                  </td>
-                  <td style={{ padding: "10px 14px", borderBottom: "1px solid #eef2f8" }}>
-                    <span style={qualityBadgeStyle(row.quality_flag)}>{row.quality_flag}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div
+          className="ag-theme-alpine"
+          data-testid="pnl-bridge-detail-table"
+          style={{ ...tableShellStyle, height: 480, width: "100%", padding: 0 }}
+        >
+          <AgGridReact<PnlBridgeRow>
+            rowData={rows}
+            columnDefs={bridgeColDefs}
+            defaultColDef={bridgeGridDefaultColDef}
+            getRowId={(p) =>
+              `${String(p.data.instrument_code)}-${String(p.data.portfolio_name)}-${String(p.data.accounting_basis)}`
+            }
+          />
         </div>
       </AsyncSection>
     </section>

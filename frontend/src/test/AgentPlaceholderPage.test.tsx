@@ -1,225 +1,149 @@
-﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
-import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ApiEnvelope, ChoiceNewsEventsPayload, ResultMeta } from "../api/contracts";
-import { routerFuture } from "../router/routerFuture";
-import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
+import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
-function createChoiceNewsEnvelope(overrides?: Partial<{
-  totalRows: number;
-  offset: number;
-  events: Array<{
-    event_key: string;
-    received_at: string;
-    group_id: string;
-    content_type: string;
-    serial_id: number;
-    request_id: number;
-    error_code: number;
-    error_msg: string;
-    topic_code: string;
-    item_index: number;
-    payload_text: string | null;
-    payload_json: string | null;
-  }>;
-}>) {
-  const resultMeta: ResultMeta = {
-    trace_id: "tr_choice_news_test",
-    basis: "analytical",
-    result_kind: "news.choice.latest",
-    formal_use_allowed: false,
-    source_version: "sv_choice_news_test",
-    vendor_version: "vv_none",
-    rule_version: "rv_choice_news_v1",
-    cache_version: "cv_choice_news_v1",
-    quality_flag: "ok",
-    vendor_status: "ok",
-    fallback_mode: "none",
-    scenario_flag: false,
-    generated_at: "2026-04-10T09:00:00Z",
-  };
-  const result: ChoiceNewsEventsPayload = {
-    total_rows: overrides?.totalRows ?? 1,
-    limit: 2,
-    offset: overrides?.offset ?? 0,
-    events: overrides?.events ?? [
-      {
-        event_key: "ce_filter_target",
-        received_at: "2026-04-10T09:00:00Z",
-        group_id: "news_cmd1",
-        content_type: "sectornews",
-        serial_id: 1001,
-        request_id: 500,
-        error_code: 0,
-        error_msg: "",
-        topic_code: "S888010007API",
-        item_index: 0,
-        payload_text: "Filtered policy update",
-        payload_json: null,
-      },
-    ],
-  };
-
-  const envelope: ApiEnvelope<ChoiceNewsEventsPayload> = {
-    result_meta: resultMeta,
-    result,
-  };
-
-  return envelope;
-}
-
-function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
-  const router = createWorkbenchMemoryRouter(["/agent"]);
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: 0,
-        refetchOnWindowFocus: false,
-      },
+function buildJsonResponse(payload: unknown, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
     },
   });
-
-  return render(
-    <ApiClientProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} future={routerFuture} />
-      </QueryClientProvider>
-    </ApiClientProvider>,
-  );
 }
 
-describe("AgentPlaceholderPage", () => {
-  it("renders the hidden agent route as a real Choice news workbench", async () => {
+describe("/agent route", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("renders the agent workbench shell without issuing a query on load", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      buildJsonResponse({}),
+    );
+
     renderWorkbenchApp(["/agent"]);
 
     expect(
-      await screen.findByRole("heading", { name: "新闻事件工作台" }),
+      await screen.findByRole("heading", { name: "Agent 工作台" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/analytical read-only/i),
+      screen.getByText("输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。"),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("Choice News Topics 2026-04-09 / 经济数据"),
+      screen.getByPlaceholderText("例如：组合概览、损益汇总、久期风险、信用集中度..."),
     ).toBeInTheDocument();
-    expect(screen.getByTestId("agent-news-event-ce_mock_001")).toHaveTextContent(
-      "group_id news_cmd1",
-    );
-    expect(screen.getByTestId("agent-news-event-ce_mock_001")).toHaveTextContent(
-      "topic_code S888010007API",
-    );
-    expect(screen.getByTestId("agent-news-visible-events")).toHaveTextContent(
-      "Visible page rows",
-    );
-    expect(screen.getByTestId("agent-news-topic-count")).toHaveTextContent(
-      "Visible page topics",
-    );
-    expect(screen.getByTestId("agent-news-error-count")).toHaveTextContent(
-      "Visible page error rows",
-    );
-    expect(screen.getByTestId("agent-news-callback-count")).toHaveTextContent(
-      "Visible slice callback envelopes",
-    );
-    expect(screen.getByTestId("agent-news-error-pane")).toHaveTextContent(
-      "No visible slice error events on this page.",
-    );
+    expect(
+      screen.getByRole("button", { name: "查询" }),
+    ).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("applies filters through the API client contract", async () => {
+  it("posts the manual query payload and renders answer, cards, evidence, and drill suggestions", async () => {
     const user = userEvent.setup();
-    const baseClient = createApiClient({ mode: "mock" });
-    const getChoiceNewsEventsSpy = vi
-      .fn()
-      .mockResolvedValueOnce(
-        createChoiceNewsEnvelope({
-          totalRows: 2,
-          events: [
-            {
-              event_key: "ce_first_page",
-              received_at: "2026-04-10T09:01:00Z",
-              group_id: "news_cmd1",
-              content_type: "sectornews",
-              serial_id: 1001,
-              request_id: 500,
-              error_code: 0,
-              error_msg: "",
-              topic_code: "C000022",
-              item_index: 0,
-              payload_text: "Initial page event",
-              payload_json: null,
-            },
-          ],
-        }),
-      )
-      .mockResolvedValueOnce(createChoiceNewsEnvelope());
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "组合久期风险主要集中在 3Y-5Y 桶位，久期贡献高于其他期限段。",
+        cards: [
+          { title: "组合久期", value: "4.27", type: "duration" },
+          { title: "DV01", value: "128.5万", type: "risk" },
+        ],
+        evidence: {
+          tables_used: ["fact_risk_tensor", "dim_portfolio"],
+          filters_applied: { currency_basis: "CNY" },
+          evidence_rows: 42,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_agent_query_001",
+        },
+        next_drill: [
+          { dimension: "portfolio", label: "按组合下钻" },
+          { dimension: "tenor_bucket", label: "按期限桶下钻" },
+        ],
+      }),
+    );
 
-    renderWorkbenchAppWithClient({
-      ...baseClient,
-      getChoiceNewsEvents: getChoiceNewsEventsSpy,
-    });
+    renderWorkbenchApp(["/agent"]);
 
-    await screen.findByRole("heading", { name: "新闻事件工作台" });
-    await screen.findByText("Initial page event");
-
-    await user.type(screen.getByLabelText("agent-news-group-id"), "news_cmd1");
-    await user.type(screen.getByLabelText("agent-news-topic-code"), "S888010007API");
-    await user.click(screen.getByLabelText("agent-news-error-only"));
-    await user.click(screen.getByTestId("agent-news-apply-filters"));
+    await user.type(
+      await screen.findByPlaceholderText(
+        "例如：组合概览、损益汇总、久期风险、信用集中度...",
+      ),
+      "久期风险",
+    );
+    await user.click(screen.getByRole("button", { name: "查询" }));
 
     await waitFor(() => {
-      expect(getChoiceNewsEventsSpy).toHaveBeenNthCalledWith(2, {
-        limit: 2,
-        offset: 0,
-        groupId: "news_cmd1",
-        topicCode: "S888010007API",
-        errorOnly: true,
-        receivedFrom: undefined,
-        receivedTo: undefined,
-      });
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
-    expect(getChoiceNewsEventsSpy).toHaveBeenCalledTimes(2);
-    expect(await screen.findByText("Filtered policy update")).toBeInTheDocument();
+
+    const [url, options] = fetchSpy.mock.calls[0] ?? [];
+    expect(url).toBe("/api/agent/query");
+    expect(options?.method).toBe("POST");
+    expect(options?.headers).toEqual({
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(String(options?.body))).toEqual({
+      question: "久期风险",
+      basis: "formal",
+      filters: {},
+      position_scope: "all",
+      currency_basis: "CNY",
+      context: {
+        user_id: "web-user",
+      },
+    });
+
     expect(
-      screen.getByText("Choice News Topics 2026-04-09 / 经济数据"),
+      await screen.findByText("组合久期风险主要集中在 3Y-5Y 桶位，久期贡献高于其他期限段。"),
     ).toBeInTheDocument();
+    expect(screen.getByText("组合久期")).toBeInTheDocument();
+    expect(screen.getByText("4.27")).toBeInTheDocument();
+    expect(screen.getByText("duration")).toBeInTheDocument();
+    expect(screen.getByText("DV01")).toBeInTheDocument();
+    expect(screen.getByText("128.5万")).toBeInTheDocument();
+    expect(screen.getByText("证据链")).toBeInTheDocument();
+    expect(
+      screen.getByText(/tables: fact_risk_tensor, dim_portfolio/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/filters: \{"currency_basis":"CNY"\}/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/rows: 42/)).toBeInTheDocument();
+    expect(screen.getByText(/quality: ok/)).toBeInTheDocument();
+    expect(screen.getByText("按组合下钻")).toBeInTheDocument();
+    expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
   });
 
-  it("paginates through the Choice news event feed", async () => {
+  it("shows the phase-1 disabled banner when the backend returns 503 disabled", async () => {
     const user = userEvent.setup();
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      buildJsonResponse(
+        {
+          enabled: false,
+          phase: "phase1",
+          detail: "agent is not enabled",
+        },
+        503,
+      ),
+    );
+
     renderWorkbenchApp(["/agent"]);
 
-    await screen.findByRole("heading", { name: "新闻事件工作台" });
-    expect(
-      await screen.findByText(
-        "Macro data release calendar updated for CPI and industrial production.",
+    await user.type(
+      await screen.findByPlaceholderText(
+        "例如：组合概览、损益汇总、久期风险、信用集中度...",
       ),
-    ).toBeInTheDocument();
-
-    await user.click(screen.getByTestId("agent-news-next-page"));
-
-    expect(await screen.findByTestId("agent-news-event-ce_mock_003")).toHaveTextContent(
-      "vendor callback timeout",
+      "组合概览",
     );
-    expect(screen.getByText("ERR 101")).toBeInTheDocument();
-    expect(screen.getByTestId("agent-news-event-ce_mock_003")).toHaveTextContent(
-      "news_cmd1 / __callback__",
-    );
-    expect(screen.getByTestId("agent-news-error-pane")).toHaveTextContent("Callback anomaly");
-    expect(screen.getByTestId("agent-news-error-pane")).toHaveTextContent(
-      "news_cmd1 / __callback__",
-    );
-
-    await user.click(screen.getByTestId("agent-news-prev-page"));
+    await user.click(screen.getByRole("button", { name: "查询" }));
 
     expect(
       await screen.findByText(
-        "Macro data release calendar updated for CPI and industrial production.",
+        "Agent 当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
   });
 });
-
-

@@ -133,3 +133,48 @@ def test_snapshot_materialize_respects_report_date_filter(tmp_path, monkeypatch)
     assert empty_scope["tyw_rows"] == 0
 
     get_settings.cache_clear()
+
+
+def test_snapshot_materialize_normalizes_currency_labels_to_iso_codes(tmp_path, monkeypatch):
+    ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    ingest_mod.ingest_demo_manifest.fn()
+    snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        zqtz_codes = {
+            row[0]
+            for row in conn.execute("select distinct currency_code from zqtz_bond_daily_snapshot").fetchall()
+        }
+        tyw_codes = {
+            row[0]
+            for row in conn.execute("select distinct currency_code from tyw_interbank_daily_snapshot").fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert "人民币" not in zqtz_codes
+    assert "美元" not in zqtz_codes
+    assert "人民币" not in tyw_codes
+    assert "美元" not in tyw_codes
+
+    get_settings.cache_clear()

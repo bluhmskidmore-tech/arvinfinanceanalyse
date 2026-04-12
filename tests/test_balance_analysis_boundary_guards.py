@@ -37,3 +37,9 @@ def test_balance_analysis_materialize_does_not_reference_preview_tables():
         "from phase1_",
     ):
         assert banned not in src
+
+
+def test_worker_bootstrap_includes_fx_mid_materialize_module():
+    path = ROOT / "backend" / "app" / "tasks" / "worker_bootstrap.py"
+    src = path.read_text(encoding="utf-8")
+    assert "backend.app.tasks.fx_mid_materialize" in src

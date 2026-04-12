@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from datetime import datetime
 from typing import Literal
 from urllib.parse import quote
@@ -305,7 +306,8 @@ def refresh(report_date: str = Query(...)) -> dict[str, object]:
 def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
     settings = get_settings()
     try:
-        return balance_analysis_refresh_status(settings, run_id=run_id)
+        service_mod = importlib.import_module("backend.app.services.balance_analysis_service")
+        return service_mod.balance_analysis_refresh_status(settings, run_id=run_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:

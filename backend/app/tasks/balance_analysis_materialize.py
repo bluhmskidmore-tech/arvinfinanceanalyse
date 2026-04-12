@@ -15,7 +15,7 @@ from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeResult,
 )
 from backend.app.tasks.broker import register_actor_once
-from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_rows
+from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_rows, resolve_fx_mid_csv_path
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
 BALANCE_ANALYSIS_MODULE = ensure_formal_module(
@@ -56,10 +56,14 @@ def _execute_balance_analysis_materialization(
     duckdb_file: Path,
 ) -> FormalComputeMaterializeResult:
     settings = get_settings()
-    fx_mid_csv_path = str(getattr(settings, "fx_mid_csv_path", "") or "").strip()
-    if fx_mid_csv_path:
+    fx_mid_csv_path = resolve_fx_mid_csv_path(
+        official_csv_path=str(getattr(settings, "fx_official_source_path", "") or ""),
+        explicit_csv_path=str(getattr(settings, "fx_mid_csv_path", "") or ""),
+        data_input_root=Path(settings.data_input_root),
+    )
+    if fx_mid_csv_path is not None:
         materialize_fx_mid_rows.fn(
-            csv_path=fx_mid_csv_path,
+            csv_path=str(fx_mid_csv_path),
             duckdb_path=str(duckdb_file),
         )
 

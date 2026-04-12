@@ -70,6 +70,56 @@ def test_portfolio_overview_intent_routes_to_balance_analysis_repo(tmp_path, mon
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+
+    class StubBalanceAnalysisRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_formal_overview(self, *, report_date: str, position_scope: str, currency_basis: str) -> dict[str, object]:
+            calls.append(report_date)
+            return {
+                "detail_row_count": 1,
+                "total_market_value_amount": 800,
+                "total_amortized_cost_amount": 790,
+                "total_accrued_interest_amount": 6,
+                "source_version": "sv_balance_2",
+                "rule_version": "rv_balance_2",
+            }
+
+    monkeypatch.setattr(service_module, "BalanceAnalysisRepository", StubBalanceAnalysisRepository)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(question="portfolio market value")
+    )
+
+    assert calls == ["2026-03-31"]
+    assert envelope.result_meta.result_kind == "agent.portfolio_overview"
+    assert any(card.title == "Total Market Value" for card in envelope.cards)
+
+
 def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",

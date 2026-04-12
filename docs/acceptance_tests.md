@@ -66,6 +66,17 @@
 - Formal 与 Analytical basis 不混淆
 - 输出 `coverage_ratio` 与 `missing_dates`
 
+### 3.5A 收益率曲线与曲线效应
+- `fact_formal_yield_curve_daily` 只允许由 `backend/app/tasks/` 物化写入；`yield_curve_daily` 仅作为读视图暴露
+- `treasury` 与 `cdb` 曲线物化结果必须同时带 `vendor_name / vendor_version / source_version`
+- AkShare 为主路径；AkShare 不可用时允许 Choice 作为真实 fallback
+- service/read path 只允许回退到“请求日及以前”的最近可用曲线，不允许 future-date fallback
+- `pnl.bridge` 在 governed curve 可用时，`roll_down / treasury_curve` 不再固定为 0
+- `bond_analytics.return_decomposition` 在 governed curve 可用时，`roll_down / rate_effect` 不再固定为 0
+- `credit_spread / fx_translation` 在当前 slice 仍允许保持 0，但必须有显式 warning
+- 短端点位 `3M / 6M / 9M` 不得在插值前被丢弃
+- 至少一组固定 fixture/reference 需要对 `roll_down / treasury_curve / rate_effect` 做数值断言，不能只验非 0
+
 ### 3.6 Formal / Scenario / Analytical 隔离
 - `basis=formal` 的结果必须同时满足 `formal_use_allowed=true` 且 `scenario_flag=false`
 - `basis=scenario` 的结果必须同时满足 `formal_use_allowed=false` 且 `scenario_flag=true`

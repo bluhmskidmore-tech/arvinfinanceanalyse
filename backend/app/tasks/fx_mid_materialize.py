@@ -11,8 +11,54 @@ from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.tasks.broker import register_actor_once
 
 
+def resolve_fx_mid_csv_path(
+    *,
+    official_csv_path: str = "",
+    explicit_csv_path: str,
+    data_input_root: Path,
+) -> Path | None:
+    official = Path(official_csv_path).expanduser() if str(official_csv_path).strip() else None
+    if official is not None:
+        if official.exists():
+            return official
+        raise FileNotFoundError(f"FX official CSV not found: {official}")
+
+    explicit = Path(explicit_csv_path).expanduser() if str(explicit_csv_path).strip() else None
+    if explicit is not None:
+        if explicit.exists():
+            return explicit
+        raise FileNotFoundError(f"FX mid CSV not found: {explicit}")
+
+    candidates = (
+        data_input_root / "fx" / "fx_daily_mid.csv",
+        data_input_root / "fx_daily_mid.csv",
+    )
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _parse_bool(value: str) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "t", "yes", "y"}
+
+
+def _validate_required_headers(fieldnames: list[str] | None) -> None:
+    required_headers = {
+        "trade_date",
+        "base_currency",
+        "quote_currency",
+        "mid_rate",
+        "source_name",
+        "is_business_day",
+        "is_carry_forward",
+    }
+    actual_headers = {str(name).strip() for name in (fieldnames or []) if str(name).strip()}
+    missing_headers = sorted(required_headers - actual_headers)
+    if missing_headers:
+        raise ValueError(
+            "FX mid CSV required headers missing: " + ", ".join(missing_headers)
+        )
 
 
 def _build_source_version(csv_path: Path) -> str:
@@ -49,6 +95,7 @@ def _materialize_fx_mid_rows(
     source_version = _build_source_version(csv_file)
     with csv_file.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
+        _validate_required_headers(reader.fieldnames)
         latest_by_key: dict[tuple[str, str, str], tuple[object, ...]] = {}
         for row in reader:
             normalized_row = (

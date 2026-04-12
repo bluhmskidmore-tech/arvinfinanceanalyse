@@ -74,3 +74,16 @@ def test_balance_analysis_advanced_attribution_boundary_design_note_exists():
     assert "advanced_attribution_bundle" in doc
     assert "bond_analytics_service" in doc
     assert "roll_down" in doc
+
+
+def test_fx_source_runbook_freezes_official_drop_contract_and_standard_entrypoint():
+    runbook = _read_doc("docs/BALANCE_ANALYSIS_FX_SOURCE_RUNBOOK.md")
+    env_example = _read_doc("config/.env.example")
+
+    assert "data_input/fx/fx_daily_mid.csv" in runbook
+    assert "data_input/fx_daily_mid.csv" in runbook
+    assert "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward" in runbook
+    assert "MOSS_FX_OFFICIAL_SOURCE_PATH" in runbook
+    assert "MOSS_FX_OFFICIAL_SOURCE_PATH=" in env_example
+    assert "python -m backend.app.tasks.formal_balance_pipeline" in runbook
+    assert "raw official non-CSV sample" in runbook

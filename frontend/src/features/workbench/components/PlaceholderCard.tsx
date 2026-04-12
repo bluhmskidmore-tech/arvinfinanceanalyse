@@ -1,3 +1,5 @@
+import { shellTokens as t } from "../../../theme/tokens";
+
 type PlaceholderCardSurfaceTone = "default" | "ok" | "warning" | "error";
 
 type PlaceholderCardProps = {
@@ -10,10 +12,10 @@ type PlaceholderCardProps = {
 };
 
 const surfaceToneBackground: Record<PlaceholderCardSurfaceTone, string> = {
-  default: "#fbfcfe",
-  ok: "#e8f6ee",
-  warning: "#fffbeb",
-  error: "#fff0f0",
+  default: t.colorBgSurface,
+  ok: t.colorBgSuccessSoft,
+  warning: t.colorBgWarningSoft,
+  error: t.colorBgDangerSoft,
 };
 
 export function PlaceholderCard({
@@ -30,7 +32,7 @@ export function PlaceholderCard({
           marginBottom: 8,
           fontSize: 16,
           fontWeight: 600,
-          color: "#162033",
+          color: t.colorTextPrimary,
           lineHeight: 1.5,
         }
       : {
@@ -38,7 +40,7 @@ export function PlaceholderCard({
           marginBottom: 10,
           fontSize: 28,
           fontWeight: 600,
-          color: "#162033",
+          color: t.colorTextPrimary,
         };
 
   return (
@@ -48,13 +50,13 @@ export function PlaceholderCard({
         padding: 24,
         borderRadius: 18,
         background: surfaceToneBackground[surfaceTone],
-        border: "1px solid #e4ebf5",
-        boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+        border: `1px solid ${t.colorBorderSoft}`,
+        boxShadow: t.shadowPanel,
       }}
     >
       <div
         style={{
-          color: "#6c7b91",
+          color: t.colorTextMuted,
           fontSize: 13,
           letterSpacing: "0.02em",
         }}
@@ -67,7 +69,7 @@ export function PlaceholderCard({
       <p
         style={{
           marginBottom: 0,
-          color: "#5c6b82",
+          color: t.colorTextSecondary,
           fontSize: 14,
         }}
       >

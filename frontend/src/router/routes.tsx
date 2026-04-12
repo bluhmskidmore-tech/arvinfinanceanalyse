@@ -36,8 +36,14 @@ const ProductCategoryAdjustmentAuditPage = lazy(
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
 );
-const AgentPlaceholderPage = lazy(
-  () => import("../features/agent/pages/AgentPlaceholderPage"),
+const TeamPerformancePage = lazy(
+  () => import("../features/team-performance/TeamPerformancePage"),
+);
+const PlatformConfigPage = lazy(
+  () => import("../features/platform-config/PlatformConfigPage"),
+);
+const AgentWorkbenchPage = lazy(
+  () => import("../features/agent/AgentWorkbenchPage"),
 );
 const NewsEventsPage = lazy(
   () => import("../features/news-events/NewsEventsPage"),
@@ -79,7 +85,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
     if (section.path === "/agent") {
       return {
         path: section.path.slice(1),
-        element: routeElement(<AgentPlaceholderPage />),
+        element: routeElement(<AgentWorkbenchPage />),
       };
     }
 
@@ -143,6 +149,20 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<MarketDataPage />),
+      };
+    }
+
+    if (section.path === "/team-performance") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<TeamPerformancePage />),
+      };
+    }
+
+    if (section.path === "/platform-config") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PlatformConfigPage />),
       };
     }
 

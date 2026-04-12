@@ -41,6 +41,7 @@ class Settings(BaseSettings):
     choice_macro_commands_file: str = ""
     choice_news_topics_file: str = "config/choice_news_topics.json"
     choice_timeout_seconds: float = 10.0
+    fx_official_source_path: str = ""
     fx_mid_csv_path: str = ""
     product_category_source_dir: Path = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     ftp_rate_pct: Decimal = Decimal("1.75")

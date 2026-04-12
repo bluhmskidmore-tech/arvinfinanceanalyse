@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
+import "../lib/agGridSetup";
+
 Object.defineProperty(window, "matchMedia", {
   writable: true,
   value: (query: string) => ({

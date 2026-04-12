@@ -17,11 +17,16 @@ def resolve_data_input_root() -> Path:
     return Path(get_settings().data_input_root).expanduser()
 
 
-def _ingest_demo_manifest() -> dict[str, object]:
+def _ingest_demo_manifest(
+    *,
+    data_root: str | None = None,
+    governance_dir: str | None = None,
+    archive_dir: str | None = None,
+) -> dict[str, object]:
     settings = get_settings()
-    governance_path = getattr(settings, "governance_path", Path("data/governance"))
+    governance_path = Path(governance_dir or getattr(settings, "governance_path", Path("data/governance")))
     service = IngestService(
-        data_root=resolve_data_input_root(),
+        data_root=Path(data_root) if data_root is not None else resolve_data_input_root(),
         manifest_repo=SourceManifestRepository(
             governance_repo=GovernanceRepository(base_dir=governance_path),
         ),
@@ -31,7 +36,7 @@ def _ingest_demo_manifest() -> dict[str, object]:
             secret_key=settings.minio_secret_key,
             bucket=settings.minio_bucket,
             mode=settings.object_store_mode,
-            local_archive_path=str(settings.local_archive_path),
+            local_archive_path=str(archive_dir or settings.local_archive_path),
         ),
     )
     service.source_family_allowlist = {"zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"}

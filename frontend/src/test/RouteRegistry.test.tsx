@@ -195,4 +195,32 @@ describe("RouteRegistry", () => {
     expect(await screen.findByText("汇总")).toBeInTheDocument();
     expect(await screen.findByLabelText("pnl-bridge-report-date")).toBeInTheDocument();
   });
+
+  it("renders the pnl route with the formal PnL workbench shell", async () => {
+    renderWorkbenchApp(["/pnl"]);
+
+    expect(await screen.findByRole("heading", { name: "损益明细" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("pnl-report-date")).toBeInTheDocument();
+  });
+
+  it("renders the risk-tensor route", async () => {
+    renderWorkbenchApp(["/risk-tensor"]);
+
+    expect(await screen.findByRole("heading", { name: "风险张量" })).toBeInTheDocument();
+    expect(await screen.findByText("组合风险张量")).toBeInTheDocument();
+  });
+
+  it("renders the team-performance route", async () => {
+    renderWorkbenchApp(["/team-performance"]);
+
+    expect(await screen.findByRole("heading", { name: "团队绩效" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("团队绩效-报表月份")).toBeInTheDocument();
+  });
+
+  it("renders the platform-config route", async () => {
+    renderWorkbenchApp(["/platform-config"]);
+
+    expect(await screen.findByRole("heading", { name: "中台配置" })).toBeInTheDocument();
+    expect(await screen.findByText("系统健康状态")).toBeInTheDocument();
+  });
 });

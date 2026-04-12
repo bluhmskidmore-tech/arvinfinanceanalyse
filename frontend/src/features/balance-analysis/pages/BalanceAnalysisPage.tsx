@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AgGridReact } from "ag-grid-react";
+import type { ColDef, ValueFormatterParams } from "ag-grid-community";
+import "ag-grid-community/styles/ag-grid.css";
+import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../../api/client";
 import type {
   BalanceAnalysisDecisionItemStatusRow,
+  BalanceAnalysisDetailRow,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisRiskAlertRow,
   BalanceAnalysisSeverity,
+  BalanceAnalysisTableRow,
+  BalanceAnalysisWorkbookColumn,
   BalanceAnalysisWorkbookOperationalSection,
   BalanceAnalysisWorkbookTable,
   BalanceCurrencyBasis,
@@ -56,12 +63,6 @@ const tableShellStyle = {
   borderRadius: 16,
   border: "1px solid #e4ebf5",
   background: "#ffffff",
-} as const;
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: 13,
 } as const;
 
 const resultMetaGridStyle = {
@@ -279,6 +280,122 @@ function formatWorkbookValue(value: unknown) {
     return "—";
   }
   return String(value);
+}
+
+function thousandsValueFormatter(params: ValueFormatterParams) {
+  const v = params.value;
+  if (v === null || v === undefined || v === "") {
+    return "—";
+  }
+  const raw = String(v).replace(/,/g, "");
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return String(v);
+  }
+  return n.toLocaleString("zh-CN");
+}
+
+function workbookCellFormatter(params: ValueFormatterParams): string {
+  const v = params.value;
+  if (v === null || v === undefined || v === "") {
+    return "—";
+  }
+  const raw = String(v).replace(/,/g, "");
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    return String(v);
+  }
+  return n.toLocaleString("zh-CN");
+}
+
+const balanceAnalysisGridDefaultColDef: ColDef = {
+  sortable: true,
+  filter: true,
+  resizable: true,
+  flex: 1,
+  minWidth: 100,
+};
+
+const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
+  {
+    field: "source_family",
+    headerName: "来源",
+    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+  },
+  { field: "owner_name", headerName: "组合名称" },
+  { field: "category_name", headerName: "分类" },
+  {
+    field: "market_value_amount",
+    headerName: "规模(亿)",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "amortized_cost_amount",
+    headerName: "摊余成本",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "accrued_interest_amount",
+    headerName: "应计利息",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "detail_row_count",
+    headerName: "明细行数",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    colId: "invest_accounting",
+    headerName: "会计口径",
+    valueGetter: (p) =>
+      p.data ? `${p.data.invest_type_std} / ${p.data.accounting_basis}` : "",
+  },
+];
+
+const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
+  {
+    field: "source_family",
+    headerName: "来源",
+    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+  },
+  { field: "display_name", headerName: "标识" },
+  { field: "position_scope", headerName: "范围" },
+  {
+    colId: "invest_accounting",
+    headerName: "会计口径",
+    valueGetter: (p) =>
+      p.data ? `${p.data.invest_type_std} / ${p.data.accounting_basis}` : "",
+  },
+  {
+    field: "market_value_amount",
+    headerName: "规模",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "accrued_interest_amount",
+    headerName: "应计利息",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+];
+
+function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColumn[]): ColDef[] {
+  return columns.map((col) => ({
+    field: col.key,
+    headerName: col.label,
+    valueFormatter: workbookCellFormatter,
+  }));
 }
 
 function renderWorkbookContractMismatch(
@@ -1462,66 +1579,17 @@ export default function BalanceAnalysisPage() {
             ]);
           }}
         >
-          <div style={tableShellStyle}>
-            <table data-testid="balance-analysis-summary-table" style={tableStyle}>
-              <thead>
-                <tr>
-                  {[
-                    "来源",
-                    "组合名称",
-                    "分类",
-                    "规模(亿)",
-                    "摊余成本",
-                    "应计利息",
-                    "明细行数",
-                    "会计口径",
-                  ].map((label) => (
-                    <th
-                      key={label}
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        borderBottom: "1px solid #e4ebf5",
-                        color: "#5c6b82",
-                        fontSize: 13,
-                      }}
-                    >
-                      {label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(summaryTable?.rows ?? []).map((row) => (
-                  <tr key={row.row_key}>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.source_family.toUpperCase()}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.owner_name}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.category_name}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.market_value_amount}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.amortized_cost_amount}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.accrued_interest_amount}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.detail_row_count}
-                    </td>
-                    <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                      {row.invest_type_std} / {row.accounting_basis}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div
+            className="ag-theme-alpine"
+            data-testid="balance-analysis-summary-table"
+            style={{ ...tableShellStyle, height: 360, width: "100%", padding: 0 }}
+          >
+            <AgGridReact<BalanceAnalysisTableRow>
+              rowData={summaryTable?.rows ?? []}
+              columnDefs={balanceSummaryColDefs}
+              defaultColDef={balanceAnalysisGridDefaultColDef}
+              getRowId={(p) => String(p.data.row_key)}
+            />
           </div>
           <div
             style={{
@@ -1568,50 +1636,18 @@ export default function BalanceAnalysisPage() {
             ) : detailQuery.isLoading ? (
               <div style={{ color: "#8090a8", fontSize: 13 }}>明细下钻加载中…</div>
             ) : (
-              <table data-testid="balance-analysis-table" style={tableStyle}>
-                <thead>
-                  <tr>
-                    {["来源", "标识", "范围", "会计口径", "规模", "应计利息"].map((label) => (
-                      <th
-                        key={label}
-                        style={{
-                          textAlign: "left",
-                          padding: "10px 12px",
-                          borderBottom: "1px solid #e4ebf5",
-                          color: "#5c6b82",
-                          fontSize: 13,
-                        }}
-                      >
-                        {label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(detailQuery.data?.result.details ?? []).map((row) => (
-                    <tr key={row.row_key}>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.source_family.toUpperCase()}
-                      </td>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.display_name}
-                      </td>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.position_scope}
-                      </td>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.invest_type_std} / {row.accounting_basis}
-                      </td>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.market_value_amount}
-                      </td>
-                      <td style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}>
-                        {row.accrued_interest_amount}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div
+                className="ag-theme-alpine"
+                data-testid="balance-analysis-table"
+                style={{ ...tableShellStyle, height: 320, width: "100%", padding: 0, marginTop: 8 }}
+              >
+                <AgGridReact<BalanceAnalysisDetailRow>
+                  rowData={detailQuery.data?.result.details ?? []}
+                  columnDefs={balanceDetailColDefs}
+                  defaultColDef={balanceAnalysisGridDefaultColDef}
+                  getRowId={(p) => String(p.data.row_key)}
+                />
+              </div>
             )}
           </div>
         </AsyncSection>
@@ -1938,41 +1974,18 @@ export default function BalanceAnalysisPage() {
             {secondaryWorkbookTables.map((table) => (
               <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
                 <div style={{ marginBottom: 8, color: "#162033", fontWeight: 600 }}>{table.title}</div>
-                <div style={tableShellStyle}>
-                  <table style={tableStyle}>
-                    <thead>
-                      <tr>
-                        {table.columns.map((column) => (
-                          <th
-                            key={column.key}
-                            style={{
-                              textAlign: "left",
-                              padding: "10px 12px",
-                              borderBottom: "1px solid #e4ebf5",
-                              color: "#5c6b82",
-                              fontSize: 13,
-                            }}
-                          >
-                            {column.label}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {table.rows.map((row, index) => (
-                        <tr key={`${table.key}-${index}`}>
-                          {table.columns.map((column) => (
-                            <td
-                              key={column.key}
-                              style={{ padding: "12px", borderBottom: "1px solid #eef2f7" }}
-                            >
-                              {formatWorkbookValue(row[column.key])}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div
+                  className="ag-theme-alpine"
+                  style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
+                >
+                  <AgGridReact
+                    rowData={table.rows.map((row, index) =>
+                      Object.assign({}, row as object, { __gridId: `${table.key}-${index}` }),
+                    )}
+                    columnDefs={buildWorkbookGridColumnDefs(table.columns)}
+                    defaultColDef={balanceAnalysisGridDefaultColDef}
+                    getRowId={(p) => String((p.data as { __gridId: string }).__gridId)}
+                  />
                 </div>
               </div>
             ))}

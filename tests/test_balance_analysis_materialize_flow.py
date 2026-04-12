@@ -7,6 +7,7 @@ from decimal import Decimal
 import duckdb
 import pytest
 
+from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 
@@ -366,3 +367,231 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
             duckdb_path=str(duckdb_path),
             governance_dir=str(governance_dir),
         )
+
+
+def test_balance_analysis_materialize_normalizes_snapshot_currency_labels_for_fx_lookup(tmp_path):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set currency_code = '美元'")
+        conn.execute("update tyw_interbank_daily_snapshot set currency_code = '人民币'")
+    finally:
+        conn.close()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    zqtz_rows = repo.fetch_formal_zqtz_rows(report_date="2025-12-31", position_scope="asset", currency_basis="CNY")
+    tyw_rows = repo.fetch_formal_tyw_rows(report_date="2025-12-31", position_scope="liability", currency_basis="CNY")
+
+    assert {row["currency_code"] for row in zqtz_rows} == {"USD"}
+    assert {row["currency_code"] for row in tyw_rows} == {"CNY"}
+
+
+def test_balance_analysis_materialize_auto_populates_fx_from_csv_when_table_is_missing(tmp_path, monkeypatch):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    csv_path = tmp_path / "fx_mid.csv"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", str(csv_path))
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_treats_cnx_as_identity_not_spot_fx(tmp_path):
+    repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("update zqtz_bond_daily_snapshot set currency_code = '综本'")
+    finally:
+        conn.close()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+
+    repo = repo_mod.BalanceAnalysisRepository(str(duckdb_path))
+    rows = repo.fetch_formal_zqtz_rows(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+    assert len(rows) == 1
+    assert rows[0]["currency_code"] == "CNX"
+    assert rows[0]["market_value_amount"] == Decimal("100.00000000")
+
+
+def test_balance_analysis_materialize_discovers_fx_csv_from_data_input_root(tmp_path, monkeypatch):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    data_input_root = tmp_path / "data_input"
+    fx_csv_path = data_input_root / "fx" / "fx_daily_mid.csv"
+    fx_csv_path.parent.mkdir(parents=True, exist_ok=True)
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    fx_csv_path.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.delenv("MOSS_FX_MID_CSV_PATH", raising=False)
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_input_root))
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_fails_closed_when_explicit_fx_path_is_missing_even_if_fallback_exists(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    data_input_root = tmp_path / "data_input"
+    fallback_csv = data_input_root / "fx" / "fx_daily_mid.csv"
+    fallback_csv.parent.mkdir(parents=True, exist_ok=True)
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    fallback_csv.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", str(tmp_path / "missing.csv"))
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_input_root))
+    get_settings.cache_clear()
+
+    with pytest.raises(FileNotFoundError):
+        task_mod.materialize_balance_analysis_facts.fn(
+            report_date="2025-12-31",
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_materialize_prefers_official_fx_source_path_over_legacy_fx_csv_path(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    official_csv = tmp_path / "official_fx_mid.csv"
+    _seed_snapshot_and_fx_tables(str(duckdb_path))
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute("drop table fx_daily_mid")
+    finally:
+        conn.close()
+
+    official_csv.write_text(
+        "\n".join(
+            [
+                "trade_date,base_currency,quote_currency,mid_rate,source_name,is_business_day,is_carry_forward",
+                "2025-12-31,USD,CNY,7.20,CFETS,true,false",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", str(official_csv))
+    monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", str(tmp_path / "missing.csv"))
+    get_settings.cache_clear()
+
+    payload = task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["zqtz_rows"] == 2
+    assert payload["tyw_rows"] == 2
+    get_settings.cache_clear()

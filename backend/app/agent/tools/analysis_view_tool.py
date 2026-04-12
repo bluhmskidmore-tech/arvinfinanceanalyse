@@ -30,14 +30,14 @@ _HELP_ITEMS = [
 
 _INTENT_PATTERNS: list[tuple[str, tuple[str, ...]]] = [
     ("product_pnl", ("产品损益", "ftp")),
-    ("pnl_bridge", ("桥接", "归因", "拆解")),
+    ("pnl_bridge", ("桥接", "归因", "拆解", "bridge", "attribution")),
     ("risk_tensor", ("风险张量", "krd")),
     ("duration_risk", ("久期", "dv01", "风险", "duration")),
-    ("credit_exposure", ("信用", "利差", "集中度")),
-    ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "overview")),
+    ("credit_exposure", ("信用", "利差", "集中度", "credit", "spread", "concentration")),
+    ("portfolio_overview", ("组合概览", "资产规模", "总览", "portfolio overview", "market value", "portfolio value", "asset size")),
     ("pnl_summary", ("损益", "收益", "pnl")),
-    ("market_data", ("宏观", "利率", "市场")),
-    ("news", ("新闻", "事件")),
+    ("market_data", ("宏观", "利率", "市场数据", "macro", "market data", "macro data", "rates data")),
+    ("news", ("新闻", "事件", "news", "headline", "latest news")),
 ]
 
 
