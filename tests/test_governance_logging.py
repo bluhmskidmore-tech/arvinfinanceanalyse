@@ -63,3 +63,111 @@ def test_governance_batch_lock_uses_canonical_base_dir(tmp_path):
     absolute_repo = module.GovernanceRepository(base_dir=tmp_path.resolve())
 
     assert relative_repo._batch_lock().key == absolute_repo._batch_lock().key
+
+
+def test_governance_repository_sql_authority_reads_sql_records_even_if_jsonl_shadow_changes(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    sql_path = tmp_path / "governance.db"
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+    payload = {
+        "run_id": "run-sql",
+        "job_name": "source_preview_refresh",
+        "status": "queued",
+        "cache_key": module.CACHE_BUILD_RUN_STREAM,
+        "lock": "lock:preview",
+        "source_version": "sv_preview_pending",
+        "vendor_version": "vv_none",
+        "preview_sources": ["zqtz", "tyw"],
+    }
+
+    repo.append(module.CACHE_BUILD_RUN_STREAM, payload)
+
+    (tmp_path / "cache_build_run.jsonl").write_text(
+        '{"run_id":"run-jsonl","status":"failed"}\n',
+        encoding="utf-8",
+    )
+
+    assert repo.read_all(module.CACHE_BUILD_RUN_STREAM) == [payload]
+
+
+def test_governance_repository_sql_shadow_reads_jsonl_records_while_keeping_sql_copy(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    sql_path = tmp_path / "governance.db"
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-shadow",
+    )
+    payload = {
+        "cache_key": "source_preview.foundation",
+        "source_version": "sv_shadow",
+        "vendor_version": "vv_none",
+        "rule_version": "rv_test",
+    }
+
+    repo.append(module.CACHE_MANIFEST_STREAM, payload)
+
+    (tmp_path / "cache_manifest.jsonl").write_text(
+        '{"cache_key":"jsonl-authority","source_version":"sv_jsonl"}\n',
+        encoding="utf-8",
+    )
+
+    assert repo.read_all(module.CACHE_MANIFEST_STREAM) == [
+        {"cache_key": "jsonl-authority", "source_version": "sv_jsonl"}
+    ]
+
+
+def test_governance_repository_rejects_unknown_backend_mode(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+
+    with pytest.raises(ValueError, match="Unsupported governance backend mode"):
+        module.GovernanceRepository(
+            base_dir=tmp_path,
+            sql_dsn=f"sqlite:///{(tmp_path / 'governance.db').as_posix()}",
+            backend_mode="sql-autority",
+        )
+
+
+def test_governance_repository_rewrites_postgresql_dsn_to_psycopg_driver():
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+
+    assert (
+        module._normalize_sqlalchemy_dsn("postgresql://moss:moss@127.0.0.1:55432/moss")
+        == "postgresql+psycopg://moss:moss@127.0.0.1:55432/moss"
+    )
+    assert (
+        module._normalize_sqlalchemy_dsn("postgresql+psycopg://moss:moss@127.0.0.1:55432/moss")
+        == "postgresql+psycopg://moss:moss@127.0.0.1:55432/moss"
+    )
+
+
+def test_governance_sql_record_uses_datetime_created_at_for_postgres_compatibility():
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+
+    record = module._sql_record_for_stream(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-1",
+            "job_name": "source_preview_refresh",
+            "status": "queued",
+            "cache_key": "source_preview.foundation",
+        },
+    )
+
+    assert hasattr(record["created_at"], "isoformat")
+
+
+def test_governance_repository_uses_null_pool_for_sql_backend(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{(tmp_path / 'governance.db').as_posix()}",
+        backend_mode="sql-shadow",
+    )
+
+    assert repo._sql_engine is not None
+    assert repo._sql_engine.pool.__class__.__name__ == "NullPool"

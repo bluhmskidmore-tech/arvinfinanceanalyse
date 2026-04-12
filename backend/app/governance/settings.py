@@ -17,10 +17,13 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     postgres_dsn: str = "postgresql://moss:moss@localhost:5432/moss"
+    governance_sql_dsn: str = ""
+    source_preview_governance_backend: str = "jsonl"
     job_state_dsn: str = ""
     redis_dsn: str = "redis://localhost:6379/0"
     duckdb_path: str = "data/moss.duckdb"
     governance_path: Path = Path("data/governance")
+    data_input_root: Path = Path("data_input")
     object_store_mode: str = "local"
     local_archive_path: Path = Path("data/archive")
     minio_endpoint: str = "localhost:9000"
