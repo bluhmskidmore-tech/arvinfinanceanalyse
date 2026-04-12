@@ -225,35 +225,75 @@ def test_materialize_yield_curve_supports_single_curve_request(tmp_path, monkeyp
 
 def test_materialize_yield_curve_supports_aaa_credit_request(tmp_path, monkeypatch):
     task_mod = _load_yield_curve_task_module()
-    schema_mod = load_module(
-        "backend.app.schemas.yield_curve",
-        "backend/app/schemas/yield_curve.py",
-    )
-
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
-
-    aaa_snapshot = schema_mod.YieldCurveSnapshot(
-        curve_type="aaa_credit",
-        trade_date="2026-04-10",
-        points=[
-            schema_mod.YieldCurvePoint("6M", Decimal("1.20")),
-            schema_mod.YieldCurvePoint("1Y", Decimal("1.30")),
-            schema_mod.YieldCurvePoint("2Y", Decimal("1.40")),
-            schema_mod.YieldCurvePoint("3Y", Decimal("1.50")),
-            schema_mod.YieldCurvePoint("5Y", Decimal("1.70")),
-            schema_mod.YieldCurvePoint("7Y", Decimal("1.85")),
-            schema_mod.YieldCurvePoint("10Y", Decimal("2.00")),
-        ],
-        vendor_name="choice",
-        vendor_version="vv_aaa",
-        source_version="sv_aaa",
-    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "choice", "vv_choice_batch", "daily", "pct"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "choice", "vv_choice_batch", "daily", "pct"),
+            ],
+        )
+        conn.executemany(
+            """
+            insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("EMM00166654", "中债企业债到期收益率(AAA):6个月", "EMM00166654", "choice", "2026-04-10", 1.20, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00166655", "中债企业债到期收益率(AAA):1年", "EMM00166655", "choice", "2026-04-10", 1.30, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00166656", "中债企业债到期收益率(AAA):2年", "EMM00166656", "choice", "2026-04-10", 1.40, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00166657", "中债企业债到期收益率(AAA):3年", "EMM00166657", "choice", "2026-04-10", 1.50, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00166659", "中债企业债到期收益率(AAA):5年", "EMM00166659", "choice", "2026-04-10", 1.70, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00168470", "中债企业债到期收益率(AAA):6年", "EMM00168470", "choice", "2026-04-10", 1.80, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+                ("EMM00166661", "中债企业债到期收益率(AAA):10年", "EMM00166661", "choice", "2026-04-10", 2.00, "daily", "pct", "sv_choice_macro", "vv_choice_batch", "rv_choice_macro", "run-1"),
+            ],
+        )
+    finally:
+        conn.close()
 
     monkeypatch.setattr(
         task_mod.VendorAdapter,
         "fetch_yield_curve",
-        lambda _self, curve_type, trade_date: aaa_snapshot,
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("live vendor path should not be used")),
     )
 
     payload = task_mod.materialize_yield_curve.fn(
@@ -265,10 +305,13 @@ def test_materialize_yield_curve_supports_aaa_credit_request(tmp_path, monkeypat
 
     assert payload["status"] == "completed"
     assert payload["curve_types"] == ["aaa_credit"]
-    assert payload["point_count"] == 7
+    assert payload["point_count"] == 8
+    assert payload["source_version"] == "sv_choice_macro"
+    assert payload["vendor_version"] == "vv_choice_batch"
 
 
 def test_yield_curve_module_declares_chinabond_gkh_input_source():
     task_mod = _load_yield_curve_task_module()
 
     assert "chinabond_gkh_yield_curve" in task_mod.YIELD_CURVE_MODULE.input_sources
+    assert "choice_macro_snapshot" in task_mod.YIELD_CURVE_MODULE.input_sources
