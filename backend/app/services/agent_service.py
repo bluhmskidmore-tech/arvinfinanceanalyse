@@ -13,6 +13,7 @@ from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.governance_repo import GovernanceRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.services.gitnexus_service import build_gitnexus_status_payload
 
 RULE_VERSION = "rv_agent_mvp_v1"
 BalanceAnalysisRepository = None
@@ -69,6 +70,7 @@ def _build_intent_handlers(
     governance_dir: str,
 ) -> dict[str, Callable[[AgentQueryRequest], dict[str, Any]]]:
     return {
+        "gitnexus_status": lambda request: build_gitnexus_status_payload(request),
         "portfolio_overview": lambda request: _portfolio_overview_payload(request, duckdb_path),
         "pnl_summary": lambda request: _pnl_summary_payload(request, duckdb_path),
         "duration_risk": lambda request: _duration_risk_payload(request, duckdb_path),
