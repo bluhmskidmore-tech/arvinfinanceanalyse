@@ -169,11 +169,14 @@ def advanced_attribution(
 ) -> dict[str, object]:
     """Analytical/scenario advanced attribution contract; never part of the governed workbook tables."""
     normalized = _require_balance_analysis_report_date_qs(report_date)
+    settings = get_settings()
     return advanced_attribution_bundle_envelope(
         report_date=normalized,
         scenario_name=scenario_name,
         treasury_shift_bp=treasury_shift_bp,
         spread_shift_bp=spread_shift_bp,
+        duckdb_path=str(settings.duckdb_path),
+        governance_dir=str(settings.governance_path),
     )
 
 

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
+
 from backend.app.schemas.advanced_attribution import AdvancedAttributionBundlePayload
+from backend.app.services.bond_analytics_service import get_return_decomposition
 from backend.app.services.formal_result_runtime import (
     build_analytical_result_meta,
     build_formal_result_envelope,
     build_scenario_result_meta,
 )
+from backend.app.services.pnl_bridge_service import pnl_bridge_envelope
 
 ADVANCED_ATTRIBUTION_RESULT_KIND = "balance-analysis.advanced_attribution_bundle"
 RULE_VERSION_ADVANCED_ATTRIBUTION = "rv_advanced_attribution_bundle_v0"
@@ -55,6 +59,8 @@ def advanced_attribution_bundle_envelope(
     scenario_name: str | None = None,
     treasury_shift_bp: int | None = None,
     spread_shift_bp: int | None = None,
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
 ) -> dict[str, object]:
     """Slice A/B: analytical or explicit-scenario not_ready contract; no DuckDB reads; no formal writes."""
     scenario_inputs = _normalize_scenario_inputs(
@@ -62,11 +68,21 @@ def advanced_attribution_bundle_envelope(
         spread_shift_bp=spread_shift_bp,
     )
     is_scenario = bool(scenario_inputs)
+    upstream_summaries, upstream_warnings = (
+        ({}, [])
+        if is_scenario
+        else _build_upstream_summaries(
+            report_date=report_date,
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+        )
+    )
     payload = AdvancedAttributionBundlePayload(
         report_date=report_date,
         mode="scenario" if is_scenario else "analytical",
         scenario_name=(scenario_name or "custom") if is_scenario else None,
         scenario_inputs=scenario_inputs,
+        upstream_summaries=upstream_summaries,
         status="not_ready",
         missing_inputs=list(_NOT_READY_MISSING_INPUTS),
         blocked_components=list(_NOT_READY_BLOCKED_COMPONENTS),
@@ -80,6 +96,7 @@ def advanced_attribution_bundle_envelope(
                     if is_scenario
                     else []
                 ),
+                *upstream_warnings,
                 *_NOT_READY_WARNINGS,
             ]
         ),
@@ -98,3 +115,59 @@ def advanced_attribution_bundle_envelope(
         result_meta=meta,
         result_payload=payload.model_dump(mode="json"),
     )
+
+
+def _build_upstream_summaries(
+    *,
+    report_date: str,
+    duckdb_path: str | None,
+    governance_dir: str | None,
+) -> tuple[dict[str, dict[str, str | list[str]]], list[str]]:
+    if not duckdb_path or not governance_dir:
+        return {}, []
+
+    summaries: dict[str, dict[str, str | list[str]]] = {}
+    warnings: list[str] = []
+    report_date_value = date.fromisoformat(report_date)
+
+    try:
+        return_env = get_return_decomposition(report_date_value, "MoM", "all", "all")
+        return_result = dict(return_env.get("result", {}))
+        summaries["return_decomposition"] = {
+            "carry": str(return_result.get("carry") or ""),
+            "roll_down": str(return_result.get("roll_down") or ""),
+            "rate_effect": str(return_result.get("rate_effect") or ""),
+            "spread_effect": str(return_result.get("spread_effect") or ""),
+            "explained_pnl": str(return_result.get("explained_pnl") or ""),
+            "warnings": [str(item) for item in list(return_result.get("warnings") or [])],
+        }
+    except Exception as exc:
+        warnings.append(
+            f"advanced_attribution_bundle: return_decomposition summary unavailable: {exc}"
+        )
+
+    try:
+        bridge_env = pnl_bridge_envelope(
+            duckdb_path=duckdb_path,
+            governance_dir=governance_dir,
+            report_date=report_date,
+        )
+        bridge_result = dict(bridge_env.get("result", {}))
+        bridge_summary = dict(bridge_result.get("summary", {}))
+        summaries["pnl_bridge"] = {
+            "total_carry": str(bridge_summary.get("total_carry") or ""),
+            "total_roll_down": str(bridge_summary.get("total_roll_down") or ""),
+            "total_treasury_curve": str(bridge_summary.get("total_treasury_curve") or ""),
+            "total_credit_spread": str(bridge_summary.get("total_credit_spread") or ""),
+            "total_explained_pnl": str(bridge_summary.get("total_explained_pnl") or ""),
+            "total_actual_pnl": str(bridge_summary.get("total_actual_pnl") or ""),
+            "total_residual": str(bridge_summary.get("total_residual") or ""),
+            "quality_flag": str(bridge_summary.get("quality_flag") or ""),
+            "warnings": [str(item) for item in list(bridge_result.get("warnings") or [])],
+        }
+    except Exception as exc:
+        warnings.append(
+            f"advanced_attribution_bundle: pnl_bridge summary unavailable: {exc}"
+        )
+
+    return summaries, warnings

@@ -14,6 +14,7 @@ class AdvancedAttributionBundlePayload(BaseModel):
     mode: Literal["analytical", "scenario"] = "analytical"
     scenario_name: str | None = None
     scenario_inputs: dict[str, int] = {}
+    upstream_summaries: dict[str, dict[str, str | list[str]]] = {}
     status: Literal["not_ready"]
     missing_inputs: list[str]
     blocked_components: list[str]

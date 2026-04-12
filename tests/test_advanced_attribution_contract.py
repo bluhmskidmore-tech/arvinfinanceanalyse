@@ -112,6 +112,63 @@ def test_advanced_attribution_meta_can_be_scenario_but_never_formal():
     assert env["result_meta"]["scenario_flag"] is True
 
 
+def test_advanced_attribution_analytical_mode_can_expose_upstream_summaries_without_claiming_completion(monkeypatch):
+    service_mod = load_module(
+        "backend.app.services.advanced_attribution_service",
+        "backend/app/services/advanced_attribution_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "get_return_decomposition",
+        lambda report_date, period_type, asset_class, accounting_class: {
+            "result": {
+                "carry": "10.00000000",
+                "roll_down": "2.00000000",
+                "rate_effect": "-1.00000000",
+                "spread_effect": "0.50000000",
+                "explained_pnl": "11.50000000",
+                "warnings": ["curve-backed analytical summary"],
+            }
+        },
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "pnl_bridge_envelope",
+        lambda **kwargs: {
+            "result": {
+                "summary": {
+                    "total_carry": "9.00000000",
+                    "total_roll_down": "1.50000000",
+                    "total_treasury_curve": "-0.50000000",
+                    "total_credit_spread": "0.00000000",
+                    "total_explained_pnl": "10.00000000",
+                    "total_actual_pnl": "10.20000000",
+                    "total_residual": "0.20000000",
+                    "quality_flag": "warning",
+                },
+                "warnings": ["bridge-backed analytical summary"],
+            }
+        },
+    )
+
+    env = service_mod.advanced_attribution_bundle_envelope(
+        report_date="2025-12-31",
+        duckdb_path="test.duckdb",
+        governance_dir="test-governance",
+    )
+
+    assert env["result_meta"]["basis"] == "analytical"
+    assert env["result_meta"]["scenario_flag"] is False
+    result = env["result"]
+    assert result["status"] == "not_ready"
+    assert result["mode"] == "analytical"
+    assert result["upstream_summaries"]["return_decomposition"]["explained_pnl"] == "11.50000000"
+    assert result["upstream_summaries"]["pnl_bridge"]["total_residual"] == "0.20000000"
+    assert "explained_pnl" not in result
+    assert "actual_pnl" not in result
+
+
 def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, monkeypatch):
     """Regression: advanced_attribution_bundle must not appear in workbook table keys."""
     from backend.app.governance.settings import get_settings
