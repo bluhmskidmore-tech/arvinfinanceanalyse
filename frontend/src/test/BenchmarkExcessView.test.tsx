@@ -7,6 +7,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { BenchmarkExcessView } from "../features/bond-analytics/components/BenchmarkExcessView";
+import type { BenchmarkExcessResponse } from "../features/bond-analytics/types";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
   return {
@@ -27,7 +28,9 @@ function createResultMeta(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createBenchmarkExcessResult(overrides: Record<string, unknown> = {}) {
+function createBenchmarkExcessResult(
+  overrides: Partial<BenchmarkExcessResponse> = {},
+): BenchmarkExcessResponse {
   return {
     report_date: "2026-03-31",
     period_type: "MoM",
