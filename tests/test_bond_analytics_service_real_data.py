@@ -216,6 +216,99 @@ def test_return_decomposition_warns_when_fx_uses_latest_available_snapshot(tmp_p
     get_settings.cache_clear()
 
 
+def test_return_decomposition_marks_result_meta_stale_when_fx_uses_latest_available_snapshot(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(duckdb_path))
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(18, 8),
+              source_version varchar,
+              vendor_name varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version, vendor_name, vendor_version)
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ["2026-02-28", "USD", "CNY", Decimal("7.08270000"), "sv_fx_latest", "cfets", "vv_fx_latest"],
+        )
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set currency_code = 'USD',
+                face_value_native = ?,
+                market_value_native = ?,
+                maturity_date = ?,
+                ytm_value = ?
+            where report_date = ? and instrument_code = ?
+            """,
+            [Decimal("1000.00000000"), Decimal("1000.00000000"), "2028-03-30", Decimal("0"), REPORT_DATE, "TB-001"],
+        )
+    finally:
+        conn.close()
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    service_mod = load_module(
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date.fromisoformat(REPORT_DATE), "MoM", "rate", "all")
+
+    assert payload["result_meta"]["fallback_mode"] == "latest_snapshot"
+    assert payload["result_meta"]["vendor_status"] == "vendor_stale"
+    get_settings.cache_clear()
+
+
+def test_return_decomposition_marks_result_meta_unavailable_when_required_fx_missing(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(duckdb_path))
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set currency_code = 'USD',
+                face_value_native = ?,
+                market_value_native = ?,
+                maturity_date = ?,
+                ytm_value = ?
+            where report_date = ? and instrument_code = ?
+            """,
+            [Decimal("1000.00000000"), Decimal("1000.00000000"), "2028-03-30", Decimal("0"), REPORT_DATE, "TB-001"],
+        )
+    finally:
+        conn.close()
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    service_mod = load_module(
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date.fromisoformat(REPORT_DATE), "MoM", "rate", "all")
+
+    assert payload["result_meta"]["fallback_mode"] == "none"
+    assert payload["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert any("No FX rates available" in warning or "Missing FX rates" in warning for warning in payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_krd_curve_risk_with_real_facts_formats_exact_risk_outputs(service_mod):
     payload = service_mod.get_krd_curve_risk(date.fromisoformat(REPORT_DATE), "standard")
     result = payload["result"]

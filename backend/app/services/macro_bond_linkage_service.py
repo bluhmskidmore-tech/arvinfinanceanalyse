@@ -103,21 +103,28 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     portfolio_impact_payload: dict[str, Any] = {}
 
     if macro_inputs["series"] and yield_inputs["series"]:
-        correlations = compute_macro_bond_correlations(
+        conservative_corrs = compute_macro_bond_correlations(
             macro_inputs["series"],
             yield_inputs["series"],
             lookback_days=LOOKBACK_DAYS,
+            alignment_mode="conservative",
         )
-        raw_rows: list[dict[str, Any]] = []
-        for correlation in correlations:
-            raw_rows.append(_build_correlation_payload(correlation, macro_inputs["series_name_map"]))
-        raw_rows = sorted(
-            raw_rows,
-            key=_correlation_strength,
-            reverse=True,
-        )[:TOP_CORRELATION_LIMIT]
-        conservative_rows = [_stamp_correlation_track(row, "conservative") for row in raw_rows]
-        market_timing_rows = [_stamp_correlation_track(row, "market_timing") for row in raw_rows]
+        market_timing_corrs = compute_macro_bond_correlations(
+            macro_inputs["series"],
+            yield_inputs["series"],
+            lookback_days=LOOKBACK_DAYS,
+            alignment_mode="market_timing",
+        )
+        conservative_rows = _ranked_correlation_payloads(
+            conservative_corrs,
+            macro_inputs["series_name_map"],
+            alignment_mode="conservative",
+        )
+        market_timing_rows = _ranked_correlation_payloads(
+            market_timing_corrs,
+            macro_inputs["series_name_map"],
+            alignment_mode="market_timing",
+        )
         top_correlations = conservative_rows
         method_variants = MacroBondLinkageMethodVariants(
             conservative=MacroBondLinkageMethodVariant(
@@ -380,18 +387,22 @@ def _empty_method_variants() -> MacroBondLinkageMethodVariants:
     )
 
 
-def _stamp_correlation_track(
-    row: dict[str, Any],
-    track: Literal["conservative", "market_timing"],
-) -> dict[str, Any]:
-    enriched = dict(row)
-    enriched["alignment_mode"] = track
-    enriched["sample_size"] = None
-    enriched["winsorized"] = False
-    enriched["zscore_applied"] = False
-    enriched["lead_lag_confidence"] = None
-    enriched["effective_observation_span_days"] = LOOKBACK_DAYS
-    return enriched
+def _ranked_correlation_payloads(
+    correlations: list[MacroBondCorrelation],
+    series_name_map: dict[str, str],
+    *,
+    alignment_mode: Literal["conservative", "market_timing"],
+) -> list[dict[str, Any]]:
+    rows = [
+        _build_correlation_payload(
+            correlation,
+            series_name_map,
+            alignment_mode=alignment_mode,
+        )
+        for correlation in correlations
+    ]
+    rows.sort(key=_correlation_strength, reverse=True)
+    return rows[:TOP_CORRELATION_LIMIT]
 
 
 def _build_response_envelope(
@@ -526,6 +537,8 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
 def _build_correlation_payload(
     correlation: MacroBondCorrelation,
     series_name_map: dict[str, str],
+    *,
+    alignment_mode: Literal["conservative", "market_timing"],
 ) -> dict[str, Any]:
     target_family, target_tenor = _split_target_identity(correlation.target_yield)
     return _json_safe(
@@ -540,6 +553,12 @@ def _build_correlation_payload(
             "correlation_1y": correlation.correlation_1y,
             "lead_lag_days": correlation.lead_lag_days,
             "direction": correlation.direction,
+            "alignment_mode": alignment_mode,
+            "sample_size": correlation.sample_size,
+            "winsorized": correlation.winsorized,
+            "zscore_applied": correlation.zscore_applied,
+            "lead_lag_confidence": correlation.lead_lag_confidence,
+            "effective_observation_span_days": correlation.effective_observation_span_days,
         }
     )
 

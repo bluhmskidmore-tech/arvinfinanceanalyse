@@ -22,12 +22,15 @@ import type {
   BalanceAnalysisRefreshPayload,
   BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
+  BenchmarkExcessPayload,
   BalanceAnalysisSummaryExportPayload,
   BalanceAnalysisWorkbookExportPayload,
   BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisTableRow,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
+  ActionAttributionPayload,
+  AccountingClassAuditPayload,
   KRDCurveRiskPayload,
   ChoiceMacroLatestPayload,
   ChoiceNewsEventsPayload,
@@ -62,6 +65,7 @@ import type {
   ProductCategoryPnlPayload,
   ProductCategoryPnlRow,
   PnlAttributionPayload,
+  ReturnDecompositionPayload,
   ResultMeta,
   RiskOverviewPayload,
   RiskTensorDatesPayload,
@@ -258,9 +262,25 @@ export type ApiClient = {
     runId: string,
   ) => Promise<BalanceAnalysisRefreshPayload>;
   getBondAnalyticsDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
+  getBondAnalyticsReturnDecomposition: (
+    reportDate: string,
+    periodType: string,
+  ) => Promise<ApiEnvelope<ReturnDecompositionPayload>>;
+  getBondAnalyticsBenchmarkExcess: (
+    reportDate: string,
+    periodType: string,
+    benchmarkId: string,
+  ) => Promise<ApiEnvelope<BenchmarkExcessPayload>>;
   getBondAnalyticsKrdCurveRisk: (
     reportDate: string,
   ) => Promise<ApiEnvelope<KRDCurveRiskPayload>>;
+  getBondAnalyticsActionAttribution: (
+    reportDate: string,
+    periodType: string,
+  ) => Promise<ApiEnvelope<ActionAttributionPayload>>;
+  getBondAnalyticsAccountingClassAudit: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<AccountingClassAuditPayload>>;
   getBondAnalyticsCreditSpreadMigration: (
     reportDate: string,
   ) => Promise<ApiEnvelope<CreditSpreadMigrationPayload>>;
@@ -3126,6 +3146,77 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getBondAnalyticsReturnDecomposition(reportDate: string, periodType: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.return_decomposition",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          carry: "0",
+          roll_down: "0",
+          rate_effect: "0",
+          spread_effect: "0",
+          trading: "0",
+          fx_effect: "0",
+          convexity_effect: "0",
+          explained_pnl: "0",
+          explained_pnl_accounting: "0",
+          explained_pnl_economic: "0",
+          oci_reserve_impact: "0",
+          actual_pnl: "0",
+          recon_error: "0",
+          recon_error_pct: "0",
+          by_asset_class: [],
+          by_accounting_class: [],
+          bond_details: [],
+          bond_count: 0,
+          total_market_value: "0",
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsBenchmarkExcess(
+      reportDate: string,
+      periodType: string,
+      benchmarkId: string,
+    ) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.benchmark_excess",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          portfolio_return: "0",
+          benchmark_return: "0",
+          excess_return: "0",
+          tracking_error: null,
+          information_ratio: null,
+          duration_effect: "0",
+          curve_effect: "0",
+          spread_effect: "0",
+          selection_effect: "0",
+          allocation_effect: "0",
+          explained_excess: "0",
+          recon_error: "0",
+          portfolio_duration: "0",
+          benchmark_duration: "0",
+          duration_diff: "0",
+          excess_sources: [],
+          benchmark_id: benchmarkId,
+          benchmark_name: benchmarkId,
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getBondAnalyticsKrdCurveRisk(reportDate: string) {
       await delay();
       return buildMockApiEnvelope(
@@ -3139,6 +3230,52 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           krd_buckets: [],
           scenarios: [],
           by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsActionAttribution(reportDate: string, periodType: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.action_attribution",
+        {
+          report_date: reportDate,
+          period_type: periodType,
+          period_start: reportDate,
+          period_end: reportDate,
+          total_actions: 0,
+          total_pnl_from_actions: "0",
+          by_action_type: [],
+          action_details: [],
+          period_start_duration: "0",
+          period_end_duration: "0",
+          duration_change_from_actions: "0",
+          period_start_dv01: "0",
+          period_end_dv01: "0",
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsAccountingClassAudit(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.accounting_class_audit",
+        {
+          report_date: reportDate,
+          total_positions: 0,
+          total_market_value: "0",
+          distinct_asset_classes: 0,
+          divergent_asset_classes: 0,
+          divergent_position_count: 0,
+          divergent_market_value: "0",
+          map_unclassified_asset_classes: 0,
+          map_unclassified_position_count: 0,
+          map_unclassified_market_value: "0",
+          rows: [],
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -3282,11 +3419,39 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/api/bond-analytics/dates",
       ),
+    getBondAnalyticsReturnDecomposition: (reportDate: string, periodType: string) =>
+      requestJson<ReturnDecompositionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/return-decomposition?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}`,
+      ),
+    getBondAnalyticsBenchmarkExcess: (
+      reportDate: string,
+      periodType: string,
+      benchmarkId: string,
+    ) =>
+      requestJson<BenchmarkExcessPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/benchmark-excess?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}&benchmark_id=${encodeURIComponent(benchmarkId)}`,
+      ),
     getBondAnalyticsKrdCurveRisk: (reportDate: string) =>
       requestJson<KRDCurveRiskPayload>(
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/krd-curve-risk?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>
+      requestJson<ActionAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/action-attribution?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}`,
+      ),
+    getBondAnalyticsAccountingClassAudit: (reportDate: string) =>
+      requestJson<AccountingClassAuditPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/accounting-class-audit?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getBondAnalyticsCreditSpreadMigration: (reportDate: string) =>
       requestJson<CreditSpreadMigrationPayload>(

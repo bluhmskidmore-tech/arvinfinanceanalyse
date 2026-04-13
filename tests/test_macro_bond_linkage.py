@@ -278,69 +278,182 @@ def test_lead_lag_detection():
     assert results[0].direction == "positive"
     assert results[0].correlation_3m is not None
     assert results[0].correlation_3m > 0.8
+    assert results[0].sample_size is not None and results[0].sample_size >= 2
+    assert results[0].lead_lag_confidence is not None
+    assert results[0].winsorized is False
+    assert results[0].zscore_applied is False
 
 
 def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
     mod = _core_module()
-    macro_map = {
-        date(2026, 1, 1): 1.0,
-        date(2026, 2, 1): 2.0,
-        date(2026, 3, 1): 3.0,
+    start = date(2026, 1, 1)
+    macro_series = {
+        "macro_series": [
+            (date(2026, 1, 1), 1.0),
+            (date(2026, 2, 1), 2.0),
+            (date(2026, 3, 1), 3.0),
+        ]
     }
-    target_map = {
-        date(2026, 1, 1) + timedelta(days=offset): (
-            1.0 if offset < 31 else 2.0 if offset < 59 else 3.0
-        )
-        for offset in range(90)
+    yield_series = {
+        "treasury_10Y": [
+            (
+                start + timedelta(days=offset),
+                0.0 if offset in {0, 31, 59} else (1.0 if offset < 31 else 2.0 if offset < 59 else 3.0),
+            )
+            for offset in range(90)
+        ]
     }
 
-    conservative_pairs = mod._align_series_pairs(
-        macro_map,
-        target_map,
+    conservative = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
         alignment_mode="conservative",
     )
-    market_timing_pairs = mod._align_series_pairs(
-        macro_map,
-        target_map,
+    market_timing = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=120,
         alignment_mode="market_timing",
     )
 
-    assert [pair[0] for pair in conservative_pairs] == [
-        date(2026, 1, 1),
-        date(2026, 2, 1),
-        date(2026, 3, 1),
-    ]
-    assert mod._latest_alignment_date(macro_map, target_map, alignment_mode="conservative") == date(2026, 3, 1)
-    assert mod._latest_alignment_date(macro_map, target_map, alignment_mode="market_timing") == date(2026, 3, 31)
-    assert len(market_timing_pairs) == len(target_map)
-    assert market_timing_pairs[1] == (date(2026, 1, 2), 1.0, 1.0)
-    assert market_timing_pairs[40] == (date(2026, 2, 10), 2.0, 2.0)
-    assert len(market_timing_pairs) > len(conservative_pairs)
+    assert len(conservative) == 1
+    assert len(market_timing) == 1
+    assert conservative[0].correlation_3m is None
+    assert market_timing[0].correlation_3m is not None
+    assert market_timing[0].correlation_3m > 0.9
+    assert market_timing[0].direction == "positive"
 
 
-def test_zscore_normalization_preserves_shape_and_reduces_scale_sensitivity():
+def test_compute_macro_bond_correlations_is_scale_invariant_without_zscore_flag():
     mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_values = [float(index) for index in range(1, 31)]
+    macro_series = {
+        "macro_series": [
+            (start + timedelta(days=index), value)
+            for index, value in enumerate(macro_values)
+        ]
+    }
+    small_scale = mod.compute_macro_bond_correlations(
+        macro_series,
+        {
+            "treasury_10Y": [
+                (start + timedelta(days=index), value * 2.0 + 5.0)
+                for index, value in enumerate(macro_values)
+            ]
+        },
+        lookback_days=60,
+    )
+    large_scale = mod.compute_macro_bond_correlations(
+        macro_series,
+        {
+            "treasury_10Y": [
+                (start + timedelta(days=index), value * 200.0 + 500.0)
+                for index, value in enumerate(macro_values)
+            ]
+        },
+        lookback_days=60,
+    )
 
-    normalized_small = mod._zscore_normalize([1.0, 2.0, 3.0, 4.0])
-    normalized_large = mod._zscore_normalize([100.0, 200.0, 300.0, 400.0])
-
-    assert normalized_small[0] < 0
-    assert normalized_small[1] < 0
-    assert normalized_small[2] > 0
-    assert normalized_small[3] > 0
-    assert normalized_small == pytest.approx(normalized_large)
+    assert len(small_scale) == 1
+    assert len(large_scale) == 1
+    assert small_scale[0].correlation_3m == pytest.approx(large_scale[0].correlation_3m)
+    assert small_scale[0].correlation_6m == pytest.approx(large_scale[0].correlation_6m)
+    assert small_scale[0].correlation_1y == pytest.approx(large_scale[0].correlation_1y)
+    assert small_scale[0].lead_lag_days == large_scale[0].lead_lag_days == 0
 
 
-def test_winsorization_clips_outlier_tails_without_zeroing_variance():
+def test_winsorization_improves_outlier_distorted_correlation():
     mod = _core_module()
-    values = [1.0, 2.0, 3.0, 4.0, 5.0, 100.0]
+    start = date(2026, 1, 1)
+    macro_values = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+    macro_series = {
+        "macro_series": [
+            (start + timedelta(days=index), value)
+            for index, value in enumerate(macro_values)
+        ]
+    }
+    yield_series = {
+        "treasury_10Y": [
+            (start + timedelta(days=index), value)
+            for index, value in enumerate([1.0, 2.0, 3.0, 4.0, 5.0, 100.0])
+        ]
+    }
 
-    winsorized = mod._winsorize_values(values, tail_fraction=0.2)
+    raw = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=30,
+    )
+    winsorized = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=30,
+        winsorize_tail_fraction=0.2,
+    )
 
-    assert winsorized[-1] < values[-1]
-    assert winsorized[1:4] == values[1:4]
-    assert mod._population_std(winsorized) > 0
-    assert len(set(winsorized)) > 1
+    assert len(raw) == 1
+    assert len(winsorized) == 1
+    assert raw[0].correlation_3m is not None
+    assert winsorized[0].correlation_3m is not None
+    assert winsorized[0].correlation_3m > raw[0].correlation_3m
+    assert winsorized[0].correlation_3m == 1.0
+    assert raw[0].winsorized is False
+    assert winsorized[0].winsorized is True
+
+
+@pytest.mark.parametrize("tail_fraction", [float("nan"), float("inf"), -0.01, 0.0, 0.5, 0.6])
+def test_winsorize_tail_fraction_validation_rejects_invalid_values(tail_fraction: float):
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        "macro_series": [
+            (start + timedelta(days=index), float(index + 1))
+            for index in range(6)
+        ]
+    }
+    yield_series = {
+        "treasury_10Y": [
+            (start + timedelta(days=index), float(index + 2))
+            for index in range(6)
+        ]
+    }
+
+    with pytest.raises(ValueError, match="winsorize_tail_fraction must be finite and satisfy 0 < tail_fraction < 0.5"):
+        mod.compute_macro_bond_correlations(
+            macro_series,
+            yield_series,
+            lookback_days=30,
+            winsorize_tail_fraction=tail_fraction,
+        )
+
+
+def test_winsorize_tail_fraction_accepts_strict_upper_boundary_margin():
+    mod = _core_module()
+    start = date(2026, 1, 1)
+    macro_series = {
+        "macro_series": [
+            (start + timedelta(days=index), float(index + 1))
+            for index in range(6)
+        ]
+    }
+    yield_series = {
+        "treasury_10Y": [
+            (start + timedelta(days=index), float(index + 1))
+            for index in range(6)
+        ]
+    }
+
+    results = mod.compute_macro_bond_correlations(
+        macro_series,
+        yield_series,
+        lookback_days=30,
+        winsorize_tail_fraction=0.499,
+    )
+
+    assert len(results) == 1
+    assert results[0].correlation_3m == 1.0
 
 
 def test_lead_lag_confidence_weakens_with_smaller_sample_or_ambiguous_runner_up():
@@ -499,6 +612,48 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     ]
     assert payload["result"]["method_variants"]["conservative"]["method_meta"]["variant"] == "conservative"
     assert payload["result"]["method_variants"]["market_timing"]["method_meta"]["variant"] == "market_timing"
+
+    get_settings.cache_clear()
+
+
+def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monkeypatch):
+    """Schema → service → HTTP：相关性元数据字段在 API JSON 中可见。"""
+    duckdb_path = tmp_path / "macro-bond-cross-layer.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    client = _route_client()
+    response = client.get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    result = payload["result"]
+    assert result["top_correlations"]
+    meta_keys = (
+        "alignment_mode",
+        "sample_size",
+        "winsorized",
+        "zscore_applied",
+        "lead_lag_confidence",
+        "effective_observation_span_days",
+    )
+    for track in ("conservative", "market_timing"):
+        rows = result["method_variants"][track]["top_correlations"]
+        assert rows, track
+        row = rows[0]
+        for key in meta_keys:
+            assert key in row
+        assert row["alignment_mode"] == track
+    assert result["top_correlations"][0]["alignment_mode"] == "conservative"
+    assert result["top_correlations"] == result["method_variants"]["conservative"]["top_correlations"]
+    top0 = result["top_correlations"][0]
+    assert top0["sample_size"] is not None and top0["sample_size"] >= 2
+    assert top0["lead_lag_confidence"] is not None
+    assert top0["zscore_applied"] is False
+    assert isinstance(top0["winsorized"], bool)
 
     get_settings.cache_clear()
 

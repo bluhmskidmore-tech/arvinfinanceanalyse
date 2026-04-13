@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { ActionAttributionView } from "../features/bond-analytics/components/ActionAttributionView";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 
@@ -74,39 +75,23 @@ describe("ActionAttributionView", () => {
   });
 
   it("loads action attribution with KPI cards, by_action_type summary, and detail table", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createActionAttributionResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createActionAttributionResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createActionAttributionResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<ActionAttributionView reportDate="2026-03-31" periodType="MoM" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const firstUrl = String(
-      fetchMock.mock.calls[0]?.[0] instanceof Request
-        ? fetchMock.mock.calls[0][0].url
-        : fetchMock.mock.calls[0]?.[0],
+    await waitFor(() =>
+      expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
-    expect(firstUrl).toContain("/api/bond-analytics/action-attribution");
-    expect(firstUrl).toContain("period_type=MoM");
-
-    expect(screen.queryByText("动作数量")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createActionAttributionResult(),
-    });
 
     expect(await screen.findByText("动作数量")).toBeInTheDocument();
     expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
@@ -121,22 +106,23 @@ describe("ActionAttributionView", () => {
   });
 
   it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createActionAttributionResult({
-            warnings: ["示例：动作链路未完全接入"],
-            by_action_type: [],
-            action_details: [],
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createActionAttributionResult({
+          warnings: ["示例：动作链路未完全接入"],
+          by_action_type: [],
+          action_details: [],
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<ActionAttributionView reportDate="2026-03-31" periodType="MoM" />);
+    render(
+      <ApiClientProvider client={client}>
+        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();

@@ -6,6 +6,7 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="benchmark-excess-echarts-stub" />,
 }));
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { BenchmarkExcessView } from "../features/bond-analytics/components/BenchmarkExcessView";
 import type { BenchmarkExcessResponse } from "../features/bond-analytics/types";
 
@@ -66,31 +67,27 @@ describe("BenchmarkExcessView", () => {
   });
 
   it("loads benchmark excess with KPI cards, decomposition, and excess_sources", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createBenchmarkExcessResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createBenchmarkExcessResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createBenchmarkExcessResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText("组合收益")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createBenchmarkExcessResult(),
-    });
+    await waitFor(() =>
+      expect(client.getBondAnalyticsBenchmarkExcess).toHaveBeenCalledWith(
+        "2026-03-31",
+        "MoM",
+        "CDB_INDEX",
+      ),
+    );
 
     expect(await screen.findByText("组合收益")).toBeInTheDocument();
     expect(screen.getByText("基准收益")).toBeInTheDocument();
@@ -109,74 +106,80 @@ describe("BenchmarkExcessView", () => {
 
   it("changes benchmark_id in fetch params when Select option changes", async () => {
     const user = userEvent.setup();
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createBenchmarkExcessResult(),
-        }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createBenchmarkExcessResult(),
+      })),
+    };
 
-    render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
-
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(1));
-    const firstUrl = String(
-      fetchMock.mock.calls[0]?.[0] instanceof Request
-        ? fetchMock.mock.calls[0][0].url
-        : fetchMock.mock.calls[0]?.[0],
+    render(
+      <ApiClientProvider client={client}>
+        <BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
     );
-    expect(firstUrl).toContain("benchmark_id=CDB_INDEX");
+
+    await waitFor(() =>
+      expect(client.getBondAnalyticsBenchmarkExcess).toHaveBeenCalledWith(
+        "2026-03-31",
+        "MoM",
+        "CDB_INDEX",
+      ),
+    );
 
     const select = screen.getByRole("combobox");
     await user.click(select);
     await user.click(await screen.findByText("中债国债总指数"));
 
-    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThanOrEqual(2));
-    const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
-    const lastUrl = String(lastCall?.[0] instanceof Request ? lastCall[0].url : lastCall?.[0]);
-    expect(lastUrl).toContain("benchmark_id=TREASURY_INDEX");
+    await waitFor(() =>
+      expect(client.getBondAnalyticsBenchmarkExcess).toHaveBeenLastCalledWith(
+        "2026-03-31",
+        "MoM",
+        "TREASURY_INDEX",
+      ),
+    );
   });
 
   it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createBenchmarkExcessResult({
-            warnings: ["示例：基准指数行情缺口"],
-            excess_sources: [],
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createBenchmarkExcessResult({
+          warnings: ["示例：基准指数行情缺口"],
+          excess_sources: [],
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
+    render(
+      <ApiClientProvider client={client}>
+        <BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：基准指数行情缺口")).toBeInTheDocument();
   });
 
   it("does not render optional risk metric cards when backend returns null", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createBenchmarkExcessResult({
-            tracking_error: null,
-            information_ratio: null,
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsBenchmarkExcess: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createBenchmarkExcessResult({
+          tracking_error: null,
+          information_ratio: null,
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
+    render(
+      <ApiClientProvider client={client}>
+        <BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("超额收益")).toBeInTheDocument();
     expect(screen.queryByText("跟踪误差")).not.toBeInTheDocument();

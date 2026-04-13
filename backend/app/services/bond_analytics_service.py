@@ -26,8 +26,10 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_return_decomposition,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 try:
     from backend.app.repositories.yield_curve_repo import (
+        FX_LATEST_FALLBACK_PREFIX,
         YIELD_CURVE_LATEST_FALLBACK_PREFIX,
         YieldCurveRepository,
         format_yield_curve_latest_fallback_warning,
@@ -36,6 +38,11 @@ except ImportError:
     from backend.app.repositories import yield_curve_repo as _yield_curve_repo
 
     YieldCurveRepository = _yield_curve_repo.YieldCurveRepository
+    FX_LATEST_FALLBACK_PREFIX = getattr(
+        _yield_curve_repo,
+        "FX_LATEST_FALLBACK_PREFIX",
+        "FX_LATEST_FALLBACK",
+    )
     YIELD_CURVE_LATEST_FALLBACK_PREFIX = getattr(
         _yield_curve_repo,
         "YIELD_CURVE_LATEST_FALLBACK_PREFIX",
@@ -90,6 +97,7 @@ from backend.app.tasks.bond_analytics_materialize import (
     RULE_VERSION,
     materialize_bond_analytics_facts,
 )
+from backend.app.tasks.yield_curve_materialize import ensure_yield_curve_inputs_on_or_before
 from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CURVE_CACHE_VERSION
 
 JOB_NAME = "bond_analytics_materialize"
@@ -251,6 +259,13 @@ def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str,
                     f"Bond analytics refresh already in progress for report_date={report_date}."
                 )
 
+            try:
+                _prepare_yield_curve_inputs_for_refresh(settings=settings, report_date=report_date)
+            except Exception as exc:
+                raise BondAnalyticsRefreshServiceError(
+                    f"Bond analytics refresh could not prepare yield curve inputs for report_date={report_date}."
+                ) from exc
+
             run_id = _build_run_id()
             queued_at = datetime.now(timezone.utc).isoformat()
             GovernanceRepository(base_dir=settings.governance_path).append(
@@ -300,6 +315,30 @@ def refresh_bond_analytics(settings: Settings, *, report_date: str) -> dict[str,
         raise BondAnalyticsRefreshConflictError(
             f"Bond analytics refresh already in progress for report_date={report_date}."
         ) from exc
+
+
+def _prepare_yield_curve_inputs_for_refresh(*, settings: Settings, report_date: str) -> None:
+    ensure_yield_curve_inputs_on_or_before(
+        anchor_dates=_yield_curve_anchor_dates_for_refresh(
+            duckdb_path=str(settings.duckdb_path),
+            report_date=report_date,
+        ),
+        duckdb_path=str(settings.duckdb_path),
+    )
+
+
+def _yield_curve_anchor_dates_for_refresh(*, duckdb_path: str, report_date: str) -> tuple[str, ...]:
+    report_dt = date.fromisoformat(report_date)
+    anchors = {
+        report_dt.isoformat(),
+        report_dt.replace(day=1).isoformat(),
+    }
+    prior_balance_date = BalanceAnalysisRepository(duckdb_path).resolve_prior_pnl_bridge_balance_report_date(
+        report_date=report_date,
+    )
+    if prior_balance_date:
+        anchors.add(prior_balance_date)
+    return tuple(sorted(anchors))
 
 
 def bond_analytics_refresh_status(settings: Settings, *, run_id: str) -> dict[str, object]:
@@ -406,40 +445,32 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         w and w.startswith("No ")
         for w in relevant_curve_warnings
     )
+    fx_latest_fallback = any(
+        warning and FX_LATEST_FALLBACK_PREFIX in warning
+        for warning in (fx_current_warning, fx_prior_warning)
+    )
+    fx_unavailable = _fx_unavailable_for_return_rows(
+        rows,
+        fx_rates_current=fx_rates_current,
+        fx_rates_prior=fx_rates_prior,
+    )
+    fx_missing_warnings = _fx_missing_warnings_for_return_rows(
+        rows,
+        report_date=report_date.isoformat(),
+        prior_date=period_start.isoformat(),
+        fx_rates_current=fx_rates_current,
+        fx_rates_prior=fx_rates_prior,
+    )
     meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-    if curve_snapshots:
-        meta = meta.model_copy(
-            update={
-                "source_version": _merge_lineage_values(
-                    meta.source_version,
-                    *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
-                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
-                ),
-                "rule_version": _merge_lineage_values(
-                    meta.rule_version,
-                    *[str(snapshot.get("rule_version") or "") for snapshot in curve_snapshots],
-                ),
-                "vendor_version": _merge_lineage_values(
-                    meta.vendor_version,
-                    *[str(snapshot.get("vendor_version") or "") for snapshot in curve_snapshots],
-                )
-                or "vv_none",
-                "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
-                **(
-                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                    if curve_unavailable
-                    else (
-                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                        if curve_latest_fallback
-                        else {}
-                    )
-                ),
-            }
-        )
-    elif curve_unavailable:
-        meta = meta.model_copy(
-            update={"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-        )
+    meta = _apply_vendor_meta_update(
+        meta,
+        curve_snapshots=curve_snapshots,
+        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        curve_unavailable=curve_unavailable,
+        curve_latest_fallback=curve_latest_fallback,
+        fx_unavailable=fx_unavailable,
+        fx_latest_fallback=fx_latest_fallback,
+    )
 
     summary = summarize_return_decomposition(
         rows,
@@ -493,6 +524,7 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
                 *relevant_curve_warnings,
                 fx_current_warning,
                 fx_prior_warning,
+                *fx_missing_warnings,
             ]
         ),
     )
@@ -545,6 +577,116 @@ def _ordered_unique_warnings(values: list[str | None]) -> list[str]:
         seen.add(text)
         out.append(text)
     return out
+
+
+def _required_fx_currencies(rows: list[dict[str, object]]) -> set[str]:
+    return {
+        str(row.get("currency_code") or "").upper().strip()
+        for row in rows
+        if str(row.get("currency_code") or "").upper().strip() not in {"", "CNY", "CNX", "RMB"}
+    }
+
+
+def _fx_unavailable_for_return_rows(
+    rows: list[dict[str, object]],
+    *,
+    fx_rates_current: dict[str, Decimal] | None,
+    fx_rates_prior: dict[str, Decimal] | None,
+) -> bool:
+    required = _required_fx_currencies(rows)
+    if not required:
+        return False
+    current = fx_rates_current or {}
+    prior = fx_rates_prior or {}
+    return any(currency not in current for currency in required) or any(
+        currency not in prior for currency in required
+    )
+
+
+def _fx_missing_warnings_for_return_rows(
+    rows: list[dict[str, object]],
+    *,
+    report_date: str,
+    prior_date: str,
+    fx_rates_current: dict[str, Decimal] | None,
+    fx_rates_prior: dict[str, Decimal] | None,
+) -> list[str]:
+    required = _required_fx_currencies(rows)
+    if not required:
+        return []
+    warnings: list[str] = []
+    current = fx_rates_current or {}
+    prior = fx_rates_prior or {}
+    missing_current = sorted(currency for currency in required if currency not in current)
+    missing_prior = sorted(currency for currency in required if currency not in prior)
+    if missing_current:
+        warnings.append(
+            f"Missing FX rates for {', '.join(missing_current)} on requested trade_date={report_date}; fx_effect remains 0 for affected rows."
+        )
+    if missing_prior:
+        warnings.append(
+            f"Missing FX rates for {', '.join(missing_prior)} on requested trade_date={prior_date}; fx_effect remains 0 for affected rows."
+        )
+    return warnings
+
+
+def _merge_vendor_state(
+    *,
+    curve_unavailable: bool,
+    curve_latest_fallback: bool,
+    fx_unavailable: bool,
+    fx_latest_fallback: bool,
+) -> dict[str, str]:
+    if curve_unavailable or fx_unavailable:
+        return {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
+    if curve_latest_fallback or fx_latest_fallback:
+        return {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
+    return {}
+
+
+def _apply_vendor_meta_update(
+    meta,
+    *,
+    curve_snapshots: list[dict[str, object]],
+    cache_version_suffix: str | None = None,
+    curve_unavailable: bool,
+    curve_latest_fallback: bool,
+    fx_unavailable: bool = False,
+    fx_latest_fallback: bool = False,
+):
+    status_update = _merge_vendor_state(
+        curve_unavailable=curve_unavailable,
+        curve_latest_fallback=curve_latest_fallback,
+        fx_unavailable=fx_unavailable,
+        fx_latest_fallback=fx_latest_fallback,
+    )
+    if not curve_snapshots and not status_update:
+        return meta
+
+    update: dict[str, object] = {}
+    if curve_snapshots:
+        update.update(
+            {
+                "source_version": _merge_lineage_values(
+                    meta.source_version,
+                    *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
+                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
+                ),
+                "rule_version": _merge_lineage_values(
+                    meta.rule_version,
+                    *[str(snapshot.get("rule_version") or "") for snapshot in curve_snapshots],
+                ),
+                "vendor_version": _merge_lineage_values(
+                    meta.vendor_version,
+                    *[str(snapshot.get("vendor_version") or "") for snapshot in curve_snapshots],
+                )
+                or "vv_none",
+            }
+        )
+        if cache_version_suffix:
+            update["cache_version"] = f"{meta.cache_version}__{cache_version_suffix}"
+    update.update(status_update)
+    return meta.model_copy(update=update)
 
 
 def _required_curve_types_for_return_rows(rows: list[dict[str, object]]) -> set[str]:
@@ -741,39 +883,13 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
             warning and warning.startswith("No ")
             for warning in relevant_curve_warnings
         )
-    if curve_snapshots:
-        meta = meta.model_copy(
-            update={
-                "source_version": _merge_lineage_values(
-                    meta.source_version,
-                    *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
-                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
-                ),
-                "rule_version": _merge_lineage_values(
-                    meta.rule_version,
-                    *[str(snapshot.get("rule_version") or "") for snapshot in curve_snapshots],
-                ),
-                "vendor_version": _merge_lineage_values(
-                    meta.vendor_version,
-                    *[str(snapshot.get("vendor_version") or "") for snapshot in curve_snapshots],
-                )
-                or "vv_none",
-                "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
-                **(
-                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                    if curve_unavailable
-                    else (
-                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                        if curve_latest_fallback
-                        else {}
-                    )
-                ),
-            }
-        )
-    elif curve_unavailable:
-        meta = meta.model_copy(
-            update={"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-        )
+    meta = _apply_vendor_meta_update(
+        meta,
+        curve_snapshots=curve_snapshots,
+        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        curve_unavailable=curve_unavailable,
+        curve_latest_fallback=curve_latest_fallback,
+    )
     summary = compute_benchmark_excess(
         rows,
         period_start=period_start,
@@ -906,39 +1022,13 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
             warning and warning.startswith("No ")
             for warning in (aaa_warning, treasury_warning)
         )
-    if curve_snapshots:
-        meta = meta.model_copy(
-            update={
-                "source_version": _merge_lineage_values(
-                    meta.source_version,
-                    *[str(snapshot.get("source_version") or "") for snapshot in curve_snapshots],
-                    *[str(snapshot.get("vendor_name") or "").strip() for snapshot in curve_snapshots],
-                ),
-                "rule_version": _merge_lineage_values(
-                    meta.rule_version,
-                    *[str(snapshot.get("rule_version") or "") for snapshot in curve_snapshots],
-                ),
-                "vendor_version": _merge_lineage_values(
-                    meta.vendor_version,
-                    *[str(snapshot.get("vendor_version") or "") for snapshot in curve_snapshots],
-                )
-                or "vv_none",
-                "cache_version": f"{CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}",
-                **(
-                    {"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-                    if curve_unavailable
-                    else (
-                        {"fallback_mode": "latest_snapshot", "vendor_status": "vendor_stale"}
-                        if curve_latest_fallback
-                        else {}
-                    )
-                ),
-            }
-        )
-    elif curve_unavailable:
-        meta = meta.model_copy(
-            update={"fallback_mode": "none", "vendor_status": "vendor_unavailable"}
-        )
+    meta = _apply_vendor_meta_update(
+        meta,
+        curve_snapshots=curve_snapshots,
+        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        curve_unavailable=curve_unavailable,
+        curve_latest_fallback=curve_latest_fallback,
+    )
     summary = summarize_credit(
         credit_rows,
         total_rows=all_rows,

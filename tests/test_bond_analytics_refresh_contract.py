@@ -60,6 +60,57 @@ def test_bond_analytics_refresh_returns_503_when_queue_dispatch_fails(tmp_path, 
     get_settings.cache_clear()
 
 
+def test_bond_analytics_refresh_prepares_yield_curve_inputs_before_queueing(tmp_path, monkeypatch):
+    _configure_bond_analytics_api_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    prepared: list[tuple[str, str]] = []
+    queued_messages: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        service_mod,
+        "_prepare_yield_curve_inputs_for_refresh",
+        lambda *, settings, report_date: prepared.append((str(settings.duckdb_path), report_date)),
+    )
+    monkeypatch.setattr(
+        service_mod.materialize_bond_analytics_facts,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    payload = service_mod.refresh_bond_analytics(get_settings(), report_date=REPORT_DATE)
+
+    assert payload["status"] == "queued"
+    assert prepared == [(str(get_settings().duckdb_path), REPORT_DATE)]
+    assert len(queued_messages) == 1
+    assert queued_messages[0]["report_date"] == REPORT_DATE
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_refresh_uses_month_start_and_prior_balance_date_as_curve_anchors(tmp_path, monkeypatch):
+    _configure_bond_analytics_api_env(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod.BalanceAnalysisRepository,
+        "resolve_prior_pnl_bridge_balance_report_date",
+        lambda self, *, report_date: "2026-03-30",
+    )
+
+    anchors = service_mod._yield_curve_anchor_dates_for_refresh(
+        duckdb_path=str(get_settings().duckdb_path),
+        report_date=REPORT_DATE,
+    )
+
+    assert anchors == ("2026-03-01", "2026-03-30", "2026-03-31")
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_refresh_reconciles_stale_inflight_run_and_requeues(tmp_path, monkeypatch):
     governance_dir = _configure_bond_analytics_api_env(tmp_path, monkeypatch)
     stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()

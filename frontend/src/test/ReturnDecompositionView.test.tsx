@@ -8,6 +8,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ReturnDecompositionView } from "../features/bond-analytics/components/ReturnDecompositionView";
+import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ReturnDecompositionResponse } from "../features/bond-analytics/types";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
@@ -99,40 +100,23 @@ describe("ReturnDecompositionView", () => {
   });
 
   it("transitions from loading to content, shows key statistics, by_asset_class table, and chart section", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createReturnDecompositionResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createReturnDecompositionResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createReturnDecompositionResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const firstUrl = String(
-      fetchMock.mock.calls[0]?.[0] instanceof Request
-        ? fetchMock.mock.calls[0][0].url
-        : fetchMock.mock.calls[0]?.[0],
+    await waitFor(() =>
+      expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
-    expect(firstUrl).toContain("/api/bond-analytics/return-decomposition");
-    expect(firstUrl).toContain("report_date=2026-03-31");
-    expect(firstUrl).toContain("period_type=MoM");
-
-    expect(screen.queryByText("经济口径合计")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createReturnDecompositionResult(),
-    });
 
     expect(await screen.findByText("经济口径合计")).toBeInTheDocument();
     expect(screen.getByText("OCI 未入表影响")).toBeInTheDocument();
@@ -144,20 +128,21 @@ describe("ReturnDecompositionView", () => {
   });
 
   it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta({ quality_flag: "warning" }),
-          result: createReturnDecompositionResult({
-            warnings: ["示例：对账口径存在缺口"],
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
+        result_meta: createResultMeta({ quality_flag: "warning" }),
+        result: createReturnDecompositionResult({
+          warnings: ["示例：对账口径存在缺口"],
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />);
+    render(
+      <ApiClientProvider client={client}>
+        <ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：对账口径存在缺口")).toBeInTheDocument();

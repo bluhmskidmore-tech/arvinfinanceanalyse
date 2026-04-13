@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Alert, Spin, Select, Space } from "antd";
 import ReactECharts from "../../../lib/echarts";
+import { useApiClient } from "../../../api/client";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
 import { formatBp } from "../utils/formatters";
 
@@ -138,6 +139,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
 }
 
 export function BenchmarkExcessView({ reportDate, periodType }: Props) {
+  const client = useApiClient();
   const [data, setData] = useState<BenchmarkExcessResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,15 +151,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({
-          report_date: reportDate,
-          period_type: periodType,
-          benchmark_id: benchmarkId,
-        });
-        const res = await fetch(`/api/bond-analytics/benchmark-excess?${params}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setData(json.result);
+        const envelope = await client.getBondAnalyticsBenchmarkExcess(
+          reportDate,
+          periodType,
+          benchmarkId,
+        );
+        if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -168,7 +167,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [reportDate, periodType, benchmarkId]);
+  }, [benchmarkId, client, periodType, reportDate]);
 
   const waterfallOption = useMemo(
     () => (data ? buildBenchmarkExcessWaterfallOption(data) : null),

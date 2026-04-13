@@ -50,6 +50,47 @@ def test_bond_analytics_service_returns_empty_warning_without_fact_data(tmp_path
     get_settings.cache_clear()
 
 
+def test_apply_vendor_meta_update_merges_lineage_and_status(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    meta = service_mod.build_formal_result_meta(
+        trace_id="tr_test_vendor_state",
+        result_kind="bond_analytics.return_decomposition",
+        cache_version="cv_base",
+        source_version="sv_base",
+        rule_version="rv_base",
+        vendor_version="vv_base",
+    )
+
+    updated = service_mod._apply_vendor_meta_update(
+        meta,
+        curve_snapshots=[
+            {
+                "source_version": "sv_curve",
+                "rule_version": "rv_curve",
+                "vendor_version": "vv_curve",
+                "vendor_name": "choice",
+            }
+        ],
+        cache_version_suffix=service_mod.YIELD_CURVE_CACHE_VERSION,
+        curve_unavailable=False,
+        curve_latest_fallback=True,
+        fx_unavailable=False,
+        fx_latest_fallback=False,
+    )
+
+    assert updated.source_version == "choice__sv_base__sv_curve"
+    assert updated.rule_version == "rv_base__rv_curve"
+    assert updated.vendor_version == "vv_base__vv_curve"
+    assert updated.cache_version == f"cv_base__{service_mod.YIELD_CURVE_CACHE_VERSION}"
+    assert updated.vendor_status == "vendor_stale"
+    assert updated.fallback_mode == "latest_snapshot"
+    get_settings.cache_clear()
+
+
 def test_bond_analytics_service_returns_available_report_dates(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(

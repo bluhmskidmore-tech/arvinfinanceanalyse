@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "../../../lib/echarts";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
+import { useApiClient } from "../../../api/client";
 import type { PeriodType, ReturnDecompositionResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 
@@ -130,6 +131,7 @@ const effectColumns = [
 ];
 
 export function ReturnDecompositionView({ reportDate, periodType }: Props) {
+  const client = useApiClient();
   const [data, setData] = useState<ReturnDecompositionResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,14 +142,8 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({
-          report_date: reportDate,
-          period_type: periodType,
-        });
-        const res = await fetch(`/api/bond-analytics/return-decomposition?${params}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setData(json.result);
+        const envelope = await client.getBondAnalyticsReturnDecomposition(reportDate, periodType);
+        if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -155,8 +151,10 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
       }
     };
     if (reportDate) fetchData();
-    return () => { cancelled = true; };
-  }, [reportDate, periodType]);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, periodType, reportDate]);
 
   const waterfallOption = useMemo(
     () => (data ? buildWaterfallOption(data) : null),

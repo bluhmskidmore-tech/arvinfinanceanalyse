@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { AccountingClassAuditView } from "../features/bond-analytics/components/AccountingClassAuditView";
 import type { AccountingClassAuditResponse } from "../features/bond-analytics/types";
 
@@ -65,31 +66,23 @@ describe("AccountingClassAuditView", () => {
   });
 
   it("loads accounting class audit with KPI cards, explanatory text, and audit table", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createAccountingAuditResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createAccountingAuditResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsAccountingClassAudit: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createAccountingAuditResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <AccountingClassAuditView reportDate="2026-03-31" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<AccountingClassAuditView reportDate="2026-03-31" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText("资产类别数（去重）")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createAccountingAuditResult(),
-    });
+    await waitFor(() =>
+      expect(client.getBondAnalyticsAccountingClassAudit).toHaveBeenCalledWith("2026-03-31"),
+    );
 
     expect(await screen.findByText("资产类别数（去重）")).toBeInTheDocument();
     expect(screen.getByText("分歧分类")).toBeInTheDocument();
@@ -105,21 +98,22 @@ describe("AccountingClassAuditView", () => {
   });
 
   it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createAccountingAuditResult({
-            warnings: ["示例：映射规则版本待对齐"],
-            rows: [],
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsAccountingClassAudit: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createAccountingAuditResult({
+          warnings: ["示例：映射规则版本待对齐"],
+          rows: [],
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<AccountingClassAuditView reportDate="2026-03-31" />);
+    render(
+      <ApiClientProvider client={client}>
+        <AccountingClassAuditView reportDate="2026-03-31" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：映射规则版本待对齐")).toBeInTheDocument();

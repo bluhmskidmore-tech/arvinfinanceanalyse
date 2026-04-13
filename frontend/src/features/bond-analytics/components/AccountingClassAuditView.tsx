@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
+import { useApiClient } from "../../../api/client";
 import type { AccountingClassAuditResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 
@@ -32,6 +33,7 @@ const auditColumns = [
 ];
 
 export function AccountingClassAuditView({ reportDate }: Props) {
+  const client = useApiClient();
   const [data, setData] = useState<AccountingClassAuditResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,11 +44,8 @@ export function AccountingClassAuditView({ reportDate }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ report_date: reportDate });
-        const res = await fetch(`/api/bond-analytics/accounting-class-audit?${params}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setData(json.result);
+        const envelope = await client.getBondAnalyticsAccountingClassAudit(reportDate);
+        if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -54,8 +53,10 @@ export function AccountingClassAuditView({ reportDate }: Props) {
       }
     };
     if (reportDate) fetchData();
-    return () => { cancelled = true; };
-  }, [reportDate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reportDate]);
 
   if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;

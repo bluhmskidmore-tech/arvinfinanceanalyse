@@ -73,22 +73,8 @@ export function BondAnalyticsViewContent() {
       effectiveReportDate,
       periodType,
     ],
-    queryFn: async (): Promise<ApiEnvelope<ActionAttributionResponse>> => {
-      const params = new URLSearchParams({
-        report_date: effectiveReportDate,
-        period_type: periodType,
-      });
-      const response = await fetch(
-        `/api/bond-analytics/action-attribution?${params.toString()}`,
-      );
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const json = await response.json();
-      return json as ApiEnvelope<ActionAttributionResponse>;
-    },
+    queryFn: async (): Promise<ApiEnvelope<ActionAttributionResponse>> =>
+      client.getBondAnalyticsActionAttribution(effectiveReportDate, periodType),
     enabled: Boolean(effectiveReportDate),
     retry: false,
   });

@@ -10,7 +10,6 @@ from backend.app.core_finance.bond_analytics.engine import (
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.schemas.formal_compute_runtime import (
     FormalComputeMaterializeFailure,
@@ -18,7 +17,6 @@ from backend.app.schemas.formal_compute_runtime import (
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
-from backend.app.tasks.yield_curve_materialize import ensure_yield_curve_inputs_on_or_before
 
 
 BOND_ANALYTICS_MODULE = ensure_formal_module(
@@ -53,10 +51,6 @@ def _execute_bond_analytics_materialization(
     combined_source_version = _combine_source_versions(snapshot_rows)
 
     try:
-        _ensure_yield_curve_inputs(
-            report_date=report_date,
-            duckdb_file=duckdb_file,
-        )
         analytics_rows = compute_bond_analytics_rows(
             snapshot_rows,
             date.fromisoformat(report_date),
@@ -111,27 +105,6 @@ materialize_bond_analytics_facts = register_actor_once(
     "materialize_bond_analytics_facts",
     _materialize_bond_analytics_facts,
 )
-
-
-def _ensure_yield_curve_inputs(*, report_date: str, duckdb_file: Path) -> None:
-    ensure_yield_curve_inputs_on_or_before(
-        anchor_dates=_yield_curve_anchor_dates(report_date=report_date, duckdb_file=duckdb_file),
-        duckdb_path=str(duckdb_file),
-    )
-
-
-def _yield_curve_anchor_dates(*, report_date: str, duckdb_file: Path) -> tuple[str, ...]:
-    report_dt = date.fromisoformat(report_date)
-    anchors = {
-        report_dt.isoformat(),
-        report_dt.replace(day=1).isoformat(),
-    }
-    prior_balance_date = BalanceAnalysisRepository(str(duckdb_file)).resolve_prior_pnl_bridge_balance_report_date(
-        report_date=report_date,
-    )
-    if prior_balance_date:
-        anchors.add(prior_balance_date)
-    return tuple(sorted(anchors))
 
 
 def _combine_source_versions(snapshot_rows: list[dict[str, object]]) -> str:
