@@ -251,6 +251,233 @@ describe("createApiClient", () => {
     );
   });
 
+  it("returns bond analytics mock envelopes for the unified detail readers", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const returnDecomposition = await client.getBondAnalyticsReturnDecomposition(
+      "2026-03-31",
+      "MoM",
+    );
+    const benchmarkExcess = await client.getBondAnalyticsBenchmarkExcess(
+      "2026-03-31",
+      "MoM",
+      "CDB_INDEX",
+    );
+    const actionAttribution = await client.getBondAnalyticsActionAttribution(
+      "2026-03-31",
+      "MoM",
+    );
+    const accountingAudit = await client.getBondAnalyticsAccountingClassAudit("2026-03-31");
+
+    expect(returnDecomposition.result_meta.result_kind).toBe("bond_analytics.return_decomposition");
+    expect(returnDecomposition.result.report_date).toBe("2026-03-31");
+    expect(benchmarkExcess.result.benchmark_id).toBe("CDB_INDEX");
+    expect(actionAttribution.result_meta.result_kind).toBe("bond_analytics.action_attribution");
+    expect(accountingAudit.result_meta.result_kind).toBe("bond_analytics.accounting_class_audit");
+  });
+
+  it("uses real mode to fetch unified bond analytics detail readers", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_rd",
+            basis: "formal",
+            result_kind: "bond_analytics.return_decomposition",
+            formal_use_allowed: true,
+            source_version: "sv_rd",
+            vendor_version: "vv_rd",
+            rule_version: "rv_rd",
+            cache_version: "cv_rd",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-13T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            period_type: "MoM",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            carry: "0",
+            roll_down: "0",
+            rate_effect: "0",
+            spread_effect: "0",
+            trading: "0",
+            fx_effect: "0",
+            convexity_effect: "0",
+            explained_pnl: "0",
+            explained_pnl_accounting: "0",
+            explained_pnl_economic: "0",
+            oci_reserve_impact: "0",
+            actual_pnl: "0",
+            recon_error: "0",
+            recon_error_pct: "0",
+            by_asset_class: [],
+            by_accounting_class: [],
+            bond_details: [],
+            bond_count: 0,
+            total_market_value: "0",
+            warnings: [],
+            computed_at: "2026-04-13T00:00:00Z",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_be",
+            basis: "formal",
+            result_kind: "bond_analytics.benchmark_excess",
+            formal_use_allowed: true,
+            source_version: "sv_be",
+            vendor_version: "vv_be",
+            rule_version: "rv_be",
+            cache_version: "cv_be",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-13T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            period_type: "MoM",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            portfolio_return: "0",
+            benchmark_return: "0",
+            excess_return: "0",
+            tracking_error: null,
+            information_ratio: null,
+            duration_effect: "0",
+            curve_effect: "0",
+            spread_effect: "0",
+            selection_effect: "0",
+            allocation_effect: "0",
+            explained_excess: "0",
+            recon_error: "0",
+            portfolio_duration: "0",
+            benchmark_duration: "0",
+            duration_diff: "0",
+            excess_sources: [],
+            benchmark_id: "CDB_INDEX",
+            benchmark_name: "中债国开债总指数",
+            warnings: [],
+            computed_at: "2026-04-13T00:00:00Z",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_aa",
+            basis: "formal",
+            result_kind: "bond_analytics.action_attribution",
+            formal_use_allowed: true,
+            source_version: "sv_aa",
+            vendor_version: "vv_aa",
+            rule_version: "rv_aa",
+            cache_version: "cv_aa",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-13T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            period_type: "MoM",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            total_actions: 0,
+            total_pnl_from_actions: "0",
+            by_action_type: [],
+            action_details: [],
+            period_start_duration: "0",
+            period_end_duration: "0",
+            duration_change_from_actions: "0",
+            period_start_dv01: "0",
+            period_end_dv01: "0",
+            warnings: [],
+            computed_at: "2026-04-13T00:00:00Z",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ac",
+            basis: "formal",
+            result_kind: "bond_analytics.accounting_class_audit",
+            formal_use_allowed: true,
+            source_version: "sv_ac",
+            vendor_version: "vv_ac",
+            rule_version: "rv_ac",
+            cache_version: "cv_ac",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-13T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            total_positions: 0,
+            total_market_value: "0",
+            distinct_asset_classes: 0,
+            divergent_asset_classes: 0,
+            divergent_position_count: 0,
+            divergent_market_value: "0",
+            map_unclassified_asset_classes: 0,
+            map_unclassified_position_count: 0,
+            map_unclassified_market_value: "0",
+            rows: [],
+            warnings: [],
+            computed_at: "2026-04-13T00:00:00Z",
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getBondAnalyticsReturnDecomposition("2026-03-31", "MoM");
+    await client.getBondAnalyticsBenchmarkExcess("2026-03-31", "MoM", "CDB_INDEX");
+    await client.getBondAnalyticsActionAttribution("2026-03-31", "MoM");
+    await client.getBondAnalyticsAccountingClassAudit("2026-03-31");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/bond-analytics/return-decomposition?report_date=2026-03-31&period_type=MoM",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/bond-analytics/benchmark-excess?report_date=2026-03-31&period_type=MoM&benchmark_id=CDB_INDEX",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/bond-analytics/action-attribution?report_date=2026-03-31&period_type=MoM",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/bond-analytics/accounting-class-audit?report_date=2026-03-31",
+      expect.objectContaining({ headers: expect.objectContaining({ Accept: "application/json" }) }),
+    );
+  });
+
   it("returns a structured analytical macro-bond-linkage mock envelope", async () => {
     const client = createApiClient({ mode: "mock" });
 

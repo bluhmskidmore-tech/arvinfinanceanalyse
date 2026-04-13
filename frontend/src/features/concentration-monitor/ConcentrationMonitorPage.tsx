@@ -87,18 +87,6 @@ const panelTitleStyle = {
   color: "#162033",
 } as const;
 
-async function fetchCreditSpreadMigration(
-  reportDate: string,
-): Promise<CreditSpreadMigrationResponse> {
-  const params = new URLSearchParams({ report_date: reportDate });
-  const res = await fetch(`/api/bond-analytics/credit-spread-migration?${params}`);
-  if (!res.ok) {
-    throw new Error(`信用利差迁移：HTTP ${res.status}`);
-  }
-  const json: { result: CreditSpreadMigrationResponse } = await res.json();
-  return json.result;
-}
-
 function displayStr(value: string | undefined) {
   if (value === undefined || value === "") {
     return "—";
@@ -248,7 +236,10 @@ export default function ConcentrationMonitorPage() {
 
   const creditQuery = useQuery({
     queryKey: ["concentration-monitor", "credit-spread-migration", reportDate],
-    queryFn: () => fetchCreditSpreadMigration(reportDate),
+    queryFn: async (): Promise<CreditSpreadMigrationResponse> => {
+      const envelope = await client.getBondAnalyticsCreditSpreadMigration(reportDate);
+      return envelope.result;
+    },
     enabled: Boolean(reportDate),
     retry: false,
   });
