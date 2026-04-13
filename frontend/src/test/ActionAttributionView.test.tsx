@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ActionAttributionView } from "../features/bond-analytics/components/ActionAttributionView";
+import type { ActionAttributionResponse } from "../features/bond-analytics/types";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,7 +23,9 @@ function createResultMeta(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createActionAttributionResult(overrides: Record<string, unknown> = {}) {
+function createActionAttributionResult(
+  overrides: Partial<ActionAttributionResponse> = {},
+): ActionAttributionResponse {
   return {
     report_date: "2026-03-31",
     period_type: "MoM",

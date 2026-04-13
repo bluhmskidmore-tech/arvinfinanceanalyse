@@ -8,6 +8,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ReturnDecompositionView } from "../features/bond-analytics/components/ReturnDecompositionView";
+import type { ReturnDecompositionResponse } from "../features/bond-analytics/types";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
   return {
@@ -28,7 +29,9 @@ function createResultMeta(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createReturnDecompositionResult(overrides: Record<string, unknown> = {}) {
+function createReturnDecompositionResult(
+  overrides: Partial<ReturnDecompositionResponse> = {},
+): ReturnDecompositionResponse {
   return {
     report_date: "2026-03-31",
     period_type: "MoM",
@@ -55,6 +58,8 @@ function createReturnDecompositionResult(overrides: Record<string, unknown> = {}
         roll_down: "2000000",
         rate_effect: "0",
         spread_effect: "0",
+        fx_effect: "0",
+        convexity_effect: "10000",
         trading: "0",
         total: "3000000",
         bond_count: 3,
@@ -62,7 +67,24 @@ function createReturnDecompositionResult(overrides: Record<string, unknown> = {}
       },
     ],
     by_accounting_class: [],
-    bond_details: [],
+    bond_details: [
+      {
+        bond_code: "019547",
+        bond_name: null,
+        asset_class: "利率债",
+        accounting_class: "AC",
+        market_value: "100000000",
+        carry: "1000000",
+        roll_down: "2000000",
+        rate_effect: "0",
+        spread_effect: "0",
+        convexity_effect: "10000",
+        trading: "0",
+        total: "3000000",
+        explained_for_recon: "3000000",
+        economic_only_effects: "2010000",
+      },
+    ],
     bond_count: 3,
     total_market_value: "100000000",
     warnings: [],

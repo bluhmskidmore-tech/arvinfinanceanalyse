@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AccountingClassAuditView } from "../features/bond-analytics/components/AccountingClassAuditView";
+import type { AccountingClassAuditResponse } from "../features/bond-analytics/types";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,7 +23,9 @@ function createResultMeta(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createAccountingAuditResult(overrides: Record<string, unknown> = {}) {
+function createAccountingAuditResult(
+  overrides: Partial<AccountingClassAuditResponse> = {},
+): AccountingClassAuditResponse {
   return {
     report_date: "2026-03-31",
     total_positions: 100,
