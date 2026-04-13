@@ -64,6 +64,11 @@ def test_materialize_yield_curve_aaa_credit_fail_closed_when_fetch_fails(tmp_pat
         "_fetch_akshare_curve",
         lambda *_args, **_kwargs: None,
     )
+    monkeypatch.setattr(
+        task_mod.VendorAdapter,
+        "_fetch_choice_curve",
+        lambda *_args, **_kwargs: None,
+    )
 
     with pytest.raises(RuntimeError, match="Failed to materialize aaa_credit curve"):
         task_mod.materialize_yield_curve.fn(

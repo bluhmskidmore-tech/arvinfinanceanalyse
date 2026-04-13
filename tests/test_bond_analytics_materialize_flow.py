@@ -291,6 +291,51 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
     assert manifests[-1]["rule_version"] == task_mod.RULE_VERSION
 
 
+def test_bond_analytics_materialize_prepares_yield_curve_inputs_before_compute(tmp_path, monkeypatch):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    calls: list[tuple[str, str]] = []
+
+    def _record_prepare(*, report_date: str, duckdb_file) -> None:
+        calls.append((report_date, str(duckdb_file)))
+
+    monkeypatch.setattr(task_mod, "_ensure_yield_curve_inputs", _record_prepare)
+
+    payload = task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert calls == [(REPORT_DATE, str(duckdb_path))]
+
+
+def test_bond_analytics_materialize_uses_report_month_start_and_prior_balance_date_as_curve_anchors(
+    tmp_path,
+    monkeypatch,
+):
+    _repo_mod, task_mod = _load_modules()
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_bond_snapshot_rows(str(duckdb_path))
+
+    monkeypatch.setattr(
+        task_mod.BalanceAnalysisRepository,
+        "resolve_prior_pnl_bridge_balance_report_date",
+        lambda self, *, report_date: "2026-03-30",
+    )
+
+    anchors = task_mod._yield_curve_anchor_dates(
+        report_date=REPORT_DATE,
+        duckdb_file=duckdb_path,
+    )
+
+    assert anchors == ("2026-03-01", "2026-03-30", "2026-03-31")
+
+
 def test_bond_analytics_materialize_preserves_lineage_when_write_fails(tmp_path, monkeypatch):
     repo_mod, task_mod = _load_modules()
     duckdb_path = tmp_path / "moss.duckdb"

@@ -38,6 +38,10 @@ function formatDurationDisplay(value: string): string {
   return num.toFixed(2);
 }
 
+function hasDisplayMetric(value: string | null | undefined): value is string {
+  return value != null && value !== "";
+}
+
 function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
   const durationEffect = parseFloat(d.duration_effect);
   const curveEffect = parseFloat(d.curve_effect);
@@ -187,8 +191,8 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   ];
 
   const hasRiskMetrics =
-    (data.tracking_error !== undefined && data.tracking_error !== "") ||
-    (data.information_ratio !== undefined && data.information_ratio !== "");
+    hasDisplayMetric(data.tracking_error) ||
+    hasDisplayMetric(data.information_ratio);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -252,14 +256,14 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
 
       {hasRiskMetrics && (
         <Row gutter={16}>
-          {data.tracking_error !== undefined && data.tracking_error !== "" && (
+          {hasDisplayMetric(data.tracking_error) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
                 <Statistic title="跟踪误差" value={formatBp(data.tracking_error)} />
               </Card>
             </Col>
           )}
-          {data.information_ratio !== undefined && data.information_ratio !== "" && (
+          {hasDisplayMetric(data.information_ratio) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
                 <Statistic title="信息比率" value={data.information_ratio} />

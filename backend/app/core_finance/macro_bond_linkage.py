@@ -100,6 +100,9 @@ def compute_macro_bond_correlations(
     yield_series: dict[str, list[tuple[date, float]]],
     *,
     lookback_days: int = 365,
+    alignment_mode: str = "conservative",
+    apply_zscore: bool = False,
+    winsorize_tail_fraction: float | None = None,
 ) -> list[MacroBondCorrelation]:
     """
     对每个宏观指标 vs 每条收益率曲线关键期限，计算滚动相关系数与领先滞后关系。
@@ -126,11 +129,45 @@ def compute_macro_bond_correlations(
             target_map = prepared_yields[target_name]
             if len(target_map) < 2:
                 continue
-            latest_date = _latest_common_date(macro_map, target_map)
-            correlation_3m = _window_correlation(macro_map, target_map, latest_date=latest_date, window_days=90)
-            correlation_6m = _window_correlation(macro_map, target_map, latest_date=latest_date, window_days=180)
-            correlation_1y = _window_correlation(macro_map, target_map, latest_date=latest_date, window_days=365)
-            lead_lag_days, best_correlation = _best_lead_lag(macro_map, target_map)
+            latest_date = _latest_alignment_date(
+                macro_map,
+                target_map,
+                alignment_mode=alignment_mode,
+            )
+            correlation_3m = _window_correlation(
+                macro_map,
+                target_map,
+                latest_date=latest_date,
+                window_days=90,
+                alignment_mode=alignment_mode,
+                apply_zscore=apply_zscore,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
+            correlation_6m = _window_correlation(
+                macro_map,
+                target_map,
+                latest_date=latest_date,
+                window_days=180,
+                alignment_mode=alignment_mode,
+                apply_zscore=apply_zscore,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
+            correlation_1y = _window_correlation(
+                macro_map,
+                target_map,
+                latest_date=latest_date,
+                window_days=365,
+                alignment_mode=alignment_mode,
+                apply_zscore=apply_zscore,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
+            lead_lag_days, best_correlation = _best_lead_lag(
+                macro_map,
+                target_map,
+                alignment_mode=alignment_mode,
+                apply_zscore=apply_zscore,
+                winsorize_tail_fraction=winsorize_tail_fraction,
+            )
             direction = _direction_from_correlation(
                 correlation_1y,
                 correlation_6m,
@@ -275,23 +312,47 @@ def _latest_common_date(
     return max(max(macro_map), max(target_map))
 
 
+def _latest_alignment_date(
+    macro_map: dict[date, float],
+    target_map: dict[date, float],
+    *,
+    alignment_mode: str,
+) -> date:
+    if alignment_mode == "market_timing" and target_map:
+        return max(target_map)
+    return _latest_common_date(macro_map, target_map)
+
+
 def _window_correlation(
     macro_map: dict[date, float],
     target_map: dict[date, float],
     *,
     latest_date: date,
     window_days: int,
+    alignment_mode: str = "conservative",
+    apply_zscore: bool = False,
+    winsorize_tail_fraction: float | None = None,
 ) -> float | None:
     start_date = latest_date - timedelta(days=max(window_days - 1, 0))
-    aligned_dates = sorted(
-        current_date
-        for current_date in set(macro_map) & set(target_map)
-        if start_date <= current_date <= latest_date
+    aligned_pairs = _align_series_pairs(
+        macro_map,
+        target_map,
+        alignment_mode=alignment_mode,
+        start_date=start_date,
+        end_date=latest_date,
     )
-    if len(aligned_dates) < 2:
+    if len(aligned_pairs) < 2:
         return None
-    macro_values = [macro_map[current_date] for current_date in aligned_dates]
-    target_values = [target_map[current_date] for current_date in aligned_dates]
+    macro_values = _prepare_series_values(
+        [macro_value for _current_date, macro_value, _target_value in aligned_pairs],
+        apply_zscore=apply_zscore,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    target_values = _prepare_series_values(
+        [target_value for _current_date, _macro_value, target_value in aligned_pairs],
+        apply_zscore=apply_zscore,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
     correlation = pearson_correlation(macro_values, target_values)
     return round(correlation, 6) if correlation is not None else None
 
@@ -299,28 +360,219 @@ def _window_correlation(
 def _best_lead_lag(
     macro_map: dict[date, float],
     target_map: dict[date, float],
+    *,
+    alignment_mode: str = "conservative",
+    apply_zscore: bool = False,
+    winsorize_tail_fraction: float | None = None,
 ) -> tuple[int, float | None]:
-    best_lag = 0
-    best_correlation: float | None = None
-    best_abs = -1.0
-    for lag_days in range(-30, 31):
-        macro_values: list[float] = []
-        target_values: list[float] = []
+    details = _best_lead_lag_details(
+        macro_map,
+        target_map,
+        alignment_mode=alignment_mode,
+        apply_zscore=apply_zscore,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    return int(details["lag_days"]), details["correlation"]
+
+
+def _align_series_pairs(
+    macro_map: dict[date, float],
+    target_map: dict[date, float],
+    *,
+    alignment_mode: str,
+    lag_days: int = 0,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> list[tuple[date, float, float]]:
+    if alignment_mode not in {"conservative", "market_timing"}:
+        raise ValueError(f"Unsupported alignment mode: {alignment_mode}")
+    if not macro_map or not target_map:
+        return []
+
+    if alignment_mode == "conservative":
+        aligned_pairs: list[tuple[date, float, float]] = []
         for macro_date in sorted(macro_map):
-            shifted_target_date = macro_date + timedelta(days=lag_days)
-            if shifted_target_date not in target_map:
+            target_date = macro_date + timedelta(days=lag_days)
+            if target_date not in target_map:
                 continue
-            macro_values.append(macro_map[macro_date])
-            target_values.append(target_map[shifted_target_date])
+            if start_date is not None and macro_date < start_date:
+                continue
+            if end_date is not None and macro_date > end_date:
+                continue
+            aligned_pairs.append((macro_date, macro_map[macro_date], target_map[target_date]))
+        return aligned_pairs
+
+    ordered_macro_dates = sorted(macro_map)
+    macro_index = 0
+    last_macro_date: date | None = None
+    last_macro_value: float | None = None
+    aligned_pairs = []
+    for target_date in sorted(target_map):
+        if start_date is not None and target_date < start_date:
+            continue
+        if end_date is not None and target_date > end_date:
+            continue
+        effective_macro_date = target_date - timedelta(days=lag_days)
+        while macro_index < len(ordered_macro_dates) and ordered_macro_dates[macro_index] <= effective_macro_date:
+            last_macro_date = ordered_macro_dates[macro_index]
+            last_macro_value = macro_map[last_macro_date]
+            macro_index += 1
+        if last_macro_date is None or last_macro_value is None:
+            continue
+        aligned_pairs.append((target_date, last_macro_value, target_map[target_date]))
+    return aligned_pairs
+
+
+def _prepare_series_values(
+    values: Sequence[float],
+    *,
+    apply_zscore: bool,
+    winsorize_tail_fraction: float | None,
+) -> list[float]:
+    prepared = [float(value) for value in values]
+    if winsorize_tail_fraction is not None and winsorize_tail_fraction > 0:
+        prepared = _winsorize_values(prepared, tail_fraction=winsorize_tail_fraction)
+    if apply_zscore:
+        prepared = _zscore_normalize(prepared)
+    return prepared
+
+
+def _zscore_normalize(values: Sequence[float]) -> list[float]:
+    if not values:
+        return []
+    mean_value = _mean(values)
+    std_value = _population_std(values)
+    if std_value <= EPSILON:
+        return [0.0 for _value in values]
+    return [(float(value) - mean_value) / std_value for value in values]
+
+
+def _winsorize_values(
+    values: Sequence[float],
+    *,
+    tail_fraction: float,
+) -> list[float]:
+    if len(values) < 2 or tail_fraction <= 0:
+        return [float(value) for value in values]
+    bounded_tail = min(max(float(tail_fraction), 0.0), 0.49)
+    ordered = sorted(float(value) for value in values)
+    lower_bound = _quantile(ordered, bounded_tail)
+    upper_bound = _quantile(ordered, 1 - bounded_tail)
+    return [
+        min(max(float(value), lower_bound), upper_bound)
+        for value in values
+    ]
+
+
+def _quantile(values: Sequence[float], quantile: float) -> float:
+    if not values:
+        return 0.0
+    if len(values) == 1:
+        return float(values[0])
+    bounded_quantile = min(max(float(quantile), 0.0), 1.0)
+    position = bounded_quantile * (len(values) - 1)
+    lower_index = int(position)
+    upper_index = min(lower_index + 1, len(values) - 1)
+    weight = position - lower_index
+    lower_value = float(values[lower_index])
+    upper_value = float(values[upper_index])
+    return lower_value + (upper_value - lower_value) * weight
+
+
+def _best_lead_lag_details(
+    macro_map: dict[date, float],
+    target_map: dict[date, float],
+    *,
+    alignment_mode: str = "conservative",
+    apply_zscore: bool = False,
+    winsorize_tail_fraction: float | None = None,
+    max_lag_days: int = 30,
+) -> dict[str, float | int | None]:
+    candidates: list[dict[str, float | int]] = []
+    best_candidate: dict[str, float | int] | None = None
+    best_abs = -1.0
+    for lag_days in range(-max_lag_days, max_lag_days + 1):
+        aligned_pairs = _align_series_pairs(
+            macro_map,
+            target_map,
+            alignment_mode=alignment_mode,
+            lag_days=lag_days,
+        )
+        if len(aligned_pairs) < 2:
+            continue
+        macro_values = _prepare_series_values(
+            [macro_value for _current_date, macro_value, _target_value in aligned_pairs],
+            apply_zscore=apply_zscore,
+            winsorize_tail_fraction=winsorize_tail_fraction,
+        )
+        target_values = _prepare_series_values(
+            [target_value for _current_date, _macro_value, target_value in aligned_pairs],
+            apply_zscore=apply_zscore,
+            winsorize_tail_fraction=winsorize_tail_fraction,
+        )
         correlation = pearson_correlation(macro_values, target_values)
         if correlation is None:
             continue
+        candidate = {
+            "lag_days": lag_days,
+            "correlation": correlation,
+            "sample_size": len(aligned_pairs),
+        }
+        candidates.append(candidate)
         correlation_abs = abs(correlation)
-        if correlation_abs > best_abs or (abs(correlation_abs - best_abs) <= EPSILON and abs(lag_days) < abs(best_lag)):
-            best_lag = lag_days
-            best_correlation = correlation
+        if correlation_abs > best_abs or (
+            abs(correlation_abs - best_abs) <= EPSILON
+            and best_candidate is not None
+            and abs(lag_days) < abs(int(best_candidate["lag_days"]))
+        ):
+            best_candidate = candidate
             best_abs = correlation_abs
-    return best_lag, round(best_correlation, 6) if best_correlation is not None else None
+        elif best_candidate is None:
+            best_candidate = candidate
+            best_abs = correlation_abs
+
+    if best_candidate is None:
+        return {
+            "lag_days": 0,
+            "correlation": None,
+            "sample_size": 0,
+            "confidence": None,
+        }
+
+    runner_up_abs = max(
+        (
+            abs(float(candidate["correlation"]))
+            for candidate in candidates
+            if int(candidate["lag_days"]) != int(best_candidate["lag_days"])
+        ),
+        default=None,
+    )
+    confidence = _lead_lag_confidence(
+        best_abs=abs(float(best_candidate["correlation"])),
+        runner_up_abs=runner_up_abs,
+        sample_size=int(best_candidate["sample_size"]),
+    )
+    return {
+        "lag_days": int(best_candidate["lag_days"]),
+        "correlation": round(float(best_candidate["correlation"]), 6),
+        "sample_size": int(best_candidate["sample_size"]),
+        "confidence": confidence,
+    }
+
+
+def _lead_lag_confidence(
+    *,
+    best_abs: float,
+    runner_up_abs: float | None,
+    sample_size: int,
+) -> float:
+    if sample_size < 2 or best_abs <= EPSILON:
+        return 0.0
+    sample_factor = min(sample_size / 45.0, 1.0)
+    gap = best_abs if runner_up_abs is None else max(best_abs - runner_up_abs, 0.0)
+    uniqueness_factor = min(gap / 0.15, 1.0)
+    confidence = best_abs * sample_factor * (0.5 + 0.5 * uniqueness_factor)
+    return round(max(0.0, min(confidence, 1.0)), 6)
 
 
 def _direction_from_correlation(*candidates: float | None) -> str:

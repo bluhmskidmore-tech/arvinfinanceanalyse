@@ -122,7 +122,7 @@ export type AssetClassBreakdown = {
 
 export type BondLevelDecomposition = {
   bond_code: string;
-  bond_name: string;
+  bond_name: string | null;
   asset_class: string;
   accounting_class: string;
   market_value: string;
@@ -130,6 +130,7 @@ export type BondLevelDecomposition = {
   roll_down: string;
   rate_effect: string;
   spread_effect: string;
+  convexity_effect: string;
   trading: string;
   total: string;
   explained_for_recon: string;
@@ -178,8 +179,8 @@ export type BenchmarkExcessPayload = {
   portfolio_return: string;
   benchmark_return: string;
   excess_return: string;
-  tracking_error?: string;
-  information_ratio?: string;
+  tracking_error: string | null;
+  information_ratio: string | null;
   duration_effect: string;
   curve_effect: string;
   spread_effect: string;

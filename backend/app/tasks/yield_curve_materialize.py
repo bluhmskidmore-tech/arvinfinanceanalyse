@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 from decimal import Decimal
+from datetime import date, timedelta
+from pathlib import Path
 
 import duckdb
 
@@ -42,6 +43,7 @@ RULE_VERSION = YIELD_CURVE_MODULE.rule_version
 CACHE_VERSION = YIELD_CURVE_MODULE.cache_version
 
 SUPPORTED_CURVE_TYPES = ("treasury", "cdb", "aaa_credit")
+MAX_BACKTRACK_DAYS = 40
 
 
 def _normalize_curve_types(curve_types: tuple[str, ...]) -> tuple[str, ...]:
@@ -111,6 +113,62 @@ def _execute_yield_curve_materialization(
         vendor_version=vendor_version,
         payload=payload,
     )
+
+
+def ensure_yield_curve_inputs_on_or_before(
+    *,
+    anchor_dates: tuple[str, ...],
+    duckdb_path: str,
+    curve_types: tuple[str, ...] = SUPPORTED_CURVE_TYPES,
+    max_backtrack_days: int = MAX_BACKTRACK_DAYS,
+) -> None:
+    normalized_anchor_dates = tuple(sorted({str(value).strip() for value in anchor_dates if str(value).strip()}))
+    normalized_curve_types = _normalize_curve_types(curve_types)
+    if not normalized_anchor_dates or not normalized_curve_types:
+        return
+
+    adapter = VendorAdapter()
+    repo = YieldCurveRepository(duckdb_path)
+    for anchor_date in normalized_anchor_dates:
+        for curve_type in normalized_curve_types:
+            if repo.fetch_curve_snapshot(anchor_date, curve_type) is not None:
+                continue
+            try:
+                snapshot = _fetch_curve_snapshot_on_or_before(
+                    adapter=adapter,
+                    curve_type=curve_type,
+                    anchor_date=anchor_date,
+                    max_backtrack_days=max_backtrack_days,
+                )
+            except Exception:
+                if repo.fetch_latest_trade_date_on_or_before(curve_type, anchor_date) is not None:
+                    continue
+                raise
+            repo.replace_curve_snapshots(
+                trade_date=snapshot.trade_date,
+                snapshots=[snapshot],
+                rule_version=RULE_VERSION,
+            )
+
+
+def _fetch_curve_snapshot_on_or_before(
+    *,
+    adapter: VendorAdapter,
+    curve_type: str,
+    anchor_date: str,
+    max_backtrack_days: int,
+) -> YieldCurveSnapshot:
+    anchor = date.fromisoformat(anchor_date)
+    last_error: Exception | None = None
+    for offset in range(max_backtrack_days + 1):
+        candidate_date = (anchor - timedelta(days=offset)).isoformat()
+        try:
+            return adapter.fetch_yield_curve(curve_type=curve_type, trade_date=candidate_date)
+        except Exception as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"No {curve_type} curve snapshot found on or before {anchor_date}.")
 
 
 def _materialize_yield_curve(

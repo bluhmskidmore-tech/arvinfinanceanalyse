@@ -49,6 +49,8 @@ function createBenchmarkExcessResult(overrides: Record<string, unknown> = {}) {
     excess_sources: [{ source: "久期敞口", contribution: "0.0002", description: "" }],
     benchmark_id: "CDB_INDEX",
     benchmark_name: "中债国开债总指数",
+    tracking_error: null,
+    information_ratio: null,
     warnings: [],
     computed_at: "2026-04-10T00:00:00Z",
     ...overrides,
@@ -154,5 +156,27 @@ describe("BenchmarkExcessView", () => {
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：基准指数行情缺口")).toBeInTheDocument();
+  });
+
+  it("does not render optional risk metric cards when backend returns null", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: async () => ({
+          result_meta: createResultMeta(),
+          result: createBenchmarkExcessResult({
+            tracking_error: null,
+            information_ratio: null,
+          }),
+        }),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
+
+    expect(await screen.findByText("超额收益")).toBeInTheDocument();
+    expect(screen.queryByText("跟踪误差")).not.toBeInTheDocument();
+    expect(screen.queryByText("信息比率")).not.toBeInTheDocument();
   });
 });

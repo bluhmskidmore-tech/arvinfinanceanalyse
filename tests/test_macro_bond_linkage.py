@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 import duckdb
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -277,6 +278,104 @@ def test_lead_lag_detection():
     assert results[0].direction == "positive"
     assert results[0].correlation_3m is not None
     assert results[0].correlation_3m > 0.8
+
+
+def test_alignment_modes_differ_for_low_frequency_macro_vs_daily_yield():
+    mod = _core_module()
+    macro_map = {
+        date(2026, 1, 1): 1.0,
+        date(2026, 2, 1): 2.0,
+        date(2026, 3, 1): 3.0,
+    }
+    target_map = {
+        date(2026, 1, 1) + timedelta(days=offset): (
+            1.0 if offset < 31 else 2.0 if offset < 59 else 3.0
+        )
+        for offset in range(90)
+    }
+
+    conservative_pairs = mod._align_series_pairs(
+        macro_map,
+        target_map,
+        alignment_mode="conservative",
+    )
+    market_timing_pairs = mod._align_series_pairs(
+        macro_map,
+        target_map,
+        alignment_mode="market_timing",
+    )
+
+    assert [pair[0] for pair in conservative_pairs] == [
+        date(2026, 1, 1),
+        date(2026, 2, 1),
+        date(2026, 3, 1),
+    ]
+    assert mod._latest_alignment_date(macro_map, target_map, alignment_mode="conservative") == date(2026, 3, 1)
+    assert mod._latest_alignment_date(macro_map, target_map, alignment_mode="market_timing") == date(2026, 3, 31)
+    assert len(market_timing_pairs) == len(target_map)
+    assert market_timing_pairs[1] == (date(2026, 1, 2), 1.0, 1.0)
+    assert market_timing_pairs[40] == (date(2026, 2, 10), 2.0, 2.0)
+    assert len(market_timing_pairs) > len(conservative_pairs)
+
+
+def test_zscore_normalization_preserves_shape_and_reduces_scale_sensitivity():
+    mod = _core_module()
+
+    normalized_small = mod._zscore_normalize([1.0, 2.0, 3.0, 4.0])
+    normalized_large = mod._zscore_normalize([100.0, 200.0, 300.0, 400.0])
+
+    assert normalized_small[0] < 0
+    assert normalized_small[1] < 0
+    assert normalized_small[2] > 0
+    assert normalized_small[3] > 0
+    assert normalized_small == pytest.approx(normalized_large)
+
+
+def test_winsorization_clips_outlier_tails_without_zeroing_variance():
+    mod = _core_module()
+    values = [1.0, 2.0, 3.0, 4.0, 5.0, 100.0]
+
+    winsorized = mod._winsorize_values(values, tail_fraction=0.2)
+
+    assert winsorized[-1] < values[-1]
+    assert winsorized[1:4] == values[1:4]
+    assert mod._population_std(winsorized) > 0
+    assert len(set(winsorized)) > 1
+
+
+def test_lead_lag_confidence_weakens_with_smaller_sample_or_ambiguous_runner_up():
+    mod = _core_module()
+    start = date(2026, 1, 1)
+
+    def build_series(length: int, ambiguous: bool = False) -> tuple[dict[date, float], dict[date, float]]:
+        macro_values = [
+            math.sin(index / 4.3) + 0.35 * math.cos(index / 2.1)
+            for index in range(length)
+        ]
+        macro_map = {
+            start + timedelta(days=index): value
+            for index, value in enumerate(macro_values)
+        }
+        target_map: dict[date, float] = {}
+        for index in range(length):
+            current_date = start + timedelta(days=index)
+            lag_5 = macro_values[index - 5] if index >= 5 else 0.0
+            lag_6 = macro_values[index - 6] if index >= 6 else lag_5
+            target_map[current_date] = (0.55 * lag_5 + 0.45 * lag_6) if ambiguous else lag_5
+        return macro_map, target_map
+
+    high_macro, high_target = build_series(120)
+    small_macro, small_target = build_series(18)
+    ambiguous_macro, ambiguous_target = build_series(120, ambiguous=True)
+
+    high_confidence = mod._best_lead_lag_details(high_macro, high_target)
+    small_sample_confidence = mod._best_lead_lag_details(small_macro, small_target)
+    ambiguous_confidence = mod._best_lead_lag_details(ambiguous_macro, ambiguous_target)
+
+    assert high_confidence["lag_days"] == 5
+    assert 0 <= high_confidence["confidence"] <= 1
+    assert small_sample_confidence["confidence"] < high_confidence["confidence"]
+    assert ambiguous_confidence["confidence"] < high_confidence["confidence"]
 
 
 def test_environment_score_rising_rates():
