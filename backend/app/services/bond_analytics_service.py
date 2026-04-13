@@ -26,7 +26,6 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_return_decomposition,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 try:
     from backend.app.repositories.yield_curve_repo import (
         FX_LATEST_FALLBACK_PREFIX,
@@ -333,7 +332,7 @@ def _yield_curve_anchor_dates_for_refresh(*, duckdb_path: str, report_date: str)
         report_dt.isoformat(),
         report_dt.replace(day=1).isoformat(),
     }
-    prior_balance_date = BalanceAnalysisRepository(duckdb_path).resolve_prior_pnl_bridge_balance_report_date(
+    prior_balance_date = BondAnalyticsRepository(duckdb_path).resolve_prior_curve_anchor_report_date(
         report_date=report_date,
     )
     if prior_balance_date:

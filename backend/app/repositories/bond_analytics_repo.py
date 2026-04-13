@@ -16,6 +16,7 @@ from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
 
 FACT_TABLE = "fact_formal_bond_analytics_daily"
 SNAPSHOT_TABLE = "zqtz_bond_daily_snapshot"
+BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
 
 
 @dataclass
@@ -351,6 +352,29 @@ class BondAnalyticsRepository:
         if not report_dates:
             return None
         return self.fetch_risk_overview_snapshot(report_date=report_dates[0])
+
+    def resolve_prior_curve_anchor_report_date(self, *, report_date: str) -> str | None:
+        conn = _connect_read_only(self.path)
+        if conn is None:
+            return None
+        try:
+            if not _table_exists(conn, BALANCE_ZQTZ_FACT_TABLE):
+                return None
+            row = conn.execute(
+                f"""
+                select distinct cast(report_date as varchar) as rd
+                from {BALANCE_ZQTZ_FACT_TABLE}
+                where cast(report_date as varchar) < ?
+                  and position_scope = 'asset'
+                  and currency_basis = 'CNY'
+                order by rd desc
+                limit 1
+                """,
+                [report_date],
+            ).fetchone()
+            return str(row[0]) if row and row[0] else None
+        finally:
+            conn.close()
 
 
 def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
