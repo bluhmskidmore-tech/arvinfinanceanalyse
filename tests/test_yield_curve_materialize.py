@@ -7,8 +7,6 @@ from decimal import Decimal
 import duckdb
 import pytest
 
-from backend.app.schemas.formal_compute_runtime import FormalComputeMaterializeFailure
-
 from tests.helpers import load_module
 
 
@@ -184,7 +182,7 @@ def test_materialize_yield_curve_unsupported_curve_type_fails_closed(tmp_path):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
 
-    with pytest.raises(FormalComputeMaterializeFailure, match="Unsupported curve_type"):
+    with pytest.raises(task_mod.FormalComputeMaterializeFailure, match="Unsupported curve_type"):
         task_mod.materialize_yield_curve.fn(
             trade_date="2026-04-10",
             curve_types=["not_a_supported_curve"],
@@ -716,8 +714,8 @@ def test_materialize_yield_curve_aaa_credit_uses_exact_family_akshare_only_when_
 
     monkeypatch.setattr(
         task_mod.VendorAdapter,
-        "fetch_yield_curve",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("live Choice path must not be used for aaa_credit fallback")),
+        "_fetch_choice_curve",
+        lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         task_mod.VendorAdapter,

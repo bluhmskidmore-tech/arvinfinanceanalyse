@@ -303,6 +303,13 @@ class CreditSpreadMigrationResponse(BaseModel):
     credit_bond_count: int
     credit_market_value: str
     credit_weight: str
+    rating_aa_and_below_weight: str = Field(
+        default="0",
+        description=(
+            "信用债中评级为 AA 及以下（含 AA，不含 AA+）的市值占组合总市值；"
+            "未识别的 rating 不计入分子。"
+        ),
+    )
 
     # Spread sensitivity
     spread_dv01: str                    # CNY per bp

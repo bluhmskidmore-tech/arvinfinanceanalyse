@@ -2,6 +2,7 @@ import duckdb
 import os
 import hashlib
 import sys
+from importlib import import_module
 from pathlib import Path
 
 from backend.app.governance.locks import LockDefinition, MATERIALIZE_LOCK, acquire_lock
@@ -15,13 +16,6 @@ from backend.app.schemas.materialize import (
     CacheBuildRunRecord,
     CacheManifestRecord,
     MaterializeBuildPayload,
-)
-from backend.app.repositories.source_preview_repo import (
-    RULE_VERSION,
-    cleanup_preview_backups,
-    materialize_source_previews,
-    restore_preview_tables,
-    snapshot_preview_tables,
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
@@ -41,6 +35,26 @@ def resolve_materialize_lock(duckdb_file: Path) -> LockDefinition:
         key=f"{MATERIALIZE_LOCK.key}:{digest}",
         ttl_seconds=MATERIALIZE_LOCK.ttl_seconds,
     )
+
+
+def _source_preview_repo():
+    return import_module("backend.app.repositories.source_preview_repo")
+
+
+def snapshot_preview_tables(*args, **kwargs):
+    return _source_preview_repo().snapshot_preview_tables(*args, **kwargs)
+
+
+def materialize_source_previews(*args, **kwargs):
+    return _source_preview_repo().materialize_source_previews(*args, **kwargs)
+
+
+def restore_preview_tables(*args, **kwargs):
+    return _source_preview_repo().restore_preview_tables(*args, **kwargs)
+
+
+def cleanup_preview_backups(*args, **kwargs):
+    return _source_preview_repo().cleanup_preview_backups(*args, **kwargs)
 
 
 def _materialize_cache_view(
@@ -112,7 +126,7 @@ def _materialize_cache_view(
                     cache_key=run.cache_key,
                     source_version=source_version,
                     vendor_version=vendor_version,
-                    rule_version=RULE_VERSION,
+                    rule_version=_source_preview_repo().RULE_VERSION,
                 )
                 repo.append_many_atomic(
                     [

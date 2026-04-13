@@ -182,6 +182,7 @@ def test_credit_spread_migration_defaults_and_nested():
         concentration_by_issuer=conc,
     )
     assert resp.oci_credit_exposure == "0"
+    assert resp.rating_aa_and_below_weight == "0"
     assert resp.concentration_by_industry is None
     assert resp.warnings == []
 

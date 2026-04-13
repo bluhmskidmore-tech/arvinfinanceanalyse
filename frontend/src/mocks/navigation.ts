@@ -54,6 +54,16 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessNote: "已接正式 risk tensor 读链路，并按后端 dates 接口选择可用报告日。",
   },
   {
+    key: "concentration-monitor",
+    label: "集中度监控",
+    path: "/concentration-monitor",
+    icon: "risk",
+    description: "持仓集中度与限额预警",
+    readiness: "live",
+    readinessLabel: "Live",
+    readinessNote: "已接 bond analytics credit-spread-migration 集中度载荷与展示限额对照。",
+  },
+  {
     key: "team-performance",
     label: "团队绩效",
     path: "/team-performance",

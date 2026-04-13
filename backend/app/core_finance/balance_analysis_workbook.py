@@ -10,6 +10,7 @@ from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
 )
+from backend.app.core_finance.interest_mode import classify_interest_rate_style
 
 _ZERO = Decimal("0")
 _MATURITY_BUCKETS = (
@@ -258,7 +259,7 @@ def _build_issuance_business_type_table(zqtz_rows: list[FormalZqtzBalanceFactRow
                 "weighted_rate_pct": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: row.coupon_rate),
                 "weighted_term_years": _weighted_average(entries, lambda row: row.face_value_amount, lambda row: _optional_remaining_years(row.report_date, row.maturity_date)),
                 "interest_mode_fixed_count": sum(1 for row in entries if _normalize_interest_mode(row.interest_mode) == "固定"),
-                "interest_mode_floating_count": sum(1 for row in entries if _normalize_interest_mode(row.interest_mode) != "固定"),
+                "interest_mode_floating_count": sum(1 for row in entries if _normalize_interest_mode(row.interest_mode) == "浮动"),
             }
         )
     return _table(
@@ -1507,8 +1508,12 @@ def _rate_value(value: Decimal | None) -> Decimal:
 
 
 def _normalize_interest_mode(value: str) -> str:
-    normalized = str(value or "").strip()
-    return normalized or "未分类"
+    style = classify_interest_rate_style(value)
+    if style == "fixed":
+        return "固定"
+    if style == "floating":
+        return "浮动"
+    return "未分类"
 
 
 def _to_wanyuan(value: Decimal) -> Decimal:

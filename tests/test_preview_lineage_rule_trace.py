@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.source_preview_repo import RULE_VERSION
 from tests.helpers import ROOT, load_module
 
 
@@ -501,3 +502,101 @@ def test_history_endpoint_lists_multiple_materialized_batches_and_preserves_old_
     assert second_batch_rows["total_rows"] > 0
     assert first_batch_rows["ingest_batch_id"] == first_ingest["ingest_batch_id"]
     assert second_batch_rows["ingest_batch_id"] == second_ingest["ingest_batch_id"]
+
+
+def test_source_preview_http_surfaces_share_analytical_result_meta_contract(tmp_path, monkeypatch):
+    """foundation / history / rows / traces 均为 preview（analytical），不得冒充 formal；契约字段一致。"""
+    ingest_task_module = sys.modules.get("backend.app.tasks.ingest")
+    if ingest_task_module is None:
+        ingest_task_module = load_module("backend.app.tasks.ingest", "backend/app/tasks/ingest.py")
+
+    materialize_module = sys.modules.get("backend.app.tasks.materialize")
+    if materialize_module is None:
+        materialize_module = load_module(
+            "backend.app.tasks.materialize",
+            "backend/app/tasks/materialize.py",
+        )
+
+    data_root = tmp_path / "data_input"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    duckdb_path = tmp_path / "moss.duckdb"
+
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    ingest_payload = ingest_task_module.ingest_demo_manifest.fn()
+    ingest_batch_id = ingest_payload["ingest_batch_id"]
+
+    materialize_module.materialize_cache_view.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_root),
+    )
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    foundation = client.get("/ui/preview/source-foundation").json()
+    history = client.get("/ui/preview/source-foundation/history?limit=5&offset=0").json()
+    zqtz_rows = client.get(
+        f"/ui/preview/source-foundation/zqtz/rows?ingest_batch_id={ingest_batch_id}&limit=3&offset=0"
+    ).json()
+    zqtz_traces = client.get(
+        f"/ui/preview/source-foundation/zqtz/traces?ingest_batch_id={ingest_batch_id}&limit=5&offset=0"
+    ).json()
+    tyw_rows = client.get(
+        f"/ui/preview/source-foundation/tyw/rows?ingest_batch_id={ingest_batch_id}&limit=2&offset=0"
+    ).json()
+
+    expected_kinds = {
+        "foundation": "preview.source-foundation",
+        "history": "preview.source-foundation.history",
+        "zqtz_rows": "preview.zqtz.rows",
+        "zqtz_traces": "preview.zqtz.traces",
+        "tyw_rows": "preview.tyw.rows",
+    }
+    bundles = {
+        "foundation": foundation,
+        "history": history,
+        "zqtz_rows": zqtz_rows,
+        "zqtz_traces": zqtz_traces,
+        "tyw_rows": tyw_rows,
+    }
+
+    for key, body in bundles.items():
+        meta = body["result_meta"]
+        assert meta["basis"] == "analytical", key
+        assert meta["formal_use_allowed"] is False, key
+        assert meta["scenario_flag"] is False, key
+        assert meta["rule_version"] == RULE_VERSION, key
+        assert meta["cache_version"] == "cv_phase1_source_preview_v1", key
+        assert meta["result_kind"] == expected_kinds[key], key
+        assert meta["source_version"] != "sv_preview_empty", key
+
+    z_res = zqtz_rows["result"]
+    assert z_res["total_rows"] > 0
+    assert z_res["limit"] == 3
+    assert z_res["offset"] == 0
+    assert len(z_res["rows"]) == 3
+    assert z_res["source_family"] == "zqtz"
+
+    tr_res = zqtz_traces["result"]
+    assert tr_res["total_rows"] > 0
+    assert len(tr_res["rows"]) == 5
+
+    hist = history["result"]
+    assert hist["total_rows"] >= 2
+    assert len(hist["rows"]) <= 5
+    assert hist["limit"] == 5
+    assert hist["offset"] == 0
+
+    get_settings.cache_clear()

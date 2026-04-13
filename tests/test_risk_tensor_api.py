@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import duckdb
 from fastapi.testclient import TestClient
 
@@ -10,6 +12,7 @@ from tests.test_bond_analytics_service import _configure_and_materialize
 from tests.test_risk_tensor_service import (
     _configure_and_materialize_degraded_snapshot,
     _configure_and_materialize_risk_tensor,
+    _configure_and_materialize_risk_tensor_with_tyw_liability,
 )
 
 
@@ -34,6 +37,13 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert isinstance(payload["result"]["cs01"], str)
     assert isinstance(payload["result"]["portfolio_convexity"], str)
     assert len(payload["result"]["portfolio_dv01"].split(".")[1]) == 8
+    assert payload["result"]["asset_cashflow_30d"] == "14.00000000"
+    assert payload["result"]["liability_cashflow_30d"] == "0.00000000"
+    assert (
+        Decimal(payload["result"]["liquidity_gap_30d"])
+        == Decimal(payload["result"]["asset_cashflow_30d"])
+        - Decimal(payload["result"]["liability_cashflow_30d"])
+    )
 
     get_settings.cache_clear()
 
@@ -149,6 +159,70 @@ def test_risk_tensor_api_returns_non_empty_degraded_tensor_when_materialized_sna
     assert payload["result"]["quality_flag"] == "warning"
     assert any("Unsupported tenor buckets" in warning for warning in payload["result"]["warnings"])
     assert any("without maturity_date" in warning for warning in payload["result"]["warnings"])
+
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer_tyw_liability_lineage(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_tyw_balance_daily
+            set source_version = ?
+            where report_date = ?
+              and position_id = 'TYW-L-1'
+            """,
+            ["sv_tyw_liab_2", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get(
+        "/api/risk/tensor",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 503
+    assert "Risk tensor stale against TYW liability lineage" in response.json()["detail"]
+
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_api_returns_503_when_downstream_fact_is_stale_against_newer_tyw_liability_rule_version(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_tyw_balance_daily
+            set rule_version = ?
+            where report_date = ?
+              and position_id = 'TYW-L-1'
+            """,
+            ["rv_balance_analysis_formal_materialize_v2", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get(
+        "/api/risk/tensor",
+        params={"report_date": REPORT_DATE},
+    )
+
+    assert response.status_code == 503
+    assert "Risk tensor stale against TYW liability lineage" in response.json()["detail"]
 
     get_settings.cache_clear()
 

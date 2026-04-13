@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
@@ -32,17 +33,27 @@ def _normalize_report_date(report_date: str | None) -> str | None:
     return date.fromisoformat(str(report_date).strip()).isoformat()
 
 
-def _envelope(result_kind: str, result: object) -> dict[str, object]:
+def _envelope(
+    result_kind: str,
+    result: object,
+    *,
+    quality_flag: Literal["ok", "warning", "error", "stale"] = "ok",
+    vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok",
+    fallback_mode: Literal["none", "latest_snapshot"] = "none",
+    source_version: str = "sv_exec_dashboard_v1",
+) -> dict[str, object]:
     meta = ResultMeta(
         trace_id=f"tr_{result_kind.replace('.', '_')}",
         basis="analytical",
         result_kind=result_kind,
         formal_use_allowed=False,
-        source_version="sv_exec_dashboard_v1",
+        source_version=source_version,
         vendor_version="vv_none",
         rule_version="rv_exec_dashboard_v1",
         cache_version="cv_exec_dashboard_v1",
-        quality_flag="ok",
+        quality_flag=quality_flag,
+        vendor_status=vendor_status,
+        fallback_mode=fallback_mode,
         scenario_flag=False,
     )
     return {
@@ -156,6 +167,63 @@ def _build_pnl_attribution_from_repo(
     )
 
 
+def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPayload:
+    zero = [
+        ("carry", "Carry", 0.0),
+        ("roll", "Roll-down", 0.0),
+        ("credit", "信用利差", 0.0),
+        ("trading", "交易损益", 0.0),
+        ("other", "其他", 0.0),
+    ]
+    segments = [
+        AttributionSegment(
+            id=key,
+            label=label,
+            amount=0.0,
+            display_amount=_fmt_signed_segment_yi(val),
+            tone=_tone_for_signed(val),
+        )
+        for key, label, val in zero
+    ]
+    return PnlAttributionPayload(
+        title=f"收益归因（{report_date} 无受控产品分类月度数据）",
+        total="0 亿",
+        segments=segments,
+    )
+
+
+def _contribution_explicit_miss_payload(report_date: str) -> ContributionPayload:
+    return ContributionPayload(
+        title=f"团队 / 账户 / 策略贡献（{report_date} 无受控产品分类月度数据）",
+        rows=[
+            ContributionRow(
+                id="rates",
+                name="利率组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+            ContributionRow(
+                id="credit",
+                name="信用组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+            ContributionRow(
+                id="trading",
+                name="交易组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+        ],
+    )
+
+
 def _build_contribution_from_repo(
     repo: ProductCategoryPnlRepository,
     report_date: str | None = None,
@@ -237,34 +305,43 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
 
+    uses_shell_demo = aum_raw is None or ytd_raw is None
     aum_value = (
         _fmt_yi_amount(aum_raw, signed=False)
         if aum_raw is not None
         else "1,023.47 亿"
     )
-    aum_detail = (
-        (
+    if aum_raw is not None:
+        aum_detail = (
             f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
             if normalized_report_date is not None
             else "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
         )
-        if aum_raw is not None
-        else "较上月保持温和扩张，当前仅提供受控展示值。"
-    )
+    elif normalized_report_date is not None:
+        aum_detail = (
+            f"指定日期 {normalized_report_date} 未能读取受控 AUM；"
+            "以下为壳层演示占位，不代表该日期的 governed truth。"
+        )
+    else:
+        aum_detail = "较上月保持温和扩张，当前仅提供受控展示值（壳层演示，非 governed live）。"
     ytd_value = (
         _fmt_yi_amount(ytd_raw, signed=True)
         if ytd_raw is not None
         else "+12.63 亿"
     )
-    ytd_detail = (
-        (
+    if ytd_raw is not None:
+        ytd_detail = (
             f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
             if normalized_report_date is not None
             else f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
         )
-        if ytd_raw is not None
-        else "收益口径后续由正式服务替换，当前为受控演示值。"
-    )
+    elif normalized_report_date is not None:
+        ytd_detail = (
+            f"指定日期 {normalized_report_date} 未能读取受控年内收益；"
+            "以下为壳层演示占位，不代表 governed truth。"
+        )
+    else:
+        ytd_detail = "收益口径后续由正式服务替换，当前为受控演示值（壳层占位）。"
 
     payload = OverviewPayload(
         title="经营总览",
@@ -303,7 +380,19 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             ),
         ],
     )
-    return _envelope("executive.overview", payload)
+    overview_quality: Literal["ok", "warning", "error", "stale"] = (
+        "warning" if uses_shell_demo else "ok"
+    )
+    return _envelope(
+        "executive.overview",
+        payload,
+        quality_flag=overview_quality,
+        source_version=(
+            "sv_exec_dashboard_shell_demo_v1"
+            if uses_shell_demo
+            else "sv_exec_dashboard_v1"
+        ),
+    )
 
 
 def executive_summary() -> dict[str, object]:
@@ -339,13 +428,44 @@ def executive_summary() -> dict[str, object]:
 
 def executive_pnl_attribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    normalized = _normalize_report_date(report_date)
+    repo: ProductCategoryPnlRepository | None = None
     try:
         repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-        built = _build_pnl_attribution_from_repo(repo, report_date)
-        if built is not None:
-            return _envelope("executive.pnl-attribution", built)
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError):
+        if normalized is not None:
+            return _envelope(
+                "executive.pnl-attribution",
+                _pnl_attribution_explicit_miss_payload(normalized),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
+            )
+        repo = None
+
+    built: PnlAttributionPayload | None = None
+    if repo is not None:
+        try:
+            built = _build_pnl_attribution_from_repo(repo, report_date)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+            if normalized is not None:
+                return _envelope(
+                    "executive.pnl-attribution",
+                    _pnl_attribution_explicit_miss_payload(normalized),
+                    quality_flag="warning",
+                    source_version="sv_exec_dashboard_explicit_miss_v1",
+                )
+            built = None
+
+    if built is not None:
+        return _envelope("executive.pnl-attribution", built)
+
+    if normalized is not None:
+        return _envelope(
+            "executive.pnl-attribution",
+            _pnl_attribution_explicit_miss_payload(normalized),
+            quality_flag="warning",
+            source_version="sv_exec_dashboard_explicit_miss_v1",
+        )
 
     payload = PnlAttributionPayload(
         title="收益归因",
@@ -388,7 +508,12 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             ),
         ],
     )
-    return _envelope("executive.pnl-attribution", payload)
+    return _envelope(
+        "executive.pnl-attribution",
+        payload,
+        quality_flag="warning",
+        source_version="sv_exec_dashboard_shell_demo_v1",
+    )
 
 
 def executive_risk_overview(report_date: str | None = None) -> dict[str, object]:
@@ -438,6 +563,8 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                             ),
                         ],
                     ),
+                    quality_flag="warning",
+                    source_version="sv_exec_dashboard_explicit_miss_v1",
                 )
         snapshot = (
             repo.fetch_risk_overview_snapshot(report_date=normalized_report_date)
@@ -494,8 +621,93 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                     ],
                 )
                 return _envelope("executive.risk-overview", payload)
+        if normalized_report_date is not None:
+            detail_txt = (
+                f"指定日期 {normalized_report_date} 未能聚合风险快照（数据缺失或字段不完整）；"
+                "未回退到演示占位百分比。"
+            )
+            return _envelope(
+                "executive.risk-overview",
+                RiskOverviewPayload(
+                    title="风险全景",
+                    signals=[
+                        RiskSignal(
+                            id="duration",
+                            label="久期风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="leverage",
+                            label="杠杆风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="credit",
+                            label="信用集中度",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="liquidity",
+                            label="流动性风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                    ],
+                ),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
+            )
     except (RuntimeError, OSError, TypeError, ValueError):
-        pass
+        if normalized_report_date is not None:
+            detail_txt = (
+                f"指定日期 {normalized_report_date} 风险快照读取失败；"
+                "未回退到演示占位百分比。"
+            )
+            return _envelope(
+                "executive.risk-overview",
+                RiskOverviewPayload(
+                    title="风险全景",
+                    signals=[
+                        RiskSignal(
+                            id="duration",
+                            label="久期风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="leverage",
+                            label="杠杆风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="credit",
+                            label="信用集中度",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                        RiskSignal(
+                            id="liquidity",
+                            label="流动性风险",
+                            value="—",
+                            status="warning",
+                            detail=detail_txt,
+                        ),
+                    ],
+                ),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
+            )
 
     payload = RiskOverviewPayload(
         title="风险全景",
@@ -505,43 +717,79 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                 label="久期风险",
                 value="32.1%",
                 status="stable",
-                detail="久期暴露仍处于本周可接受区间。",
+                detail="久期暴露仍处于本周可接受区间（壳层演示占位）。",
             ),
             RiskSignal(
                 id="leverage",
                 label="杠杆风险",
                 value="54.3%",
                 status="watch",
-                detail="杠杆使用率上行，需结合资金窗口观察。",
+                detail="杠杆使用率上行，需结合资金窗口观察（壳层演示）。",
             ),
             RiskSignal(
                 id="credit",
                 label="信用集中度",
                 value="78.9%",
                 status="warning",
-                detail="集中度已逼近预警阈值。",
+                detail="集中度已逼近预警阈值（壳层演示）。",
             ),
             RiskSignal(
                 id="liquidity",
                 label="流动性风险",
                 value="41.2%",
                 status="stable",
-                detail="流动性缓冲仍具备调节空间。",
+                detail="流动性缓冲仍具备调节空间（壳层演示）。",
             ),
         ],
     )
-    return _envelope("executive.risk-overview", payload)
+    return _envelope(
+        "executive.risk-overview",
+        payload,
+        quality_flag="warning",
+        source_version="sv_exec_dashboard_shell_demo_v1",
+    )
 
 
 def executive_contribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    normalized = _normalize_report_date(report_date)
+    repo: ProductCategoryPnlRepository | None = None
     try:
         repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-        built = _build_contribution_from_repo(repo, report_date)
-        if built is not None:
-            return _envelope("executive.contribution", built)
-    except (RuntimeError, OSError, TypeError, ValueError, KeyError):
-        pass
+    except (RuntimeError, OSError, TypeError, ValueError):
+        if normalized is not None:
+            return _envelope(
+                "executive.contribution",
+                _contribution_explicit_miss_payload(normalized),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
+            )
+        repo = None
+
+    built: ContributionPayload | None = None
+    if repo is not None:
+        try:
+            built = _build_contribution_from_repo(repo, report_date)
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+            if normalized is not None:
+                return _envelope(
+                    "executive.contribution",
+                    _contribution_explicit_miss_payload(normalized),
+                    quality_flag="warning",
+                    source_version="sv_exec_dashboard_explicit_miss_v1",
+                )
+            built = None
+
+    if built is not None:
+        return _envelope("executive.contribution", built)
+
+    if normalized is not None:
+        return _envelope(
+            "executive.contribution",
+            _contribution_explicit_miss_payload(normalized),
+            quality_flag="warning",
+            source_version="sv_exec_dashboard_explicit_miss_v1",
+        )
 
     payload = ContributionPayload(
         title="团队 / 账户 / 策略贡献",
@@ -572,7 +820,12 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
             ),
         ],
     )
-    return _envelope("executive.contribution", payload)
+    return _envelope(
+        "executive.contribution",
+        payload,
+        quality_flag="warning",
+        source_version="sv_exec_dashboard_shell_demo_v1",
+    )
 
 
 def _fallback_executive_alerts() -> dict[str, object]:
@@ -602,14 +855,20 @@ def _fallback_executive_alerts() -> dict[str, object]:
             ),
         ],
     )
-    return _envelope("executive.alerts", payload)
+    return _envelope(
+        "executive.alerts",
+        payload,
+        quality_flag="warning",
+        source_version="sv_exec_dashboard_shell_demo_v1",
+    )
 
 
 def executive_alerts(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    explicit_requested = _normalize_report_date(report_date)
     try:
         repo = BondAnalyticsRepository(str(settings.duckdb_path))
-        normalized_report_date = _normalize_report_date(report_date)
+        normalized_report_date = explicit_requested
         if normalized_report_date is None:
             dates = repo.list_report_dates()
             if not dates:
@@ -633,6 +892,8 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
                         )
                     ],
                 ),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         report_date_value = date.fromisoformat(normalized_report_date)
         rows = repo.fetch_bond_analytics_rows(report_date=report_date_value.isoformat())
@@ -652,4 +913,25 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         payload = AlertsPayload(title="预警与事件", items=items)
         return _envelope("executive.alerts", payload)
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError, KeyError):
+        if explicit_requested is not None:
+            return _envelope(
+                "executive.alerts",
+                AlertsPayload(
+                    title="预警与事件",
+                    items=[
+                        AlertItem(
+                            id="governed-read-failure",
+                            severity="medium",
+                            title="指定日期预警读取失败",
+                            occurred_at="--:--",
+                            detail=(
+                                f"无法在指定日期 {explicit_requested} 完成受控预警编排；"
+                                "未回退到演示占位预警。"
+                            ),
+                        )
+                    ],
+                ),
+                quality_flag="warning",
+                source_version="sv_exec_dashboard_explicit_miss_v1",
+            )
         return _fallback_executive_alerts()

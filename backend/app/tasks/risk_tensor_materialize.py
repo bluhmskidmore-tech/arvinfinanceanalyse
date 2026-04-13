@@ -7,6 +7,7 @@ from backend.app.core_finance.module_contracts import FormalComputeModuleDescrip
 from backend.app.core_finance.module_registry import ensure_formal_module
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.risk_tensor_repo import (
     RiskTensorRepository,
@@ -25,7 +26,7 @@ RISK_TENSOR_MODULE = ensure_formal_module(
         module_name="risk_tensor",
         basis="formal",
         # Governed downstream derivative of bond_analytics formal facts.
-        input_sources=("fact_formal_bond_analytics_daily",),
+        input_sources=("fact_formal_bond_analytics_daily", "fact_formal_tyw_balance_daily"),
         fact_tables=("fact_formal_risk_tensor_daily",),
         rule_version="rv_risk_tensor_formal_materialize_v1",
         cache_key_prefix="risk_tensor:materialize",
@@ -43,8 +44,28 @@ RULE_VERSION = RISK_TENSOR_MODULE.rule_version
 CACHE_VERSION = RISK_TENSOR_MODULE.cache_version
 
 
-def _build_source_version(upstream_source_version: str) -> str:
-    return f"sv_risk_tensor__{upstream_source_version}"
+def _build_source_version(
+    upstream_source_version: str,
+    liability_source_versions: list[str] | None = None,
+) -> str:
+    parts = ["sv_risk_tensor", upstream_source_version]
+    for value in sorted({str(item).strip() for item in (liability_source_versions or []) if str(item).strip()}):
+        parts.append(value)
+    return "__".join(parts)
+
+
+def _load_liability_rows(*, duckdb_file: Path, report_date: str) -> list[dict[str, object]]:
+    repo = BalanceAnalysisRepository(str(duckdb_file))
+    try:
+        return repo.fetch_formal_tyw_rows(
+            report_date=report_date,
+            position_scope="liability",
+            currency_basis="CNY",
+        )
+    except Exception as exc:
+        if "fact_formal_tyw_balance_daily" in str(exc) and "does not exist" in str(exc):
+            return []
+        raise
 
 
 def _execute_risk_tensor_materialization(
@@ -69,8 +90,39 @@ def _execute_risk_tensor_materialization(
 
     bond_repo = BondAnalyticsRepository(str(duckdb_file))
     rows = bond_repo.fetch_bond_analytics_rows(report_date=report_date)
-    tensor = compute_portfolio_risk_tensor(rows, date.fromisoformat(report_date))
-    source_version = _build_source_version(upstream_lineage["source_version"])
+    liability_rows = _load_liability_rows(
+        duckdb_file=duckdb_file,
+        report_date=report_date,
+    )
+    tensor = compute_portfolio_risk_tensor(
+        rows,
+        date.fromisoformat(report_date),
+        liability_rows=liability_rows,
+    )
+    source_version = _build_source_version(
+        upstream_lineage["source_version"],
+        liability_source_versions=[
+            str(row.get("source_version") or "").strip() for row in liability_rows
+        ],
+    )
+    liability_source_version = "__".join(
+        sorted(
+            {
+                str(row.get("source_version") or "").strip()
+                for row in liability_rows
+                if str(row.get("source_version") or "").strip()
+            }
+        )
+    )
+    liability_rule_version = "__".join(
+        sorted(
+            {
+                str(row.get("rule_version") or "").strip()
+                for row in liability_rows
+                if str(row.get("rule_version") or "").strip()
+            }
+        )
+    )
 
     try:
         RiskTensorRepository(str(duckdb_file)).replace_risk_tensor_row(
@@ -78,6 +130,8 @@ def _execute_risk_tensor_materialization(
             tensor=tensor,
             source_version=source_version,
             upstream_source_version=upstream_lineage["source_version"],
+            liability_source_version=liability_source_version,
+            liability_rule_version=liability_rule_version,
             rule_version=RULE_VERSION,
             cache_version=CACHE_VERSION,
             trace_id=f"trace_risk_tensor_{report_date.replace('-', '')}",

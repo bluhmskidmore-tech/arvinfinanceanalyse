@@ -88,7 +88,7 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ## 9. 手工调整（仅已批准）
 
--仅 `approval_status == "approved"` 的调整参与 `apply_manual_adjustments`。
+- 仅 `approval_status == "approved"` 的调整参与 `apply_manual_adjustments`。
 - 运算符：`ADD`（插入新键，已存在则跳过）、`DELTA`（逐项加总）、`OVERRIDE`（非空字段覆盖）。
 
 ## 10. Scenario（分析口径）
@@ -113,14 +113,30 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ## 13. ZQTZ / TYW Formal Balance Analysis Boundary
 
-### 当前 governed workbook 已支持的 section keys
+### 阶段边界（避免误读为「全仓 Phase 2 已开放」）
 
-当前 governed workbook 只覆盖已经落在 `balance-analysis` workbook 里的 section keys，不代表整份 Excel 的全部页签都已实现。已支持的 section keys 至少包括：
+- 仓库**默认阶段边界仍是 Phase 1**（见 `docs/IMPLEMENTATION_PLAN.md`、`docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`）。
+- `zqtz / tyw` formal-balance 与 governed workbook 的落地，仅说明**该 scoped lane 内**已有可验证实现；**不是**「正式金融全域已切换 Phase 2」或「repo-wide Phase 2 已开放」的证据。
+- 产品类别损益 `product-category-pnl` 仍为**独立薄切片**，与 balance-analysis 不复用同一实现面；其存在同样**不**自动升格阶段授权。
+
+### 当前 governed workbook 已支持的 section keys（与契约测试对齐）
+
+**权威顺序：** 本节列表 > `tests/test_balance_analysis_workbook_contract.py` 内 `GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS` > 其他计划文档。历史 Cursor分任务见 `docs/plans/2026-04-12-balance-analysis-cursor-prompt-pack.md`；其中多数「新增 section」prompt **已随实现过时**，不得以该 pack 中的旧「待支持」表述覆盖本节。
+
+下列 keys 在 `tests/test_balance_analysis_workbook_contract.py` 中通过 API 或单元断言覆盖，属于**当前宣称已支持**的 governed section（仍不等于参考 Excel 全簿 1:1 对齐）：
 
 - `bond_business_types`
 - `maturity_gap`
+- `issuance_business_types`
 - `cashflow_calendar`
 - `currency_split`
+- `rating_analysis`
+- `rate_distribution`
+- `industry_distribution`
+- `counterparty_types`
+- `campisi_breakdown`
+- `cross_analysis`
+- `interest_modes`
 - `issuer_concentration`
 - `liquidity_layers`
 - `regulatory_limits`
@@ -132,11 +148,11 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 - `ifrs9_classification` / `ifrs9_position_scope` / `ifrs9_source_family`
 - `rule_reference`
 
-### 当前尚未纳入 governed workbook 的 section keys
+### 当前显式未支持 / 仅占位或设计约束的 section keys
 
-以下能力仍属于后续 gap 或仅文档约束，不应被表述为已在 governed workbook 中实现：
+以下不得表述为已在 governed workbook 中**上线交付**：
 
-- `advanced_attribution_bundle`（高级归因 bundle；依赖 bond-analytics Phase 3 曲线/交易粒度，见 `docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md`）
+- `advanced_attribution_bundle`（高级归因 bundle；依赖 bond-analytics 更深曲线/交易粒度等，见 `docs/plans/2026-04-12-balance-analysis-advanced-attribution-boundary.md`；**API 不得静默返回看似完成的数据**）
 
 ### 13.1 产品类别损益已实现面
 
@@ -176,9 +192,9 @@ zqtz_bond_daily_snapshot / tyw_interbank_daily_snapshot
 - snapshot 直接冒充 formal fact
 - 在 service / API / 前端层补写 H/A/T、FX、发行类排除、月均正式逻辑
 
-### 13.3 当前状态
+### 13.3 当前状态（实现面 ≠ 阶段切换）
 
-- 截至当前仓库状态，`zqtz / tyw` 已有正式 `balance-analysis` core_finance 派生、materialize task、governed service / API 路由与首个 workbench 页面：
+- 截至当前仓库状态，`zqtz / tyw` **在该 lane 内**已有正式 `balance-analysis` core_finance 派生、materialize task、governed service / API 路由与 workbench 页面：
   - `backend/app/core_finance/balance_analysis.py`
   - `backend/app/tasks/balance_analysis_materialize.py`
   - `backend/app/services/balance_analysis_service.py`

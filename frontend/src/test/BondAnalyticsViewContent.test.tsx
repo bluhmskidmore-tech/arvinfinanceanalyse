@@ -2,6 +2,7 @@ import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -96,11 +97,13 @@ function renderViewContent() {
   const client = createApiClient({ mode: "mock" });
 
   return render(
-    <ApiClientProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        <BondAnalyticsViewContent />
-      </QueryClientProvider>
-    </ApiClientProvider>,
+    <MemoryRouter>
+      <ApiClientProvider client={client}>
+        <QueryClientProvider client={queryClient}>
+          <BondAnalyticsViewContent />
+        </QueryClientProvider>
+      </ApiClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -218,6 +221,9 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent();
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBeTruthy();
+    });
     const instanceBefore = screen
       .getByTestId("mock-bond-analytics-detail-section")
       .getAttribute("data-detail-instance");
@@ -250,6 +256,9 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent();
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBeTruthy();
+    });
 
     await user.click(screen.getByTestId("trigger-refresh"));
 
@@ -268,6 +277,9 @@ describe("BondAnalyticsViewContent", () => {
     renderViewContent();
 
     await screen.findByTestId("mock-bond-analytics-overview-panels");
+    await waitFor(() => {
+      expect(latestOverviewProps?.reportDate).toBeTruthy();
+    });
 
     await user.click(screen.getByTestId("trigger-refresh"));
 

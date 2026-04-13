@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="risk-overview-echarts-stub" />,
@@ -75,58 +75,6 @@ function renderRiskOverview(client: ApiClient, initialEntry = "/risk-overview?re
 }
 
 describe("RiskOverviewPage", () => {
-  beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        if (url.includes("/api/bond-analytics/krd-curve-risk")) {
-          return {
-            ok: true,
-            json: async () => ({
-              result: {
-                report_date: "2025-12-31",
-                portfolio_duration: "3",
-                portfolio_modified_duration: "3.1",
-                portfolio_dv01: "100",
-                portfolio_convexity: "0.5",
-                krd_buckets: [],
-                scenarios: [],
-                by_asset_class: [],
-                warnings: [],
-                computed_at: "2026-04-12T00:00:00Z",
-              },
-            }),
-          };
-        }
-        if (url.includes("/api/bond-analytics/credit-spread-migration")) {
-          return {
-            ok: true,
-            json: async () => ({
-              result: {
-                report_date: "2025-12-31",
-                credit_bond_count: 10,
-                credit_market_value: "1",
-                credit_weight: "0.1",
-                spread_dv01: "2",
-                weighted_avg_spread: "100",
-                weighted_avg_spread_duration: "4",
-                spread_scenarios: [],
-                migration_scenarios: [],
-                oci_credit_exposure: "0",
-                oci_spread_dv01: "0",
-                oci_sensitivity_25bp: "0",
-                warnings: [],
-                computed_at: "2026-04-12T00:00:00Z",
-              },
-            }),
-          };
-        }
-        return { ok: false, status: 404, json: async () => ({}) };
-      }),
-    );
-  });
-
   afterEach(() => {
     vi.unstubAllGlobals();
   });
@@ -149,54 +97,6 @@ describe("RiskOverviewPage", () => {
   });
 
   it("uses backend risk tensor dates for the default report date", async () => {
-    const fetchMock = vi.fn(async (input: string | URL | Request) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      if (url.includes("/api/bond-analytics/krd-curve-risk")) {
-        return {
-          ok: true,
-          json: async () => ({
-            result: {
-              report_date: "2026-02-28",
-              portfolio_duration: "3",
-              portfolio_modified_duration: "3.1",
-              portfolio_dv01: "100",
-              portfolio_convexity: "0.5",
-              krd_buckets: [],
-              scenarios: [],
-              by_asset_class: [],
-              warnings: [],
-              computed_at: "2026-04-12T00:00:00Z",
-            },
-          }),
-        };
-      }
-      if (url.includes("/api/bond-analytics/credit-spread-migration")) {
-        return {
-          ok: true,
-          json: async () => ({
-            result: {
-              report_date: "2026-02-28",
-              credit_bond_count: 10,
-              credit_market_value: "1",
-              credit_weight: "0.1",
-              spread_dv01: "2",
-              weighted_avg_spread: "100",
-              weighted_avg_spread_duration: "4",
-              spread_scenarios: [],
-              migration_scenarios: [],
-              oci_credit_exposure: "0",
-              oci_spread_dv01: "0",
-              oci_sensitivity_25bp: "0",
-              warnings: [],
-              computed_at: "2026-04-12T00:00:00Z",
-            },
-          }),
-        };
-      }
-      return { ok: false, status: 404, json: async () => ({}) };
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
@@ -205,6 +105,40 @@ describe("RiskOverviewPage", () => {
         result: { report_dates: ["2026-02-28", "2025-12-31"] },
       })),
       getRiskTensor: vi.fn(async (reportDate: string) => tensorEnvelope({ report_date: reportDate })),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.krd_curve_risk" },
+        result: {
+          report_date: reportDate,
+          portfolio_duration: "3",
+          portfolio_modified_duration: "3.1",
+          portfolio_dv01: "100",
+          portfolio_convexity: "0.5",
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.credit_spread_migration" },
+        result: {
+          report_date: reportDate,
+          credit_bond_count: 10,
+          credit_market_value: "1",
+          credit_weight: "0.1",
+          spread_dv01: "2",
+          weighted_avg_spread: "100",
+          weighted_avg_spread_duration: "4",
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: "0",
+          oci_spread_dv01: "0",
+          oci_sensitivity_25bp: "0",
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
     };
 
     renderRiskOverview(client, "/risk-overview");
@@ -213,11 +147,8 @@ describe("RiskOverviewPage", () => {
     expect(await screen.findByText("2026-02-28")).toBeInTheDocument();
     expect(client.getRiskTensorDates).toHaveBeenCalledTimes(1);
     expect(client.getRiskTensor).toHaveBeenCalledWith("2026-02-28");
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/api/bond-analytics/krd-curve-risk?report_date=2026-02-28"),
-      );
-    });
+    expect(client.getBondAnalyticsKrdCurveRisk).toHaveBeenCalledWith("2026-02-28");
+    expect(client.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-02-28");
   });
 
   it("does not fall back to a hardcoded report date when backend dates are empty", async () => {
@@ -237,11 +168,96 @@ describe("RiskOverviewPage", () => {
     expect(client.getRiskTensor).not.toHaveBeenCalled();
   });
 
+  it("keeps rendering explicit report_date data even if dates lookup fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => {
+        throw new Error("dates backend unavailable");
+      }),
+      getRiskTensor: vi.fn(async (reportDate: string) => tensorEnvelope({ report_date: reportDate })),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.krd_curve_risk" },
+        result: {
+          report_date: reportDate,
+          portfolio_duration: "3",
+          portfolio_modified_duration: "3.1",
+          portfolio_dv01: "100",
+          portfolio_convexity: "0.5",
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.credit_spread_migration" },
+        result: {
+          report_date: reportDate,
+          credit_bond_count: 10,
+          credit_market_value: "1",
+          credit_weight: "0.1",
+          spread_dv01: "2",
+          weighted_avg_spread: "100",
+          weighted_avg_spread_duration: "4",
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: "0",
+          oci_spread_dv01: "0",
+          oci_sensitivity_25bp: "0",
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+    };
+
+    renderRiskOverview(client, "/risk-overview?report_date=2025-12-31");
+
+    expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
+    expect(screen.queryByText("数据载入失败。")).not.toBeInTheDocument();
+    expect(client.getRiskTensor).toHaveBeenCalledWith("2025-12-31");
+  });
+
   it("shows Bond Analytics drill-down sections when fetch succeeds", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
       ...base,
       getRiskTensor: vi.fn(async () => tensorEnvelope()),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async () => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.krd_curve_risk" },
+        result: {
+          report_date: "2025-12-31",
+          portfolio_duration: "3",
+          portfolio_modified_duration: "3.1",
+          portfolio_dv01: "100",
+          portfolio_convexity: "0.5",
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.credit_spread_migration" },
+        result: {
+          report_date: "2025-12-31",
+          credit_bond_count: 10,
+          credit_market_value: "1",
+          credit_weight: "0.1",
+          spread_dv01: "2",
+          weighted_avg_spread: "100",
+          weighted_avg_spread_duration: "4",
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: "0",
+          oci_spread_dv01: "0",
+          oci_sensitivity_25bp: "0",
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
     };
 
     renderRiskOverview(client);

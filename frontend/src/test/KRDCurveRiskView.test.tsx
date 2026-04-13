@@ -7,6 +7,7 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="krd-echarts-stub" />,
 }));
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { KRDCurveRiskView } from "../features/bond-analytics/components/KRDCurveRiskView";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
@@ -72,31 +73,23 @@ describe("KRDCurveRiskView", () => {
   });
 
   it("loads KRD curve risk with KPI cards, scenarios table, by_asset_class table, and KRD section", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createKRDCurveRiskResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createKRDCurveRiskResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createKRDCurveRiskResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <KRDCurveRiskView reportDate="2026-03-31" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<KRDCurveRiskView reportDate="2026-03-31" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText("组合久期")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createKRDCurveRiskResult(),
-    });
+    await waitFor(() =>
+      expect(client.getBondAnalyticsKrdCurveRisk).toHaveBeenCalledWith("2026-03-31"),
+    );
 
     expect(await screen.findByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("修正久期")).toBeInTheDocument();
@@ -112,23 +105,24 @@ describe("KRDCurveRiskView", () => {
   });
 
   it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createKRDCurveRiskResult({
-            warnings: ["示例：KRD 桶位数据为占位"],
-            scenarios: [],
-            by_asset_class: [],
-            krd_buckets: [],
-          }),
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createKRDCurveRiskResult({
+          warnings: ["示例：KRD 桶位数据为占位"],
+          scenarios: [],
+          by_asset_class: [],
+          krd_buckets: [],
         }),
-      }),
-    );
-    vi.stubGlobal("fetch", fetchMock);
+      })),
+    };
 
-    render(<KRDCurveRiskView reportDate="2026-03-31" />);
+    render(
+      <ApiClientProvider client={client}>
+        <KRDCurveRiskView reportDate="2026-03-31" />
+      </ApiClientProvider>,
+    );
 
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：KRD 桶位数据为占位")).toBeInTheDocument();

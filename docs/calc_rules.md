@@ -179,6 +179,8 @@ PnL Bridge 结构：
 - 票息现金流：按 `coupon_rate` 与 `interest_mode` 估算下一次付息；`annual` 计全年票息，`semi-annual` 计半年度票息，`quarterly` 计季度票息。
 - 付息日估算锚点为 `maturity_date` 的月日（半年 / 季度按固定月间隔回推）；只计从 `report_date` 起最近一次付息日是否落入窗口。
 - `bullet`（到期一次还本付息）只允许在到期日同时计入本金与票息现金流。
+- 若同业负债 formal facts 可用，`liquidity_gap_30d` / `liquidity_gap_90d` 必须按 `资产现金流入 - 负债现金流出` 计算，不得只报资产侧毛额。
+- 负债侧到期还本与资金成本现金流必须来自 `fact_formal_tyw_balance_daily` 的 `position_side=liability` 读面；资金成本按到期一次性付息的简化规则估算。
 - 回售权 / 提前偿还现金流当前不进入 formal 风险张量；若输入行显式带有相关可选性字段，必须输出 warning，且不得静默并入口径。
 
 ## 11. result_meta

@@ -45,6 +45,9 @@ const NewsEventsPage = lazy(
 const RiskTensorPage = lazy(
   () => import("../features/risk-tensor/RiskTensorPage"),
 );
+const ConcentrationMonitorPage = lazy(
+  () => import("../features/concentration-monitor/ConcentrationMonitorPage"),
+);
 const RiskOverviewPage = lazy(
   () => import("../features/risk-overview/RiskOverviewPage"),
 );
@@ -133,6 +136,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<RiskTensorPage />),
+      };
+    }
+
+    if (section.path === "/concentration-monitor") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<ConcentrationMonitorPage />),
       };
     }
 

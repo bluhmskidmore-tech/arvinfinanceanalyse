@@ -36,18 +36,21 @@ def _seed_fx_rows(duckdb_path: str) -> None:
               trade_date varchar,
               base_currency varchar,
               quote_currency varchar,
-              mid_rate decimal(18, 8)
+              mid_rate decimal(18, 8),
+              source_version varchar,
+              vendor_name varchar,
+              vendor_version varchar
             )
             """
         )
         conn.executemany(
             """
-            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate)
-            values (?, ?, ?, ?)
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version, vendor_name, vendor_version)
+            values (?, ?, ?, ?, ?, ?, ?)
             """,
             [
-                ("2026-03-31", "USD", "CNY", Decimal("7.08270000")),
-                ("2026-03-01", "USD", "CNY", Decimal("7.04135000")),
+                ("2026-03-31", "USD", "CNY", Decimal("7.08270000"), "sv_fx_current", "cfets", "vv_fx_current"),
+                ("2026-03-01", "USD", "CNY", Decimal("7.04135000"), "sv_fx_prior", "cfets", "vv_fx_prior"),
             ],
         )
     finally:
@@ -68,7 +71,7 @@ def test_bond_analytics_return_decomposition_with_real_facts_uses_filtered_fact_
     assert result["total_market_value"] == "330.00000000"
     assert result["carry"] == "1.01917808"
     assert result["actual_pnl"] == "1.01917808"
-    assert service_mod.PHASE3_WARNING in result["warnings"]
+    assert service_mod.RETURN_TRADING_GAP_WARNING in result["warnings"]
     assert result["by_asset_class"] == [
         {
             "asset_class": "credit",
@@ -119,16 +122,21 @@ def test_return_decomposition_fx_effect_nonzero_for_usd_bonds(tmp_path, monkeypa
     try:
         conn.execute(
             """
-            update fact_formal_bond_analytics_daily
+            update zqtz_bond_daily_snapshot
             set currency_code = 'USD',
-                face_value = ?,
-                market_value = ?
+                face_value_native = ?,
+                market_value_native = ?
             where report_date = ? and instrument_code = ?
             """,
             [Decimal("1000.00000000"), Decimal("1000.00000000"), REPORT_DATE, "CB-001"],
         )
     finally:
         conn.close()
+    _task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(_governance_dir),
+    )
     service_mod = load_module(
         f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
         "backend/app/services/bond_analytics_service.py",
@@ -153,6 +161,58 @@ def test_benchmark_excess_spread_effect_nonzero_with_curves(tmp_path, monkeypatc
     payload = service_mod.get_benchmark_excess(date.fromisoformat(REPORT_DATE), "MoM", "TREASURY_INDEX")
 
     assert Decimal(payload["result"]["spread_effect"]) != Decimal("0")
+    get_settings.cache_clear()
+
+
+def test_return_decomposition_warns_when_fx_uses_latest_available_snapshot(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(18, 8),
+              source_version varchar,
+              vendor_name varchar,
+              vendor_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version, vendor_name, vendor_version)
+            values (?, ?, ?, ?, ?, ?, ?)
+            """,
+            ["2026-02-28", "USD", "CNY", Decimal("7.08270000"), "sv_fx_latest", "cfets", "vv_fx_latest"],
+        )
+        conn.execute(
+            """
+            update zqtz_bond_daily_snapshot
+            set currency_code = 'USD',
+                face_value_native = ?,
+                market_value_native = ?
+            where report_date = ? and instrument_code = ?
+            """,
+            [Decimal("1000.00000000"), Decimal("1000.00000000"), REPORT_DATE, "CB-001"],
+        )
+    finally:
+        conn.close()
+    task_mod.materialize_bond_analytics_facts.fn(
+        report_date=REPORT_DATE,
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    service_mod = load_module(
+        f"tests._bond_contract.bond_analytics_service_{uuid.uuid4().hex}",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    payload = service_mod.get_return_decomposition(date.fromisoformat(REPORT_DATE), "MoM", "credit", "all")
+
+    assert any("latest available FX rates" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 
 
@@ -212,6 +272,7 @@ def test_bond_analytics_credit_spread_with_real_facts_returns_expected_scenario_
     assert result["credit_bond_count"] == 2
     assert result["credit_market_value"] == "330.00000000"
     assert result["credit_weight"] == "0.76923077"
+    assert result["rating_aa_and_below_weight"] == "0.00000000"
     assert result["spread_dv01"] == "0.19932381"
     assert result["weighted_avg_spread_duration"] == "6.04011543"
     assert result["spread_scenarios"] == [

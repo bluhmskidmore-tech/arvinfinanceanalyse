@@ -160,6 +160,21 @@ export function BondAnalyticsViewContent() {
           无法确定可用报告日，当前不启动 Bond Analytics 默认首屏查询。请重试或通过 URL 显式传入
           <code style={{ fontSize: 12, marginLeft: 4 }}>?report_date=YYYY-MM-DD</code>。
         </div>
+        <button
+          type="button"
+          onClick={() => void datesQuery.refetch()}
+          style={{
+            width: "fit-content",
+            border: "1px solid #d7dfea",
+            background: "#ffffff",
+            borderRadius: 12,
+            padding: "10px 16px",
+            color: "#162033",
+            cursor: "pointer",
+          }}
+        >
+          重试日期载入
+        </button>
       </section>
     );
   }
@@ -181,6 +196,21 @@ export function BondAnalyticsViewContent() {
         <div style={{ color: "#5c6b82", lineHeight: 1.7 }}>
           后端尚未返回可消费的 Bond Analytics 报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
         </div>
+        <button
+          type="button"
+          onClick={() => void datesQuery.refetch()}
+          style={{
+            width: "fit-content",
+            border: "1px solid #d7dfea",
+            background: "#ffffff",
+            borderRadius: 12,
+            padding: "10px 16px",
+            color: "#162033",
+            cursor: "pointer",
+          }}
+        >
+          重试日期载入
+        </button>
       </section>
     );
   }

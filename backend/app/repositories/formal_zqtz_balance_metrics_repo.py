@@ -7,7 +7,11 @@ import duckdb
 
 @dataclass
 class FormalZqtzBalanceMetricsRepository:
-    """DuckDB reads of formal zqtz balance aggregates outside the balance_analysis service boundary."""
+    """
+    Read-only aggregates over governed `fact_formal_zqtz_balance_daily` only (no snapshot / preview tables).
+
+    Used for narrow metrics consumers outside the main balance-analysis workbook API surface.
+    """
 
     path: str
 

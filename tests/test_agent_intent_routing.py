@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from tests.helpers import load_module
 
 
@@ -225,6 +227,108 @@ def test_duration_risk_intent_routes_to_bond_analytics(tmp_path, monkeypatch):
     assert envelope.result_meta.filters_applied["report_date"] == "2026-03-31"
     assert envelope.evidence.tables_used == ["fact_formal_bond_analytics_daily"]
     assert any(card.title == "Portfolio DV01" for card in envelope.cards)
+
+
+@pytest.mark.parametrize("historical_date", ["2024-01-01", "2025-11-20", "2026-02-28"])
+def test_duration_risk_uses_explicit_historical_report_date_when_governed(
+    tmp_path,
+    monkeypatch,
+    historical_date: str,
+):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    calls: list[str] = []
+
+    class StubBondAnalyticsRepository:
+        def __init__(self, path: str):
+            assert path == "test.duckdb"
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31", "2025-11-20", "2026-02-28", "2024-01-01"]
+
+        def fetch_portfolio_risk_summary(self, *, report_date: str) -> dict[str, object]:
+            calls.append(report_date)
+            return {
+                "bond_count": 1,
+                "total_market_value": 100,
+                "portfolio_duration": 3.0,
+                "portfolio_modified_duration": 2.9,
+                "portfolio_convexity": 0.5,
+                "portfolio_dv01": 1.0,
+            }
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            filters={"report_date": historical_date},
+        )
+    )
+
+    assert calls == [historical_date]
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert envelope.result_meta.filters_applied["report_date"] == historical_date
+
+
+def test_duration_risk_returns_error_envelope_when_explicit_date_not_governed(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    class StubBondAnalyticsRepository:
+        def __init__(self, path: str):
+            pass
+
+        def list_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def fetch_portfolio_risk_summary(self, *, report_date: str) -> dict[str, object]:
+            raise AssertionError("should not query")
+
+    monkeypatch.setattr(service_module, "BondAnalyticsRepository", StubBondAnalyticsRepository)
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers=service_module._build_intent_handlers("test.duckdb", str(tmp_path)),
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="组合久期和DV01风险怎么样",
+            filters={"report_date": "2025-11-20"},
+        )
+    )
+
+    assert envelope.result_meta.result_kind == "agent.duration_risk"
+    assert envelope.result_meta.formal_use_allowed is False
+    assert "2025-11-20" in envelope.answer
+    assert "governed dates" in envelope.answer
 
 
 def test_gitnexus_intent_reads_repo_index_metadata_from_question_path(tmp_path):

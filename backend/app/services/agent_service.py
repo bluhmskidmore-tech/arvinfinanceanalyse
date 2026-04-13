@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from backend.app.agent.runtime.tool_registry import ToolRegistry
@@ -79,7 +79,7 @@ def _build_intent_handlers(
         "product_pnl": lambda request: _product_pnl_payload(request, duckdb_path),
         "pnl_bridge": lambda request: _pnl_bridge_payload(request, duckdb_path, governance_dir),
         "risk_tensor": lambda request: _risk_tensor_payload(request, duckdb_path, governance_dir),
-        "market_data": lambda request: _market_data_payload(duckdb_path),
+        "market_data": lambda request: _market_data_payload(request, duckdb_path),
         "news": lambda request: _news_payload(request, duckdb_path),
     }
 
@@ -100,6 +100,9 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         position_scope=request.position_scope,
         currency_basis=request.currency_basis,
     )
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": (
             f"{report_date} 的组合概览已返回，当前口径共 {overview['detail_row_count']} 条明细，"
@@ -112,11 +115,15 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             {"type": "metric", "title": "Detail Rows", "value": str(overview["detail_row_count"])},
         ],
         "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
-        "filters_applied": {
-            "report_date": report_date,
-            "position_scope": request.position_scope,
-            "currency_basis": request.currency_basis,
-        },
+        "filters_applied": _audit_filters(
+            request,
+            report_date,
+            resolution=rd_mode,
+            extra={
+                "position_scope": request.position_scope,
+                "currency_basis": request.currency_basis,
+            },
+        ),
         "row_count": int(overview["detail_row_count"]),
         "quality_flag": "ok",
         "basis": "formal",
@@ -125,6 +132,9 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
         "source_version": str(overview.get("source_version") or "sv_balance_analysis_unknown"),
         "rule_version": str(overview.get("rule_version") or RULE_VERSION),
         "cache_version": "cv_agent_portfolio_overview_v1",
+        "result_kind": "agent.portfolio_overview",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
         "next_drill": [
             {"dimension": "portfolio", "label": "按组合查看"},
             {"dimension": "cost_center", "label": "按成本中心查看"},
@@ -138,6 +148,9 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     if report_date is None:
         raise ValueError("No PnL report date is available.")
     overview = repo.overview_totals(report_date)
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": (
             f"{report_date} 的损益汇总已返回，正式 FI {overview['formal_fi_row_count']} 行，"
@@ -150,7 +163,7 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
             {"type": "metric", "title": "Capital Gain 517", "value": str(overview["capital_gain_517"])},
         ],
         "tables_used": ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
-        "filters_applied": {"report_date": report_date},
+        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(overview["formal_fi_row_count"]) + int(overview["nonstd_bridge_row_count"]),
         "quality_flag": "ok",
         "basis": "formal",
@@ -159,6 +172,9 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "source_version": "sv_agent_pnl_summary",
         "rule_version": RULE_VERSION,
         "cache_version": "cv_agent_pnl_summary_v1",
+        "result_kind": "agent.pnl_summary",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
         "next_drill": [
             {"dimension": "instrument", "label": "按券查看"},
             {"dimension": "portfolio", "label": "按组合查看"},
@@ -172,6 +188,9 @@ def _duration_risk_payload(request: AgentQueryRequest, duckdb_path: str) -> dict
     if report_date is None:
         raise ValueError("No bond-analytics report date is available.")
     summary = repo.fetch_portfolio_risk_summary(report_date=report_date)
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": (
             f"{report_date} 的利率风险摘要已返回，组合久期 {summary['portfolio_duration']}，"
@@ -188,7 +207,7 @@ def _duration_risk_payload(request: AgentQueryRequest, duckdb_path: str) -> dict
             {"type": "metric", "title": "Portfolio Convexity", "value": str(summary["portfolio_convexity"])},
         ],
         "tables_used": ["fact_formal_bond_analytics_daily"],
-        "filters_applied": {"report_date": report_date},
+        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(summary.get("bond_count", 0)),
         "quality_flag": "ok",
         "basis": "formal",
@@ -197,6 +216,9 @@ def _duration_risk_payload(request: AgentQueryRequest, duckdb_path: str) -> dict
         "source_version": "sv_agent_duration_risk",
         "rule_version": RULE_VERSION,
         "cache_version": "cv_agent_duration_risk_v1",
+        "result_kind": "agent.duration_risk",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
         "next_drill": [
             {"dimension": "tenor_bucket", "label": "按期限桶查看"},
             {"dimension": "asset_class", "label": "按资产类查看"},
@@ -210,6 +232,9 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
     if report_date is None:
         raise ValueError("No bond-analytics report date is available.")
     summary = repo.fetch_credit_summary(report_date=report_date)
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": (
             f"{report_date} 的信用暴露摘要已返回，信用债 {summary['credit_bond_count']} 只，"
@@ -222,7 +247,7 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
             {"type": "metric", "title": "OCI Credit Exposure", "value": str(summary["oci_credit_exposure"])},
         ],
         "tables_used": ["fact_formal_bond_analytics_daily"],
-        "filters_applied": {"report_date": report_date},
+        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(summary.get("credit_bond_count", 0)),
         "quality_flag": "ok",
         "basis": "formal",
@@ -231,6 +256,9 @@ def _credit_exposure_payload(request: AgentQueryRequest, duckdb_path: str) -> di
         "source_version": "sv_agent_credit_exposure",
         "rule_version": RULE_VERSION,
         "cache_version": "cv_agent_credit_exposure_v1",
+        "result_kind": "agent.credit_exposure",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
         "next_drill": [
             {"dimension": "issuer", "label": "按发行人查看"},
             {"dimension": "rating", "label": "按评级查看"},
@@ -250,6 +278,9 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
     grand_total = next((row for row in rows if str(row.get("category_id")) == "grand_total"), rows[0])
     asset_total = next((row for row in rows if str(row.get("category_id")) == "asset_total"), {})
     liability_total = next((row for row in rows if str(row.get("category_id")) == "liability_total"), {})
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": f"{report_date} 的产品损益视图已返回，当前 view={view}。",
         "cards": [
@@ -263,7 +294,12 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
             {"type": "table", "title": "Product Rows", "data": rows[:10]},
         ],
         "tables_used": ["product_category_pnl_formal_read_model"],
-        "filters_applied": {"report_date": report_date, "view": view},
+        "filters_applied": _audit_filters(
+            request,
+            report_date,
+            resolution=rd_mode,
+            extra={"view": view},
+        ),
         "row_count": len(rows),
         "quality_flag": "ok",
         "basis": "formal",
@@ -272,6 +308,9 @@ def _product_pnl_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "source_version": str(rows[0].get("source_version") or repo.latest_source_version()),
         "rule_version": str(rows[0].get("rule_version") or RULE_VERSION),
         "cache_version": "cv_agent_product_pnl_v1",
+        "result_kind": "agent.product_pnl",
+        "vendor_status": "ok",
+        "fallback_mode": "none",
         "next_drill": [{"dimension": "product_category", "label": "按产品分类查看"}],
     }
 
@@ -294,6 +333,10 @@ def _pnl_bridge_payload(
     )
     summary = dict(upstream.get("result", {}).get("summary", {}))
     meta = dict(upstream.get("result_meta", {}))
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
+    base_filters = _audit_filters(request, report_date, resolution=rd_mode)
     return {
         "answer": f"{report_date} 的 PnL bridge 已返回。",
         "cards": [
@@ -302,7 +345,7 @@ def _pnl_bridge_payload(
             {"type": "metric", "title": "Residual", "value": str(summary.get("total_residual", ""))},
         ],
         "tables_used": ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"],
-        "filters_applied": {"report_date": report_date},
+        "filters_applied": base_filters,
         "row_count": int(summary.get("row_count", 0)),
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "formal"),
@@ -314,6 +357,7 @@ def _pnl_bridge_payload(
         "cache_version": str(meta.get("cache_version") or "cv_agent_pnl_bridge_v1"),
         "vendor_status": str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "result_kind": "agent.pnl_bridge",
         "next_drill": [{"dimension": "instrument", "label": "按券桥接查看"}],
     }
 
@@ -336,6 +380,9 @@ def _risk_tensor_payload(
     )
     result = dict(upstream.get("result", {}))
     meta = dict(upstream.get("result_meta", {}))
+    rd_mode: Literal["explicit", "latest_default"] = (
+        "explicit" if _requested_report_date(request) else "latest_default"
+    )
     return {
         "answer": f"{report_date} 的风险张量已返回。",
         "cards": [
@@ -344,7 +391,7 @@ def _risk_tensor_payload(
             {"type": "metric", "title": "Portfolio Convexity", "value": str(result.get("portfolio_convexity", ""))},
         ],
         "tables_used": ["fact_formal_risk_tensor_daily"],
-        "filters_applied": {"report_date": report_date},
+        "filters_applied": _audit_filters(request, report_date, resolution=rd_mode),
         "row_count": int(result.get("bond_count", 0)),
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "formal"),
@@ -356,11 +403,12 @@ def _risk_tensor_payload(
         "cache_version": str(meta.get("cache_version") or "cv_agent_risk_tensor_v1"),
         "vendor_status": str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "result_kind": "agent.risk_tensor",
         "next_drill": [{"dimension": "krd_bucket", "label": "按KRD桶查看"}],
     }
 
 
-def _market_data_payload(duckdb_path: str) -> dict[str, Any]:
+def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any]:
     from backend.app.services.macro_vendor_service import (
         choice_macro_latest_envelope,
         fx_analytical_envelope,
@@ -384,7 +432,7 @@ def _market_data_payload(duckdb_path: str) -> dict[str, Any]:
             {"type": "table", "title": "Formal FX Status", "data": fx_rows[:10]},
         ],
         "tables_used": ["fact_choice_macro_daily", "fx_daily_mid"],
-        "filters_applied": {},
+        "filters_applied": _audit_filters(request, None, resolution="not_applicable"),
         "row_count": len(series) + len(fx_rows),
         "quality_flag": str(meta.get("quality_flag") or "warning"),
         "basis": str(meta.get("basis") or "analytical"),
@@ -396,6 +444,7 @@ def _market_data_payload(duckdb_path: str) -> dict[str, Any]:
         "cache_version": str(meta.get("cache_version") or "cv_agent_market_data_v1"),
         "vendor_status": str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "result_kind": "agent.market_data",
         "next_drill": [{"dimension": "series_id", "label": "Inspect macro or FX series"}],
     }
 
@@ -424,7 +473,7 @@ def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any
             {"type": "table", "title": "Latest Events", "data": events[:10]},
         ],
         "tables_used": ["choice_news_event"],
-        "filters_applied": {key: value for key, value in request.filters.items() if value not in (None, "", False)},
+        "filters_applied": _audit_filters(request, None, resolution="not_applicable"),
         "row_count": len(events),
         "quality_flag": str(meta.get("quality_flag") or "ok"),
         "basis": str(meta.get("basis") or "analytical"),
@@ -436,6 +485,7 @@ def _news_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[str, Any
         "cache_version": str(meta.get("cache_version") or "cv_agent_news_v1"),
         "vendor_status": str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
+        "result_kind": "agent.news",
         "next_drill": [{"dimension": "topic_code", "label": "按主题查看"}],
     }
 
@@ -491,6 +541,28 @@ def _requested_report_date(request: AgentQueryRequest) -> str | None:
 
 def _coerce_iso_report_date(raw: str) -> str:
     return date.fromisoformat(str(raw).strip()).isoformat()
+
+
+def _audit_filters(
+    request: AgentQueryRequest,
+    report_date: str | None,
+    *,
+    resolution: Literal["explicit", "latest_default", "not_applicable"],
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    merged: dict[str, Any] = {
+        key: value
+        for key, value in request.filters.items()
+        if value not in (None, "", False)
+    }
+    if extra:
+        for key, value in extra.items():
+            if value not in (None, "", False):
+                merged[key] = value
+    if report_date is not None:
+        merged["report_date"] = report_date
+    merged["report_date_resolution"] = resolution
+    return merged
 
 
 def _latest_or_requested(request: AgentQueryRequest, available_dates: list[str]) -> str | None:

@@ -25,6 +25,10 @@ class RiskTensorPayload(BaseModel):
     portfolio_modified_duration: Decimal = Decimal("0")
     issuer_concentration_hhi: Decimal = Decimal("0")
     issuer_top5_weight: Decimal = Decimal("0")
+    asset_cashflow_30d: Decimal = Decimal("0")
+    asset_cashflow_90d: Decimal = Decimal("0")
+    liability_cashflow_30d: Decimal = Decimal("0")
+    liability_cashflow_90d: Decimal = Decimal("0")
     liquidity_gap_30d: Decimal = Decimal("0")
     liquidity_gap_90d: Decimal = Decimal("0")
     liquidity_gap_30d_ratio: Decimal = Decimal("0")
@@ -46,6 +50,10 @@ class RiskTensorPayload(BaseModel):
         "portfolio_modified_duration",
         "issuer_concentration_hhi",
         "issuer_top5_weight",
+        "asset_cashflow_30d",
+        "asset_cashflow_90d",
+        "liability_cashflow_30d",
+        "liability_cashflow_90d",
         "liquidity_gap_30d",
         "liquidity_gap_90d",
         "liquidity_gap_30d_ratio",

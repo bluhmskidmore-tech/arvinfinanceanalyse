@@ -55,6 +55,7 @@ describe("shared echarts boundary", () => {
 
     expect(source).toContain("echarts.use([");
     expect(source).toContain("BarChart");
+    expect(source).toContain("LineChart");
     expect(source).toContain("PieChart");
     expect(source).toContain("CanvasRenderer");
   });

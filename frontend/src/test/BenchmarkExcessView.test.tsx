@@ -2,6 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="benchmark-excess-echarts-stub" />,
+}));
+
 import { BenchmarkExcessView } from "../features/bond-analytics/components/BenchmarkExcessView";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
@@ -76,17 +80,17 @@ describe("BenchmarkExcessView", () => {
     render(<BenchmarkExcessView reportDate="2026-03-31" periodType="MoM" />);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(screen.queryByText("组合收益率")).not.toBeInTheDocument();
+    expect(screen.queryByText("组合收益")).not.toBeInTheDocument();
 
     resolvePayload({
       result_meta: createResultMeta(),
       result: createBenchmarkExcessResult(),
     });
 
-    expect(await screen.findByText("组合收益率")).toBeInTheDocument();
-    expect(screen.getByText("基准收益率")).toBeInTheDocument();
+    expect(await screen.findByText("组合收益")).toBeInTheDocument();
+    expect(screen.getByText("基准收益")).toBeInTheDocument();
     expect(screen.getByText("超额收益")).toBeInTheDocument();
-    expect(screen.getByText("久期偏离")).toBeInTheDocument();
+    expect(screen.getByText("久期差")).toBeInTheDocument();
 
     expect(screen.getByText("超额收益分解")).toBeInTheDocument();
     expect(screen.getByText("久期效应")).toBeInTheDocument();

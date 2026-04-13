@@ -1,5 +1,9 @@
 # Balance Analysis Gap Closure Implementation Plan
 
+> **Contract sync（2026-04-12+）：** **已支持 vs 显式未支持**的 governed workbook `section` keys 以 [`docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md`](../BALANCE_ANALYSIS_SPEC_FOR_CODEX.md) **§13** 为唯一权威。本文档保留任务分解与**剩余**产品差距；Tranche A/B 中大量「新增 section」条目在仓库当前状态下 **已实现**——代理不得再将其当作未完成任务，除非另行打开新的 execution update / PRD。
+>
+> **`advanced_attribution_bundle`** 明确留在 governed workbook **已支持边界外**（见 spec §13 与 `2026-04-12-balance-analysis-advanced-attribution-boundary.md`）。
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Close the highest-value gaps between the governed `zqtz / tyw` balance-analysis implementation and the target workbook/report requirements without violating the repo's current architecture or execution boundary.
@@ -53,38 +57,21 @@ Any sheet that cannot be expressed via those three governed surfaces should be t
 
 ## Gap Summary
 
-Already present:
+**Baseline（与 spec §13 对齐，已实现）：**
 
 - H/A/T -> AC / FVOCI / FVTPL mapping
 - issuance exclusion for asset scope
 - FX projection into formal balance facts
-- workbook sections:
-  - bond business types
-  - maturity gap
-  - issuance analysis
-  - currency split
-  - rating
-  - rate distribution
-  - industry
-  - counterparty type
-  - Campisi summary
-  - cross analysis
-  - interest mode
-- separate `risk-tensor` and `bond-analytics` APIs
+- governed workbook sections（keys 见 spec §13），包括但不限于：`bond_business_types`、`maturity_gap`、`issuance_business_types`、`cashflow_calendar`、`currency_split`、`rating_analysis`、`rate_distribution`、`industry_distribution`、`counterparty_types`、`campisi_breakdown`、`cross_analysis`、`interest_modes`、`issuer_concentration`、`liquidity_layers`、`regulatory_limits`、`overdue_credit_quality`（及 ratings子表）、`vintage_analysis`、`customer_attribute_analysis`、`portfolio_comparison`、`account_category_comparison`、`ifrs9_classification` / `ifrs9_position_scope` / `ifrs9_source_family`、`rule_reference`
+- separate `risk-tensor` and `bond-analytics` APIs（**不**自动等价于 workbook 已支持 `advanced_attribution_bundle`）
 
-Still missing or incomplete:
+**Remaining gaps / non-goals（示例，非穷举）：**
 
-- IFRS9-specific sheet / consumer
-- full-scope liability gap including issuance liabilities
-- workbook-grade cashflow ladder
-- governed concentration Top-N views
-- governed portfolio-comparison view
-- governed account-category view
-- governed customer-attribute / vintage / overdue-credit-quality views
-- governed liquidity-layer / HQLA view
-- governed regulatory-limit read model
-- real carry / roll-down / reinvestment semantics
-- complete rule sheet with repo-native rule references
+- 参考 Excel 全簿 **1:1 行级/公式级** 对齐（当前文档明确「不等于全簿对齐完成」）
+- 产品类别 PnL 只读模型中「真·YTD 多月合并」等（见 `BALANCE_ANALYSIS_SPEC_FOR_CODEX.md` §4；与 balance-analysis workbook 不同面）
+- **Phase 3 级** carry / roll-down / reinvestment / 交易粒度归因（属 `bond-analytics` 与边界文档，**不得**并入 governed workbook 已支持列表）
+- `advanced_attribution_bundle` 作为 workbook section 的「完成态」交付（**未纳入** spec §13 已支持）
+- 更完整的监管引擎、ECL、IFRS9 三阶段推断等（超出当前 governed读模型边界；Prompt 7「深化」为可选增量而非「未实现」）
 
 ## Tranche A: Executable Now
 
@@ -370,16 +357,18 @@ Objective:
 
 - extend governed read models that are still balance-analysis scoped but not clearly allowed in the current narrow override
 
-Target deliverables:
+**Contract sync note:** 下列多数 deliverable 的 **MVP / 第一版** 已在 spec §13 标为已支持。本 Tranche 在「下一授权窗口」语境下主要指：**深化**（额外维度、监管完备性、与 Excel 更细对齐），而非「从零新增 listed section」。
 
-- `IFRS9` sheet
-- account-category comparison
-- customer-attribute analysis
-- vintage analysis
-- overdue / credit quality view
-- portfolio comparison
-- liquidity-layer / HQLA view
-- regulatory-limit view
+Target deliverables（历史列表 —请用 spec §13 核对落地状态）：
+
+- `IFRS9` 相关 section（`ifrs9_*`）— **基底已落地**；ECL 等仍属边界外
+- account-category comparison — **已落地**
+- customer-attribute analysis — **已落地**
+- vintage analysis — **已落地**
+- overdue / credit quality view — **已落地**
+- portfolio comparison — **已落地**
+- liquidity-layer / HQLA view — **已落地**
+- regulatory-limit view — **已落地**
 
 ### Task 6: Add IFRS9 and account-category governed read models
 
@@ -611,7 +600,7 @@ pnpm --dir F:\MOSS-V3\frontend typecheck
 
 Tranche A is complete when:
 
-- the governed workbook explicitly declares what it supports
+- the governed workbook explicitly declares what it supports（**以 spec §13 +契约为准；上述 Task 1–5 多数已满足**）
 - full-scope liability gap is present
 - cashflow ladder is present
 - issuer concentration is present
@@ -620,7 +609,7 @@ Tranche A is complete when:
 
 Tranche B is complete when:
 
-- the missing balance-analysis read models exist without breaking the governed formal path
+- the missing balance-analysis read models exist without breaking the governed formal path（**contract sync：listed section 基底多已存在；本 Tranche 验收转向「深化与全簿差距」**）
 - no UI layer computes formal finance logic
 
 Tranche C is complete when:

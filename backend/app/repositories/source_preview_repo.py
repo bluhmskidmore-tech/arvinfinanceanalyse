@@ -2,6 +2,7 @@
 
 import hashlib
 from collections import Counter
+from functools import lru_cache
 from pathlib import Path
 
 import duckdb
@@ -111,6 +112,7 @@ def materialize_source_previews(
     summaries: list[dict[str, object]] = []
     row_records: list[dict[str, object]] = []
     trace_records: list[dict[str, object]] = []
+    _source_preview_batch_version_cached.cache_clear()
 
     for manifest_row in selected:
         path = Path(str(manifest_row["archived_path"]))
@@ -143,6 +145,7 @@ def materialize_source_previews(
 
 
 def snapshot_preview_tables(duckdb_path: str) -> None:
+    _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         for table_name in PREVIEW_TABLES:
@@ -157,6 +160,7 @@ def snapshot_preview_tables(duckdb_path: str) -> None:
 
 
 def restore_preview_tables(duckdb_path: str) -> None:
+    _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         for table_name in PREVIEW_TABLES:
@@ -171,6 +175,7 @@ def restore_preview_tables(duckdb_path: str) -> None:
 
 
 def cleanup_preview_backups(duckdb_path: str) -> None:
+    _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         for table_name in PREVIEW_TABLES:
@@ -180,6 +185,7 @@ def cleanup_preview_backups(duckdb_path: str) -> None:
 
 
 def clear_preview_tables(duckdb_path: str) -> None:
+    _source_preview_batch_version_cached.cache_clear()
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         for table_name in PREVIEW_TABLES:
@@ -1540,6 +1546,19 @@ def _join_source_versions(versions) -> str:
 
 
 def source_preview_batch_version(
+    duckdb_path: str,
+    source_family: str,
+    ingest_batch_id: str | None,
+) -> str:
+    return _source_preview_batch_version_cached(
+        str(duckdb_path),
+        str(source_family),
+        None if ingest_batch_id is None else str(ingest_batch_id),
+    )
+
+
+@lru_cache(maxsize=1024)
+def _source_preview_batch_version_cached(
     duckdb_path: str,
     source_family: str,
     ingest_batch_id: str | None,

@@ -26,6 +26,24 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
 
+vi.mock("../features/pnl/PnlBridgePage", () => ({
+  default: function MockPnlBridgePage() {
+    return (
+      <section data-testid="pnl-bridge-route-page">
+        <h1>损益桥接</h1>
+        <div>
+          <label>
+            <span>报告日</span>
+            <select aria-label="pnl-bridge-report-date" defaultValue="2026-03-31">
+              <option value="2026-03-31">2026-03-31</option>
+            </select>
+          </label>
+        </div>
+      </section>
+    );
+  },
+}));
+
 describe("RouteRegistry", () => {
   describe("risk-overview route", () => {
     beforeEach(() => {

@@ -77,15 +77,25 @@ def preview_rows_envelope(
     ingest_batch_id: str | None = None,
 ) -> dict[str, object]:
     payload = load_preview_rows(duckdb_path, source_family, limit, offset, ingest_batch_id)
+    row_versions = [
+        str(row.get("source_version") or "").strip()
+        for row in payload.rows
+        if str(row.get("source_version") or "").strip()
+    ]
+    source_version = (
+        "__".join(dict.fromkeys(row_versions))
+        if row_versions
+        else source_preview_batch_version(
+            duckdb_path=duckdb_path,
+            source_family=source_family,
+            ingest_batch_id=payload.ingest_batch_id,
+        )
+    )
     return {
         "result_meta": _preview_result_meta(
             trace_id=f"tr_preview_{source_family}_rows",
             result_kind=f"preview.{source_family}.rows",
-            source_version=source_preview_batch_version(
-                duckdb_path=duckdb_path,
-                source_family=source_family,
-                ingest_batch_id=payload.ingest_batch_id,
-            ),
+            source_version=source_version,
         ),
         "result": payload.model_dump(mode="json"),
     }

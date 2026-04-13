@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""
+Orchestrates `zqtz` / `tyw` formal-balance lane: ingest → snapshot materialize → balance formal facts.
+
+All DuckDB writes happen inside invoked tasks (`ingest_demo_manifest` side effects, `materialize_standard_snapshots`,
+`materialize_balance_analysis_facts`). This module does not open DuckDB connections directly.
+"""
+
 import argparse
 import json
 from datetime import date

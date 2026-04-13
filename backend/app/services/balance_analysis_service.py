@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+"""
+Balance-analysis read surfaces: DuckDB access only via `BalanceAnalysisRepository` and other read repositories.
+
+Formal fact writes (`replace_formal_balance_rows`, snapshot tables) are restricted to `backend/app/tasks/` workers.
+"""
+
 import csv
 import importlib
 from datetime import datetime, timedelta, timezone

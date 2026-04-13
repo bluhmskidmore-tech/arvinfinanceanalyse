@@ -1,5 +1,11 @@
 # Balance Analysis Reconciliation (2026-03-01)
 
+## Boundary note（与阶段授权对齐）
+
+- 本文记录的是 **2026-03-01** 一次**对账切片**的结论，用于证明当时 governed workbook **已支持 section** 与参考表之间的数值一致性。
+- **不等于**参考 Excel 全簿 1:1 完成，**也不等于**仓库整体进入 `Phase 2` 或正式金融全域交付。阶段边界以 `docs/IMPLEMENTATION_PLAN.md`、`docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md` 为准。
+- 后续若仅存在局部 lane（如 `zqtz / tyw` formal-balance）的 dated execution update，其授权**只作用于被点名的工作流**，不得解释为 repo-wide Phase 2 cutover。
+
 ## Purpose
 
 This document records the reconciliation status between:

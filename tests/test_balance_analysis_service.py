@@ -444,3 +444,72 @@ def test_balance_analysis_service_uses_persisted_cache_version_from_governance(
         payload["result_meta"]["cache_version"]
         == "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1"
     )
+
+
+@pytest.mark.parametrize(
+    "sample_report_date",
+    ["2024-01-01", "2025-11-20", "2026-02-28"],
+)
+def test_balance_analysis_overview_envelope_resolves_lineage_per_historical_report_date(
+    monkeypatch,
+    sample_report_date: str,
+):
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+
+    class FakeRepo:
+        def __init__(self, duckdb_path: str) -> None:
+            self.duckdb_path = duckdb_path
+
+        def list_report_dates(self):
+            return ["2026-03-31", sample_report_date, "2025-12-31"]
+
+        def fetch_formal_overview(self, **kwargs):
+            assert kwargs["report_date"] == sample_report_date
+            return {
+                "report_date": sample_report_date,
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 1,
+                "summary_row_count": 1,
+                "total_market_value_amount": "10.00000000",
+                "total_amortized_cost_amount": "9.00000000",
+                "total_accrued_interest_amount": "0.10000000",
+                "rule_version": "rv_repo_fallback",
+            }
+
+    calls: list[dict[str, str]] = []
+
+    monkeypatch.setattr(service_mod, "BalanceAnalysisRepository", FakeRepo)
+    monkeypatch.setattr(
+        service_mod,
+        "resolve_completed_formal_build_lineage",
+        lambda **kwargs: calls.append(kwargs)
+        or {
+            "cache_key": service_mod.CACHE_KEY,
+            "cache_version": "cv_test",
+            "source_version": "sv_test",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_test",
+            "report_date": sample_report_date,
+        },
+    )
+
+    service_mod.balance_analysis_overview_envelope(
+        duckdb_path="ignored.duckdb",
+        governance_dir="ignored-governance",
+        report_date=sample_report_date,
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert calls == [
+        {
+            "governance_dir": "ignored-governance",
+            "cache_key": service_mod.CACHE_KEY,
+            "job_name": service_mod.BALANCE_ANALYSIS_JOB_NAME,
+            "report_date": sample_report_date,
+        }
+    ]

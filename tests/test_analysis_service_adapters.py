@@ -165,10 +165,12 @@ def test_bond_action_placeholder_envelope_shape():
     )
 
     assert result.result_meta.result_kind == "analysis.bond_action_attribution"
+    assert result.result_meta.quality_flag == "warning"
     assert result.result.summary["period_type"] == "MoM"
     assert result.result.summary["total_actions"] == 0
     assert result.result.facets["action_details"] == []
     assert result.result.warnings
+    assert "placeholder" in result.result.warnings[0].message.lower()
 
 
 def test_product_category_adapter_rejects_formal_basis_with_scenario_rate_pct():
@@ -411,7 +413,7 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
                 vendor_version="vv_none",
                 rule_version="rv_analysis",
                 cache_version="cv_analysis",
-                quality_flag="ok",
+                quality_flag="warning",
                 scenario_flag=False,
             ),
             result=schema_module.AnalysisResultPayload(

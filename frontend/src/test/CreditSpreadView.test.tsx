@@ -7,6 +7,7 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="credit-spread-echarts-stub" />,
 }));
 
+import { ApiClientProvider, createApiClient } from "../api/client";
 import { CreditSpreadView } from "../features/bond-analytics/components/CreditSpreadView";
 
 function createResultMeta(overrides: Record<string, unknown> = {}) {
@@ -65,60 +66,129 @@ function createCreditSpreadResult(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createCreditSpreadDetailResult(overrides: Record<string, unknown> = {}) {
+  return {
+    report_date: "2026-03-31",
+    credit_bond_count: 42,
+    total_credit_market_value: "5000000000",
+    weighted_avg_spread_bps: "85.25",
+    spread_term_structure: [
+      {
+        tenor_bucket: "3Y",
+        avg_spread_bps: "72.50",
+        min_spread_bps: "50.00",
+        max_spread_bps: "95.00",
+        bond_count: 12,
+        total_market_value: "2200000000",
+      },
+      {
+        tenor_bucket: "5Y",
+        avg_spread_bps: "96.30",
+        min_spread_bps: "70.00",
+        max_spread_bps: "120.00",
+        bond_count: 8,
+        total_market_value: "1800000000",
+      },
+    ],
+    top_spread_bonds: [
+      {
+        instrument_code: "CB-900",
+        instrument_name: "高利差债A",
+        rating: "AA",
+        tenor_bucket: "5Y",
+        ytm: "4.25000000",
+        benchmark_yield: "3.10000000",
+        credit_spread: "115.00000000",
+        spread_duration: "4.20000000",
+        spread_dv01: "42.00000000",
+        market_value: "1000000000.00000000",
+        weight: "0.20000000",
+      },
+    ],
+    bottom_spread_bonds: [
+      {
+        instrument_code: "CB-100",
+        instrument_name: "低利差债B",
+        rating: "AAA",
+        tenor_bucket: "3Y",
+        ytm: "3.10000000",
+        benchmark_yield: "3.00000000",
+        credit_spread: "10.00000000",
+        spread_duration: "2.10000000",
+        spread_dv01: "10.00000000",
+        market_value: "800000000.00000000",
+        weight: "0.16000000",
+      },
+    ],
+    historical_context: {
+      current_spread_bps: "85.25000000",
+      percentile_1y: "72.50000000",
+      percentile_3y: "81.20000000",
+      median_1y: "79.80000000",
+      median_3y: "76.40000000",
+      min_1y: "40.00000000",
+      max_1y: "120.00000000",
+    },
+    warnings: [],
+    computed_at: "2026-04-13T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("CreditSpreadView", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
-  it("loads credit spread view with KPI cards, spread and migration tables, and concentration when present", async () => {
-    let resolvePayload!: (v: { result_meta: ReturnType<typeof createResultMeta>; result: ReturnType<typeof createCreditSpreadResult> }) => void;
-    const payloadPromise = new Promise<{
-      result_meta: ReturnType<typeof createResultMeta>;
-      result: ReturnType<typeof createCreditSpreadResult>;
-    }>((resolve) => {
-      resolvePayload = resolve;
-    });
+  it("loads credit spread view with both legacy summary and detail sections", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createCreditSpreadResult({
+          concentration_by_issuer: {
+            dimension: "发行人",
+            hhi: "0.12",
+            top5_concentration: "0.45",
+            top_items: [{ name: "发行人A", weight: "0.2", market_value: "1000000000" }],
+          },
+        }),
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          result_kind: "credit_spread_analysis.detail",
+        }),
+        result: createCreditSpreadDetailResult(),
+      })),
+    };
 
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => payloadPromise,
-      }),
+    render(
+      <ApiClientProvider client={client}>
+        <CreditSpreadView reportDate="2026-03-31" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
-
-    render(<CreditSpreadView reportDate="2026-03-31" />);
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const firstUrl = String(
-      fetchMock.mock.calls[0]?.[0] instanceof Request
-        ? fetchMock.mock.calls[0][0].url
-        : fetchMock.mock.calls[0]?.[0],
-    );
-    expect(firstUrl).toContain("/api/bond-analytics/credit-spread-migration");
-
-    expect(screen.queryByText("信用债数量")).not.toBeInTheDocument();
-
-    resolvePayload({
-      result_meta: createResultMeta(),
-      result: createCreditSpreadResult({
-        concentration_by_issuer: {
-          dimension: "发行人",
-          hhi: "0.12",
-          top5_concentration: "0.45",
-          top_items: [{ name: "发行人A", weight: "0.2", market_value: "1000000000" }],
-        },
-      }),
-    });
 
     expect(await screen.findByText("信用债数量")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(client.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-03-31"),
+    );
+    expect(client.getCreditSpreadAnalysisDetail).toHaveBeenCalledWith("2026-03-31");
+
     expect(screen.getByText("信用债市值")).toBeInTheDocument();
     expect(screen.getByText("Spread DV01 (万元/bp)")).toBeInTheDocument();
-    expect(screen.getByText("加权平均利差")).toBeInTheDocument();
+    expect(screen.getByText("加权平均利差（个券）")).toBeInTheDocument();
 
     expect(screen.getByText("利差情景冲击")).toBeInTheDocument();
     expect(screen.getByText("信用债分布")).toBeInTheDocument();
     expect(screen.getByText("spr_25w")).toBeInTheDocument();
+
+    expect(screen.getByText("利差期限结构")).toBeInTheDocument();
+    expect(screen.getByText("历史分位")).toBeInTheDocument();
+    expect(screen.getByText("高利差债券")).toBeInTheDocument();
+    expect(screen.getByText("低利差债券")).toBeInTheDocument();
+    expect(screen.getByText("高利差债A")).toBeInTheDocument();
+    expect(screen.getByText("低利差债B")).toBeInTheDocument();
+    expect(screen.getByText("1年历史分位")).toBeInTheDocument();
 
     expect(screen.getByText("评级迁徙情景")).toBeInTheDocument();
     expect(screen.getByText("mig_aa_to_a")).toBeInTheDocument();
@@ -126,25 +196,33 @@ describe("CreditSpreadView", () => {
     expect(screen.getByText("信用集中度")).toBeInTheDocument();
   });
 
-  it("renders warning alert when warnings exist", async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          result_meta: createResultMeta(),
-          result: createCreditSpreadResult({
-            warnings: ["示例：利差情景为分析占位"],
-            spread_scenarios: [],
-            migration_scenarios: [],
-          }),
+  it("keeps legacy summary visible and shows warning when detail endpoint is unavailable", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createCreditSpreadResult({
+          warnings: ["示例：利差情景为分析占位"],
+          spread_scenarios: [],
+          migration_scenarios: [],
         }),
+      })),
+      getCreditSpreadAnalysisDetail: vi.fn(async () => {
+        throw new Error(
+          "Request failed: /api/credit-spread-analysis/detail?report_date=2026-03-31 (503)",
+        );
       }),
+    };
+
+    render(
+      <ApiClientProvider client={client}>
+        <CreditSpreadView reportDate="2026-03-31" />
+      </ApiClientProvider>,
     );
-    vi.stubGlobal("fetch", fetchMock);
 
-    render(<CreditSpreadView reportDate="2026-03-31" />);
-
+    expect(await screen.findByText("信用债数量")).toBeInTheDocument();
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：利差情景为分析占位")).toBeInTheDocument();
+    expect(screen.getByText("深度利差明细暂不可用：HTTP 503")).toBeInTheDocument();
   });
 });

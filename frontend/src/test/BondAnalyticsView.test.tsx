@@ -365,4 +365,242 @@ describe("BondAnalyticsView", () => {
       ).toBe(false);
     });
   });
+
+  it("retries bond-analysis dates loading from the explicit error state", async () => {
+    const user = userEvent.setup();
+    let datesAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          datesAttempts += 1;
+          if (datesAttempts === 1) {
+            return {
+              ok: false,
+              status: 503,
+              json: async () => ({ detail: "dates backend unavailable" }),
+            };
+          }
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                result_kind: "bond_analytics.dates",
+              }),
+              result: {
+                report_dates: ["2026-02-28"],
+              },
+            }),
+          };
+        }
+
+        if (url.includes("/api/bond-analytics/action-attribution")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta(),
+              result: createActionAttributionResult({
+                report_date: "2026-02-28",
+                total_actions: 1,
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    renderBondAnalyticsView(createApiClient({ mode: "real" }));
+
+    expect(await screen.findByText("债券分析日期载入失败。")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试日期载入" }));
+    expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
+    expect(datesAttempts).toBe(2);
+  });
+
+  it("shows an explicit empty state when bond-analysis dates return no available report dates", async () => {
+    const fetchSequence: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        fetchSequence.push(url);
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                result_kind: "bond_analytics.dates",
+              }),
+              result: {
+                report_dates: [],
+              },
+            }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    renderBondAnalyticsView(createApiClient({ mode: "real" }));
+
+    expect(await screen.findByText("债券分析暂无可用报告日。")).toBeInTheDocument();
+    expect(screen.getByText(/后端尚未返回可消费的 Bond Analytics 报告日/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
+      expect(
+        fetchSequence.some((url) => url.includes("/api/bond-analytics/action-attribution")),
+      ).toBe(false);
+    });
+  });
+
+  it("retries bond-analysis dates loading from the explicit empty state", async () => {
+    const user = userEvent.setup();
+    let datesAttempts = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          datesAttempts += 1;
+          if (datesAttempts === 1) {
+            return {
+              ok: true,
+              json: async () => ({
+                result_meta: createResultMeta({
+                  result_kind: "bond_analytics.dates",
+                }),
+                result: {
+                  report_dates: [],
+                },
+              }),
+            };
+          }
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta({
+                result_kind: "bond_analytics.dates",
+              }),
+              result: {
+                report_dates: ["2026-02-28"],
+              },
+            }),
+          };
+        }
+
+        if (url.includes("/api/bond-analytics/action-attribution")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta(),
+              result: createActionAttributionResult({
+                report_date: "2026-02-28",
+                total_actions: 1,
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    renderBondAnalyticsView(createApiClient({ mode: "real" }));
+
+    expect(await screen.findByText("债券分析暂无可用报告日。")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "重试日期载入" }));
+    expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
+    expect(datesAttempts).toBe(2);
+  });
+
+  it("keeps rendering explicit bond-analysis report_date even if dates lookup fails", async () => {
+    const fetchSequence: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request) => {
+        const url =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+        fetchSequence.push(url);
+
+        if (url.includes("/api/bond-analytics/dates")) {
+          return {
+            ok: false,
+            status: 503,
+            json: async () => ({ detail: "dates backend unavailable" }),
+          };
+        }
+
+        if (url.includes("/api/bond-analytics/action-attribution")) {
+          return {
+            ok: true,
+            json: async () => ({
+              result_meta: createResultMeta(),
+              result: createActionAttributionResult({
+                report_date: "2026-02-28",
+                total_actions: 4,
+                total_pnl_from_actions: "1500000",
+                by_action_type: [],
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Unhandled fetch request: ${url}`);
+      }),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/bond-analysis?report_date=2026-02-28"]}>
+        <ApiClientProvider client={createApiClient({ mode: "real" })}>
+          <QueryClientProvider
+            client={
+              new QueryClient({
+                defaultOptions: {
+                  queries: { retry: false, refetchOnWindowFocus: false },
+                },
+              })
+            }
+          >
+            <BondAnalyticsView />
+          </QueryClientProvider>
+        </ApiClientProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
+    expect(screen.queryByText("债券分析日期载入失败。")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        fetchSequence.some((url) =>
+          url.includes("/api/bond-analytics/action-attribution?report_date=2026-02-28"),
+        ),
+      ).toBe(true);
+    });
+  });
 });

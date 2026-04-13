@@ -16,6 +16,10 @@ from backend.app.core_finance.bond_analytics.common import (
     map_accounting_class,
     safe_decimal,
 )
+from backend.app.core_finance.interest_mode import (
+    classify_interest_rate_style,
+    resolve_interest_payment_frequency,
+)
 
 MISSING_SOURCE_VERSION = "sv_bond_analytics_snapshot_missing"
 ENGINE_RULE_VERSION = "rv_bond_analytics_engine_v1"
@@ -41,13 +45,17 @@ class BondAnalyticsRow:
     accounting_rule_id: str
     currency_code: str
     face_value: Decimal
+    market_value_native: Decimal
     market_value: Decimal
     amortized_cost: Decimal
     accrued_interest: Decimal
     coupon_rate: Decimal | None
     interest_mode: str
+    interest_payment_frequency: str
+    interest_rate_style: str
     ytm: Decimal | None
     maturity_date: date | None
+    next_call_date: date | None
     years_to_maturity: Decimal
     tenor_bucket: str
     macaulay_duration: Decimal
@@ -95,6 +103,9 @@ def compute_bond_analytics_rows(
         accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
 
         coupon_rate = _optional_decimal(snapshot_row.get("coupon_rate"))
+        interest_mode = _as_text(snapshot_row.get("interest_mode"))
+        interest_payment_frequency, _used_fallback = resolve_interest_payment_frequency(interest_mode)
+        interest_rate_style = classify_interest_rate_style(interest_mode)
         ytm = _optional_decimal(snapshot_row.get("ytm_value"))
         maturity_date = _coerce_date(snapshot_row.get("maturity_date"))
         years_to_maturity = _compute_years_to_maturity(
@@ -102,6 +113,7 @@ def compute_bond_analytics_rows(
             maturity_date=maturity_date,
         )
         market_value = safe_decimal(snapshot_row.get("market_value_native"))
+        market_value_native = market_value
         if years_to_maturity == Decimal("0"):
             macaulay_duration = Decimal("0")
             modified_duration = Decimal("0")
@@ -143,13 +155,17 @@ def compute_bond_analytics_rows(
                 accounting_rule_id=accounting_rule_id,
                 currency_code=_as_text(snapshot_row.get("currency_code")),
                 face_value=safe_decimal(snapshot_row.get("face_value_native")),
+                market_value_native=market_value_native,
                 market_value=market_value,
                 amortized_cost=safe_decimal(snapshot_row.get("amortized_cost_native")),
                 accrued_interest=safe_decimal(snapshot_row.get("accrued_interest_native")),
                 coupon_rate=coupon_rate,
-                interest_mode=_as_text(snapshot_row.get("interest_mode")),
+                interest_mode=interest_mode,
+                interest_payment_frequency=interest_payment_frequency,
+                interest_rate_style=interest_rate_style,
                 ytm=ytm,
                 maturity_date=maturity_date,
+                next_call_date=_coerce_date(snapshot_row.get("next_call_date")),
                 years_to_maturity=years_to_maturity,
                 tenor_bucket=get_tenor_bucket(float(years_to_maturity)),
                 macaulay_duration=macaulay_duration,

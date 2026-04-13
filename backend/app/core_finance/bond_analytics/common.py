@@ -26,7 +26,21 @@ def decimal_to_str(value: Decimal) -> str:
 # --- Asset classification ---
 
 RATE_KEYWORDS = ("国债", "国开", "政金", "政策性", "地方政府", "央票", "treasury", "government", "policy")
-CREDIT_KEYWORDS = ("企业债", "公司债", "中票", "短融", "超短融", "PPN", "ABS", "corporate", "credit")
+CREDIT_KEYWORDS = (
+    "企业债",
+    "公司债",
+    "信用债",
+    "商业银行债",
+    "次级债",
+    "资产支持证券",
+    "中票",
+    "短融",
+    "超短融",
+    "PPN",
+    "ABS",
+    "corporate",
+    "credit",
+)
 CDB_KEYWORDS = ("国开", "政策性", "政金", "cdb", "policy bank")
 
 

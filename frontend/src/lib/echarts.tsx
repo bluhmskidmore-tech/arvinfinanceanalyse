@@ -1,7 +1,7 @@
 import ReactEChartsCore from "echarts-for-react/lib/core";
 import type { EChartsReactProps } from "echarts-for-react/lib/types";
 import * as echarts from "echarts/core";
-import { BarChart, PieChart } from "echarts/charts";
+import { BarChart, LineChart, PieChart } from "echarts/charts";
 import {
   AxisPointerComponent,
   GraphicComponent,
@@ -14,6 +14,7 @@ import { CanvasRenderer } from "echarts/renderers";
 
 echarts.use([
   BarChart,
+  LineChart,
   PieChart,
   AxisPointerComponent,
   GraphicComponent,

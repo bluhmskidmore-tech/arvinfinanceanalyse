@@ -240,6 +240,16 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
         "CB-002": "固定",
         "TB-001": "固定",
     }
+    assert {row["instrument_code"]: row["interest_payment_frequency"] for row in fetched_rows} == {
+        "CB-001": "annual",
+        "CB-002": "annual",
+        "TB-001": "annual",
+    }
+    assert {row["instrument_code"]: row["interest_rate_style"] for row in fetched_rows} == {
+        "CB-001": "fixed",
+        "CB-002": "fixed",
+        "TB-001": "fixed",
+    }
     assert [row["instrument_code"] for row in repo.fetch_bond_analytics_rows(report_date=REPORT_DATE, asset_class="credit")] == [
         "CB-001",
         "CB-002",

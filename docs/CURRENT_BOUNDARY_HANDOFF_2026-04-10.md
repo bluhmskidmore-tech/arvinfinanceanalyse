@@ -54,7 +54,7 @@
 
 - 属于 `Phase 1 preview closeout`
 - 即使 `.omx/plans/phase1-preview-*` 存在，也只说明这是已计划 / 已执行的 closeout 面，不等于进入 `Phase 2`
-- `zqtz / tyw` 当前仅允许 docs-only 的 contract alignment / PRD / test-spec 收敛；这不构成 snapshot materialization、formal compute 或 workbench 消费授权。
+- **Contract sync（2026-04-12）：** `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md` §13 与 `tests/test_balance_analysis_workbook_contract.py` 已列出 **governed balance-analysis workbook** 当前宣称已支持的 section keys（`zqtz / tyw` formal 物化 + core_finance workbook + API + workbench 消费链）。这 **不** 推翻上文「仓库默认仍是 Phase 1」的结论，也 **不** 等于 repo-wide Phase 2 cutover；仅说明在该 scoped lane 内存在可验证的正式读模型与契约测试，避免代理把已落地 section 误读为「仅 docs-only、尚未实现」。
 - 后续若存在 `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`，其授权仅适用于 `zqtz / tyw` snapshot materialization，不代表仓库整体进入 `Phase 2`。
 - 截至 `2026-04-11`，formal balance compute 的最新边界以后续 dated override `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md` 为准；本节保留的是 `2026-04-10` 时点判断。
 

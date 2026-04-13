@@ -67,3 +67,48 @@ def test_balance_analysis_service_outward_envelopes_do_not_use_snapshot_repo_rea
     assert summary_payload["result_meta"]["result_kind"] == "balance-analysis.summary"
     assert workbook_payload["result_meta"]["result_kind"] == "balance-analysis.workbook"
     assert basis_payload["result_meta"]["result_kind"] == "balance-analysis.basis-breakdown"
+
+
+def test_balance_analysis_service_paths_do_not_call_replace_formal_balance_rows(
+    tmp_path,
+    monkeypatch,
+):
+    """Guard: formal fact writes stay in tasks; service envelopes are read-only."""
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    repo_mod = load_module(
+        "backend.app.repositories.balance_analysis_repo",
+        "backend/app/repositories/balance_analysis_repo.py",
+    )
+
+    calls: list[object] = []
+
+    def _capture_replace(self, **kwargs):
+        calls.append(kwargs)
+        return None
+
+    monkeypatch.setattr(
+        repo_mod.BalanceAnalysisRepository,
+        "replace_formal_balance_rows",
+        _capture_replace,
+    )
+
+    service_mod.balance_analysis_overview_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    service_mod.balance_analysis_detail_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert calls == []

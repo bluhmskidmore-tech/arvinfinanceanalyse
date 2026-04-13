@@ -35,10 +35,14 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
     if not FRONTEND_SRC.exists():
         return
 
-    files = [
-        f for f in list(FRONTEND_SRC.rglob("*.ts")) + list(FRONTEND_SRC.rglob("*.tsx"))
-        if not _is_display_only(f)
-    ]
+    files = sorted(
+        (
+            f
+            for f in list(FRONTEND_SRC.rglob("*.ts")) + list(FRONTEND_SRC.rglob("*.tsx"))
+            if not _is_display_only(f)
+        ),
+        key=lambda p: p.as_posix(),
+    )
     violations: list[str] = []
     for path in files:
         text = path.read_text(encoding="utf-8")

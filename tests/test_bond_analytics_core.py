@@ -31,11 +31,42 @@ def test_safe_decimal_coerces_and_handles_bad_input() -> None:
     assert common.safe_decimal("not-a-number") == Decimal("0")
 
 
+def test_rating_aa_and_below_portfolio_weight_excludes_aaa_and_aa_plus() -> None:
+    rm = _read_models_module()
+    total = Decimal("100")
+    credit_rows = [
+        {"rating": "AAA", "market_value": Decimal("40")},
+        {"rating": "AA+", "market_value": Decimal("30")},
+        {"rating": "AA", "market_value": Decimal("20")},
+        {"rating": "A", "market_value": Decimal("10")},
+    ]
+    w = rm.rating_aa_and_below_portfolio_weight(credit_rows, total_portfolio_market_value=total)
+    assert w == Decimal("0.3")
+
+
+def test_rating_aa_and_below_portfolio_weight_ignores_unknown_rating() -> None:
+    rm = _read_models_module()
+    total = Decimal("100")
+    credit_rows = [
+        {"rating": "AA", "market_value": Decimal("50")},
+        {"rating": "MOODY", "market_value": Decimal("50")},
+    ]
+    w = rm.rating_aa_and_below_portfolio_weight(credit_rows, total_portfolio_market_value=total)
+    assert w == Decimal("0.5")
+
+
 def test_classify_asset_class_rate_credit_other() -> None:
     assert common.classify_asset_class("国债") == "rate"
     assert common.classify_asset_class("企业债") == "credit"
     assert common.classify_asset_class("xxx") == "other"
     assert common.classify_asset_class("") == "other"
+
+
+def test_classify_asset_class_recognizes_real_world_credit_bond_labels() -> None:
+    assert common.classify_asset_class("信用债券-企业") == "credit"
+    assert common.classify_asset_class("信用债券-公用事业") == "credit"
+    assert common.classify_asset_class("商业银行债") == "credit"
+    assert common.classify_asset_class("资产支持证券") == "credit"
 
 
 def test_map_accounting_class_patterns() -> None:
@@ -196,7 +227,8 @@ def test_fx_effect_positive_when_usd_appreciates() -> None:
                 "accounting_class": "OCI",
                 "currency_code": "USD",
                 "face_value": Decimal("1000"),
-                "market_value": Decimal("1000"),
+                "market_value_native": Decimal("1000"),
+                "market_value": Decimal("7082.70000000"),
                 "coupon_rate": Decimal("0"),
                 "years_to_maturity": Decimal("5"),
                 "tenor_bucket": "5Y",
@@ -212,6 +244,129 @@ def test_fx_effect_positive_when_usd_appreciates() -> None:
 
     assert summary["fx_effect_total"] == Decimal("41.35000000")
     assert summary["bond_details"][0]["fx_effect"] == Decimal("41.35000000")
+
+
+def test_fx_effect_zero_without_native_market_value() -> None:
+    summary = _read_models_module().summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "USD Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "USD",
+                "face_value": Decimal("1000"),
+                "market_value": Decimal("7082.70000000"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        fx_rates_current={"USD": Decimal("7.0827")},
+        fx_rates_prior={"USD": Decimal("7.04135")},
+    )
+
+    assert summary["fx_effect_total"] == Decimal("0")
+    assert summary["bond_details"][0]["fx_effect"] == Decimal("0")
+
+
+def test_spread_effect_moves_excess_return_without_selection_residual() -> None:
+    summary = _read_models_module().compute_benchmark_excess(
+        [
+            {
+                "instrument_code": "C1",
+                "instrument_name": "Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "macaulay_duration": Decimal("5"),
+                "modified_duration": Decimal("5"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            }
+        ],
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current={"5Y": Decimal("2.00")},
+        benchmark_curve_prior={"5Y": Decimal("2.00")},
+        treasury_curve_current={"5Y": Decimal("2.00")},
+        treasury_curve_prior={"5Y": Decimal("2.00")},
+        aaa_credit_curve_current={"5Y": Decimal("6.00")},
+        aaa_credit_curve_prior={"5Y": Decimal("5.00")},
+    )
+
+    assert summary["excess_return"] == Decimal("-500.00000000")
+    assert summary["spread_effect"] == Decimal("-500.00000000")
+    assert summary["selection_effect"] == Decimal("0")
+    assert summary["allocation_effect"] == Decimal("0")
+
+
+def test_allocation_effect_uses_non_carry_sector_returns() -> None:
+    summary = _read_models_module().compute_benchmark_excess(
+        [
+            {
+                "instrument_code": "R1",
+                "instrument_name": "Treasury 1Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("1"),
+                "tenor_bucket": "1Y",
+                "macaulay_duration": Decimal("1"),
+                "modified_duration": Decimal("1"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+            {
+                "instrument_code": "C1",
+                "instrument_name": "Credit 5Y",
+                "asset_class_raw": "信用债",
+                "asset_class_std": "credit",
+                "bond_type": "企业债",
+                "accounting_class": "OCI",
+                "currency_code": "CNY",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "macaulay_duration": Decimal("5"),
+                "modified_duration": Decimal("5"),
+                "convexity": Decimal("0"),
+                "dv01": Decimal("0"),
+            },
+        ],
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 12, 31),
+        benchmark_id="TREASURY_INDEX",
+        benchmark_curve_current={"1Y": Decimal("3.00"), "5Y": Decimal("3.00")},
+        benchmark_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+        treasury_curve_current={"1Y": Decimal("3.00"), "5Y": Decimal("3.00")},
+        treasury_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
+        aaa_credit_curve_current={"5Y": Decimal("3.00")},
+        aaa_credit_curve_prior={"5Y": Decimal("3.00")},
+    )
+
+    assert summary["allocation_effect"] == Decimal("0")
 
 
 def test_portfolio_return_is_invariant_across_benchmark_choice() -> None:

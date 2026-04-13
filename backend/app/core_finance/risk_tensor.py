@@ -4,9 +4,18 @@ from __future__ import annotations
 import calendar
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
+
+from backend.app.core_finance.cashflow_projection import (
+    project_bond_cashflows,
+    project_liability_cashflows,
+)
+from backend.app.core_finance.interest_mode import (
+    classify_interest_rate_style,
+    resolve_interest_payment_frequency,
+)
 
 ZERO = Decimal("0")
 SUPPORTED_KRD_BUCKETS = {
@@ -49,6 +58,10 @@ class PortfolioRiskTensor:
     portfolio_modified_duration: Decimal
     issuer_concentration_hhi: Decimal
     issuer_top5_weight: Decimal
+    asset_cashflow_30d: Decimal
+    asset_cashflow_90d: Decimal
+    liability_cashflow_30d: Decimal
+    liability_cashflow_90d: Decimal
     liquidity_gap_30d: Decimal
     liquidity_gap_90d: Decimal
     liquidity_gap_30d_ratio: Decimal
@@ -61,8 +74,10 @@ class PortfolioRiskTensor:
 def compute_portfolio_risk_tensor(
     bond_analytics_rows: list[dict],
     report_date: date,
+    liability_rows: list[dict] | None = None,
 ) -> PortfolioRiskTensor:
     rows = list(bond_analytics_rows or [])
+    liabilities = list(liability_rows or [])
     warnings: list[str] = []
 
     total_market_value = _sum_field(rows, "market_value")
@@ -75,7 +90,19 @@ def compute_portfolio_risk_tensor(
     portfolio_convexity = _weighted_average(rows, "convexity", total_market_value)
     portfolio_modified_duration = _weighted_average(rows, "modified_duration", total_market_value)
     issuer_hhi, issuer_top5 = _issuer_concentration_metrics(rows, total_market_value)
-    liquidity_gap_30d, liquidity_gap_90d, maturity_warnings = _compute_liquidity_gaps(rows, report_date)
+    (
+        liquidity_gap_30d,
+        liquidity_gap_90d,
+        asset_cashflow_30d,
+        asset_cashflow_90d,
+        liability_cashflow_30d,
+        liability_cashflow_90d,
+        maturity_warnings,
+    ) = _compute_liquidity_gaps(
+        rows,
+        report_date,
+        liabilities,
+    )
     warnings.extend(maturity_warnings)
     liquidity_gap_30d_ratio = _ratio(liquidity_gap_30d, total_market_value)
 
@@ -99,6 +126,10 @@ def compute_portfolio_risk_tensor(
         portfolio_modified_duration=portfolio_modified_duration,
         issuer_concentration_hhi=issuer_hhi,
         issuer_top5_weight=issuer_top5,
+        asset_cashflow_30d=asset_cashflow_30d,
+        asset_cashflow_90d=asset_cashflow_90d,
+        liability_cashflow_30d=liability_cashflow_30d,
+        liability_cashflow_90d=liability_cashflow_90d,
         liquidity_gap_30d=liquidity_gap_30d,
         liquidity_gap_90d=liquidity_gap_90d,
         liquidity_gap_30d_ratio=liquidity_gap_30d_ratio,
@@ -160,14 +191,16 @@ def _issuer_concentration_metrics(
 def _compute_liquidity_gaps(
     rows: list[dict[str, Any]],
     report_date: date,
-) -> tuple[Decimal, Decimal, list[str]]:
-    gap_30d = ZERO
-    gap_90d = ZERO
+    liability_rows: list[dict[str, Any]] | None = None,
+) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal, Decimal, list[str]]:
     missing_maturity_dates = 0
+    missing_liability_maturity_dates = 0
     unsupported_interest_modes: set[str] = set()
     optionality_warning_needed = False
+    projection_rows: list[dict[str, Any]] = []
+    liability_projection_rows: list[dict[str, Any]] = []
 
-    for row in rows:
+    for index, row in enumerate(rows):
         maturity_date = _coerce_date(row.get("maturity_date"))
         if maturity_date is None:
             missing_maturity_dates += 1
@@ -175,34 +208,91 @@ def _compute_liquidity_gaps(
         if maturity_date < report_date:
             continue
 
-        face_value = _resolve_face_value(row)
-        coupon_rate = _safe_decimal(row.get("coupon_rate"))
-        interest_mode = _normalize_interest_mode(
+        raw_interest_mode = row.get("interest_mode")
+        _normalize_interest_mode(
             row.get("interest_mode"),
             unsupported_interest_modes=unsupported_interest_modes,
         )
         if _has_optionality_inputs(row):
             optionality_warning_needed = True
 
-        if _is_within_window(report_date, maturity_date, window_days=30):
-            gap_30d += face_value
-        if _is_within_window(report_date, maturity_date, window_days=90):
-            gap_90d += face_value
-
-        coupon_cashflow_30d, coupon_cashflow_90d = _estimate_coupon_cashflows(
-            report_date=report_date,
-            maturity_date=maturity_date,
-            face_value=face_value,
-            coupon_rate=coupon_rate,
-            interest_mode=interest_mode,
+        projection_rows.append(
+            {
+                "instrument_code": str(row.get("instrument_code") or f"risk-row-{index}"),
+                "instrument_name": str(row.get("instrument_name") or row.get("issuer_name") or ""),
+                "maturity_date": maturity_date,
+                "face_value": _resolve_face_value(row),
+                "coupon_rate": _safe_decimal(row.get("coupon_rate")),
+                "interest_mode": raw_interest_mode,
+                "currency_code": str(row.get("currency_code") or "CNY"),
+            }
         )
-        gap_30d += coupon_cashflow_30d
-        gap_90d += coupon_cashflow_90d
+
+    projection_report_date = report_date - timedelta(days=1)
+    projected_events = project_bond_cashflows(
+        projection_rows,
+        projection_report_date,
+        horizon_months=4,
+    )
+    asset_gap_30d = _sum_window_cashflows(
+        projected_events,
+        start_date=report_date,
+        end_date=report_date + timedelta(days=30),
+    )
+    asset_gap_90d = _sum_window_cashflows(
+        projected_events,
+        start_date=report_date,
+        end_date=report_date + timedelta(days=90),
+    )
+    for row in liability_rows or []:
+        maturity_date = _coerce_date(row.get("maturity_date"))
+        if maturity_date is None:
+            missing_liability_maturity_dates += 1
+            continue
+        if maturity_date < report_date:
+            continue
+        liability_projection_rows.append(
+            {
+                "position_id": str(row.get("position_id") or ""),
+                "counterparty_name": str(row.get("counterparty_name") or ""),
+                "position_side": str(row.get("position_side") or "liability"),
+                "maturity_date": maturity_date,
+                "principal_amount": _safe_decimal(row.get("principal_amount") or row.get("principal_native")),
+                "funding_cost_rate": _safe_decimal(row.get("funding_cost_rate")),
+                "currency_code": str(row.get("currency_code") or "CNY"),
+            }
+        )
+
+    projected_liability_events = project_liability_cashflows(
+        liability_projection_rows,
+        projection_report_date,
+        horizon_months=4,
+    )
+    liability_gap_30d = _sum_window_cashflows(
+        projected_liability_events,
+        start_date=report_date,
+        end_date=report_date + timedelta(days=30),
+    )
+    liability_gap_90d = _sum_window_cashflows(
+        projected_liability_events,
+        start_date=report_date,
+        end_date=report_date + timedelta(days=90),
+    )
+    gap_30d = asset_gap_30d + liability_gap_30d
+    gap_90d = asset_gap_90d + liability_gap_90d
+    asset_cashflow_30d = max(ZERO, asset_gap_30d)
+    asset_cashflow_90d = max(ZERO, asset_gap_90d)
+    liability_cashflow_30d = max(ZERO, -liability_gap_30d)
+    liability_cashflow_90d = max(ZERO, -liability_gap_90d)
 
     warnings: list[str] = []
     if missing_maturity_dates:
         warnings.append(
             f"Excluded {missing_maturity_dates} rows without maturity_date from liquidity gap calculation."
+        )
+    if missing_liability_maturity_dates:
+        warnings.append(
+            f"Excluded {missing_liability_maturity_dates} liability rows without maturity_date from liquidity gap calculation."
         )
     if unsupported_interest_modes:
         warnings.append(
@@ -214,7 +304,31 @@ def _compute_liquidity_gaps(
             "Embedded optionality is excluded from liquidity gaps; put/call/prepayment cash flows are not modeled."
         )
 
-    return gap_30d, gap_90d, warnings
+    return (
+        gap_30d,
+        gap_90d,
+        asset_cashflow_30d,
+        asset_cashflow_90d,
+        liability_cashflow_30d,
+        liability_cashflow_90d,
+        warnings,
+    )
+
+
+def _sum_window_cashflows(
+    events: list[Any],
+    *,
+    start_date: date,
+    end_date: date,
+) -> Decimal:
+    return sum(
+        (
+            _safe_decimal(event.amount)
+            for event in events
+            if start_date <= event.event_date <= end_date
+        ),
+        ZERO,
+    )
 
 
 def _weighted_average(
@@ -286,12 +400,14 @@ def _find_next_coupon_date(
     if interval_months <= 0 or maturity_date < report_date:
         return None
 
-    candidate = maturity_date
+    periods_back = 0
     next_coupon_date: date | None = None
-    while candidate > report_date:
+    while True:
+        candidate = _shift_months(maturity_date, -(periods_back * interval_months))
+        if candidate < report_date:
+            return next_coupon_date
         next_coupon_date = candidate
-        candidate = _shift_months(candidate, -interval_months)
-    return next_coupon_date
+        periods_back += 1
 
 
 def _shift_months(value: date, months: int) -> date:
@@ -313,26 +429,10 @@ def _normalize_interest_mode(
     unsupported_interest_modes: set[str],
 ) -> str:
     raw = str(value or "").strip()
-    normalized = raw.lower().replace("_", "-").replace(" ", "")
-    if normalized in {"bullet", "maturitybullet", "到期一次还本付息", "到期还本付息", "到期付息"}:
-        return "bullet"
-    if normalized in {"semi-annual", "semiannual", "semiannualcoupon", "半年付息"}:
-        return "semi-annual"
-    if normalized in {"quarterly", "quarterlycoupon", "季付息"}:
-        return "quarterly"
-    if normalized in {
-        "",
-        "annual",
-        "annualcoupon",
-        "年付息",
-        "fixed",
-        "固定",
-        "固定利率",
-        "固定计息",
-    }:
-        return "annual"
-    unsupported_interest_modes.add(raw or "unknown")
-    return "annual"
+    frequency, used_fallback = resolve_interest_payment_frequency(value)
+    if used_fallback and raw and classify_interest_rate_style(raw) == "unknown":
+        unsupported_interest_modes.add(raw)
+    return frequency
 
 
 def _has_optionality_inputs(row: dict[str, Any]) -> bool:

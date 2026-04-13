@@ -179,6 +179,11 @@ def _materialize_standard_snapshots(
                         ingest_batch_ids=z_batches,
                         report_dates=z_report_dates,
                     )
+                    if zqtz_total <= 0:
+                        raise ValueError(
+                            "Fail closed: zqtz manifest rows matched this materialization run but standardized "
+                            f"snapshot wrote 0 rows (report_dates={z_report_dates!r}, ingest_batch_ids={z_batches!r})."
+                        )
 
                 if tyw_manifests:
                     t_batches = sorted({str(m["ingest_batch_id"]) for m in tyw_manifests})
@@ -236,6 +241,11 @@ def _materialize_standard_snapshots(
                         ingest_batch_ids=t_batches,
                         report_dates=t_report_dates,
                     )
+                    if tyw_total <= 0:
+                        raise ValueError(
+                            "Fail closed: tyw manifest rows matched this materialization run but standardized "
+                            f"snapshot wrote 0 rows (report_dates={t_report_dates!r}, ingest_batch_ids={t_batches!r})."
+                        )
 
                 conn.execute("commit")
             except Exception:

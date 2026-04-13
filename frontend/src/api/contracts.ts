@@ -106,6 +106,316 @@ export type BondAnalyticsDatesPayload = {
   report_dates: string[];
 };
 
+export type AssetClassBreakdown = {
+  asset_class: string;
+  carry: string;
+  roll_down: string;
+  rate_effect: string;
+  spread_effect: string;
+  fx_effect?: string;
+  convexity_effect?: string;
+  trading: string;
+  total: string;
+  bond_count: number;
+  market_value: string;
+};
+
+export type BondLevelDecomposition = {
+  bond_code: string;
+  bond_name: string;
+  asset_class: string;
+  accounting_class: string;
+  market_value: string;
+  carry: string;
+  roll_down: string;
+  rate_effect: string;
+  spread_effect: string;
+  trading: string;
+  total: string;
+  explained_for_recon: string;
+  economic_only_effects: string;
+};
+
+export type ReturnDecompositionPayload = {
+  report_date: string;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  carry: string;
+  roll_down: string;
+  rate_effect: string;
+  spread_effect: string;
+  trading: string;
+  fx_effect: string;
+  convexity_effect: string;
+  explained_pnl: string;
+  explained_pnl_accounting: string;
+  explained_pnl_economic: string;
+  oci_reserve_impact: string;
+  actual_pnl: string;
+  recon_error: string;
+  recon_error_pct: string;
+  by_asset_class: AssetClassBreakdown[];
+  by_accounting_class: AssetClassBreakdown[];
+  bond_details: BondLevelDecomposition[];
+  bond_count: number;
+  total_market_value: string;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type ExcessSourceBreakdown = {
+  source: string;
+  contribution: string;
+  description: string;
+};
+
+export type BenchmarkExcessPayload = {
+  report_date: string;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  portfolio_return: string;
+  benchmark_return: string;
+  excess_return: string;
+  tracking_error?: string;
+  information_ratio?: string;
+  duration_effect: string;
+  curve_effect: string;
+  spread_effect: string;
+  selection_effect: string;
+  allocation_effect: string;
+  explained_excess: string;
+  recon_error: string;
+  portfolio_duration: string;
+  benchmark_duration: string;
+  duration_diff: string;
+  excess_sources: ExcessSourceBreakdown[];
+  benchmark_id: string;
+  benchmark_name: string;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type KRDBucket = {
+  tenor: string;
+  krd: string;
+  dv01: string;
+  market_value_weight: string;
+};
+
+export type KRDScenarioResult = {
+  scenario_name: string;
+  scenario_description: string;
+  shocks: Record<string, number>;
+  pnl_economic: string;
+  pnl_oci: string;
+  pnl_tpl: string;
+  rate_contribution: string;
+  convexity_contribution: string;
+  by_asset_class: Record<string, Record<string, string>>;
+};
+
+export type AssetClassRiskSummary = {
+  asset_class: string;
+  market_value: string;
+  duration: string;
+  dv01: string;
+  weight: string;
+};
+
+export type KRDCurveRiskPayload = {
+  report_date: string;
+  portfolio_duration: string;
+  portfolio_modified_duration: string;
+  portfolio_dv01: string;
+  portfolio_convexity: string;
+  krd_buckets: KRDBucket[];
+  scenarios: KRDScenarioResult[];
+  by_asset_class: AssetClassRiskSummary[];
+  warnings: string[];
+  computed_at: string;
+};
+
+export type SpreadScenarioResult = {
+  scenario_name: string;
+  spread_change_bp: number;
+  pnl_impact: string;
+  oci_impact: string;
+  tpl_impact: string;
+};
+
+export type MigrationScenarioResult = {
+  scenario_name: string;
+  from_rating: string;
+  to_rating: string;
+  affected_bonds: number;
+  affected_market_value: string;
+  pnl_impact: string;
+  oci_impact?: string;
+};
+
+export type ConcentrationItem = {
+  name: string;
+  weight: string;
+  market_value: string;
+};
+
+export type ConcentrationMetrics = {
+  dimension: string;
+  hhi: string;
+  top5_concentration: string;
+  top_items: ConcentrationItem[];
+};
+
+export type CreditSpreadBondDetailRow = {
+  market_value: string;
+  rating?: string;
+  tenor_bucket?: string;
+};
+
+export type CreditSpreadMigrationPayload = {
+  report_date: string;
+  credit_bond_count: number;
+  credit_market_value: string;
+  credit_weight: string;
+  rating_aa_and_below_weight?: string;
+  spread_dv01: string;
+  weighted_avg_spread: string;
+  weighted_avg_spread_duration: string;
+  spread_scenarios: SpreadScenarioResult[];
+  migration_scenarios: MigrationScenarioResult[];
+  concentration_by_issuer?: ConcentrationMetrics;
+  concentration_by_industry?: ConcentrationMetrics;
+  concentration_by_rating?: ConcentrationMetrics;
+  concentration_by_tenor?: ConcentrationMetrics;
+  bond_details?: CreditSpreadBondDetailRow[];
+  oci_credit_exposure: string;
+  oci_spread_dv01: string;
+  oci_sensitivity_25bp: string;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type CreditSpreadTermStructurePoint = {
+  tenor_bucket: string;
+  avg_spread_bps: string;
+  min_spread_bps: string;
+  max_spread_bps: string;
+  bond_count: number;
+  total_market_value: string;
+};
+
+export type CreditSpreadDetailBondRow = {
+  instrument_code: string;
+  instrument_name: string;
+  rating: string;
+  tenor_bucket: string;
+  ytm: string;
+  benchmark_yield: string;
+  credit_spread: string;
+  spread_duration: string;
+  spread_dv01: string;
+  market_value: string;
+  weight: string;
+};
+
+export type SpreadHistoricalContextPayload = {
+  current_spread_bps: string;
+  percentile_1y: string | null;
+  percentile_3y: string | null;
+  median_1y: string | null;
+  median_3y: string | null;
+  min_1y: string | null;
+  max_1y: string | null;
+};
+
+export type CreditSpreadAnalysisPayload = {
+  report_date: string;
+  credit_bond_count: number;
+  total_credit_market_value: string;
+  weighted_avg_spread_bps: string;
+  spread_term_structure: CreditSpreadTermStructurePoint[];
+  top_spread_bonds: CreditSpreadDetailBondRow[];
+  bottom_spread_bonds: CreditSpreadDetailBondRow[];
+  historical_context: SpreadHistoricalContextPayload | null;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type ActionTypeSummary = {
+  action_type: string;
+  action_type_name: string;
+  action_count: number;
+  total_pnl_economic: string;
+  total_pnl_accounting: string;
+  avg_pnl_per_action: string;
+};
+
+export type ActionDetail = {
+  action_id: string;
+  action_type: string;
+  action_date: string;
+  bonds_involved: string[];
+  description: string;
+  pnl_economic: string;
+  pnl_accounting: string;
+  delta_duration: string;
+  delta_dv01: string;
+  delta_spread_dv01: string;
+  opportunity_cost?: string;
+  opportunity_cost_method?: string;
+};
+
+export type ActionAttributionPayload = {
+  report_date: string;
+  period_type: string;
+  period_start: string;
+  period_end: string;
+  total_actions: number;
+  total_pnl_from_actions: string;
+  by_action_type: ActionTypeSummary[];
+  action_details: ActionDetail[];
+  period_start_duration: string;
+  period_end_duration: string;
+  duration_change_from_actions: string;
+  period_start_dv01: string;
+  period_end_dv01: string;
+  warnings: string[];
+  computed_at: string;
+};
+
+export type AccountingClassAuditItem = {
+  asset_class: string;
+  position_count: number;
+  market_value: string;
+  market_value_weight: string;
+  infer_accounting_class: string;
+  map_accounting_class: string;
+  infer_rule_id: string;
+  infer_match: string | null;
+  map_rule_id: string;
+  map_match: string | null;
+  is_divergent: boolean;
+  is_map_unclassified: boolean;
+};
+
+export type AccountingClassAuditPayload = {
+  report_date: string;
+  total_positions: number;
+  total_market_value: string;
+  distinct_asset_classes: number;
+  divergent_asset_classes: number;
+  divergent_position_count: number;
+  divergent_market_value: string;
+  map_unclassified_asset_classes: number;
+  map_unclassified_position_count: number;
+  map_unclassified_market_value: string;
+  rows: AccountingClassAuditItem[];
+  warnings: string[];
+  computed_at: string;
+};
+
 export type RiskSignal = {
   id: string;
   label: string;
@@ -313,6 +623,52 @@ export type ChoiceMacroRecentPoint = {
 export type ChoiceMacroLatestPayload = {
   read_target: "duckdb";
   series: ChoiceMacroLatestPoint[];
+};
+
+export type MacroBondLinkageEnvironmentFactor = Record<string, unknown>;
+
+export type MacroBondLinkageEnvironmentScore = {
+  report_date: string;
+  rate_direction: string;
+  rate_direction_score: number;
+  liquidity_score: number;
+  growth_score: number;
+  inflation_score: number;
+  composite_score: number;
+  signal_description: string;
+  contributing_factors: MacroBondLinkageEnvironmentFactor[];
+  warnings: string[];
+};
+
+export type MacroBondLinkagePortfolioImpact = {
+  estimated_rate_change_bps: DecimalLike;
+  estimated_spread_widening_bps: DecimalLike;
+  estimated_rate_pnl_impact: DecimalLike;
+  estimated_spread_pnl_impact: DecimalLike;
+  total_estimated_impact: DecimalLike;
+  impact_ratio_to_market_value: DecimalLike;
+};
+
+export type MacroBondLinkageTopCorrelation = {
+  series_id: string;
+  series_name: string;
+  target_family: string;
+  target_tenor: string | null;
+  target_yield?: string | null;
+  correlation_3m: number | null;
+  correlation_6m: number | null;
+  correlation_1y: number | null;
+  lead_lag_days: number;
+  direction: "positive" | "negative" | "neutral";
+};
+
+export type MacroBondLinkagePayload = {
+  report_date: string;
+  environment_score: Partial<MacroBondLinkageEnvironmentScore>;
+  portfolio_impact: Partial<MacroBondLinkagePortfolioImpact>;
+  top_correlations: MacroBondLinkageTopCorrelation[];
+  warnings: string[];
+  computed_at: string;
 };
 
 export type FxAnalyticalGroupKey = "middle_rate" | "fx_index" | "fx_swap_curve";
@@ -996,4 +1352,143 @@ export type AgentDisabledResponse = {
   enabled: false;
   phase: "phase1";
   detail: string;
+};
+
+/** Positions module types */
+export type PositionDirection = "Asset" | "Liability";
+
+export type PageResponse<T> = {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+};
+
+export type BondPositionItem = {
+  bond_code: string;
+  credit_name: string | null;
+  sub_type: string | null;
+  asset_class: string | null;
+  market_value: string | null;
+  face_value: string | null;
+  valuation_net_price: string | null;
+  yield_rate: string | null;
+};
+
+export type InterbankPositionItem = {
+  deal_id: string;
+  counterparty: string | null;
+  product_type: string | null;
+  direction: PositionDirection | null;
+  amount: string;
+  interest_rate: string | null;
+  maturity_date: string | null;
+};
+
+export type CounterpartyStatItem = {
+  customer_name: string;
+  total_amount: string;
+  avg_daily_balance: string;
+  weighted_rate: string | null;
+  weighted_coupon_rate?: string | null;
+  transaction_count: number;
+};
+
+export type CounterpartyStatsResponse = {
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  items: CounterpartyStatItem[];
+  total_amount: string;
+  total_avg_daily: string;
+  total_weighted_rate: string | null;
+  total_weighted_coupon_rate?: string | null;
+  total_customers: number;
+};
+
+export type SubTypesResponse = { sub_types: string[] };
+export type ProductTypesResponse = { product_types: string[] };
+
+export type RatingStatItem = {
+  rating: string;
+  total_amount: string;
+  avg_daily_balance: string;
+  weighted_rate: string | null;
+  bond_count: number;
+  percentage: string;
+};
+
+export type RatingStatsResponse = {
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  items: RatingStatItem[];
+  total_amount: string;
+  total_avg_daily: string;
+};
+
+export type IndustryStatItem = {
+  industry: string;
+  total_amount: string;
+  avg_daily_balance: string;
+  weighted_rate: string | null;
+  bond_count: number;
+  percentage: string;
+};
+
+export type IndustryStatsResponse = {
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  items: IndustryStatItem[];
+  total_amount: string;
+  total_avg_daily: string;
+};
+
+export type CustomerBondDetailItem = {
+  bond_code: string;
+  sub_type: string | null;
+  asset_class: string | null;
+  market_value: string;
+  yield_rate: string | null;
+  maturity_date: string | null;
+  rating: string;
+  industry: string;
+};
+
+export type CustomerBondDetailsResponse = {
+  customer_name: string;
+  report_date: string;
+  total_market_value: string;
+  bond_count: number;
+  items: CustomerBondDetailItem[];
+};
+
+export type PositionBalanceTrendItem = {
+  date: string;
+  balance: string;
+};
+
+export type CustomerBalanceTrendResponse = {
+  customer_name: string;
+  start_date: string;
+  end_date: string;
+  days: number;
+  items: PositionBalanceTrendItem[];
+};
+
+export type InterbankCounterpartySplitResponse = {
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  asset_total_amount: string;
+  asset_total_avg_daily: string;
+  asset_total_weighted_rate: string | null;
+  asset_customer_count: number;
+  liability_total_amount: string;
+  liability_total_avg_daily: string;
+  liability_total_weighted_rate: string | null;
+  liability_customer_count: number;
+  asset_items: CounterpartyStatItem[];
+  liability_items: CounterpartyStatItem[];
 };

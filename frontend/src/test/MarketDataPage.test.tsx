@@ -3,6 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="market-data-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
 import MarketDataPage from "../features/market-data/pages/MarketDataPage";
@@ -208,8 +212,129 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("latest / single");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("low-frequency latest-only lane");
 
+    expect(screen.getByText("利率走势图")).toBeInTheDocument();
+    expect(screen.getByText("汇率与流动性")).toBeInTheDocument();
+    expect(screen.getByText("增长与物价")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-rate-trend-empty")).toBeInTheDocument();
+
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("renders rate trend ECharts when Choice macro includes configured yield series", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const pointMeta = {
+      source_version: "sv_rate_test",
+      vendor_version: "vv_rate_test",
+      frequency: "daily" as const,
+      refresh_tier: "stable" as const,
+      fetch_mode: "date_slice" as const,
+      fetch_granularity: "batch" as const,
+      policy_note: "rate lane",
+      quality_flag: "ok" as const,
+    };
+    const recent = [
+      {
+        trade_date: "2026-04-10",
+        value_numeric: 2.85,
+        source_version: "sv_rate_test",
+        vendor_version: "vv_rate_test",
+        quality_flag: "ok" as const,
+      },
+      {
+        trade_date: "2026-04-09",
+        value_numeric: 2.83,
+        source_version: "sv_rate_test",
+        vendor_version: "vv_rate_test",
+        quality_flag: "ok" as const,
+      },
+    ];
+    const getChoiceMacroLatest = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_rate_trend",
+        basis: "analytical" as const,
+        result_kind: "macro.choice.latest",
+        formal_use_allowed: false,
+        source_version: "sv_rate_test",
+        vendor_version: "vv_rate_test",
+        rule_version: "rv_test",
+        cache_version: "cv_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-10T09:00:00Z",
+      },
+      result: {
+        read_target: "duckdb" as const,
+        series: [
+          {
+            series_id: "EMM00166466",
+            series_name: "国债 10Y 测试",
+            trade_date: "2026-04-10",
+            value_numeric: 2.85,
+            unit: "%",
+            latest_change: 0.02,
+            recent_points: recent,
+            ...pointMeta,
+          },
+          {
+            series_id: "EMM00166462",
+            series_name: "国开 5Y 测试",
+            trade_date: "2026-04-10",
+            value_numeric: 2.92,
+            unit: "%",
+            latest_change: 0.01,
+            recent_points: recent.map((p, i) =>
+              i === 0 ? { ...p, value_numeric: 2.92 } : { ...p, value_numeric: 2.9 },
+            ),
+            ...pointMeta,
+          },
+          {
+            series_id: "EMM00166252",
+            series_name: "SHIBOR O/N 测试",
+            trade_date: "2026-04-10",
+            value_numeric: 1.42,
+            unit: "%",
+            latest_change: null,
+            recent_points: recent.map((p, i) =>
+              i === 0 ? { ...p, value_numeric: 1.42 } : { ...p, value_numeric: 1.4 },
+            ),
+            ...pointMeta,
+          },
+        ],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMacroFoundation: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_foundation_min",
+          basis: "analytical" as const,
+          result_kind: "preview.macro-foundation",
+          formal_use_allowed: false,
+          source_version: "sv_f",
+          vendor_version: "vv_f",
+          rule_version: "rv_f",
+          cache_version: "cv_f",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:00:00Z",
+        },
+        result: { read_target: "duckdb" as const, series: [] },
+      })),
+      getChoiceMacroLatest,
+    });
+
+    expect(await screen.findByTestId("market-data-rate-trend-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-echarts-stub")).toBeInTheDocument();
+
+    await waitFor(() => {
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
     });
   });
@@ -331,6 +456,43 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getFxAnalytical).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("renders macro-bond linkage as an analytical estimate with explicit tenor slots", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    renderPage(client);
+
+    expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("analytical");
+    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("non-formal");
+    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析估算");
+    expect(screen.getByTestId("market-data-linkage-warning-list")).toHaveTextContent(
+      "Analytical signal only",
+    );
+    expect(screen.getByTestId("market-data-linkage-composite-score")).toHaveTextContent("-0.11");
+    expect(screen.getByTestId("market-data-linkage-rate-direction")).toHaveTextContent("falling");
+    expect(screen.getByTestId("market-data-linkage-portfolio-impact")).toHaveTextContent(
+      "组合影响估算",
+    );
+    expect(screen.getByTestId("market-data-linkage-portfolio-impact")).toHaveTextContent(
+      "total estimate",
+    );
+    expect(screen.getByTestId("market-data-linkage-spread-slot-5Y")).toHaveTextContent(
+      "10Y treasury yield",
+    );
+    expect(screen.getByTestId("market-data-linkage-spread-slot-3Y")).toHaveTextContent(
+      "unavailable",
+    );
+    expect(screen.getByTestId("market-data-linkage-spread-slot-10Y")).toHaveTextContent(
+      "unavailable",
+    );
+    expect(screen.getByTestId("market-data-linkage-top-correlations")).toHaveTextContent(
+      "CPI YoY",
+    );
+    expect(screen.getByTestId("market-data-linkage-meta")).toHaveTextContent(
+      "formal_use_allowed: false",
+    );
   });
 });
 

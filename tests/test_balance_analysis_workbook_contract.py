@@ -1,3 +1,13 @@
+"""
+Contract tests for governed balance-analysis workbook sections.
+
+`GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS` must stay aligned with
+`docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md` §13 (supported section keys).
+
+`NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS` lists keys that must not appear as live workbook
+sections until explicitly implemented (see spec §「显式未支持」).
+"""
+
 from __future__ import annotations
 
 from datetime import date
@@ -9,6 +19,39 @@ from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import ROOT, load_module
+
+# Keys exercised by tests in this module (API + `_build_*` helpers). Keep in sync with the spec doc.
+GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS = frozenset(
+    {
+        "bond_business_types",
+        "maturity_gap",
+        "issuance_business_types",
+        "currency_split",
+        "rating_analysis",
+        "rate_distribution",
+        "industry_distribution",
+        "counterparty_types",
+        "campisi_breakdown",
+        "cross_analysis",
+        "interest_modes",
+        "liquidity_layers",
+        "regulatory_limits",
+        "overdue_credit_quality",
+        "overdue_credit_quality_ratings",
+        "vintage_analysis",
+        "customer_attribute_analysis",
+        "portfolio_comparison",
+        "ifrs9_position_scope",
+        "ifrs9_source_family",
+        "cashflow_calendar",
+        "issuer_concentration",
+        "rule_reference",
+        "ifrs9_classification",
+        "account_category_comparison",
+    }
+)
+
+NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS = frozenset({"advanced_attribution_bundle"})
 
 POLICY_BOND = "\u653f\u7b56\u6027\u91d1\u878d\u503a"
 OTHER_BOND = "\u5176\u4ed6"
@@ -449,6 +492,109 @@ def test_workbook_business_type_duration_ignores_rows_without_or_past_maturity()
     assert Decimal(str(other_row["weighted_term_years"])) > Decimal("4")
 
 
+def test_workbook_interest_mode_table_normalizes_fixed_floating_and_unknown_labels():
+    workbook_module = load_module(
+        "backend.app.core_finance.balance_analysis_workbook",
+        "backend/app/core_finance/balance_analysis_workbook.py",
+    )
+    balance_module = load_module(
+        "backend.app.core_finance.balance_analysis",
+        "backend/app/core_finance/balance_analysis.py",
+    )
+
+    rows = [
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="FIXED-1",
+            instrument_name="Fixed",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="交易性资产",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="未分类",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("10000"),
+            market_value_amount=Decimal("10000"),
+            amortized_cost_amount=Decimal("10000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 12, 31),
+            interest_mode="固定计息",
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="FLOAT-1",
+            instrument_name="Float",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="交易性资产",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="未分类",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("20000"),
+            market_value_amount=Decimal("20000"),
+            amortized_cost_amount=Decimal("20000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 12, 31),
+            interest_mode="浮动利率",
+            is_issuance_like=False,
+        ),
+        balance_module.FormalZqtzBalanceFactRow(
+            report_date=date(2025, 12, 31),
+            instrument_code="UNKNOWN-1",
+            instrument_name="Unknown",
+            portfolio_name="P",
+            cost_center="C",
+            account_category="",
+            asset_class="交易性资产",
+            bond_type=OTHER_BOND,
+            issuer_name="I",
+            industry_name="未分类",
+            rating="",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            position_scope="asset",
+            currency_basis="native",
+            currency_code="CNY",
+            face_value_amount=Decimal("30000"),
+            market_value_amount=Decimal("30000"),
+            amortized_cost_amount=Decimal("30000"),
+            accrued_interest_amount=Decimal("0"),
+            coupon_rate=Decimal("2.0"),
+            ytm_value=None,
+            maturity_date=date(2027, 12, 31),
+            interest_mode="半年付息",
+            is_issuance_like=False,
+        ),
+    ]
+
+    table = workbook_module._build_interest_mode_table(rows)
+    row_map = {row["interest_mode"]: row for row in table["rows"]}
+
+    assert set(row_map) == {"固定", "浮动", "未分类"}
+    assert row_map["固定"]["count"] == 1
+    assert row_map["浮动"]["count"] == 1
+    assert row_map["未分类"]["count"] == 1
+
+
 def test_workbook_campisi_uses_policy_bank_rate_as_benchmark():
     workbook_module = load_module(
         "backend.app.core_finance.balance_analysis_workbook",
@@ -629,28 +775,7 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     assert Decimal(str(card_map["bond_assets_excluding_issue"]["value"])) == Decimal("0.015")
 
     table_keys = {table["key"] for table in payload["result"]["tables"]}
-    assert {
-        "bond_business_types",
-        "maturity_gap",
-        "issuance_business_types",
-        "currency_split",
-        "rating_analysis",
-        "rate_distribution",
-        "industry_distribution",
-        "counterparty_types",
-        "campisi_breakdown",
-        "cross_analysis",
-        "interest_modes",
-        "liquidity_layers",
-        "regulatory_limits",
-        "overdue_credit_quality",
-        "overdue_credit_quality_ratings",
-        "vintage_analysis",
-        "customer_attribute_analysis",
-        "portfolio_comparison",
-        "ifrs9_position_scope",
-        "ifrs9_source_family",
-    } <= table_keys
+    assert GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS <= table_keys
     table_map = {table["key"]: table for table in payload["result"]["tables"]}
     issuance_rows = table_map["issuance_business_types"]["rows"]
     assert any(row["bond_type"] == "\u540c\u4e1a\u5b58\u5355" for row in issuance_rows)
@@ -664,6 +789,12 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     assert Decimal(str(other_row["balance_amount"])) == Decimal("0.005")
 
     get_settings.cache_clear()
+
+
+def test_governed_workbook_inventory_matches_spec_contract():
+    """Supported vs placeholder keys: see docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md §13."""
+    assert NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS.isdisjoint(GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS)
+    assert "advanced_attribution_bundle" in NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS
 
 
 def test_balance_analysis_workbook_does_not_silently_expose_future_gap_sections(tmp_path, monkeypatch):

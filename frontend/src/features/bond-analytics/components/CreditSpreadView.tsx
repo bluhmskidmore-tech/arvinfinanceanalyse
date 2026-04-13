@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { useApiClient } from "../../../api/client";
 import type {
+  CreditSpreadAnalysisResponse,
+  CreditSpreadDetailBondRow,
   ConcentrationMetrics,
   CreditSpreadBondDetailRow,
   CreditSpreadMigrationResponse,
@@ -33,6 +36,37 @@ const issuerConcentrationColumns = [
   { title: "名称", dataIndex: "name", key: "name" },
   { title: "权重", dataIndex: "weight", key: "weight" },
   { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+];
+
+const spreadDetailColumns = [
+  { title: "债券代码", dataIndex: "instrument_code", key: "instrument_code" },
+  { title: "债券名称", dataIndex: "instrument_name", key: "instrument_name" },
+  { title: "评级", dataIndex: "rating", key: "rating" },
+  { title: "期限桶", dataIndex: "tenor_bucket", key: "tenor_bucket" },
+  {
+    title: "YTM",
+    dataIndex: "ytm",
+    key: "ytm",
+    render: (value: string) => formatPctPoint(value),
+  },
+  {
+    title: "国债基准",
+    dataIndex: "benchmark_yield",
+    key: "benchmark_yield",
+    render: (value: string) => formatPctPoint(value),
+  },
+  {
+    title: "利差",
+    dataIndex: "credit_spread",
+    key: "credit_spread",
+    render: (value: string) => formatBp(value),
+  },
+  {
+    title: "市值",
+    dataIndex: "market_value",
+    key: "market_value",
+    render: formatWan,
+  },
 ];
 
 const CONCENTRATION_KEYS = [
@@ -126,6 +160,67 @@ function buildRatingTenorHeatmapData(
   }
   if (maxPct <= 0) return null;
   return { seriesData, maxPct };
+}
+
+function formatPctPoint(value: string | null | undefined): string {
+  const num = parseFloat(String(value ?? ""));
+  if (!Number.isFinite(num)) return "-";
+  return `${num.toFixed(2)}%`;
+}
+
+function formatPercentile(value: string | null | undefined): string {
+  const num = parseFloat(String(value ?? ""));
+  if (!Number.isFinite(num)) return "-";
+  return `${num.toFixed(1)}%`;
+}
+
+function formatBpOrDash(value: string | null | undefined): string {
+  return value == null ? "-" : formatBp(value);
+}
+
+function spreadTermStructureOption(
+  points: CreditSpreadAnalysisResponse["spread_term_structure"],
+): EChartsOption | null {
+  if (!points.length) return null;
+  return {
+    grid: { left: 48, right: 16, top: 24, bottom: 28, containLabel: false },
+    tooltip: { trigger: "axis" },
+    legend: { top: 0, textStyle: { fontSize: 11 } },
+    xAxis: {
+      type: "category",
+      data: points.map((point) => point.tenor_bucket),
+      axisLabel: { color: "#5c6b82", fontSize: 11 },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: "#5c6b82", fontSize: 11, formatter: "{value} bp" },
+      splitLine: { lineStyle: { type: "dashed", opacity: 0.35 } },
+    },
+    series: [
+      {
+        name: "平均",
+        type: "line",
+        smooth: true,
+        data: points.map((point) => Number(point.avg_spread_bps)),
+        itemStyle: { color: "#1f5eff" },
+        lineStyle: { width: 2 },
+      },
+      {
+        name: "最小",
+        type: "line",
+        data: points.map((point) => Number(point.min_spread_bps)),
+        itemStyle: { color: "#2f8f63" },
+        lineStyle: { type: "dashed" },
+      },
+      {
+        name: "最大",
+        type: "line",
+        data: points.map((point) => Number(point.max_spread_bps)),
+        itemStyle: { color: "#ff7a45" },
+        lineStyle: { type: "dashed" },
+      },
+    ],
+  };
 }
 
 function concentrationBarOption(
@@ -346,21 +441,42 @@ function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetrics | und
 }
 
 export function CreditSpreadView({ reportDate }: Props) {
-  const [data, setData] = useState<CreditSpreadMigrationResponse | null>(null);
+  const client = useApiClient();
+  const [summaryData, setSummaryData] = useState<CreditSpreadMigrationResponse | null>(null);
+  const [detailData, setDetailData] = useState<CreditSpreadAnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+      setDetailError(null);
       try {
-        const params = new URLSearchParams({ report_date: reportDate });
-        const res = await fetch(`/api/bond-analytics/credit-spread-migration?${params}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setData(json.result);
+        const [summaryResult, detailResult] = await Promise.allSettled([
+          client.getBondAnalyticsCreditSpreadMigration(reportDate),
+          client.getCreditSpreadAnalysisDetail(reportDate),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        if (summaryResult.status === "rejected") {
+          throw summaryResult.reason;
+        }
+
+        setSummaryData(summaryResult.value.result);
+        if (detailResult.status === "fulfilled") {
+          setDetailData(detailResult.value.result);
+        } else {
+          setDetailData(null);
+          setDetailError(
+            detailResult.reason instanceof Error ? detailResult.reason.message : "unknown error",
+          );
+        }
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -368,8 +484,12 @@ export function CreditSpreadView({ reportDate }: Props) {
       }
     };
     if (reportDate) fetchData();
-    return () => { cancelled = true; };
-  }, [reportDate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reportDate]);
+
+  const data = summaryData;
 
   const spreadChartOption = useMemo((): EChartsOption | null => {
     if (!data?.spread_scenarios?.length) return null;
@@ -427,6 +547,11 @@ export function CreditSpreadView({ reportDate }: Props) {
     return buildIssuerConcentrationPieOption(data.concentration_by_issuer);
   }, [data]);
 
+  const termStructureOption = useMemo(
+    () => spreadTermStructureOption(detailData?.spread_term_structure ?? []),
+    [detailData],
+  );
+
   const creditDistributionView = useMemo(() => {
     if (!data) return { kind: "empty" as const };
     const heat =
@@ -451,19 +576,33 @@ export function CreditSpreadView({ reportDate }: Props) {
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
+  const mergedWarnings = Array.from(
+    new Set([
+      ...data.warnings,
+      ...(detailData?.warnings ?? []),
+          ...(detailError ? [`深度利差明细暂不可用：${normalizeClientError(detailError)}`] : []),
+        ]),
+      );
+  const displayCreditBondCount = detailData?.credit_bond_count ?? data.credit_bond_count;
+  const displayCreditMarketValue = detailData?.total_credit_market_value ?? data.credit_market_value;
+  const displayWeightedAvgSpread = detailData
+    ? formatBp(detailData.weighted_avg_spread_bps)
+    : "-";
+  const historicalContext = detailData?.historical_context;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="信用债数量" value={data.credit_bond_count} />
+            <Statistic title="信用债数量" value={displayCreditBondCount} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
             <Statistic
               title="信用债市值"
-              value={formatWan(data.credit_market_value)}
+              value={formatWan(displayCreditMarketValue)}
               suffix={`(${(parseFloat(data.credit_weight) * 100).toFixed(1)}%)`}
             />
           </Card>
@@ -475,7 +614,7 @@ export function CreditSpreadView({ reportDate }: Props) {
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="加权平均利差" value={formatBp(data.weighted_avg_spread)} />
+            <Statistic title="加权平均利差（个券）" value={displayWeightedAvgSpread} />
           </Card>
         </Col>
       </Row>
@@ -604,6 +743,86 @@ export function CreditSpreadView({ reportDate }: Props) {
         )}
       </Card>
 
+      {detailData && (
+        <>
+          <Card title="利差期限结构" size="small">
+            {termStructureOption ? (
+              <ReactECharts
+                option={termStructureOption}
+                style={{ height: 320, width: "100%" }}
+                opts={{ renderer: "canvas" }}
+              />
+            ) : (
+              <div
+                style={{
+                  minHeight: 120,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "rgba(0,0,0,0.45)",
+                }}
+              >
+                暂无期限结构数据
+              </div>
+            )}
+          </Card>
+
+          <Card title="历史分位" size="small">
+            <Row gutter={16}>
+              <Col span={6}>
+                <Statistic
+                  title="当前利差"
+                  value={formatBpOrDash(historicalContext?.current_spread_bps)}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="1年历史分位"
+                  value={formatPercentile(historicalContext?.percentile_1y)}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="3年历史分位"
+                  value={formatPercentile(historicalContext?.percentile_3y)}
+                />
+              </Col>
+              <Col span={6}>
+                <Statistic
+                  title="1年中位数"
+                  value={formatBpOrDash(historicalContext?.median_1y)}
+                />
+              </Col>
+            </Row>
+          </Card>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Card title="高利差债券" size="small">
+                <Table<CreditSpreadDetailBondRow>
+                  dataSource={detailData.top_spread_bonds}
+                  columns={spreadDetailColumns}
+                  rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-top`}
+                  pagination={false}
+                  size="small"
+                />
+              </Card>
+            </Col>
+            <Col span={12}>
+              <Card title="低利差债券" size="small">
+                <Table<CreditSpreadDetailBondRow>
+                  dataSource={detailData.bottom_spread_bonds}
+                  columns={spreadDetailColumns}
+                  rowKey={(row) => `${row.instrument_code}-${row.tenor_bucket}-bottom`}
+                  pagination={false}
+                  size="small"
+                />
+              </Card>
+            </Col>
+          </Row>
+        </>
+      )}
+
       {hasAnyConcentrationField(data) && (
         <Card title="信用集中度" size="small">
           <Row gutter={[16, 16]}>
@@ -673,14 +892,22 @@ export function CreditSpreadView({ reportDate }: Props) {
         </Card>
       )}
 
-      {data.warnings.length > 0 && (
+      {mergedWarnings.length > 0 && (
         <Alert
           type="warning"
           showIcon
           message="提示"
-          description={data.warnings.map((w, i) => <div key={i}>{w}</div>)}
+          description={mergedWarnings.map((w, i) => <div key={i}>{w}</div>)}
         />
       )}
     </div>
   );
+}
+
+function normalizeClientError(message: string): string {
+  const match = message.match(/\((\d{3})\)\s*$/);
+  if (match?.[1]) {
+    return `HTTP ${match[1]}`;
+  }
+  return message;
 }

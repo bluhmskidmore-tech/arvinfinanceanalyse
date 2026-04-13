@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from pathlib import Path
 
 import duckdb
 
@@ -73,6 +74,81 @@ def _configure_and_materialize_degraded_snapshot(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, bond_task_mod
 
 
+def _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              product_type varchar,
+              position_side varchar,
+              counterparty_name varchar,
+              account_type varchar,
+              special_account_type varchar,
+              core_customer_type varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              currency_code varchar,
+              principal_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              funding_cost_rate decimal(18, 8),
+              maturity_date varchar,
+              source_version varchar,
+              rule_version varchar,
+              ingest_batch_id varchar,
+              trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily (
+              report_date, position_id, product_type, position_side, counterparty_name,
+              account_type, special_account_type, core_customer_type, invest_type_std,
+              accounting_basis, position_scope, currency_basis, currency_code, principal_amount,
+              accrued_interest_amount, funding_cost_rate, maturity_date, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                REPORT_DATE,
+                "TYW-L-1",
+                "Interbank",
+                "liability",
+                "Bank L",
+                "",
+                "",
+                "",
+                "H",
+                "AC",
+                "liability",
+                "CNY",
+                "CNY",
+                "4",
+                "0",
+                "0",
+                "2026-04-10",
+                "sv_tyw_liab_1",
+                "rv_balance_analysis_formal_materialize_v1",
+                "ib-liab-1",
+                "trace-liab-1",
+            ],
+        )
+    finally:
+        conn.close()
+
+    risk_task_mod = _materialize_risk_tensor(duckdb_path, governance_dir)
+    return duckdb_path, governance_dir, risk_task_mod
+
+
 def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -101,8 +177,16 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert result["quality_flag"] == "ok"
     assert result["warnings"] == []
     assert result["total_market_value"] == "429.00000000"
-    assert result["liquidity_gap_30d"] == "0.00000000"
-    assert result["liquidity_gap_90d"] == "0.00000000"
+    assert result["asset_cashflow_30d"] == "14.00000000"
+    assert result["asset_cashflow_90d"] == "14.00000000"
+    assert result["liability_cashflow_30d"] == "0.00000000"
+    assert result["liability_cashflow_90d"] == "0.00000000"
+    assert result["liquidity_gap_30d"] == "14.00000000"
+    assert result["liquidity_gap_90d"] == "14.00000000"
+    assert (
+        Decimal(result["liquidity_gap_30d"])
+        == Decimal(result["asset_cashflow_30d"]) - Decimal(result["liability_cashflow_30d"])
+    )
     assert result["issuer_top5_weight"] == "1.00000000"
     assert isinstance(result["portfolio_dv01"], str)
     assert isinstance(result["portfolio_convexity"], str)
@@ -119,6 +203,38 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert Decimal(result["cs01"]) > Decimal("0")
     assert Decimal(result["portfolio_convexity"]) > Decimal("0")
 
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+    lineage_mod = load_module(
+        "backend.app.governance.formal_compute_lineage",
+        "backend/app/governance/formal_compute_lineage.py",
+    )
+    calls: list[dict[str, str]] = []
+
+    def _capture(**kwargs):
+        calls.append(kwargs)
+        return lineage_mod.resolve_formal_manifest_lineage(**kwargs)
+
+    monkeypatch.setattr(service_mod, "resolve_formal_manifest_lineage", _capture)
+
+    payload = service_mod.risk_tensor_dates_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert len(calls) == 1
+    assert calls[0]["cache_key"] == service_mod.CACHE_KEY
+    assert Path(str(calls[0]["governance_dir"])).resolve() == Path(str(governance_dir)).resolve()
+    assert payload["result_meta"]["result_kind"] == "risk.tensor.dates"
+    assert payload["result_meta"]["source_version"]
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 
 
@@ -237,5 +353,75 @@ def test_risk_tensor_service_returns_non_empty_degraded_tensor_when_materialized
     assert Decimal(result["portfolio_dv01"]) > Decimal("0")
     assert any("Unsupported tenor buckets" in warning for warning in result["warnings"])
     assert any("without maturity_date" in warning for warning in result["warnings"])
+
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_fails_when_downstream_fact_is_stale_against_newer_tyw_liability_lineage(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_tyw_balance_daily
+            set source_version = ?
+            where report_date = ?
+              and position_id = 'TYW-L-1'
+            """,
+            ["sv_tyw_liab_2", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    try:
+        service_mod.risk_tensor_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date=REPORT_DATE,
+        )
+    except RuntimeError as exc:
+        assert "Risk tensor stale against TYW liability lineage" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError for stale TYW liability lineage")
+
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_service_fails_when_downstream_fact_is_stale_against_newer_tyw_liability_rule_version(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor_with_tyw_liability(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_tyw_balance_daily
+            set rule_version = ?
+            where report_date = ?
+              and position_id = 'TYW-L-1'
+            """,
+            ["rv_balance_analysis_formal_materialize_v2", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    try:
+        service_mod.risk_tensor_envelope(
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+            report_date=REPORT_DATE,
+        )
+    except RuntimeError as exc:
+        assert "Risk tensor stale against TYW liability lineage" in str(exc)
+    else:
+        raise AssertionError("Expected RuntimeError for stale TYW liability rule_version")
 
     get_settings.cache_clear()

@@ -114,13 +114,13 @@ class BondAnalyticsRepository:
                     insert into {FACT_TABLE} (
                       report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                       asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
-                      accounting_class, accounting_rule_id, currency_code, face_value, market_value,
-                      amortized_cost, accrued_interest, coupon_rate, interest_mode, ytm, maturity_date,
+                      accounting_class, accounting_rule_id, currency_code, face_value, market_value_native, market_value,
+                      amortized_cost, accrued_interest, coupon_rate, interest_mode, interest_payment_frequency, interest_rate_style, ytm, maturity_date, next_call_date,
                       years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                       convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                       ingest_batch_id, trace_id
                     ) values (
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                     )
                     """,
                     [
@@ -140,13 +140,17 @@ class BondAnalyticsRepository:
                             row.accounting_rule_id,
                             row.currency_code,
                             row.face_value,
+                            row.market_value_native,
                             row.market_value,
                             row.amortized_cost,
                             row.accrued_interest,
                             row.coupon_rate,
                             row.interest_mode,
+                            row.interest_payment_frequency,
+                            row.interest_rate_style,
                             row.ytm,
                             row.maturity_date.isoformat() if row.maturity_date else None,
+                            row.next_call_date.isoformat() if row.next_call_date else None,
                             row.years_to_maturity,
                             row.tenor_bucket,
                             row.macaulay_duration,
@@ -188,6 +192,26 @@ class BondAnalyticsRepository:
                 if _column_exists(conn, FACT_TABLE, "interest_mode")
                 else "'' as interest_mode"
             )
+            interest_payment_frequency_expr = (
+                "interest_payment_frequency"
+                if _column_exists(conn, FACT_TABLE, "interest_payment_frequency")
+                else "'annual' as interest_payment_frequency"
+            )
+            interest_rate_style_expr = (
+                "interest_rate_style"
+                if _column_exists(conn, FACT_TABLE, "interest_rate_style")
+                else "'unknown' as interest_rate_style"
+            )
+            next_call_date_expr = (
+                "next_call_date"
+                if _column_exists(conn, FACT_TABLE, "next_call_date")
+                else "null as next_call_date"
+            )
+            market_value_native_expr = (
+                "market_value_native"
+                if _column_exists(conn, FACT_TABLE, "market_value_native")
+                else "null as market_value_native"
+            )
             where_parts = ["report_date = ?"]
             params: list[object] = [report_date]
             if asset_class != "all":
@@ -200,8 +224,8 @@ class BondAnalyticsRepository:
                 f"""
                 select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
                        asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
-                       accounting_class, accounting_rule_id, currency_code, face_value, market_value,
-                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, ytm, maturity_date,
+                       accounting_class, accounting_rule_id, currency_code, face_value, {market_value_native_expr}, market_value,
+                       amortized_cost, accrued_interest, coupon_rate, {interest_mode_expr}, {interest_payment_frequency_expr}, {interest_rate_style_expr}, ytm, maturity_date, {next_call_date_expr},
                        years_to_maturity, tenor_bucket, macaulay_duration, modified_duration,
                        convexity, dv01, is_credit, spread_dv01, source_version, rule_version,
                        ingest_batch_id, trace_id
@@ -227,13 +251,17 @@ class BondAnalyticsRepository:
                 "accounting_rule_id",
                 "currency_code",
                 "face_value",
+                "market_value_native",
                 "market_value",
                 "amortized_cost",
                 "accrued_interest",
                 "coupon_rate",
                 "interest_mode",
+                "interest_payment_frequency",
+                "interest_rate_style",
                 "ytm",
                 "maturity_date",
+                "next_call_date",
                 "years_to_maturity",
                 "tenor_bucket",
                 "macaulay_duration",
@@ -344,13 +372,17 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
             accounting_rule_id  varchar,
             currency_code       varchar,
             face_value          decimal(24, 8),
+            market_value_native decimal(24, 8),
             market_value        decimal(24, 8),
             amortized_cost      decimal(24, 8),
             accrued_interest    decimal(24, 8),
             coupon_rate         decimal(18, 8),
             interest_mode       varchar,
+            interest_payment_frequency varchar,
+            interest_rate_style varchar,
             ytm                 decimal(18, 8),
             maturity_date       date,
+            next_call_date      date,
             years_to_maturity   decimal(18, 8),
             tenor_bucket        varchar,
             macaulay_duration   decimal(18, 8),
@@ -369,7 +401,31 @@ def ensure_bond_analytics_tables(conn: duckdb.DuckDBPyConnection) -> None:
     conn.execute(
         f"""
         alter table {FACT_TABLE}
+        add column if not exists market_value_native decimal(24, 8)
+        """
+    )
+    conn.execute(
+        f"""
+        alter table {FACT_TABLE}
         add column if not exists interest_mode varchar
+        """
+    )
+    conn.execute(
+        f"""
+        alter table {FACT_TABLE}
+        add column if not exists interest_payment_frequency varchar
+        """
+    )
+    conn.execute(
+        f"""
+        alter table {FACT_TABLE}
+        add column if not exists interest_rate_style varchar
+        """
+    )
+    conn.execute(
+        f"""
+        alter table {FACT_TABLE}
+        add column if not exists next_call_date date
         """
     )
 

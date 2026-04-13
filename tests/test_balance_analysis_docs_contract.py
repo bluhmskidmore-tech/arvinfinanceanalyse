@@ -41,7 +41,9 @@ def test_balance_analysis_docs_distinguish_supported_workbook_sections_from_futu
     spec = _read_doc("docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md")
     reconciliation = _read_doc("docs/BALANCE_ANALYSIS_RECONCILIATION_2026-03-01.md")
 
-    assert "当前 governed workbook 已支持的 section keys" in spec
+    assert "阶段边界（避免误读为" in spec
+    assert "repo-wide Phase 2" in spec
+    assert "当前 governed workbook 已支持的 section keys（与契约测试对齐）" in spec
     assert "`bond_business_types`" in spec
     assert "`maturity_gap`" in spec
     assert "`currency_split`" in spec
@@ -52,11 +54,13 @@ def test_balance_analysis_docs_distinguish_supported_workbook_sections_from_futu
     assert "`rule_reference`" in spec
     assert "`regulatory_limits`" in spec
     assert "`portfolio_comparison`" in spec
-    assert "当前尚未纳入 governed workbook 的 section keys" in spec
+    assert "当前显式未支持 / 仅占位或设计约束的 section keys" in spec
     assert "`advanced_attribution_bundle`" in spec
 
+    assert "Boundary note（与阶段授权对齐）" in reconciliation
     assert "当前对账结论仅覆盖当前 governed workbook 已支持的 section" in reconciliation
     assert "不等于 `资产负债分析_20260301_4.xlsx` 全量 1:1 对齐完成" in reconciliation
+    assert "仓库整体进入" in reconciliation and "Phase 2" in reconciliation
 
 
 def test_data_contracts_record_account_category_as_formal_zqtz_balance_field():
@@ -74,6 +78,38 @@ def test_balance_analysis_advanced_attribution_boundary_design_note_exists():
     assert "advanced_attribution_bundle" in doc
     assert "bond_analytics_service" in doc
     assert "roll_down" in doc
+
+
+def test_balance_analysis_cursor_prompt_pack_subordinates_to_spec_and_marks_landed_prompts():
+    """Avoid agents treating historical Cursor prompts as open 'missing section' work."""
+    pack = _read_doc("docs/plans/2026-04-12-balance-analysis-cursor-prompt-pack.md")
+
+    assert "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md" in pack
+    assert "§13" in pack
+    assert "已落地" in pack
+    assert "advanced_attribution_bundle" in pack
+    assert "边界外" in pack or "边界" in pack
+
+
+def test_balance_analysis_gap_closure_plan_has_contract_sync_banner():
+    plan = _read_doc("docs/plans/2026-04-12-balance-analysis-gap-closure.md")
+
+    assert "Contract sync" in plan
+    assert "BALANCE_ANALYSIS_SPEC_FOR_CODEX.md" in plan
+    assert "advanced_attribution_bundle" in plan
+
+
+def test_governed_workbook_supported_keys_are_documented_in_balance_analysis_spec():
+    from tests.test_balance_analysis_workbook_contract import (
+        GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS,
+        NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS,
+    )
+
+    spec = _read_doc("docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md")
+    for key in GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS:
+        assert ("`" + key + "`") in spec
+    for blocked in NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS:
+        assert ("`" + blocked + "`") in spec
 
 
 def test_fx_source_runbook_freezes_vendor_first_contract_and_backfill_entrypoint():

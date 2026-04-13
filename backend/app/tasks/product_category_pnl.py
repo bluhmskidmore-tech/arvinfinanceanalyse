@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -118,7 +119,7 @@ def _materialize_product_category_pnl(
                     )
 
             conn.execute("commit")
-        except Exception:
+        except Exception as exc:
             conn.execute("rollback")
             failed_run = CacheBuildRunRecord(
                 run_id=run_id,
@@ -129,7 +130,14 @@ def _materialize_product_category_pnl(
                 source_version="sv_product_category_failed",
                 vendor_version="vv_none",
             )
-            repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
+            repo.append(
+                CACHE_BUILD_RUN_STREAM,
+                {
+                    **failed_run.model_dump(),
+                    "error_message": str(exc),
+                    "finished_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
             raise
         finally:
             conn.close()

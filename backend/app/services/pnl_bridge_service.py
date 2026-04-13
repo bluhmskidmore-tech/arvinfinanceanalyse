@@ -15,11 +15,39 @@ from backend.app.core_finance.pnl_bridge import (
     required_curve_types_for_pnl_bridge,
 )
 from backend.app.repositories.pnl_repo import PnlRepository
-from backend.app.repositories.yield_curve_repo import (
-    YIELD_CURVE_LATEST_FALLBACK_PREFIX,
-    YieldCurveRepository,
-    format_yield_curve_latest_fallback_warning,
-)
+try:
+    from backend.app.repositories.yield_curve_repo import (
+        YIELD_CURVE_LATEST_FALLBACK_PREFIX,
+        YieldCurveRepository,
+        format_yield_curve_latest_fallback_warning,
+    )
+except ImportError:
+    from backend.app.repositories import yield_curve_repo as _yield_curve_repo
+
+    YieldCurveRepository = _yield_curve_repo.YieldCurveRepository
+    YIELD_CURVE_LATEST_FALLBACK_PREFIX = getattr(
+        _yield_curve_repo,
+        "YIELD_CURVE_LATEST_FALLBACK_PREFIX",
+        "YIELD_CURVE_LATEST_FALLBACK",
+    )
+
+    def format_yield_curve_latest_fallback_warning(
+        *,
+        curve_type: str,
+        resolved_trade_date: str,
+        requested_trade_date: str,
+    ) -> str:
+        formatter = getattr(_yield_curve_repo, "format_yield_curve_latest_fallback_warning", None)
+        if formatter is not None:
+            return formatter(
+                curve_type=curve_type,
+                resolved_trade_date=resolved_trade_date,
+                requested_trade_date=requested_trade_date,
+            )
+        return (
+            f"{YIELD_CURVE_LATEST_FALLBACK_PREFIX}: Using latest available {curve_type} curve "
+            f"from trade_date={resolved_trade_date} for requested_trade_date={requested_trade_date}."
+        )
 from backend.app.schemas.pnl_bridge import (
     PnlBridgePayload,
     PnlBridgeRowSchema,

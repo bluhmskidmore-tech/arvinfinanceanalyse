@@ -251,6 +251,83 @@ describe("createApiClient", () => {
     );
   });
 
+  it("returns a structured analytical macro-bond-linkage mock envelope", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const payload = await client.getMacroBondLinkageAnalysis({
+      reportDate: "2026-04-10",
+    });
+
+    expect(payload.result_meta.basis).toBe("analytical");
+    expect(payload.result_meta.formal_use_allowed).toBe(false);
+    expect(payload.result.report_date).toBe("2026-04-10");
+    expect(payload.result.top_correlations).not.toHaveLength(0);
+    expect(payload.result.top_correlations[0]).toEqual(
+      expect.objectContaining({
+        target_family: expect.any(String),
+        target_tenor: expect.anything(),
+      }),
+    );
+    expect(payload.result.top_correlations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          target_family: "credit_spread",
+          target_tenor: "5Y",
+        }),
+      ]),
+    );
+  });
+
+  it("uses real mode to fetch macro-bond-linkage analysis", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_macro_bond_linkage",
+          basis: "analytical",
+          result_kind: "macro_bond_linkage.analysis",
+          formal_use_allowed: false,
+          source_version: "sv_macro_bond_linkage",
+          vendor_version: "vv_choice_macro",
+          rule_version: "rv_macro_bond_linkage_v1",
+          cache_version: "cv_macro_bond_linkage_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-13T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-04-10",
+          environment_score: {},
+          portfolio_impact: {},
+          top_correlations: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getMacroBondLinkageAnalysis({
+      reportDate: "2026-04-10",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/macro-bond-linkage/analysis?report_date=2026-04-10",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("keeps formal FX status separate from analytical FX observations in mock mode", async () => {
     const client = createApiClient({ mode: "mock" });
 

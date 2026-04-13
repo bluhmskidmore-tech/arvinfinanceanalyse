@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import copy
 import csv
+import importlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 import sys
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import get_settings
+from backend.app.services.product_category_pnl_service import AVAILABLE_VIEWS
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -26,10 +30,7 @@ AVG_PREFIX = "\u65e5\u5747"
 
 def _load_product_category_pnl_service_module():
     """Return the module object used by API code (patch attributes here, not via string paths)."""
-    return load_module(
-        "backend.app.services.product_category_pnl_service",
-        "backend/app/services/product_category_pnl_service.py",
-    )
+    return importlib.import_module("backend.app.services.product_category_pnl_service")
 
 
 def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
@@ -236,6 +237,215 @@ def test_product_category_pnl_identical_requests_yield_identical_result_payload(
     body1 = first.json()
     body2 = second.json()
     assert body1["result"] == body2["result"]
+
+
+def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, monkeypatch):
+    """四视图下 result 可重现；result_meta 与 result 的 basis/view/report_date/scenario 语义一致；版本字段跨视图稳定。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    report_date = "2026-02-28"
+    version_triples: set[tuple[str, str, str]] = set()
+
+    for view in AVAILABLE_VIEWS:
+        params = {"report_date": report_date, "view": view}
+        a = client.get("/ui/pnl/product-category", params=params)
+        b = client.get("/ui/pnl/product-category", params=params)
+        assert a.status_code == 200
+        assert b.status_code == 200
+        ja = a.json()
+        jb = b.json()
+        assert ja["result"] == jb["result"]
+
+        meta = ja["result_meta"]
+        res = ja["result"]
+        assert meta["basis"] == "formal"
+        assert meta["scenario_flag"] is False
+        assert meta["formal_use_allowed"] is True
+        assert res["report_date"] == report_date
+        assert res["view"] == view
+        assert res["scenario_rate_pct"] is None
+        assert set(res["available_views"]) == set(AVAILABLE_VIEWS)
+        assert meta["trace_id"] == f"tr_product_category_pnl_{report_date}_{view}"
+        assert all(row["view"] == view for row in res["rows"])
+        assert all(row["report_date"] == report_date for row in res["rows"])
+
+        version_triples.add(
+            (meta["source_version"], meta["rule_version"], meta["cache_version"])
+        )
+
+    assert len(version_triples) == 1
+    sv, rv, cv = next(iter(version_triples))
+    assert rv == "rv_product_category_pnl_v1"
+    assert cv == "cv_product_category_pnl_v1"
+    assert sv.startswith("sv_product_category_")
+    get_settings.cache_clear()
+
+
+def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path, monkeypatch):
+    """当前实现中 ytd 与 year_to_report_month_end 共用当月事实与相同 FTP 天数口径（非「真 YTD 多月合并」）；结果负载应一致。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    report_date = "2026-02-28"
+
+    ytd = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": report_date, "view": "ytd"},
+    ).json()
+    ytre = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": report_date, "view": "year_to_report_month_end"},
+    ).json()
+
+    def _normalize_view_labels(payload: dict) -> dict:
+        """ytd 与 year_to_report_month_end 仅行内 view 标签不同，数值与结构应对齐。"""
+        p = copy.deepcopy(payload)
+        sentinel = "normalized_view"
+        p["view"] = sentinel
+        for row in p.get("rows", []):
+            row["view"] = sentinel
+        for key in ("asset_total", "liability_total", "grand_total"):
+            if key in p and isinstance(p[key], dict):
+                p[key]["view"] = sentinel
+        return p
+
+    assert _normalize_view_labels(ytd["result"]) == _normalize_view_labels(ytre["result"])
+    assert ytd["result_meta"]["source_version"] == ytre["result_meta"]["source_version"]
+    assert ytd["result_meta"]["rule_version"] == ytre["result_meta"]["rule_version"]
+    assert ytd["result_meta"]["cache_version"] == ytre["result_meta"]["cache_version"]
+    get_settings.cache_clear()
+
+
+def test_scenario_request_does_not_change_subsequent_formal_payload(tmp_path, monkeypatch):
+    """Scenario 仅内存覆盖 FTP；不应污染后续 formal 读模型响应。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    params = {"report_date": "2026-01-31", "view": "monthly"}
+
+    formal_before = client.get("/ui/pnl/product-category", params=params).json()
+    scenario = client.get(
+        "/ui/pnl/product-category",
+        params={**params, "scenario_rate_pct": "3.0"},
+    ).json()
+    assert scenario["result_meta"]["basis"] == "scenario"
+    assert scenario["result_meta"]["scenario_flag"] is True
+    assert scenario["result"]["scenario_rate_pct"] == 3.0
+
+    formal_after = client.get("/ui/pnl/product-category", params=params).json()
+    assert formal_after["result_meta"]["basis"] == "formal"
+    assert formal_after["result_meta"]["scenario_flag"] is False
+    assert formal_after["result"] == formal_before["result"]
+    get_settings.cache_clear()
+
+
+def test_monthly_and_qtd_views_produce_distinct_formal_results_when_multimonth_qtd(tmp_path, monkeypatch):
+    """同报告日下 monthly 与 qtd 使用不同行集合 / 现金列；应产生可区分的结果（非偶然全等）。"""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    report_date = "2026-02-28"
+
+    monthly = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": report_date, "view": "monthly"},
+    ).json()
+    qtd = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": report_date, "view": "qtd"},
+    ).json()
+
+    assert monthly["result"] != qtd["result"]
+    assert monthly["result"]["view"] == "monthly"
+    assert qtd["result"]["view"] == "qtd"
+    get_settings.cache_clear()
 
 
 def test_product_category_refresh_queue_and_status_flow(tmp_path, monkeypatch):
@@ -552,6 +762,274 @@ def test_product_category_refresh_reconciles_stale_inflight_run_and_requeues(
     stale_records = [record for record in records if record.get("run_id") == "product-category-stale"]
     assert stale_records[-1]["status"] == "failed"
     assert stale_records[-1]["error_message"] == "Marked stale product-category refresh run as failed."
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_reconciles_stale_queued_run_and_requeues(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    stale_time = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id="product-category-stale-queued",
+                job_name="product_category_pnl",
+                status="queued",
+                cache_key="product_category_pnl.formal",
+                lock="lock:duckdb:product-category-pnl",
+                source_version="sv_product_category_pending",
+                vendor_version="vv_none",
+            ).model_dump(),
+            "queued_at": stale_time,
+        },
+    )
+
+    queued_messages: list[dict[str, object]] = []
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **kwargs: queued_messages.append(kwargs),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/ui/pnl/product-category/refresh")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert queued_messages[0]["run_id"] == response.json()["run_id"]
+
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    stale_records = [record for record in records if record.get("run_id") == "product-category-stale-queued"]
+    assert stale_records[-1]["status"] == "failed"
+    assert stale_records[-1]["source_version"] == "sv_product_category_stale"
+    get_settings.cache_clear()
+
+
+def test_product_category_refresh_status_completed_has_terminal_trigger_and_stable_ids(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_鎬昏处瀵硅处-鏃ュ潎"
+    source_dir.mkdir(parents=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    run_id = "product_category_pnl:status-contract"
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        CacheBuildRunRecord(
+            run_id=run_id,
+            job_name="product_category_pnl",
+            status="completed",
+            cache_key="product_category_pnl.formal",
+            lock="lock:duckdb:product-category-pnl",
+            source_version="sv_joined_fixture",
+            vendor_version="vv_none",
+        ).model_dump(),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    payload = client.get(
+        "/ui/pnl/product-category/refresh-status",
+        params={"run_id": run_id},
+    ).json()
+
+    assert payload["status"] == "completed"
+    assert payload["trigger_mode"] == "terminal"
+    assert payload["run_id"] == run_id
+    assert payload["job_name"] == "product_category_pnl"
+    assert payload["cache_key"] == "product_category_pnl.formal"
+    assert payload["source_version"] == "sv_joined_fixture"
+    get_settings.cache_clear()
+
+
+def test_sync_fallback_governance_latest_record_matches_refresh_run(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    service_mod = _load_product_category_pnl_service_module()
+    monkeypatch.setattr(
+        service_mod.materialize_product_category_pnl,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("broker unavailable")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/ui/pnl/product-category/refresh")
+    assert response.status_code == 200
+    body = response.json()
+    run_id = body["run_id"]
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("run_id") == run_id
+    ]
+    assert records[-1]["status"] == "completed"
+    assert records[-1]["job_name"] == "product_category_pnl"
+    assert records[-1]["cache_key"] == "product_category_pnl.formal"
+    assert records[-1]["source_version"] != "sv_product_category_pending"
+    assert "error_message" not in records[-1] or records[-1].get("error_message") in (None, "")
+    get_settings.cache_clear()
+
+
+def test_materialize_failure_appends_error_message_to_governance(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    monkeypatch.setattr(
+        task_module,
+        "calculate_read_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("materialize boom")),
+    )
+
+    with pytest.raises(RuntimeError, match="materialize boom"):
+        task_module.materialize_product_category_pnl.fn(
+            duckdb_path=str(duckdb_path),
+            source_dir=str(source_dir),
+            governance_dir=str(governance_dir),
+            run_id="pcat-fail-1",
+        )
+
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+        if record.get("run_id") == "pcat-fail-1"
+    ]
+    assert records[-1]["status"] == "failed"
+    assert records[-1]["error_message"] == "materialize boom"
+    assert records[-1]["source_version"] == "sv_product_category_failed"
+    assert "finished_at" in records[-1]
+    get_settings.cache_clear()
+
+
+def test_manual_adjustment_not_in_formal_read_model_until_rematerialize(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_总账对账-日均"
+    source_dir.mkdir(parents=True)
+
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    baseline = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    ).json()
+
+    client.post(
+        "/ui/pnl/product-category/manual-adjustments",
+        json={
+            "report_date": "2026-02-28",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "account_code": "51402010001",
+            "currency": "CNX",
+            "account_name": "测试科目",
+            "monthly_pnl": "999",
+        },
+    )
+
+    before_remat = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    ).json()
+    assert before_remat["result"] == baseline["result"]
+
+    scenario_before = client.get(
+        "/ui/pnl/product-category",
+        params={
+            "report_date": "2026-02-28",
+            "view": "monthly",
+            "scenario_rate_pct": "2.5",
+        },
+    ).json()
+    assert scenario_before["result_meta"]["basis"] == "scenario"
+    assert scenario_before["result_meta"]["scenario_flag"] is True
+
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    after = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    ).json()
+    assert after["result"] != baseline["result"]
     get_settings.cache_clear()
 
 

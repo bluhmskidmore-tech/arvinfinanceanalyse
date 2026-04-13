@@ -1,4 +1,5 @@
-﻿from pathlib import Path
+﻿import importlib
+from pathlib import Path
 import sys
 
 import duckdb
@@ -442,14 +443,8 @@ def test_source_preview_refresh_returns_stable_503_when_sync_fallback_worker_fai
         monkeypatch,
         include_pnl_preview_source=True,
     )
-    refresh_module = load_module(
-        "backend.app.services.source_preview_refresh_service",
-        "backend/app/services/source_preview_refresh_service.py",
-    )
-    task_module = load_module(
-        "backend.app.tasks.source_preview_refresh",
-        "backend/app/tasks/source_preview_refresh.py",
-    )
+    refresh_module = importlib.import_module("backend.app.services.source_preview_refresh_service")
+    task_module = importlib.import_module("backend.app.tasks.source_preview_refresh")
 
     monkeypatch.setattr(
         refresh_module.refresh_source_preview_cache,
@@ -591,6 +586,131 @@ def test_source_preview_refresh_status_run_id_returns_exact_terminal_record(tmp_
     assert payload["source_version"] == "sv_preview_done"
     assert payload["ingest_batch_id"] == "ib_target"
     assert payload["trigger_mode"] == "terminal"
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_status_unknown_run_id_returns_404(tmp_path, monkeypatch):
+    _configure_source_preview_status_env(tmp_path, monkeypatch)
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": "source_preview_refresh:no-such-run"},
+    )
+    assert response.status_code == 404
+    assert "Unknown source preview refresh run_id" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_status_failed_terminal_exposes_error_message(tmp_path, monkeypatch):
+    governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-failed",
+            "job_name": "source_preview_refresh",
+            "status": "queued",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_pending",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+        },
+    )
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-failed",
+            "job_name": "source_preview_refresh",
+            "status": "failed",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_failed",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+            "error_message": "ingest pipeline exploded",
+            "finished_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": "source-preview-failed"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "failed"
+    assert body["trigger_mode"] == "terminal"
+    assert body["error_message"] == "ingest pipeline exploded"
+    assert body["source_version"] == "sv_preview_failed"
+    assert body["preview_sources"] == ["zqtz", "tyw"]
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_status_running_keeps_async_trigger_mode(tmp_path, monkeypatch):
+    governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-running-contract",
+            "job_name": "source_preview_refresh",
+            "status": "running",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_running",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+            "started_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    body = client.get(
+        "/ui/preview/source-foundation/refresh-status",
+        params={"run_id": "source-preview-running-contract"},
+    ).json()
+    assert body["status"] == "running"
+    assert body["trigger_mode"] == "async"
+    get_settings.cache_clear()
+
+
+def test_source_preview_rows_and_traces_reject_unknown_source_family(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    for path in (
+        "/ui/preview/source-foundation/not_a_family/rows",
+        "/ui/preview/source-foundation/not_a_family/traces",
+    ):
+        response = client.get(path, params={"limit": 10, "offset": 0})
+        assert response.status_code == 400
+        assert "Unsupported source_family" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_source_preview_empty_duckdb_foundation_is_explicit_analytical_empty(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "missing.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/ui/preview/source-foundation")
+    assert response.status_code == 200
+    payload = response.json()
+    meta = payload["result_meta"]
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["source_version"] == "sv_preview_empty"
+    assert meta["result_kind"] == "preview.source-foundation"
+    assert payload["result"]["sources"] == []
     get_settings.cache_clear()
 
 

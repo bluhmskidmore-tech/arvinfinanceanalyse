@@ -23,6 +23,7 @@ FX_TABLE = "fx_daily_mid"
 
 # Token embedded in user-visible fallback warnings (PnL bridge, bond analytics). Keep stable for tests.
 YIELD_CURVE_LATEST_FALLBACK_PREFIX = "YIELD_CURVE_LATEST_FALLBACK"
+FX_LATEST_FALLBACK_PREFIX = "FX_LATEST_FALLBACK"
 
 
 def format_yield_curve_latest_fallback_warning(
@@ -127,12 +128,17 @@ class YieldCurveRepository:
             conn.close()
 
     def fetch_fx_rates(self, trade_date: str) -> dict[str, Decimal]:
+        rates, _warning = self.fetch_fx_rates_with_fallback_warning(trade_date)
+        return rates
+
+    def fetch_fx_rates_with_fallback_warning(self, trade_date: str) -> tuple[dict[str, Decimal], str | None]:
+        """Return FX map for ``trade_date``; emit a stable warning when LOCF-on-or-before is used."""
         conn = _connect(self.path, read_only=True)
         if conn is None:
-            return {}
+            return {}, None
         try:
             if not _relation_exists(conn, FX_TABLE):
-                return {}
+                return {}, None
             rows = conn.execute(
                 f"""
                 select upper(base_currency) as base_currency, mid_rate
@@ -143,7 +149,18 @@ class YieldCurveRepository:
                 """,
                 [trade_date],
             ).fetchall()
+            warning: str | None = None
             if not rows:
+                latest_row = conn.execute(
+                    f"""
+                    select max(cast(trade_date as varchar))
+                    from {FX_TABLE}
+                    where cast(trade_date as varchar) <= ?
+                      and upper(quote_currency) = 'CNY'
+                    """,
+                    [trade_date],
+                ).fetchone()
+                resolved_date = str(latest_row[0]) if latest_row and latest_row[0] is not None else None
                 rows = conn.execute(
                     f"""
                     with ranked as (
@@ -165,11 +182,16 @@ class YieldCurveRepository:
                     """,
                     [trade_date],
                 ).fetchall()
+                if rows and resolved_date and resolved_date != trade_date:
+                    warning = (
+                        f"{FX_LATEST_FALLBACK_PREFIX}: Using latest available FX rates "
+                        f"from trade_date={resolved_date} for requested_trade_date={trade_date}."
+                    )
             return {
                 str(base_currency): Decimal(str(mid_rate))
                 for base_currency, mid_rate in rows
                 if base_currency not in (None, "") and mid_rate is not None
-            }
+            }, warning
         finally:
             conn.close()
 

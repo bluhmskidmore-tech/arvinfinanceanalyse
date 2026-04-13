@@ -95,6 +95,8 @@ def test_compute_bond_analytics_rows_filters_issuance_like_and_derives_credit_me
     assert row.accounting_class == "OCI"
     assert row.accounting_rule_id == "R010"
     assert row.interest_mode == "半年付息"
+    assert row.interest_payment_frequency == "semi-annual"
+    assert row.interest_rate_style == "unknown"
     assert row.years_to_maturity == expected_years
     assert row.tenor_bucket == "5Y"
     assert row.macaulay_duration == expected_macaulay
@@ -149,6 +151,8 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
     assert row.accounting_class == "AC"
     assert row.accounting_rule_id == "R001"
     assert row.is_credit is False
+    assert row.interest_payment_frequency == "annual"
+    assert row.interest_rate_style == "unknown"
     assert row.spread_dv01 == Decimal("0")
 
 

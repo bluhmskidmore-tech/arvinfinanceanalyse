@@ -105,7 +105,7 @@ def test_return_decomposition_uses_curve_effects_and_merges_lineage(tmp_path, mo
     assert "vv_curve_current" in payload["result_meta"]["vendor_version"]
     assert payload["result_meta"].get("fallback_mode", "none") == "none"
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
-    assert any("Phase 3 partial delivery" in warning for warning in result["warnings"])
+    assert any("Phase 3 placeholder" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 

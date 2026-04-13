@@ -26,6 +26,9 @@ import type {
   BalanceAnalysisWorkbookExportPayload,
   BalanceAnalysisSummaryTablePayload,
   BalanceAnalysisTableRow,
+  CreditSpreadAnalysisPayload,
+  CreditSpreadMigrationPayload,
+  KRDCurveRiskPayload,
   ChoiceMacroLatestPayload,
   ChoiceNewsEventsPayload,
   ContributionPayload,
@@ -33,6 +36,7 @@ import type {
   FxFormalStatusPayload,
   FormalPnlRefreshPayload,
   HealthResponse,
+  MacroBondLinkagePayload,
   MacroVendorPayload,
   OverviewPayload,
   PnlBridgePayload,
@@ -80,7 +84,6 @@ import {
   riskOverviewPayload,
   summaryPayload,
 } from "../mocks/workbench";
-
 export type DataSourceMode = "mock" | "real";
 
 export type ApiClient = {
@@ -123,6 +126,9 @@ export type ApiClient = {
   }) => Promise<ApiEnvelope<SourcePreviewTracesPayload>>;
   getMacroFoundation: () => Promise<ApiEnvelope<MacroVendorPayload>>;
   getChoiceMacroLatest: () => Promise<ApiEnvelope<ChoiceMacroLatestPayload>>;
+  getMacroBondLinkageAnalysis: (options: {
+    reportDate: string;
+  }) => Promise<ApiEnvelope<MacroBondLinkagePayload>>;
   getFxFormalStatus: () => Promise<ApiEnvelope<FxFormalStatusPayload>>;
   getFxAnalytical: () => Promise<ApiEnvelope<FxAnalyticalPayload>>;
   getChoiceNewsEvents: (options: {
@@ -252,6 +258,15 @@ export type ApiClient = {
     runId: string,
   ) => Promise<BalanceAnalysisRefreshPayload>;
   getBondAnalyticsDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
+  getBondAnalyticsKrdCurveRisk: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<KRDCurveRiskPayload>>;
+  getBondAnalyticsCreditSpreadMigration: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<CreditSpreadMigrationPayload>>;
+  getCreditSpreadAnalysisDetail: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<CreditSpreadAnalysisPayload>>;
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsRefreshStatus: (
     runId: string,
@@ -465,6 +480,81 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       policy_note: "main refresh date-slice lane",
     },
   ],
+};
+
+const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
+  report_date: "2026-04-10",
+  environment_score: {
+    report_date: "2026-04-10",
+    rate_direction: "falling",
+    rate_direction_score: -0.42,
+    liquidity_score: 0.31,
+    growth_score: -0.14,
+    inflation_score: 0,
+    composite_score: -0.11,
+    signal_description: "宏观环境偏中性偏松，利率下行压力占优。",
+    contributing_factors: [
+      {
+        category: "rate",
+        series_id: "EMM00166466",
+        series_name: "10Y treasury yield",
+        latest_value: 1.56,
+        delta: -0.18,
+        score: -1,
+      },
+    ],
+    warnings: [],
+  },
+  portfolio_impact: {
+    estimated_rate_change_bps: "-12.6",
+    estimated_spread_widening_bps: "-6.2",
+    estimated_rate_pnl_impact: "1820000.50",
+    estimated_spread_pnl_impact: "410000.25",
+    total_estimated_impact: "2230000.75",
+    impact_ratio_to_market_value: "0.0041",
+  },
+  top_correlations: [
+    {
+      series_id: "EMM00166466",
+      series_name: "10Y treasury yield",
+      target_family: "credit_spread",
+      target_tenor: "5Y",
+      target_yield: "credit_spread_5Y",
+      correlation_3m: -0.41,
+      correlation_6m: -0.58,
+      correlation_1y: -0.63,
+      lead_lag_days: -4,
+      direction: "negative",
+    },
+    {
+      series_id: "EMM00166253",
+      series_name: "DR007",
+      target_family: "treasury",
+      target_tenor: "10Y",
+      target_yield: "treasury_10Y",
+      correlation_3m: 0.32,
+      correlation_6m: 0.47,
+      correlation_1y: 0.51,
+      lead_lag_days: 2,
+      direction: "positive",
+    },
+    {
+      series_id: "EMM00072301",
+      series_name: "CPI YoY",
+      target_family: "aaa_credit",
+      target_tenor: "3Y",
+      target_yield: "aaa_credit_3Y",
+      correlation_3m: 0.11,
+      correlation_6m: 0.26,
+      correlation_1y: 0.29,
+      lead_lag_days: 7,
+      direction: "positive",
+    },
+  ],
+  warnings: [
+    "Analytical signal only. Do not treat estimated impact as formal attribution.",
+  ],
+  computed_at: "2026-04-13T00:00:00Z",
 };
 
 const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
@@ -2388,6 +2478,25 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
     },
+    async getMacroBondLinkageAnalysis({ reportDate }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "macro_bond_linkage.analysis",
+        {
+          ...MOCK_MACRO_BOND_LINKAGE_PAYLOAD,
+          report_date: reportDate,
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_macro_bond_linkage_mock",
+          vendor_version: "vv_choice_macro_mock",
+          rule_version: "rv_macro_bond_linkage_v1",
+          cache_version: "cv_macro_bond_linkage_v1",
+          quality_flag: "warning",
+        },
+      );
+    },
     async getFxFormalStatus() {
       await delay();
       return buildMockApiEnvelope(
@@ -3017,6 +3126,67 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getBondAnalyticsKrdCurveRisk(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.krd_curve_risk",
+        {
+          report_date: reportDate,
+          portfolio_duration: "3.8",
+          portfolio_modified_duration: "3.6",
+          portfolio_dv01: "120",
+          portfolio_convexity: "0.8",
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsCreditSpreadMigration(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.credit_spread_migration",
+        {
+          report_date: reportDate,
+          credit_bond_count: 12,
+          credit_market_value: "1500000000",
+          credit_weight: "0.25",
+          spread_dv01: "25000",
+          weighted_avg_spread: "80",
+          weighted_avg_spread_duration: "4.2",
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: "800000000",
+          oci_spread_dv01: "12000",
+          oci_sensitivity_25bp: "-300000",
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getCreditSpreadAnalysisDetail(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "credit_spread_analysis.detail",
+        {
+          report_date: reportDate,
+          credit_bond_count: 12,
+          total_credit_market_value: "1500000000",
+          weighted_avg_spread_bps: "80.00000000",
+          spread_term_structure: [],
+          top_spread_bonds: [],
+          bottom_spread_bonds: [],
+          historical_context: null,
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getBondAnalyticsRefreshStatus(runId: string) {
       await delay();
       return {
@@ -3112,6 +3282,24 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/api/bond-analytics/dates",
       ),
+    getBondAnalyticsKrdCurveRisk: (reportDate: string) =>
+      requestJson<KRDCurveRiskPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/krd-curve-risk?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsCreditSpreadMigration: (reportDate: string) =>
+      requestJson<CreditSpreadMigrationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/credit-spread-migration?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getCreditSpreadAnalysisDetail: (reportDate: string) =>
+      requestJson<CreditSpreadAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/credit-spread-analysis/detail?report_date=${encodeURIComponent(reportDate)}`,
+      ),
     getContribution: () =>
       requestJson<ContributionPayload>(
         fetchImpl,
@@ -3178,6 +3366,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         "/ui/macro/choice-series/latest",
+      ),
+    getMacroBondLinkageAnalysis: ({ reportDate }) =>
+      requestJson<MacroBondLinkagePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/macro-bond-linkage/analysis?report_date=${encodeURIComponent(reportDate)}`,
       ),
     getFxFormalStatus: () =>
       requestJson<FxFormalStatusPayload>(

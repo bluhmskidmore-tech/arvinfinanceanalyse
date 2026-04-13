@@ -1,10 +1,19 @@
 from __future__ import annotations
 
+"""
+Agent HTTP + schema contracts.
+
+Production default (`agent_enabled=False`): `POST /api/agent/query` returns **503** with
+`AgentDisabledResponse` — not a live Agent. Tests that return 200 use an isolated FastAPI
+app with `agent_enabled` stubbed True to exercise envelope/schema only.
+"""
+
 import json
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.app.main import app as default_app
 from tests.helpers import load_module
 
 
@@ -24,7 +33,10 @@ def _sample_agent_envelope():
         ],
         evidence=schema_module.AgentEvidence(
             tables_used=["fact_formal_pnl_fi"],
-            filters_applied={"report_date": "2026-03-31"},
+            filters_applied={
+                "report_date": "2026-03-31",
+                "report_date_resolution": "latest_default",
+            },
             evidence_rows=2,
             quality_flag="ok",
         ),
@@ -40,7 +52,10 @@ def _sample_agent_envelope():
             quality_flag="ok",
             scenario_flag=False,
             tables_used=["fact_formal_pnl_fi"],
-            filters_applied={"report_date": "2026-03-31"},
+            filters_applied={
+                "report_date": "2026-03-31",
+                "report_date_resolution": "latest_default",
+            },
             sql_executed=[],
             evidence_rows=2,
         ),
@@ -73,6 +88,18 @@ def _client_with_stubbed_agent(monkeypatch):
     app = FastAPI()
     app.include_router(route_module.router)
     return TestClient(app)
+
+
+def test_default_app_agent_query_is_phase1_disabled_stub_503():
+    """Unmocked app: Agent remains off by default (see `Settings.agent_enabled`)."""
+    client = TestClient(default_app)
+    response = client.post("/api/agent/query", json={"question": "PnL summary"})
+
+    assert response.status_code == 503
+    body = response.json()
+    assert body["enabled"] is False
+    assert body["phase"] == "phase1"
+    assert "disabled" in body["detail"].lower()
 
 
 def test_agent_request_schema_defines_phase1_contract():
@@ -122,7 +149,10 @@ def test_agent_query_envelope_has_evidence(monkeypatch, tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi"]
-    assert payload["evidence"]["filters_applied"] == {"report_date": "2026-03-31"}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": "2026-03-31",
+        "report_date_resolution": "latest_default",
+    }
     assert payload["evidence"]["evidence_rows"] == 2
 
 def test_agent_query_envelope_has_result_meta(monkeypatch, tmp_path):

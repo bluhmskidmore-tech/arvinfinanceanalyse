@@ -148,6 +148,7 @@ def build_gitnexus_status_payload(request: AgentQueryRequest) -> dict[str, Any]:
         "filters_applied": {
             "repo_path": str(repo_path),
             **({"process_name": process_name} if process_name else {}),
+            "report_date_resolution": "not_applicable",
         },
         "row_count": len(wiki_docs) + len(list((mcp_bundle or {}).get("processes") or [])),
         "quality_flag": quality_flag,
@@ -160,6 +161,7 @@ def build_gitnexus_status_payload(request: AgentQueryRequest) -> dict[str, Any]:
         "cache_version": "cv_agent_gitnexus_status_v1",
         "vendor_status": "ok" if mcp_bundle else "vendor_unavailable",
         "fallback_mode": "none",
+        "result_kind": "agent.gitnexus_status",
         "next_drill": [
             {"dimension": "context", "label": "查看 Context"},
             {"dimension": "processes", "label": "查看 Processes"},

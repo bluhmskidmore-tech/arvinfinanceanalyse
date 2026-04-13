@@ -129,8 +129,14 @@ def test_liquidity_gap_date_filter():
         report_date=report_date,
     )
 
+    assert tensor.asset_cashflow_30d == Decimal("100")
+    assert tensor.asset_cashflow_90d == Decimal("300")
+    assert tensor.liability_cashflow_30d == Decimal("0")
+    assert tensor.liability_cashflow_90d == Decimal("0")
     assert tensor.liquidity_gap_30d == Decimal("100")
     assert tensor.liquidity_gap_90d == Decimal("300")
+    assert tensor.liquidity_gap_30d == tensor.asset_cashflow_30d - tensor.liability_cashflow_30d
+    assert tensor.liquidity_gap_90d == tensor.asset_cashflow_90d - tensor.liability_cashflow_90d
 
 
 def test_empty_rows_returns_zero_tensor():
@@ -143,6 +149,10 @@ def test_empty_rows_returns_zero_tensor():
     assert tensor.cs01 == Decimal("0")
     assert tensor.portfolio_convexity == Decimal("0")
     assert tensor.issuer_concentration_hhi == Decimal("0")
+    assert tensor.asset_cashflow_30d == Decimal("0")
+    assert tensor.asset_cashflow_90d == Decimal("0")
+    assert tensor.liability_cashflow_30d == Decimal("0")
+    assert tensor.liability_cashflow_90d == Decimal("0")
     assert tensor.liquidity_gap_30d == Decimal("0")
     assert tensor.liquidity_gap_30d_ratio == Decimal("0")
     assert tensor.portfolio_modified_duration == Decimal("0")

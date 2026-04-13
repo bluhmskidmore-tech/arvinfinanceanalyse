@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -62,6 +63,37 @@ def test_bond_analytics_service_returns_available_report_dates(tmp_path, monkeyp
     assert payload["result_meta"]["result_kind"] == "bond_analytics.dates"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result"]["report_dates"] == [REPORT_DATE]
+    assert payload["result_meta"]["source_version"]
+    assert payload["result_meta"]["rule_version"]
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dates_envelope_resolves_manifest_lineage_not_only_latest_row_date(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    lineage_mod = load_module(
+        "backend.app.governance.formal_compute_lineage",
+        "backend/app/governance/formal_compute_lineage.py",
+    )
+    calls: list[dict[str, str]] = []
+
+    def _capture(**kwargs):
+        calls.append(kwargs)
+        return lineage_mod.resolve_formal_manifest_lineage(**kwargs)
+
+    monkeypatch.setattr(service_mod, "resolve_formal_manifest_lineage", _capture)
+
+    service_mod.bond_analytics_dates_envelope()
+
+    assert len(calls) == 1
+    assert calls[0]["cache_key"] == service_mod.CACHE_KEY
+    assert Path(str(calls[0]["governance_dir"])).resolve() == (tmp_path / "governance").resolve()
     get_settings.cache_clear()
 
 
@@ -92,7 +124,7 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     assert {row["asset_class"] for row in result["by_asset_class"]} == {"credit", "rate"}
     assert {row["asset_class"] for row in result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
     assert len(result["bond_details"]) == 3
-    assert any("Phase 3" in warning for warning in result["warnings"])
+    assert any("Phase 3 placeholder" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 
@@ -161,6 +193,23 @@ def test_benchmark_excess_with_aaa_curve_data(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
+def test_benchmark_excess_portfolio_return_is_invariant_across_benchmarks(tmp_path, monkeypatch):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_curve_rows(str(tmp_path / "moss.duckdb"))
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    treasury_payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "TREASURY_INDEX")
+    cdb_payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
+    aaa_payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "AAA_CREDIT_INDEX")
+
+    assert treasury_payload["result"]["portfolio_return"] == cdb_payload["result"]["portfolio_return"]
+    assert cdb_payload["result"]["portfolio_return"] == aaa_payload["result"]["portfolio_return"]
+    get_settings.cache_clear()
+
+
 def test_benchmark_excess_without_curve_data_returns_zero_with_warning(tmp_path, monkeypatch):
     _configure_and_materialize(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -213,12 +262,14 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     assert result["credit_bond_count"] == 2
     assert result["credit_market_value"] == "330.00000000"
     assert result["credit_weight"] == "0.76923077"
+    assert result["rating_aa_and_below_weight"] == "0.00000000"
     assert Decimal(result["spread_dv01"]) > Decimal("0")
     assert result["weighted_avg_spread"] == "0.00000000"
     assert len(result["spread_scenarios"]) == 4
     assert result["oci_credit_exposure"] == "190.00000000"
     assert result["concentration_by_issuer"]["dimension"] == "issuer"
     assert any("No aaa_credit curve available" in warning or "No treasury curve available" in warning for warning in result["warnings"])
+    assert any("Spread level input unavailable" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
 

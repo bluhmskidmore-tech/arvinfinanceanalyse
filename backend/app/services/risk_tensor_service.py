@@ -5,7 +5,9 @@ from datetime import date
 
 from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.repositories.risk_tensor_repo import (
+    load_current_tyw_liability_rule_version,
     RiskTensorRepository,
+    load_current_tyw_liability_source_version,
     load_latest_bond_analytics_lineage,
 )
 from backend.app.schemas.risk_tensor import RiskTensorPayload
@@ -90,6 +92,29 @@ def risk_tensor_envelope(
             f"Risk tensor stale against bond analytics lineage for report_date={report_date_text}."
         )
 
+    current_tyw_liability_source_version = load_current_tyw_liability_source_version(
+        duckdb_path=str(duckdb_path),
+        report_date=report_date_text,
+    )
+    stored_tyw_liability_source_version = str(row.get("liability_source_version") or "").strip()
+    if current_tyw_liability_source_version and (
+        stored_tyw_liability_source_version != current_tyw_liability_source_version
+    ):
+        raise RuntimeError(
+            f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
+        )
+    current_tyw_liability_rule_version = load_current_tyw_liability_rule_version(
+        duckdb_path=str(duckdb_path),
+        report_date=report_date_text,
+    )
+    stored_tyw_liability_rule_version = str(row.get("liability_rule_version") or "").strip()
+    if current_tyw_liability_rule_version and (
+        stored_tyw_liability_rule_version != current_tyw_liability_rule_version
+    ):
+        raise RuntimeError(
+            f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
+        )
+
     payload = RiskTensorPayload(
         report_date=report_date_value,
         portfolio_dv01=row["portfolio_dv01"],
@@ -104,6 +129,10 @@ def risk_tensor_envelope(
         portfolio_modified_duration=row["portfolio_modified_duration"],
         issuer_concentration_hhi=row["issuer_concentration_hhi"],
         issuer_top5_weight=row["issuer_top5_weight"],
+        asset_cashflow_30d=row["asset_cashflow_30d"],
+        asset_cashflow_90d=row["asset_cashflow_90d"],
+        liability_cashflow_30d=row["liability_cashflow_30d"],
+        liability_cashflow_90d=row["liability_cashflow_90d"],
         liquidity_gap_30d=row["liquidity_gap_30d"],
         liquidity_gap_90d=row["liquidity_gap_90d"],
         liquidity_gap_30d_ratio=row["liquidity_gap_30d_ratio"],

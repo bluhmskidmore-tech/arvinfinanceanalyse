@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+"""
+PnL domain scaffolding vs Phase 1 boundary.
+
+`/ui/pnl/attribution` and core `pnl` modules are thin slices / start-pack code present in the repo.
+Their existence does **not** imply repo-wide Phase 2 formal finance cutover (see `docs/IMPLEMENTATION_PLAN.md`).
+"""
+
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -30,7 +37,8 @@ def test_ui_pnl_attribution_placeholder_contract_does_not_claim_formal_pnl_owner
     assert "total" in payload["result"]
 
 
-def test_product_category_pnl_slice_modules_exist_after_approved_cross_phase_planning():
+def test_product_category_pnl_slice_modules_exist_as_local_thin_slice_not_repo_wide_phase2():
+    """Files exist as an independent product slice; not evidence of global phase promotion."""
     root = Path(__file__).resolve().parents[1]
 
     assert (root / "backend/app/api/routes/product_category_pnl.py").exists()

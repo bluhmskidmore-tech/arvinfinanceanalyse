@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { useApiClient } from "../../../api/client";
 import type { AssetClassRiskSummary, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 
@@ -87,6 +88,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
 }
 
 export function KRDCurveRiskView({ reportDate }: Props) {
+  const client = useApiClient();
   const [data, setData] = useState<KRDCurveRiskResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,11 +99,8 @@ export function KRDCurveRiskView({ reportDate }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ report_date: reportDate });
-        const res = await fetch(`/api/bond-analytics/krd-curve-risk?${params}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        if (!cancelled) setData(json.result);
+        const envelope = await client.getBondAnalyticsKrdCurveRisk(reportDate);
+        if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
       } finally {
@@ -109,8 +108,10 @@ export function KRDCurveRiskView({ reportDate }: Props) {
       }
     };
     if (reportDate) fetchData();
-    return () => { cancelled = true; };
-  }, [reportDate]);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, reportDate]);
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!data?.krd_buckets?.length) return null;

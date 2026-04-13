@@ -11,6 +11,34 @@ from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALY
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
 
+_GROSS_CASHFLOW_COLUMNS = (
+    "asset_cashflow_30d",
+    "asset_cashflow_90d",
+    "liability_cashflow_30d",
+    "liability_cashflow_90d",
+)
+_LINEAGE_COLUMNS = ("liability_source_version", "liability_rule_version")
+
+
+def _ensure_risk_tensor_gross_columns(path: str) -> None:
+    try:
+        conn = duckdb.connect(path, read_only=False)
+    except duckdb.IOException:
+        return
+    try:
+        if not _table_exists(conn, FACT_TABLE):
+            return
+        for column in _GROSS_CASHFLOW_COLUMNS:
+            conn.execute(
+                f"alter table {FACT_TABLE} add column if not exists {column} decimal(24, 8)"
+            )
+        for column in _LINEAGE_COLUMNS:
+            conn.execute(
+                f"alter table {FACT_TABLE} add column if not exists {column} varchar"
+            )
+    finally:
+        conn.close()
+
 
 @dataclass
 class RiskTensorRepository:
@@ -41,6 +69,8 @@ class RiskTensorRepository:
         tensor: PortfolioRiskTensor,
         source_version: str,
         upstream_source_version: str,
+        liability_source_version: str,
+        liability_rule_version: str,
         rule_version: str,
         cache_version: str,
         trace_id: str,
@@ -55,8 +85,40 @@ class RiskTensorRepository:
             )
             conn.execute(
                 f"""
-                insert into {FACT_TABLE} values (
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+                insert into {FACT_TABLE} (
+                    report_date,
+                    portfolio_dv01,
+                    krd_1y,
+                    krd_3y,
+                    krd_5y,
+                    krd_7y,
+                    krd_10y,
+                    krd_30y,
+                    cs01,
+                    portfolio_convexity,
+                    portfolio_modified_duration,
+                    issuer_concentration_hhi,
+                    issuer_top5_weight,
+                    asset_cashflow_30d,
+                    asset_cashflow_90d,
+                    liability_cashflow_30d,
+                    liability_cashflow_90d,
+                    liquidity_gap_30d,
+                    liquidity_gap_90d,
+                    liquidity_gap_30d_ratio,
+                    total_market_value,
+                    bond_count,
+                    quality_flag,
+                    warnings_json,
+                    source_version,
+                    upstream_source_version,
+                    liability_source_version,
+                    liability_rule_version,
+                    rule_version,
+                    cache_version,
+                    trace_id
+                ) values (
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
                 )
                 """,
                 [
@@ -73,6 +135,10 @@ class RiskTensorRepository:
                     tensor.portfolio_modified_duration,
                     tensor.issuer_concentration_hhi,
                     tensor.issuer_top5_weight,
+                    tensor.asset_cashflow_30d,
+                    tensor.asset_cashflow_90d,
+                    tensor.liability_cashflow_30d,
+                    tensor.liability_cashflow_90d,
                     tensor.liquidity_gap_30d,
                     tensor.liquidity_gap_90d,
                     tensor.liquidity_gap_30d_ratio,
@@ -82,6 +148,8 @@ class RiskTensorRepository:
                     json.dumps(tensor.warnings, ensure_ascii=False),
                     source_version,
                     upstream_source_version,
+                    liability_source_version,
+                    liability_rule_version,
                     rule_version,
                     cache_version,
                     trace_id,
@@ -95,6 +163,7 @@ class RiskTensorRepository:
             conn.close()
 
     def fetch_risk_tensor_row(self, report_date: str) -> dict[str, object] | None:
+        _ensure_risk_tensor_gross_columns(self.path)
         conn = _connect_read_only(self.path)
         if conn is None:
             return None
@@ -116,6 +185,10 @@ class RiskTensorRepository:
                        portfolio_modified_duration,
                        issuer_concentration_hhi,
                        issuer_top5_weight,
+                       coalesce(asset_cashflow_30d, 0),
+                       coalesce(asset_cashflow_90d, 0),
+                       coalesce(liability_cashflow_30d, 0),
+                       coalesce(liability_cashflow_90d, 0),
                        liquidity_gap_30d,
                        liquidity_gap_90d,
                        liquidity_gap_30d_ratio,
@@ -125,6 +198,8 @@ class RiskTensorRepository:
                        warnings_json,
                        source_version,
                        upstream_source_version,
+                       coalesce(liability_source_version, ''),
+                       coalesce(liability_rule_version, ''),
                        rule_version,
                        cache_version,
                        trace_id
@@ -150,6 +225,10 @@ class RiskTensorRepository:
                 "portfolio_modified_duration",
                 "issuer_concentration_hhi",
                 "issuer_top5_weight",
+                "asset_cashflow_30d",
+                "asset_cashflow_90d",
+                "liability_cashflow_30d",
+                "liability_cashflow_90d",
                 "liquidity_gap_30d",
                 "liquidity_gap_90d",
                 "liquidity_gap_30d_ratio",
@@ -159,6 +238,8 @@ class RiskTensorRepository:
                 "warnings_json",
                 "source_version",
                 "upstream_source_version",
+                "liability_source_version",
+                "liability_rule_version",
                 "rule_version",
                 "cache_version",
                 "trace_id",
@@ -187,6 +268,10 @@ def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
             portfolio_modified_duration   decimal(24, 8),
             issuer_concentration_hhi      decimal(24, 8),
             issuer_top5_weight            decimal(24, 8),
+            asset_cashflow_30d            decimal(24, 8),
+            asset_cashflow_90d            decimal(24, 8),
+            liability_cashflow_30d        decimal(24, 8),
+            liability_cashflow_90d        decimal(24, 8),
             liquidity_gap_30d             decimal(24, 8),
             liquidity_gap_90d             decimal(24, 8),
             liquidity_gap_30d_ratio       decimal(24, 8),
@@ -196,12 +281,22 @@ def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
             warnings_json                 varchar,
             source_version                varchar,
             upstream_source_version       varchar,
+            liability_source_version      varchar,
+            liability_rule_version        varchar,
             rule_version                  varchar,
             cache_version                 varchar,
             trace_id                      varchar
         )
         """
     )
+    for column in _GROSS_CASHFLOW_COLUMNS:
+        conn.execute(
+            f"alter table {FACT_TABLE} add column if not exists {column} decimal(24, 8)"
+        )
+    for column in _LINEAGE_COLUMNS:
+        conn.execute(
+            f"alter table {FACT_TABLE} add column if not exists {column} varchar"
+        )
 
 
 def load_latest_bond_analytics_lineage(
@@ -226,6 +321,62 @@ def load_latest_bond_analytics_lineage(
         "cache_version": str(latest.get("cache_version") or "").strip(),
         "vendor_version": str(latest.get("vendor_version") or "vv_none").strip() or "vv_none",
     }
+
+
+def load_current_tyw_liability_source_version(
+    *,
+    duckdb_path: str,
+    report_date: str,
+) -> str:
+    conn = _connect_read_only(duckdb_path)
+    if conn is None:
+        return ""
+    try:
+        if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            return ""
+        rows = conn.execute(
+            """
+            select distinct source_version
+            from fact_formal_tyw_balance_daily
+            where report_date = ?
+              and position_scope = 'liability'
+              and currency_basis = 'CNY'
+              and coalesce(trim(source_version), '') <> ''
+            order by source_version
+            """,
+            [report_date],
+        ).fetchall()
+        return "__".join(str(row[0]).strip() for row in rows if str(row[0]).strip())
+    finally:
+        conn.close()
+
+
+def load_current_tyw_liability_rule_version(
+    *,
+    duckdb_path: str,
+    report_date: str,
+) -> str:
+    conn = _connect_read_only(duckdb_path)
+    if conn is None:
+        return ""
+    try:
+        if not _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            return ""
+        rows = conn.execute(
+            """
+            select distinct rule_version
+            from fact_formal_tyw_balance_daily
+            where report_date = ?
+              and position_scope = 'liability'
+              and currency_basis = 'CNY'
+              and coalesce(trim(rule_version), '') <> ''
+            order by rule_version
+            """,
+            [report_date],
+        ).fetchall()
+        return "__".join(str(row[0]).strip() for row in rows if str(row[0]).strip())
+    finally:
+        conn.close()
 
 
 def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:

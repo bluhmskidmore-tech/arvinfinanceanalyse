@@ -163,6 +163,8 @@ def compute_benchmark_excess(
     benchmark_curve_prior: dict[str, Decimal] | None,
     treasury_curve_current: dict[str, Decimal] | None = None,
     treasury_curve_prior: dict[str, Decimal] | None = None,
+    cdb_curve_current: dict[str, Decimal] | None = None,
+    cdb_curve_prior: dict[str, Decimal] | None = None,
     aaa_credit_curve_current: dict[str, Decimal] | None = None,
     aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
@@ -208,21 +210,25 @@ def compute_benchmark_excess(
     benchmark_krd = _benchmark_krd_by_bucket(benchmark_id, benchmark_duration=benchmark_duration)
     all_buckets = sorted(set(delta_by_bucket) | set(portfolio_krd) | set(benchmark_krd))
 
-    carry_total = summarize_return_decomposition(
+    return_summary = summarize_return_decomposition(
         rows,
         period_start=period_start,
         period_end=period_end,
-    )["carry_total"]
-    carry_return = ZERO if total_market_value == ZERO else (carry_total / total_market_value) * Decimal("100")
-    portfolio_curve_return = -sum(
-        (portfolio_krd.get(bucket, ZERO) * delta_by_bucket.get(bucket, ZERO) for bucket in all_buckets),
-        ZERO,
+        treasury_curve_current=treasury_curve_current,
+        treasury_curve_prior=treasury_curve_prior,
+        cdb_curve_current=cdb_curve_current,
+        cdb_curve_prior=cdb_curve_prior,
+        aaa_credit_curve_current=aaa_credit_curve_current,
+        aaa_credit_curve_prior=aaa_credit_curve_prior,
+    )
+    portfolio_return = _return_pct(
+        total_effect=_summary_total_for_excess_return(return_summary),
+        total_market_value=total_market_value,
     )
     benchmark_return = -sum(
         (benchmark_krd.get(bucket, ZERO) * delta_by_bucket.get(bucket, ZERO) for bucket in all_buckets),
         ZERO,
     )
-    portfolio_return = carry_return + portfolio_curve_return
     excess_return = (portfolio_return - benchmark_return) * Decimal("100")
     benchmark_delta = ZERO if benchmark_duration == ZERO else -(benchmark_return / benchmark_duration)
     duration_effect = -((portfolio_duration - benchmark_duration) * benchmark_delta * Decimal("100"))
@@ -243,14 +249,7 @@ def compute_benchmark_excess(
         treasury_curve_prior=treasury_curve_prior,
         total_market_value=total_market_value,
     ) * Decimal("100")
-    allocation_effect = _compute_allocation_effect(
-        rows,
-        benchmark_id=benchmark_id,
-        benchmark_return=benchmark_return,
-        total_market_value=total_market_value,
-        period_start=period_start,
-        period_end=period_end,
-    )
+    allocation_effect = ZERO
     selection_effect = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
     explained_excess = duration_effect + curve_effect + spread_effect + selection_effect + allocation_effect
     recon_error = excess_return - explained_excess
@@ -352,6 +351,64 @@ def summarize_credit(
         "oci_spread_dv01": _sum([row for row in rows if str(row["accounting_class"]) == "OCI"], "spread_dv01"),
         "tpl_spread_dv01": _sum([row for row in rows if str(row["accounting_class"]) == "TPL"], "spread_dv01"),
     }
+
+
+# Domestic main-grade ladder (strong → weak). Used for AA-and-below portfolio weight in credit-spread migration.
+_RATING_LADDER_DOMESTIC: tuple[str, ...] = (
+    "AAA",
+    "AA+",
+    "AA",
+    "AA-",
+    "A+",
+    "A",
+    "A-",
+    "BBB+",
+    "BBB",
+    "BBB-",
+    "BB+",
+    "BB",
+    "BB-",
+    "B+",
+    "B",
+    "B-",
+    "CCC",
+    "CC",
+    "C",
+    "D",
+)
+
+
+def _domestic_rating_rank(raw: object) -> int | None:
+    if raw is None:
+        return None
+    key = str(raw).strip().upper()
+    if not key:
+        return None
+    try:
+        return _RATING_LADDER_DOMESTIC.index(key)
+    except ValueError:
+        return None
+
+
+def rating_aa_and_below_portfolio_weight(
+    credit_rows: list[dict[str, Any]],
+    *,
+    total_portfolio_market_value: Decimal,
+) -> Decimal:
+    """Market-value weight of credit bonds rated **AA or weaker** vs **total portfolio** MV.
+
+    Includes ``AA``, ``AA-``, ``A+``, …; excludes ``AAA`` and ``AA+``. Unrecognized ``rating``
+    strings are omitted from the numerator (not treated as low-grade).
+    """
+    if total_portfolio_market_value == ZERO or not credit_rows:
+        return ZERO
+    threshold = _RATING_LADDER_DOMESTIC.index("AA")
+    sub = ZERO
+    for row in credit_rows:
+        rank = _domestic_rating_rank(row.get("rating"))
+        if rank is not None and rank >= threshold:
+            sub += safe_decimal(row["market_value"])
+    return _ratio(sub, total_portfolio_market_value)
 
 
 def build_concentration(rows: list[dict[str, Any]], *, field_name: str, dimension: str) -> dict[str, Any] | None:
@@ -585,8 +642,6 @@ def _fx_effect(
         return ZERO
     market_value_native = safe_decimal(row.get("market_value_native"))
     if market_value_native == ZERO:
-        market_value_native = safe_decimal(row.get("market_value"))
-    if market_value_native == ZERO:
         return ZERO
     return market_value_native * (current_rate - prior_rate)
 
@@ -650,7 +705,7 @@ def _weighted_spread_change(
             modified_duration=safe_decimal(row.get("modified_duration")),
             market_value=market_value,
         )
-    return total_spread_effect / total_market_value
+    return (total_spread_effect / total_market_value) * Decimal("100")
 
 
 def _compute_allocation_effect(
@@ -661,6 +716,12 @@ def _compute_allocation_effect(
     total_market_value: Decimal,
     period_start: date,
     period_end: date,
+    treasury_curve_current: dict[str, Decimal] | None = None,
+    treasury_curve_prior: dict[str, Decimal] | None = None,
+    cdb_curve_current: dict[str, Decimal] | None = None,
+    cdb_curve_prior: dict[str, Decimal] | None = None,
+    aaa_credit_curve_current: dict[str, Decimal] | None = None,
+    aaa_credit_curve_prior: dict[str, Decimal] | None = None,
 ) -> Decimal:
     if not rows or total_market_value == ZERO:
         return ZERO
@@ -682,10 +743,42 @@ def _compute_allocation_effect(
                 sector_rows,
                 period_start=period_start,
                 period_end=period_end,
+                treasury_curve_current=treasury_curve_current,
+                treasury_curve_prior=treasury_curve_prior,
+                cdb_curve_current=cdb_curve_current,
+                cdb_curve_prior=cdb_curve_prior,
+                aaa_credit_curve_current=aaa_credit_curve_current,
+                aaa_credit_curve_prior=aaa_credit_curve_prior,
             )
-            sector_return = (sector_summary["carry_total"] / sector_market_value) * Decimal("100")
+            sector_return = _allocation_sector_return(
+                sector_summary=sector_summary,
+                sector_market_value=sector_market_value,
+            )
         allocation_effect += (portfolio_weight - benchmark_weight) * (sector_return - benchmark_return)
     return allocation_effect * Decimal("100")
+
+
+def _summary_total_for_excess_return(summary: dict[str, Any]) -> Decimal:
+    return (
+        safe_decimal(summary.get("carry_total"))
+        + safe_decimal(summary.get("roll_down_total"))
+        + safe_decimal(summary.get("rate_effect_total"))
+        + safe_decimal(summary.get("spread_effect_total"))
+        + safe_decimal(summary.get("convexity_effect_total"))
+        + safe_decimal(summary.get("fx_effect_total"))
+    )
+
+
+def _allocation_sector_return(*, sector_summary: dict[str, Any], sector_market_value: Decimal) -> Decimal:
+    if sector_market_value == ZERO:
+        return ZERO
+    total_effect = (
+        safe_decimal(sector_summary.get("carry_total"))
+        + safe_decimal(sector_summary.get("roll_down_total"))
+        + safe_decimal(sector_summary.get("rate_effect_total"))
+        + safe_decimal(sector_summary.get("convexity_effect_total"))
+    )
+    return (total_effect / sector_market_value) * Decimal("100")
 
 
 def _build_curve_scenario(rows: list[dict[str, Any]], scenario: dict[str, Any]) -> dict[str, Any]:
@@ -735,6 +828,12 @@ def _weighted(rows: list[dict[str, Any]], field_name: str, *, weight_field: str 
     numerator = sum((safe_decimal(row[field_name]) * safe_decimal(row[weight_field]) for row in rows), ZERO)
     denominator = _sum(rows, weight_field)
     return ZERO if denominator == ZERO else numerator / denominator
+
+
+def _return_pct(*, total_effect: Decimal, total_market_value: Decimal) -> Decimal:
+    if total_market_value == ZERO:
+        return ZERO
+    return (total_effect / total_market_value) * Decimal("100")
 
 
 def _ratio(numerator: Decimal, denominator: Decimal) -> Decimal:

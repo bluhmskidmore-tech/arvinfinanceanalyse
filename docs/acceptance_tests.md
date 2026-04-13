@@ -312,6 +312,8 @@
 - 到期本金必须按 `face_value` 计入窗口现金流
 - `annual` / `semi-annual` / `quarterly` 必须按估算出的最近付息日将票息计入 30d / 90d 窗口
 - `bullet` 必须只在到期日计入还本付息现金流
+- 若存在 `fact_formal_tyw_balance_daily` 的 liability rows，则 `liquidity_gap_30d` / `liquidity_gap_90d` 必须体现资产流入减去负债流出，而不是仅资产侧现金流
+- 负债侧到期还本与资金成本必须进入同一 30d / 90d 现金流窗口
 - 若输入显式带有回售 / 提前偿还相关字段，结果必须带 warning 说明该类现金流尚未建模
 
 ## 5. Phase 4：前端验收

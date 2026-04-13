@@ -403,6 +403,9 @@ def test_executive_risk_overview_uses_requested_report_date(monkeypatch, exec_mo
         def __init__(self, *_a, **_k):
             pass
 
+        def list_report_dates(self):
+            return ["2025-11-20", "2026-02-28"]
+
         def fetch_risk_overview_snapshot(self, *, report_date: str):
             calls.append(report_date)
             return {
@@ -499,6 +502,47 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
     assert items[0]["detail"] == "D1"
     assert items[0]["occurred_at"] == "14:30"
     assert items[1]["id"] == "rule-b"
+
+
+def test_executive_risk_overview_no_demo_fallback_when_requested_date_not_governed(monkeypatch, exec_mod):
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2024-01-01"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            raise AssertionError("snapshot should not be queried for missing governed dates")
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Repo)
+    out = exec_mod.executive_risk_overview(report_date="2025-11-20")
+
+    assert out["result_meta"]["result_kind"] == "executive.risk-overview"
+    for sig in out["result"]["signals"]:
+        assert sig["value"] == "—"
+        assert "2025-11-20" in sig["detail"]
+        assert "演示" in sig["detail"]
+
+
+def test_executive_alerts_no_demo_fallback_when_requested_date_not_governed(monkeypatch, exec_mod):
+    class Repo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28"]
+
+        def fetch_bond_analytics_rows(self, report_date: str):
+            raise AssertionError("rows should not load for missing governed dates")
+
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Repo)
+    out = exec_mod.executive_alerts(report_date="2025-11-20")
+
+    assert out["result_meta"]["result_kind"] == "executive.alerts"
+    assert len(out["result"]["items"]) == 1
+    assert out["result"]["items"][0]["id"] == "governed-date-miss"
+    assert "2025-11-20" in out["result"]["items"][0]["detail"]
 
 
 def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):

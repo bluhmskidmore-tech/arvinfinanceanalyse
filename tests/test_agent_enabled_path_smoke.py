@@ -160,6 +160,10 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
               portfolio_modified_duration double,
               issuer_concentration_hhi double,
               issuer_top5_weight double,
+              asset_cashflow_30d double,
+              asset_cashflow_90d double,
+              liability_cashflow_30d double,
+              liability_cashflow_90d double,
               liquidity_gap_30d double,
               liquidity_gap_90d double,
               liquidity_gap_30d_ratio double,
@@ -184,7 +188,7 @@ def _seed_agent_risk_tensor_tables(duckdb_path: Path, governance_dir: Path) -> N
         conn.execute(
             """
             insert into fact_formal_risk_tensor_daily values
-            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 250, 0.40, 1500, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_risk_tensor_1', 'cv_risk_tensor_1', 'tr-risk-1')
+            (?, 12.34, 1.00, 2.00, 3.00, 2.50, 2.10, 1.10, 0.88, 0.45, 4.20, 0.12, 0.34, 100, 0, 0, 0, 0, 250, 0.40, 1500, 3, 'ok', '[]', 'sv_risk_tensor_1', 'sv_bond_analytics_1', 'rv_risk_tensor_1', 'cv_risk_tensor_1', 'tr-risk-1')
             """,
             [REPORT_DATE],
         )
@@ -437,8 +441,36 @@ def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
         conn.execute(
             """
             insert into fact_formal_bond_analytics_daily values
-            (?, 'BOND-001', 'Treasury Bond', '缁勫悎A', 'CC100', 'bond', 'rates', 'gov', 'issuerA', 'industryA', 'AAA', 'TPL', 'rule-1', 'CNY', 1000, 980, 970, 12, 2.5, 2.8, '2028-03-31', 2.0, '2Y', 4.1, 4.0, 0.5, 12.34, false, 0.12, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-1'),
-            (?, 'BOND-002', 'Credit Bond', '缁勫悎A', 'CC100', 'bond', 'credit', 'corp', 'issuerB', 'industryB', 'AA+', 'OCI', 'rule-2', 'CNY', 500, 510, 505, 8, 3.2, 3.5, '2029-03-31', 3.0, '3Y', 5.2, 5.0, 0.8, 6.78, true, 0.45, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-2')
+            (?, 'BOND-001', 'Treasury Bond', '缁勫悎A', 'CC100', 'bond', 'rates', 'gov', 'issuerA', 'industryA', 'AAA', 'TPL', 'rule-1', 'CNY', 1000, 980, 980, 970, 12, 2.5, 'fixed', 2.8, '2028-03-31', null, 2.0, '2Y', 4.1, 4.0, 0.5, 12.34, false, 0.12, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-1'),
+            (?, 'BOND-002', 'Credit Bond', '缁勫悎A', 'CC100', 'bond', 'credit', 'corp', 'issuerB', 'industryB', 'AA+', 'OCI', 'rule-2', 'CNY', 500, 510, 510, 505, 8, 3.2, 'fixed', 3.5, '2029-03-31', null, 3.0, '3Y', 5.2, 5.0, 0.8, 6.78, true, 0.45, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-2')
+            """,
+            [REPORT_DATE, REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+
+def _seed_agent_bond_analytics_tables(duckdb_path: Path) -> None:
+    repo_module = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        repo_module.ensure_bond_analytics_tables(conn)
+        conn.execute(
+            """
+            insert into fact_formal_bond_analytics_daily (
+              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
+              asset_class_raw, asset_class_std, bond_type, issuer_name, industry_name, rating,
+              accounting_class, accounting_rule_id, currency_code, face_value, market_value_native,
+              market_value, amortized_cost, accrued_interest, coupon_rate, interest_mode, ytm,
+              maturity_date, next_call_date, years_to_maturity, tenor_bucket, macaulay_duration,
+              modified_duration, convexity, dv01, is_credit, spread_dv01, source_version,
+              rule_version, ingest_batch_id, trace_id
+            ) values
+            (?, 'BOND-001', 'Treasury Bond', '组合A', 'CC100', '利率债', 'rate', 'gov', 'issuerA', 'industryA', 'AAA', 'TPL', 'rule-1', 'CNY', 1000, 980, 980, 970, 12, 2.5, 'fixed', 2.8, '2028-03-31', null, 2.0, '2Y', 4.1, 4.0, 0.5, 12.34, false, 0.12, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-1'),
+            (?, 'BOND-002', 'Credit Bond', '组合A', 'CC100', '信用债', 'credit', 'corp', 'issuerB', 'industryB', 'AA+', 'OCI', 'rule-2', 'CNY', 500, 510, 510, 505, 8, 3.2, 'fixed', 3.5, '2029-03-31', null, 3.0, '3Y', 5.2, 5.0, 0.8, 6.78, true, 0.45, 'sv_bond_1', 'rv_bond_1', 'batch-1', 'tr-bond-2')
             """,
             [REPORT_DATE, REPORT_DATE],
         )
@@ -484,7 +516,10 @@ def test_agent_query_enabled_path_returns_real_envelope_and_audit(tmp_path, monk
     assert payload["result_meta"]["result_kind"] == "agent.pnl_summary"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
-    assert payload["evidence"]["filters_applied"] == {"report_date": REPORT_DATE}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": REPORT_DATE,
+        "report_date_resolution": "latest_default",
+    }
     assert payload["evidence"]["evidence_rows"] == 2
     assert any(card["title"] == "Total PnL" for card in payload["cards"])
     assert REPORT_DATE in payload["answer"]
@@ -529,6 +564,7 @@ def test_agent_query_enabled_path_returns_real_portfolio_overview_and_audit(tmp_
     ]
     assert payload["evidence"]["filters_applied"] == {
         "report_date": REPORT_DATE,
+        "report_date_resolution": "latest_default",
         "position_scope": "asset",
         "currency_basis": "CNY",
     }
@@ -572,7 +608,10 @@ def test_agent_query_enabled_path_returns_real_risk_tensor_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
-    assert payload["evidence"]["filters_applied"] == {"report_date": REPORT_DATE}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": REPORT_DATE,
+        "report_date_resolution": "explicit",
+    }
     assert payload["evidence"]["evidence_rows"] == 3
     assert any(card["title"] == "Portfolio DV01" for card in payload["cards"])
     assert REPORT_DATE in payload["answer"]
@@ -609,7 +648,10 @@ def test_agent_query_enabled_path_risk_tensor_uses_latest_report_date_when_conte
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["result_kind"] == "agent.risk_tensor"
     assert payload["result_meta"]["formal_use_allowed"] is True
-    assert payload["evidence"]["filters_applied"] == {"report_date": REPORT_DATE}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": REPORT_DATE,
+        "report_date_resolution": "latest_default",
+    }
     assert payload["evidence"]["tables_used"] == ["fact_formal_risk_tensor_daily"]
     assert any(card["title"] == "Portfolio DV01" for card in payload["cards"])
     assert REPORT_DATE in payload["answer"]
@@ -712,7 +754,11 @@ def test_agent_query_enabled_path_returns_real_product_pnl_and_audit(tmp_path, m
     assert payload["result_meta"]["result_kind"] == "agent.product_pnl"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["product_category_pnl_formal_read_model"]
-    assert payload["evidence"]["filters_applied"] == {"report_date": REPORT_DATE, "view": "monthly"}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": REPORT_DATE,
+        "report_date_resolution": "latest_default",
+        "view": "monthly",
+    }
     assert payload["evidence"]["evidence_rows"] == 3
     assert any(card["title"] == "Grand Total" for card in payload["cards"])
 
@@ -748,7 +794,10 @@ def test_agent_query_enabled_path_returns_real_pnl_bridge_and_audit(tmp_path, mo
     assert payload["result_meta"]["result_kind"] == "agent.pnl_bridge"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["evidence"]["tables_used"] == ["fact_formal_pnl_fi", "fact_formal_zqtz_balance_daily"]
-    assert payload["evidence"]["filters_applied"] == {"report_date": REPORT_DATE}
+    assert payload["evidence"]["filters_applied"] == {
+        "report_date": REPORT_DATE,
+        "report_date_resolution": "latest_default",
+    }
     assert payload["evidence"]["evidence_rows"] == 1
     assert any(card["title"] == "Explained PnL" for card in payload["cards"])
 

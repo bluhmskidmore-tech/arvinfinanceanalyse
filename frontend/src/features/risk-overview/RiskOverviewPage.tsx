@@ -71,28 +71,6 @@ const drillDownIntroStyle = {
   lineHeight: 1.65,
 } as const;
 
-async function fetchKrdCurveRisk(reportDate: string): Promise<KRDCurveRiskResponse> {
-  const params = new URLSearchParams({ report_date: reportDate });
-  const res = await fetch(`/api/bond-analytics/krd-curve-risk?${params}`);
-  if (!res.ok) {
-    throw new Error(`KRD 曲线风险：HTTP ${res.status}`);
-  }
-  const json: { result: KRDCurveRiskResponse } = await res.json();
-  return json.result;
-}
-
-async function fetchCreditSpreadMigration(
-  reportDate: string,
-): Promise<CreditSpreadMigrationResponse> {
-  const params = new URLSearchParams({ report_date: reportDate });
-  const res = await fetch(`/api/bond-analytics/credit-spread-migration?${params}`);
-  if (!res.ok) {
-    throw new Error(`信用利差迁移：HTTP ${res.status}`);
-  }
-  const json: { result: CreditSpreadMigrationResponse } = await res.json();
-  return json.result;
-}
-
 function cellText(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
     return "—";
@@ -131,10 +109,11 @@ export default function RiskOverviewPage() {
     return datesQuery.data?.result.report_dates[0] ?? "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
 
+  const datesBlockingError = datesQuery.isError && !reportDate;
   const datesEmpty =
     !explicitReportDate &&
     !datesQuery.isLoading &&
-    !datesQuery.isError &&
+    !datesBlockingError &&
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
 
   const tensorQuery = useQuery({
@@ -146,14 +125,20 @@ export default function RiskOverviewPage() {
 
   const krdQuery = useQuery({
     queryKey: ["risk-overview", "krd-curve-risk", reportDate],
-    queryFn: () => fetchKrdCurveRisk(reportDate),
+    queryFn: async (): Promise<KRDCurveRiskResponse> => {
+      const envelope = await client.getBondAnalyticsKrdCurveRisk(reportDate);
+      return envelope.result;
+    },
     enabled: Boolean(reportDate),
     retry: false,
   });
 
   const creditQuery = useQuery({
     queryKey: ["risk-overview", "credit-spread-migration", reportDate],
-    queryFn: () => fetchCreditSpreadMigration(reportDate),
+    queryFn: async (): Promise<CreditSpreadMigrationResponse> => {
+      const envelope = await client.getBondAnalyticsCreditSpreadMigration(reportDate);
+      return envelope.result;
+    },
     enabled: Boolean(reportDate),
     retry: false,
   });
@@ -250,6 +235,8 @@ export default function RiskOverviewPage() {
         >
           {datesEmpty ? (
             <span>后端未返回可用风险报告日。</span>
+          ) : datesBlockingError ? (
+            <span>风险报告日载入失败。</span>
           ) : (
             <>
               报告日：<strong>{reportDate}</strong>
@@ -265,8 +252,8 @@ export default function RiskOverviewPage() {
         <AsyncSection
           title="正式风险张量（主数据）"
           isLoading={datesQuery.isLoading || tensorQuery.isLoading}
-          isError={datesQuery.isError || tensorQuery.isError}
-          isEmpty={datesEmpty || tensorEmpty}
+          isError={datesBlockingError || tensorQuery.isError}
+          isEmpty={datesEmpty || (!datesBlockingError && tensorEmpty)}
           onRetry={() => {
             void datesQuery.refetch();
             void tensorQuery.refetch();
@@ -417,7 +404,7 @@ export default function RiskOverviewPage() {
         <AsyncSection
           title="利率曲线与 KRD 风险（物化下钻）"
           isLoading={datesQuery.isLoading || krdQuery.isLoading}
-          isError={datesQuery.isError || krdQuery.isError}
+          isError={datesBlockingError || krdQuery.isError}
           isEmpty={datesEmpty}
           onRetry={() => {
             void datesQuery.refetch();
@@ -554,7 +541,7 @@ export default function RiskOverviewPage() {
         <AsyncSection
           title="信用利差迁移（物化下钻）"
           isLoading={datesQuery.isLoading || creditQuery.isLoading}
-          isError={datesQuery.isError || creditQuery.isError}
+          isError={datesBlockingError || creditQuery.isError}
           isEmpty={datesEmpty}
           onRetry={() => {
             void datesQuery.refetch();

@@ -103,6 +103,9 @@ class ProductCategoryPnlAnalysisAdapter:
 
 
 BOND_ACTION_ATTRIBUTION_KEY = "bond_action_attribution"
+BOND_ACTION_ATTRIBUTION_PLACEHOLDER_WARNING = (
+    "Trade-level action data not yet available; returning placeholder attribution until trade records are integrated."
+)
 
 
 def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> AnalysisResultEnvelope:
@@ -124,9 +127,9 @@ def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> 
     period_start, period_end = resolve_period(report_date, period_type)
     warnings = [
         AnalysisWarning(
-            code="bond_action_empty",
+            code="bond_action_placeholder",
             level="warning",
-            message="DuckDB fact tables not yet populated - returning empty attribution",
+            message=BOND_ACTION_ATTRIBUTION_PLACEHOLDER_WARNING,
         )
     ]
     return AnalysisResultEnvelope(
@@ -143,7 +146,7 @@ def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> 
             vendor_version="vv_none",
             rule_version="rv_bond_analytics_v1",
             cache_version="cv_none",
-            quality_flag="ok",
+            quality_flag="warning",
             scenario_flag=False,
         ),
         result=AnalysisResultPayload(
