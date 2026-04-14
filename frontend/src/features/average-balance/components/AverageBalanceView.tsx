@@ -14,11 +14,11 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import ReactECharts from "echarts-for-react";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type { AdbBreakdownItem, AdbComparisonRow, AdbMonthlyItem } from "../../../api/contracts";
+import ReactECharts from "../../../lib/echarts";
 
 const { Title, Text } = Typography;
 

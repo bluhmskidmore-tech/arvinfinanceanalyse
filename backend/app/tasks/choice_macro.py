@@ -3,6 +3,7 @@ from __future__ import annotations
 import dramatiq
 import duckdb
 import hashlib
+import inspect
 import json
 from datetime import date, timedelta
 from pathlib import Path
@@ -304,7 +305,7 @@ def _build_source_version(raw_payload: dict[str, object]) -> str:
 
 
 def load_choice_macro_batches(settings, run_date: str | None = None) -> list[ChoiceMacroBatchConfig]:
-    effective_run_date = _choice_macro_run_date(run_date)
+    effective_run_date = _resolve_choice_macro_run_date(run_date)
     catalog_path = _resolve_choice_macro_catalog_path(settings)
     if catalog_path is not None and catalog_path.exists():
         return _normalize_choice_macro_batches(
@@ -562,6 +563,13 @@ def _choice_macro_run_date(override_date: str | None = None) -> str:
     if override_date:
         return override_date
     return date.today().isoformat()
+
+
+def _resolve_choice_macro_run_date(run_date: str | None = None) -> str:
+    parameter_count = len(inspect.signature(_choice_macro_run_date).parameters)
+    if parameter_count == 0:
+        return _choice_macro_run_date()
+    return _choice_macro_run_date(run_date)
 
 
 def _build_choice_series_registry(

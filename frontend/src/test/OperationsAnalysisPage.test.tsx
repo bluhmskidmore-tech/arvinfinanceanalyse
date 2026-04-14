@@ -20,7 +20,9 @@ vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
 
 async function expandOperationsDataSourcesPanel(user: UserEvent) {
   const trigger = await screen.findByRole("button", { name: /数据源与运维状态/ });
-  await user.click(trigger);
+  if (trigger.getAttribute("aria-expanded") !== "true") {
+    await user.click(trigger);
+  }
 }
 
 function renderPage(client: ApiClient) {
