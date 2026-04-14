@@ -513,7 +513,7 @@ export default function OperationsAnalysisPage() {
       <Collapse
         style={{ marginTop: 28 }}
         bordered={false}
-        defaultActiveKey={[]}
+        defaultActiveKey={["ops-sources"]}
         items={[
           {
             key: "ops-sources",
