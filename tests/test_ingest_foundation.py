@@ -145,6 +145,93 @@ def test_ingest_service_keeps_repeat_archives_immutable_across_runs(tmp_path):
     assert second_archived_path.read_text(encoding="utf-8") == "second-run"
 
 
+def test_ingest_service_skips_unchanged_source_versions_when_manifest_repo_present(tmp_path):
+    ingest_module = load_module("backend.app.services.ingest_service", "backend/app/services/ingest_service.py")
+    manifest_module = load_module(
+        "backend.app.repositories.source_manifest_repo",
+        "backend/app/repositories/source_manifest_repo.py",
+    )
+    object_store_module = load_module(
+        "backend.app.repositories.object_store_repo",
+        "backend/app/repositories/object_store_repo.py",
+    )
+
+    data_root = tmp_path / "data_input"
+    source_file = data_root / "desk-a" / "demo-positions.csv"
+    source_file.parent.mkdir(parents=True, exist_ok=True)
+    source_file.write_text("same-content", encoding="utf-8")
+
+    archive_root = tmp_path / "archive"
+    manifest_repo = manifest_module.SourceManifestRepository()
+    service = ingest_module.IngestService(
+        data_root=data_root,
+        manifest_repo=manifest_repo,
+        object_store_repo=object_store_module.ObjectStoreRepository(
+            endpoint="127.0.0.1:1",
+            access_key="minioadmin",
+            secret_key="minioadmin",
+            bucket="moss-artifacts",
+            mode="local",
+            local_archive_path=str(archive_root),
+        ),
+    )
+
+    first_rows = service.scan_and_archive()
+    second_rows = service.scan_and_archive()
+
+    assert len(first_rows) == 1
+    assert second_rows == []
+    assert len(manifest_repo.load_all()) == 1
+    assert len(list(archive_root.rglob("*.*"))) == 1
+
+
+def test_ingest_service_archives_only_changed_files_in_incremental_mode(tmp_path):
+    ingest_module = load_module("backend.app.services.ingest_service", "backend/app/services/ingest_service.py")
+    manifest_module = load_module(
+        "backend.app.repositories.source_manifest_repo",
+        "backend/app/repositories/source_manifest_repo.py",
+    )
+    object_store_module = load_module(
+        "backend.app.repositories.object_store_repo",
+        "backend/app/repositories/object_store_repo.py",
+    )
+
+    data_root = tmp_path / "data_input"
+    first_source = data_root / "desk-a" / "demo-a.csv"
+    second_source = data_root / "desk-b" / "demo-b.csv"
+    first_source.parent.mkdir(parents=True, exist_ok=True)
+    second_source.parent.mkdir(parents=True, exist_ok=True)
+    first_source.write_text("v1-a", encoding="utf-8")
+    second_source.write_text("v1-b", encoding="utf-8")
+
+    archive_root = tmp_path / "archive"
+    manifest_repo = manifest_module.SourceManifestRepository()
+    service = ingest_module.IngestService(
+        data_root=data_root,
+        manifest_repo=manifest_repo,
+        object_store_repo=object_store_module.ObjectStoreRepository(
+            endpoint="127.0.0.1:1",
+            access_key="minioadmin",
+            secret_key="minioadmin",
+            bucket="moss-artifacts",
+            mode="local",
+            local_archive_path=str(archive_root),
+        ),
+    )
+
+    first_rows = service.scan_and_archive()
+    first_batch_ids = {row["ingest_batch_id"] for row in first_rows}
+    first_source.write_text("v2-a", encoding="utf-8")
+
+    second_rows = service.scan_and_archive()
+
+    assert len(first_rows) == 2
+    assert len(second_rows) == 1
+    assert second_rows[0]["source_file"] == "demo-a.csv"
+    assert second_rows[0]["ingest_batch_id"] not in first_batch_ids
+    assert len(manifest_repo.load_all()) == 3
+
+
 def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path):
     ingest_task_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_task_module is None:

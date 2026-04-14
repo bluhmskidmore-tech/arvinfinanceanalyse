@@ -97,9 +97,11 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
     textStyle: { color: ECHARTS_RISK_TEXT },
     tooltip: {
       trigger: "item",
-      formatter: (p: { data?: { name: string; marketValueRaw: string; weight: string } }) => {
-        const d = p.data;
-        if (!d) return "";
+      formatter: (p: unknown) => {
+        const d = (p as { data?: unknown }).data as
+          | { name: string; marketValueRaw: string; weight: string }
+          | undefined;
+        if (!d || typeof d !== "object") return "";
         return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight}`;
       },
     },

@@ -466,3 +466,52 @@ class AccountingClassAuditResponse(BaseModel):
     )
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+
+# ---------------------------------------------------------------------------
+# Portfolio headlines & Top holdings
+# ---------------------------------------------------------------------------
+
+
+class PortfolioHeadlinesResponse(BaseModel):
+    """Cross-sectional portfolio KPIs and asset-class risk summary."""
+
+    report_date: date
+    total_market_value: str
+    weighted_ytm: str = Field(description="MV-weighted YTM in percent points (e.g. 2.38 => 2.38%).")
+    weighted_duration: str = Field(description="MV-weighted modified duration (years).")
+    weighted_coupon: str = Field(description="MV-weighted coupon rate in percent points.")
+    total_dv01: str
+    bond_count: int
+    credit_weight: str
+    issuer_hhi: str
+    issuer_top5_weight: str
+    by_asset_class: list[AssetClassRiskSummary] = Field(default_factory=list)
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")
+
+
+class BondTopHoldingItem(BaseModel):
+    """Single row in top-holdings by market value."""
+
+    instrument_code: str
+    instrument_name: Optional[str] = None
+    issuer_name: Optional[str] = None
+    rating: Optional[str] = None
+    asset_class: str
+    market_value: str
+    face_value: str
+    ytm: str
+    modified_duration: str
+    weight: str
+
+
+class BondTopHoldingsResponse(BaseModel):
+    """Largest positions by market value."""
+
+    report_date: date
+    top_n: int
+    items: list[BondTopHoldingItem] = Field(default_factory=list)
+    total_market_value: str
+    computed_at: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Warning messages")

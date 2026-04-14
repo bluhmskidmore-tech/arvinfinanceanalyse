@@ -12,6 +12,7 @@ from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
     infer_curve_type,
     resolve_period,
+    safe_decimal,
 )
 from backend.app.core_finance.bond_analytics.read_models import (
     build_asset_class_risk_summary,
@@ -24,6 +25,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     summarize_credit,
     summarize_portfolio_risk,
     summarize_return_decomposition,
+    weighted_average_by_market_value,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 try:
@@ -78,11 +80,14 @@ from backend.app.schemas.bond_analytics import (
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
     BondLevelDecomposition,
+    BondTopHoldingItem,
+    BondTopHoldingsResponse,
     ConcentrationItem,
     ConcentrationMetrics,
     CreditSpreadMigrationResponse,
     KRDBucket,
     KRDCurveRiskResponse,
+    PortfolioHeadlinesResponse,
     ReturnDecompositionResponse,
     ScenarioResult,
     SpreadScenarioResult,
@@ -1093,6 +1098,114 @@ def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationM
         top5_concentration=_text(payload["top5_concentration"]),
         top_items=[ConcentrationItem(name=str(row["name"]), weight=_text(row["weight"]), market_value=_text(row["market_value"])) for row in payload["top_items"]],
     )
+
+
+def get_portfolio_headlines(report_date: date) -> dict:
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.portfolio_headlines", report_date, rows)
+    if not rows:
+        payload = PortfolioHeadlinesResponse(
+            report_date=report_date,
+            total_market_value=_text(ZERO),
+            weighted_ytm=_text(ZERO),
+            weighted_duration=_text(ZERO),
+            weighted_coupon=_text(ZERO),
+            total_dv01=_text(ZERO),
+            bond_count=0,
+            credit_weight=_text(ZERO),
+            issuer_hhi=_text(ZERO),
+            issuer_top5_weight=_text(ZERO),
+            by_asset_class=[],
+            computed_at=meta.generated_at.isoformat(),
+            warnings=[EMPTY_WARNING],
+        )
+        return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+
+    risk = summarize_portfolio_risk(rows)
+    credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
+    credit_summary = summarize_credit(
+        credit_rows,
+        total_rows=rows,
+        aaa_credit_curve_current=None,
+        treasury_curve_current=None,
+    )
+    conc = build_concentration(rows, field_name="issuer_name", dimension="issuer")
+    ytm_dec = weighted_average_by_market_value(rows, "ytm")
+    cpn_dec = weighted_average_by_market_value(rows, "coupon_rate")
+    pct = Decimal("100")
+    by_ac = build_asset_class_risk_summary(rows)
+    payload = PortfolioHeadlinesResponse(
+        report_date=report_date,
+        total_market_value=_text(risk["total_market_value"]),
+        weighted_ytm=_text(ytm_dec * pct),
+        weighted_duration=_text(risk["portfolio_modified_duration"]),
+        weighted_coupon=_text(cpn_dec * pct),
+        total_dv01=_text(risk["portfolio_dv01"]),
+        bond_count=int(risk["bond_count"]),
+        credit_weight=_text(credit_summary["credit_weight"]),
+        issuer_hhi=_text(conc["hhi"]) if conc else _text(ZERO),
+        issuer_top5_weight=_text(conc["top5_concentration"]) if conc else _text(ZERO),
+        by_asset_class=[
+            AssetClassRiskSummary(
+                asset_class=row["asset_class"],
+                market_value=_text(row["market_value"]),
+                duration=_text(row["duration"]),
+                dv01=_text(row["dv01"]),
+                weight=_text(row["weight"]),
+            )
+            for row in by_ac
+        ],
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[],
+    )
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+
+
+def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    meta = _meta("bond_analytics.top_holdings", report_date, rows)
+    if not rows:
+        payload = BondTopHoldingsResponse(
+            report_date=report_date,
+            top_n=top_n,
+            items=[],
+            total_market_value=_text(ZERO),
+            computed_at=meta.generated_at.isoformat(),
+            warnings=[EMPTY_WARNING],
+        )
+        return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+
+    total_mv_dec = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
+    ordered = sorted(rows, key=lambda row: safe_decimal(row.get("market_value")), reverse=True)
+    picked = ordered[:top_n]
+    items = [
+        BondTopHoldingItem(
+            instrument_code=str(row.get("instrument_code") or ""),
+            instrument_name=(str(row["instrument_name"]).strip() or None) if row.get("instrument_name") else None,
+            issuer_name=(str(row["issuer_name"]).strip() or None) if row.get("issuer_name") else None,
+            rating=(str(row["rating"]).strip() or None) if row.get("rating") else None,
+            asset_class=str(row.get("asset_class_std") or ""),
+            market_value=_text(safe_decimal(row.get("market_value"))),
+            face_value=_text(safe_decimal(row.get("face_value"))),
+            ytm=_text(safe_decimal(row.get("ytm"))),
+            modified_duration=_text(safe_decimal(row.get("modified_duration"))),
+            weight=_text(
+                ZERO
+                if total_mv_dec == ZERO
+                else safe_decimal(row.get("market_value")) / total_mv_dec
+            ),
+        )
+        for row in picked
+    ]
+    payload = BondTopHoldingsResponse(
+        report_date=report_date,
+        top_n=top_n,
+        items=items,
+        total_market_value=_text(total_mv_dec),
+        computed_at=meta.generated_at.isoformat(),
+        warnings=[],
+    )
+    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
 
 def get_accounting_class_audit(report_date: date) -> dict:

@@ -5,6 +5,10 @@ from decimal import Decimal
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_balance_zqtz_legacy_columns,
+)
 from backend.app.core_finance.balance_analysis import (
     FormalTywBalanceFactRow,
     FormalZqtzBalanceFactRow,
@@ -931,97 +935,6 @@ class BalanceAnalysisRepository:
 
 
 def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        """
-        create table if not exists fact_formal_zqtz_balance_daily (
-          report_date varchar,
-          instrument_code varchar,
-          instrument_name varchar,
-          portfolio_name varchar,
-          cost_center varchar,
-          account_category varchar,
-          asset_class varchar,
-          bond_type varchar,
-          issuer_name varchar,
-          industry_name varchar,
-          rating varchar,
-          invest_type_std varchar,
-          accounting_basis varchar,
-          position_scope varchar,
-          currency_basis varchar,
-          currency_code varchar,
-          face_value_amount decimal(24, 8),
-          market_value_amount decimal(24, 8),
-          amortized_cost_amount decimal(24, 8),
-          accrued_interest_amount decimal(24, 8),
-          coupon_rate decimal(18, 8),
-          ytm_value decimal(18, 8),
-          maturity_date varchar,
-          interest_mode varchar,
-          is_issuance_like boolean,
-          source_version varchar,
-          rule_version varchar,
-          ingest_batch_id varchar,
-          trace_id varchar
-        )
-        """
-    )
-    _ensure_zqtz_formal_enrichment_columns(conn)
-    conn.execute(
-        """
-        create table if not exists fact_formal_tyw_balance_daily (
-          report_date varchar,
-          position_id varchar,
-          product_type varchar,
-          position_side varchar,
-          counterparty_name varchar,
-          account_type varchar,
-          special_account_type varchar,
-          core_customer_type varchar,
-          invest_type_std varchar,
-          accounting_basis varchar,
-          position_scope varchar,
-          currency_basis varchar,
-          currency_code varchar,
-          principal_amount decimal(24, 8),
-          accrued_interest_amount decimal(24, 8),
-          funding_cost_rate decimal(18, 8),
-          maturity_date varchar,
-          source_version varchar,
-          rule_version varchar,
-          ingest_batch_id varchar,
-          trace_id varchar
-        )
-        """
-    )
-    if not _column_exists(conn, "fact_formal_zqtz_balance_daily", "account_category"):
-        conn.execute("alter table fact_formal_zqtz_balance_daily add column account_category varchar")
-
-
-def _ensure_zqtz_formal_enrichment_columns(conn: duckdb.DuckDBPyConnection) -> None:
-    for column_name, ddl in (
-        ("overdue_principal_days", "integer"),
-        ("overdue_interest_days", "integer"),
-        ("value_date", "varchar"),
-        ("customer_attribute", "varchar"),
-    ):
-        if not _column_exists(conn, "fact_formal_zqtz_balance_daily", column_name):
-            conn.execute(f"alter table fact_formal_zqtz_balance_daily add column {column_name} {ddl}")
-
-
-def _column_exists(
-    conn: duckdb.DuckDBPyConnection,
-    table_name: str,
-    column_name: str,
-) -> bool:
-    row = conn.execute(
-        """
-        select 1
-        from information_schema.columns
-        where table_name = ?
-          and column_name = ?
-        limit 1
-        """,
-        [table_name, column_name],
-    ).fetchone()
-    return row is not None
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+    ensure_balance_zqtz_legacy_columns(conn)

@@ -2,6 +2,10 @@
 
 from importlib import import_module
 
+from backend.app.storage_bootstrap import run_startup_storage_migrations
+
+run_startup_storage_migrations()
+
 
 CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.ingest",

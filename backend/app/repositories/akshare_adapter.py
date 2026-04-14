@@ -106,6 +106,36 @@ MIN_REQUIRED_TENORS_BY_TYPE = {
 }
 
 
+def _read_chinabond_gkh_html_tables(html: str) -> list[pd.DataFrame]:
+    """Parse ChinaBond GKH HTML. Prefer pandas' lxml path when installed; else BeautifulSoup + html.parser."""
+    try:
+        return pd.read_html(StringIO(html))
+    except ImportError:
+        pass
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    table = soup.find("table", id="conter")
+    if table is None:
+        return []
+    header_row = table.find("tr")
+    if header_row is None:
+        return []
+    header_cells = header_row.find_all(["th", "td"])
+    columns = [c.get_text(strip=True) for c in header_cells]
+    if not columns:
+        return []
+    rows_data: list[list[object]] = []
+    for tr in table.find_all("tr")[1:]:
+        cells = tr.find_all("td")
+        if len(cells) != len(columns):
+            continue
+        rows_data.append([c.get_text(strip=True) for c in cells])
+    if not rows_data:
+        return []
+    return [pd.DataFrame(rows_data, columns=columns)]
+
+
 @dataclass
 class VendorAdapter(VendorAdapterBase):
     vendor_name: str = "akshare"
@@ -307,7 +337,7 @@ class VendorAdapter(VendorAdapterBase):
             timeout=20,
         )
         response.raise_for_status()
-        frames = pd.read_html(StringIO(response.text))
+        frames = _read_chinabond_gkh_html_tables(response.text)
         target_frame = None
         for frame in frames:
             columns = {str(column) for column in frame.columns}

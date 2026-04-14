@@ -13,6 +13,7 @@ _BOOTSTRAP_TABLES = (
     "rule_version_registry",
     "cache_manifest",
     "cache_build_run",
+    "job_run_state",
 )
 
 

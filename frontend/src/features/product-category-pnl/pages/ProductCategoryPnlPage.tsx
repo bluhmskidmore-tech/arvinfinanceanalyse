@@ -9,7 +9,7 @@ import type {
   ProductCategoryPnlRow,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch.tsx";
+import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 
 const DISPLAY_ORDER = [
   "interbank_lending_assets",

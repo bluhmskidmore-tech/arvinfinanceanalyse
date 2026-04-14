@@ -4,9 +4,11 @@ import {
   AppstoreOutlined,
   BankOutlined,
   BarChartOutlined,
+  FileTextOutlined,
   FundOutlined,
   SettingOutlined,
   TeamOutlined,
+  TrophyOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -22,10 +24,13 @@ const iconMap: Record<string, ReactNode> = {
   analysis: <BarChartOutlined />,
   risk: <AlertOutlined />,
   team: <TeamOutlined />,
+  kpi: <TrophyOutlined />,
   decision: <ApartmentOutlined />,
   bond: <BankOutlined />,
   settings: <SettingOutlined />,
   market: <FundOutlined />,
+  reports: <FileTextOutlined />,
+  agent: <ApartmentOutlined />,
 };
 
 function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
@@ -52,11 +57,21 @@ function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
   } as const;
 }
 
+function pathMatchesSection(sectionPath: string, pathname: string) {
+  if (sectionPath === "/") {
+    return pathname === "/" || pathname === "/dashboard";
+  }
+  return sectionPath === pathname;
+}
+
 export function WorkbenchShell() {
   const location = useLocation();
   const currentSection =
-    workbenchNavigation.find((item) => item.path === location.pathname) ??
+    workbenchNavigation.find((item) => pathMatchesSection(item.path, location.pathname)) ??
     workbenchNavigation[0];
+  const dataSourceRaw = import.meta.env.VITE_DATA_SOURCE;
+  const isMockDataSource =
+    typeof dataSourceRaw !== "string" || dataSourceRaw.trim().toLowerCase() !== "real";
 
   return (
     <div
@@ -156,7 +171,7 @@ export function WorkbenchShell() {
           }}
         >
           {primaryWorkbenchNavigation.map((item) => {
-            const active = location.pathname === item.path;
+            const active = pathMatchesSection(item.path, location.pathname);
 
             return (
               <NavLink
@@ -214,7 +229,7 @@ export function WorkbenchShell() {
           </div>
           <div style={{ display: "grid", gap: 8 }}>
             {secondaryWorkbenchNavigation.map((item) => {
-              const active = location.pathname === item.path;
+              const active = pathMatchesSection(item.path, location.pathname);
 
               return (
                 <NavLink
@@ -379,6 +394,28 @@ export function WorkbenchShell() {
           <Outlet />
         </main>
       </div>
+
+      {isMockDataSource ? (
+        <div
+          data-testid="workbench-mock-mode-badge"
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            zIndex: 1000,
+            padding: "6px 12px",
+            borderRadius: 999,
+            background: "#162033",
+            color: "#fbfcfe",
+            fontSize: 12,
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(19, 37, 70, 0.2)",
+            pointerEvents: "none",
+          }}
+        >
+          Mock Mode
+        </div>
+      ) : null}
     </div>
   );
 }

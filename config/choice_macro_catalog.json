@@ -833,6 +833,181 @@
             "rates",
             "fx"
           ]
+        },
+        {
+          "series_id": "E1000180",
+          "series_name": "中债国债到期收益率:10年",
+          "vendor_series_code": "E1000180",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "edb",
+            "chinabond",
+            "cross_asset"
+          ]
+        },
+        {
+          "series_id": "E1003238",
+          "series_name": "美国国债收益率曲线:10年",
+          "vendor_series_code": "E1003238",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "edb",
+            "us_treasury",
+            "cross_asset"
+          ]
+        },
+        {
+          "series_id": "EM1",
+          "series_name": "10Y中国国债-10Y美国国债",
+          "vendor_series_code": "EM1",
+          "frequency": "daily",
+          "unit": "bp",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "spreads",
+            "edb",
+            "chinabond",
+            "cross_asset"
+          ]
+        },
+        {
+          "series_id": "EMG00001305",
+          "series_name": "美国:国债收益率:1年",
+          "vendor_series_code": "EMG00001305",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMG00001306",
+          "series_name": "美国:国债收益率:2年",
+          "vendor_series_code": "EMG00001306",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMG00001307",
+          "series_name": "美国:国债收益率:3年",
+          "vendor_series_code": "EMG00001307",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMG00001308",
+          "series_name": "美国:国债收益率:5年",
+          "vendor_series_code": "EMG00001308",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMG00001309",
+          "series_name": "美国:国债收益率:7年",
+          "vendor_series_code": "EMG00001309",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
+        },
+        {
+          "series_id": "EMG00001310",
+          "series_name": "美国:国债收益率:10年",
+          "vendor_series_code": "EMG00001310",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb",
+            "cross_asset"
+          ]
+        },
+        {
+          "series_id": "EMG00001312",
+          "series_name": "美国:国债收益率:30年",
+          "vendor_series_code": "EMG00001312",
+          "frequency": "daily",
+          "unit": "%",
+          "theme": "macro_market",
+          "is_core": true,
+          "tags": [
+            "choice",
+            "macro",
+            "market",
+            "rates",
+            "us_treasury",
+            "edb"
+          ]
         }
       ]
     },

@@ -8,7 +8,9 @@ import { BondAnalyticsFilterActionStrip } from "../features/bond-analytics/compo
 
 function renderStrip(ui: ReactElement) {
   return render(
-    <ConfigProvider getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}>{ui}</ConfigProvider>,
+    <ConfigProvider getPopupContainer={(triggerNode) => triggerNode?.parentElement ?? document.body}>
+      {ui}
+    </ConfigProvider>,
   );
 }
 
@@ -16,6 +18,19 @@ const dateOptions = [
   { value: "2026-03-31", label: "2026-03-31" },
   { value: "2026-02-28", label: "2026-02-28" },
 ];
+
+function mockAnalyticsFilterProps() {
+  return {
+    assetClass: "all" as const,
+    onAssetClassChange: vi.fn(),
+    accountingClass: "all" as const,
+    onAccountingClassChange: vi.fn(),
+    scenarioSet: "standard" as const,
+    onScenarioSetChange: vi.fn(),
+    spreadScenarios: "10,25,50",
+    onSpreadScenariosChange: vi.fn(),
+  };
+}
 
 describe("BondAnalyticsFilterActionStrip", () => {
   it("renders filters, refresh control, refresh state, and cockpit rule; wires callbacks", async () => {
@@ -31,6 +46,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
         onReportDateChange={onReportDateChange}
         periodType="MoM"
         onPeriodTypeChange={onPeriodTypeChange}
+        {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={onRefreshAnalytics}
         isAnalyticsRefreshing={false}
         analyticsRefreshError={null}
@@ -53,7 +69,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
     expect(screen.getByTitle("Month")).toBeInTheDocument();
 
     const comboboxes = screen.getAllByRole("combobox");
-    expect(comboboxes).toHaveLength(2);
+    expect(comboboxes).toHaveLength(6);
 
     fireEvent.mouseDown(comboboxes[0]!);
     const dateOption = await screen.findByTitle("2026-02-28");
@@ -84,6 +100,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
         onReportDateChange={vi.fn()}
         periodType="MoM"
         onPeriodTypeChange={vi.fn()}
+        {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing
         analyticsRefreshError={null}
@@ -102,6 +119,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
         onReportDateChange={vi.fn()}
         periodType="MoM"
         onPeriodTypeChange={vi.fn()}
+        {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing={false}
         analyticsRefreshError={null}
@@ -120,6 +138,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
         onReportDateChange={vi.fn()}
         periodType="MoM"
         onPeriodTypeChange={vi.fn()}
+        {...mockAnalyticsFilterProps()}
         onRefreshAnalytics={vi.fn()}
         isAnalyticsRefreshing={false}
         analyticsRefreshError="Refresh pipeline failed"

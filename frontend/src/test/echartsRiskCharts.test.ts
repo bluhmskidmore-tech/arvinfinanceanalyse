@@ -1,3 +1,4 @@
+import type { SeriesOption } from "echarts";
 import { describe, expect, it } from "vitest";
 
 import type { AssetClassRiskSummary, KRDBucket } from "../features/bond-analytics/types";
@@ -5,6 +6,11 @@ import {
   buildAssetClassMarketValuePieOption,
   buildKrdDv01BarOption,
 } from "../features/bond-analytics/utils/echartsRiskCharts";
+
+function firstSeriesEntry(series: SeriesOption | SeriesOption[] | undefined): SeriesOption | undefined {
+  if (series == null) return undefined;
+  return Array.isArray(series) ? series[0] : series;
+}
 
 describe("echartsRiskCharts", () => {
   describe("buildKrdDv01BarOption", () => {
@@ -33,9 +39,7 @@ describe("echartsRiskCharts", () => {
         type: "category",
         data: ["1Y", "5Y"],
       });
-      const series = option?.series?.[0] as {
-        data: unknown[];
-      };
+      const series = firstSeriesEntry(option?.series) as { data: unknown[] } | undefined;
       expect(series?.data?.length).toBe(2);
 
       const tooltip = option?.tooltip as {
@@ -86,7 +90,7 @@ describe("echartsRiskCharts", () => {
       ];
       const option = buildAssetClassMarketValuePieOption(rows);
       expect(option).not.toBeNull();
-      const series = option?.series?.[0] as {
+      const series = firstSeriesEntry(option?.series) as {
         type?: string;
         data: Array<{ itemStyle?: { color?: string } }>;
       };

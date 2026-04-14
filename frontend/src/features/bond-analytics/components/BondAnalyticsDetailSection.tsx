@@ -1,6 +1,11 @@
 import { Suspense, lazy } from "react";
 import { Tabs } from "antd";
-import type { PeriodType } from "../types";
+import type {
+  BondAnalyticsAccountingClassFilter,
+  BondAnalyticsAssetClassFilter,
+  BondAnalyticsScenarioSetFilter,
+  PeriodType,
+} from "../types";
 import {
   getBondAnalyticsModuleDefinition,
   type BondAnalyticsModuleKey,
@@ -36,12 +41,24 @@ const AccountingClassAuditView = lazy(() =>
     default: module.AccountingClassAuditView,
   })),
 );
+const PortfolioHeadlinesView = lazy(() =>
+  import("./PortfolioHeadlinesView").then((module) => ({
+    default: module.PortfolioHeadlinesView,
+  })),
+);
+const TopHoldingsView = lazy(() =>
+  import("./TopHoldingsView").then((module) => ({
+    default: module.TopHoldingsView,
+  })),
+);
 
 const TAB_ITEMS: Array<{ key: BondAnalyticsModuleKey; label: string }> = [
   { key: "return-decomposition", label: "Return decomposition" },
   { key: "benchmark-excess", label: "Benchmark excess" },
   { key: "krd-curve-risk", label: "KRD curve risk" },
   { key: "credit-spread", label: "Credit spread" },
+  { key: "portfolio-headlines", label: "Portfolio headlines" },
+  { key: "top-holdings", label: "Top holdings" },
   { key: "action-attribution", label: "Action attribution" },
   { key: "accounting-audit", label: "Accounting audit" },
 ];
@@ -51,18 +68,28 @@ interface BondAnalyticsDetailSectionProps {
   onActiveTabChange: (key: BondAnalyticsModuleKey) => void;
   reportDate: string;
   periodType: PeriodType;
+  assetClass: BondAnalyticsAssetClassFilter;
+  accountingClass: BondAnalyticsAccountingClassFilter;
+  scenarioSet: BondAnalyticsScenarioSetFilter;
+  spreadScenarios: string;
 }
 
 function renderActiveModule(
   activeTab: BondAnalyticsModuleKey,
   reportDate: string,
   periodType: PeriodType,
+  assetClass: BondAnalyticsAssetClassFilter,
+  accountingClass: BondAnalyticsAccountingClassFilter,
+  scenarioSet: BondAnalyticsScenarioSetFilter,
+  spreadScenarios: string,
 ) {
   if (activeTab === "return-decomposition") {
     return (
       <ReturnDecompositionView
         reportDate={reportDate}
         periodType={periodType}
+        assetClass={assetClass}
+        accountingClass={accountingClass}
       />
     );
   }
@@ -77,11 +104,19 @@ function renderActiveModule(
   }
 
   if (activeTab === "krd-curve-risk") {
-    return <KRDCurveRiskView reportDate={reportDate} />;
+    return <KRDCurveRiskView reportDate={reportDate} scenarioSet={scenarioSet} />;
   }
 
   if (activeTab === "credit-spread") {
-    return <CreditSpreadView reportDate={reportDate} />;
+    return <CreditSpreadView reportDate={reportDate} spreadScenarios={spreadScenarios} />;
+  }
+
+  if (activeTab === "portfolio-headlines") {
+    return <PortfolioHeadlinesView reportDate={reportDate} />;
+  }
+
+  if (activeTab === "top-holdings") {
+    return <TopHoldingsView reportDate={reportDate} />;
   }
 
   if (activeTab === "action-attribution") {
@@ -101,6 +136,10 @@ export function BondAnalyticsDetailSection({
   onActiveTabChange,
   reportDate,
   periodType,
+  assetClass,
+  accountingClass,
+  scenarioSet,
+  spreadScenarios,
 }: BondAnalyticsDetailSectionProps) {
   const activeModule = getBondAnalyticsModuleDefinition(activeTab);
 
@@ -138,7 +177,17 @@ export function BondAnalyticsDetailSection({
           </div>
         }
       >
-        <div>{renderActiveModule(activeTab, reportDate, periodType)}</div>
+        <div>
+          {renderActiveModule(
+            activeTab,
+            reportDate,
+            periodType,
+            assetClass,
+            accountingClass,
+            scenarioSet,
+            spreadScenarios,
+          )}
+        </div>
       </Suspense>
     </section>
   );

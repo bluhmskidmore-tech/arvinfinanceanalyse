@@ -186,7 +186,7 @@ describe("MarketDataPage", () => {
     });
 
     expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
-    expect(screen.getAllByText("DR007")).toHaveLength(2);
+    expect(screen.getAllByText("DR007")).toHaveLength(3);
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
     expect(screen.getByTestId("market-data-stable-count")).toHaveTextContent("1 / 2");
     expect(screen.getByTestId("market-data-fallback-count")).toHaveTextContent("1");
@@ -213,8 +213,8 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("low-frequency latest-only lane");
 
     expect(screen.getByText("利率走势图")).toBeInTheDocument();
-    expect(screen.getByText("汇率与流动性")).toBeInTheDocument();
-    expect(screen.getByText("增长与物价")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-rate-quote-table")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-money-market-table")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-rate-trend-empty")).toBeInTheDocument();
 
     await waitFor(() => {

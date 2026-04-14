@@ -13,6 +13,12 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsMarketContextStrip",
   ),
 }));
 
+vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit", () => ({
+  BondAnalyticsInstitutionalCockpit: (props: { reportDate: string }) => (
+    <div data-testid="mock-bond-institutional-cockpit" data-report-date={props.reportDate} />
+  ),
+}));
+
 vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", () => ({
   BondAnalyticsFilterActionStrip: (props: {
     reportDate: string;
@@ -170,6 +176,14 @@ describe("BondAnalyticsOverviewPanels", () => {
         onReportDateChange={onReportDateChange}
         periodType="MoM"
         onPeriodTypeChange={onPeriodTypeChange}
+        assetClass="all"
+        onAssetClassChange={vi.fn()}
+        accountingClass="all"
+        onAccountingClassChange={vi.fn()}
+        scenarioSet="standard"
+        onScenarioSetChange={vi.fn()}
+        spreadScenarios="10,25,50"
+        onSpreadScenariosChange={vi.fn()}
         overviewModel={overviewModel}
         onOpenModuleDetail={onOpenModuleDetail}
         onRefreshAnalytics={onRefreshAnalytics}
@@ -178,6 +192,10 @@ describe("BondAnalyticsOverviewPanels", () => {
     );
 
     expect(screen.getByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-institutional-cockpit")).toHaveAttribute(
+      "data-report-date",
+      "2026-03-31",
+    );
     expect(screen.getByTestId("bond-analysis-right-rail")).toBeInTheDocument();
 
     const market = screen.getByTestId("mock-bond-market-context-strip");

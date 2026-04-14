@@ -24,8 +24,14 @@ const MarketDataPage = lazy(
 );
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
+const PnlAttributionPage = lazy(
+  () => import("../features/pnl-attribution/pages/PnlAttributionPage"),
+);
 const BalanceAnalysisPage = lazy(
   () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
+);
+const LiabilityAnalyticsPage = lazy(
+  () => import("../features/liability-analytics/pages/LiabilityAnalyticsPage"),
 );
 const ProductCategoryAdjustmentAuditPage = lazy(
   () => import("../features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage"),
@@ -48,12 +54,33 @@ const RiskTensorPage = lazy(
 const ConcentrationMonitorPage = lazy(
   () => import("../features/concentration-monitor/ConcentrationMonitorPage"),
 );
+const CashflowProjectionPage = lazy(
+  () => import("../features/cashflow-projection/pages/CashflowProjectionPage"),
+);
 const RiskOverviewPage = lazy(
   () => import("../features/risk-overview/RiskOverviewPage"),
 );
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
 );
+const BondDashboardPage = lazy(
+  () => import("../features/bond-dashboard/pages/BondDashboardPage"),
+);
+const PositionsPage = lazy(() => import("../features/positions/pages/PositionsPage"));
+const AverageBalancePage = lazy(
+  () => import("../features/average-balance/pages/AverageBalancePage"),
+);
+const KpiPerformancePage = lazy(
+  () => import("../features/kpi-performance/pages/KpiPerformancePage"),
+);
+const TeamPerformancePage = lazy(
+  () => import("../features/team-performance/TeamPerformancePage"),
+);
+const PlatformConfigPage = lazy(
+  () => import("../features/platform-config/PlatformConfigPage"),
+);
+const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
+const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
 
 function routeElement(element: ReactNode) {
   return (
@@ -111,6 +138,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/liability-analytics") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<LiabilityAnalyticsPage />),
+      };
+    }
+
     if (section.path === "/pnl") {
       return {
         path: section.path.slice(1),
@@ -122,6 +156,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<PnlBridgePage />),
+      };
+    }
+
+    if (section.path === "/pnl-attribution") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PnlAttributionPage />),
       };
     }
 
@@ -146,6 +187,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/cashflow-projection") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<CashflowProjectionPage />),
+      };
+    }
+
     if (section.path === "/risk-overview") {
       return {
         path: section.path.slice(1),
@@ -160,10 +208,66 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
+    if (section.path === "/bond-dashboard") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<BondDashboardPage />),
+      };
+    }
+
     if (section.path === "/bond-analysis") {
       return {
         path: section.path.slice(1),
         element: routeElement(<BondAnalyticsView />),
+      };
+    }
+
+    if (section.path === "/cross-asset") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<CrossAssetPage />),
+      };
+    }
+
+    if (section.path === "/positions") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PositionsPage />),
+      };
+    }
+
+    if (section.path === "/average-balance") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<AverageBalancePage />),
+      };
+    }
+
+    if (section.path === "/kpi") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<KpiPerformancePage />),
+      };
+    }
+
+    if (section.path === "/team-performance") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<TeamPerformancePage />),
+      };
+    }
+
+    if (section.path === "/cube-query") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<CubeQueryPage />),
+      };
+    }
+
+    if (section.path === "/platform-config") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<PlatformConfigPage />),
       };
     }
 
@@ -182,6 +286,10 @@ export const workbenchRoutes: RouteObject[] = [
     element: <WorkbenchShell />,
     children: [
       ...buildWorkbenchChildRoutes(),
+      {
+        path: "dashboard",
+        element: routeElement(<DashboardPage />),
+      },
       {
         path: "source-preview",
         element: routeElement(<SourcePreviewPage />),

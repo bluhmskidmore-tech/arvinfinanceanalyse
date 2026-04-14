@@ -18,6 +18,9 @@ FORBIDDEN_TOKENS = (
 # Display-only / fixture surfaces — labels & mocks, not pricing logic.
 DISPLAY_ONLY_DIRS = (
     "features/bond-analytics/",
+    "features/bond-dashboard/",
+    "features/liability-analytics/",
+    "features/pnl-attribution/",
     "features/risk-overview/",
     "features/risk-tensor/",
     "api/",

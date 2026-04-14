@@ -50,7 +50,7 @@ def _seed_macro_and_curve_inputs(
     try:
         conn.execute(
             """
-            create table fact_choice_macro_daily (
+            create table if not exists fact_choice_macro_daily (
               series_id varchar,
               series_name varchar,
               trade_date varchar,
@@ -67,7 +67,7 @@ def _seed_macro_and_curve_inputs(
         )
         conn.execute(
             """
-            create table phase1_macro_vendor_catalog (
+            create table if not exists phase1_macro_vendor_catalog (
               series_id varchar,
               series_name varchar,
               vendor_name varchar,
@@ -80,7 +80,7 @@ def _seed_macro_and_curve_inputs(
         ensure_yield_curve_tables(conn)
         conn.execute(
             """
-            create table fact_formal_risk_tensor_daily (
+            create table if not exists fact_formal_risk_tensor_daily (
               report_date varchar,
               portfolio_dv01 decimal(24, 8),
               krd_1y decimal(24, 8),
@@ -127,7 +127,9 @@ def _seed_macro_and_curve_inputs(
         }
         conn.executemany(
             """
-            insert into phase1_macro_vendor_catalog values (?, ?, ?, ?, ?, ?)
+            insert into phase1_macro_vendor_catalog (
+              series_id, series_name, vendor_name, vendor_version, frequency, unit
+            ) values (?, ?, ?, ?, ?, ?)
             """,
             [
                 (series_id, series_name, "choice", "vv_choice_macro_test", frequency, unit)
@@ -202,8 +204,15 @@ def _seed_macro_and_curve_inputs(
 
         conn.execute(
             """
-            insert into fact_formal_risk_tensor_daily values (
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            insert into fact_formal_risk_tensor_daily (
+              report_date, portfolio_dv01, krd_1y, krd_3y, krd_5y, krd_7y, krd_10y, krd_30y,
+              cs01, portfolio_convexity, portfolio_modified_duration, issuer_concentration_hhi, issuer_top5_weight,
+              asset_cashflow_30d, asset_cashflow_90d, liability_cashflow_30d, liability_cashflow_90d,
+              liquidity_gap_30d, liquidity_gap_90d, liquidity_gap_30d_ratio, total_market_value, bond_count,
+              quality_flag, warnings_json, source_version, upstream_source_version, liability_source_version, liability_rule_version,
+              rule_version, cache_version, trace_id
+            ) values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
             )
             """,
             [
@@ -233,6 +242,8 @@ def _seed_macro_and_curve_inputs(
                 "[]",
                 "sv_risk_tensor_test",
                 "sv_risk_tensor_upstream",
+                "",
+                "",
                 "rv_risk_tensor_test",
                 "cv_risk_tensor_test",
                 "tr_risk_tensor_test",
@@ -489,6 +500,87 @@ def test_lead_lag_confidence_weakens_with_smaller_sample_or_ambiguous_runner_up(
     assert 0 <= high_confidence["confidence"] <= 1
     assert small_sample_confidence["confidence"] < high_confidence["confidence"]
     assert ambiguous_confidence["confidence"] < high_confidence["confidence"]
+
+
+def test_environment_score_uses_continuous_rate_signal_below_legacy_threshold():
+    mod = _core_module()
+    start = REPORT_DATE - timedelta(days=89)
+    history = {
+        "EMM00166466": [(start, 2.00), (REPORT_DATE - timedelta(days=30), 2.06), (REPORT_DATE, 2.12)],
+        "EMM00166462": [(start, 1.80), (REPORT_DATE - timedelta(days=30), 1.85), (REPORT_DATE, 1.91)],
+        "EMM00166458": [(start, 1.55), (REPORT_DATE - timedelta(days=30), 1.60), (REPORT_DATE, 1.66)],
+        "EMM00166252": [(start, 1.80), (REPORT_DATE, 1.80)],
+        "EMM00166253": [(start, 1.82), (REPORT_DATE, 1.82)],
+        "EMM00166216": [(start, 1.84), (REPORT_DATE, 1.84)],
+        "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.2)],
+        "EMM00619381": [(start, 100.0), (REPORT_DATE, 100.0)],
+        "EMM00072301": [(REPORT_DATE, 2.0)],
+    }
+    latest = {series_id: points[-1] for series_id, points in history.items()}
+
+    score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
+
+    assert score.rate_direction == "rising"
+    assert score.rate_direction_score > 0
+    assert score.rate_direction_score != 0
+
+
+def test_environment_score_liquidity_is_robust_to_baseline_outlier():
+    mod = _core_module()
+    start = REPORT_DATE - timedelta(days=24)
+    baseline_dates = [start + timedelta(days=index) for index in range(20)]
+    recent_dates = [REPORT_DATE - timedelta(days=4 - index) for index in range(5)]
+
+    def build_liquidity_history(base_value: float, outlier_value: float, recent_value: float):
+        values = [(current_date, base_value) for current_date in baseline_dates]
+        values.append((REPORT_DATE - timedelta(days=5), outlier_value))
+        values.extend((current_date, recent_value) for current_date in recent_dates)
+        return values
+
+    history = {
+        "EMM00166466": [(REPORT_DATE - timedelta(days=90), 2.0), (REPORT_DATE, 2.0)],
+        "EMM00166462": [(REPORT_DATE - timedelta(days=90), 1.8), (REPORT_DATE, 1.8)],
+        "EMM00166458": [(REPORT_DATE - timedelta(days=90), 1.6), (REPORT_DATE, 1.6)],
+        "EMM00166252": build_liquidity_history(1.00, 10.0, 1.40),
+        "EMM00166253": build_liquidity_history(1.05, 10.5, 1.45),
+        "EMM00166216": build_liquidity_history(1.10, 11.0, 1.50),
+        "EMM00008445": [(REPORT_DATE - timedelta(days=30), 1.2), (REPORT_DATE, 1.2)],
+        "EMM00619381": [(REPORT_DATE - timedelta(days=90), 100.0), (REPORT_DATE, 100.0)],
+        "EMM00072301": [(REPORT_DATE, 2.0)],
+    }
+    latest = {series_id: points[-1] for series_id, points in history.items()}
+
+    score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
+
+    assert score.liquidity_score < 0
+
+
+def test_environment_score_contributing_factors_include_method_metadata():
+    mod = _core_module()
+    start = REPORT_DATE - timedelta(days=89)
+    history = {
+        "EMM00166466": [(start, 2.00), (REPORT_DATE - timedelta(days=30), 2.08), (REPORT_DATE, 2.16)],
+        "EMM00166462": [(start, 1.80), (REPORT_DATE - timedelta(days=30), 1.88), (REPORT_DATE, 1.96)],
+        "EMM00166458": [(start, 1.50), (REPORT_DATE - timedelta(days=30), 1.58), (REPORT_DATE, 1.66)],
+        "EMM00166252": [(start, 1.70), (REPORT_DATE, 1.90)],
+        "EMM00166253": [(start, 1.72), (REPORT_DATE, 1.94)],
+        "EMM00166216": [(start, 1.76), (REPORT_DATE, 1.98)],
+        "EMM00008445": [(start, 1.2), (REPORT_DATE, 1.5)],
+        "EMM00619381": [(start, 100.0), (REPORT_DATE, 104.0)],
+        "EMM00072301": [(REPORT_DATE, 2.2)],
+    }
+    latest = {series_id: points[-1] for series_id, points in history.items()}
+
+    score = mod.compute_macro_environment_score(latest, history, lookback_days=90)
+
+    assert score.contributing_factors
+    rate_factor = next(
+        factor for factor in score.contributing_factors if factor["category"] == "rate"
+    )
+    assert "scoring_method" in rate_factor
+    assert "observation_count" in rate_factor
+    assert "winsorized" in rate_factor
+    assert "normalized_signal" in rate_factor
 
 
 def test_environment_score_rising_rates():

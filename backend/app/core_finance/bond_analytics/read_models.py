@@ -830,6 +830,16 @@ def _weighted(rows: list[dict[str, Any]], field_name: str, *, weight_field: str 
     return ZERO if denominator == ZERO else numerator / denominator
 
 
+def weighted_average_by_market_value(rows: list[dict[str, Any]], field_name: str) -> Decimal:
+    """MV-weighted average of ``field_name`` (missing values treated as 0)."""
+    numerator = sum(
+        (safe_decimal(row.get(field_name)) * safe_decimal(row.get("market_value")) for row in rows),
+        ZERO,
+    )
+    denominator = _sum(rows, "market_value")
+    return ZERO if denominator == ZERO else numerator / denominator
+
+
 def _return_pct(*, total_effect: Decimal, total_market_value: Decimal) -> Decimal:
     if total_market_value == ZERO:
         return ZERO

@@ -81,6 +81,24 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () =
   };
 });
 
+vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
+  default: function MockPerformanceComparison() {
+    return <div data-testid="mock-performance-comparison" />;
+  },
+}));
+
+vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
+  default: function MockRiskTrendChart() {
+    return <div data-testid="mock-risk-trend-chart" />;
+  },
+}));
+
+vi.mock("../features/bond-analytics/components/BondEventCalendar", () => ({
+  default: function MockBondEventCalendar() {
+    return <div data-testid="mock-bond-event-calendar" />;
+  },
+}));
+
 import { BondAnalyticsViewContent } from "../features/bond-analytics/components/BondAnalyticsViewContent";
 
 const runPollingTaskMock = vi.mocked(runPollingTask);

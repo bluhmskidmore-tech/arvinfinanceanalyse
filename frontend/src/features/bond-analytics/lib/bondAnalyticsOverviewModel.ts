@@ -282,6 +282,8 @@ export function buildBondAnalyticsOverviewModel(
     buildNonFetchedReadinessItem("benchmark-excess"),
     buildNonFetchedReadinessItem("krd-curve-risk"),
     buildNonFetchedReadinessItem("credit-spread"),
+    buildNonFetchedReadinessItem("portfolio-headlines"),
+    buildNonFetchedReadinessItem("top-holdings"),
     buildNonFetchedReadinessItem("accounting-audit"),
   ];
 

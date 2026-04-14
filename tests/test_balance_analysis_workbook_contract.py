@@ -83,20 +83,6 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         snapshot_mod.ensure_snapshot_tables(conn)
         conn.execute(
             """
-            create table if not exists fx_daily_mid (
-              trade_date date,
-              base_currency varchar,
-              quote_currency varchar,
-              mid_rate decimal(24, 8),
-              source_name varchar,
-              is_business_day boolean,
-              is_carry_forward boolean,
-              source_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
             insert into zqtz_bond_daily_snapshot (
               report_date, instrument_code, instrument_name, portfolio_name, cost_center,
               account_category, asset_class, bond_type, issuer_name, industry_name, rating,
@@ -296,7 +282,10 @@ def _seed_workbook_snapshot_and_fx_tables(duckdb_path: str) -> None:
         )
         conn.execute(
             """
-            insert into fx_daily_mid values (?, ?, ?, ?, ?, ?, ?, ?)
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version
+            ) values (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 "2025-12-31",

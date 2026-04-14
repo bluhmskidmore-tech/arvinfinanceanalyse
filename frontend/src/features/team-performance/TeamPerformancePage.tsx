@@ -5,7 +5,8 @@ import { useApiClient } from "../../api/client";
 import type { DecimalLike, ProductCategoryPnlRow } from "../../api/contracts";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 
 const summaryGridStyle = {
   display: "grid",
@@ -97,6 +98,10 @@ export default function TeamPerformancePage() {
 
   const result = detailQuery.data?.result;
 
+  const datesReady = Boolean(datesQuery.data?.result.report_dates?.length);
+  /** Avoid flashing KPI placeholders before selectedDate is synced from dates (detail query still disabled). */
+  const isInitializingSelection = datesReady && !selectedDate;
+
   const { grandRow, assetRow, liabilityRow, teamRows } = useMemo(() => {
     const rows = result?.rows ?? [];
     const teams = rows.filter((r) => r.level === 1 && !r.is_total);
@@ -154,7 +159,11 @@ export default function TeamPerformancePage() {
 
       <AsyncSection
         title="核心指标与团队贡献"
-        isLoading={datesQuery.isLoading || (Boolean(selectedDate) && detailQuery.isLoading)}
+        isLoading={
+          datesQuery.isLoading ||
+          isInitializingSelection ||
+          (Boolean(selectedDate) && detailQuery.isLoading)
+        }
         isError={datesQuery.isError || detailQuery.isError}
         isEmpty={
           !datesQuery.isLoading &&
@@ -171,25 +180,29 @@ export default function TeamPerformancePage() {
       >
         <div style={{ display: "grid", gap: 20 }}>
           <div data-testid="team-performance-kpi" style={summaryGridStyle}>
-            <PlaceholderCard
+            <KpiCard
               title="资产端净收入"
               value={cellText(assetRow?.business_net_income)}
               detail="asset_total 行 business_net_income（后端返回值）。"
+              tone={toneFromSignedDisplayString(cellText(assetRow?.business_net_income))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="负债端净收入"
               value={cellText(liabilityRow?.business_net_income)}
               detail="liability_total 行 business_net_income（后端返回值）。"
+              tone={toneFromSignedDisplayString(cellText(liabilityRow?.business_net_income))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="综合净收入"
               value={cellText(grandRow?.business_net_income)}
               detail="grand_total 行 business_net_income（后端返回值）。"
+              tone={toneFromSignedDisplayString(cellText(grandRow?.business_net_income))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="组数"
               value={String(teamRows.length)}
               detail="level=1 且非合计行的行数。"
+              unit="组"
             />
           </div>
 

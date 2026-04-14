@@ -23,8 +23,21 @@ vi.mock("../features/bond-analytics/components/ActionAttributionView", () => ({
 vi.mock("../features/bond-analytics/components/AccountingClassAuditView", () => ({
   AccountingClassAuditView: () => <div data-testid="mock-detail-accounting-audit" />,
 }));
+vi.mock("../features/bond-analytics/components/PortfolioHeadlinesView", () => ({
+  PortfolioHeadlinesView: () => <div data-testid="mock-detail-portfolio-headlines" />,
+}));
+vi.mock("../features/bond-analytics/components/TopHoldingsView", () => ({
+  TopHoldingsView: () => <div data-testid="mock-detail-top-holdings" />,
+}));
 
 import { BondAnalyticsDetailSection } from "../features/bond-analytics/components/BondAnalyticsDetailSection";
+
+const defaultFilterProps = {
+  assetClass: "all" as const,
+  accountingClass: "all" as const,
+  scenarioSet: "standard" as const,
+  spreadScenarios: "10,25,50",
+};
 
 const TAB_MODULE_CASES: Array<{
   activeTab: BondAnalyticsModuleKey;
@@ -34,6 +47,8 @@ const TAB_MODULE_CASES: Array<{
   { activeTab: "benchmark-excess", mockTestId: "mock-detail-benchmark-excess" },
   { activeTab: "krd-curve-risk", mockTestId: "mock-detail-krd-curve-risk" },
   { activeTab: "credit-spread", mockTestId: "mock-detail-credit-spread" },
+  { activeTab: "portfolio-headlines", mockTestId: "mock-detail-portfolio-headlines" },
+  { activeTab: "top-holdings", mockTestId: "mock-detail-top-holdings" },
   { activeTab: "action-attribution", mockTestId: "mock-detail-action-attribution" },
   { activeTab: "accounting-audit", mockTestId: "mock-detail-accounting-audit" },
 ];
@@ -51,6 +66,7 @@ describe("BondAnalyticsDetailSection", () => {
           onActiveTabChange={onActiveTabChange}
           reportDate="2026-03-31"
           periodType="MoM"
+          {...defaultFilterProps}
         />,
       );
 
@@ -72,6 +88,7 @@ describe("BondAnalyticsDetailSection", () => {
         onActiveTabChange={onActiveTabChange}
         reportDate="2026-03-31"
         periodType="MoM"
+        {...defaultFilterProps}
       />,
     );
 

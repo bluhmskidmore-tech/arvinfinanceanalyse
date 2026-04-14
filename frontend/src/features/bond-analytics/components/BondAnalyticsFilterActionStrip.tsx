@@ -1,7 +1,20 @@
 import { Button, Card, Select } from "antd";
 
-import type { PeriodType } from "../types";
-import { FIELD, panelStyle, PERIOD_OPTIONS } from "./bondAnalyticsCockpitTokens";
+import type {
+  BondAnalyticsAccountingClassFilter,
+  BondAnalyticsAssetClassFilter,
+  BondAnalyticsScenarioSetFilter,
+  PeriodType,
+} from "../types";
+import {
+  BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS,
+  BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS,
+  BOND_ANALYTICS_SCENARIO_SET_OPTIONS,
+  BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS,
+  FIELD,
+  panelStyle,
+  PERIOD_OPTIONS,
+} from "./bondAnalyticsCockpitTokens";
 
 export interface BondAnalyticsFilterActionStripProps {
   dateOptions: Array<{ value: string; label: string }>;
@@ -9,6 +22,14 @@ export interface BondAnalyticsFilterActionStripProps {
   onReportDateChange: (value: string) => void;
   periodType: PeriodType;
   onPeriodTypeChange: (value: PeriodType) => void;
+  assetClass: BondAnalyticsAssetClassFilter;
+  onAssetClassChange: (value: BondAnalyticsAssetClassFilter) => void;
+  accountingClass: BondAnalyticsAccountingClassFilter;
+  onAccountingClassChange: (value: BondAnalyticsAccountingClassFilter) => void;
+  scenarioSet: BondAnalyticsScenarioSetFilter;
+  onScenarioSetChange: (value: BondAnalyticsScenarioSetFilter) => void;
+  spreadScenarios: string;
+  onSpreadScenariosChange: (value: string) => void;
   onRefreshAnalytics?: () => void;
   isAnalyticsRefreshing?: boolean;
   analyticsRefreshError?: string | null;
@@ -21,6 +42,14 @@ export function BondAnalyticsFilterActionStrip({
   onReportDateChange,
   periodType,
   onPeriodTypeChange,
+  assetClass,
+  onAssetClassChange,
+  accountingClass,
+  onAccountingClassChange,
+  scenarioSet,
+  onScenarioSetChange,
+  spreadScenarios,
+  onSpreadScenariosChange,
   onRefreshAnalytics,
   isAnalyticsRefreshing = false,
   analyticsRefreshError = null,
@@ -49,6 +78,46 @@ export function BondAnalyticsFilterActionStrip({
               onChange={(value) => onPeriodTypeChange(value as PeriodType)}
               options={PERIOD_OPTIONS}
               style={{ width: 132 }}
+              size="small"
+            />
+          </div>
+          <div>
+            <div style={FIELD}>收益拆解 · 资产类</div>
+            <Select
+              value={assetClass}
+              onChange={(value) => onAssetClassChange(value as BondAnalyticsAssetClassFilter)}
+              options={[...BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS]}
+              style={{ width: 140 }}
+              size="small"
+            />
+          </div>
+          <div>
+            <div style={FIELD}>收益拆解 · 会计口径</div>
+            <Select
+              value={accountingClass}
+              onChange={(value) => onAccountingClassChange(value as BondAnalyticsAccountingClassFilter)}
+              options={[...BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS]}
+              style={{ width: 120 }}
+              size="small"
+            />
+          </div>
+          <div>
+            <div style={FIELD}>KRD 情景集</div>
+            <Select
+              value={scenarioSet}
+              onChange={(value) => onScenarioSetChange(value as BondAnalyticsScenarioSetFilter)}
+              options={[...BOND_ANALYTICS_SCENARIO_SET_OPTIONS]}
+              style={{ width: 132 }}
+              size="small"
+            />
+          </div>
+          <div>
+            <div style={FIELD}>信用迁移 ·利差(bp)</div>
+            <Select
+              value={spreadScenarios}
+              onChange={onSpreadScenariosChange}
+              options={[...BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS]}
+              style={{ width: 168 }}
               size="small"
             />
           </div>

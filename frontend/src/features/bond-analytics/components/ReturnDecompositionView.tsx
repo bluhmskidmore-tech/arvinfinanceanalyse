@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "../../../lib/echarts";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
-import type { PeriodType, ReturnDecompositionResponse } from "../types";
+import type {
+  BondAnalyticsAccountingClassFilter,
+  BondAnalyticsAssetClassFilter,
+  PeriodType,
+  ReturnDecompositionResponse,
+} from "../types";
 import { formatWan } from "../utils/formatters";
 
 const WATERFALL_CATEGORIES = [
@@ -115,6 +120,8 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
 interface Props {
   reportDate: string;
   periodType: PeriodType;
+  assetClass?: BondAnalyticsAssetClassFilter;
+  accountingClass?: BondAnalyticsAccountingClassFilter;
 }
 
 const effectColumns = [
@@ -130,7 +137,12 @@ const effectColumns = [
   { title: "债券数", dataIndex: "bond_count", key: "bond_count" },
 ];
 
-export function ReturnDecompositionView({ reportDate, periodType }: Props) {
+export function ReturnDecompositionView({
+  reportDate,
+  periodType,
+  assetClass = "all",
+  accountingClass = "all",
+}: Props) {
   const client = useApiClient();
   const [data, setData] = useState<ReturnDecompositionResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -142,7 +154,13 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const envelope = await client.getBondAnalyticsReturnDecomposition(reportDate, periodType);
+        const envelope =
+          assetClass === "all" && accountingClass === "all"
+            ? await client.getBondAnalyticsReturnDecomposition(reportDate, periodType)
+            : await client.getBondAnalyticsReturnDecomposition(reportDate, periodType, {
+                ...(assetClass !== "all" ? { assetClass } : {}),
+                ...(accountingClass !== "all" ? { accountingClass } : {}),
+              });
         if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
@@ -154,7 +172,7 @@ export function ReturnDecompositionView({ reportDate, periodType }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [client, periodType, reportDate]);
+  }, [accountingClass, assetClass, client, periodType, reportDate]);
 
   const waterfallOption = useMemo(
     () => (data ? buildWaterfallOption(data) : null),

@@ -6,6 +6,7 @@ type AlertsSectionProps = {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  sectionTitle?: string;
 };
 
 const severityColor = {
@@ -19,10 +20,11 @@ export function AlertsSection({
   isLoading,
   isError,
   onRetry,
+  sectionTitle = "预警与事件",
 }: AlertsSectionProps) {
   return (
     <AsyncSection
-      title="预警与事件"
+      title={sectionTitle}
       isLoading={isLoading}
       isError={isError}
       isEmpty={!data || data.items.length === 0}

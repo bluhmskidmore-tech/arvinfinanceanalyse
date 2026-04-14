@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Collapse } from "antd";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
@@ -7,11 +8,13 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisDetailRow,
   BalanceAnalysisEventCalendarRow,
   BalanceAnalysisRiskAlertRow,
   BalanceAnalysisSeverity,
+  BalanceAnalysisSummaryRow,
   BalanceAnalysisTableRow,
   BalanceAnalysisWorkbookColumn,
   BalanceAnalysisWorkbookOperationalSection,
@@ -20,12 +23,33 @@ import type {
   BalancePositionScope,
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { FilterBar } from "../../../components/FilterBar";
+import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { KpiCard } from "../../workbench/components/KpiCard";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
+import { BalanceBottomRow } from "../components/BalanceBottomRow";
+import { BalanceContributionRow } from "../components/BalanceContributionRow";
+import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
+
+const BALANCE_MOCK_KPI = {
+  marketAssetsYi: 3525.0,
+  marketLiabilitiesYi: 1817.9,
+  assetYieldPct: 2.07,
+  liabilityCostPct: 1.77,
+  staticSpreadBp: 29.5,
+  oneYearGapYi: -373.0,
+  bondFloatingGainYi: 68.48,
+  alertCount: 4,
+};
+
+function formatYiAmount(value: number) {
+  return value.toLocaleString("zh-CN", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
 
 const summaryGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
   gap: 16,
 } as const;
 
@@ -322,8 +346,12 @@ const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
     headerName: "来源",
     valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
   },
+  { field: "row_key", headerName: "行键", minWidth: 160 },
+  { field: "display_name", headerName: "展示名" },
   { field: "owner_name", headerName: "组合名称" },
   { field: "category_name", headerName: "分类" },
+  { field: "position_scope", headerName: "头寸范围" },
+  { field: "currency_basis", headerName: "币种口径" },
   {
     field: "market_value_amount",
     headerName: "规模(亿)",
@@ -367,6 +395,7 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
     valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
   },
   { field: "display_name", headerName: "标识" },
+  { field: "report_date", headerName: "报告日" },
   { field: "position_scope", headerName: "范围" },
   {
     colId: "invest_accounting",
@@ -377,6 +406,97 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
   {
     field: "market_value_amount",
     headerName: "规模",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "amortized_cost_amount",
+    headerName: "摊余成本",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "accrued_interest_amount",
+    headerName: "应计利息",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "is_issuance_like",
+    headerName: "发行类",
+    valueFormatter: (p) =>
+      p.value === null || p.value === undefined ? "—" : p.value ? "是" : "否",
+  },
+];
+
+const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryRow>[] = [
+  {
+    field: "source_family",
+    headerName: "来源",
+    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+  },
+  { field: "position_scope", headerName: "头寸范围" },
+  { field: "currency_basis", headerName: "币种口径" },
+  {
+    field: "row_count",
+    headerName: "行数",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "market_value_amount",
+    headerName: "市值",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "amortized_cost_amount",
+    headerName: "摊余成本",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "accrued_interest_amount",
+    headerName: "应计利息",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+];
+
+const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] = [
+  {
+    field: "source_family",
+    headerName: "来源",
+    valueFormatter: (p) => (p.value == null ? "—" : String(p.value).toUpperCase()),
+  },
+  { field: "invest_type_std", headerName: "投资类型" },
+  { field: "accounting_basis", headerName: "会计口径" },
+  { field: "position_scope", headerName: "头寸范围" },
+  { field: "currency_basis", headerName: "币种口径" },
+  {
+    field: "detail_row_count",
+    headerName: "明细行数",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "market_value_amount",
+    headerName: "市值",
+    headerClass: "ag-right-aligned-header",
+    cellClass: "ag-right-aligned-cell",
+    valueFormatter: thousandsValueFormatter,
+  },
+  {
+    field: "amortized_cost_amount",
+    headerName: "摊余成本",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
     valueFormatter: thousandsValueFormatter,
@@ -1036,6 +1156,7 @@ export default function BalanceAnalysisPage() {
   const [selectedDecisionKey, setSelectedDecisionKey] = useState<string | null>(null);
   const [selectedEventCalendarKey, setSelectedEventCalendarKey] = useState<string | null>(null);
   const [selectedRiskAlertKey, setSelectedRiskAlertKey] = useState<string | null>(null);
+  const [decisionStatusComment, setDecisionStatusComment] = useState("");
 
   const datesQuery = useQuery({
     queryKey: ["balance-analysis", "dates", client.mode],
@@ -1059,6 +1180,7 @@ export default function BalanceAnalysisPage() {
     setSelectedDecisionKey(null);
     setSelectedEventCalendarKey(null);
     setSelectedRiskAlertKey(null);
+    setDecisionStatusComment("");
   }, [selectedReportDate, positionScope, currencyBasis]);
 
   const overviewQuery = useQuery({
@@ -1161,6 +1283,35 @@ export default function BalanceAnalysisPage() {
         currencyBasis,
         limit: PAGE_SIZE,
         offset: summaryOffset,
+      }),
+    retry: false,
+  });
+
+  const basisBreakdownQuery = useQuery({
+    queryKey: [
+      "balance-analysis",
+      "summary-by-basis",
+      client.mode,
+      selectedReportDate,
+      positionScope,
+      currencyBasis,
+    ],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () =>
+      client.getBalanceAnalysisSummaryByBasis({
+        reportDate: selectedReportDate,
+        positionScope,
+        currencyBasis,
+      }),
+    retry: false,
+  });
+
+  const advancedAttributionQuery = useQuery({
+    queryKey: ["balance-analysis", "advanced-attribution", client.mode, selectedReportDate],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () =>
+      client.getBalanceAnalysisAdvancedAttribution({
+        reportDate: selectedReportDate,
       }),
     retry: false,
   });
@@ -1281,6 +1432,8 @@ export default function BalanceAnalysisPage() {
         workbookQuery.refetch(),
         detailQuery.refetch(),
         summaryQuery.refetch(),
+        basisBreakdownQuery.refetch(),
+        advancedAttributionQuery.refetch(),
       ]);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新资产负债分析失败");
@@ -1308,6 +1461,7 @@ export default function BalanceAnalysisPage() {
         currencyBasis,
         decisionKey: row.decision_key,
         status,
+        comment: decisionStatusComment.trim() || undefined,
       });
       await Promise.all([decisionItemsQuery.refetch(), currentUserQuery.refetch()]);
     } catch (error) {
@@ -1363,34 +1517,13 @@ export default function BalanceAnalysisPage() {
   );
   const currentPage = Math.floor(summaryOffset / (summaryTable?.limit ?? PAGE_SIZE)) + 1;
 
-  return (
+   return (
     <section>
       <div style={{ marginBottom: 24 }}>
-        <h1
-          style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
-          }}
-        >
-          资产负债分析
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: "#5c6b82",
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
-          第一张 governed balance-analysis consumer。页面只消费 formal facts，不读取 preview 或 snapshot。
-        </p>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>资产负债分析</h1>
       </div>
 
-      <div style={controlBarStyle}>
+      <FilterBar style={controlBarStyle}>
         <label>
           <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
           <select
@@ -1461,84 +1594,7 @@ export default function BalanceAnalysisPage() {
         >
           {isExportingWorkbook ? "导出中..." : "导出 Excel"}
         </button>
-      </div>
-
-      <div data-testid="balance-analysis-overview-cards" style={summaryGridStyle}>
-        <PlaceholderCard
-          title="明细行数"
-          value={String(overview?.detail_row_count ?? 0)}
-          detail="当前筛选条件下的 formal detail 行数。"
-        />
-        <PlaceholderCard
-          title="汇总分组"
-          value={String(overview?.summary_row_count ?? 0)}
-          detail="按 source_family / position_scope / currency_basis 聚合后的组数。"
-        />
-        <PlaceholderCard
-          title="总规模"
-          value={String(overview?.total_market_value_amount ?? "0.00")}
-          detail="当前 summary.market_value_amount 求和。"
-        />
-        <PlaceholderCard
-          title="摊余成本"
-          value={String(overview?.total_amortized_cost_amount ?? "0.00")}
-          detail="当前 formal 摊余成本总额。"
-        />
-        <PlaceholderCard
-          title="应计利息"
-          value={String(overview?.total_accrued_interest_amount ?? "0.00")}
-          detail="当前 formal 应计利息总额。"
-        />
-      </div>
-
-      <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
-        {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {String(overview?.total_market_value_amount ?? "0.00")}
-      </div>
-
-      {resultMetaSections.length > 0 && (
-        <section data-testid="balance-analysis-result-meta" style={resultMetaGridStyle}>
-          {resultMetaSections.map((section) => (
-            <article
-              key={section.key}
-              data-testid={`balance-analysis-result-meta-${section.key}`}
-              style={resultMetaCardStyle}
-            >
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  color: "#162033",
-                }}
-              >
-                {section.title}
-              </h2>
-              <p style={{ marginTop: 8, marginBottom: 14, color: "#5c6b82", fontSize: 13 }}>
-                Inspect the governed formal provenance returned by the active query.
-              </p>
-              <dl style={resultMetaListStyle}>
-                <dt style={{ color: "#5c6b82" }}>basis</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.basis}</dd>
-                <dt style={{ color: "#5c6b82" }}>result_kind</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.result_kind}</dd>
-                <dt style={{ color: "#5c6b82" }}>source_version</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.source_version}</dd>
-                <dt style={{ color: "#5c6b82" }}>rule_version</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.rule_version}</dd>
-                <dt style={{ color: "#5c6b82" }}>cache_version</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.cache_version}</dd>
-                <dt style={{ color: "#5c6b82" }}>quality_flag</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.quality_flag}</dd>
-                <dt style={{ color: "#5c6b82" }}>generated_at</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.generated_at}</dd>
-                <dt style={{ color: "#5c6b82" }}>trace_id</dt>
-                <dd style={{ margin: 0, color: "#162033" }}>{section.meta.trace_id}</dd>
-              </dl>
-            </article>
-          ))}
-        </section>
-      )}
+      </FilterBar>
 
       {(refreshStatus || refreshError) && (
         <div
@@ -1555,9 +1611,118 @@ export default function BalanceAnalysisPage() {
         </div>
       )}
 
+      <div data-testid="balance-analysis-overview-cards" style={summaryGridStyle}>
+        <KpiCard label="市场资产" value={formatYiAmount(BALANCE_MOCK_KPI.marketAssetsYi)} unit="亿" detail="债券+买入" />
+        <KpiCard
+          label="市场负债"
+          value={formatYiAmount(BALANCE_MOCK_KPI.marketLiabilitiesYi)}
+          unit="亿"
+          detail="发行+买入"
+        />
+        <KpiCard label="静态资产收益率" value={`${BALANCE_MOCK_KPI.assetYieldPct}%`} detail="加权到期" />
+        <KpiCard label="静态负债成本" value={`${BALANCE_MOCK_KPI.liabilityCostPct}%`} detail="当期加权" />
+        <KpiCard
+          label="静态利差"
+          value={String(BALANCE_MOCK_KPI.staticSpreadBp)}
+          unit="bp"
+          detail="资产收益-负债成本"
+        />
+        <KpiCard
+          label="1年内净缺口"
+          value={formatYiAmount(BALANCE_MOCK_KPI.oneYearGapYi)}
+          unit="亿"
+          tone="negative"
+          detail="短端缺口"
+        />
+        <KpiCard
+          label="债券资产浮盈"
+          value={`+${formatYiAmount(BALANCE_MOCK_KPI.bondFloatingGainYi)}`}
+          unit="亿"
+          tone="positive"
+          detail="公允-摊余"
+        />
+        <KpiCard
+          label="异常预警"
+          value={String(BALANCE_MOCK_KPI.alertCount)}
+          unit="项"
+          status="warning"
+          detail="缺口/滚续/集中度"
+        />
+      </div>
+
+      <BalanceSummaryRow />
+      <BalanceContributionRow />
+      <BalanceBottomRow />
+
+      <div
+        data-testid="balance-analysis-supplemental-panels"
+        style={{ marginTop: 20, display: "grid", gap: 16 }}
+      >
+        <SectionCard
+          title="按会计口径分解"
+          loading={basisBreakdownQuery.isLoading}
+          error={basisBreakdownQuery.isError}
+          onRetry={() => void basisBreakdownQuery.refetch()}
+          noPadding
+        >
+          <div
+            className="ag-theme-alpine"
+            data-testid="balance-analysis-basis-breakdown-grid"
+            style={{ ...tableShellStyle, height: 240, width: "100%" }}
+          >
+            <AgGridReact<BalanceAnalysisBasisBreakdownRow>
+              rowData={basisBreakdownQuery.data?.result.rows ?? []}
+              columnDefs={balanceBasisBreakdownColDefs}
+              defaultColDef={balanceAnalysisGridDefaultColDef}
+              getRowId={(p) =>
+                `${p.data.source_family}-${p.data.invest_type_std}-${p.data.accounting_basis}-${p.data.position_scope}-${p.data.currency_basis}`
+              }
+            />
+          </div>
+        </SectionCard>
+        <SectionCard
+          title="高阶归因"
+          loading={advancedAttributionQuery.isLoading}
+          error={advancedAttributionQuery.isError}
+          onRetry={() => void advancedAttributionQuery.refetch()}
+        >
+          {advancedAttributionQuery.data?.result ? (
+            <div style={{ display: "grid", gap: 10, fontSize: 13, color: "#31425b" }}>
+              <div>
+                <strong>状态</strong>：{advancedAttributionQuery.data.result.status} ·{" "}
+                {advancedAttributionQuery.data.result.mode}
+              </div>
+              <div>
+                <strong>缺失输入</strong>（节选）：
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                  {advancedAttributionQuery.data.result.missing_inputs.slice(0, 5).map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <strong>提示</strong>：
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                  {advancedAttributionQuery.data.result.warnings.slice(0, 4).map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+        </SectionCard>
+      </div>
+
+      <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
+        {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
+        {String(overview?.total_market_value_amount ?? "0.00")}{" "}
+        {String(overview?.total_amortized_cost_amount ?? "0.00")}{" "}
+        {String(overview?.total_accrued_interest_amount ?? "0.00")}
+      </div>
+
       <div style={{ marginTop: 24 }}>
         <AsyncSection
-          title="债券/组合汇总表现"
+          title="资产负债汇总"
           isLoading={
             datesQuery.isLoading ||
             overviewQuery.isLoading ||
@@ -1620,6 +1785,29 @@ export default function BalanceAnalysisPage() {
           </div>
           <div style={{ marginTop: 18 }}>
             <div style={{ color: "#8090a8", fontSize: 12, marginBottom: 8 }}>明细下钻预留</div>
+            {!detailQuery.isLoading &&
+            !detailQuery.isError &&
+            (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ color: "#8090a8", fontSize: 12, marginBottom: 8 }}>
+                  明细接口返回的汇总切片（summary[]）
+                </div>
+                <div
+                  className="ag-theme-alpine"
+                  data-testid="balance-analysis-detail-summary-grid"
+                  style={{ ...tableShellStyle, height: 200, width: "100%" }}
+                >
+                  <AgGridReact<BalanceAnalysisSummaryRow>
+                    rowData={detailQuery.data?.result.summary ?? []}
+                    columnDefs={balanceDetailSummaryColDefs}
+                    defaultColDef={balanceAnalysisGridDefaultColDef}
+                    getRowId={(p) =>
+                      `${p.data.source_family}-${p.data.position_scope}-${p.data.currency_basis}`
+                    }
+                  />
+                </div>
+              </div>
+            ) : null}
             {detailQuery.isError ? (
               <div
                 style={{
@@ -1655,7 +1843,7 @@ export default function BalanceAnalysisPage() {
 
       <div style={{ marginTop: 24 }}>
         <AsyncSection
-          title="Excel 参考模块"
+          title="工作簿与分析面板"
           isLoading={
             datesQuery.isLoading ||
             workbookQuery.isLoading ||
@@ -1711,7 +1899,7 @@ export default function BalanceAnalysisPage() {
                           {workbookPanelNotes[table.key as (typeof primaryWorkbookTableKeys)[number]]}
                         </p>
                       </div>
-                      <span style={workbookPanelBadgeStyle}>Excel 映射</span>
+                      <span style={workbookPanelBadgeStyle}>数据来源</span>
                     </div>
                     {renderWorkbookPrimaryPanel(table)}
                   </article>
@@ -1743,7 +1931,7 @@ export default function BalanceAnalysisPage() {
                           {workbookSecondaryPanelNotes[table.key as (typeof secondaryWorkbookPanelKeys)[number]]}
                         </p>
                       </div>
-                      <span style={workbookPanelBadgeStyle}>二级驾驶舱</span>
+                      <span style={workbookPanelBadgeStyle}>分析视图</span>
                     </div>
                     {renderWorkbookSecondaryPanel(table)}
                   </article>
@@ -1807,7 +1995,7 @@ export default function BalanceAnalysisPage() {
                       {decisionRailNote}
                     </p>
                   </div>
-                  <span style={workbookPanelBadgeStyle}>Governed rail</span>
+                  <span style={workbookPanelBadgeStyle}>治理事项</span>
                 </div>
                 {decisionActionError ? (
                   <div
@@ -1825,6 +2013,30 @@ export default function BalanceAnalysisPage() {
                     {decisionActionError}
                   </div>
                 ) : null}
+                <label
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    marginBottom: 12,
+                    fontSize: 12,
+                    color: "#5c6b82",
+                  }}
+                >
+                  <span>决策备注（可选，随确认/忽略提交）</span>
+                  <textarea
+                    value={decisionStatusComment}
+                    onChange={(event) => setDecisionStatusComment(event.target.value)}
+                    rows={2}
+                    style={{
+                      width: "100%",
+                      borderRadius: 10,
+                      border: "1px solid #d7dfea",
+                      padding: "8px 10px",
+                      fontSize: 13,
+                      resize: "vertical",
+                    }}
+                  />
+                </label>
                 {currentUser ? (
                   <div data-testid="balance-analysis-current-user" style={currentUserCardStyle}>
                     <div>当前操作人: {currentUser.user_id}</div>
@@ -1866,7 +2078,7 @@ export default function BalanceAnalysisPage() {
                         {workbookRightRailNotes[table.key as (typeof rightRailWorkbookKeys)[number]]}
                       </p>
                     </div>
-                    <span style={workbookPanelBadgeStyle}>Governed rail</span>
+                    <span style={workbookPanelBadgeStyle}>治理事项</span>
                   </div>
                   {table.section_kind === "event_calendar"
                     ? renderEventCalendarPanel(table, {
@@ -1964,7 +2176,9 @@ export default function BalanceAnalysisPage() {
                     </div>
                   </div>
                 ) : (
-                  renderWorkbookEmptyState("选择一条事件日历或风险预警后查看详情。")
+                  renderWorkbookEmptyState(
+                    "请选择一条决策事项、事件日历或风险预警后查看详情。",
+                  )
                 )}
               </article>
             </aside>
@@ -1992,6 +2206,64 @@ export default function BalanceAnalysisPage() {
           </div>
         </AsyncSection>
       </div>
+
+      {resultMetaSections.length > 0 && (
+        <Collapse
+          data-testid="balance-analysis-result-meta-collapse"
+          defaultActiveKey={[]}
+          items={[
+            {
+              key: "result-meta",
+              label: "开发调试: Result Meta",
+              forceRender: true,
+              children: (
+                <section data-testid="balance-analysis-result-meta" style={resultMetaGridStyle}>
+                  {resultMetaSections.map((section) => (
+                    <article
+                      key={section.key}
+                      data-testid={`balance-analysis-result-meta-${section.key}`}
+                      style={resultMetaCardStyle}
+                    >
+                      <h2
+                        style={{
+                          margin: 0,
+                          fontSize: 16,
+                          fontWeight: 600,
+                          color: "#162033",
+                        }}
+                      >
+                        {section.title}
+                      </h2>
+                      <p style={{ marginTop: 8, marginBottom: 14, color: "#5c6b82", fontSize: 13 }}>
+                        Inspect the governed formal provenance returned by the active query.
+                      </p>
+                      <dl style={resultMetaListStyle}>
+                        <dt style={{ color: "#5c6b82" }}>basis</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.basis}</dd>
+                        <dt style={{ color: "#5c6b82" }}>result_kind</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.result_kind}</dd>
+                        <dt style={{ color: "#5c6b82" }}>source_version</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.source_version}</dd>
+                        <dt style={{ color: "#5c6b82" }}>rule_version</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.rule_version}</dd>
+                        <dt style={{ color: "#5c6b82" }}>cache_version</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.cache_version}</dd>
+                        <dt style={{ color: "#5c6b82" }}>quality_flag</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.quality_flag}</dd>
+                        <dt style={{ color: "#5c6b82" }}>generated_at</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.generated_at}</dd>
+                        <dt style={{ color: "#5c6b82" }}>trace_id</dt>
+                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.trace_id}</dd>
+                      </dl>
+                    </article>
+                  ))}
+                </section>
+              ),
+            },
+          ]}
+          style={{ marginTop: 20 }}
+        />
+      )}
     </section>
   );
 }

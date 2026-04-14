@@ -1,13 +1,6 @@
 from decimal import Decimal
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
-
-
-class PnlPhase1DisabledResponse(BaseModel):
-    enabled: Literal[False] = False
-    phase: Literal["phase1"] = "phase1"
-    detail: str
 
 
 class PnlMaterializePayload(BaseModel):

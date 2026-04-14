@@ -5,6 +5,7 @@ import sys
 from importlib import import_module
 from pathlib import Path
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.governance.locks import LockDefinition, MATERIALIZE_LOCK, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
@@ -57,6 +58,11 @@ def cleanup_preview_backups(*args, **kwargs):
     return _source_preview_repo().cleanup_preview_backups(*args, **kwargs)
 
 
+def ensure_phase1_materialize_runs_table(conn: duckdb.DuckDBPyConnection) -> None:
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+
+
 def _materialize_cache_view(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
@@ -80,15 +86,7 @@ def _materialize_cache_view(
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         snapshot_ready = False
         try:
-            conn.execute(
-                """
-                create table if not exists phase1_materialize_runs (
-                  run_id varchar,
-                  cache_key varchar,
-                  status varchar
-                )
-                """
-            )
+            ensure_phase1_materialize_runs_table(conn)
             conn.execute(
                 "insert into phase1_materialize_runs values (?, ?, ?)",
                 [run_id, run.cache_key, "running"],

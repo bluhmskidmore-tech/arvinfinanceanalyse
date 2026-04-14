@@ -1,7 +1,9 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Collapse, Select } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { runPollingTask } from "../../../app/jobs/polling";
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
@@ -12,7 +14,16 @@ import type {
 } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
+import { KpiCard } from "../../workbench/components/KpiCard";
+import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { BondFuturesTable } from "../components/BondFuturesTable";
+import { BondTradeDetail } from "../components/BondTradeDetail";
+import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
+import { LinkageSpreadTenorTable } from "../components/LinkageSpreadTenorTable";
+import { MoneyMarketTable } from "../components/MoneyMarketTable";
+import { NcdMatrix } from "../components/NcdMatrix";
+import { NewsAndCalendar } from "../components/NewsAndCalendar";
+import { RateQuoteTable } from "../components/RateQuoteTable";
 
 const summaryGridStyle = {
   display: "grid",
@@ -47,15 +58,30 @@ const macroChartShellStyle = {
   marginTop: 18,
 } as const;
 
-const placeholderBlockStyle = {
-  marginTop: 12,
-  padding: 20,
+const terminalRowGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 16,
+} as const;
+
+const filterStripStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+  gap: 12,
+  alignItems: "end",
+  marginBottom: 18,
+  padding: 16,
   borderRadius: 16,
-  border: "1px dashed #c5d0e0",
+  border: "1px solid #e4ebf5",
   background: "#ffffff",
-  color: "#8090a8",
-  fontSize: 14,
-  lineHeight: 1.65,
+} as const;
+
+const filterLabelStyle = {
+  display: "grid",
+  gap: 6,
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#5c6b82",
 } as const;
 
 /** 利率走势：国债 10Y / 国开 5Y / SHIBOR 隔夜（Choice series_id） */
@@ -520,6 +546,18 @@ export default function MarketDataPage() {
     () => fxAnalyticalGroups.reduce((total, group) => total + group.series.length, 0),
     [fxAnalyticalGroups],
   );
+  const stablePipelineTone = useMemo(() => {
+    if (stableCatalogSeries.length === 0) {
+      return "default" as const;
+    }
+    if (stableSeries.length === 0) {
+      return "error" as const;
+    }
+    if (stableSeries.length < stableCatalogSeries.length) {
+      return "warning" as const;
+    }
+    return "default" as const;
+  }, [stableCatalogSeries.length, stableSeries.length]);
   const rateTrendChartOption = useMemo(
     () => buildRateTrendChartOption(latestSeries),
     [latestSeries],
@@ -556,6 +594,57 @@ export default function MarketDataPage() {
   );
   const macroMeta = latestQuery.data?.result_meta ?? catalogQuery.data?.result_meta;
   const fxAnalyticalMeta = fxAnalyticalQuery.data?.result_meta;
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState("");
+  const [refreshError, setRefreshError] = useState("");
+  const [watchDate, setWatchDate] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  });
+  const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
+  const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    setRefreshError("");
+    setRefreshStatus("正在刷新宏观数据（回填 30 天）…");
+    try {
+      const payload = await runPollingTask({
+        start: () => client.refreshChoiceMacro(30),
+        getStatus: (runId) => client.getChoiceMacroRefreshStatus(runId),
+        intervalMs: 3000,
+        maxAttempts: 120,
+        onUpdate: (p) => {
+          setRefreshStatus(
+            [p.status, p.run_id].filter(Boolean).join(" · "),
+          );
+        },
+      });
+      if (payload.status !== "completed") {
+        throw new Error(
+          payload.error_message ?? `刷新未完成：${payload.status}`,
+        );
+      }
+      setRefreshStatus("刷新完成");
+      await Promise.all([
+        catalogQuery.refetch(),
+        latestQuery.refetch(),
+        fxAnalyticalQuery.refetch(),
+        macroBondLinkageQuery.refetch(),
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setRefreshError(msg);
+      setRefreshStatus("");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [client, catalogQuery, latestQuery, fxAnalyticalQuery, macroBondLinkageQuery]);
 
   return (
     <section>
@@ -609,106 +698,223 @@ export default function MarketDataPage() {
         >
           {client.mode === "real" ? "真实 DuckDB 读路径" : "本地演示数据"}
         </span>
+        <button
+          type="button"
+          data-testid="market-data-refresh-button"
+          disabled={isRefreshing}
+          onClick={() => void handleRefresh()}
+          style={{
+            padding: "8px 18px",
+            borderRadius: 999,
+            border: "none",
+            background: isRefreshing ? "#c5d0e0" : "#1f5eff",
+            color: "#fff",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: isRefreshing ? "not-allowed" : "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {isRefreshing ? "刷新中…" : "刷新宏观数据"}
+        </button>
+      </div>
+      {(refreshStatus || refreshError) && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: "10px 16px",
+            borderRadius: 12,
+            fontSize: 13,
+            background: refreshError ? "#fff3ee" : "#edf3ff",
+            color: refreshError ? "#b85b2b" : "#1f5eff",
+          }}
+        >
+          {refreshError || refreshStatus}
+        </div>
+      )}
+
+      <div data-testid="market-data-filter-strip" style={filterStripStyle}>
+        <label style={filterLabelStyle}>
+          日期
+          <input
+            type="date"
+            value={watchDate}
+            onChange={(e) => setWatchDate(e.target.value)}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid #d7dfea",
+              fontSize: 13,
+              color: "#162033",
+            }}
+          />
+        </label>
+        <label style={filterLabelStyle}>
+          国债 / 国开
+          <Select
+            value={curveFilter}
+            onChange={(v) => setCurveFilter(v)}
+            options={[
+              { value: "treasury", label: "国债" },
+              { value: "cdb", label: "国开" },
+              { value: "both", label: "全部" },
+            ]}
+            style={{ width: "100%" }}
+          />
+        </label>
+        <label style={filterLabelStyle}>
+          中票 / 城投
+          <Select
+            value={creditSegment}
+            onChange={(v) => setCreditSegment(v)}
+            options={[
+              { value: "mtn", label: "中票" },
+              { value: "urban", label: "城投" },
+              { value: "both", label: "全部" },
+            ]}
+            style={{ width: "100%" }}
+          />
+        </label>
+        <label style={filterLabelStyle}>
+          来源
+          <Select
+            value={sourceFilter}
+            onChange={(v) => setSourceFilter(v)}
+            options={[
+              { value: "all", label: "全部" },
+              { value: "choice", label: "Choice" },
+              { value: "internal", label: "内部" },
+            ]}
+            style={{ width: "100%" }}
+          />
+        </label>
       </div>
 
       <div style={summaryGridStyle}>
         <div data-testid="market-data-catalog-count">
-          <PlaceholderCard
+          <KpiCard
             title="宏观序列目录"
             value={String(catalog.length)}
             detail="已登记的宏观序列数量。"
+            tone="default"
           />
         </div>
         <div data-testid="market-data-stable-count">
-          <PlaceholderCard
+          <KpiCard
             title="稳定回收"
             value={`${stableSeries.length} / ${stableCatalogSeries.length}`}
             detail="稳定主链路已回收 / 目录应有数量。"
+            tone={stablePipelineTone}
           />
         </div>
         <div data-testid="market-data-fallback-count">
-          <PlaceholderCard
+          <KpiCard
             title="降级可用"
             value={String(fallbackSeries.length)}
             detail="latest-only / single-fetch 降级链路中的序列数量。"
+            tone={fallbackSeries.length > 0 ? "warning" : "default"}
           />
         </div>
         <div data-testid="market-data-stable-trade-date">
-          <PlaceholderCard
+          <KpiCard
             title="稳定最新日"
             value={stableLatestTradeDate}
             detail="稳定主链路中可见序列的最大交易日期。"
             valueVariant="text"
+            tone={stableLatestTradeDate === "暂无" ? "warning" : "default"}
           />
         </div>
         <div data-testid="market-data-missing-stable-count">
-          <PlaceholderCard
+          <KpiCard
             title="稳定缺口"
             value={String(missingStableSeries.length)}
             detail="目录中属于 stable 但当前尚未回收的序列数量。"
+            tone={
+              missingStableSeries.length > 5 ? "error" : missingStableSeries.length > 0 ? "warning" : "default"
+            }
           />
         </div>
         <div data-testid="market-data-fx-analytical-group-count">
-          <PlaceholderCard
+          <KpiCard
             title="FX analytical groups"
             value={String(fxAnalyticalGroups.length)}
             detail="后端返回的 analytical FX 分组数量。"
           />
         </div>
         <div data-testid="market-data-fx-analytical-series-count">
-          <PlaceholderCard
+          <KpiCard
             title="FX analytical series"
             value={String(fxAnalyticalSeriesCount)}
             detail="Analytical FX 观察值与 formal FX 状态保持分离。"
           />
         </div>
+        <div data-testid="market-data-linkage-report-date">
+          <KpiCard
+            title="联动报告日"
+            value={linkageReportDate || "暂无"}
+            detail="宏观-债市联动分析使用的报告日期。"
+            valueVariant="text"
+            tone={linkageReportDate ? "default" : "warning"}
+          />
+        </div>
       </div>
 
-      <div data-testid="market-data-macro-charts" style={macroChartShellStyle}>
-        <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>利率走势图</h2>
-        <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
-          国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
-          SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
-        </p>
-        {latestQuery.isLoading ? (
-          <div
-            style={{
-              marginTop: 16,
-              padding: 24,
-              color: "#5c6b82",
-              fontSize: 14,
-            }}
-          >
-            加载宏观序列中…
-          </div>
-        ) : rateTrendChartOption ? (
-          <div data-testid="market-data-rate-trend-chart" style={{ marginTop: 16 }}>
-            <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
-          </div>
-        ) : (
-          <div
-            data-testid="market-data-rate-trend-empty"
-            style={{
-              marginTop: 16,
-              padding: 20,
-              borderRadius: 16,
-              border: "1px solid #e4ebf5",
-              background: "#ffffff",
-              color: "#8090a8",
-              fontSize: 14,
-            }}
-          >
-            当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
-          </div>
-        )}
-
-        <h2 style={blockTitleStyle}>汇率与流动性</h2>
-        <div style={placeholderBlockStyle}>该板块图表待接入（宏观汇率、资金利率等）。</div>
-
-        <h2 style={blockTitleStyle}>增长与物价</h2>
-        <div style={{ ...placeholderBlockStyle, marginBottom: 0 }}>
-          该板块图表待接入（PMI、PPI、CPI 等）。
+      <div style={{ ...terminalRowGridStyle, marginTop: 18 }}>
+        <RateQuoteTable />
+        <div
+          data-testid="market-data-macro-charts"
+          style={{ ...macroChartShellStyle, marginTop: 0 }}
+        >
+          <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>利率走势图</h2>
+          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
+            国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
+            SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
+          </p>
+          {latestQuery.isLoading ? (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 24,
+                color: "#5c6b82",
+                fontSize: 14,
+              }}
+            >
+              加载宏观序列中…
+            </div>
+          ) : rateTrendChartOption ? (
+            <div data-testid="market-data-rate-trend-chart" style={{ marginTop: 16 }}>
+              <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
+            </div>
+          ) : (
+            <div
+              data-testid="market-data-rate-trend-empty"
+              style={{
+                marginTop: 16,
+                padding: 20,
+                borderRadius: 16,
+                border: "1px solid #e4ebf5",
+                background: "#ffffff",
+                color: "#8090a8",
+                fontSize: 14,
+              }}
+            >
+              当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
+            </div>
+          )}
         </div>
+        <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
+      </div>
+
+      <div style={{ ...terminalRowGridStyle, marginTop: 16 }}>
+        <MoneyMarketTable />
+        <BondFuturesTable />
+        <NcdMatrix />
+      </div>
+
+      <div style={{ ...terminalRowGridStyle, marginTop: 16 }}>
+        <BondTradeDetail />
+        <CreditBondTradesTable />
+        <NewsAndCalendar />
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -847,20 +1053,30 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
-      <div style={{ marginTop: 18 }}>
-        <AsyncSection
-          title="宏观-债市联动"
-          isLoading={macroBondLinkageQuery.isLoading}
-          isError={macroBondLinkageQuery.isError}
-          isEmpty={
-            !macroBondLinkageQuery.isLoading &&
-            !macroBondLinkageQuery.isError &&
-            (macroBondLinkage.top_correlations?.length ?? 0) === 0 &&
-            macroBondLinkageWarnings.length === 0
-          }
-          onRetry={() => void macroBondLinkageQuery.refetch()}
-        >
-          <div style={{ display: "grid", gap: 18 }}>
+      <Collapse
+        data-testid="market-data-linkage-collapse"
+        style={{ marginTop: 18 }}
+        bordered={false}
+        defaultActiveKey={[]}
+        items={[
+          {
+            key: "macro-linkage",
+            label: "宏观-债市联动（分析口径，点击展开）",
+            forceRender: true,
+            children: (
+              <AsyncSection
+                title="宏观-债市联动"
+                isLoading={macroBondLinkageQuery.isLoading}
+                isError={macroBondLinkageQuery.isError}
+                isEmpty={
+                  !macroBondLinkageQuery.isLoading &&
+                  !macroBondLinkageQuery.isError &&
+                  (macroBondLinkage.top_correlations?.length ?? 0) === 0 &&
+                  macroBondLinkageWarnings.length === 0
+                }
+                onRetry={() => void macroBondLinkageQuery.refetch()}
+              >
+                <div style={{ display: "grid", gap: 18 }}>
             <section
               data-testid="market-data-linkage-caveat"
               style={{
@@ -943,7 +1159,7 @@ export default function MarketDataPage() {
 
             <div style={summaryGridStyle}>
               <div data-testid="market-data-linkage-composite-score">
-                <PlaceholderCard
+                <KpiCard
                   title="综合评分"
                   value={
                     macroBondLinkage.environment_score?.composite_score != null
@@ -952,10 +1168,15 @@ export default function MarketDataPage() {
                   }
                   detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分数据。"}
                   valueVariant="text"
+                  tone={toneFromSignedNumber(
+                    macroBondLinkage.environment_score?.composite_score != null
+                      ? macroBondLinkage.environment_score.composite_score
+                      : null,
+                  )}
                 />
               </div>
               <div data-testid="market-data-linkage-rate-direction">
-                <PlaceholderCard
+                <KpiCard
                   title="利率方向"
                   value={macroBondLinkage.environment_score?.rate_direction ?? "不可用"}
                   detail={
@@ -964,10 +1185,15 @@ export default function MarketDataPage() {
                       : "缺少方向评分。"
                   }
                   valueVariant="text"
+                  tone={toneFromSignedNumber(
+                    macroBondLinkage.environment_score?.rate_direction_score != null
+                      ? macroBondLinkage.environment_score.rate_direction_score
+                      : null,
+                  )}
                 />
               </div>
               <div data-testid="market-data-linkage-liquidity-score">
-                <PlaceholderCard
+                <KpiCard
                   title="流动性评分"
                   value={
                     macroBondLinkage.environment_score?.liquidity_score != null
@@ -976,10 +1202,15 @@ export default function MarketDataPage() {
                   }
                   detail="正值偏松，负值偏紧。"
                   valueVariant="text"
+                  tone={toneFromSignedNumber(
+                    macroBondLinkage.environment_score?.liquidity_score != null
+                      ? macroBondLinkage.environment_score.liquidity_score
+                      : null,
+                  )}
                 />
               </div>
               <div data-testid="market-data-linkage-growth-score">
-                <PlaceholderCard
+                <KpiCard
                   title="增长评分"
                   value={
                     macroBondLinkage.environment_score?.growth_score != null
@@ -988,6 +1219,11 @@ export default function MarketDataPage() {
                   }
                   detail="宏观增长方向的简化分值。"
                   valueVariant="text"
+                  tone={toneFromSignedNumber(
+                    macroBondLinkage.environment_score?.growth_score != null
+                      ? macroBondLinkage.environment_score.growth_score
+                      : null,
+                  )}
                 />
               </div>
             </div>
@@ -1122,9 +1358,12 @@ export default function MarketDataPage() {
                 </div>
               )}
             </section>
-          </div>
-        </AsyncSection>
-      </div>
+                </div>
+              </AsyncSection>
+            ),
+          },
+        ]}
+      />
 
       <div style={sectionGridStyle}>
         <AsyncSection

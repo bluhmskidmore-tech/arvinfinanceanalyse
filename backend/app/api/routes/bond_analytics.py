@@ -17,7 +17,9 @@ from backend.app.services.bond_analytics_service import (
     get_benchmark_excess,
     get_credit_spread_migration,
     get_krd_curve_risk,
+    get_portfolio_headlines,
     get_return_decomposition,
+    get_top_holdings,
 )
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
@@ -61,6 +63,21 @@ def credit_spread_migration(
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
     return get_credit_spread_migration(report_date, spread_scenarios)
+
+
+@router.get("/portfolio-headlines")
+def portfolio_headlines(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+):
+    return get_portfolio_headlines(report_date)
+
+
+@router.get("/top-holdings")
+def top_holdings(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    top_n: int = Query(20, ge=1, le=500, description="Number of largest positions by MV"),
+):
+    return get_top_holdings(report_date, top_n=top_n)
 
 
 @router.get("/action-attribution")

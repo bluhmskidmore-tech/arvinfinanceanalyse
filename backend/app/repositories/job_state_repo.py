@@ -18,10 +18,8 @@ class JobStateRepository:
     def __post_init__(self) -> None:
         self.engine = create_engine(self.dsn, future=True)
         self._session_factory = sessionmaker(self.engine, future=True)
-        self.ensure_schema()
-
-    def ensure_schema(self) -> None:
-        Base.metadata.create_all(self.engine, tables=[JobRunState.__table__])
+        if self.engine.dialect.name == "sqlite":
+            Base.metadata.create_all(self.engine, tables=[JobRunState.__table__])
 
     def record_transition(
         self,

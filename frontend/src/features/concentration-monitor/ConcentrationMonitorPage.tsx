@@ -5,7 +5,13 @@ import { useSearchParams } from "react-router-dom";
 import { useApiClient } from "../../api/client";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import {
+  formatRatioAsPercent,
+  limitTone,
+  limitToneToKpi,
+  type LimitTone,
+} from "../workbench/components/kpiFormat";
 
 /** 前端展示用限额常量；与后端口径无关。 */
 const LIMITS = {
@@ -101,22 +107,6 @@ function parseRatio(value: string | undefined): number | null {
   }
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : null;
-}
-
-type LimitTone = "ok" | "near" | "breach";
-
-function limitTone(value: number | null, limit: number): LimitTone {
-  if (value === null || limit <= 0) {
-    return "ok";
-  }
-  const ratio = value / limit;
-  if (ratio >= 1) {
-    return "breach";
-  }
-  if (ratio > 0.8) {
-    return "near";
-  }
-  return "ok";
 }
 
 function toneColor(tone: LimitTone) {
@@ -375,25 +365,34 @@ export default function ConcentrationMonitorPage() {
         {credit ? (
           <>
             <div data-testid="concentration-monitor-kpi-grid" style={summaryGridStyle}>
-              <PlaceholderCard
+              <KpiCard
                 title="发行人 HHI 指数"
-                value={displayStr(issuer?.hhi)}
+                value={formatRatioAsPercent(issuer?.hhi, displayStr(issuer?.hhi))}
                 detail="来自 concentration_by_issuer.hhi。"
+                tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="发行人 Top5 集中度"
-                value={displayStr(issuer?.top5_concentration)}
+                value={formatRatioAsPercent(issuer?.top5_concentration, displayStr(issuer?.top5_concentration))}
                 detail="来自 concentration_by_issuer.top5_concentration。"
+                tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="信用债占比"
-                value={displayStr(credit.credit_weight)}
+                value={formatRatioAsPercent(credit.credit_weight, displayStr(credit.credit_weight))}
                 detail="来自 credit_weight（信用子集相对组合的权重）。"
+                tone={limitToneToKpi(limitTone(parseRatio(credit.credit_weight), 0.85))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="评级 AA 及以下占比"
-                value={displayStr(credit.rating_aa_and_below_weight)}
+                value={formatRatioAsPercent(
+                  credit.rating_aa_and_below_weight,
+                  displayStr(credit.rating_aa_and_below_weight),
+                )}
                 detail="rating_aa_and_below_weight（信用债 AA 及以下市值 / 组合总市值）。"
+                tone={limitToneToKpi(
+                  belowAa === null ? "ok" : limitTone(belowAa, LIMITS.below_aa_max),
+                )}
               />
             </div>
 

@@ -7,10 +7,11 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import { BenchmarkExcessView } from "../features/bond-analytics/components/BenchmarkExcessView";
 import type { BenchmarkExcessResponse } from "../features/bond-analytics/types";
 
-function createResultMeta(overrides: Record<string, unknown> = {}) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
     basis: "formal",

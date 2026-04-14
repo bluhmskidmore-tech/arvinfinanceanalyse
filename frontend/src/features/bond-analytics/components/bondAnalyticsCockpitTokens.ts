@@ -11,6 +11,29 @@ export const PERIOD_OPTIONS = [
   { value: "TTM", label: "TTM" },
 ];
 
+export const BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS = [
+  { value: "all", label: "全部资产类" },
+  { value: "rate", label: "利率债" },
+  { value: "credit", label: "信用债" },
+] as const;
+
+export const BOND_ANALYTICS_ACCOUNTING_CLASS_FILTER_OPTIONS = [
+  { value: "all", label: "全部口径" },
+  { value: "AC", label: "AC" },
+  { value: "OCI", label: "OCI" },
+  { value: "TPL", label: "TPL" },
+] as const;
+
+export const BOND_ANALYTICS_SCENARIO_SET_OPTIONS = [
+  { value: "standard", label: "标准情景" },
+  { value: "custom", label: "自定义情景" },
+] as const;
+
+export const BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS = [
+  { value: "10,25,50", label: "10 / 25 / 50 bp" },
+  { value: "25,50,100", label: "25 / 50 / 100 bp" },
+] as const;
+
 export const BORDER = "#d9e4f0";
 export const SHADOW = "0 16px 34px rgba(19, 37, 70, 0.07)";
 

@@ -1,8 +1,8 @@
-﻿import { useState, type ReactNode } from "react";
+﻿import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import userEvent from "@testing-library/user-event";
+import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import * as pollingModule from "../app/jobs/polling";
@@ -10,6 +10,18 @@ import { ApiClientProvider, createApiClient, type ApiClient } from "../api/clien
 import type { ApiEnvelope, ResultMeta, SourcePreviewPayload } from "../api/contracts";
 import { routerFuture } from "../router/routerFuture";
 import OperationsAnalysisPage from "../features/workbench/pages/OperationsAnalysisPage";
+
+vi.mock("../features/workbench/business-analysis/RevenueCostBridge", () => ({
+  RevenueCostBridge: () =>
+    createElement("div", {
+      "data-testid": "operations-revenue-bridge-stub",
+    }),
+}));
+
+async function expandOperationsDataSourcesPanel(user: UserEvent) {
+  const trigger = await screen.findByRole("button", { name: /数据源与运维状态/ });
+  await user.click(trigger);
+}
 
 function renderPage(client: ApiClient) {
   function Wrapper({ children }: { children: ReactNode }) {
@@ -40,6 +52,7 @@ function renderPage(client: ApiClient) {
 
 describe("OperationsAnalysisPage", () => {
   it("consolidates source preview, macro, and news into a single read-only workbench entry", async () => {
+    const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const sourcePreviewMeta: ResultMeta = {
       trace_id: "tr_source_hub_test",
@@ -216,8 +229,24 @@ describe("OperationsAnalysisPage", () => {
     });
 
     expect(
-      await screen.findByRole("heading", { name: "经营分析入口" }),
+      await screen.findByRole("heading", { name: "经营分析" }),
     ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "资产负债分析（正式读面速览）" }),
+    ).toBeInTheDocument();
+    const balanceAnalysisLinks = screen.getAllByRole("link", { name: "进入资产负债分析" });
+    expect(balanceAnalysisLinks.length).toBeGreaterThanOrEqual(1);
+    for (const link of balanceAnalysisLinks) {
+      expect(link).toHaveAttribute("href", "/balance-analysis");
+    }
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-balance-report-date")).toHaveTextContent(
+        "2025-12-31",
+      );
+      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("720");
+      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("792");
+    });
+    await expandOperationsDataSourcesPanel(user);
     await waitFor(() => {
       expect(screen.getByTestId("operations-entry-source-count")).toHaveTextContent("2");
       expect(screen.getByTestId("operations-entry-macro-count")).toHaveTextContent("1");
@@ -250,6 +279,7 @@ describe("OperationsAnalysisPage", () => {
   });
 
   it("surfaces formal FX status separately from analytical market observations", async () => {
+    const user = userEvent.setup();
     const base = createApiClient({ mode: "mock" });
     const getFxFormalStatus = vi.fn(async () => ({
       result_meta: {
@@ -320,6 +350,7 @@ describe("OperationsAnalysisPage", () => {
       getFxFormalStatus,
     });
 
+    await expandOperationsDataSourcesPanel(user);
     await waitFor(() => {
       expect(screen.getByTestId("operations-entry-formal-fx-count")).toHaveTextContent(
         "2 / 3",
@@ -383,7 +414,8 @@ describe("OperationsAnalysisPage", () => {
       getFormalPnlImportStatus: statusSpy,
     });
 
-    await screen.findByRole("heading", { name: "经营分析入口" });
+    await screen.findByRole("heading", { name: "经营分析" });
+    await expandOperationsDataSourcesPanel(user);
     await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
 
     await waitFor(() => {
@@ -423,7 +455,8 @@ describe("OperationsAnalysisPage", () => {
       getFormalPnlImportStatus: statusSpy,
     });
 
-    await screen.findByRole("heading", { name: "经营分析入口" });
+    await screen.findByRole("heading", { name: "经营分析" });
+    await expandOperationsDataSourcesPanel(user);
     await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
 
     await waitFor(() => {
@@ -451,7 +484,8 @@ describe("OperationsAnalysisPage", () => {
 
     renderPage(createApiClient({ mode: "mock" }));
 
-    await screen.findByRole("heading", { name: "经营分析入口" });
+    await screen.findByRole("heading", { name: "经营分析" });
+    await expandOperationsDataSourcesPanel(user);
     await user.click(screen.getByTestId("operations-entry-pnl-refresh-button"));
 
     await waitFor(() => {

@@ -20,6 +20,10 @@ import type {
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="balance-analysis-echarts-stub" />,
+}));
+
 function renderBalanceAnalysisWithClient(client: ReturnType<typeof createApiClient>) {
   const router = createWorkbenchMemoryRouter(["/balance-analysis"]);
   const queryClient = new QueryClient({
@@ -490,11 +494,13 @@ describe("BalanceAnalysisPage", () => {
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("999.99");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("888.88");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("77.77");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("7");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("3");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("市场资产");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("3,525.0");
+      expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("999.99");
+      expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("888.88");
+      expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("77.77");
+      expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("7");
+      expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3");
     });
 
     expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("利率债组合");

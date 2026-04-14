@@ -145,20 +145,6 @@ def test_formal_balance_pipeline_does_not_materialize_from_stale_snapshots_when_
         snapshot_mod.ensure_snapshot_tables(conn)
         conn.execute(
             """
-            create table if not exists fx_daily_mid (
-              trade_date date,
-              base_currency varchar,
-              quote_currency varchar,
-              mid_rate decimal(24, 8),
-              source_name varchar,
-              is_business_day boolean,
-              is_carry_forward boolean,
-              source_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
             insert into zqtz_bond_daily_snapshot (
               report_date, instrument_code, instrument_name, portfolio_name, cost_center,
               account_category, asset_class, bond_type, issuer_name, industry_name, rating,
@@ -191,7 +177,10 @@ def test_formal_balance_pipeline_does_not_materialize_from_stale_snapshots_when_
         )
         conn.execute(
             """
-            insert into fx_daily_mid values (
+            insert into fx_daily_mid (
+              trade_date, base_currency, quote_currency, mid_rate,
+              source_name, is_business_day, is_carry_forward, source_version
+            ) values (
               '2025-12-31', 'USD', 'CNY', 7.20, 'CFETS', true, false, 'sv-stale-fx'
             )
             """
@@ -227,10 +216,14 @@ def test_formal_balance_pipeline_does_not_materialize_from_stale_snapshots_when_
                 """
             ).fetchall()
         }
+        zqtz_count = conn.execute("select count(*) from fact_formal_zqtz_balance_daily").fetchone()[0]
+        tyw_count = conn.execute("select count(*) from fact_formal_tyw_balance_daily").fetchone()[0]
     finally:
         conn.close()
 
-    assert table_names == set()
+    assert table_names == {"fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"}
+    assert zqtz_count == 0
+    assert tyw_count == 0
 
 
 def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(tmp_path, monkeypatch):

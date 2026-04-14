@@ -8,9 +8,10 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import { KRDCurveRiskView } from "../features/bond-analytics/components/KRDCurveRiskView";
 
-function createResultMeta(overrides: Record<string, unknown> = {}) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
     basis: "formal",

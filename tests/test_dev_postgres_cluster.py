@@ -1,4 +1,7 @@
+from dataclasses import replace
 from pathlib import Path
+
+import pytest
 
 from tests.helpers import ROOT, load_module
 
@@ -69,9 +72,20 @@ def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp
         runtime_governance_path=runtime_root / "governance",
         runtime_archive_path=runtime_root / "archive",
         runtime_data_input_path=runtime_data_input,
-        bootstrap_sql_path=repo_root / "sql" / "0001_bootstrap_governance.sql",
     )
 
     module._prepare_runtime_clean_paths(config)
 
     assert existing_target.read_text(encoding="utf-8") == "keep-existing"
+
+
+def test_reset_schema_refuses_non_dev_endpoint():
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    config = module.build_cluster_config(ROOT)
+    wrong_port = replace(config, port=5432)
+    with pytest.raises(RuntimeError, match="reset-schema refused"):
+        module.command_reset_schema(wrong_port)

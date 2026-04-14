@@ -4,6 +4,9 @@ import react from "@vitejs/plugin-react";
 /** Dev proxy target; override if the API runs elsewhere, e.g. `MOSS_VITE_API_PROXY=http://127.0.0.1:8765`. */
 const apiTarget = process.env.MOSS_VITE_API_PROXY ?? "http://127.0.0.1:7888";
 
+/** DuckDB / storage bootstrap on first request can be slow; avoid proxy timing out mid-migration. */
+const apiProxy = { target: apiTarget, changeOrigin: true, timeout: 120_000 } as const;
+
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -12,9 +15,9 @@ export default defineConfig({
     port: 5888,
     strictPort: true,
     proxy: {
-      "/ui": { target: apiTarget, changeOrigin: true },
-      "/api": { target: apiTarget, changeOrigin: true },
-      "/health": { target: apiTarget, changeOrigin: true },
+      "/ui": apiProxy,
+      "/api": apiProxy,
+      "/health": apiProxy,
     },
   },
   build: {

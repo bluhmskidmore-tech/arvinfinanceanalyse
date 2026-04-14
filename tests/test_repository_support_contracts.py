@@ -59,7 +59,7 @@ def test_missing_bootstrap_tables_order_and_contents():
 
     cursor = FakeCursor()
     missing = postgres_module._missing_bootstrap_tables(cursor)
-    assert missing == ["rule_version_registry", "cache_build_run"]
+    assert missing == ["rule_version_registry", "cache_build_run", "job_run_state"]
 
 
 def test_postgres_healthcheck_psycopg_unavailable():
@@ -173,6 +173,7 @@ def test_postgres_healthcheck_partial_bootstrap():
         "rule_version_registry",
         "cache_manifest",
         "cache_build_run",
+        "job_run_state",
     ]
 
 

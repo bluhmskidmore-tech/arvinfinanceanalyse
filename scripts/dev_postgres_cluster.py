@@ -35,7 +35,6 @@ class DevPostgresClusterConfig:
     runtime_governance_path: Path
     runtime_archive_path: Path
     runtime_data_input_path: Path
-    bootstrap_sql_path: Path
     host: str = DEFAULT_HOST
     port: int = DEFAULT_PORT
     user: str = DEFAULT_USER
@@ -65,7 +64,6 @@ def build_cluster_config(repo_root: Path, pg_bin_dir: Path | None = None) -> Dev
         runtime_governance_path=runtime_root / "governance",
         runtime_archive_path=runtime_root / "archive",
         runtime_data_input_path=runtime_root / "data_input",
-        bootstrap_sql_path=repo_root / "sql" / "0001_bootstrap_governance.sql",
     )
 
 
@@ -136,7 +134,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
         )
 
     _ensure_role_and_database(config)
-    _bootstrap_governance_schema(config)
+    _apply_alembic_migrations_and_grants(config)
     _prepare_runtime_clean_paths(config)
 
     status = command_status(config)
@@ -245,7 +243,15 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
         )
 
 
-def _bootstrap_governance_schema(config: DevPostgresClusterConfig) -> None:
+def _reset_moss_public_schema(config: DevPostgresClusterConfig) -> None:
+    """Drop and recreate public schema on the moss DB (dev cluster only)."""
+    sql = (
+        "DROP SCHEMA IF EXISTS public CASCADE; "
+        "CREATE SCHEMA public; "
+        "ALTER SCHEMA public OWNER TO moss; "
+        "GRANT ALL ON SCHEMA public TO moss; "
+        "GRANT ALL ON SCHEMA public TO public;"
+    )
     _run_checked(
         [
             str(config.bin_dir / "psql.exe"),
@@ -259,9 +265,51 @@ def _bootstrap_governance_schema(config: DevPostgresClusterConfig) -> None:
             config.database,
             "-v",
             "ON_ERROR_STOP=1",
-            "-f",
-            str(config.bootstrap_sql_path),
+            "-c",
+            sql,
         ]
+    )
+
+
+def command_reset_schema(config: DevPostgresClusterConfig) -> dict[str, object]:
+    """Rebuild moss.public from scratch and re-apply Alembic head + grants.
+
+    Refuses to run unless the target is the default local dev cluster endpoint
+    (127.0.0.1:55432) to avoid accidental use against shared Postgres.
+    """
+    if config.host != DEFAULT_HOST or int(config.port) != DEFAULT_PORT:
+        raise RuntimeError(
+            "reset-schema refused: only allowed for "
+            f"{DEFAULT_HOST}:{DEFAULT_PORT} (got {config.host}:{config.port})"
+        )
+    if not _is_port_open(config.host, config.port):
+        raise RuntimeError("cluster is not running on the dev port; run `up` first")
+    _reset_moss_public_schema(config)
+    _apply_alembic_migrations_and_grants(config)
+    status = command_status(config)
+    status["action"] = "reset-schema"
+    return status
+
+
+def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> None:
+    backend_dir = config.repo_root / "backend"
+    env = os.environ.copy()
+    env["MOSS_POSTGRES_DSN"] = config.postgres_dsn
+    env.pop("MOSS_SKIP_POSTGRES_MIGRATIONS", None)
+    env.pop("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", None)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "-c",
+            str(backend_dir / "alembic.ini"),
+            "upgrade",
+            "head",
+        ],
+        cwd=str(backend_dir),
+        check=True,
+        env=env,
     )
     _run_checked(
         [
@@ -282,11 +330,13 @@ def _bootstrap_governance_schema(config: DevPostgresClusterConfig) -> None:
                 "GRANT ALL PRIVILEGES ON TABLE rule_version_registry TO moss; "
                 "GRANT ALL PRIVILEGES ON TABLE cache_manifest TO moss; "
                 "GRANT ALL PRIVILEGES ON TABLE cache_build_run TO moss; "
+                "GRANT ALL PRIVILEGES ON TABLE job_run_state TO moss; "
                 "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO moss; "
                 "ALTER TABLE source_version_registry OWNER TO moss; "
                 "ALTER TABLE rule_version_registry OWNER TO moss; "
                 "ALTER TABLE cache_manifest OWNER TO moss; "
-                "ALTER TABLE cache_build_run OWNER TO moss;"
+                "ALTER TABLE cache_build_run OWNER TO moss; "
+                "ALTER TABLE job_run_state OWNER TO moss;"
             ),
         ]
     )
@@ -319,7 +369,10 @@ def _run_checked(args: list[str], *, capture_output: bool = False) -> str:
     return result.stdout if capture_output else ""
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("up", "down", "status", "print-env"))
+    parser.add_argument(
+        "command",
+        choices=("up", "down", "status", "print-env", "reset-schema"),
+    )
     parser.add_argument("--repo-root", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--pg-bin-dir", default=None)
     args = parser.parse_args()
@@ -329,14 +382,20 @@ def main() -> int:
         Path(args.pg_bin_dir).resolve() if args.pg_bin_dir else None,
     )
 
-    if args.command == "up":
-        payload = command_up(config)
-    elif args.command == "down":
-        payload = command_down(config)
-    elif args.command == "status":
-        payload = command_status(config)
-    else:
-        payload = command_print_env(config)
+    try:
+        if args.command == "up":
+            payload = command_up(config)
+        elif args.command == "down":
+            payload = command_down(config)
+        elif args.command == "status":
+            payload = command_status(config)
+        elif args.command == "reset-schema":
+            payload = command_reset_schema(config)
+        else:
+            payload = command_print_env(config)
+    except RuntimeError as exc:
+        print(json.dumps({"error": str(exc)}, ensure_ascii=True), file=sys.stderr)
+        return 1
 
     print(json.dumps(payload, ensure_ascii=True))
     return 0

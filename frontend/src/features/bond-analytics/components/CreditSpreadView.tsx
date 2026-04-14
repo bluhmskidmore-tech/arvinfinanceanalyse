@@ -13,6 +13,8 @@ import { formatWan, formatBp } from "../utils/formatters";
 
 interface Props {
   reportDate: string;
+  /** Comma-separated bp shocks, e.g. `10,25,50` */
+  spreadScenarios?: string;
 }
 
 const spreadColumns = [
@@ -310,7 +312,7 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
       itemHeight: 120,
       inRange: { color: ["#dfe8ff", "#1f5eff"] },
       textStyle: { fontSize: 11, color: "#5c6b82" },
-      formatter: (v: number) => `${v.toFixed(1)}%`,
+      formatter: (min, _max) => `${Number(min).toFixed(1)}%`,
     },
     series: [
       {
@@ -320,9 +322,11 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
           show: true,
           fontSize: 10,
           color: "#262626",
-          formatter: (params: { value?: [number, number, number] }) => {
-            const v = params.value?.[2];
-            if (v == null || v === 0) return "";
+          formatter: (params: unknown) => {
+            const raw = (params as { value?: unknown }).value;
+            const tuple = Array.isArray(raw) ? raw : [];
+            const v = Number(tuple[2]);
+            if (!Number.isFinite(v) || v === 0) return "";
             return v < 0.05 ? "" : `${v.toFixed(1)}%`;
           },
         },
@@ -377,9 +381,11 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
   return {
     tooltip: {
       trigger: "item" as const,
-      formatter: (params: { data?: { name: string; marketValueRaw: string; weight: string } }) => {
-        const d = params.data;
-        if (!d) return "";
+      formatter: (params: unknown) => {
+        const d = (params as { data?: unknown }).data as
+          | { name: string; marketValueRaw: string; weight: string }
+          | undefined;
+        if (!d || typeof d !== "object") return "";
         return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight}`;
       },
     },
@@ -391,7 +397,6 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
           top: "center",
           style: {
             text: "发行人集中度",
-            textAlign: "center" as const,
             fill: "#262626",
             fontSize: 14,
             fontWeight: 500,
@@ -440,7 +445,9 @@ function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetrics | und
   return <ReactECharts option={option} style={{ height: 200 }} />;
 }
 
-export function CreditSpreadView({ reportDate }: Props) {
+const DEFAULT_SPREAD_SCENARIOS = "10,25,50";
+
+export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_SCENARIOS }: Props) {
   const client = useApiClient();
   const [summaryData, setSummaryData] = useState<CreditSpreadMigrationResponse | null>(null);
   const [detailData, setDetailData] = useState<CreditSpreadAnalysisResponse | null>(null);
@@ -456,7 +463,9 @@ export function CreditSpreadView({ reportDate }: Props) {
       setDetailError(null);
       try {
         const [summaryResult, detailResult] = await Promise.allSettled([
-          client.getBondAnalyticsCreditSpreadMigration(reportDate),
+          spreadScenarios === DEFAULT_SPREAD_SCENARIOS
+            ? client.getBondAnalyticsCreditSpreadMigration(reportDate)
+            : client.getBondAnalyticsCreditSpreadMigration(reportDate, { spreadScenarios }),
           client.getCreditSpreadAnalysisDetail(reportDate),
         ]);
 
@@ -487,7 +496,7 @@ export function CreditSpreadView({ reportDate }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [client, reportDate]);
+  }, [client, reportDate, spreadScenarios]);
 
   const data = summaryData;
 

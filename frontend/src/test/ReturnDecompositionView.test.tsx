@@ -9,9 +9,10 @@ vi.mock("../lib/echarts", () => ({
 
 import { ReturnDecompositionView } from "../features/bond-analytics/components/ReturnDecompositionView";
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import type { ReturnDecompositionResponse } from "../features/bond-analytics/types";
 
-function createResultMeta(overrides: Record<string, unknown> = {}) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
     basis: "formal",
@@ -125,6 +126,34 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByText("收益效应分解")).toBeInTheDocument();
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("利率债")).toBeInTheDocument();
+  });
+
+  it("forwards non-default asset/accounting filters as the optional API options bag", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createReturnDecompositionResult(),
+      })),
+    };
+
+    render(
+      <ApiClientProvider client={client}>
+        <ReturnDecompositionView
+          reportDate="2026-03-31"
+          periodType="MoM"
+          assetClass="rate"
+          accountingClass="OCI"
+        />
+      </ApiClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM", {
+        assetClass: "rate",
+        accountingClass: "OCI",
+      }),
+    );
   });
 
   it("renders warning alert when warnings exist", async () => {

@@ -269,4 +269,5 @@ def test_postgres_healthcheck_requires_sql_roundtrip_and_reports_missing_bootstr
     assert result["missing_tables"] == [
         "rule_version_registry",
         "cache_build_run",
+        "job_run_state",
     ]

@@ -3,6 +3,8 @@ export type BondAnalyticsModuleKey =
   | "benchmark-excess"
   | "krd-curve-risk"
   | "credit-spread"
+  | "portfolio-headlines"
+  | "top-holdings"
   | "action-attribution"
   | "accounting-audit";
 
@@ -45,6 +47,18 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
     detailHint: "从明细区继续看利差冲击和信用暴露。",
   },
   {
+    key: "portfolio-headlines",
+    label: "组合 headline KPI",
+    description: "规模、收益率、久期、DV01、信用占比与发行人集中度等首屏指标。",
+    detailHint: "从明细区继续看资产类别风险分布表。",
+  },
+  {
+    key: "top-holdings",
+    label: "持仓 TopN",
+    description: "按市值排序的重点持仓与权重。",
+    detailHint: "从明细区继续看持仓明细与合计权重。",
+  },
+  {
     key: "action-attribution",
     label: "动作归因",
     description: "查看交易动作对损益、久期和 DV01 的影响。",
@@ -60,19 +74,9 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
 
 export const BOND_ANALYTICS_FUTURE_MODULES: BondAnalyticsFutureModuleDefinition[] = [
   {
-    key: "portfolio-headlines",
-    label: "组合 headline KPI",
-    description: "规模、收益率、票息、久期和关键暴露的首屏指标组。",
-  },
-  {
     key: "structure-distribution",
     label: "结构分布图组",
     description: "资产结构、久期分布、信用等级和行业分布图。",
-  },
-  {
-    key: "top-holdings",
-    label: "持仓 TopN",
-    description: "首屏持仓明细与重点债券观察入口。",
   },
   {
     key: "alerts-and-events",

@@ -8,9 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.governance.locks import LockDefinition, acquire_lock
-from sqlalchemy import Column, DateTime, Integer, MetaData, Table, Text, create_engine, select
+from backend.app.models.base import Base
+from backend.app.models.governance import CacheBuildRun, CacheManifest
+from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
+from sqlalchemy.schema import Table
 
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
@@ -45,11 +48,15 @@ class GovernanceRepository:
                 future=True,
                 poolclass=NullPool,
             )
-            metadata, tables = _build_sql_tables(
-                use_public_schema=self._sql_engine.dialect.name != "sqlite"
-            )
-            metadata.create_all(self._sql_engine)
-            self._sql_tables = tables
+            self._sql_tables = {
+                CACHE_BUILD_RUN_STREAM: CacheBuildRun.__table__,
+                CACHE_MANIFEST_STREAM: CacheManifest.__table__,
+            }
+            if self._sql_engine.dialect.name == "sqlite":
+                Base.metadata.create_all(
+                    self._sql_engine,
+                    tables=[CacheBuildRun.__table__, CacheManifest.__table__],
+                )
 
     def append(self, stream: str, payload: dict[str, object]) -> Path:
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir):
@@ -159,45 +166,6 @@ class GovernanceRepository:
         except Exception as exc:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
-
-
-def _build_sql_tables(*, use_public_schema: bool) -> tuple[MetaData, dict[str, Table]]:
-    metadata = MetaData()
-    schema = "public" if use_public_schema else None
-    tables = {
-        CACHE_BUILD_RUN_STREAM: Table(
-            CACHE_BUILD_RUN_STREAM,
-            metadata,
-            Column("row_id", Integer, primary_key=True, autoincrement=True),
-            Column("run_id", Text, nullable=False),
-            Column("job_name", Text, nullable=False),
-            Column("status", Text, nullable=False),
-            Column("cache_key", Text, nullable=False),
-            Column("lock", Text, nullable=True),
-            Column("source_version", Text, nullable=True),
-            Column("vendor_version", Text, nullable=True),
-            Column("rule_version", Text, nullable=True),
-            Column("started_at", Text, nullable=True),
-            Column("finished_at", Text, nullable=True),
-            Column("error_message", Text, nullable=True),
-            Column("payload_json", Text, nullable=False),
-            Column("created_at", DateTime(timezone=True), nullable=False),
-            schema=schema,
-        ),
-        CACHE_MANIFEST_STREAM: Table(
-            CACHE_MANIFEST_STREAM,
-            metadata,
-            Column("row_id", Integer, primary_key=True, autoincrement=True),
-            Column("cache_key", Text, nullable=False),
-            Column("source_version", Text, nullable=True),
-            Column("vendor_version", Text, nullable=True),
-            Column("rule_version", Text, nullable=True),
-            Column("payload_json", Text, nullable=False),
-            Column("created_at", DateTime(timezone=True), nullable=False),
-            schema=schema,
-        ),
-    }
-    return metadata, tables
 
 
 def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str, object]:

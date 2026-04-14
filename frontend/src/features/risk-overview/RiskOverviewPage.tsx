@@ -9,7 +9,12 @@ import type {
   KRDCurveRiskResponse,
 } from "../bond-analytics/types";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import {
+  formatRatioAsPercent,
+  parseDisplayNumber,
+  toneFromSignedDisplayString,
+} from "../workbench/components/kpiFormat";
 
 const summaryGridStyle = {
   display: "grid",
@@ -262,35 +267,42 @@ export default function RiskOverviewPage() {
           {tensorResult && (
             <>
               <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
-                <PlaceholderCard
+                <KpiCard
                   title="组合 DV01"
                   value={displayStr(tensorResult.portfolio_dv01)}
                   detail="portfolio_dv01，后端字符串口径。"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_dv01))}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="修正久期"
                   value={displayStr(tensorResult.portfolio_modified_duration)}
                   detail="portfolio_modified_duration。"
+                  unit="年"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="CS01"
                   value={displayStr(tensorResult.cs01)}
                   detail="cs01（信用 spread 敏感度聚合）。"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.cs01))}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="组合凸性"
                   value={displayStr(tensorResult.portfolio_convexity)}
                   detail="portfolio_convexity。"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_convexity))}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="债券只数"
                   value={String(tensorResult.bond_count)}
                   detail="bond_count。"
+                  unit="只"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="总市值"
                   value={displayStr(tensorResult.total_market_value)}
                   detail="total_market_value。"
+                  unit="亿"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.total_market_value))}
                 />
               </div>
 
@@ -319,14 +331,20 @@ export default function RiskOverviewPage() {
                 集中度
               </h2>
               <div style={summaryGridStyle}>
-                <PlaceholderCard
+                <KpiCard
                   title="发行人 HHI"
                   value={displayStr(tensorResult.issuer_concentration_hhi)}
                   detail="issuer_concentration_hhi。"
+                  tone={
+                    (() => {
+                      const n = parseDisplayNumber(displayStr(tensorResult.issuer_concentration_hhi));
+                      return n != null && n > 0.15 ? "warning" : "default";
+                    })()
+                  }
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="前五大权重"
-                  value={displayStr(tensorResult.issuer_top5_weight)}
+                  value={formatRatioAsPercent(tensorResult.issuer_top5_weight, displayStr(tensorResult.issuer_top5_weight))}
                   detail="issuer_top5_weight。"
                 />
               </div>
@@ -342,20 +360,38 @@ export default function RiskOverviewPage() {
                 流动性缺口（市值）
               </h2>
               <div style={summaryGridStyle}>
-                <PlaceholderCard
+                <KpiCard
                   title="30 日内到期市值"
                   value={displayStr(tensorResult.liquidity_gap_30d)}
                   detail="liquidity_gap_30d。"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_30d))}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="90 日内到期市值"
                   value={displayStr(tensorResult.liquidity_gap_90d)}
                   detail="liquidity_gap_90d。"
+                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_90d))}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="30 日流动性缺口占比"
-                  value={displayStr(tensorResult.liquidity_gap_30d_ratio)}
+                  value={formatRatioAsPercent(
+                    tensorResult.liquidity_gap_30d_ratio,
+                    displayStr(tensorResult.liquidity_gap_30d_ratio),
+                  )}
                   detail="liquidity_gap_30d_ratio。"
+                  tone={(() => {
+                    const n = parseDisplayNumber(displayStr(tensorResult.liquidity_gap_30d_ratio));
+                    if (n == null) {
+                      return "default";
+                    }
+                    if (n > 0.45) {
+                      return "error";
+                    }
+                    if (n > 0.25) {
+                      return "warning";
+                    }
+                    return "default";
+                  })()}
                 />
               </div>
 
@@ -412,25 +448,29 @@ export default function RiskOverviewPage() {
           }}
         >
           <div data-testid="risk-overview-bond-krd-kpi-grid" style={summaryGridStyle}>
-            <PlaceholderCard
+            <KpiCard
               title="组合久期"
               value={cellText(krd?.portfolio_duration)}
               detail="portfolio_duration，Bond Analytics 物化口径。"
+              tone={toneFromSignedDisplayString(cellText(krd?.portfolio_duration))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="修正久期"
               value={cellText(krd?.portfolio_modified_duration)}
               detail="portfolio_modified_duration。"
+              unit="年"
             />
-            <PlaceholderCard
+            <KpiCard
               title="DV01"
               value={cellText(krd?.portfolio_dv01)}
               detail="portfolio_dv01。"
+              tone={toneFromSignedDisplayString(cellText(krd?.portfolio_dv01))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="凸性"
               value={cellText(krd?.portfolio_convexity)}
               detail="portfolio_convexity。"
+              tone={toneFromSignedDisplayString(cellText(krd?.portfolio_convexity))}
             />
           </div>
 
@@ -549,20 +589,23 @@ export default function RiskOverviewPage() {
           }}
         >
           <div style={summaryGridStyle}>
-            <PlaceholderCard
+            <KpiCard
               title="信用债数量"
               value={cellText(credit?.credit_bond_count)}
               detail="credit_bond_count。"
+              unit="只"
             />
-            <PlaceholderCard
+            <KpiCard
               title="信用债市值"
               value={cellText(credit?.credit_market_value)}
               detail="credit_market_value。"
+              tone={toneFromSignedDisplayString(cellText(credit?.credit_market_value))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="Spread DV01"
               value={cellText(credit?.spread_dv01)}
               detail="spread_dv01。"
+              tone={toneFromSignedDisplayString(cellText(credit?.spread_dv01))}
             />
           </div>
 

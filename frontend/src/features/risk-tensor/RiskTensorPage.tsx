@@ -6,7 +6,12 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import {
+  formatRatioAsPercent,
+  parseDisplayNumber,
+  toneFromSignedDisplayString,
+} from "../workbench/components/kpiFormat";
 
 const FALLBACK_REPORT_DATE = "2025-12-31";
 
@@ -280,30 +285,42 @@ export default function RiskTensorPage() {
         {result ? (
           <>
             <div data-testid="risk-tensor-kpi-grid" style={summaryGridStyle}>
-              <PlaceholderCard
+              <KpiCard
                 title="组合 DV01"
                 value={displayStr(result.portfolio_dv01)}
                 detail="portfolio_dv01，后端字符串口径。"
+                tone={toneFromSignedDisplayString(displayStr(result.portfolio_dv01))}
               />
-              <PlaceholderCard
+              <KpiCard
+                title="修正久期"
+                value={displayStr(result.portfolio_modified_duration)}
+                detail="portfolio_modified_duration。"
+                unit="年"
+              />
+              <KpiCard
                 title="CS01"
                 value={displayStr(result.cs01)}
                 detail="cs01（信用 spread DV01 聚合）。"
+                tone={toneFromSignedDisplayString(displayStr(result.cs01))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="组合凸性"
                 value={displayStr(result.portfolio_convexity)}
                 detail="portfolio_convexity。"
+                tone={toneFromSignedDisplayString(displayStr(result.portfolio_convexity))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="债券只数"
                 value={String(result.bond_count)}
                 detail="bond_count。"
+                unit="只"
               />
-              <PlaceholderCard
+              <KpiCard
                 title="总市值"
                 value={displayStr(result.total_market_value)}
                 detail="total_market_value。"
+                unit="亿"
+                tone={toneFromSignedDisplayString(displayStr(result.total_market_value))}
               />
             </div>
 
@@ -356,14 +373,20 @@ export default function RiskTensorPage() {
               集中度
             </h2>
             <div style={summaryGridStyle}>
-              <PlaceholderCard
+              <KpiCard
                 title="发行人 HHI"
                 value={displayStr(result.issuer_concentration_hhi)}
                 detail="issuer_concentration_hhi。"
+                tone={
+                  (() => {
+                    const n = parseDisplayNumber(displayStr(result.issuer_concentration_hhi));
+                    return n != null && n > 0.15 ? "warning" : "default";
+                  })()
+                }
               />
-              <PlaceholderCard
+              <KpiCard
                 title="前五大权重"
-                value={displayStr(result.issuer_top5_weight)}
+                value={formatRatioAsPercent(result.issuer_top5_weight, displayStr(result.issuer_top5_weight))}
                 detail="issuer_top5_weight。"
               />
             </div>
@@ -379,15 +402,17 @@ export default function RiskTensorPage() {
               流动性缺口（市值）
             </h2>
             <div style={summaryGridStyle}>
-              <PlaceholderCard
+              <KpiCard
                 title="30 日内到期市值"
                 value={displayStr(result.liquidity_gap_30d)}
                 detail="liquidity_gap_30d。"
+                tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_30d))}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="90 日内到期市值"
                 value={displayStr(result.liquidity_gap_90d)}
                 detail="liquidity_gap_90d。"
+                tone={toneFromSignedDisplayString(displayStr(result.liquidity_gap_90d))}
               />
             </div>
 

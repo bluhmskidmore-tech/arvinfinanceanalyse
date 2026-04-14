@@ -10,6 +10,10 @@ from pathlib import Path
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_fx_daily_mid_schema_if_missing,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.akshare_adapter import VendorAdapter as AkShareVendorAdapter
 from backend.app.repositories.choice_fx_catalog import (
@@ -90,31 +94,9 @@ def _build_akshare_source_version(payload: dict[str, object]) -> str:
 
 
 def _ensure_fx_mid_table(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        """
-        create table if not exists fx_daily_mid (
-          trade_date date,
-          base_currency varchar,
-          quote_currency varchar,
-          mid_rate decimal(24, 8),
-          source_name varchar,
-          is_business_day boolean,
-          is_carry_forward boolean,
-          source_version varchar,
-          vendor_name varchar,
-          vendor_version varchar,
-          vendor_series_code varchar,
-          observed_trade_date date
-        )
-        """
-    )
-    for column_name, ddl in (
-        ("vendor_name", "varchar"),
-        ("vendor_version", "varchar"),
-        ("vendor_series_code", "varchar"),
-        ("observed_trade_date", "date"),
-    ):
-        conn.execute(f"alter table fx_daily_mid add column if not exists {column_name} {ddl}")
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+    ensure_fx_daily_mid_schema_if_missing(conn)
 
 
 def _replace_fx_mid_rows(

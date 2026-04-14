@@ -26,6 +26,8 @@ def test_dev_env_script_sets_repo_relative_data_paths():
     assert 'Join-Path $root "data\\moss.duckdb"' in script
     assert 'Join-Path $root "data\\archive"' in script
     assert "dev_postgres_cluster.py" in script
+    assert "print-env --repo-root $root" in script
+    assert "clusterDataDir" not in script
     assert "F:\\MOSS-V3" not in script
 
 
@@ -43,3 +45,11 @@ def test_dev_down_script_stops_native_processes_and_local_postgres():
     assert "dev-postgres-down.ps1" in script
     assert "backend.app.main:app" in script
     assert "backend.app.tasks.worker_bootstrap" in script
+
+
+def test_dev_governance_maintenance_script_runs_compaction_and_layering():
+    script = (ROOT / "scripts" / "dev-governance-maintenance.ps1").read_text(encoding="utf-8")
+    assert "dev-env.ps1" in script
+    assert "dev-python.ps1" in script
+    assert "compact_source_preview_governance.py" in script
+    assert "build_source_manifest_layers.py" in script

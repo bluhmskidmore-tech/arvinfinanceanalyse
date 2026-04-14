@@ -456,6 +456,8 @@ def test_history_endpoint_lists_multiple_materialized_batches_and_preserves_old_
         ingest_batch_id=first_ingest["ingest_batch_id"],
     )
 
+    zqtz_path = data_root / "ZQTZSHOW-20251231.xls"
+    zqtz_path.write_bytes(zqtz_path.read_bytes() + b"\n")
     second_ingest = ingest_task_module.ingest_demo_manifest.fn()
     materialize_module.materialize_cache_view.fn(
         duckdb_path=str(duckdb_path),

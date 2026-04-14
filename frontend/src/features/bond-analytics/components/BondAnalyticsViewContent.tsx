@@ -1,7 +1,14 @@
 import { Suspense, lazy, useMemo, useState } from "react";
+import { Col, Row } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiEnvelope } from "../../../api/contracts";
-import type { ActionAttributionResponse, PeriodType } from "../types";
+import type {
+  ActionAttributionResponse,
+  BondAnalyticsAccountingClassFilter,
+  BondAnalyticsAssetClassFilter,
+  BondAnalyticsScenarioSetFilter,
+  PeriodType,
+} from "../types";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { buildBondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
@@ -15,6 +22,16 @@ const BondAnalyticsDetailSection = lazy(() =>
   import("./BondAnalyticsDetailSection").then((module) => ({
     default: module.BondAnalyticsDetailSection,
   })),
+);
+
+const PerformanceComparison = lazy(async () => import("./PerformanceComparison"));
+const RiskTrendChart = lazy(async () => import("./RiskTrendChart"));
+const BondEventCalendar = lazy(async () => import("./BondEventCalendar"));
+
+const phase3PageFallback = (
+  <div style={{ color: "#8090a8", fontSize: 13 }} data-testid="bond-analysis-phase3-page-loading">
+    Loading bond analytics modules…
+  </div>
 );
 
 export function BondAnalyticsViewContent() {
@@ -40,6 +57,10 @@ export function BondAnalyticsViewContent() {
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
   const [reportDate, setReportDate] = useState("");
   const [periodType, setPeriodType] = useState<PeriodType>("MoM");
+  const [assetClass, setAssetClass] = useState<BondAnalyticsAssetClassFilter>("all");
+  const [accountingClass, setAccountingClass] = useState<BondAnalyticsAccountingClassFilter>("all");
+  const [scenarioSet, setScenarioSet] = useState<BondAnalyticsScenarioSetFilter>("standard");
+  const [spreadScenarios, setSpreadScenarios] = useState("10,25,50");
   const [activeTab, setActiveTab] =
     useState<BondAnalyticsModuleKey>("action-attribution");
   const [isBondAnalyticsRefreshing, setIsBondAnalyticsRefreshing] = useState(false);
@@ -219,6 +240,14 @@ export function BondAnalyticsViewContent() {
           onReportDateChange={setReportDate}
           periodType={periodType}
           onPeriodTypeChange={setPeriodType}
+          assetClass={assetClass}
+          onAssetClassChange={setAssetClass}
+          accountingClass={accountingClass}
+          onAccountingClassChange={setAccountingClass}
+          scenarioSet={scenarioSet}
+          onScenarioSetChange={setScenarioSet}
+          spreadScenarios={spreadScenarios}
+          onSpreadScenariosChange={setSpreadScenarios}
           overviewModel={overviewModel}
           onOpenModuleDetail={setActiveTab}
           onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}
@@ -226,6 +255,10 @@ export function BondAnalyticsViewContent() {
           analyticsRefreshError={bondAnalyticsRefreshError}
           lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
         />
+      </Suspense>
+
+      <Suspense fallback={phase3PageFallback}>
+        <PerformanceComparison />
       </Suspense>
 
       <section
@@ -244,10 +277,25 @@ export function BondAnalyticsViewContent() {
               onActiveTabChange={setActiveTab}
               reportDate={effectiveReportDate}
               periodType={periodType}
+              assetClass={assetClass}
+              accountingClass={accountingClass}
+              scenarioSet={scenarioSet}
+              spreadScenarios={spreadScenarios}
             />
           </div>
         </Suspense>
       </section>
+
+      <Suspense fallback={phase3PageFallback}>
+        <Row gutter={[12, 12]}>
+          <Col xs={24} lg={12}>
+            <RiskTrendChart />
+          </Col>
+          <Col xs={24} lg={12}>
+            <BondEventCalendar />
+          </Col>
+        </Row>
+      </Suspense>
     </div>
   );
 }

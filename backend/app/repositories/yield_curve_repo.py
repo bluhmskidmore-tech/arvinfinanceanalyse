@@ -14,6 +14,7 @@ from decimal import Decimal
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.schemas.yield_curve import YieldCurveSnapshot
 
 
@@ -304,34 +305,8 @@ class YieldCurveRepository:
 
 
 def ensure_yield_curve_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        f"""
-        create table if not exists {FORMAL_FACT_TABLE} (
-            trade_date varchar,
-            curve_type varchar,
-            tenor varchar,
-            rate_pct decimal(18, 8),
-            vendor_name varchar,
-            vendor_version varchar,
-            source_version varchar,
-            rule_version varchar
-        )
-        """
-    )
-    conn.execute(
-        f"""
-        create or replace view {READ_VIEW} as
-        select
-          trade_date,
-          curve_type,
-          tenor,
-          rate_pct,
-          vendor_name,
-          vendor_version,
-          source_version
-        from {FORMAL_FACT_TABLE}
-        """
-    )
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
 
 
 def _connect(path: str, *, read_only: bool) -> duckdb.DuckDBPyConnection | None:

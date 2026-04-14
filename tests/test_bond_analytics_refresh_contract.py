@@ -10,7 +10,10 @@ from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, Gov
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
 from tests.test_bond_analytics_api import REPORT_DATE
-from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    _seed_bond_snapshot_rows,
+    seed_yield_curves_for_bond_analytics_tests,
+)
 
 JOB_NAME = "bond_analytics_materialize"
 CACHE_KEY = "bond_analytics:materialize:formal"
@@ -24,6 +27,7 @@ def _configure_bond_analytics_api_env(tmp_path, monkeypatch) -> object:
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
     return governance_dir
 
 
@@ -97,8 +101,8 @@ def test_bond_analytics_refresh_uses_month_start_and_prior_balance_date_as_curve
     )
 
     monkeypatch.setattr(
-        service_mod.BalanceAnalysisRepository,
-        "resolve_prior_pnl_bridge_balance_report_date",
+        service_mod.BondAnalyticsRepository,
+        "resolve_prior_curve_anchor_report_date",
         lambda self, *, report_date: "2026-03-30",
     )
 

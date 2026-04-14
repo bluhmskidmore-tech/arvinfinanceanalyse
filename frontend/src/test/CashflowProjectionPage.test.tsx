@@ -1,0 +1,104 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { describe, expect, it, vi } from "vitest";
+
+import { ApiClientProvider, createApiClient } from "../api/client";
+import CashflowProjectionPage from "../features/cashflow-projection/pages/CashflowProjectionPage";
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="cashflow-echarts-stub" />,
+}));
+
+describe("CashflowProjectionPage", () => {
+  it("mounts KPI cards when projection loads", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("cashflow-projection-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-duration-gap")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-asset-dur")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-liability-dur")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-dv01")).toBeInTheDocument();
+  });
+
+  it("renders chart region when monthly buckets are present", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getBalanceAnalysisDates.bind(client);
+    client.getBalanceAnalysisDates = async () => {
+      const r = await orig();
+      return {
+        ...r,
+        result: { ...r.result, report_dates: ["2026-04-01"] },
+      };
+    };
+    client.getCashflowProjection = async (reportDate: string) => {
+      const r = await createApiClient({ mode: "mock" }).getCashflowProjection(reportDate);
+      return {
+        ...r,
+        result: {
+          ...r.result,
+          monthly_buckets: [
+            {
+              year_month: "2026-04",
+              asset_inflow: "100.00000000",
+              liability_outflow: "40.00000000",
+              net_cashflow: "60.00000000",
+              cumulative_net: "60.00000000",
+            },
+          ],
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("cashflow-echarts-stub")).toBeInTheDocument();
+  });
+
+  it("requests projection for the first available balance-analysis report date", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const origDates = client.getBalanceAnalysisDates.bind(client);
+    client.getBalanceAnalysisDates = async () => {
+      const r = await origDates();
+      return {
+        ...r,
+        result: { ...r.result, report_dates: ["2026-04-01", "2026-03-01"] },
+      };
+    };
+    const spy = vi.spyOn(client, "getCashflowProjection");
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(spy).toHaveBeenCalledWith("2026-04-01"));
+  });
+});

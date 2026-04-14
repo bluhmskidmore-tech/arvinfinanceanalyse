@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
 $env:MOSS_ENVIRONMENT = "development"
-$env:MOSS_POSTGRES_DSN = "postgresql://moss:moss@localhost:5432/moss"
+$env:MOSS_POSTGRES_DSN = "postgresql://moss:moss@127.0.0.1:55432/moss"
+$env:MOSS_GOVERNANCE_SQL_DSN = $env:MOSS_POSTGRES_DSN
 $env:MOSS_REDIS_DSN = "redis://localhost:6379/0"
 $env:MOSS_DUCKDB_PATH = Join-Path $root "data\moss.duckdb"
 $env:MOSS_GOVERNANCE_PATH = Join-Path $root "data\governance"
@@ -14,9 +15,8 @@ $env:MOSS_MINIO_ACCESS_KEY = "minioadmin"
 $env:MOSS_MINIO_SECRET_KEY = "minioadmin"
 $env:MOSS_MINIO_BUCKET = "moss-artifacts"
 
-$clusterDataDir = Join-Path $root "tmp-governance\pgdev\data"
 $clusterHelper = Join-Path $root "scripts\dev_postgres_cluster.py"
-if ((Test-Path $clusterDataDir) -and (Test-Path $clusterHelper)) {
+if (Test-Path $clusterHelper) {
   $python = (Get-Command python -ErrorAction Stop).Source
   $json = & $python $clusterHelper print-env --repo-root $root
   if ($LASTEXITCODE -ne 0) {

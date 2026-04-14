@@ -12,7 +12,8 @@ import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api
 import { formatWan } from "../bond-analytics/utils/formatters";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import { pnlSurfaceQualityToTone, toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 
 const summaryGridStyle = {
   display: "grid",
@@ -385,46 +386,53 @@ export default function PnlBridgePage() {
           {summary ? (
             <>
               <div data-testid="pnl-bridge-summary-cards" style={summaryGridStyle}>
-                <PlaceholderCard
+                <KpiCard
                   title="行数"
                   value={cellText(summary.row_count)}
                   detail="summary.row_count"
+                  unit="行"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="质量 ok"
                   value={cellText(summary.ok_count)}
                   detail="summary.ok_count"
+                  tone="default"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="质量 warning"
                   value={cellText(summary.warning_count)}
                   detail="summary.warning_count"
+                  tone="warning"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="质量 error"
                   value={cellText(summary.error_count)}
                   detail="summary.error_count"
+                  tone="error"
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="合计 explained PnL"
                   value={summary.total_explained_pnl}
                   detail="summary.total_explained_pnl"
+                  tone={toneFromSignedDisplayString(summary.total_explained_pnl)}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="合计 actual PnL"
                   value={summary.total_actual_pnl}
                   detail="summary.total_actual_pnl"
+                  tone={toneFromSignedDisplayString(summary.total_actual_pnl)}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="合计 residual"
                   value={summary.total_residual}
                   detail="summary.total_residual"
+                  tone={toneFromSignedDisplayString(summary.total_residual)}
                 />
-                <PlaceholderCard
+                <KpiCard
                   title="质量 quality_flag"
                   value={summary.quality_flag}
                   detail="summary.quality_flag（取各行最差等级）"
-                  surfaceTone={summary.quality_flag}
+                  tone={pnlSurfaceQualityToTone(summary.quality_flag)}
                 />
               </div>
 

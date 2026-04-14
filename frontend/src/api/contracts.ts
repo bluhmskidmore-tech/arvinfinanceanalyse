@@ -238,6 +238,46 @@ export type KRDCurveRiskPayload = {
   computed_at: string;
 };
 
+/** `/api/bond-analytics/portfolio-headlines` */
+export type BondPortfolioHeadlinesPayload = {
+  report_date: string;
+  total_market_value: string;
+  weighted_ytm: string;
+  weighted_duration: string;
+  weighted_coupon: string;
+  total_dv01: string;
+  bond_count: number;
+  credit_weight: string;
+  issuer_hhi: string;
+  issuer_top5_weight: string;
+  by_asset_class: AssetClassRiskSummary[];
+  warnings: string[];
+  computed_at: string;
+};
+
+export type BondTopHoldingItem = {
+  instrument_code: string;
+  instrument_name: string | null;
+  issuer_name: string | null;
+  rating: string | null;
+  asset_class: string;
+  market_value: string;
+  face_value: string;
+  ytm: string;
+  modified_duration: string;
+  weight: string;
+};
+
+/** `/api/bond-analytics/top-holdings` */
+export type BondTopHoldingsPayload = {
+  report_date: string;
+  top_n: number;
+  items: BondTopHoldingItem[];
+  total_market_value: string;
+  warnings: string[];
+  computed_at: string;
+};
+
 export type SpreadScenarioResult = {
   scenario_name: string;
   spread_change_bp: number;
@@ -573,6 +613,17 @@ export type SourcePreviewRefreshPayload = {
   vendor_version?: string;
   rule_version?: string;
   lock?: string;
+  detail?: string | null;
+  error_message?: string | null;
+};
+
+export type ChoiceMacroRefreshPayload = {
+  status: string;
+  run_id?: string;
+  series_count?: number;
+  vendor_version?: string;
+  source_version?: string;
+  cache_key?: string;
   detail?: string | null;
   error_message?: string | null;
 };
@@ -1002,6 +1053,37 @@ export type BalanceAnalysisPayload = {
   currency_basis: BalanceCurrencyBasis;
   details: BalanceAnalysisDetailRow[];
   summary: BalanceAnalysisSummaryRow[];
+};
+
+export type BalanceAnalysisBasisBreakdownRow = {
+  source_family: "zqtz" | "tyw";
+  invest_type_std: string;
+  accounting_basis: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  detail_row_count: number;
+  market_value_amount: DecimalLike;
+  amortized_cost_amount: DecimalLike;
+  accrued_interest_amount: DecimalLike;
+};
+
+export type BalanceAnalysisBasisBreakdownPayload = {
+  report_date: string;
+  position_scope: BalancePositionScope;
+  currency_basis: BalanceCurrencyBasis;
+  rows: BalanceAnalysisBasisBreakdownRow[];
+};
+
+export type BalanceAnalysisAdvancedAttributionBundlePayload = {
+  report_date: string;
+  mode: "analytical" | "scenario";
+  scenario_name: string | null;
+  scenario_inputs: Record<string, number>;
+  upstream_summaries: Record<string, Record<string, string | string[]>>;
+  status: "not_ready";
+  missing_inputs: string[];
+  blocked_components: string[];
+  warnings: string[];
 };
 
 export type BalanceAnalysisWorkbookCard = {
@@ -1493,3 +1575,912 @@ export type InterbankCounterpartySplitResponse = {
   asset_items: CounterpartyStatItem[];
   liability_items: CounterpartyStatItem[];
 };
+
+// --- KPI / 绩效考核 (`/api/kpi`) — Decimal 字段保持 string，不在前端做金额计算 ---
+
+export type KpiDecimalString = string | null;
+
+export type KpiScopeType = "portfolio_type" | "asset_class" | "department" | "custom";
+
+export type KpiScoringRuleType =
+  | "LINEAR_RATIO"
+  | "LINEAR_RATIO_PROGRESS"
+  | "THRESHOLD_DEDUCT_BP"
+  | "THRESHOLD_DEDUCT_ABS"
+  | "LINEAR_COMPOSITE_AVG"
+  | "DEPEND_ON_OTHER_OWNER"
+  | "MANUAL";
+
+export type KpiDataSourceType = "AUTO" | "MANUAL" | "EXTERNAL";
+
+export type KpiFetchStatus = "SUCCESS" | "FAILED" | "PENDING" | "SKIPPED";
+
+export type KpiFetchTrace = {
+  sql_template_id?: string;
+  sql_hash?: string;
+  fetch_function?: string;
+  params: Record<string, unknown>;
+  execution_time_ms: number;
+  row_count: number;
+  error?: string;
+  fetched_at: string;
+};
+
+export type KpiRoundingConfig = {
+  precision: number;
+  mode: "HALF_UP" | "HALF_DOWN" | "CEILING" | "FLOOR";
+};
+
+export type KpiScoreTrace = {
+  rule_type: string;
+  score_input_field: "completion_ratio" | "progress_pct" | string;
+  inputs: Record<string, string>;
+  formula: string;
+  intermediate: Record<string, string>;
+  final_score: string;
+  capped: boolean;
+  rounding: string;
+  reason?: string;
+  scored_at: string;
+};
+
+export type KpiOwner = {
+  owner_id: number;
+  owner_name: string;
+  org_unit: string;
+  person_name?: string;
+  year: number;
+  scope_type: KpiScopeType;
+  scope_key?: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KpiOwnerListResponse = {
+  owners: KpiOwner[];
+  total: number;
+};
+
+export type KpiScoringRuleParams = {
+  weight: KpiDecimalString;
+  cap?: KpiDecimalString;
+  score_input_field: "completion_ratio" | "progress_pct";
+  rounding?: KpiRoundingConfig;
+  threshold?: KpiDecimalString;
+  deduct_per_bp?: KpiDecimalString;
+  deduct_per_unit?: KpiDecimalString;
+};
+
+export type KpiDataSourceParams = {
+  fetch_function?: string;
+  sql_template_id?: string;
+  unit?: string;
+  extra_filter?: Record<string, unknown>;
+};
+
+export type KpiMetric = {
+  metric_id: number;
+  metric_code: string;
+  owner_id: number;
+  year: number;
+  major_category: string;
+  indicator_category?: string;
+  metric_name: string;
+  target_value: KpiDecimalString;
+  target_text?: string;
+  score_weight: KpiDecimalString;
+  unit?: string;
+  scoring_text?: string;
+  scoring_rule_type: KpiScoringRuleType;
+  scoring_rule_params?: KpiScoringRuleParams;
+  data_source_type: KpiDataSourceType;
+  data_source_params?: KpiDataSourceParams;
+  progress_plan?: string;
+  remarks?: string;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type KpiMetricUpsertRequest = {
+  metric_code: string;
+  metric_name: string;
+  major_category: string;
+  owner_id: number;
+  year: number;
+  score_weight: string;
+  data_source_type: KpiDataSourceType;
+  scoring_rule_type: KpiScoringRuleType;
+  indicator_category?: string;
+  target_value?: KpiDecimalString;
+  target_text?: string;
+  unit?: string;
+  scoring_text?: string;
+  remarks?: string;
+};
+
+export type KpiMetricListResponse = {
+  metrics: KpiMetric[];
+  total: number;
+};
+
+export type KpiMetricValue = {
+  value_id: number;
+  metric_id: number;
+  as_of_date: string;
+  actual_value: KpiDecimalString;
+  actual_text?: string;
+  completion_ratio: KpiDecimalString;
+  progress_pct: KpiDecimalString;
+  score_value: KpiDecimalString;
+  fetch_status?: KpiFetchStatus;
+  fetch_trace?: KpiFetchTrace;
+  fetched_at?: string;
+  score_calc_trace?: KpiScoreTrace;
+  scored_at?: string;
+  source?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type KpiMetricWithValue = KpiMetric & {
+  value_id?: number;
+  as_of_date?: string;
+  actual_value?: KpiDecimalString;
+  actual_text?: string;
+  completion_ratio?: KpiDecimalString;
+  progress_pct?: KpiDecimalString;
+  score_value?: KpiDecimalString;
+  fetch_status?: KpiFetchStatus;
+  fetch_trace?: KpiFetchTrace;
+  score_calc_trace?: KpiScoreTrace;
+  source?: string;
+};
+
+export type KpiValuesResponse = {
+  owner_id: number;
+  owner_name: string;
+  as_of_date: string;
+  metrics: KpiMetricWithValue[];
+  total: number;
+};
+
+export type KpiFetchAndRecalcRequest = {
+  metric_ids?: number[];
+};
+
+export type KpiMetricResultItem = {
+  metric_id: number;
+  metric_code: string;
+  metric_name: string;
+  target_value: KpiDecimalString;
+  actual_value: KpiDecimalString;
+  completion_ratio: KpiDecimalString;
+  progress_pct: KpiDecimalString;
+  score_value: KpiDecimalString;
+  fetch_status: KpiFetchStatus;
+  score_status: string;
+  error_message?: string;
+  fetch_trace?: KpiFetchTrace;
+  score_calc_trace?: KpiScoreTrace;
+};
+
+export type KpiFetchAndRecalcResponse = {
+  owner_id: number;
+  owner_name: string;
+  as_of_date: string;
+  total_metrics: number;
+  fetched_count: number;
+  scored_count: number;
+  failed_count: number;
+  skipped_count: number;
+  results: KpiMetricResultItem[];
+};
+
+export type KpiReportRow = {
+  owner_name: string;
+  org_unit: string;
+  major_category: string;
+  indicator_category?: string;
+  metric_name: string;
+  target_value: KpiDecimalString;
+  target_text?: string;
+  unit?: string;
+  score_weight: KpiDecimalString;
+  scoring_text?: string;
+  actual_value: KpiDecimalString;
+  completion_ratio: KpiDecimalString;
+  progress_pct: KpiDecimalString;
+  score_value: KpiDecimalString;
+  remarks?: string;
+};
+
+export type KpiReportResponse = {
+  year: number;
+  generated_at: string;
+  rows: KpiReportRow[];
+  total: number;
+};
+
+export type KpiPeriodMetricSummary = {
+  metric_id: number;
+  metric_code: string;
+  metric_name: string;
+  major_category: string;
+  indicator_category?: string;
+  target_value?: string;
+  unit?: string;
+  score_weight: string;
+  period_actual_value?: string;
+  period_completion_ratio?: string;
+  period_progress_pct?: string;
+  period_score_value?: string;
+  period_start_date: string;
+  period_end_date: string;
+  data_date?: string;
+};
+
+export type KpiPeriodSummaryResponse = {
+  owner_id: number;
+  owner_name: string;
+  year: number;
+  period_type: string;
+  period_value?: number;
+  period_label: string;
+  period_start_date: string;
+  period_end_date: string;
+  metrics: KpiPeriodMetricSummary[];
+  total: number;
+  total_weight: string;
+  total_score: string;
+};
+
+export type KpiBatchUpdateResponse = {
+  success_count: number;
+  failed_count: number;
+  errors: string[];
+};
+
+// --- PnL attribution workbench (`/api/pnl-attribution/*`, V1-aligned numeric payloads) ---
+
+export type VolumeRateAttributionItem = {
+  category: string;
+  category_type: string;
+  level: number;
+  current_scale: number;
+  current_pnl: number;
+  current_yield: number | null;
+  previous_scale: number | null;
+  previous_pnl: number | null;
+  previous_yield: number | null;
+  pnl_change: number | null;
+  pnl_change_pct: number | null;
+  volume_effect: number | null;
+  rate_effect: number | null;
+  interaction_effect: number | null;
+  attrib_sum: number | null;
+  recon_error: number | null;
+  volume_contribution_pct: number | null;
+  rate_contribution_pct: number | null;
+};
+
+export type VolumeRateAttributionPayload = {
+  current_period: string;
+  previous_period: string;
+  compare_type: string;
+  total_current_pnl: number;
+  total_previous_pnl: number | null;
+  total_pnl_change: number | null;
+  total_volume_effect: number | null;
+  total_rate_effect: number | null;
+  total_interaction_effect: number | null;
+  items: VolumeRateAttributionItem[];
+  has_previous_data: boolean;
+};
+
+export type TPLMarketDataPoint = {
+  period: string;
+  period_label: string;
+  tpl_fair_value_change: number;
+  tpl_total_pnl: number;
+  tpl_scale: number;
+  treasury_10y: number | null;
+  treasury_10y_change: number | null;
+  dr007: number | null;
+};
+
+export type TPLMarketCorrelationPayload = {
+  start_period: string;
+  end_period: string;
+  num_periods: number;
+  correlation_coefficient: number | null;
+  correlation_interpretation: string;
+  total_tpl_fv_change: number;
+  avg_treasury_10y_change: number | null;
+  treasury_10y_total_change: number | null;
+  data_points: TPLMarketDataPoint[];
+  analysis_summary: string;
+};
+
+export type PnlCompositionItem = {
+  category: string;
+  category_type: string;
+  level: number;
+  total_pnl: number;
+  interest_income: number;
+  fair_value_change: number;
+  capital_gain: number;
+  other_income: number;
+  interest_pct: number;
+  fair_value_pct: number;
+  capital_gain_pct: number;
+  other_pct: number;
+};
+
+export type PnlCompositionTrendItem = {
+  period: string;
+  period_label: string;
+  interest_income: number;
+  fair_value_change: number;
+  capital_gain: number;
+  total_pnl: number;
+};
+
+export type PnlCompositionPayload = {
+  report_period: string;
+  report_date: string;
+  total_pnl: number;
+  total_interest_income: number;
+  total_fair_value_change: number;
+  total_capital_gain: number;
+  total_other_income: number;
+  interest_pct: number;
+  fair_value_pct: number;
+  capital_gain_pct: number;
+  other_pct: number;
+  items: PnlCompositionItem[];
+  trend_data: PnlCompositionTrendItem[];
+};
+
+export type PnlAttributionAnalysisSummary = {
+  report_date: string;
+  primary_driver: "volume" | "rate" | "market" | "unknown";
+  primary_driver_pct: number;
+  key_findings: string[];
+  tpl_market_aligned: boolean;
+  tpl_market_note: string;
+};
+
+export type CarryRollDownItem = {
+  category: string;
+  category_type: string;
+  market_value: number;
+  weight: number;
+  coupon_rate: number;
+  ytm: number | null;
+  funding_cost: number;
+  carry: number;
+  carry_pnl: number;
+  duration: number;
+  curve_slope: number | null;
+  rolldown: number;
+  rolldown_pnl: number;
+  static_return: number;
+  static_pnl: number;
+};
+
+export type CarryRollDownPayload = {
+  report_date: string;
+  total_market_value: number;
+  portfolio_carry: number;
+  portfolio_rolldown: number;
+  portfolio_static_return: number;
+  total_carry_pnl: number;
+  total_rolldown_pnl: number;
+  total_static_pnl: number;
+  ftp_rate: number;
+  items: CarryRollDownItem[];
+};
+
+export type SpreadAttributionItem = {
+  category: string;
+  category_type: string;
+  market_value: number;
+  duration: number;
+  weight: number;
+  yield_change: number | null;
+  treasury_change: number | null;
+  spread_change: number | null;
+  treasury_effect: number;
+  spread_effect: number;
+  total_price_effect: number;
+  treasury_contribution_pct: number;
+  spread_contribution_pct: number;
+};
+
+export type SpreadAttributionPayload = {
+  report_date: string;
+  start_date: string;
+  end_date: string;
+  treasury_10y_start: number | null;
+  treasury_10y_end: number | null;
+  treasury_10y_change: number | null;
+  total_market_value: number;
+  portfolio_duration: number;
+  total_treasury_effect: number;
+  total_spread_effect: number;
+  total_price_change: number;
+  primary_driver: string;
+  interpretation: string;
+  items: SpreadAttributionItem[];
+};
+
+export type KRDAttributionBucket = {
+  tenor: string;
+  tenor_years: number;
+  market_value: number;
+  weight: number;
+  bond_count: number;
+  bucket_duration: number;
+  krd: number;
+  yield_change: number | null;
+  duration_contribution: number;
+  contribution_pct: number;
+};
+
+export type KRDAttributionPayload = {
+  report_date: string;
+  start_date: string;
+  end_date: string;
+  total_market_value: number;
+  portfolio_duration: number;
+  portfolio_dv01: number;
+  total_duration_effect: number;
+  curve_shift_type: string;
+  curve_interpretation: string;
+  buckets: KRDAttributionBucket[];
+  max_contribution_tenor: string;
+  max_contribution_value: number;
+};
+
+export type AdvancedAttributionSummary = {
+  report_date: string;
+  portfolio_carry: number;
+  portfolio_rolldown: number;
+  static_return_annualized: number;
+  treasury_effect_total: number;
+  spread_effect_total: number;
+  spread_driver: string;
+  max_krd_tenor: string;
+  curve_shape_change: string;
+  key_insights: string[];
+};
+
+export type CampisiAttributionItem = {
+  category: string;
+  market_value: number;
+  weight: number;
+  total_return: number;
+  total_return_pct: number;
+  income_return: number;
+  income_return_pct: number;
+  treasury_effect: number;
+  treasury_effect_pct: number;
+  spread_effect: number;
+  spread_effect_pct: number;
+  selection_effect: number;
+  selection_effect_pct: number;
+};
+
+export type CampisiAttributionPayload = {
+  report_date: string;
+  period_start: string;
+  period_end: string;
+  num_days: number;
+  total_market_value: number;
+  total_return: number;
+  total_return_pct: number;
+  total_income: number;
+  total_treasury_effect: number;
+  total_spread_effect: number;
+  total_selection_effect: number;
+  income_contribution_pct: number;
+  treasury_contribution_pct: number;
+  spread_contribution_pct: number;
+  selection_contribution_pct: number;
+  primary_driver: string;
+  interpretation: string;
+  items: CampisiAttributionItem[];
+};
+
+// --- 现金流预测 / 久期缺口 (`/api/cashflow-projection`) ---
+export type CashflowMonthlyBucket = {
+  year_month: string;
+  asset_inflow: string;
+  liability_outflow: string;
+  net_cashflow: string;
+  cumulative_net: string;
+};
+
+export type CashflowMaturingAsset = {
+  instrument_code: string;
+  instrument_name: string;
+  maturity_date: string;
+  face_value: string;
+  market_value: string;
+  currency_code: string;
+};
+
+export type CashflowProjectionPayload = {
+  report_date: string;
+  duration_gap: string;
+  asset_duration: string;
+  liability_duration: string;
+  equity_duration: string;
+  rate_sensitivity_1bp: string;
+  reinvestment_risk_12m: string;
+  monthly_buckets: CashflowMonthlyBucket[];
+  top_maturing_assets_12m: CashflowMaturingAsset[];
+  warnings: string[];
+  computed_at: string;
+};
+
+// --- 债券分析驾驶舱 (`/api/bond-dashboard`) ---
+export type BondDashboardKpiItem = {
+  label: string;
+  value: string;
+  unit: string;
+  change_value: string | null;
+  change_label: string | null;
+};
+
+export type BondDashboardHeadlinePayload = {
+  report_date: string;
+  prev_report_date: string | null;
+  kpis: {
+    total_market_value: string;
+    unrealized_pnl: string;
+    weighted_ytm: string;
+    weighted_duration: string;
+    weighted_coupon: string;
+    credit_spread_median: string;
+    total_dv01: string;
+    bond_count: number;
+  };
+  prev_kpis: {
+    total_market_value: string;
+    unrealized_pnl: string;
+    weighted_ytm: string;
+    weighted_duration: string;
+    weighted_coupon: string;
+    credit_spread_median: string;
+    total_dv01: string;
+    bond_count: number;
+  } | null;
+};
+
+export type AssetStructureItem = {
+  category: string;
+  total_market_value: string;
+  bond_count: number;
+  percentage: string;
+};
+
+export type AssetStructurePayload = {
+  report_date: string;
+  group_by: string;
+  items: AssetStructureItem[];
+  total_market_value: string;
+};
+
+export type YieldDistributionItem = {
+  yield_bucket: string;
+  total_market_value: string;
+  bond_count: number;
+};
+
+export type YieldDistributionPayload = {
+  report_date: string;
+  items: YieldDistributionItem[];
+  weighted_ytm: string;
+};
+
+export type PortfolioComparisonItem = {
+  portfolio_name: string;
+  total_market_value: string;
+  weighted_ytm: string;
+  weighted_duration: string;
+  total_dv01: string;
+  bond_count: number;
+};
+
+export type PortfolioComparisonPayload = {
+  report_date: string;
+  items: PortfolioComparisonItem[];
+};
+
+export type SpreadAnalysisItem = {
+  bond_type: string;
+  median_yield: string;
+  bond_count: number;
+  total_market_value: string;
+};
+
+export type SpreadAnalysisPayload = {
+  report_date: string;
+  items: SpreadAnalysisItem[];
+};
+
+export type MaturityStructureItem = {
+  maturity_bucket: string;
+  total_market_value: string;
+  bond_count: number;
+  percentage: string;
+};
+
+export type MaturityStructurePayload = {
+  report_date: string;
+  items: MaturityStructureItem[];
+  total_market_value: string;
+};
+
+export type IndustryDistItem = {
+  industry_name: string;
+  total_market_value: string;
+  bond_count: number;
+  percentage: string;
+};
+
+export type IndustryDistPayload = {
+  report_date: string;
+  items: IndustryDistItem[];
+};
+
+export type RiskIndicatorsPayload = {
+  report_date: string;
+  total_market_value: string;
+  total_dv01: string;
+  weighted_duration: string;
+  credit_ratio: string;
+  weighted_convexity: string;
+  total_spread_dv01: string;
+  reinvestment_ratio_1y: string;
+};
+
+// --- Cube 多维查询 (`/api/cube`) ---
+export type CubeBasis = "formal" | "scenario" | "analytical";
+
+export type CubeQueryRequest = {
+  report_date: string;
+  fact_table: string;
+  measures: string[];
+  dimensions?: string[];
+  filters?: Record<string, string[]>;
+  order_by?: string[];
+  limit?: number;
+  offset?: number;
+  basis?: CubeBasis;
+};
+
+export type CubeDrillPath = {
+  dimension: string;
+  label: string;
+  available_values: string[];
+  current_filter: string[] | null;
+};
+
+export type CubeQueryPayload = {
+  report_date: string;
+  fact_table: string;
+  measures: string[];
+  dimensions: string[];
+  rows: Record<string, unknown>[];
+  total_rows: number;
+  drill_paths: CubeDrillPath[];
+};
+
+export type CubeDimensionsPayload = {
+  fact_table: string;
+  dimensions: string[];
+  measures: string[];
+  measure_fields: string[];
+};
+
+/** 后端 `CubeQueryResponse`：业务字段与 `result_meta` 同层，非 `ApiEnvelope`。 */
+export type CubeQueryResult = CubeQueryPayload & { result_meta: ResultMeta };
+
+// --- 负债结构分析（V1兼容 `/api/risk/buckets` 等原始 JSON，待后端统一 `ApiEnvelope`） ---
+
+export type LiabilityBucketAmountItem = {
+  bucket: string;
+  /** 原币金额（元），V1 多为 number；迁移中可为 decimal string */
+  amount?: number | string | null;
+  amount_yi?: number | string | null;
+};
+
+export type LiabilityNameAmountItem = {
+  name: string;
+  amount?: number | string | null;
+  amount_yi?: number | string | null;
+};
+
+export type LiabilityRiskBucketsPayload = {
+  report_date: string;
+  liabilities_structure: LiabilityNameAmountItem[];
+  liabilities_term_buckets: LiabilityBucketAmountItem[];
+  interbank_liabilities_structure?: LiabilityNameAmountItem[];
+  interbank_liabilities_term_buckets?: LiabilityBucketAmountItem[];
+  issued_liabilities_structure?: LiabilityNameAmountItem[];
+  issued_liabilities_term_buckets?: LiabilityBucketAmountItem[];
+};
+
+export type LiabilityYieldKpi = {
+  /** 小数口径，如 0.0255 = 2.55% */
+  asset_yield: number | null;
+  liability_cost: number | null;
+  market_liability_cost: number | null;
+  nim: number | null;
+};
+
+export type LiabilityYieldMetricsPayload = {
+  report_date: string;
+  kpi: LiabilityYieldKpi;
+};
+
+export type LiabilityCounterpartyItem = {
+  name: string;
+  value: number;
+  type?: string;
+  weighted_cost?: number | null;
+  weighted_rate?: number | null;
+};
+
+export type LiabilityCounterpartyTypeSlice = {
+  name: string;
+  value: number;
+};
+
+export type LiabilityCounterpartyPayload = {
+  report_date: string;
+  total_value: number;
+  top_10: LiabilityCounterpartyItem[];
+  by_type: LiabilityCounterpartyTypeSlice[];
+};
+
+export type LiabMonthlyCounterpartyDetailItem = {
+  name: string;
+  avg_value: number;
+  proportion: number;
+  weighted_cost?: number | null;
+  type?: string | null;
+};
+
+export type LiabMonthlyCategoryBreakdownItem = {
+  category: string;
+  avg_balance: number;
+  proportion: number;
+};
+
+export type LiabMonthlyBucketItem = {
+  bucket: string;
+  avg_balance: number;
+};
+
+export type LiabMonthlyInstitutionTypeItem = {
+  type: string;
+  avg_value: number;
+};
+
+export type LiabilitiesMonthlyItem = {
+  month: string;
+  month_label: string;
+  avg_total_liabilities: number;
+  avg_interbank_liabilities: number;
+  avg_issued_liabilities: number;
+  avg_liability_cost: number | null;
+  mom_change: number | null;
+  mom_change_pct: number | null;
+  counterparty_top10?: LiabMonthlyCounterpartyDetailItem[];
+  by_institution_type?: LiabMonthlyInstitutionTypeItem[];
+  structure_overview?: LiabMonthlyCategoryBreakdownItem[];
+  term_buckets?: LiabMonthlyBucketItem[];
+  interbank_by_type?: LiabMonthlyCategoryBreakdownItem[];
+  interbank_term_buckets?: LiabMonthlyBucketItem[];
+  issued_by_type?: LiabMonthlyCategoryBreakdownItem[];
+  issued_term_buckets?: LiabMonthlyBucketItem[];
+  counterparty_details?: LiabMonthlyCounterpartyDetailItem[];
+  num_days: number;
+};
+
+export type LiabilitiesMonthlyPayload = {
+  year: number;
+  months: LiabilitiesMonthlyItem[];
+  ytd_avg_total_liabilities: number;
+  ytd_avg_liability_cost: number | null;
+};
+
+/** ADB 日均分析 — 与 V1 `/api/analysis/adb` 对齐 */
+export type AdbSummary = {
+  total_avg_assets: number;
+  total_avg_liabilities: number;
+  end_spot_assets: number;
+  end_spot_liabilities: number;
+};
+
+export type AdbTrendItem = {
+  date: string;
+  daily_balance: number;
+  moving_average_30d: number;
+};
+
+export type AdbBreakdownItem = {
+  category: string;
+  side: "Asset" | "Liability" | string;
+  avg_balance: number;
+};
+
+export type AdbPayload = {
+  summary: AdbSummary;
+  trend: AdbTrendItem[];
+  breakdown: AdbBreakdownItem[];
+};
+
+export type AdbComparisonRow = {
+  category: string;
+  spot: number;
+  avg: number;
+  deviation: number;
+};
+
+export type AdbComparisonPayload = {
+  start_date: string;
+  end_date: string;
+  num_days: number;
+  simulated: boolean;
+  assets: AdbComparisonRow[];
+  liabilities: AdbComparisonRow[];
+  detail?: string;
+};
+
+export type AdbMonthlyBreakdownItem = {
+  category: string;
+  side: string;
+  avg_balance: number;
+  proportion: number;
+  weighted_rate: number | null;
+};
+
+export type AdbMonthlyItem = {
+  month: string;
+  month_label: string;
+  avg_assets: number;
+  avg_liabilities: number;
+  end_spot_assets: number;
+  end_spot_liabilities: number;
+  assets_mom_change: number | null;
+  liabilities_mom_change: number | null;
+  asset_yield: number | null;
+  liability_cost: number | null;
+  net_interest_margin: number | null;
+  breakdown_assets: AdbMonthlyBreakdownItem[];
+  breakdown_liabilities: AdbMonthlyBreakdownItem[];
+  num_days: number;
+};
+
+export type AdbMonthlyPayload = {
+  year: number;
+  months: AdbMonthlyItem[];
+  ytd_avg_assets: number;
+  ytd_avg_liabilities: number;
+  ytd_asset_yield: number | null;
+  ytd_liability_cost: number | null;
+  ytd_net_interest_margin: number | null;
+  unit?: string;
+};
+
+/** @deprecated 使用 AdbMonthlyItem — 保留别名供旧代码类型引用 */
+export type LiabilityAdbMonthlyItem = AdbMonthlyItem;
+
+/** @deprecated 使用 AdbMonthlyPayload */
+export type LiabilityAdbMonthlyPayload = AdbMonthlyPayload;

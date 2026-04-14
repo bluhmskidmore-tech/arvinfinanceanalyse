@@ -42,6 +42,14 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
   });
 
+  it("promotes bond-dashboard into the live primary navigation", () => {
+    const dash = workbenchNavigation.find((s) => s.key === "bond-dashboard");
+    expect(dash?.path).toBe("/bond-dashboard");
+    expect(dash?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "bond-dashboard")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "bond-dashboard")).toBe(false);
+  });
+
   it("promotes bond-analysis into the live primary navigation", () => {
     const bondAnalysis = workbenchNavigation.find((s) => s.key === "bond-analysis");
     expect(bondAnalysis?.readiness).toBe("live");
@@ -49,13 +57,84 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "bond-analysis")).toBe(false);
   });
 
+  it("promotes cross-asset into the live primary navigation", () => {
+    const cross = workbenchNavigation.find((s) => s.key === "cross-asset");
+    expect(cross?.path).toBe("/cross-asset");
+    expect(cross?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "cross-asset")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cross-asset")).toBe(false);
+  });
+
+  it("promotes positions into the live primary navigation", () => {
+    const positions = workbenchNavigation.find((s) => s.key === "positions");
+    expect(positions?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(false);
+  });
+
+  it("promotes liability-analytics into the live primary navigation", () => {
+    const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
+    expect(liab?.path).toBe("/liability-analytics");
+    expect(liab?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
+  });
+
+  it("promotes cashflow-projection into the live primary navigation", () => {
+    const cf = workbenchNavigation.find((s) => s.key === "cashflow-projection");
+    expect(cf?.path).toBe("/cashflow-projection");
+    expect(cf?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "cashflow-projection")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cashflow-projection")).toBe(false);
+  });
+
+  it("promotes kpi-performance into the live primary navigation", () => {
+    const kpi = workbenchNavigation.find((s) => s.key === "kpi-performance");
+    expect(kpi?.path).toBe("/kpi");
+    expect(kpi?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(false);
+  });
+
+  it("promotes team-performance into the live primary navigation", () => {
+    const team = workbenchNavigation.find((s) => s.key === "team-performance");
+    expect(team?.path).toBe("/team-performance");
+    expect(team?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "team-performance")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "team-performance")).toBe(false);
+  });
+
+  it("promotes cube-query into the live primary navigation", () => {
+    const cube = workbenchNavigation.find((s) => s.key === "cube-query");
+    expect(cube?.path).toBe("/cube-query");
+    expect(cube?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
+  });
+
+  it("promotes pnl-attribution into the live primary navigation", () => {
+    const pnlAttr = workbenchNavigation.find((s) => s.key === "pnl-attribution");
+    expect(pnlAttr?.path).toBe("/pnl-attribution");
+    expect(pnlAttr?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "pnl-attribution")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "pnl-attribution")).toBe(false);
+  });
+
+  it("promotes platform-config into the live primary navigation", () => {
+    const platform = workbenchNavigation.find((s) => s.key === "platform-config");
+    expect(platform?.path).toBe("/platform-config");
+    expect(platform?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "platform-config")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "platform-config")).toBe(false);
+  });
+
   it("tracks reserved modules outside the live primary navigation", () => {
-    expect(secondaryWorkbenchNavigation.length).toBeGreaterThan(0);
     expect(
       secondaryWorkbenchNavigation.every((s) => s.readiness !== "live"),
     ).toBe(true);
     expect(primaryWorkbenchNavigation.length + secondaryWorkbenchNavigation.length).toBe(
       workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
+    expect(secondaryWorkbenchNavigation.length).toBe(0);
   });
 });

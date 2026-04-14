@@ -1,9 +1,11 @@
 ﻿import importlib
+from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
 import duckdb
 from fastapi.testclient import TestClient
+import pytest
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
@@ -314,6 +316,151 @@ def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_sync_fallback_materializes_only_current_incremental_batch(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, _, data_root = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    for file_name in ("ZQTZSHOW-20251230.xls", "TYWLSHOW-20251230.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    assert refresh_response.json()["status"] == "completed"
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select source_family, source_file, report_date
+            from phase1_source_preview_summary
+            order by source_family, source_file
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("tyw", "TYWLSHOW-20251230.xls", "2025-12-30"),
+        ("tyw", "TYWLSHOW-20251231.xls", "2025-12-31"),
+        ("zqtz", "ZQTZSHOW-20251230.xls", "2025-12-30"),
+        ("zqtz", "ZQTZSHOW-20251231.xls", "2025-12-31"),
+    ]
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_sync_fallback_reuses_latest_manifest_when_no_new_files(
+    tmp_path,
+    monkeypatch,
+):
+    _, governance_dir, _ = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=False,
+    )
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    first_refresh = client.post("/ui/preview/source-foundation/refresh").json()
+    manifest_count_before = len(
+        GovernanceRepository(base_dir=governance_dir).read_all("source_manifest")
+    )
+
+    second_refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert second_refresh_response.status_code == 200
+    second_refresh = second_refresh_response.json()
+    assert first_refresh["status"] == "completed"
+    assert second_refresh["status"] == "completed"
+    assert second_refresh["ingest_batch_id"] is None
+    assert set(second_refresh["preview_sources"]) == {"tyw", "zqtz"}
+    assert len(GovernanceRepository(base_dir=governance_dir).read_all("source_manifest")) == manifest_count_before
+
+    foundation_response = client.get("/ui/preview/source-foundation")
+    assert foundation_response.status_code == 200
+    assert {
+        source["source_family"]
+        for source in foundation_response.json()["result"]["sources"]
+    } == {"tyw", "zqtz"}
+    get_settings.cache_clear()
+
+
+def test_source_preview_foundation_endpoint_hides_stale_non_refresh_families(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, data_root = _configure_source_preview_refresh_env(
+        tmp_path,
+        monkeypatch,
+        include_pnl_preview_source=True,
+    )
+    ingest_module = load_module(
+        "backend.app.tasks.ingest",
+        "backend/app/tasks/ingest.py",
+    )
+    materialize_module = load_module(
+        "backend.app.tasks.materialize",
+        "backend/app/tasks/materialize.py",
+    )
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    ingest_module.ingest_demo_manifest.fn()
+    materialize_module.materialize_cache_view.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        data_root=str(data_root),
+    )
+
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    refresh_response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert refresh_response.status_code == 200
+    assert refresh_response.json()["status"] == "completed"
+
+    foundation_response = client.get("/ui/preview/source-foundation")
+    assert foundation_response.status_code == 200
+    assert {
+        source["source_family"]
+        for source in foundation_response.json()["result"]["sources"]
+    } == {"tyw", "zqtz"}
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_sync_fallback_dual_writes_job_state_when_configured(
     tmp_path,
     monkeypatch,
@@ -355,6 +502,51 @@ def test_source_preview_refresh_sync_fallback_dual_writes_job_state_when_configu
     get_settings.cache_clear()
 
 
+def test_source_preview_refresh_clears_stale_inflight_run(tmp_path, monkeypatch):
+    governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+    send_calls: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        refresh_module.refresh_source_preview_cache,
+        "send",
+        lambda **kwargs: send_calls.append(kwargs),
+    )
+
+    stale_started = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc).isoformat()
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-stale",
+            "job_name": "source_preview_refresh",
+            "status": "running",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_running",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+            "started_at": stale_started,
+        },
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.post("/ui/preview/source-foundation/refresh")
+
+    assert response.status_code == 200
+    assert send_calls
+    records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
+    stale_failed = [
+        r
+        for r in records
+        if r.get("run_id") == "source-preview-stale" and r.get("status") == "failed"
+    ]
+    assert stale_failed
+    assert stale_failed[-1].get("source_version") == "sv_preview_stale"
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_rejects_duplicate_inflight_run(tmp_path, monkeypatch):
     governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
     refresh_module = load_module(
@@ -379,6 +571,7 @@ def test_source_preview_refresh_rejects_duplicate_inflight_run(tmp_path, monkeyp
             "source_version": "sv_preview_running",
             "vendor_version": "vv_none",
             "preview_sources": ["zqtz", "tyw"],
+            "started_at": datetime.now(timezone.utc).isoformat(),
         },
     )
 
@@ -586,6 +779,64 @@ def test_source_preview_refresh_status_run_id_returns_exact_terminal_record(tmp_
     assert payload["source_version"] == "sv_preview_done"
     assert payload["ingest_batch_id"] == "ib_target"
     assert payload["trigger_mode"] == "terminal"
+    get_settings.cache_clear()
+
+
+def test_source_preview_refresh_record_loading_collapses_historical_running_rows(tmp_path, monkeypatch):
+    governance_dir = _configure_source_preview_status_env(tmp_path, monkeypatch)
+    refresh_module = load_module(
+        "backend.app.services.source_preview_refresh_service",
+        "backend/app/services/source_preview_refresh_service.py",
+    )
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-target",
+            "job_name": "source_preview_refresh",
+            "status": "running",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_running",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+            "started_at": "2026-01-01T00:00:00+00:00",
+        },
+    )
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-target",
+            "job_name": "source_preview_refresh",
+            "status": "completed",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_done",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+            "finished_at": "2026-01-01T00:05:00+00:00",
+        },
+    )
+    GovernanceRepository(base_dir=governance_dir).append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "source-preview-next",
+            "job_name": "source_preview_refresh",
+            "status": "queued",
+            "cache_key": "source_preview.foundation",
+            "lock": "lock:duckdb:source-preview",
+            "source_version": "sv_preview_pending",
+            "vendor_version": "vv_none",
+            "preview_sources": ["zqtz", "tyw"],
+        },
+    )
+
+    records = refresh_module._load_source_preview_refresh_records(get_settings())
+
+    assert [(record["run_id"], record["status"]) for record in records] == [
+        ("source-preview-target", "completed"),
+        ("source-preview-next", "queued"),
+    ]
     get_settings.cache_clear()
 
 
@@ -1324,6 +1575,21 @@ def test_materialize_ignores_manifest_rows_whose_archived_paths_no_longer_exist(
 
     assert len(summaries) == 1
     assert summaries[0]["source_version"] == "sv_valid"
+
+
+def test_write_preview_tables_preserves_original_schema_bootstrap_error(tmp_path, monkeypatch):
+    preview_module = load_module(
+        "backend.app.repositories.source_preview_repo",
+        "backend/app/repositories/source_preview_repo.py",
+    )
+
+    def _boom(_conn):
+        raise RuntimeError("schema boom")
+
+    monkeypatch.setattr(preview_module, "ensure_source_preview_schema_tables", _boom)
+
+    with pytest.raises(RuntimeError, match="schema boom"):
+        preview_module._write_preview_tables(str(tmp_path / "moss.duckdb"), [], [], [])
 
 
 def test_preview_rows_and_traces_default_to_latest_batch_for_family(tmp_path, monkeypatch):

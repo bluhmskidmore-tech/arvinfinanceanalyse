@@ -9,7 +9,8 @@ import { useApiClient } from "../../api/client";
 import type { PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+import { KpiCard } from "../workbench/components/KpiCard";
+import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 
 const summaryGridStyle = {
   display: "grid",
@@ -265,35 +266,41 @@ export default function PnlPage() {
           }}
         >
           <div data-testid="pnl-overview-cards" style={summaryGridStyle}>
-            <PlaceholderCard
+            <KpiCard
               title="FI 明细行数"
               value={cellText(overview?.formal_fi_row_count)}
               detail="formal_fi 明细行数（后端计数）。"
+              unit="行"
             />
-            <PlaceholderCard
+            <KpiCard
               title="非标桥接行数"
               value={cellText(overview?.nonstd_bridge_row_count)}
               detail="nonstd_bridge 明细行数（后端计数）。"
+              unit="行"
             />
-            <PlaceholderCard
+            <KpiCard
               title="利息收入 (514)"
               value={cellText(overview?.interest_income_514)}
               detail="后端返回的汇总金额字符串。"
+              tone={toneFromSignedDisplayString(cellText(overview?.interest_income_514))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="公允价值变动 (516)"
               value={cellText(overview?.fair_value_change_516)}
               detail="后端返回的汇总金额字符串。"
+              tone={toneFromSignedDisplayString(cellText(overview?.fair_value_change_516))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="资本利得 (517)"
               value={cellText(overview?.capital_gain_517)}
               detail="后端返回的汇总金额字符串。"
+              tone={toneFromSignedDisplayString(cellText(overview?.capital_gain_517))}
             />
-            <PlaceholderCard
+            <KpiCard
               title="损益合计"
               value={cellText(overview?.total_pnl)}
               detail="后端返回的汇总损益字符串。"
+              tone={toneFromSignedDisplayString(cellText(overview?.total_pnl))}
             />
           </div>
         </AsyncSection>

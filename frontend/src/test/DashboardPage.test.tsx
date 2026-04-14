@@ -54,7 +54,10 @@ describe("DashboardPage", () => {
 
     renderDashboard(slowClient);
 
-    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "驾驶舱" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     await waitFor(() => {
       expect(releaseOverview).toBeDefined();
@@ -66,7 +69,10 @@ describe("DashboardPage", () => {
   it("renders dashboard shell after queries settle", async () => {
     renderDashboard();
 
-    expect(await screen.findByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "驾驶舱" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
     expect(await screen.findAllByText(/MOSS/i)).not.toHaveLength(0);
   });

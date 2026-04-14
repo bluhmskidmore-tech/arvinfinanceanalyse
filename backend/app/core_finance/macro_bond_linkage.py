@@ -69,6 +69,9 @@ SERIES_NAME_OVERRIDES = {
 
 ZERO_DECIMAL = Decimal("0")
 EPSILON = 1e-12
+ENVIRONMENT_SCORE_METHOD = "robust_environment_score_v1"
+ENVIRONMENT_WINSORIZE_TAIL_FRACTION = 0.1
+ENVIRONMENT_DISPERSION_FLOOR = 0.05
 
 
 def pearson_correlation(
@@ -714,6 +717,10 @@ def _weighted_inflation_score(
                 "latest_value": latest_value,
                 "score": score,
                 "weight": weight,
+                "scoring_method": ENVIRONMENT_SCORE_METHOD,
+                "observation_count": 1,
+                "winsorized": False,
+                "normalized_signal": round(float(latest_value) - 2.0, 6),
             }
         )
     if total_weight <= EPSILON:
@@ -762,26 +769,33 @@ def _score_rate_direction(
     window_points = [(point_date, value) for point_date, value in points if point_date >= window_start]
     if len(window_points) < 2:
         return None
+    values = [float(value) for _point_date, value in window_points]
+    winsorized_values, winsorized = _maybe_winsorize_environment_values(values)
     start_date, start_value = window_points[0]
-    end_date, end_value = window_points[-1]
-    delta = float(end_value - start_value)
-    if delta >= 0.20:
-        score = 1.0
-    elif delta <= -0.20:
-        score = -1.0
-    else:
-        score = 0.0
+    end_date, _end_value = window_points[-1]
+    start_metric = winsorized_values[0]
+    latest_metric = winsorized_values[-1]
+    delta = float(latest_metric - start_metric)
+    normalized_signal = _normalize_signal(
+        delta,
+        dispersion=max(_population_std(winsorized_values), ENVIRONMENT_DISPERSION_FLOOR),
+    )
+    score = _bounded_score(normalized_signal)
     return {
         "category": "rate",
         "series_id": series_id,
         "series_name": series_name,
         "window_start": start_date.isoformat(),
         "window_end": end_date.isoformat(),
-        "start_value": start_value,
-        "latest_value": end_value,
+        "start_value": start_metric,
+        "latest_value": latest_metric,
         "delta": delta,
         "score": score,
         "weight": weight,
+        "scoring_method": ENVIRONMENT_SCORE_METHOD,
+        "observation_count": len(window_points),
+        "winsorized": winsorized,
+        "normalized_signal": round(normalized_signal, 6),
     }
 
 
@@ -794,22 +808,20 @@ def _score_liquidity(
     values = [float(value) for _point_date, value in points]
     if len(values) < 3:
         return None
+    winsorized_values, winsorized = _maybe_winsorize_environment_values(values)
     recent_count = min(5, max(1, len(values) // 3))
-    baseline = values[:-recent_count]
-    recent = values[-recent_count:]
+    baseline = winsorized_values[:-recent_count]
+    recent = winsorized_values[-recent_count:]
     if len(baseline) < 2:
         return None
     baseline_mean = _mean(baseline)
     recent_mean = _mean(recent)
-    baseline_std = _population_std(baseline)
-    upper_bound = baseline_mean + baseline_std
-    lower_bound = baseline_mean - baseline_std
-    if recent_mean > upper_bound:
-        score = -1.0
-    elif recent_mean < lower_bound:
-        score = 1.0
-    else:
-        score = 0.0
+    baseline_std = max(_population_std(baseline), ENVIRONMENT_DISPERSION_FLOOR)
+    normalized_signal = _normalize_signal(
+        recent_mean - baseline_mean,
+        dispersion=baseline_std,
+    )
+    score = -_bounded_score(normalized_signal)
     return {
         "category": "liquidity",
         "series_id": series_id,
@@ -819,6 +831,10 @@ def _score_liquidity(
         "recent_mean": recent_mean,
         "score": score,
         "weight": weight,
+        "scoring_method": ENVIRONMENT_SCORE_METHOD,
+        "observation_count": len(points),
+        "winsorized": winsorized,
+        "normalized_signal": round(normalized_signal, 6),
     }
 
 
@@ -828,27 +844,61 @@ def _score_latest_delta(
     weight: float,
     points: list[tuple[date, float]],
 ) -> dict[str, Any] | None:
-    previous_date, previous_value = points[-2]
-    latest_date, latest_value = points[-1]
-    delta = float(latest_value - previous_value)
-    if delta > 0:
-        score = 1.0
-    elif delta < 0:
-        score = -1.0
-    else:
-        score = 0.0
+    values = [float(value) for _point_date, value in points]
+    winsorized_values, winsorized = _maybe_winsorize_environment_values(values)
+    previous_date, _previous_value = points[-2]
+    latest_date, _latest_value = points[-1]
+    previous_metric = winsorized_values[-2]
+    latest_metric = winsorized_values[-1]
+    delta = float(latest_metric - previous_metric)
+    delta_history = [
+        winsorized_values[index] - winsorized_values[index - 1]
+        for index in range(1, len(winsorized_values))
+    ]
+    dispersion = max(
+        _population_std(delta_history) if len(delta_history) > 1 else 0.0,
+        ENVIRONMENT_DISPERSION_FLOOR,
+    )
+    normalized_signal = _normalize_signal(delta, dispersion=dispersion)
+    score = _bounded_score(normalized_signal)
     return {
         "category": "growth",
         "series_id": series_id,
         "series_name": series_name,
         "previous_date": previous_date.isoformat(),
         "report_date": latest_date.isoformat(),
-        "previous_value": previous_value,
-        "latest_value": latest_value,
+        "previous_value": previous_metric,
+        "latest_value": latest_metric,
         "delta": delta,
         "score": score,
         "weight": weight,
+        "scoring_method": ENVIRONMENT_SCORE_METHOD,
+        "observation_count": len(points),
+        "winsorized": winsorized,
+        "normalized_signal": round(normalized_signal, 6),
     }
+
+
+def _maybe_winsorize_environment_values(values: Sequence[float]) -> tuple[list[float], bool]:
+    prepared = [float(value) for value in values]
+    if len(prepared) < 4:
+        return prepared, False
+    return _winsorize_values(
+        prepared,
+        tail_fraction=ENVIRONMENT_WINSORIZE_TAIL_FRACTION,
+    ), True
+
+
+def _normalize_signal(delta: float, *, dispersion: float) -> float:
+    if abs(delta) <= EPSILON:
+        return 0.0
+    return delta / max(float(dispersion), ENVIRONMENT_DISPERSION_FLOOR)
+
+
+def _bounded_score(signal: float) -> float:
+    if abs(signal) <= EPSILON:
+        return 0.0
+    return round(math.tanh(signal / 2.0), 6)
 
 
 def _mean(values: Sequence[float]) -> float:

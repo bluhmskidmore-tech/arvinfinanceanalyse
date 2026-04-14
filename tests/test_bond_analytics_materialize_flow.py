@@ -177,6 +177,43 @@ def _seed_bond_snapshot_rows(duckdb_path: str) -> None:
         conn.close()
 
 
+BOND_ANALYTICS_TEST_YIELD_ANCHORS = ("2026-03-01", "2026-03-30", "2026-03-31")
+
+
+def seed_yield_curves_for_bond_analytics_tests(duckdb_path: str) -> None:
+    """Minimal formal yield curves so refresh-time `ensure_yield_curve_inputs_on_or_before` skips network fetches."""
+    from backend.app.repositories.yield_curve_repo import YieldCurveRepository
+    from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
+    from backend.app.tasks.yield_curve_materialize import RULE_VERSION
+
+    repo = YieldCurveRepository(duckdb_path)
+    points = [
+        YieldCurvePoint("3M", Decimal("1.0")),
+        YieldCurvePoint("6M", Decimal("1.1")),
+        YieldCurvePoint("1Y", Decimal("1.5")),
+        YieldCurvePoint("2Y", Decimal("1.6")),
+        YieldCurvePoint("3Y", Decimal("1.8")),
+        YieldCurvePoint("5Y", Decimal("2.0")),
+        YieldCurvePoint("7Y", Decimal("2.2")),
+        YieldCurvePoint("10Y", Decimal("2.5")),
+        YieldCurvePoint("20Y", Decimal("2.8")),
+        YieldCurvePoint("30Y", Decimal("3.0")),
+    ]
+    for trade_date in BOND_ANALYTICS_TEST_YIELD_ANCHORS:
+        snapshots = [
+            YieldCurveSnapshot(
+                curve_type=curve_type,
+                trade_date=trade_date,
+                points=points,
+                vendor_name="test_vendor",
+                vendor_version="vv_test_yield",
+                source_version="sv_test_yield",
+            )
+            for curve_type in ("treasury", "cdb", "aaa_credit")
+        ]
+        repo.replace_curve_snapshots(trade_date=trade_date, snapshots=snapshots, rule_version=RULE_VERSION)
+
+
 def _materialize_sample_facts(tmp_path):
     repo_mod, task_mod = _load_modules()
     duckdb_path = tmp_path / "moss.duckdb"

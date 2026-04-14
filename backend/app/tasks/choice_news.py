@@ -7,6 +7,7 @@ from pathlib import Path
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
@@ -69,6 +70,11 @@ def _chunk_topics(topics, size: int):
         yield topics[start : start + size]
 
 
+def ensure_choice_news_event_schema(conn: duckdb.DuckDBPyConnection) -> None:
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+
+
 def _materialize_choice_news_events(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
@@ -85,25 +91,7 @@ def _materialize_choice_news_events(
 
     conn = duckdb.connect(str(duckdb_file), read_only=False)
     try:
-        conn.execute(
-            """
-            create table if not exists choice_news_event (
-              event_key varchar,
-              received_at varchar,
-              group_id varchar,
-              content_type varchar,
-              serial_id bigint,
-              request_id bigint,
-              error_code bigint,
-              error_msg varchar,
-              topic_code varchar,
-              item_index bigint,
-              payload_text varchar,
-              payload_json varchar
-            )
-            """
-        )
-        conn.execute("alter table choice_news_event add column if not exists event_key varchar")
+        ensure_choice_news_event_schema(conn)
         for event in events:
             event_key = str(event.get("event_key") or _build_choice_news_event_key(event))
             exists = conn.execute(

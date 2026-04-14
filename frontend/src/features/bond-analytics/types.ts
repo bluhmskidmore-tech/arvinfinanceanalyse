@@ -27,6 +27,10 @@ import type {
 
 export type PeriodType = "MoM" | "YTD" | "TTM";
 
+export type BondAnalyticsAssetClassFilter = "all" | "rate" | "credit";
+export type BondAnalyticsAccountingClassFilter = "all" | "AC" | "OCI" | "TPL";
+export type BondAnalyticsScenarioSetFilter = "standard" | "custom";
+
 export type AssetClassBreakdown = ApiAssetClassBreakdown;
 export type BondLevelDecomposition = ApiBondLevelDecomposition;
 export type ReturnDecompositionResponse = ApiReturnDecompositionPayload;

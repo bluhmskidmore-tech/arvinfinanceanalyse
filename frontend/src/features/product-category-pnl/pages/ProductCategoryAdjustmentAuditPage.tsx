@@ -9,7 +9,7 @@ import type {
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage.tsx";
+import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
 
 const DEFAULT_FILTERS: ProductCategoryManualAdjustmentQuery = {
   adjustmentId: "",

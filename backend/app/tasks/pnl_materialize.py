@@ -6,6 +6,7 @@ from pathlib import Path
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.core_finance.pnl import (
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
@@ -237,50 +238,12 @@ def _materialize_pnl_facts(
 
 
 materialize_pnl_facts = register_actor_once("materialize_pnl_facts", _materialize_pnl_facts)
+run_pnl_materialize_sync = _materialize_pnl_facts
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        """
-        create table if not exists fact_formal_pnl_fi (
-          report_date varchar,
-          instrument_code varchar,
-          portfolio_name varchar,
-          cost_center varchar,
-          invest_type_std varchar,
-          accounting_basis varchar,
-          currency_basis varchar,
-          interest_income_514 decimal(24, 8),
-          fair_value_change_516 decimal(24, 8),
-          capital_gain_517 decimal(24, 8),
-          manual_adjustment decimal(24, 8),
-          total_pnl decimal(24, 8),
-          source_version varchar,
-          rule_version varchar,
-          ingest_batch_id varchar,
-          trace_id varchar
-        )
-        """
-    )
-    conn.execute(
-        """
-        create table if not exists fact_nonstd_pnl_bridge (
-          report_date varchar,
-          bond_code varchar,
-          portfolio_name varchar,
-          cost_center varchar,
-          interest_income_514 decimal(24, 8),
-          fair_value_change_516 decimal(24, 8),
-          capital_gain_517 decimal(24, 8),
-          manual_adjustment decimal(24, 8),
-          total_pnl decimal(24, 8),
-          source_version varchar,
-          rule_version varchar,
-          ingest_batch_id varchar,
-          trace_id varchar
-        )
-        """
-    )
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
 
 
 def _assert_partition_matches(

@@ -13,7 +13,10 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from tests.helpers import load_module
-from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    _seed_bond_snapshot_rows,
+    seed_yield_curves_for_bond_analytics_tests,
+)
 
 
 REPORT_DATE = "2026-03-31"
@@ -50,6 +53,14 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
     (
         "/api/bond-analytics/accounting-class-audit",
         {"report_date": REPORT_DATE},
+    ),
+    (
+        "/api/bond-analytics/portfolio-headlines",
+        {"report_date": REPORT_DATE},
+    ),
+    (
+        "/api/bond-analytics/top-holdings",
+        {"report_date": REPORT_DATE, "top_n": "20"},
     ),
 ]
 
@@ -92,7 +103,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 7
+    assert len(paths) == len(set(paths)) == 9
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):
@@ -131,6 +142,7 @@ def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
     get_settings.cache_clear()
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",

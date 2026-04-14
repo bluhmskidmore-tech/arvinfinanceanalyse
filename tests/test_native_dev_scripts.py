@@ -15,6 +15,7 @@ def test_native_development_scripts_exist():
         ROOT / "scripts" / "dev-postgres-down.ps1",
         ROOT / "scripts" / "dev-postgres-status.ps1",
         ROOT / "scripts" / "dev-python.ps1",
+        ROOT / "scripts" / "dev-governance-maintenance.ps1",
     ]
 
     missing = [str(path) for path in expected if not path.exists()]

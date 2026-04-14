@@ -7,6 +7,7 @@ from pathlib import Path
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.product_category_mapping import build_default_product_category_config
 from backend.app.core_finance.product_category_pnl import (
     ManualAdjustment,
@@ -183,59 +184,8 @@ materialize_product_category_pnl = register_actor_once(
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        """
-        create table if not exists product_category_pnl_canonical_fact (
-          report_date varchar,
-          account_code varchar,
-          currency varchar,
-          account_name varchar,
-          beginning_balance decimal(24, 8),
-          ending_balance decimal(24, 8),
-          monthly_pnl decimal(24, 8),
-          daily_avg_balance decimal(24, 8),
-          annual_avg_balance decimal(24, 8),
-          days_in_period integer,
-          source_version varchar,
-          rule_version varchar
-        )
-        """
-    )
-    # Scenario FTP adjustments are applied at read time (see analysis_adapters); keep empty table for DDL compatibility.
-    for table_name in (
-        "product_category_pnl_formal_read_model",
-        "product_category_pnl_scenario_read_model",
-    ):
-        conn.execute(
-            f"""
-            create table if not exists {table_name} (
-              report_date varchar,
-              view varchar,
-              sort_order integer,
-              category_id varchar,
-              category_name varchar,
-              side varchar,
-              level integer,
-              baseline_ftp_rate_pct decimal(12, 6),
-              cnx_scale decimal(24, 8),
-              cny_scale decimal(24, 8),
-              foreign_scale decimal(24, 8),
-              cnx_cash decimal(24, 8),
-              cny_cash decimal(24, 8),
-              foreign_cash decimal(24, 8),
-              cny_ftp decimal(24, 8),
-              foreign_ftp decimal(24, 8),
-              cny_net decimal(24, 8),
-              foreign_net decimal(24, 8),
-              business_net_income decimal(24, 8),
-              weighted_yield decimal(24, 8),
-              is_total boolean,
-              children_json varchar,
-              source_version varchar,
-              rule_version varchar
-            )
-            """
-        )
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
 
 
 def _insert_rows(

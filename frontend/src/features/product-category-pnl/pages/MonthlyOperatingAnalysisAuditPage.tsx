@@ -46,13 +46,18 @@ const MAPPING_FIELD_OPTIONS = [
 ] as const;
 
 const ANALYSIS_SECTION_OPTIONS = [
-  { value: "overview", label: "overview" },
-  { value: "alerts", label: "alerts" },
+  { value: "overview", label: "\u7ecf\u8425\u6982\u89c8 (overview)" },
+  { value: "alerts", label: "\u5f02\u52a8\u9884\u8b66 (alerts)" },
 ] as const;
 
 const ANALYSIS_METRIC_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
-  overview: [{ value: "value", label: "value" }],
-  alerts: [{ value: "alert_level", label: "alert_level" }],
+  overview: [{ value: "value", label: "\u6307\u6807\u503c (value)" }],
+  alerts: [{ value: "alert_level", label: "\u9884\u8b66\u7ea7\u522b (alert_level)" }],
+};
+
+const ANALYSIS_ROW_KEY_OPTIONS: Record<string, Array<{ value: string; label: string }>> = {
+  overview: [{ value: "loan_ratio", label: "\u5b58\u8d37\u6bd4 (loan_ratio)" }],
+  alerts: [{ value: "14001000001", label: "14001000001 / \u4e70\u5165\u8fd4\u552e" }],
 };
 
 function downloadAuditCsv(filename: string, content: string) {
@@ -132,8 +137,14 @@ export default function MonthlyOperatingAnalysisAuditPage() {
   });
 
   const isMappingAdjustment = draft.adjustment_class === "mapping_adjustment";
-  const selectedSectionKey = String(draft.target.section_key ?? ANALYSIS_SECTION_OPTIONS[0]?.value ?? "overview");
+  const selectedSectionKey = String(draft.target.section_key ?? "overview");
   const metricOptions = ANALYSIS_METRIC_OPTIONS[selectedSectionKey] ?? [];
+  const rowKeyOptions = ANALYSIS_ROW_KEY_OPTIONS[selectedSectionKey] ?? [];
+  const selectedRowKey = String(draft.target.row_key ?? "");
+  const rowKeyOptionsWithFallback =
+    selectedRowKey && rowKeyOptions.every((option) => option.value !== selectedRowKey)
+      ? [...rowKeyOptions, { value: selectedRowKey, label: selectedRowKey }]
+      : rowKeyOptions;
 
   function updateDraft<K extends keyof QdbGlMonthlyAnalysisManualAdjustmentRequest>(
     key: K,
@@ -368,7 +379,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                   onChange={(event) =>
                     updateDraft("target", {
                       section_key: event.target.value,
-                      row_key: String(draft.target.row_key ?? ""),
+                      row_key: "",
                       metric_key: ANALYSIS_METRIC_OPTIONS[event.target.value]?.[0]?.value ?? "",
                     })
                   }
@@ -382,9 +393,9 @@ export default function MonthlyOperatingAnalysisAuditPage() {
               </label>
               <label style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.rowKey}</span>
-                <input
+                <select
                   data-testid="monthly-operating-analysis-analysis-row-key"
-                  value={String(draft.target.row_key ?? "")}
+                  value={selectedRowKey}
                   onChange={(event) =>
                     updateDraft("target", {
                       section_key: selectedSectionKey,
@@ -392,8 +403,14 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                       metric_key: String(draft.target.metric_key ?? metricOptions[0]?.value ?? ""),
                     })
                   }
-                  placeholder="如 14001000001 或 overview row key"
-                />
+                >
+                  <option value="">请选择行标识</option>
+                  {rowKeyOptionsWithFallback.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.metricKey}</span>

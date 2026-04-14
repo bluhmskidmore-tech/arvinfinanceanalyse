@@ -99,6 +99,18 @@ class SourceManifestRepository:
             "last_row": rows[-1] if rows else None,
         }
 
+    def filter_incremental_rows(self, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        latest_by_slot = self._latest_by_source_slot()
+        incremental_rows: list[dict[str, object]] = []
+        for row in rows:
+            previous = latest_by_slot.get(self._source_slot_identity(row))
+            if previous is not None and str(previous.get("source_version", "")) == str(
+                row.get("source_version", "")
+            ):
+                continue
+            incremental_rows.append(row)
+        return incremental_rows
+
     def select_for_snapshot_materialization(
         self,
         *,
@@ -138,13 +150,7 @@ class SourceManifestRepository:
             bounded = [row for row in family_rows if str(row.get("report_date", "")) == latest_report]
             if not bounded:
                 continue
-            latest_batch_id = max(
-                bounded,
-                key=lambda item: (
-                    str(item.get("created_at", "")),
-                    str(item.get("ingest_batch_id", "")),
-                ),
-            )["ingest_batch_id"]
+            latest_batch_id = max(bounded, key=self._manifest_sort_key)["ingest_batch_id"]
             latest_rows.extend(
                 sorted(
                     [
@@ -166,4 +172,32 @@ class SourceManifestRepository:
                 str(record.get("source_file", record.get("file_name", ""))),
                 str(record.get("source_version", "")),
             ]
+        )
+
+    @staticmethod
+    def _source_slot_identity(record: dict[str, object]) -> str:
+        return "|".join(
+            [
+                str(record.get("source_family", "")),
+                str(record.get("report_date", "")),
+                str(record.get("source_file", record.get("file_name", ""))),
+            ]
+        )
+
+    def _latest_by_source_slot(self) -> dict[str, dict[str, object]]:
+        latest: dict[str, dict[str, object]] = {}
+        for record in self.load_all():
+            if str(record.get("status", "")) not in MANIFEST_ELIGIBLE_STATUSES:
+                continue
+            slot = self._source_slot_identity(record)
+            current = latest.get(slot)
+            if current is None or self._manifest_sort_key(record) >= self._manifest_sort_key(current):
+                latest[slot] = record
+        return latest
+
+    @staticmethod
+    def _manifest_sort_key(record: dict[str, object]) -> tuple[str, str]:
+        return (
+            str(record.get("created_at", "")),
+            str(record.get("ingest_batch_id", "")),
         )

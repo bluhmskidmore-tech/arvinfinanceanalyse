@@ -9,6 +9,7 @@ import duckdb
 from openpyxl import load_workbook
 import xlrd
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     SOURCE_MANIFEST_STREAM,
     GovernanceRepository,
@@ -106,9 +107,14 @@ def materialize_source_previews(
     governance_dir: str | None = None,
     data_root: str | None = None,
     ingest_batch_id: str | None = None,
+    source_families: list[str] | None = None,
 ) -> list[dict[str, object]]:
     manifest_rows = _load_manifest_rows(governance_dir) if governance_dir is not None else []
-    selected = _select_manifest_rows(manifest_rows, ingest_batch_id=ingest_batch_id)
+    selected = _select_manifest_rows(
+        manifest_rows,
+        ingest_batch_id=ingest_batch_id,
+        source_families=source_families,
+    )
     summaries: list[dict[str, object]] = []
     row_records: list[dict[str, object]] = []
     trace_records: list[dict[str, object]] = []
@@ -682,6 +688,7 @@ def _preview_column_type(column: str) -> str:
 def _select_manifest_rows(
     manifest_rows: list[dict[str, object]],
     ingest_batch_id: str | None = None,
+    source_families: list[str] | None = None,
 ) -> list[dict[str, object]]:
     eligible_rows = [
         row
@@ -690,6 +697,13 @@ def _select_manifest_rows(
         and row.get("archived_path")
         and Path(str(row["archived_path"])).exists()
     ]
+    if source_families is not None:
+        allowed = {str(family) for family in source_families}
+        eligible_rows = [
+            row
+            for row in eligible_rows
+            if str(row.get("source_family", "")) in allowed
+        ]
     if ingest_batch_id is not None:
         return [
             row
@@ -1040,6 +1054,11 @@ def _group_label(source_family: str, row: dict[str, object]) -> str:
     return str(row["product_type"] or row["journal_type"] or "未标注")
 
 
+def ensure_source_preview_schema_tables(conn: duckdb.DuckDBPyConnection) -> None:
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+
+
 def _write_preview_tables(
     duckdb_path: str,
     summaries: list[dict[str, object]],
@@ -1047,165 +1066,11 @@ def _write_preview_tables(
     trace_records: list[dict[str, object]],
 ) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
+    transaction_started = False
     try:
+        ensure_source_preview_schema_tables(conn)
         conn.execute("begin transaction")
-        conn.execute(
-            """
-            create table if not exists phase1_source_preview_summary (
-              ingest_batch_id varchar,
-              batch_created_at varchar,
-              source_family varchar,
-              report_date varchar,
-              report_start_date varchar,
-              report_end_date varchar,
-              report_granularity varchar,
-              source_file varchar,
-              total_rows bigint,
-              manual_review_count bigint,
-              source_version varchar,
-              rule_version varchar,
-              preview_mode varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_source_preview_groups (
-              ingest_batch_id varchar,
-              source_family varchar,
-              group_label varchar,
-              row_count bigint,
-              source_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_zqtz_preview_rows (
-              ingest_batch_id varchar,
-              row_locator bigint,
-              report_date varchar,
-              business_type_primary varchar,
-              business_type_final varchar,
-              asset_group varchar,
-              instrument_code varchar,
-              instrument_name varchar,
-              account_category varchar,
-              manual_review_needed boolean,
-              source_version varchar,
-              rule_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_tyw_preview_rows (
-              ingest_batch_id varchar,
-              row_locator bigint,
-              report_date varchar,
-              business_type_primary varchar,
-              product_group varchar,
-              institution_category varchar,
-              special_nature varchar,
-              counterparty_name varchar,
-              investment_portfolio varchar,
-              manual_review_needed boolean,
-              source_version varchar,
-              rule_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_pnl_preview_rows (
-              source_family varchar,
-              ingest_batch_id varchar,
-              row_locator bigint,
-              report_date varchar,
-              instrument_code varchar,
-              invest_type_raw varchar,
-              portfolio_name varchar,
-              cost_center varchar,
-              currency varchar,
-              manual_review_needed boolean,
-              source_version varchar,
-              rule_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_nonstd_pnl_preview_rows (
-              source_family varchar,
-              ingest_batch_id varchar,
-              row_locator bigint,
-              report_date varchar,
-              journal_type varchar,
-              product_type varchar,
-              asset_code varchar,
-              account_code varchar,
-              dc_flag_raw varchar,
-              raw_amount varchar,
-              manual_review_needed boolean,
-              source_version varchar,
-              rule_version varchar
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_zqtz_rule_traces (
-              ingest_batch_id varchar,
-              row_locator bigint,
-              trace_step bigint,
-              field_name varchar,
-              field_value varchar,
-              derived_label varchar,
-              manual_review_needed boolean
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_tyw_rule_traces (
-              ingest_batch_id varchar,
-              row_locator bigint,
-              trace_step bigint,
-              field_name varchar,
-              field_value varchar,
-              derived_label varchar,
-              manual_review_needed boolean
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_pnl_rule_traces (
-              source_family varchar,
-              ingest_batch_id varchar,
-              row_locator bigint,
-              trace_step bigint,
-              field_name varchar,
-              field_value varchar,
-              derived_label varchar,
-              manual_review_needed boolean
-            )
-            """
-        )
-        conn.execute(
-            """
-            create table if not exists phase1_nonstd_pnl_rule_traces (
-              source_family varchar,
-              ingest_batch_id varchar,
-              row_locator bigint,
-              trace_step bigint,
-              field_name varchar,
-              field_value varchar,
-              derived_label varchar,
-              manual_review_needed boolean
-            )
-            """
-        )
+        transaction_started = True
 
         if summaries:
             current_batch_ids = sorted({summary["ingest_batch_id"] for summary in summaries})
@@ -1466,8 +1331,13 @@ def _write_preview_tables(
                 nonstd_pnl_traces,
             )
         conn.execute("commit")
+        transaction_started = False
     except Exception:
-        conn.execute("rollback")
+        if transaction_started:
+            try:
+                conn.execute("rollback")
+            except Exception:
+                pass
         raise
     finally:
         conn.close()

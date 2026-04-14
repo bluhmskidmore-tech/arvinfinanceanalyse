@@ -15,8 +15,10 @@ function renderShellAt(path: string) {
         element: <WorkbenchShell />,
         children: [
           { index: true, element: <div>shell body</div> },
+          { path: "dashboard", element: <div>dashboard alias body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
+          { path: "agent", element: <div>agent body</div> },
         ],
       },
     ],
@@ -59,10 +61,19 @@ describe("WorkbenchShell", () => {
   });
 
   it("shows a readiness banner for gated routes", async () => {
-    renderShellAt("/platform-config");
+    renderShellAt("/agent");
 
     expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.getByText("当前页面仍是占位壳层")).toBeInTheDocument();
-    expect(screen.getByText("platform body")).toBeInTheDocument();
+    expect(screen.getByText("当前页面尚未物化真实数据链路")).toBeInTheDocument();
+    expect(screen.getByText("agent body")).toBeInTheDocument();
+  });
+
+  it("treats /dashboard as the dashboard section for nav highlighting", async () => {
+    renderShellAt("/dashboard");
+
+    expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
+    const navigation = screen.getByRole("navigation");
+    const dashLink = within(navigation).getByRole("link", { name: /驾驶舱/ });
+    expect(dashLink).toHaveAttribute("href", "/");
   });
 });

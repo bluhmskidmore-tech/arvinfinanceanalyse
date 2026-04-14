@@ -4,7 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  __esModule: true,
+  default: () => <div data-testid="bond-analytics-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import { BondAnalyticsView } from "../features/bond-analytics/components/BondAnalyticsView";
 
 function renderBondAnalyticsView(client?: ApiClient) {
@@ -24,7 +30,7 @@ function renderBondAnalyticsView(client?: ApiClient) {
   );
 }
 
-function createResultMeta(overrides: Record<string, unknown> = {}) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
     basis: "formal",
@@ -179,58 +185,87 @@ describe("BondAnalyticsView", () => {
     20_000,
   );
 
+  it(
+    "shows portfolio headlines and top holdings tabs in the analysis detail strip",
+    async () => {
+      renderBondAnalyticsView();
+      const detail = await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: 10000 });
+      expect(within(detail).getByRole("tab", { name: "Portfolio headlines" })).toBeInTheDocument();
+      expect(within(detail).getByRole("tab", { name: "Top holdings" })).toBeInTheDocument();
+    },
+    20_000,
+  );
+
   it("promotes clean action attribution and keeps cockpit drill switching", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request) => {
-        const url =
-          typeof input === "string"
-            ? input
-            : input instanceof URL
-              ? input.toString()
-              : input.url;
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url;
 
-        if (url.includes("/api/bond-analytics/return-decomposition")) {
-          return {
-            ok: true,
-            json: async () => ({
-              result_meta: createResultMeta({
-                result_kind: "bond_analytics.return_decomposition",
-              }),
-              result: createReturnDecompositionResult(),
+      if (url.includes("/api/bond-analytics/dates")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: createResultMeta({
+              result_kind: "bond_analytics.dates",
             }),
-          };
-        }
+            result: {
+              report_dates: ["2026-03-31"],
+            },
+          }),
+        };
+      }
 
-        if (url.includes("/api/bond-analytics/action-attribution")) {
-          return {
-            ok: true,
-            json: async () => ({
-              result_meta: createResultMeta(),
-              result: createActionAttributionResult({
-                total_actions: 4,
-                total_pnl_from_actions: "1500000",
-                by_action_type: [
-                  {
-                    action_type: "ADD_DURATION",
-                    action_type_name: "Add duration",
-                    action_count: 4,
-                    total_pnl_economic: "1500000",
-                    total_pnl_accounting: "1500000",
-                    avg_pnl_per_action: "375000",
-                  },
-                ],
-              }),
+      if (url.includes("/api/bond-analytics/return-decomposition")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: createResultMeta({
+              result_kind: "bond_analytics.return_decomposition",
             }),
-          };
-        }
+            result: createReturnDecompositionResult(),
+          }),
+        };
+      }
 
-        throw new Error(`Unhandled fetch request: ${url}`);
+      if (url.includes("/api/bond-analytics/action-attribution")) {
+        return {
+          ok: true,
+          json: async () => ({
+            result_meta: createResultMeta(),
+            result: createActionAttributionResult({
+              total_actions: 4,
+              total_pnl_from_actions: "1500000",
+              by_action_type: [
+                {
+                  action_type: "ADD_DURATION",
+                  action_type_name: "Add duration",
+                  action_count: 4,
+                  total_pnl_economic: "1500000",
+                  total_pnl_accounting: "1500000",
+                  avg_pnl_per_action: "375000",
+                },
+              ],
+            }),
+          }),
+        };
+      }
+
+      throw new Error(`Unhandled fetch request: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderBondAnalyticsView(
+      createApiClient({
+        mode: "real",
+        baseUrl: "http://localhost:8000",
+        fetchImpl: fetchMock as unknown as typeof fetch,
       }),
     );
-
-    renderBondAnalyticsView();
 
     expect(
       await screen.findByTestId("bond-analysis-headline-action-attribution", {}, { timeout: 10000 }),

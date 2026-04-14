@@ -480,6 +480,41 @@ def test_pnl_refresh_sync_fallback_materializes_latest_sources(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_pnl_refresh_sync_fallback_uses_direct_sync_helper(tmp_path, monkeypatch):
+    _configure_refresh_sources(tmp_path, monkeypatch)
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    sync_calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        pnl_service.materialize_pnl_facts,
+        "send",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("queue disabled")),
+    )
+    monkeypatch.setattr(
+        pnl_service,
+        "run_pnl_materialize_sync",
+        lambda **kwargs: sync_calls.append(kwargs) or {
+            "status": "completed",
+            "cache_key": "pnl:phase2:materialize:formal",
+            "run_id": kwargs["run_id"],
+            "report_date": kwargs["report_date"],
+            "formal_fi_rows": 1,
+            "nonstd_bridge_rows": 1,
+            "source_version": "sv_test",
+            "rule_version": "rv_test",
+            "vendor_version": "vv_none",
+            "lock": "lock:duckdb:formal:pnl:phase2:materialize",
+        },
+    )
+
+    payload = pnl_service.refresh_pnl(get_settings())
+
+    assert payload["status"] == "completed"
+    assert payload["trigger_mode"] == "sync-fallback"
+    assert sync_calls
+    assert sync_calls[0]["report_date"] == "2026-02-28"
+
+
 def test_pnl_refresh_returns_503_when_send_error_is_not_safe_for_sync_fallback(
     tmp_path,
     monkeypatch,
@@ -841,7 +876,7 @@ def test_pnl_import_status_returns_503_when_status_backend_fails(tmp_path, monke
     get_settings.cache_clear()
 
 
-def test_pnl_dates_returns_503_when_storage_is_unavailable_even_if_manifest_exists(tmp_path, monkeypatch):
+def test_pnl_dates_returns_empty_when_storage_is_unavailable(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
@@ -853,12 +888,13 @@ def test_pnl_dates_returns_503_when_storage_is_unavailable_even_if_manifest_exis
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/pnl/dates")
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Formal pnl storage is unavailable."
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result"]["report_dates"] == []
     get_settings.cache_clear()
 
 
-def test_pnl_overview_returns_503_when_storage_is_unavailable_even_if_manifest_exists(tmp_path, monkeypatch):
+def test_pnl_overview_returns_404_when_storage_is_unavailable(tmp_path, monkeypatch):
     governance_dir = tmp_path / "governance"
     governance_dir.mkdir(parents=True, exist_ok=True)
     _append_manifest_override(governance_dir, source_version="sv_manifest", vendor_version="vv_manifest", rule_version="rv_manifest")
@@ -870,8 +906,7 @@ def test_pnl_overview_returns_503_when_storage_is_unavailable_even_if_manifest_e
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/pnl/overview", params={"report_date": "2025-12-31"})
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Formal pnl storage is unavailable."
+    assert response.status_code == 404
     get_settings.cache_clear()
 
 

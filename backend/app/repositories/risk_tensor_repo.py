@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import duckdb
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.core_finance.risk_tensor import PortfolioRiskTensor
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALYTICS_CACHE_KEY
@@ -252,51 +253,8 @@ class RiskTensorRepository:
 
 
 def ensure_risk_tensor_table(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        f"""
-        create table if not exists {FACT_TABLE} (
-            report_date                   varchar,
-            portfolio_dv01                decimal(24, 8),
-            krd_1y                        decimal(24, 8),
-            krd_3y                        decimal(24, 8),
-            krd_5y                        decimal(24, 8),
-            krd_7y                        decimal(24, 8),
-            krd_10y                       decimal(24, 8),
-            krd_30y                       decimal(24, 8),
-            cs01                          decimal(24, 8),
-            portfolio_convexity           decimal(24, 8),
-            portfolio_modified_duration   decimal(24, 8),
-            issuer_concentration_hhi      decimal(24, 8),
-            issuer_top5_weight            decimal(24, 8),
-            asset_cashflow_30d            decimal(24, 8),
-            asset_cashflow_90d            decimal(24, 8),
-            liability_cashflow_30d        decimal(24, 8),
-            liability_cashflow_90d        decimal(24, 8),
-            liquidity_gap_30d             decimal(24, 8),
-            liquidity_gap_90d             decimal(24, 8),
-            liquidity_gap_30d_ratio       decimal(24, 8),
-            total_market_value            decimal(24, 8),
-            bond_count                    integer,
-            quality_flag                  varchar,
-            warnings_json                 varchar,
-            source_version                varchar,
-            upstream_source_version       varchar,
-            liability_source_version      varchar,
-            liability_rule_version        varchar,
-            rule_version                  varchar,
-            cache_version                 varchar,
-            trace_id                      varchar
-        )
-        """
-    )
-    for column in _GROSS_CASHFLOW_COLUMNS:
-        conn.execute(
-            f"alter table {FACT_TABLE} add column if not exists {column} decimal(24, 8)"
-        )
-    for column in _LINEAGE_COLUMNS:
-        conn.execute(
-            f"alter table {FACT_TABLE} add column if not exists {column} varchar"
-        )
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
 
 
 def load_latest_bond_analytics_lineage(

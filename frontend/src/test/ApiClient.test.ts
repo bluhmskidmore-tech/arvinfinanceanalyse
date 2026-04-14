@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from "vitest";
+﻿import { describe, expect, it, test, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 
@@ -268,12 +268,17 @@ describe("createApiClient", () => {
       "MoM",
     );
     const accountingAudit = await client.getBondAnalyticsAccountingClassAudit("2026-03-31");
+    const portfolioHeadlines = await client.getBondAnalyticsPortfolioHeadlines("2026-03-31");
+    const topHoldings = await client.getBondAnalyticsTopHoldings("2026-03-31", 15);
 
     expect(returnDecomposition.result_meta.result_kind).toBe("bond_analytics.return_decomposition");
     expect(returnDecomposition.result.report_date).toBe("2026-03-31");
     expect(benchmarkExcess.result.benchmark_id).toBe("CDB_INDEX");
     expect(actionAttribution.result_meta.result_kind).toBe("bond_analytics.action_attribution");
     expect(accountingAudit.result_meta.result_kind).toBe("bond_analytics.accounting_class_audit");
+    expect(portfolioHeadlines.result_meta.result_kind).toBe("bond_analytics.portfolio_headlines");
+    expect(topHoldings.result_meta.result_kind).toBe("bond_analytics.top_holdings");
+    expect(topHoldings.result.top_n).toBe(15);
   });
 
   it("uses real mode to fetch unified bond analytics detail readers", async () => {
@@ -2427,6 +2432,61 @@ describe("createApiClient", () => {
         }),
       }),
     );
+  });
+
+  test("mock client returns KPI owners", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const response = await client.getKpiOwners({ year: 2026 });
+    expect(response.owners).toBeDefined();
+    expect(response.owners.length).toBeGreaterThan(0);
+    expect(response.total).toBeGreaterThan(0);
+  });
+
+  test("mock client returns KPI values", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const response = await client.getKpiValues({
+      owner_id: 1,
+      as_of_date: "2026-04-13",
+    });
+    expect(response.owner_id).toBe(1);
+    expect(response.metrics).toBeDefined();
+  });
+
+  test("mock client batch update KPI values", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const response = await client.batchUpdateKpiValues("2026-04-13", []);
+    expect(response.success_count).toBeDefined();
+    expect(response.errors).toBeDefined();
+  });
+
+  test("mock client fetch and recalc KPI", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const response = await client.fetchAndRecalcKpi(1, "2026-04-13");
+    expect(response.owner_id).toBe(1);
+    expect(response.total_metrics).toBeDefined();
+  });
+
+  test("mock client cube dimensions and query", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const dims = await client.getCubeDimensions("bond_analytics");
+    expect(dims.fact_table).toBe("bond_analytics");
+    expect(dims.dimensions).toContain("rating");
+    expect(dims.measure_fields).toContain("market_value");
+    expect(dims.measures).toEqual(["sum", "avg", "count", "min", "max"]);
+
+    const result = await client.executeCubeQuery({
+      report_date: "2025-12-31",
+      fact_table: "bond_analytics",
+      measures: ["sum(market_value)"],
+      dimensions: ["rating"],
+      basis: "formal",
+    });
+    expect(result.report_date).toBe("2025-12-31");
+    expect(result.fact_table).toBe("bond_analytics");
+    expect(result.measures).toEqual(["sum(market_value)"]);
+    expect(result.dimensions).toEqual(["rating"]);
+    expect(result.result_meta.basis).toBe("formal");
+    expect(result.result_meta.result_kind).toBe("cube.query");
   });
 });
 

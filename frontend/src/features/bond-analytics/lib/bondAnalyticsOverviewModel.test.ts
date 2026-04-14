@@ -106,7 +106,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
         }),
       ]),
     );
-    expect(model.futureVisibilityItems).toHaveLength(4);
+    expect(model.futureVisibilityItems).toHaveLength(2);
     expect(model.activeModuleContext.key).toBe("action-attribution");
   });
 

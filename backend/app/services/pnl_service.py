@@ -19,7 +19,6 @@ from backend.app.schemas.pnl import (
     PnlMaterializePayload,
     PnlNonStdBridgeRow,
     PnlOverviewPayload,
-    PnlPhase1DisabledResponse,
 )
 from backend.app.schemas.result_meta import ResultMeta
 from backend.app.services.pnl_source_service import (
@@ -31,10 +30,10 @@ from backend.app.tasks.pnl_materialize import (
     PNL_MATERIALIZE_LOCK,
     PNL_RESULT_CACHE_VERSION,
     materialize_pnl_facts,
+    run_pnl_materialize_sync,
 )
 
 
-DISABLED_DETAIL = "Formal /api/pnl endpoints are planned but disabled in Phase 1."
 PNL_CACHE_KEY = CACHE_KEY
 PNL_CACHE_VERSION = PNL_RESULT_CACHE_VERSION
 PNL_JOB_NAME = "pnl_materialize"
@@ -52,10 +51,6 @@ class PnlRefreshServiceError(RuntimeError):
 
 class PnlRefreshConflictError(RuntimeError):
     pass
-
-
-def pnl_phase1_disabled_payload() -> dict[str, object]:
-    return PnlPhase1DisabledResponse(detail=DISABLED_DETAIL).model_dump(mode="json")
 
 
 def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[str, object]:
@@ -121,7 +116,7 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
                 if _should_use_sync_fallback(settings, exc):
                     try:
                         payload = PnlMaterializePayload.model_validate(
-                            materialize_pnl_facts.fn(**actor_kwargs)
+                            run_pnl_materialize_sync(**actor_kwargs)
                         )
                     except Exception as fallback_exc:
                         raise PnlRefreshServiceError(

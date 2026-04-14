@@ -1,13 +1,13 @@
 ﻿import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
 
 import { shellTokens as t } from "../../theme/tokens";
-import { AgentAnswerPanel } from "./components/AgentAnswerPanel.tsx";
-import { AgentEvidencePanel } from "./components/AgentEvidencePanel.tsx";
-import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid.tsx";
-import { AgentQueryForm } from "./components/AgentQueryForm.tsx";
-import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel.tsx";
-import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel.tsx";
-import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView.tsx";
+import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
+import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
+import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid";
+import { AgentQueryForm } from "./components/AgentQueryForm";
+import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel";
+import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel";
+import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView";
 
 type AgentResultCard = {
   title: string;

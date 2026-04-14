@@ -22,6 +22,70 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsView", () => ({
   default: () => <section data-testid="bond-analysis-route-shell">mocked bond analytics route</section>,
 }));
 
+vi.mock("../features/bond-dashboard/pages/BondDashboardPage", () => ({
+  default: () => <section data-testid="bond-dashboard-route-shell">mocked bond dashboard</section>,
+}));
+
+vi.mock("../features/kpi-performance/pages/KpiPerformancePage", () => ({
+  default: () => (
+    <section data-testid="kpi-performance-page">
+      <h1>绩效考核</h1>
+    </section>
+  ),
+}));
+
+vi.mock("../features/team-performance/TeamPerformancePage", () => ({
+  default: () => <div data-testid="team-performance-page" />,
+}));
+
+vi.mock("../features/platform-config/PlatformConfigPage", () => ({
+  default: () => <div data-testid="platform-config-page" />,
+}));
+
+vi.mock("../features/cube-query/pages/CubeQueryPage", () => ({
+  default: () => (
+    <section data-testid="cube-query-page">
+      <h1>多维查询</h1>
+    </section>
+  ),
+}));
+
+vi.mock("../features/positions/pages/PositionsPage", () => ({
+  default: () => (
+    <section data-testid="positions-page">
+      <h1>持仓透视</h1>
+      <label>
+        报告日
+        <select aria-label="positions-report-date" defaultValue="2025-12-31">
+          <option value="2025-12-31">2025-12-31</option>
+        </select>
+      </label>
+    </section>
+  ),
+}));
+
+vi.mock("../features/liability-analytics/pages/LiabilityAnalyticsPage", () => ({
+  default: () => (
+    <section data-testid="liability-analytics-page">
+      <h1>负债结构分析</h1>
+      <label>
+        报告日
+        <select aria-label="liability-report-date" defaultValue="2025-12-31">
+          <option value="2025-12-31">2025-12-31</option>
+        </select>
+      </label>
+    </section>
+  ),
+}));
+
+vi.mock("../features/cashflow-projection/pages/CashflowProjectionPage", () => ({
+  default: () => (
+    <section data-testid="cashflow-projection-page">
+      <h1>现金流预测</h1>
+    </section>
+  ),
+}));
+
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="route-registry-echarts-stub" />,
 }));
@@ -179,7 +243,7 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/operations-analysis"]);
 
     expect(
-      await screen.findByRole("heading", { name: "经营分析入口" }),
+      await screen.findByRole("heading", { name: "经营分析" }),
     ).toBeInTheDocument();
     expect(await screen.findByTestId("operations-entry-source-count")).toBeInTheDocument();
   });
@@ -201,11 +265,77 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
   });
 
+  it("renders the bond-dashboard route", async () => {
+    renderWorkbenchApp(["/bond-dashboard"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("bond-dashboard-route-shell")).toBeInTheDocument();
+  });
+
   it("renders the bond-analysis route as the live governed cockpit", async () => {
     renderWorkbenchApp(["/bond-analysis"]);
 
     expect(await screen.findByTestId("bond-analysis-route-shell")).toBeInTheDocument();
     expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
+
+  it("renders the cross-asset route", async () => {
+    renderWorkbenchApp(["/cross-asset"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("cross-asset-page")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "跨资产驱动" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
+
+  it("renders the /dashboard alias as the fixed-income cockpit", async () => {
+    renderWorkbenchApp(["/dashboard"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "驾驶舱" }),
+    ).toBeInTheDocument();
+  });
+
+  it("renders the positions route", async () => {
+    renderWorkbenchApp(["/positions"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("positions-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "持仓透视" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("positions-report-date")).toBeInTheDocument();
+  });
+
+  it("renders the liability-analytics route", async () => {
+    renderWorkbenchApp(["/liability-analytics"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "负债结构分析" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("liability-report-date")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation")).getByRole("link", { name: /负债结构分析/ }),
+    ).toHaveAttribute("href", "/liability-analytics");
+  });
+
+  it("renders the cashflow-projection route", async () => {
+    renderWorkbenchApp(["/cashflow-projection"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("cashflow-projection-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "现金流预测" })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation")).getByRole("link", { name: /现金流预测/ }),
+    ).toHaveAttribute("href", "/cashflow-projection");
   });
 
   it("renders the product-category adjustment audit route", async () => {
@@ -261,6 +391,15 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("pnl-report-date")).toBeInTheDocument();
   });
 
+  it("renders the pnl-attribution route as live", async () => {
+    renderWorkbenchApp(["/pnl-attribution"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByRole("heading", { name: "损益归因分析" })).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
+
   it("renders the risk-tensor route", async () => {
     renderWorkbenchApp(["/risk-tensor"], {
       client: createApiClient({ mode: "mock" }),
@@ -270,17 +409,40 @@ describe("RouteRegistry", () => {
     expect(await screen.findByText("组合风险张量")).toBeInTheDocument();
   });
 
-  it("renders the team-performance route as a reserved placeholder", async () => {
-    renderWorkbenchApp(["/team-performance"]);
+  it("renders the team-performance route as the live team page", async () => {
+    renderWorkbenchApp(["/team-performance"], {
+      client: createApiClient({ mode: "mock" }),
+    });
 
-    expect(await screen.findByRole("heading", { name: "团队绩效" })).toBeInTheDocument();
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("team-performance-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
-  it("renders the platform-config route as a reserved placeholder", async () => {
-    renderWorkbenchApp(["/platform-config"]);
+  it("renders the kpi performance route as live", async () => {
+    renderWorkbenchApp(["/kpi"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+    expect(await screen.findByTestId("kpi-performance-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "绩效考核" })).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
 
-    expect(await screen.findByRole("heading", { name: "中台配置" })).toBeInTheDocument();
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+  it("renders the platform-config route as the live config page", async () => {
+    renderWorkbenchApp(["/platform-config"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("platform-config-page")).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+  });
+
+  it("renders the cube-query route", async () => {
+    renderWorkbenchApp(["/cube-query"], {
+      client: createApiClient({ mode: "mock" }),
+    });
+
+    expect(await screen.findByTestId("cube-query-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 });

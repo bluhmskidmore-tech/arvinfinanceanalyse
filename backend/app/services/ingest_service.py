@@ -50,8 +50,14 @@ class IngestService:
         return rows
 
     def scan_and_archive(self) -> list[dict[str, object]]:
+        rows = self.scan()
+        if self.manifest_repo is not None:
+            rows = self.manifest_repo.filter_incremental_rows(rows)
+        if not rows:
+            return []
+
         ingest_batch_id = f"ib_{uuid4().hex[:12]}"
-        rows = self.scan(ingest_batch_id=ingest_batch_id)
+        rows = [{**row, "ingest_batch_id": ingest_batch_id} for row in rows]
         if self.object_store_repo is None:
             return rows
 

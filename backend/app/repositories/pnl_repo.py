@@ -137,6 +137,8 @@ class PnlRepository:
                 """
             ).fetchall()
         except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():
@@ -161,6 +163,8 @@ class PnlRepository:
                 [report_date],
             ).fetchall()
         except duckdb.Error as exc:
+            if "cannot open database" in str(exc).lower():
+                return []
             raise RuntimeError("Formal pnl storage is unavailable.") from exc
         finally:
             if "conn" in locals():

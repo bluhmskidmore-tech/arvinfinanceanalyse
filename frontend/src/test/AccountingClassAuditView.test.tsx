@@ -2,10 +2,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
 import { AccountingClassAuditView } from "../features/bond-analytics/components/AccountingClassAuditView";
 import type { AccountingClassAuditResponse } from "../features/bond-analytics/types";
 
-function createResultMeta(overrides: Record<string, unknown> = {}) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
     basis: "formal",

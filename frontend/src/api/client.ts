@@ -16,6 +16,8 @@ import type {
   BalanceAnalysisOverviewPayload,
   BalanceAnalysisDatesPayload,
   BalanceCurrencyBasis,
+  BalanceAnalysisAdvancedAttributionBundlePayload,
+  BalanceAnalysisBasisBreakdownPayload,
   BalanceAnalysisPayload,
   BalanceAnalysisWorkbookPayload,
   BalancePositionScope,
@@ -23,31 +25,65 @@ import type {
   BondPositionItem,
   BondAnalyticsDatesPayload,
   BondAnalyticsRefreshPayload,
+  BondPortfolioHeadlinesPayload,
+  BondTopHoldingsPayload,
   BenchmarkExcessPayload,
   BalanceAnalysisSummaryExportPayload,
   BalanceAnalysisWorkbookExportPayload,
   BalanceAnalysisSummaryTablePayload,
+  AssetStructurePayload,
   BalanceAnalysisTableRow,
+  BondDashboardHeadlinePayload,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
   ActionAttributionPayload,
   AccountingClassAuditPayload,
+  AdvancedAttributionSummary,
+  CampisiAttributionPayload,
+  CashflowProjectionPayload,
+  CarryRollDownPayload,
   KRDCurveRiskPayload,
+  KRDAttributionPayload,
   ChoiceMacroLatestPayload,
+  ChoiceMacroRecentPoint,
   ChoiceNewsEventsPayload,
   ContributionPayload,
   CounterpartyStatsResponse,
+  CubeDimensionsPayload,
+  CubeQueryRequest,
+  CubeQueryResult,
   CustomerBalanceTrendResponse,
+  AdbComparisonPayload,
+  AdbMonthlyPayload,
+  AdbPayload,
+  LiabilitiesMonthlyPayload,
+  LiabilityAdbMonthlyPayload,
+  LiabilityCounterpartyPayload,
+  LiabilityRiskBucketsPayload,
+  LiabilityYieldMetricsPayload,
   CustomerBondDetailsResponse,
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   FormalPnlRefreshPayload,
   HealthResponse,
+  IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
   InterbankPositionItem,
+  KpiBatchUpdateResponse,
+  KpiFetchAndRecalcRequest,
+  KpiFetchAndRecalcResponse,
+  KpiMetric,
+  KpiMetricListResponse,
+  KpiMetricUpsertRequest,
+  KpiMetricValue,
+  KpiOwnerListResponse,
+  KpiPeriodSummaryResponse,
+  KpiReportResponse,
+  KpiValuesResponse,
   MacroBondLinkagePayload,
   MacroVendorPayload,
+  MaturityStructurePayload,
   PageResponse,
   OverviewPayload,
   PnlBridgePayload,
@@ -75,22 +111,43 @@ import type {
   ProductCategoryPnlRow,
   ProductTypesResponse,
   PnlAttributionPayload,
+  PnlAttributionAnalysisSummary,
+  PortfolioComparisonPayload,
+  PnlCompositionPayload,
   ReturnDecompositionPayload,
   ResultMeta,
+  RiskIndicatorsPayload,
   RatingStatsResponse,
   RiskOverviewPayload,
   RiskTensorDatesPayload,
   RiskTensorPayload,
   SourcePreviewHistoryPayload,
   SourcePreviewRefreshPayload,
+  ChoiceMacroRefreshPayload,
   SourcePreviewRowsPayload,
   SourcePreviewTracesPayload,
   SourcePreviewColumn,
   SourcePreviewSummary,
   SourcePreviewPayload,
+  SpreadAnalysisPayload,
+  SpreadAttributionPayload,
   SubTypesResponse,
   SummaryPayload,
+  TPLMarketCorrelationPayload,
+  YieldDistributionPayload,
+  VolumeRateAttributionPayload,
 } from "./contracts";
+import {
+  mockAdvancedAttributionSummary,
+  mockCampisiAttribution,
+  mockCarryRollDown,
+  mockKrdAttribution,
+  mockPnlAttributionAnalysisSummary,
+  mockPnlComposition,
+  mockSpreadAttribution,
+  mockTplMarketCorrelation,
+  mockVolumeRateAttribution,
+} from "../mocks/pnlAttributionWorkbench";
 import {
   alertsPayload,
   contributionPayload,
@@ -114,6 +171,38 @@ export type ApiClient = {
   refreshFormalPnl: () => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
+  getVolumeRateAttribution: (options?: {
+    reportDate?: string;
+    compareType?: "mom" | "yoy";
+  }) => Promise<ApiEnvelope<VolumeRateAttributionPayload>>;
+  getTplMarketCorrelation: (options?: {
+    months?: number;
+  }) => Promise<ApiEnvelope<TPLMarketCorrelationPayload>>;
+  getPnlCompositionBreakdown: (options?: {
+    reportDate?: string;
+    includeTrend?: boolean;
+    trendMonths?: number;
+  }) => Promise<ApiEnvelope<PnlCompositionPayload>>;
+  getPnlAttributionAnalysisSummary: (
+    reportDate?: string,
+  ) => Promise<ApiEnvelope<PnlAttributionAnalysisSummary>>;
+  getPnlCarryRollDown: (reportDate?: string) => Promise<ApiEnvelope<CarryRollDownPayload>>;
+  getPnlSpreadAttribution: (options?: {
+    reportDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<SpreadAttributionPayload>>;
+  getPnlKrdAttribution: (options?: {
+    reportDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<KRDAttributionPayload>>;
+  getPnlAdvancedAttributionSummary: (
+    reportDate?: string,
+  ) => Promise<ApiEnvelope<AdvancedAttributionSummary>>;
+  getPnlCampisiAttribution: (options?: {
+    startDate?: string;
+    endDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<CampisiAttributionPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
@@ -147,6 +236,8 @@ export type ApiClient = {
   }) => Promise<ApiEnvelope<MacroBondLinkagePayload>>;
   getFxFormalStatus: () => Promise<ApiEnvelope<FxFormalStatusPayload>>;
   getFxAnalytical: () => Promise<ApiEnvelope<FxAnalyticalPayload>>;
+  refreshChoiceMacro: (backfillDays?: number) => Promise<ChoiceMacroRefreshPayload>;
+  getChoiceMacroRefreshStatus: (runId: string) => Promise<ChoiceMacroRefreshPayload>;
   getChoiceNewsEvents: (options: {
     limit: number;
     offset: number;
@@ -259,6 +350,17 @@ export type ApiClient = {
     positionScope: BalancePositionScope;
     currencyBasis: BalanceCurrencyBasis;
   }) => Promise<ApiEnvelope<BalanceAnalysisPayload>>;
+  getBalanceAnalysisSummaryByBasis: (options: {
+    reportDate: string;
+    positionScope: BalancePositionScope;
+    currencyBasis: BalanceCurrencyBasis;
+  }) => Promise<ApiEnvelope<BalanceAnalysisBasisBreakdownPayload>>;
+  getBalanceAnalysisAdvancedAttribution: (options: {
+    reportDate: string;
+    scenarioName?: string;
+    treasuryShiftBp?: number;
+    spreadShiftBp?: number;
+  }) => Promise<ApiEnvelope<BalanceAnalysisAdvancedAttributionBundlePayload>>;
   exportBalanceAnalysisSummaryCsv: (options: {
     reportDate: string;
     positionScope: BalancePositionScope;
@@ -274,9 +376,36 @@ export type ApiClient = {
     runId: string,
   ) => Promise<BalanceAnalysisRefreshPayload>;
   getBondAnalyticsDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
+  getBondDashboardDates: () => Promise<ApiEnvelope<BondAnalyticsDatesPayload>>;
+  getBondDashboardHeadlineKpis: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<BondDashboardHeadlinePayload>>;
+  getBondDashboardAssetStructure: (
+    reportDate: string,
+    groupBy: string,
+  ) => Promise<ApiEnvelope<AssetStructurePayload>>;
+  getBondDashboardYieldDistribution: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<YieldDistributionPayload>>;
+  getBondDashboardPortfolioComparison: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<PortfolioComparisonPayload>>;
+  getBondDashboardSpreadAnalysis: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<SpreadAnalysisPayload>>;
+  getBondDashboardMaturityStructure: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<MaturityStructurePayload>>;
+  getBondDashboardIndustryDistribution: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<IndustryDistPayload>>;
+  getBondDashboardRiskIndicators: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<RiskIndicatorsPayload>>;
   getBondAnalyticsReturnDecomposition: (
     reportDate: string,
     periodType: string,
+    options?: { assetClass?: string; accountingClass?: string },
   ) => Promise<ApiEnvelope<ReturnDecompositionPayload>>;
   getBondAnalyticsBenchmarkExcess: (
     reportDate: string,
@@ -285,6 +414,7 @@ export type ApiClient = {
   ) => Promise<ApiEnvelope<BenchmarkExcessPayload>>;
   getBondAnalyticsKrdCurveRisk: (
     reportDate: string,
+    options?: { scenarioSet?: string },
   ) => Promise<ApiEnvelope<KRDCurveRiskPayload>>;
   getBondAnalyticsActionAttribution: (
     reportDate: string,
@@ -295,7 +425,15 @@ export type ApiClient = {
   ) => Promise<ApiEnvelope<AccountingClassAuditPayload>>;
   getBondAnalyticsCreditSpreadMigration: (
     reportDate: string,
+    options?: { spreadScenarios?: string },
   ) => Promise<ApiEnvelope<CreditSpreadMigrationPayload>>;
+  getBondAnalyticsPortfolioHeadlines: (
+    reportDate: string,
+  ) => Promise<ApiEnvelope<BondPortfolioHeadlinesPayload>>;
+  getBondAnalyticsTopHoldings: (
+    reportDate: string,
+    topN?: number,
+  ) => Promise<ApiEnvelope<BondTopHoldingsPayload>>;
   getCreditSpreadAnalysisDetail: (
     reportDate: string,
   ) => Promise<ApiEnvelope<CreditSpreadAnalysisPayload>>;
@@ -353,10 +491,103 @@ export type ApiClient = {
     endDate?: string | null;
     days?: number;
   }) => Promise<ApiEnvelope<CustomerBalanceTrendResponse>>;
+  getCashflowProjection: (reportDate: string) => Promise<ApiEnvelope<CashflowProjectionPayload>>;
+  /**
+   * 负债结构分析（V1 兼容 JSON）。
+   * TODO: 后端待实现/收敛 — 当前路径与 V1 对齐：`/api/risk/buckets`、`/api/analysis/yield_metrics` 等。
+   */
+  getLiabilityRiskBuckets: (reportDate?: string | null) => Promise<LiabilityRiskBucketsPayload>;
+  getLiabilityYieldMetrics: (reportDate?: string | null) => Promise<LiabilityYieldMetricsPayload>;
+  getLiabilityCounterparty: (options: {
+    reportDate?: string | null;
+    topN?: number;
+  }) => Promise<LiabilityCounterpartyPayload>;
+  getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
+  getLiabilityAdbMonthly: (year: number) => Promise<LiabilityAdbMonthlyPayload>;
+  getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
+  getAdbComparison: (params: {
+    startDate: string;
+    endDate: string;
+    topN?: number;
+  }) => Promise<AdbComparisonPayload>;
+  getAdbMonthly: (year: number) => Promise<AdbMonthlyPayload>;
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsRefreshStatus: (
     runId: string,
   ) => Promise<BondAnalyticsRefreshPayload>;
+
+  // --- KPI 绩效考核 ---
+  getKpiOwners: (params?: {
+    year?: number;
+    is_active?: boolean;
+  }) => Promise<KpiOwnerListResponse>;
+  getKpiMetrics: (params?: {
+    owner_id?: number;
+    year?: number;
+    is_active?: boolean;
+  }) => Promise<KpiMetricListResponse>;
+  getKpiMetricById: (metricId: number) => Promise<KpiMetric>;
+  createKpiMetric: (data: KpiMetricUpsertRequest) => Promise<KpiMetric>;
+  updateKpiMetric: (metricId: number, data: KpiMetricUpsertRequest) => Promise<KpiMetric>;
+  deleteKpiMetric: (metricId: number) => Promise<void>;
+  getKpiValues: (params: {
+    owner_id: number;
+    as_of_date: string;
+    include_trace?: boolean;
+  }) => Promise<KpiValuesResponse>;
+  getKpiValuesSummary: (params: {
+    owner_id: number;
+    year: number;
+    period_type: "MONTH" | "QUARTER" | "YEAR";
+    period_value?: number;
+  }) => Promise<KpiPeriodSummaryResponse>;
+  createKpiValue: (data: {
+    metric_id: number;
+    as_of_date: string;
+    actual_value?: string;
+    actual_text?: string;
+    progress_pct?: string;
+    source?: string;
+  }) => Promise<KpiMetricValue>;
+  updateKpiValue: (
+    valueId: number,
+    metricId: number,
+    asOfDate: string,
+    data: {
+      target_value?: string;
+      actual_value?: string;
+      actual_text?: string;
+      progress_pct?: string;
+      score_value?: string;
+      source?: string;
+    },
+  ) => Promise<KpiMetricValue>;
+  batchUpdateKpiValues: (
+    asOfDate: string,
+    items: Array<{
+      metric_id: number;
+      actual_value?: string;
+      progress_pct?: string;
+    }>,
+  ) => Promise<KpiBatchUpdateResponse>;
+  fetchAndRecalcKpi: (
+    ownerId: number,
+    asOfDate: string,
+    request?: KpiFetchAndRecalcRequest,
+  ) => Promise<KpiFetchAndRecalcResponse>;
+  getKpiReport: (params: {
+    year: number;
+    owner_id?: number;
+    as_of_date?: string;
+    format?: "json" | "csv";
+  }) => Promise<KpiReportResponse>;
+  downloadKpiReportCSV: (params: {
+    year: number;
+    owner_id?: number;
+    as_of_date?: string;
+  }) => Promise<void>;
+  getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
+  executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
 };
 
 type ApiClientOptions = {
@@ -523,6 +754,36 @@ const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
   ],
 };
 
+function buildMockChoiceMacroRecentPoints(
+  endDate: string,
+  count: number,
+  finalValue: number,
+  amplitude: number,
+): ChoiceMacroRecentPoint[] {
+  const out: ChoiceMacroRecentPoint[] = [];
+  for (let i = 0; i < count; i++) {
+    const dayOffset = -(count - 1 - i);
+    const d = new Date(`${endDate}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + dayOffset);
+    const trade_date = d.toISOString().slice(0, 10);
+    const t = count > 1 ? i / (count - 1) : 1;
+    const wobble = Math.sin(i * 0.8 + amplitude) * amplitude * 0.15;
+    const value_numeric = Number((finalValue + (t - 1) * amplitude * 0.35 + wobble).toFixed(4));
+    out.push({
+      trade_date,
+      value_numeric,
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      quality_flag: "ok",
+    });
+  }
+  out[out.length - 1] = {
+    ...out[out.length - 1],
+    value_numeric: finalValue,
+  };
+  return out;
+}
+
 const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
   read_target: "duckdb",
   series: [
@@ -538,6 +799,8 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       fetch_mode: "date_slice",
       fetch_granularity: "batch",
       policy_note: "main refresh date-slice lane",
+      latest_change: 0.2,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-04-10", 20, 1.75, 0.06),
     },
     {
       series_id: "M002",
@@ -551,6 +814,8 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       fetch_mode: "latest",
       fetch_granularity: "single",
       policy_note: "low-frequency latest-only lane",
+      latest_change: -0.05,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-04-10", 20, 1.83, 0.05),
     },
     {
       series_id: "M003",
@@ -564,6 +829,263 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       fetch_mode: "date_slice",
       fetch_granularity: "batch",
       policy_note: "main refresh date-slice lane",
+      latest_change: 0.03,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-04-10", 20, 1.56, 0.04),
+    },
+    {
+      series_id: "E1000180",
+      series_name: "中债国债到期收益率:10年",
+      trade_date: "2026-03-01",
+      value_numeric: 1.94,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "edb chinabond cross-asset",
+      latest_change: -0.011,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.94, 0.04),
+    },
+    {
+      series_id: "E1003238",
+      series_name: "美国国债收益率曲线:10年",
+      trade_date: "2026-03-01",
+      value_numeric: 4.1,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "edb fed cross-asset",
+      latest_change: 0.05,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 4.1, 0.12),
+    },
+    {
+      series_id: "EM1",
+      series_name: "10Y中国国债-10Y美国国债",
+      trade_date: "2026-03-01",
+      value_numeric: -210,
+      unit: "bp",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "edb chinabond spread",
+      latest_change: -3,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, -210, 8),
+    },
+    {
+      series_id: "EMM00166466",
+      series_name: "中债国债到期收益率:10年",
+      trade_date: "2026-03-01",
+      value_numeric: 1.94,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "catalog-aligned cross-asset",
+      latest_change: -0.011,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.94, 0.04),
+    },
+    {
+      series_id: "EMM00166502",
+      series_name: "中债政策性金融债到期收益率(国开行)10年",
+      trade_date: "2026-03-01",
+      value_numeric: 2.09,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "catalog-aligned cross-asset",
+      latest_change: 0.015,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 2.09, 0.05),
+    },
+    {
+      series_id: "EMM00167613",
+      series_name: "银行间同业拆借加权利率:7天",
+      trade_date: "2026-03-01",
+      value_numeric: 1.82,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "catalog-aligned cross-asset",
+      latest_change: 0.021,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.82, 0.06),
+    },
+    {
+      series_id: "EMM01843735",
+      series_name: "第一财经研究院中国金融条件指数(日)",
+      trade_date: "2026-03-01",
+      value_numeric: 98.6,
+      unit: "index",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "catalog-aligned cross-asset",
+      latest_change: 0.35,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 98.6, 0.8),
+    },
+    {
+      series_id: "EMM00058124",
+      series_name: "中间价:美元兑人民币",
+      trade_date: "2026-03-01",
+      value_numeric: 7.14,
+      unit: "CNY/USD",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "catalog-aligned cross-asset",
+      latest_change: 0.0064,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 7.14, 0.02),
+    },
+    {
+      series_id: "CA.CN_GOV_10Y",
+      series_name: "中债国债到期收益率:10年",
+      trade_date: "2026-03-01",
+      value_numeric: 1.94,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: -0.011,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.94, 0.04),
+    },
+    {
+      series_id: "EMG00001310",
+      series_name: "美国:国债收益率:10年",
+      trade_date: "2026-03-01",
+      value_numeric: 4.1,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "edb us treasury — catalog-aligned",
+      latest_change: 0.05,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 4.1, 0.12),
+    },
+    {
+      series_id: "CA.US_GOV_10Y",
+      series_name: "美国10年期国债收益率",
+      trade_date: "2026-03-01",
+      value_numeric: 4.1,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 0.05,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 4.1, 0.12),
+    },
+    {
+      series_id: "CA.CN_US_SPREAD",
+      series_name: "中美国债利差(10Y)",
+      trade_date: "2026-03-01",
+      value_numeric: -210,
+      unit: "bp",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: -3,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, -210, 8),
+    },
+    {
+      series_id: "CA.DR007",
+      series_name: "存款类机构质押式回购加权利率:DR007",
+      trade_date: "2026-03-01",
+      value_numeric: 1.82,
+      unit: "%",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 0.021,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.82, 0.06),
+    },
+    {
+      series_id: "CA.CSI300",
+      series_name: "沪深300指数",
+      trade_date: "2026-03-01",
+      value_numeric: 3924.5,
+      unit: "index",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 1.89,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 3924.5, 45),
+    },
+    {
+      series_id: "CA.BRENT",
+      series_name: "ICE布伦特原油期货收盘价",
+      trade_date: "2026-03-01",
+      value_numeric: 82.3,
+      unit: "USD/bbl",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 4.8,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 82.3, 2.2),
+    },
+    {
+      series_id: "CA.STEEL",
+      series_name: "螺纹钢主力合约结算价",
+      trade_date: "2026-03-01",
+      value_numeric: 8500,
+      unit: "CNY/t",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 3.2,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 8500, 120),
+    },
+    {
+      series_id: "CA.USDCNY",
+      series_name: "即期汇率:美元兑人民币",
+      trade_date: "2026-03-01",
+      value_numeric: 7.14,
+      unit: "CNY/USD",
+      source_version: "sv_choice_macro_mock",
+      vendor_version: "vv_choice_macro_mock_v1",
+      refresh_tier: "stable",
+      fetch_mode: "date_slice",
+      fetch_granularity: "batch",
+      policy_note: "cross-asset headline lane",
+      latest_change: 0.0064,
+      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 7.14, 0.02),
     },
   ],
 };
@@ -576,9 +1098,10 @@ const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
     rate_direction_score: -0.42,
     liquidity_score: 0.31,
     growth_score: -0.14,
-    inflation_score: 0,
+    inflation_score: 0.08,
     composite_score: -0.11,
-    signal_description: "宏观环境偏中性偏松，利率下行压力占优。",
+    signal_description:
+      "资金面维持宽松，长端对海外利率与风险偏好更敏感：国内短端利率稳定，权益与商品反弹带来增长预期修复，但美债高位约束利差压缩空间。建议以流动性为锚、用海外约束做上限、用增长预期做节奏。",
     contributing_factors: [
       {
         category: "rate",
@@ -1531,11 +2054,15 @@ const normalizeBaseUrl = (value?: string) =>
   value ? value.replace(/\/$/, "") : "";
 
 const parseEnvMode = (): DataSourceMode => {
-  const envValue = import.meta.env.VITE_DATA_SOURCE;
+  const raw = import.meta.env.VITE_DATA_SOURCE;
+  const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
   return envValue === "real" ? "real" : "mock";
 };
 
-const parseBaseUrl = () => normalizeBaseUrl(import.meta.env.VITE_API_BASE_URL);
+const parseBaseUrl = () => {
+  const raw = import.meta.env.VITE_API_BASE_URL;
+  return normalizeBaseUrl(typeof raw === "string" ? raw.trim() : undefined);
+};
 
 function buildMockBalanceAnalysisTableRows(
   reportDate: string,
@@ -2119,6 +2646,25 @@ const requestJson = async <T>(
   return (await response.json()) as ApiEnvelope<T>;
 };
 
+/** V1 风格：响应体即为业务 JSON，无 `ApiEnvelope` 包裹（负债结构等接口待迁移）。 */
+const requestPlainJson = async <T>(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+): Promise<T> => {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${path} (${response.status})`);
+  }
+
+  return (await response.json()) as T;
+};
+
 const requestActionJson = async <T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -2162,6 +2708,37 @@ const requestActionJson = async <T>(
 
   return (await response.json()) as T;
 };
+
+function kpiQueryString(params: Record<string, string | number | boolean | undefined>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === "") continue;
+    q.set(k, String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+async function requestKpiJson<T>(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetchImpl(`${baseUrl}/api/kpi${path}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+    ...init,
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `KPI API ${response.status}`);
+  }
+  return response.json() as Promise<T>;
+}
 
 const requestText = async (
   fetchImpl: typeof fetch,
@@ -2366,6 +2943,51 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockApiEnvelope("executive.pnl-attribution", pnlAttributionPayload);
     },
+    async getVolumeRateAttribution(options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.volume_rate", {
+        ...mockVolumeRateAttribution,
+        compare_type: options?.compareType ?? mockVolumeRateAttribution.compare_type,
+      });
+    },
+    async getTplMarketCorrelation(_options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.tpl_market", mockTplMarketCorrelation);
+    },
+    async getPnlCompositionBreakdown(_options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.composition", mockPnlComposition);
+    },
+    async getPnlAttributionAnalysisSummary(_reportDate) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl_attribution.summary",
+        mockPnlAttributionAnalysisSummary,
+      );
+    },
+    async getPnlCarryRollDown(_reportDate) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.carry_rolldown", mockCarryRollDown);
+    },
+    async getPnlSpreadAttribution(_options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.spread", mockSpreadAttribution);
+    },
+    async getPnlKrdAttribution(_options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.krd", mockKrdAttribution);
+    },
+    async getPnlAdvancedAttributionSummary(_reportDate) {
+      await delay();
+      return buildMockApiEnvelope(
+        "pnl_attribution.advanced_summary",
+        mockAdvancedAttributionSummary,
+      );
+    },
+    async getPnlCampisiAttribution(_options) {
+      await delay();
+      return buildMockApiEnvelope("pnl_attribution.campisi", mockCampisiAttribution);
+    },
     async getRiskOverview() {
       await delay();
       return buildMockApiEnvelope("executive.risk-overview", riskOverviewPayload);
@@ -2563,6 +3185,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           cache_version: "cv_choice_macro_thin_slice_v1",
         },
       );
+    },
+    async refreshChoiceMacro(_backfillDays?: number) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: "choice_macro_refresh:mock-run",
+      } as ChoiceMacroRefreshPayload;
+    },
+    async getChoiceMacroRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+      } as ChoiceMacroRefreshPayload;
     },
     async getMacroBondLinkageAnalysis({ reportDate }) {
       await delay();
@@ -3115,6 +3751,81 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
     },
+    async getBalanceAnalysisSummaryByBasis({ reportDate, positionScope, currencyBasis }) {
+      await delay();
+      const rows: BalanceAnalysisBasisBreakdownPayload["rows"] = [
+        {
+          source_family: "zqtz" as const,
+          invest_type_std: "A",
+          accounting_basis: "FVOCI",
+          position_scope: "asset" as const,
+          currency_basis: "CNY" as const,
+          detail_row_count: 3,
+          market_value_amount: "720.00",
+          amortized_cost_amount: "648.00",
+          accrued_interest_amount: "36.00",
+        },
+        {
+          source_family: "tyw" as const,
+          invest_type_std: "H",
+          accounting_basis: "AC",
+          position_scope: "liability" as const,
+          currency_basis: "CNY" as const,
+          detail_row_count: 1,
+          market_value_amount: "72.00",
+          amortized_cost_amount: "72.00",
+          accrued_interest_amount: "14.40",
+        },
+      ].filter((row) => {
+        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
+        const matchesBasis = row.currency_basis === currencyBasis;
+        return matchesScope && matchesBasis;
+      });
+      return buildMockApiEnvelope(
+        "balance-analysis.basis_breakdown",
+        {
+          report_date: reportDate,
+          position_scope: positionScope,
+          currency_basis: currencyBasis,
+          rows,
+        },
+        {
+          basis: "formal",
+          formal_use_allowed: true,
+          source_version: "sv_balance_mock",
+          rule_version: "rv_balance_analysis_formal_materialize_v1",
+          cache_version: "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+        },
+      );
+    },
+    async getBalanceAnalysisAdvancedAttribution({ reportDate }) {
+      await delay();
+      return buildMockApiEnvelope(
+        "balance-analysis.advanced_attribution_bundle",
+        {
+          report_date: reportDate,
+          mode: "analytical",
+          scenario_name: null,
+          scenario_inputs: {},
+          upstream_summaries: {},
+          status: "not_ready",
+          missing_inputs: ["phase3_yield_curves_aligned_to_instruments"],
+          blocked_components: ["roll_down", "rate_effect"],
+          warnings: [
+            "bond_analytics.phase3: roll_down / rate_effect require Phase 3 curve and trade data",
+            "balance-analysis.advanced_attribution_bundle: status=not_ready; no attribution figures are returned",
+          ],
+        },
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          quality_flag: "warning",
+          source_version: "sv_advanced_attribution_not_ready",
+          rule_version: "rv_advanced_attribution_bundle_v0",
+          cache_version: "cv_advanced_attribution_v0",
+        },
+      );
+    },
     async getBalanceAnalysisSummary({ reportDate, positionScope, currencyBasis, limit, offset }) {
       await delay();
       return buildMockBalanceAnalysisSummaryTable(
@@ -3212,8 +3923,246 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getBondAnalyticsReturnDecomposition(reportDate: string, periodType: string) {
+    async getBondDashboardDates() {
       await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.dates",
+        { report_dates: ["2026-03-31", "2026-02-28", "2025-12-31"] },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardHeadlineKpis(reportDate: string) {
+      await delay();
+      const mv = "328709000000.00000000";
+      const prevMv = "320000000000.00000000";
+      return buildMockApiEnvelope(
+        "bond_dashboard.headline_kpis",
+        {
+          report_date: reportDate,
+          prev_report_date: "2026-02-28",
+          kpis: {
+            total_market_value: mv,
+            unrealized_pnl: "1850000000.00000000",
+            weighted_ytm: "0.02850000",
+            weighted_duration: "3.45000000",
+            weighted_coupon: "0.03120000",
+            credit_spread_median: "0.00850000",
+            total_dv01: "-125430.50000000",
+            bond_count: 428,
+          },
+          prev_kpis: {
+            total_market_value: prevMv,
+            unrealized_pnl: "1600000000.00000000",
+            weighted_ytm: "0.02810000",
+            weighted_duration: "3.52000000",
+            weighted_coupon: "0.03080000",
+            credit_spread_median: "0.00890000",
+            total_dv01: "-128900.00000000",
+            bond_count: 415,
+          },
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardAssetStructure(reportDate: string, groupBy: string) {
+      await delay();
+      const total = "328709000000.00000000";
+      return buildMockApiEnvelope(
+        "bond_dashboard.asset_structure",
+        {
+          report_date: reportDate,
+          group_by: groupBy,
+          total_market_value: total,
+          items: [
+            {
+              category: "政策性金融债",
+              total_market_value: "98500000000.00000000",
+              bond_count: 42,
+              percentage: "29.96428571",
+            },
+            {
+              category: "地方政府债",
+              total_market_value: "82000000000.00000000",
+              bond_count: 56,
+              percentage: "24.94571429",
+            },
+            {
+              category: "同业存单",
+              total_market_value: "71000000000.00000000",
+              bond_count: 120,
+              percentage: "21.60000000",
+            },
+            {
+              category: "信用债-企业",
+              total_market_value: "49209000000.00000000",
+              bond_count: 150,
+              percentage: "14.97000000",
+            },
+            {
+              category: "其他",
+              total_market_value: "26000000000.00000000",
+              bond_count: 60,
+              percentage: "7.91000000",
+            },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardYieldDistribution(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.yield_distribution",
+        {
+          report_date: reportDate,
+          weighted_ytm: "0.02850000",
+          items: [
+            { yield_bucket: "<1.5%", total_market_value: "12000000000.00000000", bond_count: 12 },
+            { yield_bucket: "1.5%-2.0%", total_market_value: "45000000000.00000000", bond_count: 88 },
+            { yield_bucket: "2.0%-2.5%", total_market_value: "98000000000.00000000", bond_count: 142 },
+            { yield_bucket: "2.5%-3.0%", total_market_value: "110000000000.00000000", bond_count: 118 },
+            { yield_bucket: "3.0%-3.5%", total_market_value: "42000000000.00000000", bond_count: 48 },
+            { yield_bucket: "3.5%-4.0%", total_market_value: "15000000000.00000000", bond_count: 15 },
+            { yield_bucket: ">4.0%", total_market_value: "6709000000.00000000", bond_count: 5 },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardPortfolioComparison(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.portfolio_comparison",
+        {
+          report_date: reportDate,
+          items: [
+            {
+              portfolio_name: "银行账户",
+              total_market_value: "185000000000.00000000",
+              weighted_ytm: "0.02780000",
+              weighted_duration: "3.21000000",
+              total_dv01: "-70200.00000000",
+              bond_count: 220,
+            },
+            {
+              portfolio_name: "交易账户",
+              total_market_value: "98000000000.00000000",
+              weighted_ytm: "0.02950000",
+              weighted_duration: "3.88000000",
+              total_dv01: "-40200.00000000",
+              bond_count: 128,
+            },
+            {
+              portfolio_name: "OCI 账户",
+              total_market_value: "45709000000.00000000",
+              weighted_ytm: "0.02890000",
+              weighted_duration: "3.55000000",
+              total_dv01: "-15030.50000000",
+              bond_count: 80,
+            },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardSpreadAnalysis(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.spread_analysis",
+        {
+          report_date: reportDate,
+          items: [
+            {
+              bond_type: "国债",
+              median_yield: "0.02450000",
+              bond_count: 45,
+              total_market_value: "52000000000.00000000",
+            },
+            {
+              bond_type: "政金债",
+              median_yield: "0.02720000",
+              bond_count: 62,
+              total_market_value: "78000000000.00000000",
+            },
+            {
+              bond_type: "企业债",
+              median_yield: "0.03410000",
+              bond_count: 88,
+              total_market_value: "91000000000.00000000",
+            },
+            {
+              bond_type: "NCD",
+              median_yield: "0.02680000",
+              bond_count: 130,
+              total_market_value: "87000000000.00000000",
+            },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardMaturityStructure(reportDate: string) {
+      await delay();
+      const total = "328709000000.00000000";
+      return buildMockApiEnvelope(
+        "bond_dashboard.maturity_structure",
+        {
+          report_date: reportDate,
+          total_market_value: total,
+          items: [
+            { maturity_bucket: "7天内", total_market_value: "2100000000.00000000", bond_count: 8, percentage: "0.63871429" },
+            { maturity_bucket: "8-30天", total_market_value: "8900000000.00000000", bond_count: 22, percentage: "2.70700000" },
+            { maturity_bucket: "31-90天", total_market_value: "18500000000.00000000", bond_count: 35, percentage: "5.62857143" },
+            { maturity_bucket: "91天-1年", total_market_value: "62000000000.00000000", bond_count: 90, percentage: "18.86285714" },
+            { maturity_bucket: "1-3年", total_market_value: "128000000000.00000000", bond_count: 145, percentage: "38.94285714" },
+            { maturity_bucket: "3-5年", total_market_value: "72000000000.00000000", bond_count: 78, percentage: "21.90428571" },
+            { maturity_bucket: "5年以上", total_market_value: "55209000000.00000000", bond_count: 50, percentage: "16.79571429" },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardIndustryDistribution(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.industry_distribution",
+        {
+          report_date: reportDate,
+          items: [
+            { industry_name: "银行", total_market_value: "82000000000.00000000", bond_count: 95, percentage: "24.94571429" },
+            { industry_name: "城投", total_market_value: "61000000000.00000000", bond_count: 72, percentage: "18.55714286" },
+            { industry_name: "交通运输", total_market_value: "48000000000.00000000", bond_count: 48, percentage: "14.60428571" },
+            { industry_name: "电力", total_market_value: "39000000000.00000000", bond_count: 40, percentage: "11.86571429" },
+            { industry_name: "房地产", total_market_value: "28000000000.00000000", bond_count: 35, percentage: "8.51714286" },
+          ],
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondDashboardRiskIndicators(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_dashboard.risk_indicators",
+        {
+          report_date: reportDate,
+          total_market_value: "328709000000.00000000",
+          total_dv01: "-125430.50000000",
+          weighted_duration: "3.45000000",
+          credit_ratio: "0.42000000",
+          weighted_convexity: "0.08500000",
+          total_spread_dv01: "-45200.00000000",
+          reinvestment_ratio_1y: "0.18000000",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsReturnDecomposition(
+      reportDate: string,
+      periodType: string,
+      _options?: { assetClass?: string; accountingClass?: string },
+    ) {
+      await delay();
+      void _options;
       return buildMockApiEnvelope(
         "bond_analytics.return_decomposition",
         {
@@ -3283,8 +4232,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getBondAnalyticsKrdCurveRisk(reportDate: string) {
+    async getBondAnalyticsKrdCurveRisk(
+      reportDate: string,
+      _options?: { scenarioSet?: string },
+    ) {
       await delay();
+      void _options;
       return buildMockApiEnvelope(
         "bond_analytics.krd_curve_risk",
         {
@@ -3348,8 +4301,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getBondAnalyticsCreditSpreadMigration(reportDate: string) {
+    async getBondAnalyticsCreditSpreadMigration(
+      reportDate: string,
+      _options?: { spreadScenarios?: string },
+    ) {
       await delay();
+      void _options;
       return buildMockApiEnvelope(
         "bond_analytics.credit_spread_migration",
         {
@@ -3365,6 +4322,43 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           oci_credit_exposure: "800000000",
           oci_spread_dv01: "12000",
           oci_sensitivity_25bp: "-300000",
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsPortfolioHeadlines(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.portfolio_headlines",
+        {
+          report_date: reportDate,
+          total_market_value: "0",
+          weighted_ytm: "0",
+          weighted_duration: "0",
+          weighted_coupon: "0",
+          total_dv01: "0",
+          bond_count: 0,
+          credit_weight: "0",
+          issuer_hhi: "0",
+          issuer_top5_weight: "0",
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-13T00:00:00Z",
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getBondAnalyticsTopHoldings(reportDate: string, topN = 20) {
+      await delay();
+      return buildMockApiEnvelope(
+        "bond_analytics.top_holdings",
+        {
+          report_date: reportDate,
+          top_n: topN,
+          items: [],
+          total_market_value: "0",
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -3390,7 +4384,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getPositionsBondSubTypes(reportDate?: string | null) {
+    async getPositionsBondSubTypes(_reportDate?: string | null) {
       await delay();
       return buildMockApiEnvelope(
         "positions.bonds.sub_types",
@@ -3442,7 +4436,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async getPositionsInterbankProductTypes(reportDate?: string | null) {
+    async getPositionsInterbankProductTypes(_reportDate?: string | null) {
       await delay();
       return buildMockApiEnvelope(
         "positions.interbank.product_types",
@@ -3570,6 +4564,118 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getCashflowProjection(reportDate: string) {
+      await delay();
+      return buildMockApiEnvelope(
+        "cashflow_projection.overview",
+        {
+          report_date: reportDate,
+          duration_gap: "1.25000000",
+          asset_duration: "3.80000000",
+          liability_duration: "2.55000000",
+          equity_duration: "5.20000000",
+          rate_sensitivity_1bp: "125000.00000000",
+          reinvestment_risk_12m: "0.18500000",
+          monthly_buckets: [],
+          top_maturing_assets_12m: [],
+          warnings: [],
+          computed_at: new Date().toISOString(),
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getLiabilityRiskBuckets(reportDate?: string | null) {
+      await delay();
+      return {
+        report_date: reportDate?.trim() || "",
+        liabilities_structure: [],
+        liabilities_term_buckets: [],
+        interbank_liabilities_structure: [],
+        interbank_liabilities_term_buckets: [],
+        issued_liabilities_structure: [],
+        issued_liabilities_term_buckets: [],
+      };
+    },
+    async getLiabilityYieldMetrics(reportDate?: string | null) {
+      await delay();
+      return {
+        report_date: reportDate?.trim() || "",
+        kpi: {
+          asset_yield: null,
+          liability_cost: null,
+          market_liability_cost: null,
+          nim: null,
+        },
+      };
+    },
+    async getLiabilityCounterparty(options: { reportDate?: string | null; topN?: number }) {
+      await delay();
+      return {
+        report_date: options.reportDate?.trim() || "",
+        total_value: 0,
+        top_10: [],
+        by_type: [],
+      };
+    },
+    async getLiabilitiesMonthly(year: number) {
+      await delay();
+      return {
+        year,
+        months: [],
+        ytd_avg_total_liabilities: 0,
+        ytd_avg_liability_cost: null,
+      };
+    },
+    async getLiabilityAdbMonthly(year: number) {
+      await delay();
+      return {
+        year,
+        months: [],
+        ytd_avg_assets: 0,
+        ytd_avg_liabilities: 0,
+        ytd_asset_yield: null,
+        ytd_liability_cost: null,
+        ytd_net_interest_margin: null,
+        unit: "percent",
+      };
+    },
+    async getAdb(_params: { startDate: string; endDate: string }) {
+      await delay();
+      return {
+        summary: {
+          total_avg_assets: 0,
+          total_avg_liabilities: 0,
+          end_spot_assets: 0,
+          end_spot_liabilities: 0,
+        },
+        trend: [],
+        breakdown: [],
+      };
+    },
+    async getAdbComparison(_params: { startDate: string; endDate: string; topN?: number }) {
+      await delay();
+      return {
+        start_date: "",
+        end_date: "",
+        num_days: 0,
+        simulated: false,
+        assets: [],
+        liabilities: [],
+      };
+    },
+    async getAdbMonthly(year: number) {
+      await delay();
+      return {
+        year,
+        months: [],
+        ytd_avg_assets: 0,
+        ytd_avg_liabilities: 0,
+        ytd_asset_yield: null,
+        ytd_liability_cost: null,
+        ytd_net_interest_margin: null,
+        unit: "percent",
+      };
+    },
     async getBondAnalyticsRefreshStatus(runId: string) {
       await delay();
       return {
@@ -3578,6 +4684,231 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         job_name: "bond_analytics_refresh",
         cache_key: "bond_analytics:materialize",
         report_date: "2025-12-31",
+      };
+    },
+
+    // --- KPI mock ---
+    async getKpiOwners(params) {
+      await delay();
+      return {
+        owners: [
+          {
+            owner_id: 1,
+            owner_name: "固定收益部",
+            org_unit: "金融市场部",
+            year: params?.year ?? new Date().getFullYear(),
+            scope_type: "department" as const,
+            is_active: true,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
+          },
+          {
+            owner_id: 2,
+            owner_name: "同业业务部",
+            org_unit: "金融市场部",
+            year: params?.year ?? new Date().getFullYear(),
+            scope_type: "department" as const,
+            is_active: true,
+            created_at: "2026-01-01T00:00:00Z",
+            updated_at: "2026-01-01T00:00:00Z",
+          },
+        ],
+        total: 2,
+      };
+    },
+    async getKpiMetrics() {
+      await delay();
+      return { metrics: [], total: 0 };
+    },
+    async getKpiMetricById() {
+      await delay();
+      return {
+        metric_id: 1,
+        metric_code: "MOCK_001",
+        owner_id: 1,
+        year: new Date().getFullYear(),
+        major_category: "收益类",
+        metric_name: "债券投资收益率",
+        target_value: "4.50",
+        score_weight: "15.00",
+        scoring_rule_type: "LINEAR_RATIO" as const,
+        data_source_type: "AUTO" as const,
+        is_active: true,
+      };
+    },
+    async createKpiMetric(_data) {
+      await delay();
+      return {
+        metric_id: Date.now(),
+        metric_code: _data.metric_code,
+        owner_id: _data.owner_id,
+        year: _data.year,
+        major_category: _data.major_category,
+        metric_name: _data.metric_name,
+        target_value: _data.target_value ?? null,
+        score_weight: _data.score_weight,
+        scoring_rule_type: _data.scoring_rule_type,
+        data_source_type: _data.data_source_type,
+        is_active: true,
+      };
+    },
+    async updateKpiMetric(metricId, data) {
+      await delay();
+      return {
+        metric_id: metricId,
+        metric_code: data.metric_code,
+        owner_id: data.owner_id,
+        year: data.year,
+        major_category: data.major_category,
+        metric_name: data.metric_name,
+        target_value: data.target_value ?? null,
+        score_weight: data.score_weight,
+        scoring_rule_type: data.scoring_rule_type,
+        data_source_type: data.data_source_type,
+        is_active: true,
+      };
+    },
+    async deleteKpiMetric() {
+      await delay();
+    },
+    async getKpiValues(params) {
+      await delay();
+      return {
+        owner_id: params.owner_id,
+        owner_name: "固定收益部",
+        as_of_date: params.as_of_date,
+        metrics: [],
+        total: 0,
+      };
+    },
+    async getKpiValuesSummary(params) {
+      await delay();
+      return {
+        owner_id: params.owner_id,
+        owner_name: "固定收益部",
+        year: params.year,
+        period_type: params.period_type,
+        period_value: params.period_value,
+        period_label: `${params.year}年${params.period_value ?? ""}${params.period_type === "MONTH" ? "月" : params.period_type === "QUARTER" ? "季度" : "年度"}`,
+        period_start_date: `${params.year}-01-01`,
+        period_end_date: `${params.year}-12-31`,
+        metrics: [],
+        total: 0,
+        total_weight: "100.00",
+        total_score: "0.00",
+      };
+    },
+    async createKpiValue(data) {
+      await delay();
+      return {
+        value_id: Date.now(),
+        metric_id: data.metric_id,
+        as_of_date: data.as_of_date,
+        actual_value: data.actual_value ?? null,
+        completion_ratio: null,
+        progress_pct: data.progress_pct ?? null,
+        score_value: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    },
+    async updateKpiValue(valueId, metricId, asOfDate, data) {
+      await delay();
+      return {
+        value_id: valueId || Date.now(),
+        metric_id: metricId,
+        as_of_date: asOfDate,
+        actual_value: data.actual_value ?? null,
+        completion_ratio: null,
+        progress_pct: data.progress_pct ?? null,
+        score_value: data.score_value ?? null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+    },
+    async batchUpdateKpiValues() {
+      await delay();
+      return { success_count: 0, failed_count: 0, errors: [] };
+    },
+    async fetchAndRecalcKpi(ownerId, asOfDate) {
+      await delay();
+      return {
+        owner_id: ownerId,
+        owner_name: "固定收益部",
+        as_of_date: asOfDate,
+        total_metrics: 0,
+        fetched_count: 0,
+        scored_count: 0,
+        failed_count: 0,
+        skipped_count: 0,
+        results: [],
+      };
+    },
+    async getKpiReport(params) {
+      await delay();
+      return {
+        year: params.year,
+        generated_at: new Date().toISOString(),
+        rows: [],
+        total: 0,
+      };
+    },
+    async downloadKpiReportCSV() {
+      await delay();
+    },
+    async getCubeDimensions(factTable: string) {
+      await delay();
+      const dimensionMap: Record<string, string[]> = {
+        bond_analytics: [
+          "asset_class_std",
+          "accounting_class",
+          "tenor_bucket",
+          "rating",
+          "bond_type",
+          "issuer_name",
+          "industry_name",
+          "portfolio_name",
+          "cost_center",
+        ],
+        pnl: ["invest_type_std", "accounting_basis", "portfolio_name", "cost_center"],
+        balance: [
+          "asset_class",
+          "invest_type_std",
+          "accounting_basis",
+          "position_scope",
+          "bond_type",
+          "rating",
+        ],
+        product_category: ["category_id", "category_name", "side", "view"],
+      };
+      const fieldMap: Record<string, string[]> = {
+        bond_analytics: ["market_value", "duration"],
+        pnl: ["total_pnl"],
+        balance: ["market_value", "amortized_cost", "accrued_interest"],
+        product_category: ["business_net_income"],
+      };
+      return {
+        fact_table: factTable,
+        dimensions: dimensionMap[factTable] ?? [],
+        measures: ["sum", "avg", "count", "min", "max"],
+        measure_fields: fieldMap[factTable] ?? [],
+      };
+    },
+    async executeCubeQuery(request: CubeQueryRequest) {
+      await delay();
+      return {
+        report_date: request.report_date,
+        fact_table: request.fact_table,
+        measures: request.measures,
+        dimensions: request.dimensions ?? [],
+        rows: [],
+        total_rows: 0,
+        drill_paths: [],
+        result_meta: {
+          ...buildMockMeta("cube.query"),
+          basis: "formal",
+          formal_use_allowed: true,
+        },
       };
     },
   };
@@ -3641,6 +4972,135 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/ui/pnl/attribution",
       ),
+    getVolumeRateAttribution: (options) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
+      }
+      if (options?.compareType) {
+        params.set("compare_type", options.compareType);
+      }
+      const q = params.toString();
+      return requestJson<VolumeRateAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/volume-rate${q ? `?${q}` : ""}`,
+      );
+    },
+    getTplMarketCorrelation: (options) => {
+      const params = new URLSearchParams();
+      if (options?.months !== undefined) {
+        params.set("months", String(options.months));
+      }
+      const q = params.toString();
+      return requestJson<TPLMarketCorrelationPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/tpl-market${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlCompositionBreakdown: (options) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
+      }
+      if (options?.includeTrend === false) {
+        params.set("include_trend", "false");
+      }
+      if (options?.trendMonths !== undefined) {
+        params.set("trend_months", String(options.trendMonths));
+      }
+      const q = params.toString();
+      return requestJson<PnlCompositionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/composition${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlAttributionAnalysisSummary: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestJson<PnlAttributionAnalysisSummary>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/summary${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlCarryRollDown: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestJson<CarryRollDownPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/advanced/carry-rolldown${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlSpreadAttribution: (options) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
+      }
+      if (options?.lookbackDays !== undefined) {
+        params.set("lookback_days", String(options.lookbackDays));
+      }
+      const q = params.toString();
+      return requestJson<SpreadAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/advanced/spread${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlKrdAttribution: (options) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate?.trim()) {
+        params.set("report_date", options.reportDate.trim());
+      }
+      if (options?.lookbackDays !== undefined) {
+        params.set("lookback_days", String(options.lookbackDays));
+      }
+      const q = params.toString();
+      return requestJson<KRDAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/advanced/krd${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlAdvancedAttributionSummary: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestJson<AdvancedAttributionSummary>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/advanced/summary${q ? `?${q}` : ""}`,
+      );
+    },
+    getPnlCampisiAttribution: (options) => {
+      const params = new URLSearchParams();
+      if (options?.startDate?.trim()) {
+        params.set("start_date", options.startDate.trim());
+      }
+      if (options?.endDate?.trim()) {
+        params.set("end_date", options.endDate.trim());
+      }
+      if (options?.lookbackDays !== undefined) {
+        params.set("lookback_days", String(options.lookbackDays));
+      }
+      const q = params.toString();
+      return requestJson<CampisiAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/advanced/campisi${q ? `?${q}` : ""}`,
+      );
+    },
     getRiskOverview: () =>
       requestJson<RiskOverviewPayload>(
         fetchImpl,
@@ -3665,12 +5125,73 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         "/api/bond-analytics/dates",
       ),
-    getBondAnalyticsReturnDecomposition: (reportDate: string, periodType: string) =>
-      requestJson<ReturnDecompositionPayload>(
+    getBondDashboardDates: () =>
+      requestJson<BondAnalyticsDatesPayload>(fetchImpl, baseUrl, "/api/bond-dashboard/dates"),
+    getBondDashboardHeadlineKpis: (reportDate: string) =>
+      requestJson<BondDashboardHeadlinePayload>(
         fetchImpl,
         baseUrl,
-        `/api/bond-analytics/return-decomposition?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}`,
+        `/api/bond-dashboard/headline-kpis?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getBondDashboardAssetStructure: (reportDate: string, groupBy: string) =>
+      requestJson<AssetStructurePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/asset-structure?report_date=${encodeURIComponent(reportDate)}&group_by=${encodeURIComponent(groupBy)}`,
+      ),
+    getBondDashboardYieldDistribution: (reportDate: string) =>
+      requestJson<YieldDistributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/yield-distribution?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardPortfolioComparison: (reportDate: string) =>
+      requestJson<PortfolioComparisonPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/portfolio-comparison?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardSpreadAnalysis: (reportDate: string) =>
+      requestJson<SpreadAnalysisPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/spread-analysis?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardMaturityStructure: (reportDate: string) =>
+      requestJson<MaturityStructurePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/maturity-structure?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondDashboardIndustryDistribution: (reportDate: string) =>
+      requestJson<IndustryDistPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/industry-distribution?report_date=${encodeURIComponent(reportDate)}&top_n=10`,
+      ),
+    getBondDashboardRiskIndicators: (reportDate: string) =>
+      requestJson<RiskIndicatorsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-dashboard/risk-indicators?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getBondAnalyticsReturnDecomposition: (
+      reportDate: string,
+      periodType: string,
+      options?: { assetClass?: string; accountingClass?: string },
+    ) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        period_type: periodType,
+      });
+      if (options?.assetClass) params.set("asset_class", options.assetClass);
+      if (options?.accountingClass) params.set("accounting_class", options.accountingClass);
+      return requestJson<ReturnDecompositionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/return-decomposition?${params.toString()}`,
+      );
+    },
     getBondAnalyticsBenchmarkExcess: (
       reportDate: string,
       periodType: string,
@@ -3681,12 +5202,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/bond-analytics/benchmark-excess?report_date=${encodeURIComponent(reportDate)}&period_type=${encodeURIComponent(periodType)}&benchmark_id=${encodeURIComponent(benchmarkId)}`,
       ),
-    getBondAnalyticsKrdCurveRisk: (reportDate: string) =>
-      requestJson<KRDCurveRiskPayload>(
+    getBondAnalyticsKrdCurveRisk: (reportDate: string, options?: { scenarioSet?: string }) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.scenarioSet) params.set("scenario_set", options.scenarioSet);
+      return requestJson<KRDCurveRiskPayload>(
         fetchImpl,
         baseUrl,
-        `/api/bond-analytics/krd-curve-risk?report_date=${encodeURIComponent(reportDate)}`,
-      ),
+        `/api/bond-analytics/krd-curve-risk?${params.toString()}`,
+      );
+    },
     getBondAnalyticsActionAttribution: (reportDate: string, periodType: string) =>
       requestJson<ActionAttributionPayload>(
         fetchImpl,
@@ -3699,12 +5223,35 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/bond-analytics/accounting-class-audit?report_date=${encodeURIComponent(reportDate)}`,
       ),
-    getBondAnalyticsCreditSpreadMigration: (reportDate: string) =>
-      requestJson<CreditSpreadMigrationPayload>(
+    getBondAnalyticsCreditSpreadMigration: (
+      reportDate: string,
+      options?: { spreadScenarios?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.spreadScenarios) params.set("spread_scenarios", options.spreadScenarios);
+      return requestJson<CreditSpreadMigrationPayload>(
         fetchImpl,
         baseUrl,
-        `/api/bond-analytics/credit-spread-migration?report_date=${encodeURIComponent(reportDate)}`,
+        `/api/bond-analytics/credit-spread-migration?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsPortfolioHeadlines: (reportDate: string) =>
+      requestJson<BondPortfolioHeadlinesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/portfolio-headlines?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getBondAnalyticsTopHoldings: (reportDate: string, topN = 20) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        top_n: String(topN),
+      });
+      return requestJson<BondTopHoldingsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/top-holdings?${params.toString()}`,
+      );
+    },
     getCreditSpreadAnalysisDetail: (reportDate: string) =>
       requestJson<CreditSpreadAnalysisPayload>(
         fetchImpl,
@@ -3893,6 +5440,92 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/positions/customer/trend?${params.toString()}`,
       );
     },
+    getCashflowProjection: (reportDate: string) =>
+      requestJson<CashflowProjectionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/cashflow-projection?report_date=${encodeURIComponent(reportDate)}`,
+      ),
+    getLiabilityRiskBuckets: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestPlainJson<LiabilityRiskBucketsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/risk/buckets${q ? `?${q}` : ""}`,
+      );
+    },
+    getLiabilityYieldMetrics: (reportDate) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      const q = params.toString();
+      return requestPlainJson<LiabilityYieldMetricsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/yield_metrics${q ? `?${q}` : ""}`,
+      );
+    },
+    getLiabilityCounterparty: ({ reportDate, topN }) => {
+      const params = new URLSearchParams();
+      if (reportDate?.trim()) {
+        params.set("report_date", reportDate.trim());
+      }
+      if (topN !== undefined) {
+        params.set("top_n", String(topN));
+      }
+      const q = params.toString();
+      return requestPlainJson<LiabilityCounterpartyPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/liabilities/counterparty${q ? `?${q}` : ""}`,
+      );
+    },
+    getLiabilitiesMonthly: (year) =>
+      requestPlainJson<LiabilitiesMonthlyPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,
+      ),
+    getLiabilityAdbMonthly: (year) =>
+      requestPlainJson<LiabilityAdbMonthlyPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
+      ),
+    getAdb: ({ startDate, endDate }) => {
+      const params = new URLSearchParams();
+      params.set("start_date", startDate.trim());
+      params.set("end_date", endDate.trim());
+      return requestPlainJson<AdbPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb?${params.toString()}`,
+      );
+    },
+    getAdbComparison: ({ startDate, endDate, topN }) => {
+      const params = new URLSearchParams();
+      params.set("start_date", startDate.trim());
+      params.set("end_date", endDate.trim());
+      if (topN !== undefined) {
+        params.set("top_n", String(topN));
+      }
+      return requestPlainJson<AdbComparisonPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb-comparison?${params.toString()}`,
+      );
+    },
+    getAdbMonthly: (year) =>
+      requestPlainJson<AdbMonthlyPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
+      ),
     getContribution: () =>
       requestJson<ContributionPayload>(
         fetchImpl,
@@ -3977,6 +5610,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         "/ui/market-data/fx/analytical",
+      ),
+    refreshChoiceMacro: (backfillDays?: number) => {
+      const params = backfillDays ? `?backfill_days=${backfillDays}` : "";
+      return requestActionJson<ChoiceMacroRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/choice-series/refresh${params}`,
+        { method: "POST" },
+      );
+    },
+    getChoiceMacroRefreshStatus: (runId: string) =>
+      requestActionJson<ChoiceMacroRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/macro/choice-series/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
     getChoiceNewsEvents: ({
       limit,
@@ -4307,6 +5955,40 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/ui/balance-analysis?${params.toString()}`,
       );
     },
+    getBalanceAnalysisSummaryByBasis: ({ reportDate, positionScope, currencyBasis }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+      });
+      return requestJson<BalanceAnalysisBasisBreakdownPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/summary-by-basis?${params.toString()}`,
+      );
+    },
+    getBalanceAnalysisAdvancedAttribution: ({
+      reportDate,
+      scenarioName,
+      treasuryShiftBp,
+      spreadShiftBp,
+    }) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (scenarioName) {
+        params.set("scenario_name", scenarioName);
+      }
+      if (treasuryShiftBp !== undefined) {
+        params.set("treasury_shift_bp", String(treasuryShiftBp));
+      }
+      if (spreadShiftBp !== undefined) {
+        params.set("spread_shift_bp", String(spreadShiftBp));
+      }
+      return requestJson<BalanceAnalysisAdvancedAttributionBundlePayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/balance-analysis/advanced-attribution?${params.toString()}`,
+      );
+    },
     exportBalanceAnalysisSummaryCsv: ({
       reportDate,
       positionScope,
@@ -4371,6 +6053,145 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/bond-analytics/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
+
+    // --- KPI real ---
+    getKpiOwners: (params) =>
+      requestKpiJson<KpiOwnerListResponse>(
+        fetchImpl,
+        baseUrl,
+        `/owners${kpiQueryString(params ?? {})}`,
+      ),
+    getKpiMetrics: (params) =>
+      requestKpiJson<KpiMetricListResponse>(
+        fetchImpl,
+        baseUrl,
+        `/metrics${kpiQueryString(params ?? {})}`,
+      ),
+    getKpiMetricById: (metricId) =>
+      requestKpiJson<KpiMetric>(fetchImpl, baseUrl, `/metrics/${metricId}`),
+    createKpiMetric: (data) =>
+      requestKpiJson<KpiMetric>(
+        fetchImpl,
+        baseUrl,
+        "/metrics",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    updateKpiMetric: (metricId, data) =>
+      requestKpiJson<KpiMetric>(
+        fetchImpl,
+        baseUrl,
+        `/metrics/${metricId}`,
+        { method: "PUT", body: JSON.stringify(data) },
+      ),
+    deleteKpiMetric: async (metricId) => {
+      const response = await fetchImpl(`${baseUrl}/api/kpi/metrics/${metricId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(text || `KPI API ${response.status}`);
+      }
+    },
+    getKpiValues: (params) =>
+      requestKpiJson<KpiValuesResponse>(
+        fetchImpl,
+        baseUrl,
+        `/values${kpiQueryString(params)}`,
+      ),
+    getKpiValuesSummary: (params) =>
+      requestKpiJson<KpiPeriodSummaryResponse>(
+        fetchImpl,
+        baseUrl,
+        `/values/summary${kpiQueryString(params)}`,
+      ),
+    createKpiValue: (data) =>
+      requestKpiJson<KpiMetricValue>(
+        fetchImpl,
+        baseUrl,
+        "/values",
+        { method: "POST", body: JSON.stringify(data) },
+      ),
+    updateKpiValue: async (valueId, metricId, asOfDate, data) => {
+      if (valueId && valueId > 0) {
+        return requestKpiJson<KpiMetricValue>(
+          fetchImpl,
+          baseUrl,
+          `/values/${valueId}`,
+          { method: "PUT", body: JSON.stringify(data) },
+        );
+      }
+      return requestKpiJson<KpiMetricValue>(
+        fetchImpl,
+        baseUrl,
+        "/values",
+        {
+          method: "POST",
+          body: JSON.stringify({ metric_id: metricId, as_of_date: asOfDate, ...data }),
+        },
+      );
+    },
+    batchUpdateKpiValues: (asOfDate, items) =>
+      requestKpiJson<KpiBatchUpdateResponse>(
+        fetchImpl,
+        baseUrl,
+        "/values/batch",
+        { method: "POST", body: JSON.stringify({ as_of_date: asOfDate, items }) },
+      ),
+    fetchAndRecalcKpi: (ownerId, asOfDate, request) =>
+      requestKpiJson<KpiFetchAndRecalcResponse>(
+        fetchImpl,
+        baseUrl,
+        `/fetch_and_recalc${kpiQueryString({ owner_id: ownerId, as_of_date: asOfDate })}`,
+        { method: "POST", body: JSON.stringify(request ?? {}) },
+      ),
+    getKpiReport: (params) =>
+      requestKpiJson<KpiReportResponse>(
+        fetchImpl,
+        baseUrl,
+        `/report${kpiQueryString(params)}`,
+      ),
+    downloadKpiReportCSV: async (params) => {
+      const response = await fetchImpl(
+        `${baseUrl}/api/kpi/report${kpiQueryString({ ...params, format: "csv" })}`,
+      );
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(text || `KPI API ${response.status}`);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `kpi_report_${params.year}_${params.as_of_date || "latest"}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    },
+    getCubeDimensions: async (factTable: string) => {
+      const response = await fetchImpl(
+        `${baseUrl}/api/cube/dimensions/${encodeURIComponent(factTable)}`,
+        {
+          headers: { Accept: "application/json" },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Request failed: /api/cube/dimensions/${factTable} (${response.status})`);
+      }
+      return response.json() as Promise<CubeDimensionsPayload>;
+    },
+    executeCubeQuery: async (request: CubeQueryRequest) => {
+      const response = await fetchImpl(`${baseUrl}/api/cube/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(text || `Cube query failed (${response.status})`);
+      }
+      return response.json() as Promise<CubeQueryResult>;
+    },
   };
 }
 

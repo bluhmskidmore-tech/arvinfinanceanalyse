@@ -6,6 +6,8 @@ type SummarySectionProps = {
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
+  /** Override card title (e.g. 全局判断 on fixed-income dashboard). */
+  sectionTitle?: string;
 };
 
 const toneMap = {
@@ -19,10 +21,11 @@ export function SummarySection({
   isLoading,
   isError,
   onRetry,
+  sectionTitle = "本周管理摘要",
 }: SummarySectionProps) {
   return (
     <AsyncSection
-      title="本周管理摘要"
+      title={sectionTitle}
       isLoading={isLoading}
       isError={isError}
       isEmpty={!data || data.points.length === 0}

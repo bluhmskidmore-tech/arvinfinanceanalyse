@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
-import type { AssetClassRiskSummary, KRDCurveRiskResponse } from "../types";
+import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 
 interface Props {
   reportDate: string;
+  scenarioSet?: BondAnalyticsScenarioSetFilter;
 }
 
 const scenarioColumns = [
@@ -87,7 +88,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
   };
 }
 
-export function KRDCurveRiskView({ reportDate }: Props) {
+export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props) {
   const client = useApiClient();
   const [data, setData] = useState<KRDCurveRiskResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -99,7 +100,10 @@ export function KRDCurveRiskView({ reportDate }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const envelope = await client.getBondAnalyticsKrdCurveRisk(reportDate);
+        const envelope =
+          scenarioSet === "standard"
+            ? await client.getBondAnalyticsKrdCurveRisk(reportDate)
+            : await client.getBondAnalyticsKrdCurveRisk(reportDate, { scenarioSet });
         if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
@@ -111,7 +115,7 @@ export function KRDCurveRiskView({ reportDate }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [client, reportDate]);
+  }, [client, reportDate, scenarioSet]);
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!data?.krd_buckets?.length) return null;

@@ -11,8 +11,10 @@ from backend.app.repositories.source_preview_repo import (
     source_preview_payload_version,
 )
 from backend.app.schemas.result_meta import ResultMeta
+from backend.app.schemas.source_preview import SourcePreviewPayload
 
 CACHE_VERSION = "cv_phase1_source_preview_v1"
+SOURCE_FOUNDATION_FAMILIES = frozenset({"zqtz", "tyw"})
 
 
 def _preview_result_meta(
@@ -37,6 +39,13 @@ def _preview_result_meta(
 
 def source_preview_envelope(duckdb_path: str) -> dict[str, object]:
     payload = load_source_preview_payload(duckdb_path)
+    payload = SourcePreviewPayload(
+        sources=[
+            source
+            for source in payload.sources
+            if str(source.source_family) in SOURCE_FOUNDATION_FAMILIES
+        ]
+    )
     return {
         "result_meta": _preview_result_meta(
             trace_id="tr_preview_source_foundation",

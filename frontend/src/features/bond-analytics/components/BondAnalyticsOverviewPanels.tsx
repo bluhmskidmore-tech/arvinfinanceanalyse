@@ -1,8 +1,14 @@
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
-import type { PeriodType } from "../types";
+import type {
+  BondAnalyticsAccountingClassFilter,
+  BondAnalyticsAssetClassFilter,
+  BondAnalyticsScenarioSetFilter,
+  PeriodType,
+} from "../types";
 import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
+import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
 import { BondAnalyticsFuturePanel } from "./BondAnalyticsFuturePanel";
 import { BondAnalyticsHeadlineZone } from "./BondAnalyticsHeadlineZone";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
@@ -16,6 +22,14 @@ export interface BondAnalyticsOverviewPanelsProps {
   onReportDateChange: (value: string) => void;
   periodType: PeriodType;
   onPeriodTypeChange: (value: PeriodType) => void;
+  assetClass: BondAnalyticsAssetClassFilter;
+  onAssetClassChange: (value: BondAnalyticsAssetClassFilter) => void;
+  accountingClass: BondAnalyticsAccountingClassFilter;
+  onAccountingClassChange: (value: BondAnalyticsAccountingClassFilter) => void;
+  scenarioSet: BondAnalyticsScenarioSetFilter;
+  onScenarioSetChange: (value: BondAnalyticsScenarioSetFilter) => void;
+  spreadScenarios: string;
+  onSpreadScenariosChange: (value: string) => void;
   overviewModel: BondAnalyticsOverviewModel;
   onOpenModuleDetail: (key: BondAnalyticsModuleKey) => void;
   onRefreshAnalytics?: () => void;
@@ -30,6 +44,14 @@ export function BondAnalyticsOverviewPanels({
   onReportDateChange,
   periodType,
   onPeriodTypeChange,
+  assetClass,
+  onAssetClassChange,
+  accountingClass,
+  onAccountingClassChange,
+  scenarioSet,
+  onScenarioSetChange,
+  spreadScenarios,
+  onSpreadScenariosChange,
   overviewModel,
   onOpenModuleDetail,
   onRefreshAnalytics,
@@ -72,11 +94,21 @@ export function BondAnalyticsOverviewPanels({
           onReportDateChange={onReportDateChange}
           periodType={periodType}
           onPeriodTypeChange={onPeriodTypeChange}
+          assetClass={assetClass}
+          onAssetClassChange={onAssetClassChange}
+          accountingClass={accountingClass}
+          onAccountingClassChange={onAccountingClassChange}
+          scenarioSet={scenarioSet}
+          onScenarioSetChange={onScenarioSetChange}
+          spreadScenarios={spreadScenarios}
+          onSpreadScenariosChange={onSpreadScenariosChange}
           onRefreshAnalytics={onRefreshAnalytics}
           isAnalyticsRefreshing={isAnalyticsRefreshing}
           analyticsRefreshError={analyticsRefreshError}
           lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
         />
+
+        <BondAnalyticsInstitutionalCockpit reportDate={reportDate} />
 
         <div
           style={{

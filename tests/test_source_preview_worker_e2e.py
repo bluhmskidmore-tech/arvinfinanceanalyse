@@ -14,7 +14,10 @@ from fastapi.testclient import TestClient
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from tests.helpers import ROOT, load_module
-from tests.test_bond_analytics_materialize_flow import _seed_bond_snapshot_rows
+from tests.test_bond_analytics_materialize_flow import (
+    _seed_bond_snapshot_rows,
+    seed_yield_curves_for_bond_analytics_tests,
+)
 from tests.test_balance_analysis_materialize_flow import _seed_snapshot_and_fx_tables
 from tests.test_product_category_pnl_flow import _write_month_pair
 
@@ -277,6 +280,7 @@ def test_bond_analytics_refresh_real_worker_e2e(tmp_path, monkeypatch):
     redis_dir.mkdir(parents=True, exist_ok=True)
 
     _seed_bond_snapshot_rows(str(duckdb_path))
+    seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
     monkeypatch.setenv("MOSS_REDIS_DSN", f"redis://127.0.0.1:{redis_port}/0")
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))

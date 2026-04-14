@@ -7,6 +7,7 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
@@ -39,6 +40,7 @@ STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
 def refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
+    backfill_days: int = 0,
 ) -> dict[str, object]:
     _init_runtime()
     settings = get_settings()
@@ -65,25 +67,32 @@ def refresh_choice_macro_snapshot(
     vendor_version = "vv_none"
 
     try:
-        batches = load_choice_macro_batches(settings)
-        series_registry = _build_choice_series_registry(batches)
-        fetch_plan = _build_choice_macro_fetch_plan(batches)
+        if backfill_days > 1:
+            snapshot, series_registry = _fetch_backfill_snapshots(
+                settings=settings,
+                backfill_days=backfill_days,
+            )
+        else:
+            batches = load_choice_macro_batches(settings)
+            series_registry = _build_choice_series_registry(batches)
+            fetch_plan = _build_choice_macro_fetch_plan(batches)
 
-        adapter = VendorAdapter()
-        batch_snapshots: list[ChoiceMacroSnapshot] = []
-        for batch in fetch_plan:
-            try:
-                snapshot = _fetch_choice_macro_batch_snapshot(
-                    adapter=adapter,
-                    batch=batch,
-                    timeout_seconds=settings.choice_timeout_seconds,
-                )
-            except RuntimeError as exc:
-                if _is_choice_no_data_error(exc):
-                    continue
-                raise
-            batch_snapshots.append(snapshot)
-        snapshot = merge_choice_macro_snapshots(batch_snapshots)
+            adapter = VendorAdapter()
+            batch_snapshots: list[ChoiceMacroSnapshot] = []
+            for batch in fetch_plan:
+                try:
+                    snapshot = _fetch_choice_macro_batch_snapshot(
+                        adapter=adapter,
+                        batch=batch,
+                        timeout_seconds=settings.choice_timeout_seconds,
+                    )
+                except RuntimeError as exc:
+                    if _is_choice_no_data_error(exc):
+                        continue
+                    raise
+                batch_snapshots.append(snapshot)
+            snapshot = merge_choice_macro_snapshots(batch_snapshots)
+
         vendor_version = snapshot.vendor_version
         source_version = _build_source_version(snapshot.raw_payload)
 
@@ -98,7 +107,7 @@ def refresh_choice_macro_snapshot(
             vendor_version=snapshot.vendor_version,
             archived_path=str(archived["archived_path"]),
             snapshot_kind="macro",
-            capture_mode="live",
+            capture_mode="live" if backfill_days <= 1 else "backfill",
         )
         vendor_version_registry = {
             "vendor_name": snapshot.vendor_name,
@@ -108,13 +117,31 @@ def refresh_choice_macro_snapshot(
             "registered_at": run.created_at,
         }
 
+        backfill_trade_dates: set[str] = set()
+        if backfill_days > 1:
+            for point in snapshot.series:
+                if point.trade_date:
+                    backfill_trade_dates.add(str(point.trade_date))
+
         with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
             conn = duckdb.connect(str(duckdb_file), read_only=False)
             try:
                 _ensure_tables(conn)
                 conn.execute("begin transaction")
-                conn.execute("delete from choice_market_snapshot")
-                conn.execute("delete from fact_choice_macro_daily")
+                if backfill_days > 1 and backfill_trade_dates:
+                    placeholders = ", ".join(["?"] * len(backfill_trade_dates))
+                    date_list = sorted(backfill_trade_dates)
+                    conn.execute(
+                        f"delete from choice_market_snapshot where trade_date in ({placeholders})",
+                        date_list,
+                    )
+                    conn.execute(
+                        f"delete from fact_choice_macro_daily where trade_date in ({placeholders})",
+                        date_list,
+                    )
+                else:
+                    conn.execute("delete from choice_market_snapshot")
+                    conn.execute("delete from fact_choice_macro_daily")
                 conn.execute("delete from phase1_macro_vendor_catalog")
 
                 for point in snapshot.series:
@@ -276,19 +303,19 @@ def _build_source_version(raw_payload: dict[str, object]) -> str:
     return f"sv_choice_macro_{digest}"
 
 
-def load_choice_macro_batches(settings) -> list[ChoiceMacroBatchConfig]:
-    run_date = _choice_macro_run_date()
+def load_choice_macro_batches(settings, run_date: str | None = None) -> list[ChoiceMacroBatchConfig]:
+    effective_run_date = _choice_macro_run_date(run_date)
     catalog_path = _resolve_choice_macro_catalog_path(settings)
     if catalog_path is not None and catalog_path.exists():
         return _normalize_choice_macro_batches(
             load_choice_macro_batches_from_catalog(catalog_path),
-            run_date=run_date,
+            run_date=effective_run_date,
         )
 
     if settings.choice_macro_commands_file:
         return _normalize_choice_macro_batches(
             load_choice_macro_batches_from_file(Path(settings.choice_macro_commands_file)),
-            run_date=run_date,
+            run_date=effective_run_date,
         )
 
     series = [
@@ -303,7 +330,7 @@ def load_choice_macro_batches(settings) -> list[ChoiceMacroBatchConfig]:
                 series=series,
             )
         ],
-        run_date=run_date,
+        run_date=effective_run_date,
     )
 
 
@@ -531,7 +558,9 @@ def _serialize_choice_request_option_value(value: object) -> str:
     return str(value)
 
 
-def _choice_macro_run_date() -> str:
+def _choice_macro_run_date(override_date: str | None = None) -> str:
+    if override_date:
+        return override_date
     return date.today().isoformat()
 
 
@@ -594,72 +623,47 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
-    conn.execute(
-        """
-        create table if not exists choice_market_snapshot (
-          series_id varchar,
-          series_name varchar,
-          vendor_series_code varchar,
-          vendor_name varchar,
-          trade_date varchar,
-          value_numeric double,
-          frequency varchar,
-          unit varchar,
-          source_version varchar,
-          vendor_version varchar,
-          rule_version varchar,
-          run_id varchar
-        )
-        """
-    )
-    conn.execute(
-        """
-        create table if not exists fact_choice_macro_daily (
-          series_id varchar,
-          series_name varchar,
-          trade_date varchar,
-          value_numeric double,
-          frequency varchar,
-          unit varchar,
-          source_version varchar,
-          vendor_version varchar,
-          rule_version varchar,
-          quality_flag varchar,
-          run_id varchar
-        )
-        """
-    )
-    conn.execute(
-        """
-        create table if not exists phase1_macro_vendor_catalog (
-          series_id varchar,
-          series_name varchar,
-          vendor_name varchar,
-          vendor_version varchar,
-          frequency varchar,
-          unit varchar,
-          vendor_series_code varchar,
-          batch_id varchar,
-          catalog_version varchar,
-          theme varchar,
-          is_core boolean,
-          tags_json varchar,
-          request_options varchar,
-          fetch_mode varchar,
-          fetch_granularity varchar,
-          refresh_tier varchar,
-          policy_note varchar
-        )
-        """
-    )
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists vendor_series_code varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists batch_id varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists catalog_version varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists theme varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists is_core boolean")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists tags_json varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists request_options varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists fetch_mode varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists fetch_granularity varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists refresh_tier varchar")
-    conn.execute("alter table phase1_macro_vendor_catalog add column if not exists policy_note varchar")
+    """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
+    apply_pending_migrations_on_connection(conn)
+
+
+def _fetch_backfill_snapshots(
+    *,
+    settings,
+    backfill_days: int,
+) -> tuple[ChoiceMacroSnapshot, dict[str, dict[str, object]]]:
+    """Fetch Choice macro data for each of the last *backfill_days* calendar days.
+
+    Returns the merged snapshot and the series registry (from the latest day's batches).
+    """
+    adapter = VendorAdapter()
+    all_snapshots: list[ChoiceMacroSnapshot] = []
+    series_registry: dict[str, dict[str, object]] = {}
+    today = date.today()
+
+    for offset in range(backfill_days):
+        target_date = (today - timedelta(days=offset)).isoformat()
+        batches = load_choice_macro_batches(settings, run_date=target_date)
+        if offset == 0:
+            series_registry = _build_choice_series_registry(batches)
+        fetch_plan = _build_choice_macro_fetch_plan(batches)
+
+        day_snapshots: list[ChoiceMacroSnapshot] = []
+        for batch in fetch_plan:
+            try:
+                snap = _fetch_choice_macro_batch_snapshot(
+                    adapter=adapter,
+                    batch=batch,
+                    timeout_seconds=settings.choice_timeout_seconds,
+                )
+            except RuntimeError as exc:
+                if _is_choice_no_data_error(exc):
+                    continue
+                raise
+            day_snapshots.append(snap)
+
+        if day_snapshots:
+            all_snapshots.extend(day_snapshots)
+
+    merged = merge_choice_macro_snapshots(all_snapshots)
+    return merged, series_registry

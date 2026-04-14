@@ -13,6 +13,8 @@ describe("bondAnalyticsModuleRegistry", () => {
 
     expect(new Set(currentKeys).size).toBe(currentKeys.length);
     expect(new Set(futureKeys).size).toBe(futureKeys.length);
+    const overlap = currentKeys.filter((key) => futureKeys.includes(key));
+    expect(overlap).toEqual([]);
   });
 
   it("requires non-empty label, description, and detailHint for each current module", () => {

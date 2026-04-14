@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
@@ -16,6 +16,8 @@ from backend.app.tasks.source_preview_refresh import (
 
 
 IN_FLIGHT_STATUSES = {"queued", "running"}
+TERMINAL_STATUSES = {"completed", "failed"}
+STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 SAFE_SYNC_FALLBACK_MESSAGES = ("queue disabled", "broker unavailable")
 SAFE_SYNC_FALLBACK_EXCEPTIONS = (ConnectionError, OSError, TimeoutError)
 
@@ -158,10 +160,63 @@ def _latest_inflight_refresh(settings: Settings) -> dict[str, object] | None:
     by_run_id: dict[str, dict[str, object]] = {}
     for record in _load_source_preview_refresh_records(settings):
         by_run_id[str(record.get("run_id"))] = record
+    stale_records: list[dict[str, object]] = []
     for record in reversed(list(by_run_id.values())):
         if str(record.get("status")) in IN_FLIGHT_STATUSES:
+            if _is_stale_source_preview_inflight_record(record):
+                stale_records.append(record)
+                continue
             return record
+    for record in stale_records:
+        _mark_stale_source_preview_inflight_run(
+            settings=settings,
+            run_id=str(record.get("run_id")),
+            error_message="Marked stale source preview refresh run as failed.",
+        )
     return None
+
+
+def _is_stale_source_preview_inflight_record(record: dict[str, object]) -> bool:
+    for field_name in ("started_at", "queued_at", "created_at"):
+        raw_value = str(record.get(field_name) or "").strip()
+        if not raw_value:
+            continue
+        normalized = (
+            raw_value.replace("Z", "+00:00") if raw_value.endswith("Z") else raw_value
+        )
+        parsed = datetime.fromisoformat(normalized)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
+        return datetime.now(timezone.utc) - parsed > STALE_IN_FLIGHT_AFTER
+    return True
+
+
+def _mark_stale_source_preview_inflight_run(
+    *,
+    settings: Settings,
+    run_id: str,
+    error_message: str,
+) -> None:
+    lock_key = build_source_preview_refresh_lock_key(settings.duckdb_path)
+    _append_governance_record(
+        settings,
+        CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": run_id,
+            "job_name": SOURCE_PREVIEW_REFRESH_JOB_NAME,
+            "status": "failed",
+            "cache_key": SOURCE_PREVIEW_REFRESH_CACHE_KEY,
+            "lock": lock_key,
+            "source_version": "sv_preview_stale",
+            "vendor_version": "vv_none",
+            "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
+            "error_message": error_message,
+            "finished_at": datetime.now(timezone.utc).isoformat(),
+        },
+        error_message="Source preview refresh stale-run governance write failed.",
+    )
 
 
 def _record_dispatch_failure(
@@ -209,7 +264,7 @@ def _should_use_sync_fallback(settings: Settings, exc: Exception) -> bool:
 
 
 def _load_source_preview_refresh_records(settings: Settings) -> list[dict[str, object]]:
-    return [
+    records = [
         record
         for record in _governance_repo(settings).read_all(
             CACHE_BUILD_RUN_STREAM
@@ -217,6 +272,27 @@ def _load_source_preview_refresh_records(settings: Settings) -> list[dict[str, o
         if str(record.get("cache_key")) == SOURCE_PREVIEW_REFRESH_CACHE_KEY
         and str(record.get("job_name")) == SOURCE_PREVIEW_REFRESH_JOB_NAME
     ]
+    return _collapse_refresh_records(records)
+
+
+def _collapse_refresh_records(records: list[dict[str, object]]) -> list[dict[str, object]]:
+    latest_by_run_id: dict[str, dict[str, object]] = {}
+    run_order: list[str] = []
+    for record in records:
+        run_id = str(record.get("run_id") or "").strip()
+        if not run_id:
+            continue
+        if run_id not in latest_by_run_id:
+            run_order.append(run_id)
+        current = latest_by_run_id.get(run_id)
+        if current is None:
+            latest_by_run_id[run_id] = record
+            continue
+        current_terminal = str(current.get("status", "")) in TERMINAL_STATUSES
+        candidate_terminal = str(record.get("status", "")) in TERMINAL_STATUSES
+        if candidate_terminal or not current_terminal:
+            latest_by_run_id[run_id] = record
+    return [latest_by_run_id[run_id] for run_id in run_order]
 
 
 def _append_governance_record(

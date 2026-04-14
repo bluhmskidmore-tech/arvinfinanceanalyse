@@ -260,13 +260,19 @@ def test_pnl_materialize_task_rejects_rows_outside_requested_report_date(tmp_pat
         )
 
 
-def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_disabled(tmp_path):
+def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_disabled(
+    tmp_path,
+    monkeypatch,
+):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
             "backend.app.tasks.pnl_materialize",
             "backend/app/tasks/pnl_materialize.py",
         )
+
+    monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "false")
+    get_settings.cache_clear()
 
     governance_dir = tmp_path / "governance"
 
@@ -302,6 +308,7 @@ def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_dis
     assert [row["status"] for row in build_runs] == ["running", "failed"]
     assert build_runs[-1]["report_date"] == "2025-12-31"
     assert "Formal pnl emission is disabled" in build_runs[-1]["error_message"]
+    get_settings.cache_clear()
 
 
 def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_path):
@@ -337,6 +344,7 @@ def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_p
             duckdb_path=str(tmp_path / "moss.duckdb"),
             governance_dir=str(governance_dir),
             formal_pnl_enabled=True,
+            formal_pnl_scope_json="[]",
         )
 
     build_runs = [
@@ -361,7 +369,7 @@ def test_pnl_materialize_task_rejects_settings_enabled_formal_fi_rows_without_sc
         )
 
     monkeypatch.setenv("MOSS_FORMAL_PNL_ENABLED", "true")
-    monkeypatch.delenv("MOSS_FORMAL_PNL_SCOPE_JSON", raising=False)
+    monkeypatch.setenv("MOSS_FORMAL_PNL_SCOPE_JSON", "[]")
     get_settings.cache_clear()
 
     governance_dir = tmp_path / "governance"
