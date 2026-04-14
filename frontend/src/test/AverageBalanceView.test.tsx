@@ -12,7 +12,46 @@ vi.mock("../lib/echarts", () => ({
 
 describe("AverageBalanceView", () => {
   it("renders the ADB shell, tabs, and daily KPI cards", async () => {
-    const client = createApiClient({ mode: "mock" });
+    const baseClient = createApiClient({ mode: "mock" });
+    const client = {
+      ...baseClient,
+      async getAdbComparison() {
+        return {
+          report_date: "2025-12-31",
+          start_date: "2025-12-02",
+          end_date: "2025-12-31",
+          num_days: 30,
+          simulated: false,
+          total_spot_assets: 250000000,
+          total_avg_assets: 200000000,
+          total_spot_liabilities: 100000000,
+          total_avg_liabilities: 90000000,
+          asset_yield: 2.55,
+          liability_cost: 1.75,
+          net_interest_margin: 0.8,
+          assets_breakdown: [
+            {
+              category: "国债",
+              spot_balance: 150000000,
+              avg_balance: 120000000,
+              proportion: 60,
+              weighted_rate: 2.4,
+            },
+          ],
+          liabilities_breakdown: [
+            {
+              category: "同业存单",
+              spot_balance: 100000000,
+              avg_balance: 90000000,
+              proportion: 100,
+              weighted_rate: 1.75,
+            },
+          ],
+          assets: [],
+          liabilities: [],
+        };
+      },
+    };
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
     });
@@ -34,5 +73,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("负债偏离度")).toBeInTheDocument();
     expect(screen.getByText("资产收益率")).toBeInTheDocument();
     expect(screen.getByText("负债付息率")).toBeInTheDocument();
+    expect(screen.getAllByText("时点(亿元)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("加权利率").length).toBeGreaterThan(0);
   });
 });

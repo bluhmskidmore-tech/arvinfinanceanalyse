@@ -49,31 +49,13 @@ def adb_comparison(
             ed.isoformat(),
             top_n=top_n,
         )
-    except Exception as e:  # noqa: BLE001 —与 V1 一致返回可渲染结构
-        return {
-            "report_date": end_date or "",
-            "start_date": start_date or "",
-            "end_date": end_date or "",
-            "num_days": 0,
-            "simulated": False,
-            "total_spot_assets": 0.0,
-            "total_avg_assets": 0.0,
-            "total_spot_liabilities": 0.0,
-            "total_avg_liabilities": 0.0,
-            "asset_yield": None,
-            "liability_cost": None,
-            "net_interest_margin": None,
-            "assets_breakdown": [],
-            "liabilities_breakdown": [],
-            "assets": [],
-            "liabilities": [],
-            "detail": str(e),
-        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get adb comparison: {e}") from e
 
 
 @router.get("/adb/monthly")
 def adb_monthly(
-    year: int | None = Query(None, description="统计年份，默认当前年"),
+    year: int | None = Query(None, description="统计年份，默认为当前年"),
 ):
     y = year if year is not None else date.today().year
     try:

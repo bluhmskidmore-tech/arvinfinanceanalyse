@@ -188,3 +188,22 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     mon = m.json()
     assert mon["year"] == 2025
     assert "months" in mon and "ytd_avg_assets" in mon
+
+
+def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    route_mod = load_module("backend.app.api.routes.adb_analysis", "backend/app/api/routes/adb_analysis.py")
+    client = TestClient(main_mod.app)
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("adb comparison exploded")
+
+    monkeypatch.setattr(route_mod.adb_analysis_service, "adb_comparison_envelope", _boom)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+    )
+
+    assert response.status_code == 500, response.text
+    assert response.json()["detail"] == "Failed to get adb comparison: adb comparison exploded"
