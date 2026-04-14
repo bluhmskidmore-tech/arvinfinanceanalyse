@@ -287,15 +287,31 @@ def get_adb_comparison(
     num_days = int((end_date - start_date).days) + 1
     num_days_dec = Decimal(str(max(num_days, 1)))
 
-    if not Path(duckdb_path).exists():
-        return {
+    def empty_response(detail: str | None = None) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "report_date": end_date.strftime("%Y-%m-%d"),
             "start_date": start_date.strftime("%Y-%m-%d"),
             "end_date": end_date.strftime("%Y-%m-%d"),
             "num_days": num_days,
             "simulated": False,
+            "total_spot_assets": 0.0,
+            "total_avg_assets": 0.0,
+            "total_spot_liabilities": 0.0,
+            "total_avg_liabilities": 0.0,
+            "asset_yield": None,
+            "liability_cost": None,
+            "net_interest_margin": None,
+            "assets_breakdown": [],
+            "liabilities_breakdown": [],
             "assets": [],
             "liabilities": [],
         }
+        if detail:
+            payload["detail"] = detail
+        return payload
+
+    if not Path(duckdb_path).exists():
+        return empty_response()
 
     conn = _conn_ro(duckdb_path)
     spot_assets: dict[str, Decimal] = {}
@@ -447,13 +463,158 @@ def get_adb_comparison(
         out.sort(key=lambda x: (abs(x.get("deviation") or 0.0), x.get("spot") or 0.0), reverse=True)
         return out[: max(int(top_n), 0)]
 
+    assets = build("Asset", spot_assets, sum_assets)
+    liabilities = build("Liability", spot_liab, sum_liab)
+    total_spot_assets = float(sum(item["spot"] for item in assets))
+    total_avg_assets = float(sum(item["avg"] for item in assets))
+    total_spot_liabilities = float(sum(item["spot"] for item in liabilities))
+    total_avg_liabilities = float(sum(item["avg"] for item in liabilities))
+
+    asset_rate_map: dict[str, float | None] = {}
+    liability_rate_map: dict[str, float | None] = {}
+    asset_yield: float | None = None
+    liability_cost: float | None = None
+
+    conn2 = _conn_ro(duckdb_path)
+    try:
+        bonds_df, interbank_df = _get_adb_raw_data(conn2, start_date, end_date)
+    finally:
+        conn2.close()
+
+    asset_frames: list[pd.DataFrame] = []
+    liability_frames: list[pd.DataFrame] = []
+
+    if not bonds_df.empty:
+        issued_mask = (
+            bonds_df["is_issuance_like"].fillna(False).astype(bool)
+            if "is_issuance_like" in bonds_df.columns
+            else pd.Series(False, index=bonds_df.index)
+        )
+        if "asset_class" in bonds_df.columns:
+            issued_mask = issued_mask | bonds_df["asset_class"].astype(str).str.contains("发行", na=False)
+
+        bonds_assets_df = bonds_df[~issued_mask].copy()
+        if not bonds_assets_df.empty:
+            bonds_assets_df["category"] = bonds_assets_df["sub_type"].apply(_clean_cat)
+            bonds_assets_df["balance"] = pd.to_numeric(bonds_assets_df["market_value"], errors="coerce").fillna(0.0)
+            bonds_assets_df["rate_decimal"] = np.where(
+                pd.notna(bonds_assets_df["yield_to_maturity"]) & (bonds_assets_df["yield_to_maturity"] != 0),
+                normalize_rate_series_pd(bonds_assets_df["yield_to_maturity"], "yield_to_maturity"),
+                np.where(
+                    pd.notna(bonds_assets_df["coupon_rate"]) & (bonds_assets_df["coupon_rate"] != 0),
+                    normalize_rate_series_pd(bonds_assets_df["coupon_rate"], "coupon_rate"),
+                    np.where(
+                        pd.notna(bonds_assets_df["interest_rate"]) & (bonds_assets_df["interest_rate"] != 0),
+                        normalize_rate_series_pd(bonds_assets_df["interest_rate"], "interest_rate"),
+                        0.0,
+                    ),
+                ),
+            )
+            bonds_assets_df["weighted"] = bonds_assets_df["balance"] * bonds_assets_df["rate_decimal"]
+            asset_frames.append(bonds_assets_df[["category", "balance", "weighted"]])
+
+        bonds_liab_df = bonds_df[issued_mask].copy()
+        if not bonds_liab_df.empty:
+            bonds_liab_df["category"] = bonds_liab_df["sub_type"].apply(_clean_cat)
+            bonds_liab_df["balance"] = pd.to_numeric(bonds_liab_df["market_value"], errors="coerce").fillna(0.0)
+            bonds_liab_df["rate_decimal"] = np.where(
+                pd.notna(bonds_liab_df["coupon_rate"]) & (bonds_liab_df["coupon_rate"] != 0),
+                normalize_rate_series_pd(bonds_liab_df["coupon_rate"], "coupon_rate"),
+                np.where(
+                    pd.notna(bonds_liab_df["interest_rate"]) & (bonds_liab_df["interest_rate"] != 0),
+                    normalize_rate_series_pd(bonds_liab_df["interest_rate"], "interest_rate"),
+                    0.0,
+                ),
+            )
+            bonds_liab_df["weighted"] = bonds_liab_df["balance"] * bonds_liab_df["rate_decimal"]
+            liability_frames.append(bonds_liab_df[["category", "balance", "weighted"]])
+
+    if not interbank_df.empty:
+        ib_assets_df = interbank_df[interbank_df["direction"] == "ASSET"].copy()
+        if not ib_assets_df.empty:
+            ib_assets_df["category"] = ib_assets_df["product_type"].apply(_clean_cat)
+            ib_assets_df["balance"] = pd.to_numeric(ib_assets_df["amount"], errors="coerce").fillna(0.0)
+            ib_assets_df["rate_decimal"] = normalize_rate_series_pd(ib_assets_df["interest_rate"], "interbank_interest_rate")
+            ib_assets_df["weighted"] = ib_assets_df["balance"] * ib_assets_df["rate_decimal"]
+            asset_frames.append(ib_assets_df[["category", "balance", "weighted"]])
+
+        ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
+        if not ib_liab_df.empty:
+            ib_liab_df["category"] = ib_liab_df["product_type"].apply(_clean_cat)
+            ib_liab_df["balance"] = pd.to_numeric(ib_liab_df["amount"], errors="coerce").fillna(0.0)
+            ib_liab_df["rate_decimal"] = normalize_rate_series_pd(ib_liab_df["interest_rate"], "interbank_interest_rate")
+            ib_liab_df["weighted"] = ib_liab_df["balance"] * ib_liab_df["rate_decimal"]
+            liability_frames.append(ib_liab_df[["category", "balance", "weighted"]])
+
+    def build_rate_map(
+        frames: list[pd.DataFrame],
+    ) -> tuple[dict[str, float | None], float | None]:
+        if not frames:
+            return {}, None
+        merged = pd.concat(frames, ignore_index=True)
+        if merged.empty:
+            return {}, None
+        grouped = (
+            merged.groupby("category", dropna=False)[["balance", "weighted"]]
+            .sum()
+            .reset_index()
+        )
+        rate_map: dict[str, float | None] = {}
+        total_balance = float(grouped["balance"].sum())
+        total_weighted = float(grouped["weighted"].sum())
+        for _, row in grouped.iterrows():
+            category = _clean_cat(row["category"])
+            balance = float(row["balance"])
+            weighted = float(row["weighted"])
+            rate_map[category] = round(weighted / balance * 100, 4) if balance > 0 else None
+        total_rate = round(total_weighted / total_balance * 100, 4) if total_balance > 0 else None
+        return rate_map, total_rate
+
+    asset_rate_map, asset_yield = build_rate_map(asset_frames)
+    liability_rate_map, liability_cost = build_rate_map(liability_frames)
+    net_interest_margin = (
+        round(asset_yield - liability_cost, 4)
+        if asset_yield is not None and liability_cost is not None
+        else None
+    )
+
+    def enrich_breakdown(
+        rows: list[dict[str, float]],
+        total_avg: float,
+        rate_map: dict[str, float | None],
+    ) -> list[dict[str, Any]]:
+        breakdown: list[dict[str, Any]] = []
+        for row in rows:
+            avg_balance = float(row["avg"])
+            breakdown.append(
+                {
+                    "category": row["category"],
+                    "spot_balance": float(row["spot"]),
+                    "avg_balance": avg_balance,
+                    "deviation": float(row["deviation"]),
+                    "proportion": round(avg_balance / total_avg * 100, 2) if total_avg > 0 else 0.0,
+                    "weighted_rate": rate_map.get(row["category"]),
+                }
+            )
+        return breakdown
+
     return {
+        "report_date": end_date.strftime("%Y-%m-%d"),
         "start_date": start_date.strftime("%Y-%m-%d"),
         "end_date": end_date.strftime("%Y-%m-%d"),
         "num_days": num_days,
         "simulated": simulated,
-        "assets": build("Asset", spot_assets, sum_assets),
-        "liabilities": build("Liability", spot_liab, sum_liab),
+        "total_spot_assets": total_spot_assets,
+        "total_avg_assets": total_avg_assets,
+        "total_spot_liabilities": total_spot_liabilities,
+        "total_avg_liabilities": total_avg_liabilities,
+        "asset_yield": asset_yield,
+        "liability_cost": liability_cost,
+        "net_interest_margin": net_interest_margin,
+        "assets_breakdown": enrich_breakdown(assets, total_avg_assets, asset_rate_map),
+        "liabilities_breakdown": enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map),
+        "assets": assets,
+        "liabilities": liabilities,
     }
 
 

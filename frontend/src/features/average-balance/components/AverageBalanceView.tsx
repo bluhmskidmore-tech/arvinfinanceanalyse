@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
@@ -17,13 +17,29 @@ import type { ColumnsType } from "antd/es/table";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import type { AdbBreakdownItem, AdbComparisonRow, AdbMonthlyItem } from "../../../api/contracts";
+import type {
+  AdbBreakdownItem,
+  AdbComparisonBreakdownItem,
+  AdbComparisonRow,
+  AdbMonthlyItem,
+} from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
 
 const { Title, Text } = Typography;
 
 type RangeKey = "7d" | "30d" | "ytd";
 type PageTab = "daily" | "monthly";
+type DailyChartRow = {
+  category: string;
+  spot_yi: number;
+  avg_yi: number;
+  deviation_yi: number;
+};
+type MonthlyBarRow = {
+  category: string;
+  avg_yi: number;
+  weighted_rate?: number | null;
+};
 
 const YI = 100_000_000;
 
@@ -72,6 +88,15 @@ function deviationAlert(rows: AdbComparisonRow[]): { show: boolean; detail: stri
     show: true,
     detail: `「${top.category}」期末时点高于区间日均约 ${formatYi(top.deviation)}，可能存在窗口粉饰 / 月末冲量 — 请结合业务核实。`,
   };
+}
+
+function comparisonRowsToBreakdown(rows: AdbComparisonRow[]): AdbComparisonBreakdownItem[] {
+  return rows.map((row) => ({
+    category: row.category,
+    spot_balance: row.spot,
+    avg_balance: row.avg,
+    deviation: row.deviation,
+  }));
 }
 
 export default function AverageBalanceView() {
@@ -144,50 +169,71 @@ export default function AverageBalanceView() {
   const selectedMonthData = useMemo(() => {
     return monthlyQuery.data?.months.find((m) => m.month === selectedMonthForBreakdown) ?? null;
   }, [monthlyQuery.data?.months, selectedMonthForBreakdown]);
-
-  const assetRows = useMemo(
-    () => (adbQuery.data?.breakdown ?? []).filter((x) => x.side === "Asset"),
+  const adbAssetRows = useMemo(
+    () => (adbQuery.data?.breakdown ?? []).filter((item) => item.side === "Asset"),
     [adbQuery.data?.breakdown],
   );
-  const liabilityRows = useMemo(
-    () => (adbQuery.data?.breakdown ?? []).filter((x) => x.side === "Liability"),
+  const adbLiabilityRows = useMemo(
+    () => (adbQuery.data?.breakdown ?? []).filter((item) => item.side === "Liability"),
     [adbQuery.data?.breakdown],
   );
 
-  const assetTotal = useMemo(() => assetRows.reduce((s, x) => s + (Number(x.avg_balance) || 0), 0), [assetRows]);
-  const liabilityTotal = useMemo(
-    () => liabilityRows.reduce((s, x) => s + (Number(x.avg_balance) || 0), 0),
-    [liabilityRows],
+  const assetComparisonRows = useMemo(
+    () => cmpQuery.data?.assets_breakdown ?? comparisonRowsToBreakdown(cmpQuery.data?.assets ?? []),
+    [cmpQuery.data?.assets_breakdown, cmpQuery.data?.assets],
   );
-  const assetMax = useMemo(
-    () => assetRows.reduce((m, x) => Math.max(m, Number(x.avg_balance) || 0), 0),
-    [assetRows],
+  const liabilityComparisonRows = useMemo(
+    () => cmpQuery.data?.liabilities_breakdown ?? comparisonRowsToBreakdown(cmpQuery.data?.liabilities ?? []),
+    [cmpQuery.data?.liabilities_breakdown, cmpQuery.data?.liabilities],
   );
-  const liabilityMax = useMemo(
-    () => liabilityRows.reduce((m, x) => Math.max(m, Number(x.avg_balance) || 0), 0),
-    [liabilityRows],
-  );
+  const totalSpotAssets = cmpQuery.data?.total_spot_assets ?? adbQuery.data?.summary.end_spot_assets ?? 0;
+  const totalAvgAssets = cmpQuery.data?.total_avg_assets ?? adbQuery.data?.summary.total_avg_assets ?? 0;
+  const totalSpotLiabilities = cmpQuery.data?.total_spot_liabilities ?? adbQuery.data?.summary.end_spot_liabilities ?? 0;
+  const totalAvgLiabilities = cmpQuery.data?.total_avg_liabilities ?? adbQuery.data?.summary.total_avg_liabilities ?? 0;
+  const assetDeviationPct =
+    totalAvgAssets > 0 ? ((totalSpotAssets - totalAvgAssets) / totalAvgAssets) * 100 : 0;
+  const liabilityDeviationPct =
+    totalAvgLiabilities > 0
+      ? ((totalSpotLiabilities - totalAvgLiabilities) / totalAvgLiabilities) * 100
+      : 0;
 
   const cmpAssets = useMemo(
     () =>
-      (cmpQuery.data?.assets ?? []).map((it) => ({
+      assetComparisonRows.map((it) => ({
         category: it.category,
-        spot_yi: (it.spot || 0) / YI,
-        avg_yi: (it.avg || 0) / YI,
-        deviation_yi: (it.deviation || 0) / YI,
+        spot_yi: (it.spot_balance || 0) / YI,
+        avg_yi: (it.avg_balance || 0) / YI,
+        deviation_yi: ((it.deviation ?? it.spot_balance - it.avg_balance) || 0) / YI,
       })),
-    [cmpQuery.data?.assets],
+    [assetComparisonRows],
   );
   const cmpLiab = useMemo(
     () =>
-      (cmpQuery.data?.liabilities ?? []).map((it) => ({
+      liabilityComparisonRows.map((it) => ({
         category: it.category,
-        spot_yi: (it.spot || 0) / YI,
-        avg_yi: (it.avg || 0) / YI,
-        deviation_yi: (it.deviation || 0) / YI,
+        spot_yi: (it.spot_balance || 0) / YI,
+        avg_yi: (it.avg_balance || 0) / YI,
+        deviation_yi: ((it.deviation ?? it.spot_balance - it.avg_balance) || 0) / YI,
       })),
-    [cmpQuery.data?.liabilities],
+    [liabilityComparisonRows],
   );
+  const adbAssetTotal = useMemo(
+    () => adbAssetRows.reduce((sum, row) => sum + (Number(row.avg_balance) || 0), 0),
+    [adbAssetRows],
+  );
+  const adbLiabilityTotal = useMemo(
+    () => adbLiabilityRows.reduce((sum, row) => sum + (Number(row.avg_balance) || 0), 0),
+    [adbLiabilityRows],
+  );
+  const adbAssetMax = useMemo(
+    () => adbAssetRows.reduce((max, row) => Math.max(max, Number(row.avg_balance) || 0), 0),
+    [adbAssetRows],
+  );
+  const adbLiabilityMax = useMemo(
+    () => adbLiabilityRows.reduce((max, row) => Math.max(max, Number(row.avg_balance) || 0), 0),
+    [adbLiabilityRows],
+  );
+  const hasComparisonBreakdown = assetComparisonRows.length > 0 || liabilityComparisonRows.length > 0;
 
   const dressingAssets = useMemo(
     () => deviationAlert(cmpQuery.data?.assets ?? []),
@@ -228,7 +274,7 @@ export default function AverageBalanceView() {
     };
   }, [adbQuery.data?.trend]);
 
-  function barOption(rows: { category: string; spot_yi: number; avg_yi: number }[], title: string) {
+  function barOption(rows: DailyChartRow[], title: string) {
     return {
       title: { text: title, left: 0, textStyle: { fontSize: 13 } },
       tooltip: {
@@ -262,6 +308,45 @@ export default function AverageBalanceView() {
     };
   }
 
+  function horizontalBarOption(rows: MonthlyBarRow[], title: string, color: string) {
+    return {
+      title: { text: title, left: 0, textStyle: { fontSize: 13 } },
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        formatter: (items: { dataIndex: number }[]) => {
+          if (!items?.length) return "";
+          const row = rows[items[0].dataIndex];
+          if (!row) return "";
+          return [
+            row.category,
+            `日均：${row.avg_yi.toFixed(2)} 亿`,
+            `加权利率：${formatPct(row.weighted_rate ?? null)}`,
+          ].join("<br/>");
+        },
+      },
+      grid: { left: 100, right: 20, top: 36, bottom: 24 },
+      xAxis: { type: "value", name: "亿元" },
+      yAxis: {
+        type: "category",
+        data: rows.map((row) => row.category),
+        axisLabel: { fontSize: 11 },
+      },
+      series: [
+        {
+          type: "bar",
+          data: rows.map((row) => row.avg_yi),
+          itemStyle: { color },
+          label: {
+            show: true,
+            position: "right",
+            formatter: ({ dataIndex }: { dataIndex: number }) => rows[dataIndex]?.avg_yi.toFixed(2) ?? "0.00",
+          },
+        },
+      ],
+    };
+  }
+
   const breakdownColumns: ColumnsType<AdbBreakdownItem> = [
     { title: "类别", dataIndex: "category", key: "category" },
     {
@@ -276,7 +361,7 @@ export default function AverageBalanceView() {
       key: "pct",
       align: "right",
       render: (_: unknown, row) => {
-        const total = row.side === "Asset" ? assetTotal : liabilityTotal;
+        const total = row.side === "Asset" ? adbAssetTotal : adbLiabilityTotal;
         const pct = total > 0 ? (row.avg_balance / total) * 100 : 0;
         return `${pct.toFixed(2)}%`;
       },
@@ -285,10 +370,10 @@ export default function AverageBalanceView() {
       title: "规模条",
       key: "bar",
       render: (_: unknown, row) => {
-        const total = row.side === "Asset" ? assetTotal : liabilityTotal;
-        const max = row.side === "Asset" ? assetMax : liabilityMax;
+        const max = row.side === "Asset" ? adbAssetMax : adbLiabilityMax;
+        const total = row.side === "Asset" ? adbAssetTotal : adbLiabilityTotal;
         const pct = total > 0 ? (row.avg_balance / total) * 100 : 0;
-        const w = max > 0 ? Math.min(100, (row.avg_balance / max) * 100) : 0;
+        const width = max > 0 ? Math.min(100, (row.avg_balance / max) * 100) : 0;
         return (
           <div>
             <Text type="secondary" style={{ fontSize: 11 }}>
@@ -297,7 +382,7 @@ export default function AverageBalanceView() {
             <div style={{ height: 6, background: "#f1f5f9", borderRadius: 2 }}>
               <div
                 style={{
-                  width: `${w}%`,
+                  width: `${width}%`,
                   height: 6,
                   borderRadius: 2,
                   background: row.side === "Asset" ? "#2563eb" : "#dc2626",
@@ -309,6 +394,65 @@ export default function AverageBalanceView() {
       },
     },
   ];
+
+  const dailyBreakdownColumns: ColumnsType<AdbComparisonBreakdownItem> = [
+    { title: "类别", dataIndex: "category", key: "category" },
+    {
+      title: "时点(亿元)",
+      dataIndex: "spot_balance",
+      key: "spot_balance",
+      align: "right",
+      render: (v: number) => (v / YI).toFixed(2),
+    },
+    {
+      title: "日均(亿元)",
+      dataIndex: "avg_balance",
+      key: "avg_balance",
+      align: "right",
+      render: (v: number) => (v / YI).toFixed(2),
+    },
+    {
+      title: "占比",
+      dataIndex: "proportion",
+      key: "proportion",
+      align: "right",
+      render: (v: number | null | undefined) => `${(v ?? 0).toFixed(2)}%`,
+    },
+    {
+      title: "加权利率",
+      dataIndex: "weighted_rate",
+      key: "weighted_rate",
+      align: "right",
+      render: (v: number | null | undefined) => formatPct(v ?? null),
+    },
+  ];
+
+  const monthlyAssetChartRows = useMemo(
+    () =>
+      (selectedMonthData?.breakdown_assets ?? [])
+        .slice()
+        .sort((a, b) => b.avg_balance - a.avg_balance)
+        .slice(0, 10)
+        .map((row) => ({
+          category: row.category,
+          avg_yi: row.avg_balance / YI,
+          weighted_rate: row.weighted_rate,
+        })),
+    [selectedMonthData?.breakdown_assets],
+  );
+  const monthlyLiabilityChartRows = useMemo(
+    () =>
+      (selectedMonthData?.breakdown_liabilities ?? [])
+        .slice()
+        .sort((a, b) => b.avg_balance - a.avg_balance)
+        .slice(0, 10)
+        .map((row) => ({
+          category: row.category,
+          avg_yi: row.avg_balance / YI,
+          weighted_rate: row.weighted_rate,
+        })),
+    [selectedMonthData?.breakdown_liabilities],
+  );
 
   const monthlyColumns: ColumnsType<AdbMonthlyItem> = [
     {
@@ -416,7 +560,7 @@ export default function AverageBalanceView() {
               options={[
                 { label: "近7天", value: "7d" },
                 { label: "近30天", value: "30d" },
-                { label: "本年至今(YTD)", value: "ytd" },
+                { label: "本年迄今(YTD)", value: "ytd" },
               ]}
             />
 
@@ -426,10 +570,33 @@ export default function AverageBalanceView() {
               <>
                 <Row gutter={[16, 16]}>
                   {[
-                    ["资产期末时点", adbQuery.data?.summary.end_spot_assets],
-                    ["资产区间日均", adbQuery.data?.summary.total_avg_assets],
-                    ["负债期末时点", adbQuery.data?.summary.end_spot_liabilities],
-                    ["负债区间日均", adbQuery.data?.summary.total_avg_liabilities],
+                    ["资产偏离度", assetDeviationPct],
+                    ["负债偏离度", liabilityDeviationPct],
+                    ["资产收益率", cmpQuery.data?.asset_yield ?? null],
+                    ["负债付息率", cmpQuery.data?.liability_cost ?? null],
+                    ["NIM", cmpQuery.data?.net_interest_margin ?? null],
+                  ].map(([label, val]) => (
+                    <Col xs={24} sm={12} lg={4} key={String(label)}>
+                      <Card size="small">
+                        <Text type="secondary">{label}</Text>
+                        <Title
+                          level={4}
+                          style={{ marginTop: 8 }}
+                          type={typeof val === "number" && val < 0 ? "danger" : undefined}
+                        >
+                          {formatPct(typeof val === "number" ? val : null)}
+                        </Title>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+
+                <Row gutter={[16, 16]}>
+                  {[
+                    ["资产期末时点", totalSpotAssets],
+                    ["资产区间日均", totalAvgAssets],
+                    ["负债期末时点", totalSpotLiabilities],
+                    ["负债区间日均", totalAvgLiabilities],
                   ].map(([label, val]) => (
                     <Col xs={24} sm={12} lg={6} key={String(label)}>
                       <Card size="small">
@@ -511,9 +678,9 @@ export default function AverageBalanceView() {
                       <Table
                         size="small"
                         pagination={false}
-                        rowKey={(r) => `a-${r.category}`}
-                        columns={breakdownColumns}
-                        dataSource={assetRows}
+                        rowKey={(row) => `a-${row.category}`}
+                        columns={hasComparisonBreakdown ? dailyBreakdownColumns : breakdownColumns}
+                        dataSource={hasComparisonBreakdown ? assetComparisonRows : adbAssetRows}
                         locale={{ emptyText: "暂无数据" }}
                       />
                     </Card>
@@ -523,9 +690,9 @@ export default function AverageBalanceView() {
                       <Table
                         size="small"
                         pagination={false}
-                        rowKey={(r) => `l-${r.category}`}
-                        columns={breakdownColumns}
-                        dataSource={liabilityRows}
+                        rowKey={(row) => `l-${row.category}`}
+                        columns={hasComparisonBreakdown ? dailyBreakdownColumns : breakdownColumns}
+                        dataSource={hasComparisonBreakdown ? liabilityComparisonRows : adbLiabilityRows}
                         locale={{ emptyText: "暂无数据" }}
                       />
                     </Card>
@@ -679,6 +846,12 @@ export default function AverageBalanceView() {
                     <Row gutter={16}>
                       <Col xs={24} lg={12}>
                         <Title level={5}>{selectedMonthData.month_label} · 资产</Title>
+                        <ReactECharts
+                          option={horizontalBarOption(monthlyAssetChartRows, `${selectedMonthData.month_label} 资产分类`, "#2563eb")}
+                          style={{ height: 320, marginBottom: 16 }}
+                          notMerge
+                          lazyUpdate
+                        />
                         <Table
                           size="small"
                           pagination={false}
@@ -700,11 +873,24 @@ export default function AverageBalanceView() {
                               align: "right",
                               render: (v: number) => `${v?.toFixed?.(2) ?? v}%`,
                             },
+                            {
+                              title: "收益率",
+                              dataIndex: "weighted_rate",
+                              key: "w",
+                              align: "right",
+                              render: (v: number | null) => formatPct(v),
+                            },
                           ]}
                         />
                       </Col>
                       <Col xs={24} lg={12}>
                         <Title level={5}>{selectedMonthData.month_label} · 负债</Title>
+                        <ReactECharts
+                          option={horizontalBarOption(monthlyLiabilityChartRows, `${selectedMonthData.month_label} 负债分类`, "#dc2626")}
+                          style={{ height: 320, marginBottom: 16 }}
+                          notMerge
+                          lazyUpdate
+                        />
                         <Table
                           size="small"
                           pagination={false}
@@ -725,6 +911,13 @@ export default function AverageBalanceView() {
                               key: "p",
                               align: "right",
                               render: (v: number) => `${v?.toFixed?.(2) ?? v}%`,
+                            },
+                            {
+                              title: "付息率",
+                              dataIndex: "weighted_rate",
+                              key: "w",
+                              align: "right",
+                              render: (v: number | null) => formatPct(v),
                             },
                           ]}
                         />

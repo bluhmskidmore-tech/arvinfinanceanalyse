@@ -208,6 +208,51 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch adb comparison from the nested comparison route", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        report_date: "2025-06-03",
+        start_date: "2025-06-02",
+        end_date: "2025-06-03",
+        num_days: 2,
+        simulated: false,
+        total_spot_assets: 250000000,
+        total_avg_assets: 175000000,
+        total_spot_liabilities: 0,
+        total_avg_liabilities: 0,
+        asset_yield: 3.3571,
+        liability_cost: null,
+        net_interest_margin: null,
+        assets_breakdown: [],
+        liabilities_breakdown: [],
+        assets: [],
+        liabilities: [],
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getAdbComparison({
+      startDate: "2025-06-02",
+      endDate: "2025-06-03",
+      topN: 5,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch source preview foundation endpoint", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

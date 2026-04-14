@@ -164,6 +164,24 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     cmp = c.json()
     assert cmp["num_days"] == 2
     assert "assets" in cmp and isinstance(cmp["assets"], list)
+    assert cmp["report_date"] == "2025-06-03"
+    assert "assets_breakdown" in cmp and isinstance(cmp["assets_breakdown"], list)
+    assert "liabilities_breakdown" in cmp and isinstance(cmp["liabilities_breakdown"], list)
+    assert "total_spot_assets" in cmp
+    assert "total_avg_assets" in cmp
+    assert "asset_yield" in cmp
+    assert "liability_cost" in cmp
+    assert "net_interest_margin" in cmp
+
+    c_alias = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
+    )
+    assert c_alias.status_code == 200, c_alias.text
+    cmp_alias = c_alias.json()
+    assert cmp_alias["report_date"] == cmp["report_date"]
+    assert cmp_alias["total_spot_assets"] == cmp["total_spot_assets"]
+    assert cmp_alias["total_avg_assets"] == cmp["total_avg_assets"]
 
     m = client.get("/api/analysis/adb/monthly", params={"year": 2025})
     assert m.status_code == 200, m.text

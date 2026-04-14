@@ -2433,11 +2433,30 @@ export type AdbComparisonRow = {
   deviation: number;
 };
 
+export type AdbComparisonBreakdownItem = {
+  category: string;
+  spot_balance: number;
+  avg_balance: number;
+  deviation?: number;
+  proportion?: number | null;
+  weighted_rate?: number | null;
+};
+
 export type AdbComparisonPayload = {
+  report_date?: string;
   start_date: string;
   end_date: string;
   num_days: number;
   simulated: boolean;
+  total_spot_assets?: number;
+  total_avg_assets?: number;
+  total_spot_liabilities?: number;
+  total_avg_liabilities?: number;
+  asset_yield?: number | null;
+  liability_cost?: number | null;
+  net_interest_margin?: number | null;
+  assets_breakdown?: AdbComparisonBreakdownItem[];
+  liabilities_breakdown?: AdbComparisonBreakdownItem[];
   assets: AdbComparisonRow[];
   liabilities: AdbComparisonRow[];
   detail?: string;

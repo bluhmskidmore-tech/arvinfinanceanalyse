@@ -4655,10 +4655,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getAdbComparison(_params: { startDate: string; endDate: string; topN?: number }) {
       await delay();
       return {
+        report_date: "",
         start_date: "",
         end_date: "",
         num_days: 0,
         simulated: false,
+        total_spot_assets: 0,
+        total_avg_assets: 0,
+        total_spot_liabilities: 0,
+        total_avg_liabilities: 0,
+        asset_yield: null,
+        liability_cost: null,
+        net_interest_margin: null,
+        assets_breakdown: [],
+        liabilities_breakdown: [],
         assets: [],
         liabilities: [],
       };
@@ -5517,7 +5527,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return requestPlainJson<AdbComparisonPayload>(
         fetchImpl,
         baseUrl,
-        `/api/analysis/adb-comparison?${params.toString()}`,
+        `/api/analysis/adb/comparison?${params.toString()}`,
       );
     },
     getAdbMonthly: (year) =>

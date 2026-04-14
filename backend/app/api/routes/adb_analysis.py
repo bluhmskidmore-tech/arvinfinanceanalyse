@@ -34,6 +34,7 @@ def get_adb(
 
 
 @router.get("/adb-comparison")
+@router.get("/adb/comparison")
 def adb_comparison(
     start_date: str = Query(..., description="开始日期 YYYY-MM-DD"),
     end_date: str = Query(..., description="结束日期 YYYY-MM-DD"),
@@ -50,10 +51,20 @@ def adb_comparison(
         )
     except Exception as e:  # noqa: BLE001 —与 V1 一致返回可渲染结构
         return {
+            "report_date": end_date or "",
             "start_date": start_date or "",
             "end_date": end_date or "",
             "num_days": 0,
             "simulated": False,
+            "total_spot_assets": 0.0,
+            "total_avg_assets": 0.0,
+            "total_spot_liabilities": 0.0,
+            "total_avg_liabilities": 0.0,
+            "asset_yield": None,
+            "liability_cost": None,
+            "net_interest_margin": None,
+            "assets_breakdown": [],
+            "liabilities_breakdown": [],
             "assets": [],
             "liabilities": [],
             "detail": str(e),
