@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import sys
 from typing import Any
 
 import httpx
@@ -144,6 +145,9 @@ def test_bond_analytics_refresh_queue_and_status_flow(tmp_path, monkeypatch):
     _seed_bond_snapshot_rows(str(duckdb_path))
     seed_yield_curves_for_bond_analytics_tests(str(duckdb_path))
 
+    sys.modules.pop("backend.app.main", None)
+    sys.modules.pop("backend.app.api", None)
+    sys.modules.pop("backend.app.api.routes.bond_analytics", None)
     service_mod = load_module(
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
