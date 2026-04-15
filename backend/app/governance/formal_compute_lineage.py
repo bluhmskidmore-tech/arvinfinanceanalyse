@@ -48,23 +48,12 @@ def resolve_completed_formal_build_lineage(
         sql_dsn=sql_dsn,
         backend_mode=backend_mode,
     )
-    cache_key_text = str(cache_key or "").strip()
-    job_name_text = str(job_name or "").strip()
-    report_date_text = str(report_date or "").strip()
-    rows = repo.read_all(CACHE_BUILD_RUN_STREAM)
-    for row in reversed(rows):
-        if str(row.get("cache_key") or "").strip() != cache_key_text:
-            continue
-        if str(row.get("status") or "").strip() != "completed":
-            continue
-        if job_name_text and str(row.get("job_name") or "").strip() != job_name_text:
-            continue
-        if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
-            continue
-        if not str(row.get("source_version") or "").strip():
-            continue
-        return row
-    return None
+    return repo.read_latest_completed_run(
+        cache_key,
+        job_name=job_name,
+        report_date=report_date,
+        require_source_version=True,
+    )
 
 
 def resolve_formal_facts_lineage(
@@ -92,43 +81,45 @@ def resolve_formal_facts_lineage(
         job_name=job_name,
         report_date=report_date,
     ) or {}
-    normalized_row_sources = sorted(
-        {
-            str(value or "").strip()
-            for value in row_source_versions
-            if str(value or "").strip()
-        }
-    )
+    normalized_row_sources = _normalized_non_empty_values(row_source_versions)
     if not has_rows and not latest_build:
-        return {
-            "source_version": default_source_version,
-            "rule_version": default_rule_version,
-            "cache_version": default_cache_version,
-            "vendor_version": default_vendor_version,
-        }
+        return _build_lineage_values(
+            source_version=default_source_version,
+            rule_version=default_rule_version,
+            cache_version=default_cache_version,
+            vendor_version=default_vendor_version,
+            default_source_version=default_source_version,
+            default_rule_version=default_rule_version,
+            default_cache_version=default_cache_version,
+            default_vendor_version=default_vendor_version,
+        )
     latest_manifest = repo.read_latest_manifest(cache_key) or {}
-    return {
-        "source_version": _first_non_empty(
+    return _build_lineage_values(
+        source_version=_first_non_empty(
             str(latest_build.get("source_version") or "").strip(),
             "__".join(normalized_row_sources),
             default_source_version,
         ),
-        "rule_version": _first_non_empty(
+        rule_version=_first_non_empty(
             str(latest_build.get("rule_version") or "").strip(),
             str(latest_manifest.get("rule_version") or "").strip(),
             default_rule_version,
         ),
-        "cache_version": _first_non_empty(
+        cache_version=_first_non_empty(
             str(latest_build.get("cache_version") or "").strip(),
             str(latest_manifest.get("cache_version") or "").strip(),
             default_cache_version,
         ),
-        "vendor_version": _first_non_empty(
+        vendor_version=_first_non_empty(
             str(latest_build.get("vendor_version") or "").strip(),
             str(latest_manifest.get("vendor_version") or "").strip(),
             default_vendor_version,
         ),
-    }
+        default_source_version=default_source_version,
+        default_rule_version=default_rule_version,
+        default_cache_version=default_cache_version,
+        default_vendor_version=default_vendor_version,
+    )
 
 
 def resolve_formal_dates_lineage(
@@ -148,23 +139,35 @@ def resolve_formal_dates_lineage(
                 governance_dir=governance_dir,
                 cache_key=cache_key,
             )
-            return {
-                "source_version": str(manifest["source_version"]),
-                "rule_version": str(manifest["rule_version"]),
-                "cache_version": str(manifest.get("cache_version") or "").strip()
-                or default_cache_version,
-                "vendor_version": str(manifest.get("vendor_version") or "").strip()
-                or default_vendor_version,
-            }
+            return _build_lineage_values(
+                source_version=manifest.get("source_version"),
+                rule_version=manifest.get("rule_version"),
+                cache_version=manifest.get("cache_version"),
+                vendor_version=manifest.get("vendor_version"),
+                default_source_version=default_source_version,
+                default_rule_version=default_rule_version,
+                default_cache_version=default_cache_version,
+                default_vendor_version=default_vendor_version,
+            )
         except RuntimeError:
             if fallback_lineage_loader is not None:
-                return fallback_lineage_loader(report_dates[0])
-    return {
-        "source_version": default_source_version,
-        "rule_version": default_rule_version,
-        "cache_version": default_cache_version,
-        "vendor_version": default_vendor_version,
-    }
+                return _build_lineage_values(
+                    **fallback_lineage_loader(report_dates[0]),
+                    default_source_version=default_source_version,
+                    default_rule_version=default_rule_version,
+                    default_cache_version=default_cache_version,
+                    default_vendor_version=default_vendor_version,
+                )
+    return _build_lineage_values(
+        source_version=default_source_version,
+        rule_version=default_rule_version,
+        cache_version=default_cache_version,
+        vendor_version=default_vendor_version,
+        default_source_version=default_source_version,
+        default_rule_version=default_rule_version,
+        default_cache_version=default_cache_version,
+        default_vendor_version=default_vendor_version,
+    )
 
 
 def _governance_repo(
@@ -185,3 +188,32 @@ def _first_non_empty(*values: str) -> str:
         if value:
             return value
     return ""
+
+
+def _normalized_non_empty_values(values: list[str] | tuple[str, ...]) -> list[str]:
+    return sorted(
+        {
+            str(value or "").strip()
+            for value in values
+            if str(value or "").strip()
+        }
+    )
+
+
+def _build_lineage_values(
+    *,
+    source_version: object | None = None,
+    rule_version: object | None = None,
+    cache_version: object | None = None,
+    vendor_version: object | None = None,
+    default_source_version: str,
+    default_rule_version: str,
+    default_cache_version: str,
+    default_vendor_version: str,
+) -> dict[str, str]:
+    return {
+        "source_version": _first_non_empty(str(source_version or "").strip(), default_source_version),
+        "rule_version": _first_non_empty(str(rule_version or "").strip(), default_rule_version),
+        "cache_version": _first_non_empty(str(cache_version or "").strip(), default_cache_version),
+        "vendor_version": _first_non_empty(str(vendor_version or "").strip(), default_vendor_version),
+    }

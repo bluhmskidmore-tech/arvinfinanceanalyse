@@ -437,3 +437,43 @@ def test_read_latest_completed_run_filters_by_cache_key_and_optional_dimensions(
     )
     assert latest_job_day is not None
     assert latest_job_day["run_id"] == "run-3"
+
+
+def test_read_latest_completed_run_can_require_non_empty_source_version(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-filled",
+            "job_name": "job-a",
+            "status": "completed",
+            "cache_key": "demo:key",
+            "report_date": "2025-12-31",
+            "source_version": "sv-filled",
+        },
+    )
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-empty",
+            "job_name": "job-a",
+            "status": "completed",
+            "cache_key": "demo:key",
+            "report_date": "2025-12-31",
+            "source_version": "",
+        },
+    )
+
+    latest_any = repo.read_latest_completed_run("demo:key", job_name="job-a", report_date="2025-12-31")
+    latest_with_source = repo.read_latest_completed_run(
+        "demo:key",
+        job_name="job-a",
+        report_date="2025-12-31",
+        require_source_version=True,
+    )
+
+    assert latest_any is not None
+    assert latest_any["run_id"] == "run-empty"
+    assert latest_with_source is not None
+    assert latest_with_source["run_id"] == "run-filled"

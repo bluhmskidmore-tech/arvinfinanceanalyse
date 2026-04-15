@@ -165,6 +165,90 @@ def test_pnl_overview_keeps_fixed_cache_version_even_if_manifest_contains_cache_
     get_settings.cache_clear()
 
 
+def test_pnl_data_prefers_report_date_specific_build_lineage_over_latest_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_manifest_latest",
+        vendor_version="vv_manifest_latest",
+        rule_version="rv_manifest_latest",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-2025-12",
+        status="completed",
+        source_version="sv_build_2025_12",
+        vendor_version="vv_build_2025_12",
+        rule_version="rv_build_2025_12",
+        report_date="2025-12-31",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-2026-01",
+        status="completed",
+        source_version="sv_build_2026_01",
+        vendor_version="vv_build_2026_01",
+        rule_version="rv_build_2026_01",
+        report_date="2026-01-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
+    assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
+    assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    get_settings.cache_clear()
+
+
+def test_pnl_overview_prefers_report_date_specific_build_lineage_over_latest_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_manifest_latest",
+        vendor_version="vv_manifest_latest",
+        rule_version="rv_manifest_latest",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-2025-12",
+        status="completed",
+        source_version="sv_build_2025_12",
+        vendor_version="vv_build_2025_12",
+        rule_version="rv_build_2025_12",
+        report_date="2025-12-31",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-2026-01",
+        status="completed",
+        source_version="sv_build_2026_01",
+        vendor_version="vv_build_2026_01",
+        rule_version="rv_build_2026_01",
+        report_date="2026-01-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/overview", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
+    assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
+    assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    get_settings.cache_clear()
+
+
 def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavailable(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     _append_manifest_override(

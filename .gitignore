@@ -32,6 +32,7 @@ py_verify/
 .tmp-lock-case/
 
 # Ephemeral working directories
+/tmp*/
 tmphv10t71n/
 tmp-governance/
 .impeccable.md

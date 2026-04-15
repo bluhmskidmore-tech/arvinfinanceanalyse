@@ -235,6 +235,7 @@ class GovernanceRepository:
         *,
         job_name: str | None = None,
         report_date: str | None = None,
+        require_source_version: bool = False,
     ) -> dict[str, object] | None:
         cache_key_text = str(cache_key or "").strip()
         if not cache_key_text:
@@ -250,6 +251,8 @@ class GovernanceRepository:
             if job_name_text and str(row.get("job_name") or "").strip() != job_name_text:
                 continue
             if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
+                continue
+            if require_source_version and not str(row.get("source_version") or "").strip():
                 continue
             return row
         return None
