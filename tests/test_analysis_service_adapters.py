@@ -472,3 +472,66 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
     assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
     assert payload["result"]["status"] == "unavailable"
     assert payload["result"]["missing_inputs"] == ["trade_level_action_facts"]
+
+
+def test_bond_action_service_uses_schema_default_status_when_summary_omits_it(monkeypatch):
+    service_module = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    schema_module = load_module(
+        "backend.app.schemas.analysis_service",
+        "backend/app/schemas/analysis_service.py",
+    )
+    response_module = load_module(
+        "backend.app.schemas.bond_analytics",
+        "backend/app/schemas/bond_analytics.py",
+    )
+
+    def fake_placeholder(_query):
+        return schema_module.AnalysisResultEnvelope(
+            result_meta=schema_module.ResultMeta(
+                trace_id="tr_analysis",
+                basis="formal",
+                result_kind="bond_analytics.action_attribution",
+                formal_use_allowed=True,
+                source_version="sv_analysis",
+                vendor_version="vv_none",
+                rule_version="rv_analysis",
+                cache_version="cv_analysis",
+                quality_flag="warning",
+                scenario_flag=False,
+            ),
+            result=schema_module.AnalysisResultPayload(
+                report_date="2026-03-31",
+                analysis_key="bond_action_attribution",
+                basis="formal",
+                summary={
+                    "period_type": "MoM",
+                    "period_start": "2026-03-01",
+                    "period_end": "2026-03-31",
+                    "total_actions": 0,
+                    "total_pnl_from_actions": "0",
+                    "period_start_duration": "0",
+                    "period_end_duration": "0",
+                    "duration_change_from_actions": "0",
+                    "period_start_dv01": "0",
+                    "period_end_dv01": "0",
+                },
+                facets={
+                    "by_action_type": [],
+                    "action_details": [],
+                },
+                warnings=[],
+            ),
+        )
+
+    monkeypatch.setattr(
+        service_module,
+        "build_bond_action_attribution_placeholder_envelope",
+        fake_placeholder,
+    )
+
+    payload = service_module.get_action_attribution(date(2026, 3, 31), "MoM")
+
+    assert payload["result"]["status"] == response_module.ActionAttributionResponse.model_fields["status"].default
