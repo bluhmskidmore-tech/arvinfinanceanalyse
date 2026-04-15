@@ -9,6 +9,7 @@ import type {
   ReturnDecompositionResponse,
 } from "../types";
 import { formatWan } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 const WATERFALL_CATEGORIES = [
   "Carry",
@@ -195,6 +196,12 @@ export function ReturnDecompositionView({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLead
+        eyebrow="Return Decomposition"
+        title="收益分解概览"
+        description="按报告日、期间和筛选条件读取后端收益分解 read model；页面只展示经济口径、会计口径与 OCI 影响，不在前端重算正式损益。"
+        testId="return-decomposition-shell-lead"
+      />
       <Row gutter={16}>
         <Col span={8}>
           <Card size="small">
@@ -213,6 +220,12 @@ export function ReturnDecompositionView({
         </Col>
       </Row>
 
+      <SectionLead
+        eyebrow="Effects"
+        title="收益效果瀑布"
+        description="Carry、Roll-down、利率、利差、FX、凸性和交易效果沿用后端返回字段，仅做图表化展示。"
+        testId="return-decomposition-effects-lead"
+      />
       <Card title="收益效应分解" size="small">
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {effects.map((e) => {
@@ -251,6 +264,12 @@ export function ReturnDecompositionView({
         </Card>
       )}
 
+      <SectionLead
+        eyebrow="Reconciliation"
+        title="收益分解对账"
+        description="按资产类别拆分和对账残差保留原有后端语义，前端不调整解释损益、实际损益或残差。"
+        testId="return-decomposition-recon-lead"
+      />
       <Card title="损益对账" size="small">
         <Row gutter={16}>
           <Col span={8}>

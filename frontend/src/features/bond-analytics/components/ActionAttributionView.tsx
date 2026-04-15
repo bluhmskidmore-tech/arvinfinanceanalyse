@@ -4,6 +4,7 @@ import { useApiClient } from "../../../api/client";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
 import { formatWan } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 interface Props {
   reportDate: string;
@@ -87,6 +88,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLead
+        eyebrow="Action Attribution"
+        title="交易动作归因概览"
+        description="按报告日和期间读取后端 action attribution read model；页面只展示动作数量、损益贡献、久期和 DV01 变化，不在前端补算正式归因。"
+        testId="action-attribution-shell-lead"
+      />
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -117,6 +124,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         </Col>
       </Row>
 
+      <SectionLead
+        eyebrow="Summary"
+        title="动作类型汇总"
+        description="按动作类型展示次数和损益贡献，比例条仅用于阅读辅助，不改变后端返回的贡献金额。"
+        testId="action-attribution-summary-lead"
+      />
       {data.by_action_type.length > 0 && (
         <Card title="按动作类型汇总" size="small">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -160,6 +173,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         </Card>
       )}
 
+      <SectionLead
+        eyebrow="Details"
+        title="动作明细"
+        description="明细表继续展示后端 action_details，保留动作类型、描述、经济损益和久期变化字段。"
+        testId="action-attribution-detail-lead"
+      />
       {data.action_details.length > 0 && (
         <Card title="动作明细" size="small">
           <Table

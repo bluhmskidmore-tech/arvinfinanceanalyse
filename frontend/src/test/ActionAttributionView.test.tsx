@@ -94,6 +94,18 @@ describe("ActionAttributionView", () => {
       expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
 
+    expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
+      "交易动作归因概览",
+    );
+    expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
+      "不在前端补算正式归因",
+    );
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent(
+      "动作类型汇总",
+    );
+    expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent(
+      "动作明细",
+    );
     expect(await screen.findByText("动作数量")).toBeInTheDocument();
     expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
     expect(screen.getByText("久期变化")).toBeInTheDocument();
@@ -102,7 +114,7 @@ describe("ActionAttributionView", () => {
     expect(screen.getByText("按动作类型汇总")).toBeInTheDocument();
     expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
 
-    expect(screen.getByText("动作明细")).toBeInTheDocument();
+    expect(screen.getAllByText("动作明细").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("加仓利率债")).toBeInTheDocument();
   });
 

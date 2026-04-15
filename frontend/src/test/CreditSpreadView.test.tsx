@@ -169,6 +169,18 @@ describe("CreditSpreadView", () => {
       </ApiClientProvider>,
     );
 
+    expect(await screen.findByTestId("credit-spread-shell-lead")).toHaveTextContent(
+      "信用利差概览",
+    );
+    expect(screen.getByTestId("credit-spread-shell-lead")).toHaveTextContent(
+      "不在前端补算正式风险指标",
+    );
+    expect(screen.getByTestId("credit-spread-scenario-lead")).toHaveTextContent(
+      "利差冲击与信用分布",
+    );
+    expect(screen.getByTestId("credit-spread-detail-lead")).toHaveTextContent(
+      "期限结构与集中度明细",
+    );
     expect(await screen.findByText("信用债数量")).toBeInTheDocument();
     await waitFor(() =>
       expect(client.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-03-31"),

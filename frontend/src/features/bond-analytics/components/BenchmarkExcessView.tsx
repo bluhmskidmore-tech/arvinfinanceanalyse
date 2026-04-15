@@ -5,6 +5,7 @@ import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
 import { formatBp } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 interface Props {
   reportDate: string;
@@ -28,34 +29,6 @@ const WATERFALL_CATEGORIES = [
 
 const CHART_TEXT = { fontSize: 13, color: "#5c6b82" } as const;
 
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
   color: "rgba(0,0,0,0)",
@@ -70,21 +43,6 @@ function formatDurationDisplay(value: string): string {
 
 function hasDisplayMetric(value: string | null | undefined): value is string {
   return value != null && value !== "";
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  testId?: string;
-}) {
-  return (
-    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {

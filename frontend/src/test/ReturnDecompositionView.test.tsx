@@ -119,6 +119,18 @@ describe("ReturnDecompositionView", () => {
       expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
 
+    expect(await screen.findByTestId("return-decomposition-shell-lead")).toHaveTextContent(
+      "收益分解概览",
+    );
+    expect(screen.getByTestId("return-decomposition-shell-lead")).toHaveTextContent(
+      "不在前端重算正式损益",
+    );
+    expect(screen.getByTestId("return-decomposition-effects-lead")).toHaveTextContent(
+      "收益效果瀑布",
+    );
+    expect(screen.getByTestId("return-decomposition-recon-lead")).toHaveTextContent(
+      "收益分解对账",
+    );
     expect(await screen.findByText("经济口径合计")).toBeInTheDocument();
     expect(screen.getByText("OCI 未入表影响")).toBeInTheDocument();
     expect(screen.getByText("会计口径（损益表）")).toBeInTheDocument();

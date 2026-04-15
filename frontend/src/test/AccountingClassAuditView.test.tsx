@@ -85,14 +85,26 @@ describe("AccountingClassAuditView", () => {
       expect(client.getBondAnalyticsAccountingClassAudit).toHaveBeenCalledWith("2026-03-31"),
     );
 
+    expect(await screen.findByTestId("accounting-class-audit-shell-lead")).toHaveTextContent(
+      "会计分类审计概览",
+    );
+    expect(screen.getByTestId("accounting-class-audit-shell-lead")).toHaveTextContent(
+      "不在前端重写会计分类",
+    );
+    expect(screen.getByTestId("accounting-class-audit-rules-lead")).toHaveTextContent(
+      "分类路径说明",
+    );
+    expect(screen.getByTestId("accounting-class-audit-detail-lead")).toHaveTextContent(
+      "会计分类审计明细",
+    );
     expect(await screen.findByText("资产类别数（去重）")).toBeInTheDocument();
     expect(screen.getByText("分歧分类")).toBeInTheDocument();
     expect(screen.getByText("映射为其他（other）")).toBeInTheDocument();
     expect(screen.getByText("覆盖市值")).toBeInTheDocument();
 
     expect(screen.getByText(/本审计对比两条会计分类路径/)).toBeInTheDocument();
-    expect(screen.getByText(/infer_accounting_class/)).toBeInTheDocument();
-    expect(screen.getByText(/map_accounting_class/)).toBeInTheDocument();
+    expect(screen.getAllByText(/infer_accounting_class/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/map_accounting_class/).length).toBeGreaterThanOrEqual(1);
 
     expect(screen.getByText("审计明细")).toBeInTheDocument();
     expect(screen.getByText("政金债")).toBeInTheDocument();

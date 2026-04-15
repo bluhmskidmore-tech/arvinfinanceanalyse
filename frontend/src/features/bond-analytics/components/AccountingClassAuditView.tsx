@@ -3,6 +3,7 @@ import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { AccountingClassAuditResponse } from "../types";
 import { formatWan } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 interface Props {
   reportDate: string;
@@ -64,6 +65,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLead
+        eyebrow="Accounting Class"
+        title="会计分类审计概览"
+        description="按报告日读取后端 accounting class audit read model；页面只对比推断路径与映射路径，不在前端重写会计分类。"
+        testId="accounting-class-audit-shell-lead"
+      />
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -95,6 +102,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         </Col>
       </Row>
 
+      <SectionLead
+        eyebrow="Rules"
+        title="分类路径说明"
+        description="说明 infer_accounting_class 与 map_accounting_class 的来源和分歧含义，保留后端规则版本边界。"
+        testId="accounting-class-audit-rules-lead"
+      />
       <Card size="small">
         <div style={{ fontSize: 13, color: "#5c6b82", marginBottom: 12 }}>
           <p style={{ margin: "0 0 8px" }}>
@@ -110,6 +123,12 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         </div>
       </Card>
 
+      <SectionLead
+        eyebrow="Details"
+        title="会计分类审计明细"
+        description="明细表继续展示后端 rows，保留分歧、未分类和一致状态标记。"
+        testId="accounting-class-audit-detail-lead"
+      />
       {data.rows.length > 0 && (
         <Card title="审计明细" size="small">
           <Table

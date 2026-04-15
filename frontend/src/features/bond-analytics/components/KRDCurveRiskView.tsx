@@ -4,6 +4,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 interface Props {
   reportDate: string;
@@ -192,6 +193,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLead
+        eyebrow="KRD Curve Risk"
+        title="曲线风险概览"
+        description="按报告日读取后端 KRD curve risk read model；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
+        testId="krd-curve-risk-shell-lead"
+      />
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -215,6 +222,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         </Col>
       </Row>
 
+      <SectionLead
+        eyebrow="Buckets"
+        title="KRD 桶位与情景冲击"
+        description="KRD 分布和情景冲击沿用后端返回的 krd_buckets 与 scenarios，前端仅做图表和表格展示。"
+        testId="krd-curve-risk-buckets-lead"
+      />
       {data.krd_buckets.length > 0 && krdChartOption && (
         <Card title="KRD 分布" size="small">
           <ReactECharts
@@ -237,6 +250,12 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         </Card>
       )}
 
+      <SectionLead
+        eyebrow="Asset Class"
+        title="资产类别风险拆分"
+        description="资产结构饼图和 by_asset_class 表格保留后端语义，不调整市值、久期、DV01 或权重。"
+        testId="krd-curve-risk-asset-lead"
+      />
       {data.by_asset_class.length > 0 && (
         <Card title="按资产类别拆分" size="small">
           <ReactECharts

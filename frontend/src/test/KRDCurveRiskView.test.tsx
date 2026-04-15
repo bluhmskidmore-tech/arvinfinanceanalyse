@@ -92,6 +92,18 @@ describe("KRDCurveRiskView", () => {
       expect(client.getBondAnalyticsKrdCurveRisk).toHaveBeenCalledWith("2026-03-31"),
     );
 
+    expect(await screen.findByTestId("krd-curve-risk-shell-lead")).toHaveTextContent(
+      "曲线风险概览",
+    );
+    expect(screen.getByTestId("krd-curve-risk-shell-lead")).toHaveTextContent(
+      "不在前端补算正式风险指标",
+    );
+    expect(screen.getByTestId("krd-curve-risk-buckets-lead")).toHaveTextContent(
+      "KRD 桶位与情景冲击",
+    );
+    expect(screen.getByTestId("krd-curve-risk-asset-lead")).toHaveTextContent(
+      "资产类别风险拆分",
+    );
     expect(await screen.findByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("修正久期")).toBeInTheDocument();
     expect(screen.getByText("DV01 (万元/bp)")).toBeInTheDocument();

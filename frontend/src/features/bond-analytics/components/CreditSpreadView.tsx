@@ -10,6 +10,7 @@ import type {
   CreditSpreadMigrationResponse,
 } from "../types";
 import { formatWan, formatBp } from "../utils/formatters";
+import { SectionLead } from "./SectionLead";
 
 interface Props {
   reportDate: string;
@@ -601,6 +602,12 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <SectionLead
+        eyebrow="Credit Spread"
+        title="信用利差概览"
+        description="按报告日读取后端信用利差 read model；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
+        testId="credit-spread-shell-lead"
+      />
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -642,6 +649,12 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         </Row>
       </Card>
 
+      <SectionLead
+        eyebrow="Scenario"
+        title="利差冲击与信用分布"
+        description="利差情景、评级迁徙和评级/期限分布沿用后端返回字段，前端只负责图表化展示。"
+        testId="credit-spread-scenario-lead"
+      />
       {data.spread_scenarios.length > 0 && (
         <Card title="利差情景冲击" size="small">
           {spreadChartOption && (
@@ -752,6 +765,12 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         )}
       </Card>
 
+      <SectionLead
+        eyebrow="Detail"
+        title="期限结构与集中度明细"
+        description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留 summary 并显示提示。"
+        testId="credit-spread-detail-lead"
+      />
       {detailData && (
         <>
           <Card title="利差期限结构" size="small">

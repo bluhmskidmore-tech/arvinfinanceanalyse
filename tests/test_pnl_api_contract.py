@@ -928,13 +928,19 @@ def test_pnl_refresh_returns_503_when_send_error_is_not_safe_for_sync_fallback(
     response = client.post("/api/data/refresh_pnl")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "Pnl refresh queue dispatch failed."
+    assert response.json()["detail"] == (
+        "Pnl refresh queue dispatch failed: RuntimeError: unexpected broker failure"
+    )
     assert fallback_calls == []
 
     records = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
     latest = [record for record in records if record.get("job_name") == "pnl_materialize"][-1]
     assert latest["status"] == "failed"
-    assert latest["error_message"] == "Pnl refresh queue dispatch failed."
+    assert latest["error_message"] == (
+        "Pnl refresh queue dispatch failed: RuntimeError: unexpected broker failure"
+    )
+    assert latest["failure_category"] == "RuntimeError"
+    assert latest["failure_reason"] == "unexpected broker failure"
     get_settings.cache_clear()
 
 

@@ -138,9 +138,9 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
                     settings=settings,
                     run_id=run_id,
                     report_date=refresh_input.report_date,
-                    error_message="Pnl refresh queue dispatch failed.",
+                    exc=exc,
                 )
-                raise PnlRefreshServiceError("Pnl refresh queue dispatch failed.") from exc
+                raise PnlRefreshServiceError(_dispatch_failure_message(exc)) from exc
     except TimeoutError as exc:
         raise PnlRefreshConflictError(
             f"Pnl refresh already in progress for report_date={refresh_input.report_date}."
@@ -423,7 +423,7 @@ def _record_dispatch_failure(
     settings: Settings,
     run_id: str,
     report_date: str,
-    error_message: str,
+    exc: Exception,
 ) -> None:
     GovernanceRepository(base_dir=settings.governance_path).append(
         CACHE_BUILD_RUN_STREAM,
@@ -436,6 +436,12 @@ def _record_dispatch_failure(
             "source_version": "sv_pnl_failed",
             "vendor_version": "vv_none",
             "report_date": report_date,
-            "error_message": error_message,
+            "error_message": _dispatch_failure_message(exc),
+            "failure_category": type(exc).__name__,
+            "failure_reason": str(exc),
         },
     )
+
+
+def _dispatch_failure_message(exc: Exception) -> str:
+    return f"Pnl refresh queue dispatch failed: {type(exc).__name__}: {exc}"
