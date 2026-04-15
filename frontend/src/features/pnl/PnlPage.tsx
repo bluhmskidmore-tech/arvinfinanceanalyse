@@ -7,6 +7,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../api/client";
 import type { PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
+import { runPollingTask } from "../../app/jobs/polling";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -42,6 +43,35 @@ const tabBarStyle = {
   flexWrap: "wrap",
 } as const;
 
+const debugPanelStyle = {
+  marginTop: 24,
+  padding: 16,
+  borderRadius: 16,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: "#ffffff",
+} as const;
+
+const debugPreStyle = {
+  margin: 0,
+  padding: 16,
+  overflowX: "auto",
+  borderRadius: 12,
+  background: shellTokens.colorBgMuted,
+  color: shellTokens.colorText,
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
+const actionButtonStyle = {
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#ffffff",
+  color: "#162033",
+  fontWeight: 600,
+  cursor: "pointer",
+} as const;
+
 function tabButtonStyle(active: boolean) {
   return {
     padding: "10px 16px",
@@ -62,16 +92,15 @@ function cellText(value: string | number | null | undefined) {
 }
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") {
+  const value = params.value;
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) {
-    return String(v);
+  const numeric = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(numeric)) {
+    return String(value);
   }
-  return n.toLocaleString("zh-CN");
+  return numeric.toLocaleString("zh-CN");
 }
 
 const formalFiColumnDefs: ColDef<PnlFormalFiRow>[] = [
@@ -110,12 +139,36 @@ function withNumericFormatters<T>(defs: ColDef<T>[]): ColDef<T>[] {
   );
 }
 
+function resolveSectionState({
+  isLoading,
+  isError,
+  isEmpty,
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+}): "loading" | "error" | "empty" | "ready" {
+  if (isLoading) {
+    return "loading";
+  }
+  if (isError) {
+    return "error";
+  }
+  if (isEmpty) {
+    return "empty";
+  }
+  return "ready";
+}
+
 type DataTab = "fi" | "nonstd";
 
 export default function PnlPage() {
   const client = useApiClient();
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [dataTab, setDataTab] = useState<DataTab>("fi");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const formalFiColDefs = useMemo(() => withNumericFormatters(formalFiColumnDefs), []);
   const nonstdColDefs = useMemo(() => withNumericFormatters(nonstdBridgeColumnDefs), []);
@@ -145,12 +198,17 @@ export default function PnlPage() {
     retry: false,
   });
 
+  const reportDates = datesQuery.data?.result.report_dates ?? [];
+
   useEffect(() => {
-    const firstDate = datesQuery.data?.result.report_dates?.[0];
-    if (!selectedReportDate && firstDate) {
+    const firstDate = reportDates[0];
+    if (!firstDate) {
+      return;
+    }
+    if (!selectedReportDate || !reportDates.includes(selectedReportDate)) {
       setSelectedReportDate(firstDate);
     }
-  }, [datesQuery.data?.result.report_dates, selectedReportDate]);
+  }, [reportDates, selectedReportDate]);
 
   const overviewQuery = useQuery({
     queryKey: ["pnl", "overview", client.mode, selectedReportDate],
@@ -170,8 +228,7 @@ export default function PnlPage() {
   const formalRows = dataQuery.data?.result.formal_fi_rows ?? [];
   const nonstdRows = dataQuery.data?.result.nonstd_bridge_rows ?? [];
 
-  const overviewLoading =
-    datesQuery.isLoading || (Boolean(selectedReportDate) && overviewQuery.isLoading);
+  const overviewLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && overviewQuery.isLoading);
   const overviewError = datesQuery.isError || overviewQuery.isError;
   const overviewEmpty =
     !datesQuery.isLoading &&
@@ -181,8 +238,7 @@ export default function PnlPage() {
     (!selectedReportDate ||
       ((overview?.formal_fi_row_count ?? 0) === 0 && (overview?.nonstd_bridge_row_count ?? 0) === 0));
 
-  const dataLoading =
-    datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
+  const dataLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && dataQuery.isLoading);
   const dataError = datesQuery.isError || dataQuery.isError;
   const dataEmpty =
     !datesQuery.isLoading &&
@@ -191,13 +247,28 @@ export default function PnlPage() {
     !dataQuery.isError &&
     (!selectedReportDate || (formalRows.length === 0 && nonstdRows.length === 0));
 
+  const overviewState = resolveSectionState({
+    isLoading: overviewLoading,
+    isError: overviewError,
+    isEmpty: overviewEmpty,
+  });
+  const dataState = resolveSectionState({
+    isLoading: dataLoading,
+    isError: dataError,
+    isEmpty: dataEmpty,
+  });
+
+  const reportDatePlaceholder = datesQuery.isLoading
+    ? "正在载入报告日"
+    : datesQuery.isError
+      ? "报告日加载失败"
+      : "暂无可选报告日";
+  const reportDateSelectDisabled = datesQuery.isLoading || datesQuery.isError || reportDates.length === 0;
+  const refreshDisabled = !selectedReportDate || isRefreshing;
+
   const dataTabExtra = (
     <div style={tabBarStyle}>
-      <button
-        type="button"
-        style={tabButtonStyle(dataTab === "fi")}
-        onClick={() => setDataTab("fi")}
-      >
+      <button type="button" style={tabButtonStyle(dataTab === "fi")} onClick={() => setDataTab("fi")}>
         FI 损益
       </button>
       <button
@@ -209,6 +280,73 @@ export default function PnlPage() {
       </button>
     </div>
   );
+
+  const debugSnapshot = {
+    client_mode: client.mode,
+    selected_report_date: selectedReportDate || null,
+    available_report_dates: reportDates,
+    overview_state: overviewState,
+    data_state: dataState,
+    dates: {
+      result_meta: datesQuery.data?.result_meta ?? null,
+      error: datesQuery.error instanceof Error ? datesQuery.error.message : null,
+      report_dates: reportDates,
+    },
+    overview: {
+      result_meta: overviewQuery.data?.result_meta ?? null,
+      error: overviewQuery.error instanceof Error ? overviewQuery.error.message : null,
+      payload: overview ?? null,
+    },
+    data: {
+      result_meta: dataQuery.data?.result_meta ?? null,
+      error: dataQuery.error instanceof Error ? dataQuery.error.message : null,
+      payload: selectedReportDate
+        ? {
+            report_date: selectedReportDate,
+            formal_fi_row_count: formalRows.length,
+            nonstd_bridge_row_count: nonstdRows.length,
+          }
+        : null,
+    },
+    refresh: {
+      status: refreshStatus,
+      error: refreshError,
+    },
+  };
+
+  async function handleRefresh() {
+    if (!selectedReportDate) {
+      return;
+    }
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const payload = await runPollingTask({
+        start: () => client.refreshFormalPnl(selectedReportDate),
+        getStatus: (runId) => client.getFormalPnlImportStatus(runId),
+        onUpdate: (nextPayload) => {
+          setRefreshStatus(
+            [
+              nextPayload.status,
+              nextPayload.run_id,
+              nextPayload.report_date,
+              nextPayload.source_version,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+          );
+        },
+      });
+      if (payload.status !== "completed") {
+        throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
+      }
+      await Promise.all([datesQuery.refetch(), overviewQuery.refetch(), dataQuery.refetch()]);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "刷新 PnL 失败");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   return (
     <section>
@@ -243,19 +381,49 @@ export default function PnlPage() {
           <select
             aria-label="pnl-report-date"
             value={selectedReportDate}
+            disabled={reportDateSelectDisabled}
             onChange={(event) => setSelectedReportDate(event.target.value)}
             style={controlStyle}
           >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {reportDate}
-              </option>
-            ))}
+            {reportDates.length === 0 ? (
+              <option value="">{reportDatePlaceholder}</option>
+            ) : (
+              reportDates.map((reportDate) => (
+                <option key={reportDate} value={reportDate}>
+                  {reportDate}
+                </option>
+              ))
+            )}
           </select>
         </label>
+        <button
+          data-testid="pnl-refresh-button"
+          type="button"
+          disabled={refreshDisabled}
+          onClick={() => void handleRefresh()}
+          style={actionButtonStyle}
+        >
+          {isRefreshing ? "刷新中..." : "刷新正式结果"}
+        </button>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
+      {(refreshStatus || refreshError) && (
+        <div
+          data-testid="pnl-refresh-status"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 14,
+            border: "1px solid #e4ebf5",
+            background: refreshError ? "#fff2f0" : "#f7f9fc",
+            color: refreshError ? "#c83b3b" : "#5c6b82",
+          }}
+        >
+          {refreshError ?? refreshStatus}
+        </div>
+      )}
+
+      <div data-testid="pnl-overview-section" data-state={overviewState} style={{ marginBottom: 24 }}>
         <AsyncSection
           title="汇总概览"
           isLoading={overviewLoading}
@@ -306,7 +474,7 @@ export default function PnlPage() {
         </AsyncSection>
       </div>
 
-      <div style={{ marginTop: 24 }}>
+      <div data-testid="pnl-data-section" data-state={dataState} style={{ marginTop: 24 }}>
         <AsyncSection
           title="明细数据"
           extra={dataTabExtra}
@@ -318,11 +486,7 @@ export default function PnlPage() {
           }}
         >
           {dataTab === "fi" ? (
-            <div
-              className="ag-theme-alpine"
-              data-testid="pnl-formal-fi-table"
-              style={agGridShellStyle}
-            >
+            <div className="ag-theme-alpine" data-testid="pnl-formal-fi-table" style={agGridShellStyle}>
               <AgGridReact<PnlFormalFiRow>
                 rowData={formalRows}
                 columnDefs={formalFiColDefs}
@@ -330,17 +494,13 @@ export default function PnlPage() {
                 animateRows
                 pagination
                 paginationPageSize={50}
-                getRowId={(p) =>
-                  `${String(p.data.trace_id)}-${String(p.data.instrument_code)}-${String(p.data.report_date)}`
+                getRowId={(params) =>
+                  `${String(params.data.trace_id)}-${String(params.data.instrument_code)}-${String(params.data.report_date)}`
                 }
               />
             </div>
           ) : (
-            <div
-              className="ag-theme-alpine"
-              data-testid="pnl-nonstd-bridge-table"
-              style={agGridShellStyle}
-            >
+            <div className="ag-theme-alpine" data-testid="pnl-nonstd-bridge-table" style={agGridShellStyle}>
               <AgGridReact<PnlNonStdBridgeRow>
                 rowData={nonstdRows}
                 columnDefs={nonstdColDefs}
@@ -348,14 +508,23 @@ export default function PnlPage() {
                 animateRows
                 pagination
                 paginationPageSize={50}
-                getRowId={(p) =>
-                  `${String(p.data.trace_id)}-${String(p.data.bond_code)}-${String(p.data.report_date)}`
+                getRowId={(params) =>
+                  `${String(params.data.trace_id)}-${String(params.data.bond_code)}-${String(params.data.report_date)}`
                 }
               />
             </div>
           )}
         </AsyncSection>
       </div>
+
+      <details data-testid="pnl-result-meta-panel" style={debugPanelStyle}>
+        <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorText }}>
+          result_meta / 调试
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <pre style={debugPreStyle}>{JSON.stringify(debugSnapshot, null, 2)}</pre>
+        </div>
+      </details>
     </section>
   );
 }

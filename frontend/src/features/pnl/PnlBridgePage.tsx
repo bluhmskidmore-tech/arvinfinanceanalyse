@@ -8,6 +8,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
+import { runPollingTask } from "../../app/jobs/polling";
 import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
 import { formatWan } from "../bond-analytics/utils/formatters";
 import { shellTokens } from "../../theme/tokens";
@@ -38,6 +39,35 @@ const controlStyle = {
   color: "#162033",
 } as const;
 
+const actionButtonStyle = {
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#ffffff",
+  color: "#162033",
+  fontWeight: 600,
+  cursor: "pointer",
+} as const;
+
+const debugPanelStyle = {
+  marginTop: 24,
+  padding: 16,
+  borderRadius: 16,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: "#ffffff",
+} as const;
+
+const debugPreStyle = {
+  margin: 0,
+  padding: 16,
+  overflowX: "auto",
+  borderRadius: 12,
+  background: shellTokens.colorBgMuted,
+  color: shellTokens.colorText,
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
 const BRIDGE_CATEGORIES = [
   "票息",
   "骑乘",
@@ -57,10 +87,9 @@ const TRANSPARENT_BAR = {
   borderWidth: 0,
 } as const;
 
-/** 仅将后端字符串解析为坐标轴绘图值，不做损益重算。 */
 function chartAxisNumber(value: string): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
@@ -93,17 +122,17 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   const barColors: string[] = [];
 
   let running = 0;
-  for (const v of stepValues) {
-    if (v >= 0) {
+  for (const value of stepValues) {
+    if (value >= 0) {
       helperRaw.push(running);
-      valueRaw.push(v);
+      valueRaw.push(value);
       barColors.push("#cf1322");
-      running += v;
+      running += value;
     } else {
-      helperRaw.push(running + v);
-      valueRaw.push(-v);
+      helperRaw.push(running + value);
+      valueRaw.push(-value);
       barColors.push("#3f8600");
-      running += v;
+      running += value;
     }
   }
 
@@ -121,7 +150,7 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
       axisPointer: { type: "shadow" },
       formatter: (items: unknown) => {
         const list = Array.isArray(items) ? items : [items];
-        const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
+        const bar = list.find((item: { seriesName?: string }) => item.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = BRIDGE_CATEGORIES[idx] ?? "";
         return `${label}<br/>${formatWan(String(displayStrings[idx] ?? "0"))}`;
@@ -152,9 +181,9 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
         name: "效应",
         type: "bar",
         stack: "waterfall",
-        data: valueRaw.map((val, i) => ({
-          value: val,
-          itemStyle: { color: barColors[i] },
+        data: valueRaw.map((value, index) => ({
+          value,
+          itemStyle: { color: barColors[index] },
         })),
       },
     ],
@@ -169,24 +198,44 @@ function cellText(value: string | number | null | undefined) {
 }
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") {
+  const value = params.value;
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) {
-    return String(v);
+  const numeric = Number(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(numeric)) {
+    return String(value);
   }
-  return n.toLocaleString("zh-CN");
+  return numeric.toLocaleString("zh-CN");
 }
 
 function fxTranslationValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") {
+  const value = params.value;
+  if (value === null || value === undefined || value === "") {
     return "—";
   }
-  return formatWan(String(v).replace(/,/g, ""));
+  return formatWan(String(value).replace(/,/g, ""));
+}
+
+function resolveSectionState({
+  isLoading,
+  isError,
+  isEmpty,
+}: {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+}): "loading" | "error" | "empty" | "ready" {
+  if (isLoading) {
+    return "loading";
+  }
+  if (isError) {
+    return "error";
+  }
+  if (isEmpty) {
+    return "empty";
+  }
+  return "ready";
 }
 
 const bridgeGridDefaultColDef: ColDef = {
@@ -199,12 +248,7 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
   { field: "portfolio_name", headerName: "组合", width: 120 },
   { field: "accounting_basis", headerName: "会计分类", width: 100 },
-  {
-    field: "beginning_dirty_mv",
-    headerName: "期初脏价市值",
-    width: 140,
-    type: "numericColumn",
-  },
+  { field: "beginning_dirty_mv", headerName: "期初脏价市值", width: 140, type: "numericColumn" },
   { field: "ending_dirty_mv", headerName: "期末脏价市值", width: 140, type: "numericColumn" },
   { field: "carry", headerName: "Carry", width: 110, type: "numericColumn" },
   { field: "roll_down", headerName: "Roll-down", width: 110, type: "numericColumn" },
@@ -242,6 +286,9 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
 export default function PnlBridgePage() {
   const client = useApiClient();
   const [selectedReportDate, setSelectedReportDate] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const datesQuery = useQuery({
     queryKey: ["pnl", "dates", client.mode],
@@ -249,12 +296,17 @@ export default function PnlBridgePage() {
     retry: false,
   });
 
+  const reportDates = datesQuery.data?.result.report_dates ?? [];
+
   useEffect(() => {
-    const firstDate = datesQuery.data?.result.report_dates?.[0];
-    if (!selectedReportDate && firstDate) {
+    const firstDate = reportDates[0];
+    if (!firstDate) {
+      return;
+    }
+    if (!selectedReportDate || !reportDates.includes(selectedReportDate)) {
       setSelectedReportDate(firstDate);
     }
-  }, [datesQuery.data?.result.report_dates, selectedReportDate]);
+  }, [reportDates, selectedReportDate]);
 
   const bridgeQuery = useQuery({
     queryKey: ["pnl", "bridge", client.mode, selectedReportDate],
@@ -267,18 +319,12 @@ export default function PnlBridgePage() {
   const rows = bridgeQuery.data?.result.rows ?? [];
   const warnings = bridgeQuery.data?.result.warnings ?? [];
 
-  const chartOption = useMemo(
-    () => (summary ? buildWaterfallOption(summary) : null),
-    [summary],
-  );
+  const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
 
   const bridgeColDefs = useMemo<ColDef<PnlBridgeRow>[]>(
     () =>
       bridgeColumnDefsBase.map((def) => {
-        if (def.type !== "numericColumn") {
-          return def;
-        }
-        if (def.valueFormatter) {
+        if (def.type !== "numericColumn" || def.valueFormatter) {
           return def;
         }
         return { ...def, valueFormatter: thousandsValueFormatter };
@@ -305,27 +351,99 @@ export default function PnlBridgePage() {
     [],
   );
 
-  const summaryLoading =
-    datesQuery.isLoading || (Boolean(selectedReportDate) && bridgeQuery.isLoading);
+  const summaryLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && bridgeQuery.isLoading);
   const summaryError = datesQuery.isError || bridgeQuery.isError;
   const summaryEmpty =
     !datesQuery.isLoading &&
     !bridgeQuery.isLoading &&
     !datesQuery.isError &&
     !bridgeQuery.isError &&
-    (!selectedReportDate ||
-      (summary !== undefined &&
-        summary.row_count === 0 &&
-        rows.length === 0));
+    (!selectedReportDate || (summary !== undefined && summary.row_count === 0 && rows.length === 0));
 
-  const tableLoading = summaryLoading;
-  const tableError = summaryError;
-  const tableEmpty =
+  const detailLoading = summaryLoading;
+  const detailError = summaryError;
+  const detailEmpty =
     !datesQuery.isLoading &&
     !bridgeQuery.isLoading &&
     !datesQuery.isError &&
     !bridgeQuery.isError &&
     (!selectedReportDate || rows.length === 0);
+
+  const summaryState = resolveSectionState({
+    isLoading: summaryLoading,
+    isError: summaryError,
+    isEmpty: summaryEmpty,
+  });
+  const detailState = resolveSectionState({
+    isLoading: detailLoading,
+    isError: detailError,
+    isEmpty: detailEmpty,
+  });
+
+  const reportDatePlaceholder = datesQuery.isLoading
+    ? "正在载入报告日"
+    : datesQuery.isError
+      ? "报告日加载失败"
+      : "暂无可选报告日";
+  const reportDateSelectDisabled = datesQuery.isLoading || datesQuery.isError || reportDates.length === 0;
+  const refreshDisabled = !selectedReportDate || isRefreshing;
+
+  const debugSnapshot = {
+    client_mode: client.mode,
+    selected_report_date: selectedReportDate || null,
+    available_report_dates: reportDates,
+    summary_state: summaryState,
+    detail_state: detailState,
+    dates: {
+      result_meta: datesQuery.data?.result_meta ?? null,
+      error: datesQuery.error instanceof Error ? datesQuery.error.message : null,
+      report_dates: reportDates,
+    },
+    bridge: {
+      result_meta: bridgeQuery.data?.result_meta ?? null,
+      error: bridgeQuery.error instanceof Error ? bridgeQuery.error.message : null,
+      payload: selectedReportDate
+        ? {
+            report_date: selectedReportDate,
+            row_count: rows.length,
+            summary_row_count: summary?.row_count ?? null,
+          }
+        : null,
+    },
+    refresh: {
+      status: refreshStatus,
+      error: refreshError,
+    },
+  };
+
+  async function handleRefresh() {
+    if (!selectedReportDate) {
+      return;
+    }
+    setIsRefreshing(true);
+    setRefreshError(null);
+    try {
+      const payload = await runPollingTask({
+        start: () => client.refreshFormalPnl(selectedReportDate),
+        getStatus: (runId) => client.getFormalPnlImportStatus(runId),
+        onUpdate: (nextPayload) => {
+          setRefreshStatus(
+            [nextPayload.status, nextPayload.run_id, nextPayload.report_date, nextPayload.source_version]
+              .filter(Boolean)
+              .join(" · "),
+          );
+        },
+      });
+      if (payload.status !== "completed") {
+        throw new Error(payload.error_message ?? payload.detail ?? `刷新未完成：${payload.status}`);
+      }
+      await Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "刷新 PnL Bridge 失败");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
 
   return (
     <section>
@@ -350,8 +468,7 @@ export default function PnlBridgePage() {
             lineHeight: 1.75,
           }}
         >
-          正式口径损益桥接由后端 <code>/api/pnl/bridge</code>{" "}
-          提供；本页仅展示返回结果与汇总图表，不在浏览器端做金融重算。
+          正式口径损益桥接由后端 <code>/api/pnl/bridge</code> 提供；本页仅展示返回结果与汇总图表，不在浏览器端做金融重算。
         </p>
       </div>
 
@@ -361,19 +478,49 @@ export default function PnlBridgePage() {
           <select
             aria-label="pnl-bridge-report-date"
             value={selectedReportDate}
+            disabled={reportDateSelectDisabled}
             onChange={(event) => setSelectedReportDate(event.target.value)}
             style={controlStyle}
           >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {reportDate}
-              </option>
-            ))}
+            {reportDates.length === 0 ? (
+              <option value="">{reportDatePlaceholder}</option>
+            ) : (
+              reportDates.map((reportDate) => (
+                <option key={reportDate} value={reportDate}>
+                  {reportDate}
+                </option>
+              ))
+            )}
           </select>
         </label>
+        <button
+          data-testid="pnl-bridge-refresh-button"
+          type="button"
+          disabled={refreshDisabled}
+          onClick={() => void handleRefresh()}
+          style={actionButtonStyle}
+        >
+          {isRefreshing ? "刷新中..." : "刷新正式结果"}
+        </button>
       </div>
 
-      <div style={{ marginBottom: 24 }}>
+      {(refreshStatus || refreshError) && (
+        <div
+          data-testid="pnl-bridge-refresh-status"
+          style={{
+            marginBottom: 16,
+            padding: 14,
+            borderRadius: 14,
+            border: "1px solid #e4ebf5",
+            background: refreshError ? "#fff2f0" : "#f7f9fc",
+            color: refreshError ? "#c83b3b" : "#5c6b82",
+          }}
+        >
+          {refreshError ?? refreshStatus}
+        </div>
+      )}
+
+      <div data-testid="pnl-bridge-summary-section" data-state={summaryState} style={{ marginBottom: 24 }}>
         <AsyncSection
           title="汇总"
           isLoading={summaryLoading}
@@ -386,30 +533,15 @@ export default function PnlBridgePage() {
           {summary ? (
             <>
               <div data-testid="pnl-bridge-summary-cards" style={summaryGridStyle}>
-                <KpiCard
-                  title="行数"
-                  value={cellText(summary.row_count)}
-                  detail="summary.row_count"
-                  unit="行"
-                />
-                <KpiCard
-                  title="质量 ok"
-                  value={cellText(summary.ok_count)}
-                  detail="summary.ok_count"
-                  tone="default"
-                />
+                <KpiCard title="行数" value={cellText(summary.row_count)} detail="summary.row_count" unit="行" />
+                <KpiCard title="质量 ok" value={cellText(summary.ok_count)} detail="summary.ok_count" tone="default" />
                 <KpiCard
                   title="质量 warning"
                   value={cellText(summary.warning_count)}
                   detail="summary.warning_count"
                   tone="warning"
                 />
-                <KpiCard
-                  title="质量 error"
-                  value={cellText(summary.error_count)}
-                  detail="summary.error_count"
-                  tone="error"
-                />
+                <KpiCard title="质量 error" value={cellText(summary.error_count)} detail="summary.error_count" tone="error" />
                 <KpiCard
                   title="合计 explained PnL"
                   value={summary.total_explained_pnl}
@@ -451,11 +583,7 @@ export default function PnlBridgePage() {
                   styles={{ body: { padding: "12px 16px 16px" } }}
                 >
                   <div style={{ height: 400 }}>
-                    <ReactECharts
-                      option={chartOption}
-                      style={{ height: "100%", width: "100%" }}
-                      opts={{ renderer: "canvas" }}
-                    />
+                    <ReactECharts option={chartOption} style={{ height: "100%", width: "100%" }} opts={{ renderer: "canvas" }} />
                   </div>
                 </Card>
               ) : null}
@@ -473,9 +601,9 @@ export default function PnlBridgePage() {
                 >
                   <div style={{ fontWeight: 600, marginBottom: 8, color: "#92400e" }}>Warnings</div>
                   <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
-                    {warnings.map((w) => (
-                      <li key={w} style={{ marginBottom: 6 }}>
-                        {w}
+                    {warnings.map((warning) => (
+                      <li key={warning} style={{ marginBottom: 6 }}>
+                        {warning}
                       </li>
                     ))}
                   </ul>
@@ -486,29 +614,40 @@ export default function PnlBridgePage() {
         </AsyncSection>
       </div>
 
-      <AsyncSection
-        title="桥接明细"
-        isLoading={tableLoading}
-        isError={tableError}
-        isEmpty={tableEmpty}
-        onRetry={() => {
-          void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
-        }}
-      >
-        <div className="ag-theme-alpine" data-testid="pnl-bridge-detail-table" style={agGridShellStyle}>
-          <AgGridReact<PnlBridgeRow>
-            rowData={rows}
-            columnDefs={bridgeColDefs}
-            defaultColDef={bridgeGridDefaultColDef}
-            animateRows
-            pagination
-            paginationPageSize={50}
-            getRowId={(p) =>
-              `${String(p.data.instrument_code)}-${String(p.data.portfolio_name)}-${String(p.data.accounting_basis)}`
-            }
-          />
+      <div data-testid="pnl-bridge-detail-section" data-state={detailState}>
+        <AsyncSection
+          title="桥接明细"
+          isLoading={detailLoading}
+          isError={detailError}
+          isEmpty={detailEmpty}
+          onRetry={() => {
+            void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
+          }}
+        >
+          <div className="ag-theme-alpine" data-testid="pnl-bridge-detail-table" style={agGridShellStyle}>
+            <AgGridReact<PnlBridgeRow>
+              rowData={rows}
+              columnDefs={bridgeColDefs}
+              defaultColDef={bridgeGridDefaultColDef}
+              animateRows
+              pagination
+              paginationPageSize={50}
+              getRowId={(params) =>
+                `${String(params.data.instrument_code)}-${String(params.data.portfolio_name)}-${String(params.data.accounting_basis)}`
+              }
+            />
+          </div>
+        </AsyncSection>
+      </div>
+
+      <details data-testid="pnl-bridge-result-meta-panel" style={debugPanelStyle}>
+        <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorText }}>
+          result_meta / 调试
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <pre style={debugPreStyle}>{JSON.stringify(debugSnapshot, null, 2)}</pre>
         </div>
-      </AsyncSection>
+      </details>
     </section>
   );
 }
