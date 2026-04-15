@@ -568,13 +568,13 @@ export default function AverageBalanceView() {
                           <Col xs={24} xl={12}>
                             <Card size="small" title="资产端分类明细">
                               <AdbMonthlyHorizontalChart rows={monthlyAssetRows} title={`${selectedMonthData.month_label} 资产端`} color="#2563EB" style={{ marginBottom: 16 }} />
-                              <Table data-testid="adb-monthly-breakdown-table" size="small" pagination={false} rowKey={(row) => `asset-deep-${row.category}`} columns={monthlyAssetColumns} dataSource={selectedMonthData.breakdown_assets} />
+                              <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_assets} columns={monthlyAssetColumns} rowKeyPrefix="asset-deep" />
                             </Card>
                           </Col>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="负债端分类明细">
                               <AdbMonthlyHorizontalChart rows={monthlyLiabilityRows} title={`${selectedMonthData.month_label} 负债端`} color="#DC2626" style={{ marginBottom: 16 }} />
-                              <Table data-testid="adb-monthly-breakdown-table" size="small" pagination={false} rowKey={(row) => `liability-deep-${row.category}`} columns={monthlyLiabilityColumns} dataSource={selectedMonthData.breakdown_liabilities} />
+                              <AdbMonthlyBreakdownTable rows={selectedMonthData.breakdown_liabilities} columns={monthlyLiabilityColumns} rowKeyPrefix="liability-deep" />
                             </Card>
                           </Col>
                         </Row>

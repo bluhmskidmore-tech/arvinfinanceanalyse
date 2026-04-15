@@ -253,6 +253,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getByText("月份")).toBeInTheDocument();
     expect(screen.getByText("天数")).toBeInTheDocument();
+    expect(screen.getAllByTestId("adb-monthly-breakdown-table")).toHaveLength(2);
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
   });
 
