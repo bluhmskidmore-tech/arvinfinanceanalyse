@@ -12,6 +12,8 @@ from backend.app.config.product_category_mapping import (
     INTERMEDIATE_BUSINESS_PNL_ACCOUNTS,
     build_default_product_category_config,
 )
+from backend.app.config import product_category_mapping as legacy_mapping
+from backend.app.core_finance.config import product_category_mapping as authority_mapping
 
 _REQUIRED_KEYS = frozenset(
     {"id", "name", "side", "level", "scale_accounts", "pnl_accounts", "ftp_rate_pct", "children"}
@@ -76,3 +78,23 @@ def test_derivative_and_intermediate_account_lists_have_no_duplicates() -> None:
 @pytest.mark.parametrize("accounts", [DERIVATIVE_PNL_ACCOUNTS, INTERMEDIATE_BUSINESS_PNL_ACCOUNTS])
 def test_account_lists_are_nonempty(accounts: list[str]) -> None:
     assert len(accounts) > 0
+
+
+def test_legacy_import_reexports_core_finance_authority() -> None:
+    assert legacy_mapping.build_default_product_category_config is (
+        authority_mapping.build_default_product_category_config
+    )
+    assert legacy_mapping.PRODUCT_CATEGORY_CONFIG is authority_mapping.PRODUCT_CATEGORY_CONFIG
+
+
+def test_legacy_product_category_config_view_is_derived_from_authority() -> None:
+    cfg = build_default_product_category_config()
+    legacy_names = {
+        row["name"]
+        for side_rows in authority_mapping.PRODUCT_CATEGORY_CONFIG.values()
+        for row in side_rows
+    }
+
+    for item in cfg:
+        if item["level"] == 0:
+            assert item["name"] in legacy_names
