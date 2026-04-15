@@ -317,7 +317,9 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "读取 Processes" }));
     await waitFor(() => expect(screen.getByRole("option", { name: "CheckoutFlow" })).toBeInTheDocument());
 
-    await user.selectOptions(screen.getByLabelText("process-name-select"), "CheckoutFlow");
+    const processSelect = screen.getByLabelText("process-name-select");
+    await user.selectOptions(processSelect, "CheckoutFlow");
+    await waitFor(() => expect(processSelect).toHaveValue("CheckoutFlow"));
     await user.click(screen.getByRole("button", { name: "查看所选流程" }));
 
     await waitFor(() => {
