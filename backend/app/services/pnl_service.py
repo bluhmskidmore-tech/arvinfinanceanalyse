@@ -257,10 +257,6 @@ def _build_pnl_formal_result_envelope_from_lineage(
 
 
 def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dict[str, object]:
-    manifest_lineage = resolve_formal_manifest_lineage(
-        governance_dir=governance_dir,
-        cache_key=PNL_CACHE_KEY,
-    )
     if report_date:
         build_lineage = resolve_completed_formal_build_lineage(
             governance_dir=governance_dir,
@@ -269,6 +265,13 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dic
             report_date=report_date,
         )
         if build_lineage is not None:
+            try:
+                manifest_lineage = resolve_formal_manifest_lineage(
+                    governance_dir=governance_dir,
+                    cache_key=PNL_CACHE_KEY,
+                )
+            except RuntimeError:
+                return build_lineage
             return {
                 **manifest_lineage,
                 **{
@@ -277,7 +280,10 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dic
                     if str(value or "").strip()
                 },
             }
-    return manifest_lineage
+    return resolve_formal_manifest_lineage(
+        governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+    )
 
 
 def _quantize_decimal(value: Decimal) -> Decimal:

@@ -38,6 +38,15 @@ def test_pnl_service_uses_shared_formal_lineage_and_result_meta_helpers():
     assert "def _resolve_pnl_manifest_lineage" not in src
 
 
+def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "pnl_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "def _build_pnl_formal_result_envelope_from_lineage" in src
+    assert "use_lineage_cache_version=False" in src
+    assert "default_cache_version=PNL_CACHE_VERSION" in src
+
+
 def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -207,6 +216,33 @@ def test_pnl_data_prefers_report_date_specific_build_lineage_over_latest_manifes
     get_settings.cache_clear()
 
 
+def test_pnl_data_uses_report_date_specific_build_lineage_without_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="run-2025-12",
+        status="completed",
+        source_version="sv_build_2025_12",
+        vendor_version="vv_build_2025_12",
+        rule_version="rv_build_2025_12",
+        report_date="2025-12-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/data", params={"date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_build_2025_12"
+    assert payload["result_meta"]["vendor_version"] == "vv_build_2025_12"
+    assert payload["result_meta"]["rule_version"] == "rv_build_2025_12"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    get_settings.cache_clear()
+
+
 def test_pnl_overview_prefers_report_date_specific_build_lineage_over_latest_manifest(
     tmp_path,
     monkeypatch,
@@ -266,9 +302,9 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.bridge"
-    assert payload["result_meta"]["source_version"] == "sv_bridge"
-    assert payload["result_meta"]["vendor_version"] == "vv_bridge"
-    assert payload["result_meta"]["rule_version"] == "rv_bridge"
+    assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
+    assert payload["result_meta"]["vendor_version"] == "vv_none"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
     assert payload["result_meta"]["cache_version"] == (
         "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
@@ -307,6 +343,47 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     get_settings.cache_clear()
 
 
+def test_pnl_bridge_prefers_report_date_specific_pnl_build_lineage_over_latest_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_manifest_latest",
+        vendor_version="vv_pnl_manifest_latest",
+        rule_version="rv_pnl_manifest_latest",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="pnl-build-2025-12",
+        status="completed",
+        source_version="sv_pnl_build_2025_12",
+        vendor_version="vv_pnl_build_2025_12",
+        rule_version="rv_pnl_build_2025_12",
+        report_date="2025-12-31",
+    )
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="pnl-build-2026-01",
+        status="completed",
+        source_version="sv_pnl_build_2026_01",
+        vendor_version="vv_pnl_build_2026_01",
+        rule_version="rv_pnl_build_2026_01",
+        report_date="2026-01-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_pnl_build_2025_12"
+    assert payload["result_meta"]["vendor_version"] == "vv_pnl_build_2025_12"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_build_2025_12"
+    get_settings.cache_clear()
+
+
 def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"
@@ -327,9 +404,9 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["result_meta"]["source_version"] == "sv-z-current__sv-z-prior__sv_bridge_balance"
-    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_bridge_balance"
-    assert payload["result_meta"]["vendor_version"] == "vv_bridge_balance__vv_none"
+    assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1__sv-z-current__sv-z-prior"
+    assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v1"
+    assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["cache_version"] == (
         "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
@@ -448,12 +525,12 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["source_version"] == (
-        "sv_balance_current__sv_balance_prior__sv_pnl_bridge_meta"
+        "fi-shared-v1__nonstd-shared-v1__sv_balance_current__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current__rv_balance_prior__rv_pnl_bridge_meta"
+        "rv_balance_current__rv_balance_prior__rv_pnl_phase2_materialize_v1"
     )
-    assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_pnl_bridge_meta"
+    assert payload["result_meta"]["vendor_version"] == "vv_balance__vv_none"
     assert payload["result"]["warnings"][0] == (
         "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
     )
@@ -508,10 +585,10 @@ def test_pnl_bridge_prefers_latest_valid_balance_build_when_newer_completed_row_
     assert response.status_code == 200
     payload = response.json()
     assert payload["result_meta"]["source_version"] == (
-        "sv_balance_current_valid__sv_balance_prior__sv_pnl_bridge_meta"
+        "fi-shared-v1__nonstd-shared-v1__sv_balance_current_valid__sv_balance_prior"
     )
     assert payload["result_meta"]["rule_version"] == (
-        "rv_balance_current_valid__rv_balance_prior__rv_pnl_bridge_meta"
+        "rv_balance_current_valid__rv_balance_prior__rv_pnl_phase2_materialize_v1"
     )
     assert not any(
         "Balance lineage fallback used for report_date=2025-12-31" in warning
