@@ -55,6 +55,63 @@ const summaryGridStyle = {
   gap: 16,
 } as const;
 
+const pageHeaderStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+  marginBottom: 24,
+} as const;
+
+const pageSubtitleStyle = {
+  marginTop: 8,
+  marginBottom: 0,
+  maxWidth: 960,
+  color: "#5c6b82",
+  fontSize: 14,
+  lineHeight: 1.7,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 920,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
 const controlBarStyle = {
   display: "flex",
   flexWrap: "wrap",
@@ -332,6 +389,20 @@ function workbookCellFormatter(params: ValueFormatterParams): string {
     return String(v);
   }
   return n.toLocaleString("zh-CN");
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -1571,9 +1642,29 @@ export default function BalanceAnalysisPage() {
   const currentPage = Math.floor(summaryOffset / (summaryTable?.limit ?? PAGE_SIZE)) + 1;
 
    return (
-    <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>资产负债分析</h1>
+    <section data-testid="balance-analysis-page">
+      <div style={pageHeaderStyle}>
+        <div>
+          <h1
+            data-testid="balance-analysis-page-title"
+            style={{ margin: 0, fontSize: 24, fontWeight: 600 }}
+          >
+            资产负债分析
+          </h1>
+          <p data-testid="balance-analysis-page-subtitle" style={pageSubtitleStyle}>
+            以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。
+            保留现有 API 合约、result_meta 和 formal / analytical 边界，不在前端补算正式指标。
+          </p>
+        </div>
+        <span
+          style={{
+            ...modeBadgeStyle,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+          }}
+        >
+          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+        </span>
       </div>
 
       <FilterBar style={controlBarStyle}>
@@ -1664,6 +1755,11 @@ export default function BalanceAnalysisPage() {
         </div>
       )}
 
+      <SectionLead
+        eyebrow="Overview"
+        title="页首概览"
+        description="顶部卡片只重排现有正式读模型和既有业务摘要，用于先判断资产负债规模、静态利差、缺口和预警，再决定是否下钻。"
+      />
       <div data-testid="balance-analysis-overview-cards" style={summaryGridStyle}>
         <KpiCard label="市场资产" value={formatYiAmount(BALANCE_MOCK_KPI.marketAssetsYi)} unit="亿" detail="债券+买入" />
         <KpiCard
@@ -1711,6 +1807,11 @@ export default function BalanceAnalysisPage() {
         data-testid="balance-analysis-supplemental-panels"
         style={{ marginTop: 20, display: "grid", gap: 16 }}
       >
+        <SectionLead
+          eyebrow="Analytical"
+          title="补充分析与口径辅助"
+          description="ADB 预览、会计口径拆解和高阶归因继续作为支持性分析区，保持现有只读查询和正式口径边界。"
+        />
         <SectionCard
           title="ADB Analytical Preview"
           loading={adbComparisonQuery.isLoading}
@@ -1782,6 +1883,11 @@ export default function BalanceAnalysisPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
+        <SectionLead
+          eyebrow="Summary"
+          title="正式汇总驾驶舱"
+          description="先阅读分页汇总表，再进入下方 detail summary 和明细下钻，保持 summary / detail 查询分层不变。"
+        />
         <AsyncSection
           title="资产负债汇总"
           isLoading={
@@ -1903,6 +2009,11 @@ export default function BalanceAnalysisPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
+        <SectionLead
+          eyebrow="Workbench"
+          title="工作簿与治理侧栏"
+          description="工作簿主栏承载正式 workbook 面板，右侧栏承载治理事项、事件日历、风险预警和详情下钻，保持现有契约和阅读顺序。"
+        />
         <AsyncSection
           title="工作簿与分析面板"
           isLoading={

@@ -192,6 +192,11 @@ describe("AverageBalanceView", () => {
     renderView();
 
     expect(await screen.findByRole("heading", { name: "日均管理" })).toBeInTheDocument();
+    expect(screen.getByTestId("average-balance-page-title")).toHaveTextContent("日均管理");
+    expect(screen.getByTestId("average-balance-page-subtitle")).toHaveTextContent(
+      "不在前端补算正式金融口径",
+    );
+    expect(screen.getByRole("heading", { name: "区间日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "月度统计" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "7D" })).toBeInTheDocument();
@@ -234,6 +239,7 @@ describe("AverageBalanceView", () => {
 
     await user.click(await screen.findByRole("tab", { name: "月度统计" }));
 
+    expect(await screen.findByRole("heading", { name: "月度日均统计" })).toBeInTheDocument();
     expect(await screen.findByText("YTD 日均资产")).toBeInTheDocument();
     expect(screen.getByText("YTD 日均负债")).toBeInTheDocument();
     expect(screen.getByText("YTD 资产收益率")).toBeInTheDocument();

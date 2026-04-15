@@ -19,12 +19,16 @@ import type { ColumnsType } from "antd/es/table";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdbCategoryItem,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
 } from "../../../api/contracts";
-import ReactECharts from "../../../lib/echarts";
+import AdbComparisonChart from "./AdbComparisonChart";
+import AdbMonthlyHorizontalChart, {
+  type AdbMonthlyHorizontalChartRow,
+} from "./AdbMonthlyHorizontalChart";
 
 const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
@@ -32,8 +36,66 @@ const YI = 100_000_000;
 type RangeKey = "7d" | "30d" | "ytd" | "custom";
 type PageTab = "daily" | "monthly";
 type BreakdownKind = "asset" | "liability";
-type ComparisonChartRow = { label: string; spot: number; avg: number; deviationPct: number };
-type MonthlyBarRow = { category: string; avgYi: number; weightedRate: number | null };
+type MonthlyBarRow = AdbMonthlyHorizontalChartRow;
+
+const pageHeaderStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+  marginBottom: 24,
+} as const;
+
+const pageSubtitleStyle = {
+  marginTop: 8,
+  marginBottom: 0,
+  maxWidth: 920,
+  color: "#5c6b82",
+  fontSize: 14,
+  lineHeight: 1.7,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "#edf3ff",
+  color: "#1f5eff",
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 4,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
 
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "—";
@@ -67,49 +129,6 @@ function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custo
   if (rangeKey === "30d") start.setDate(start.getDate() - 29);
   if (rangeKey === "ytd") start.setMonth(0, 1);
   return { startDate: toDateInput(start), endDate: toDateInput(end) };
-}
-
-function buildComparisonOption(rows: ComparisonChartRow[]) {
-  return {
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (items: { dataIndex: number }[]) => {
-        if (!items.length) return "";
-        const row = rows[items[0].dataIndex];
-        return [
-          row.label,
-          `Spot：${(row.spot / YI).toFixed(2)} 亿元`,
-          `ADB：${(row.avg / YI).toFixed(2)} 亿元`,
-          `偏离度：${formatSignedPct(row.deviationPct)}`,
-        ].join("<br/>");
-      },
-    },
-    legend: { data: ["Spot（期末）", "ADB（日均）"], top: 0 },
-    grid: { left: 24, right: 24, top: 44, bottom: 76 },
-    xAxis: {
-      type: "category",
-      data: rows.map((row) => row.label),
-      axisLabel: { interval: 0, rotate: 20, fontSize: 11 },
-    },
-    yAxis: { type: "value", axisLabel: { formatter: (value: number) => `${(value / YI).toFixed(0)}亿` } },
-    series: [
-      { name: "Spot（期末）", type: "bar", data: rows.map((row) => row.spot), itemStyle: { color: "#3b82f6" }, barGap: "10%" },
-      {
-        name: "ADB（日均）",
-        type: "bar",
-        data: rows.map((row) => row.avg),
-        itemStyle: { color: "#f97316" },
-        label: {
-          show: true,
-          position: "top",
-          formatter: ({ dataIndex }: { dataIndex: number }) => formatSignedPct(rows[dataIndex]?.deviationPct ?? 0),
-          color: "#475569",
-          fontSize: 11,
-        },
-      },
-    ],
-  };
 }
 
 function buildHorizontalOption(rows: MonthlyBarRow[], title: string, color: string) {
@@ -163,6 +182,20 @@ function buildMonthlyRows(breakdown: AdbMonthlyBreakdownItem[]): MonthlyBarRow[]
     .sort((left, right) => right.avg_balance - left.avg_balance)
     .slice(0, 10)
     .map((row) => ({ category: row.category, avgYi: row.avg_balance / YI, weightedRate: row.weighted_rate ?? null }));
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 export default function AverageBalanceView() {
@@ -346,17 +379,23 @@ export default function AverageBalanceView() {
 
   return (
     <section data-testid="average-balance-page">
-      <div style={{ marginBottom: 24 }}>
-        <Title level={2} style={{ margin: 0 }}>
-          日均管理
-        </Title>
-        <Paragraph style={{ marginTop: 8, marginBottom: 0, maxWidth: 920, color: "#5c6b82" }}>
-          聚焦 Spot vs ADB 偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，不在前端补算正式金融口径。
-        </Paragraph>
-        <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
-          <Text type="secondary">当前页面为 balance-analysis 的 analytical 子视图。</Text>
-          <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
-        </Space>
+      <div style={pageHeaderStyle}>
+        <div>
+          <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
+            日均管理
+          </Title>
+          <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
+            聚焦 Spot vs ADB 偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，
+            不在前端补算正式金融口径，正式资产负债分析仍从 dedicated formal 页面进入。
+          </Paragraph>
+          <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
+            <Text type="secondary">当前页面为 balance-analysis 的 analytical 子视图。</Text>
+            <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
+          </Space>
+        </div>
+        <span style={modeBadgeStyle}>
+          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+        </span>
       </div>
 
       <Tabs
@@ -369,10 +408,15 @@ export default function AverageBalanceView() {
             label: "日均分析",
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                <SectionLead
+                  eyebrow="Daily"
+                  title="区间日均分析"
+                  description="先选择报告日和观察区间，再阅读 Spot / ADB 偏离、收益成本和分类明细；这里保持 analytical 视图，不提升为 formal 口径。"
+                />
                 <Card size="small">
                   <Row gutter={[16, 16]} align="middle" justify="space-between">
                     <Col flex="auto">
-                      <Space wrap>
+                      <FilterBar>
                         <Text type="secondary">报告日</Text>
                         <Select
                           aria-label="adb-report-date"
@@ -388,7 +432,7 @@ export default function AverageBalanceView() {
                         <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>YTD</Button>
                         <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
                         <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
-                      </Space>
+                      </FilterBar>
                     </Col>
                     <Col>
                       <Text strong>有效天数：{dailyData?.num_days ?? "—"} 天</Text>
@@ -454,7 +498,7 @@ export default function AverageBalanceView() {
                     </Row>
 
                     <Card title="Spot vs ADB 偏离对比" size="small">
-                      <ReactECharts option={buildComparisonOption(comparisonRows)} style={{ height: 420 }} notMerge lazyUpdate />
+                      <AdbComparisonChart rows={comparisonRows} />
                     </Card>
 
                     <Row gutter={[16, 16]}>
@@ -479,11 +523,16 @@ export default function AverageBalanceView() {
             label: "月度统计",
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                <SectionLead
+                  eyebrow="Monthly"
+                  title="月度日均统计"
+                  description="按年份查看 YTD 日均摘要、月度汇总表和单月深度分布，继续复用后端 ADB monthly read model。"
+                />
                 <Card size="small">
-                  <Space wrap>
+                  <FilterBar>
                     <Text type="secondary">年份</Text>
                     <Select aria-label="adb-year" style={{ width: 140 }} value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
-                  </Space>
+                  </FilterBar>
                 </Card>
 
                 {monthlyQuery.isLoading ? <Spin /> : null}
@@ -543,13 +592,13 @@ export default function AverageBalanceView() {
                         <Row gutter={[16, 16]}>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="资产端分类明细">
-                              <ReactECharts option={buildHorizontalOption(monthlyAssetRows, `${selectedMonthData.month_label} 资产端`, "#2563EB")} style={{ height: 320, marginBottom: 16 }} notMerge lazyUpdate />
+                              <AdbMonthlyHorizontalChart rows={monthlyAssetRows} title={`${selectedMonthData.month_label} 资产端`} color="#2563EB" style={{ marginBottom: 16 }} />
                               <Table size="small" pagination={false} rowKey={(row) => `asset-deep-${row.category}`} columns={monthlyAssetColumns} dataSource={selectedMonthData.breakdown_assets} />
                             </Card>
                           </Col>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="负债端分类明细">
-                              <ReactECharts option={buildHorizontalOption(monthlyLiabilityRows, `${selectedMonthData.month_label} 负债端`, "#DC2626")} style={{ height: 320, marginBottom: 16 }} notMerge lazyUpdate />
+                              <AdbMonthlyHorizontalChart rows={monthlyLiabilityRows} title={`${selectedMonthData.month_label} 负债端`} color="#DC2626" style={{ marginBottom: 16 }} />
                               <Table size="small" pagination={false} rowKey={(row) => `liability-deep-${row.category}`} columns={monthlyLiabilityColumns} dataSource={selectedMonthData.breakdown_liabilities} />
                             </Card>
                           </Col>

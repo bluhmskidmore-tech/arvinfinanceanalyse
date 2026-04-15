@@ -514,6 +514,13 @@ describe("BalanceAnalysisPage", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
+    expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
+      "formal / analytical",
+    );
+    expect(screen.getByRole("heading", { name: "页首概览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("市场资产");
@@ -612,11 +619,12 @@ describe("BalanceAnalysisPage", () => {
     );
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB Analytical Preview");
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("Spot vs ADB 偏离对比");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB 月度结构预览");
     expect(
       within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
         "balance-analysis-echarts-stub",
       ),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(screen.getByRole("link", { name: "打开 ADB 分析页" })).toHaveAttribute(
       "href",
       "/average-balance?report_date=2025-12-31",
