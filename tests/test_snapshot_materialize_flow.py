@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import duckdb
 
@@ -234,5 +233,75 @@ def test_snapshot_materialize_keeps_prior_report_dates_within_same_ingest_batch(
 
     assert zqtz_dates == ["2025-12-31", "2026-01-01"]
     assert tyw_dates == ["2025-12-31", "2026-01-01"]
+
+    get_settings.cache_clear()
+
+
+def test_snapshot_materialize_explicit_ingest_batch_replaces_whole_report_date_slice(tmp_path, monkeypatch):
+    ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("ZQTZSHOW-20251231.xls", "TYWLSHOW-20251231.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    first = ingest_mod.ingest_demo_manifest.fn()
+    first_batch_id = first["ingest_batch_id"]
+    snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        ingest_batch_id=first_batch_id,
+        source_families=["zqtz", "tyw"],
+        report_date="2025-12-31",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            "update zqtz_bond_daily_snapshot set ingest_batch_id = 'ib-old' where report_date = date '2025-12-31'"
+        )
+        conn.execute(
+            "update tyw_interbank_daily_snapshot set ingest_batch_id = 'ib-old' where report_date = date '2025-12-31'"
+        )
+    finally:
+        conn.close()
+
+    snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        ingest_batch_id=first_batch_id,
+        source_families=["zqtz", "tyw"],
+        report_date="2025-12-31",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        z_batches = {
+            row[0]
+            for row in conn.execute(
+                "select distinct ingest_batch_id from zqtz_bond_daily_snapshot where report_date = date '2025-12-31'"
+            ).fetchall()
+        }
+        t_batches = {
+            row[0]
+            for row in conn.execute(
+                "select distinct ingest_batch_id from tyw_interbank_daily_snapshot where report_date = date '2025-12-31'"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert z_batches == {first_batch_id}
+    assert t_batches == {first_batch_id}
 
     get_settings.cache_clear()

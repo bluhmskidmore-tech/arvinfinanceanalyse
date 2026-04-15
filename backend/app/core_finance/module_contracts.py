@@ -15,9 +15,6 @@ class FormalComputeModuleDescriptor:
     input_sources: tuple[str, ...]
     fact_tables: tuple[str, ...]
     rule_version: str
-    cache_key_prefix: str
-    lock_key_prefix: str
-    cache_version_prefix: str
     result_kind_family: str
     supports_standard_queries: bool = True
     supports_custom_queries: bool = False
@@ -38,12 +35,6 @@ class FormalComputeModuleDescriptor:
             raise ValueError("Each fact table must remain inside the formal fact namespace")
         if not self.rule_version.strip():
             raise ValueError("rule_version is required")
-        if not self.cache_key_prefix.strip():
-            raise ValueError("cache_key_prefix is required")
-        if not self.lock_key_prefix.strip():
-            raise ValueError("lock_key_prefix is required")
-        if not self.cache_version_prefix.strip():
-            raise ValueError("cache_version_prefix is required")
         if not self.result_kind_family.strip():
             raise ValueError("result_kind_family is required")
 
@@ -53,43 +44,27 @@ class FormalComputeModuleDescriptor:
 
     @property
     def cache_key(self) -> str:
-        return self._format_identity(
-            self.cache_key_prefix,
-            fallback=lambda prefix: f"{prefix}:{self.basis}",
-        )
+        return f"{self.module_name}:materialize:{self.basis}"
 
     @property
     def lock_key(self) -> str:
-        return self._format_identity(
-            self.lock_key_prefix,
-            fallback=lambda prefix: f"{prefix}:{self.basis}",
-        )
+        return f"lock:duckdb:formal:{self.module_slug}:materialize"
 
     @property
     def cache_version(self) -> str:
-        return self._format_identity(
-            self.cache_version_prefix,
-            fallback=lambda prefix: f"{prefix}_{self.basis}__{self.rule_version}",
-        )
+        # Stable output contract: one module + one rule_version -> one immutable cache version.
+        return f"cv_{self.module_name}_{self.basis}__{self.rule_version}"
 
     @property
     def running_source_version(self) -> str:
+        # Running marker contract: ephemeral in-flight source version, only for runtime status.
         return f"sv_{self.module_name}_running"
+
+    @property
+    def stable_output_version(self) -> str:
+        # Stable marker contract: canonical version identifier for published formal outputs.
+        return self.cache_version
 
     @property
     def lock_definition(self) -> LockDefinition:
         return LockDefinition(key=self.lock_key, ttl_seconds=self.lock_ttl_seconds)
-
-    def _format_identity(
-        self,
-        prefix: str,
-        *,
-        fallback,
-    ) -> str:
-        if "{basis}" in prefix or "{rule_version}" in prefix or "{module}" in prefix:
-            return prefix.format(
-                basis=self.basis,
-                rule_version=self.rule_version,
-                module=self.module_slug,
-            )
-        return fallback(prefix)

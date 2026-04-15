@@ -18,9 +18,9 @@ from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.snapshot_repo import (
     ensure_snapshot_tables,
     merge_rows_by_grain,
+    merge_tyw_rows_by_grain,
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
-    tyw_grain_key,
     zqtz_grain_key,
 )
 from backend.app.repositories.snapshot_row_parse import (
@@ -178,6 +178,7 @@ def _materialize_standard_snapshots(
                         merged_z,
                         ingest_batch_ids=z_batches,
                         report_dates=z_report_dates,
+                        replace_all_for_report_dates=bool(report_date),
                     )
                     if zqtz_total <= 0:
                         raise ValueError(
@@ -234,12 +235,13 @@ def _materialize_standard_snapshots(
                             )
                         )
                         ordered_tyw.extend(parsed)
-                    merged_t = merge_rows_by_grain(ordered_tyw, tyw_grain_key)
+                    merged_t = merge_tyw_rows_by_grain(ordered_tyw)
                     tyw_total = replace_tyw_snapshot_rows(
                         conn,
                         merged_t,
                         ingest_batch_ids=t_batches,
                         report_dates=t_report_dates,
+                        replace_all_for_report_dates=bool(report_date),
                     )
                     if tyw_total <= 0:
                         raise ValueError(

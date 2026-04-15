@@ -295,7 +295,8 @@ def test_materialize_yield_curve_dual_failure_writes_no_rows(tmp_path, monkeypat
 
     build_runs = _read_jsonl(governance_dir / "cache_build_run.jsonl")
     manifests = _read_jsonl(governance_dir / "cache_manifest.jsonl")
-    assert [record["status"] for record in build_runs] == ["running", "failed"]
+    assert [record["status"] for record in build_runs] == ["queued", "running", "failed"]
+    assert build_runs[-1]["failure_category"] == "materialize_failure"
     assert manifests == []
 
 

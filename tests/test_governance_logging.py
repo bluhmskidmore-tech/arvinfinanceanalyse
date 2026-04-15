@@ -22,6 +22,64 @@ def test_governance_repository_appends_jsonl_records(tmp_path):
     assert "materialize" in build_log.read_text(encoding="utf-8")
 
 
+def test_governance_repository_normalizes_jsonl_stream_contract_fields(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "job_name": "materialize",
+            "status": "completed",
+        },
+    )
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "source_version": "sv_demo",
+            "vendor_version": "vv_demo",
+            "rule_version": "rv_demo",
+        },
+    )
+
+    build_rows = repo.read_all(module.CACHE_BUILD_RUN_STREAM)
+    manifest_rows = repo.read_all(module.CACHE_MANIFEST_STREAM)
+
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_BUILD_RUN_STREAM]:
+        assert field_name in build_rows[0]
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_MANIFEST_STREAM]:
+        assert field_name in manifest_rows[0]
+
+
+def test_governance_latest_helpers_tolerate_sparse_legacy_jsonl_rows(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+
+    (tmp_path / "cache_manifest.jsonl").write_text(
+        '{"cache_key":"demo:key","source_version":"sv_old"}\n'
+        '{"cache_key":"demo:key","source_version":"sv_new","vendor_version":"vv_new","rule_version":"rv_new"}\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "cache_build_run.jsonl").write_text(
+        '{"run_id":"run-legacy","status":"completed","cache_key":"demo:key"}\n'
+        '{"run_id":"run-new","job_name":"job-a","status":"completed","cache_key":"demo:key","report_date":"2026-01-31","source_version":"sv_new"}\n',
+        encoding="utf-8",
+    )
+
+    latest_manifest = repo.read_latest_manifest("demo:key")
+    latest_build = repo.read_latest_completed_run("demo:key", job_name="job-a", report_date="2026-01-31")
+
+    assert latest_manifest is not None
+    assert latest_manifest["source_version"] == "sv_new"
+    assert latest_manifest["vendor_version"] == "vv_new"
+    assert latest_manifest["rule_version"] == "rv_new"
+
+    assert latest_build is not None
+    assert latest_build["run_id"] == "run-new"
+    assert latest_build["source_version"] == "sv_new"
+
+
 def test_build_run_record_uses_fresh_created_at_per_instance():
     module = load_module("backend.app.tasks.build_runs", "backend/app/tasks/build_runs.py")
 
@@ -55,7 +113,11 @@ def test_append_many_atomic_rolls_back_without_deleting_existing_records(tmp_pat
         )
 
     records = repo.read_all(module.CACHE_BUILD_RUN_STREAM)
-    assert records == [{"job_name": "existing", "status": "completed"}]
+    assert len(records) == 1
+    assert records[0]["job_name"] == "existing"
+    assert records[0]["status"] == "completed"
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_BUILD_RUN_STREAM]:
+        assert field_name in records[0]
 
 
 @pytest.mark.parametrize("backend_mode", ["sql-authority", "sql-shadow"])
@@ -111,7 +173,11 @@ def test_append_many_atomic_sql_backends_roll_back_sql_and_jsonl_when_jsonl_writ
         for line in (tmp_path / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert jsonl_build_runs == [existing_payload]
+    assert jsonl_build_runs[0]["job_name"] == existing_payload["job_name"]
+    assert jsonl_build_runs[0]["status"] == existing_payload["status"]
+    assert jsonl_build_runs[0]["run_id"] is None
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_BUILD_RUN_STREAM]:
+        assert field_name in jsonl_build_runs[0]
 
     sql_repo = module.GovernanceRepository(
         base_dir=tmp_path,
@@ -121,7 +187,11 @@ def test_append_many_atomic_sql_backends_roll_back_sql_and_jsonl_when_jsonl_writ
     sql_build_runs = sql_repo.read_all(module.CACHE_BUILD_RUN_STREAM)
     sql_manifests = sql_repo.read_all(module.CACHE_MANIFEST_STREAM)
 
-    assert sql_build_runs == [existing_payload]
+    assert sql_build_runs[0]["job_name"] == existing_payload["job_name"]
+    assert sql_build_runs[0]["status"] == existing_payload["status"]
+    assert sql_build_runs[0]["run_id"] is None
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_BUILD_RUN_STREAM]:
+        assert field_name in sql_build_runs[0]
     assert sql_manifests == []
 
 
@@ -159,7 +229,12 @@ def test_governance_repository_sql_authority_reads_sql_records_even_if_jsonl_sha
         encoding="utf-8",
     )
 
-    assert repo.read_all(module.CACHE_BUILD_RUN_STREAM) == [payload]
+    rows = repo.read_all(module.CACHE_BUILD_RUN_STREAM)
+    assert len(rows) == 1
+    assert rows[0]["run_id"] == payload["run_id"]
+    assert rows[0]["status"] == payload["status"]
+    for field_name in module.STREAM_CONTRACT_FIELDS[module.CACHE_BUILD_RUN_STREAM]:
+        assert field_name in rows[0]
 
 
 def test_governance_repository_sql_shadow_reads_jsonl_records_while_keeping_sql_copy(tmp_path):
@@ -279,3 +354,86 @@ def test_governance_repository_uses_null_pool_for_sql_backend(tmp_path):
 
     assert repo._sql_engine is not None
     assert repo._sql_engine.pool.__class__.__name__ == "NullPool"
+
+
+def test_read_latest_manifest_returns_latest_cache_key_row(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "source_version": "sv_old",
+            "vendor_version": "vv_old",
+            "rule_version": "rv_old",
+        },
+    )
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "source_version": "sv_new",
+            "vendor_version": "vv_new",
+            "rule_version": "rv_new",
+        },
+    )
+
+    latest = repo.read_latest_manifest("demo:key")
+    assert latest is not None
+    assert latest["source_version"] == "sv_new"
+    assert latest["vendor_version"] == "vv_new"
+    assert latest["rule_version"] == "rv_new"
+
+
+def test_read_latest_completed_run_filters_by_cache_key_and_optional_dimensions(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    repo = module.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-1",
+            "job_name": "job-a",
+            "status": "completed",
+            "cache_key": "demo:key",
+            "report_date": "2025-12-31",
+            "source_version": "sv-1",
+        },
+    )
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-2",
+            "job_name": "job-a",
+            "status": "running",
+            "cache_key": "demo:key",
+            "report_date": "2025-12-31",
+            "source_version": "sv-2",
+        },
+    )
+    repo.append(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-3",
+            "job_name": "job-b",
+            "status": "completed",
+            "cache_key": "demo:key",
+            "report_date": "2026-01-31",
+            "source_version": "sv-3",
+        },
+    )
+
+    latest_any = repo.read_latest_completed_run("demo:key")
+    assert latest_any is not None
+    assert latest_any["run_id"] == "run-3"
+
+    latest_job = repo.read_latest_completed_run("demo:key", job_name="job-a")
+    assert latest_job is not None
+    assert latest_job["run_id"] == "run-1"
+
+    latest_job_day = repo.read_latest_completed_run(
+        "demo:key",
+        job_name="job-b",
+        report_date="2026-01-31",
+    )
+    assert latest_job_day is not None
+    assert latest_job_day["run_id"] == "run-3"

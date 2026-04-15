@@ -21,6 +21,68 @@ from backend.app.tasks.ingest import ingest_demo_manifest
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
 
 
+def _normalize_formal_runtime_payload(
+    raw_payload: dict[str, object],
+) -> dict[str, object]:
+    runtime_payload = raw_payload.get("payload")
+    if isinstance(runtime_payload, dict):
+        return runtime_payload
+
+    # Backward-compatible fallback while old callsites/stubs are still present.
+    return {
+        "run": {
+            "run_id": raw_payload.get("run_id"),
+            "job_name": raw_payload.get("job_name"),
+            "report_date": raw_payload.get("report_date"),
+            "status": raw_payload.get("status"),
+            "lock": raw_payload.get("lock"),
+            "queued_at": raw_payload.get("queued_at"),
+            "started_at": raw_payload.get("started_at"),
+            "finished_at": raw_payload.get("finished_at"),
+        },
+        "lineage": {
+            "cache_key": raw_payload.get("cache_key"),
+            "cache_version": raw_payload.get("cache_version"),
+            "source_version": raw_payload.get("source_version"),
+            "vendor_version": raw_payload.get("vendor_version"),
+            "rule_version": raw_payload.get("rule_version"),
+            "basis": raw_payload.get("basis"),
+            "module_name": raw_payload.get("module_name"),
+            "result_kind_family": raw_payload.get("result_kind_family"),
+            "run_id": raw_payload.get("run_id"),
+            "report_date": raw_payload.get("report_date"),
+            "input_sources": raw_payload.get("input_sources"),
+            "fact_tables": raw_payload.get("fact_tables"),
+        },
+        "result": {
+            key: value
+            for key, value in raw_payload.items()
+            if key
+            not in {
+                "status",
+                "cache_key",
+                "cache_version",
+                "run_id",
+                "report_date",
+                "source_version",
+                "rule_version",
+                "vendor_version",
+                "lock",
+                "payload",
+                "queued_at",
+                "started_at",
+                "finished_at",
+                "basis",
+                "module_name",
+                "result_kind_family",
+                "input_sources",
+                "fact_tables",
+                "job_name",
+            }
+        },
+    }
+
+
 def _normalize_iso_date(value: str | None, *, field_name: str) -> date | None:
     text = str(value or "").strip()
     if not text:
@@ -145,6 +207,7 @@ def _run_formal_balance_pipeline(
                 "report_date": current_report_date,
                 "snapshot": snapshot_payload,
                 "balance": balance_payload,
+                "balance_runtime": _normalize_formal_runtime_payload(balance_payload),
             }
         )
 
@@ -161,6 +224,7 @@ def _run_formal_balance_pipeline(
         payload["report_date"] = report_dates[0]
         payload["steps"]["snapshot"] = per_report_date[0]["snapshot"]
         payload["steps"]["balance"] = per_report_date[0]["balance"]
+        payload["steps"]["balance_runtime"] = per_report_date[0]["balance_runtime"]
     return payload
 
 

@@ -14,18 +14,22 @@ REPORT_DATE = "2026-03-31"
 
 
 def _load_modules():
-    repo_mod = sys.modules.get("backend.app.repositories.bond_analytics_repo")
-    if repo_mod is None:
-        repo_mod = load_module(
-            "backend.app.repositories.bond_analytics_repo",
-            "backend/app/repositories/bond_analytics_repo.py",
-        )
-    task_mod = sys.modules.get("backend.app.tasks.bond_analytics_materialize")
-    if task_mod is None:
-        task_mod = load_module(
-            "backend.app.tasks.bond_analytics_materialize",
-            "backend/app/tasks/bond_analytics_materialize.py",
-        )
+    repo_mod = load_module(
+        "backend.app.repositories.bond_analytics_repo",
+        "backend/app/repositories/bond_analytics_repo.py",
+    )
+    load_module(
+        "backend.app.core_finance.module_registry",
+        "backend/app/core_finance/module_registry.py",
+    )
+    load_module(
+        "backend.app.tasks.formal_compute_runtime",
+        "backend/app/tasks/formal_compute_runtime.py",
+    )
+    task_mod = load_module(
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend/app/tasks/bond_analytics_materialize.py",
+    )
     return repo_mod, task_mod
 
 
@@ -321,11 +325,14 @@ def test_bond_analytics_materialize_writes_fact_table_and_governance_records(tmp
         for line in (governance_dir / "cache_manifest.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_runs[0]["status"] == "running"
+    assert build_runs[0]["status"] == "queued"
+    assert build_runs[1]["status"] == "running"
     assert build_runs[-1]["status"] == "completed"
+    assert build_runs[-1]["finished_at"]
     assert build_runs[-1]["cache_key"] == task_mod.CACHE_KEY
     assert manifests[-1]["cache_key"] == task_mod.CACHE_KEY
     assert manifests[-1]["rule_version"] == task_mod.RULE_VERSION
+    assert manifests[-1]["module_name"] == "bond_analytics"
 
 
 def test_bond_analytics_materialize_preserves_lineage_when_write_fails(tmp_path, monkeypatch):

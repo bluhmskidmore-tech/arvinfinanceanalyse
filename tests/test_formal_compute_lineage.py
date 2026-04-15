@@ -195,6 +195,50 @@ def test_resolve_completed_formal_build_lineage_ignores_other_jobs_and_empty_sou
     assert latest is None
 
 
+def test_resolve_completed_formal_build_lineage_skips_newer_invalid_completed_row_and_keeps_latest_valid(tmp_path):
+    lineage_mod = _load_lineage_module()
+    build_run_path = tmp_path / "cache_build_run.jsonl"
+    _append_jsonl(
+        build_run_path,
+        {
+            "run_id": "run-valid",
+            "job_name": "mock_standard_materialize",
+            "status": "completed",
+            "cache_key": "mock_standard:materialize:formal",
+            "cache_version": "cv_valid",
+            "source_version": "sv_valid",
+            "vendor_version": "vv_valid",
+            "rule_version": "rv_valid",
+            "report_date": "2025-12-31",
+        },
+    )
+    _append_jsonl(
+        build_run_path,
+        {
+            "run_id": "run-invalid-newer",
+            "job_name": "mock_standard_materialize",
+            "status": "completed",
+            "cache_key": "mock_standard:materialize:formal",
+            "cache_version": "cv_invalid",
+            "source_version": "",
+            "vendor_version": "vv_invalid",
+            "rule_version": "rv_invalid",
+            "report_date": "2025-12-31",
+        },
+    )
+
+    latest = lineage_mod.resolve_completed_formal_build_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="mock_standard:materialize:formal",
+        job_name="mock_standard_materialize",
+        report_date="2025-12-31",
+    )
+
+    assert latest is not None
+    assert latest["run_id"] == "run-valid"
+    assert latest["source_version"] == "sv_valid"
+
+
 def test_resolve_formal_manifest_lineage_ignores_snapshot_and_preview_streams(tmp_path):
     lineage_mod = _load_lineage_module()
     _append_jsonl(
@@ -308,6 +352,183 @@ def test_resolve_completed_formal_build_lineage_supports_sql_authority_governanc
     assert latest["run_id"] == "run-sql-1"
     assert latest["source_version"] == "sv_sql"
     assert latest["rule_version"] == "rv_sql"
+
+
+def test_resolve_formal_facts_lineage_prefers_build_then_rows_then_manifest(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_build_run.jsonl",
+        {
+            "run_id": "run-1",
+            "job_name": "bond_analytics_materialize",
+            "status": "completed",
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_build",
+            "source_version": "",
+            "vendor_version": "vv_build",
+            "rule_version": "rv_build",
+            "report_date": "2026-03-31",
+        },
+    )
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        {
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_manifest",
+            "source_version": "sv_manifest",
+            "vendor_version": "vv_manifest",
+            "rule_version": "rv_manifest",
+        },
+    )
+
+    lineage = lineage_mod.resolve_formal_facts_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="bond_analytics:materialize:formal",
+        job_name="bond_analytics_materialize",
+        report_date="2026-03-31",
+        has_rows=True,
+        row_source_versions=["sv_row_b", "sv_row_a", ""],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+    )
+
+    assert lineage == {
+        "source_version": "sv_row_a__sv_row_b",
+        "rule_version": "rv_build",
+        "cache_version": "cv_build",
+        "vendor_version": "vv_build",
+    }
+
+
+def test_resolve_formal_facts_lineage_returns_defaults_when_no_rows_or_build_exist(tmp_path):
+    lineage_mod = _load_lineage_module()
+
+    lineage = lineage_mod.resolve_formal_facts_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="bond_analytics:materialize:formal",
+        job_name="bond_analytics_materialize",
+        report_date="2026-03-31",
+        has_rows=False,
+        row_source_versions=[],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+    )
+
+    assert lineage == {
+        "source_version": "sv_empty",
+        "rule_version": "rv_default",
+        "cache_version": "cv_default",
+        "vendor_version": "vv_none",
+    }
+
+
+def test_resolve_formal_facts_lineage_keeps_manifest_fallback_when_rows_exist_without_source_versions(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        {
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_manifest",
+            "source_version": "sv_manifest",
+            "vendor_version": "vv_manifest",
+            "rule_version": "rv_manifest",
+        },
+    )
+
+    lineage = lineage_mod.resolve_formal_facts_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="bond_analytics:materialize:formal",
+        job_name="bond_analytics_materialize",
+        report_date="2026-03-31",
+        has_rows=True,
+        row_source_versions=["", ""],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+    )
+
+    assert lineage == {
+        "source_version": "sv_empty",
+        "rule_version": "rv_manifest",
+        "cache_version": "cv_manifest",
+        "vendor_version": "vv_manifest",
+    }
+
+
+def test_resolve_formal_dates_lineage_uses_manifest_then_fallback_then_defaults(tmp_path):
+    lineage_mod = _load_lineage_module()
+    _append_jsonl(
+        tmp_path / "cache_manifest.jsonl",
+        {
+            "cache_key": "bond_analytics:materialize:formal",
+            "cache_version": "cv_manifest",
+            "source_version": "sv_manifest",
+            "vendor_version": "vv_manifest",
+            "rule_version": "rv_manifest",
+        },
+    )
+
+    manifest_lineage = lineage_mod.resolve_formal_dates_lineage(
+        governance_dir=str(tmp_path),
+        cache_key="bond_analytics:materialize:formal",
+        report_dates=["2026-03-31"],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+        fallback_lineage_loader=lambda _report_date: {
+            "source_version": "sv_fallback",
+            "rule_version": "rv_fallback",
+            "cache_version": "cv_fallback",
+            "vendor_version": "vv_fallback",
+        },
+    )
+
+    assert manifest_lineage == {
+        "source_version": "sv_manifest",
+        "rule_version": "rv_manifest",
+        "cache_version": "cv_manifest",
+        "vendor_version": "vv_manifest",
+    }
+
+    fallback_lineage = lineage_mod.resolve_formal_dates_lineage(
+        governance_dir=str(tmp_path / "missing"),
+        cache_key="bond_analytics:materialize:formal",
+        report_dates=["2026-03-31"],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+        fallback_lineage_loader=lambda _report_date: {
+            "source_version": "sv_fallback",
+            "rule_version": "rv_fallback",
+            "cache_version": "cv_fallback",
+            "vendor_version": "vv_fallback",
+        },
+    )
+
+    assert fallback_lineage == {
+        "source_version": "sv_fallback",
+        "rule_version": "rv_fallback",
+        "cache_version": "cv_fallback",
+        "vendor_version": "vv_fallback",
+    }
+
+    default_lineage = lineage_mod.resolve_formal_dates_lineage(
+        governance_dir=str(tmp_path / "missing-default"),
+        cache_key="bond_analytics:materialize:formal",
+        report_dates=[],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+    )
+
+    assert default_lineage == {
+        "source_version": "sv_empty",
+        "rule_version": "rv_default",
+        "cache_version": "cv_default",
+        "vendor_version": "vv_none",
+    }
 
 
 def test_resolve_formal_lineage_supports_live_postgres_sql_authority(tmp_path):

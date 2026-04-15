@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import json
 import hashlib
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend.app.governance.settings import (
+    DEFAULT_POSTGRES_DSN,
+    resolve_governance_sql_dsn,
+    resolve_postgres_dsn,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.models.base import Base
 from backend.app.models.governance import CacheBuildRun, CacheManifest
@@ -25,19 +31,56 @@ VENDOR_SNAPSHOT_MANIFEST_STREAM = "vendor_snapshot_manifest"
 VENDOR_VERSION_REGISTRY_STREAM = "vendor_version_registry"
 SUPPORTED_SQL_STREAMS = frozenset({CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM})
 SQL_BACKEND_MODES = frozenset({"sql-shadow", "sql-authority"})
+DEFAULT_GOVERNANCE_BACKEND = "jsonl"
+STREAM_CONTRACT_FIELDS: dict[str, tuple[str, ...]] = {
+    CACHE_BUILD_RUN_STREAM: (
+        "run_id",
+        "job_name",
+        "status",
+        "cache_key",
+        "cache_version",
+        "lock",
+        "source_version",
+        "vendor_version",
+        "rule_version",
+        "report_date",
+        "queued_at",
+        "started_at",
+        "finished_at",
+        "error_message",
+        "failure_category",
+        "failure_reason",
+        "created_at",
+    ),
+    CACHE_MANIFEST_STREAM: (
+        "cache_key",
+        "cache_version",
+        "source_version",
+        "vendor_version",
+        "rule_version",
+        "module_name",
+        "basis",
+        "input_sources",
+        "fact_tables",
+        "lineage",
+        "created_at",
+    ),
+}
 
 
 @dataclass
 class GovernanceRepository:
     base_dir: Path | str = Path("data/governance")
     sql_dsn: str = ""
-    backend_mode: str = "jsonl"
+    backend_mode: str = ""
     _sql_engine: Engine | None = field(init=False, default=None, repr=False)
     _sql_tables: dict[str, Table] = field(init=False, default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
         self.base_dir = Path(self.base_dir).resolve()
         self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.backend_mode = _resolve_governance_backend_mode(self.backend_mode)
+        self.sql_dsn = _resolve_governance_sql_dsn_for_repo(self.sql_dsn, backend_mode=self.backend_mode)
         if self.backend_mode not in {"jsonl", *SQL_BACKEND_MODES}:
             raise ValueError(f"Unsupported governance backend mode: {self.backend_mode}")
         if self.backend_mode != "jsonl" and not str(self.sql_dsn or "").strip():
@@ -60,12 +103,23 @@ class GovernanceRepository:
 
     def append(self, stream: str, payload: dict[str, object]) -> Path:
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir):
+            normalized_payload = self._normalize_payload_for_stream(stream, payload)
+            target = self.base_dir / f"{stream}.jsonl"
+            original_sizes = {target: target.stat().st_size if target.exists() else 0}
             if self._writes_sql(stream):
                 assert self._sql_engine is not None
                 with self._sql_engine.begin() as connection:
-                    self._append_sql_unlocked(connection, stream, payload)
-                    return self._append_unlocked(stream, payload)
-            return self._append_unlocked(stream, payload)
+                    self._append_sql_unlocked(connection, stream, normalized_payload)
+                    try:
+                        return self._append_unlocked(stream, normalized_payload)
+                    except Exception:
+                        self._rollback_jsonl_files(original_sizes)
+                        raise
+            try:
+                return self._append_unlocked(stream, normalized_payload)
+            except Exception:
+                self._rollback_jsonl_files(original_sizes)
+                raise
 
     def _append_unlocked(self, stream: str, payload: dict[str, object]) -> Path:
         target = self.base_dir / f"{stream}.jsonl"
@@ -77,29 +131,27 @@ class GovernanceRepository:
     def append_many_atomic(self, entries: list[tuple[str, dict[str, object]]]) -> list[Path]:
         with acquire_lock(self._batch_lock(), base_dir=self.base_dir):
             original_sizes: dict[Path, int] = {}
+            normalized_entries = [
+                (stream, self._normalize_payload_for_stream(stream, payload))
+                for stream, payload in entries
+            ]
             try:
-                if any(self._writes_sql(stream) for stream, _ in entries):
+                if any(self._writes_sql(stream) for stream, _ in normalized_entries):
                     assert self._sql_engine is not None
                     with self._sql_engine.begin() as connection:
-                        for stream, payload in entries:
+                        for stream, payload in normalized_entries:
                             if self._writes_sql(stream):
                                 self._append_sql_unlocked(connection, stream, payload)
                         return self._append_many_jsonl_unlocked(
-                            entries,
+                            normalized_entries,
                             original_sizes=original_sizes,
                         )
                 return self._append_many_jsonl_unlocked(
-                    entries,
+                    normalized_entries,
                     original_sizes=original_sizes,
                 )
             except Exception:
-                for target, size in original_sizes.items():
-                    if not target.exists():
-                        continue
-                    with target.open("r+b") as handle:
-                        handle.truncate(size)
-                    if size == 0:
-                        target.unlink(missing_ok=True)
+                self._rollback_jsonl_files(original_sizes)
                 raise
 
     def read_all(self, stream: str) -> list[dict[str, object]]:
@@ -167,6 +219,70 @@ class GovernanceRepository:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
 
+    def read_latest_manifest(self, cache_key: str) -> dict[str, object] | None:
+        cache_key_text = str(cache_key or "").strip()
+        if not cache_key_text:
+            return None
+        rows = self.read_all(CACHE_MANIFEST_STREAM)
+        for row in reversed(rows):
+            if str(row.get("cache_key") or "").strip() == cache_key_text:
+                return row
+        return None
+
+    def read_latest_completed_run(
+        self,
+        cache_key: str,
+        *,
+        job_name: str | None = None,
+        report_date: str | None = None,
+    ) -> dict[str, object] | None:
+        cache_key_text = str(cache_key or "").strip()
+        if not cache_key_text:
+            return None
+        job_name_text = str(job_name or "").strip()
+        report_date_text = str(report_date or "").strip()
+        rows = self.read_all(CACHE_BUILD_RUN_STREAM)
+        for row in reversed(rows):
+            if str(row.get("cache_key") or "").strip() != cache_key_text:
+                continue
+            if str(row.get("status") or "").strip() != "completed":
+                continue
+            if job_name_text and str(row.get("job_name") or "").strip() != job_name_text:
+                continue
+            if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
+                continue
+            return row
+        return None
+
+    def _normalize_payload_for_stream(
+        self,
+        stream: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        if stream not in STREAM_CONTRACT_FIELDS:
+            return payload
+        normalized = dict(payload)
+        for field_name in STREAM_CONTRACT_FIELDS[stream]:
+            normalized.setdefault(field_name, None)
+        return normalized
+
+    def _rollback_jsonl_files(self, original_sizes: dict[Path, int]) -> None:
+        rollback_errors: list[Exception] = []
+        for target, size in original_sizes.items():
+            if not target.exists():
+                continue
+            try:
+                with target.open("r+b") as handle:
+                    handle.truncate(size)
+                if size == 0:
+                    target.unlink(missing_ok=True)
+            except Exception as exc:
+                rollback_errors.append(exc)
+        if rollback_errors:
+            raise RuntimeError(
+                "Governance JSONL rollback failed; possible partial writes remain."
+            ) from rollback_errors[0]
+
 
 def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str, object]:
     created_at = _coerce_created_at(payload.get("created_at"))
@@ -219,6 +335,29 @@ def _normalize_sqlalchemy_dsn(dsn: str) -> str:
     if dsn.startswith("postgresql://"):
         return "postgresql+psycopg://" + dsn[len("postgresql://") :]
     return dsn
+
+
+def _resolve_governance_backend_mode(backend_mode: str) -> str:
+    normalized = str(backend_mode or "").strip()
+    if normalized:
+        return normalized
+    env_mode = str(os.getenv("MOSS_GOVERNANCE_BACKEND", "")).strip()
+    return env_mode or DEFAULT_GOVERNANCE_BACKEND
+
+
+def _resolve_governance_sql_dsn_for_repo(sql_dsn: str, *, backend_mode: str) -> str:
+    normalized = str(sql_dsn or "").strip()
+    if normalized:
+        return normalized
+    if backend_mode == "jsonl":
+        return ""
+    postgres_dsn = resolve_postgres_dsn(
+        os.getenv("MOSS_POSTGRES_DSN", DEFAULT_POSTGRES_DSN),
+    )
+    return resolve_governance_sql_dsn(
+        os.getenv("MOSS_GOVERNANCE_SQL_DSN", ""),
+        postgres_dsn,
+    )
 
 
 def _read_all_sql_statement(stream: str, table: Table):

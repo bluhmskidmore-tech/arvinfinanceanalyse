@@ -96,6 +96,8 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
     assert payload["steps"]["ingest"]["status"] == "completed"
     assert payload["steps"]["snapshot"]["status"] == "completed"
     assert payload["steps"]["balance"]["status"] == "completed"
+    assert payload["steps"]["balance_runtime"]["run"]["status"] == "completed"
+    assert payload["steps"]["balance_runtime"]["result"] == {"zqtz_rows": 2, "tyw_rows": 2}
 
 
 def test_formal_balance_pipeline_fails_closed_when_ingest_batch_id_is_missing(monkeypatch):
@@ -420,3 +422,63 @@ def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(t
     )
     assert payload["status"] == "completed"
     assert payload["report_dates"] == ["2025-12-31", "2026-01-01"]
+    assert all(
+        "balance_runtime" in item and isinstance(item["balance_runtime"], dict)
+        for item in payload["steps"]["per_report_date"]
+    )
+
+
+def test_formal_balance_pipeline_prefers_new_runtime_payload_shape(tmp_path, monkeypatch):
+    pipeline_mod = _load_pipeline_module()
+
+    def _fake_ingest(**_kwargs):
+        return {"status": "completed", "ingest_batch_id": "ib-new-shape"}
+
+    def _fake_snapshot(**_kwargs):
+        return {"status": "completed"}
+
+    def _fake_balance(**_kwargs):
+        return {
+            "status": "completed",
+            "run_id": "legacy-run-id",
+            "payload": {
+                "run": {
+                    "run_id": "new-run-id",
+                    "job_name": "balance_analysis_materialize",
+                    "report_date": "2025-12-31",
+                    "status": "completed",
+                    "lock": "lock:duckdb:formal:balance-analysis:materialize",
+                    "queued_at": "2026-01-01T00:00:00+00:00",
+                    "started_at": "2026-01-01T00:00:01+00:00",
+                    "finished_at": "2026-01-01T00:00:02+00:00",
+                },
+                "lineage": {
+                    "cache_key": "formal:balance_analysis:materialize",
+                    "cache_version": "cv_formal_balance_analysis__rv_balance_analysis_formal_materialize_v1",
+                    "source_version": "sv-balance-new",
+                    "vendor_version": "vv_none",
+                    "rule_version": "rv_balance_analysis_formal_materialize_v1",
+                    "basis": "formal",
+                    "module_name": "balance_analysis",
+                    "result_kind_family": "balance-analysis",
+                    "run_id": "new-run-id",
+                    "report_date": "2025-12-31",
+                    "input_sources": ["zqtz_bond_daily_snapshot", "tyw_interbank_daily_snapshot", "fx_daily_mid"],
+                    "fact_tables": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+                },
+                "result": {
+                    "zqtz_rows": 9,
+                    "tyw_rows": 3,
+                },
+            },
+        }
+
+    monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(report_date="2025-12-31")
+    balance_runtime = payload["steps"]["balance_runtime"]
+    assert balance_runtime["run"]["run_id"] == "new-run-id"
+    assert balance_runtime["lineage"]["source_version"] == "sv-balance-new"
+    assert balance_runtime["result"] == {"zqtz_rows": 9, "tyw_rows": 3}

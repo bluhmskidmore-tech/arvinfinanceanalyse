@@ -24,9 +24,6 @@ def _descriptor(contracts_mod, **overrides):
         "input_sources": ("mock_source",),
         "fact_tables": ("fact_formal_mock_standard_daily",),
         "rule_version": "rv_mock_standard_v1",
-        "cache_key_prefix": "mock_standard:materialize",
-        "lock_key_prefix": "lock:duckdb:{basis}:mock-standard:materialize",
-        "cache_version_prefix": "cv_mock_standard",
         "result_kind_family": "mock-standard",
         "supports_standard_queries": True,
         "supports_custom_queries": False,
@@ -55,6 +52,21 @@ def test_descriptor_rejects_mixed_fact_table_domains():
         )
 
 
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    [
+        ("module_name", " "),
+        ("rule_version", " "),
+        ("result_kind_family", " "),
+    ],
+)
+def test_descriptor_requires_minimal_identity_fields(field_name, value):
+    contracts_mod, _registry_mod = _load_registry_modules()
+
+    with pytest.raises(ValueError, match="required"):
+        _descriptor(contracts_mod, **{field_name: value})
+
+
 def test_registry_rejects_duplicate_module_names():
     contracts_mod, registry_mod = _load_registry_modules()
     registry_mod.clear_formal_modules()
@@ -71,13 +83,16 @@ def test_registry_rejects_duplicate_cache_keys_across_modules():
     registry_mod.clear_formal_modules()
     registry_mod.register_formal_module(_descriptor(contracts_mod))
 
-    with pytest.raises(ValueError, match="cache_key"):
-        registry_mod.register_formal_module(
-            _descriptor(
-                contracts_mod,
-                module_name="other_module",
-            )
-        )
+    other = _descriptor(
+        contracts_mod,
+        module_name="other_module",
+        fact_tables=("fact_formal_other_module_daily",),
+        result_kind_family="other-module",
+    )
+    registry_mod.register_formal_module(other)
+
+    current = registry_mod.get_formal_module("mock_standard_module")
+    assert current.cache_key != other.cache_key
 
 
 def test_registry_rejects_duplicate_lock_keys_across_modules():
@@ -85,15 +100,16 @@ def test_registry_rejects_duplicate_lock_keys_across_modules():
     registry_mod.clear_formal_modules()
     registry_mod.register_formal_module(_descriptor(contracts_mod))
 
-    with pytest.raises(ValueError, match="lock_key"):
-        registry_mod.register_formal_module(
-            _descriptor(
-                contracts_mod,
-                module_name="other_module",
-                cache_key_prefix="other_module:materialize",
-                cache_version_prefix="cv_other_module",
-            )
-        )
+    other = _descriptor(
+        contracts_mod,
+        module_name="other_module",
+        fact_tables=("fact_formal_other_module_daily",),
+        result_kind_family="other-module",
+    )
+    registry_mod.register_formal_module(other)
+
+    current = registry_mod.get_formal_module("mock_standard_module")
+    assert current.lock_key != other.lock_key
 
 
 def test_registry_rejects_duplicate_cache_versions_across_modules():
@@ -101,16 +117,17 @@ def test_registry_rejects_duplicate_cache_versions_across_modules():
     registry_mod.clear_formal_modules()
     registry_mod.register_formal_module(_descriptor(contracts_mod))
 
-    with pytest.raises(ValueError, match="cache_version"):
-        registry_mod.register_formal_module(
-            _descriptor(
-                contracts_mod,
-                module_name="other_module",
-                cache_key_prefix="other_module:materialize",
-                lock_key_prefix="lock:duckdb:{basis}:other-module:materialize",
-                cache_version_prefix="cv_mock_standard",
-            )
-        )
+    other = _descriptor(
+        contracts_mod,
+        module_name="other_module",
+        fact_tables=("fact_formal_other_module_daily",),
+        result_kind_family="other-module",
+        rule_version="rv_mock_standard_v2",
+    )
+    registry_mod.register_formal_module(other)
+
+    current = registry_mod.get_formal_module("mock_standard_module")
+    assert current.cache_version != other.cache_version
 
 
 def test_registry_rejects_reused_fact_tables_across_modules():
@@ -123,8 +140,43 @@ def test_registry_rejects_reused_fact_tables_across_modules():
             _descriptor(
                 contracts_mod,
                 module_name="other_module",
-                cache_key_prefix="other_module:materialize",
-                lock_key_prefix="lock:duckdb:{basis}:other-module:materialize",
-                cache_version_prefix="cv_other_module",
             )
         )
+
+
+def test_registry_rejects_reused_result_kind_family_across_modules():
+    contracts_mod, registry_mod = _load_registry_modules()
+    registry_mod.clear_formal_modules()
+    registry_mod.register_formal_module(_descriptor(contracts_mod))
+
+    with pytest.raises(ValueError, match="result_kind_family"):
+        registry_mod.register_formal_module(
+            _descriptor(
+                contracts_mod,
+                module_name="other_module",
+                fact_tables=("fact_formal_other_module_daily",),
+            )
+        )
+
+
+def test_registry_supports_lookup_module_by_fact_table():
+    contracts_mod, registry_mod = _load_registry_modules()
+    registry_mod.clear_formal_modules()
+    descriptor = registry_mod.register_formal_module(_descriptor(contracts_mod))
+
+    resolved = registry_mod.get_formal_module_by_fact_table("fact_formal_mock_standard_daily")
+    assert resolved == descriptor
+
+    with pytest.raises(KeyError, match="Unknown formal fact table"):
+        registry_mod.get_formal_module_by_fact_table("fact_formal_unknown_daily")
+
+
+def test_descriptor_uses_canonical_identity_rules():
+    contracts_mod, _registry_mod = _load_registry_modules()
+    descriptor = _descriptor(contracts_mod)
+
+    assert descriptor.cache_key == "mock_standard_module:materialize:formal"
+    assert descriptor.lock_key == "lock:duckdb:formal:mock-standard-module:materialize"
+    assert descriptor.cache_version == "cv_mock_standard_module_formal__rv_mock_standard_v1"
+    assert descriptor.stable_output_version == descriptor.cache_version
+    assert descriptor.running_source_version == "sv_mock_standard_module_running"

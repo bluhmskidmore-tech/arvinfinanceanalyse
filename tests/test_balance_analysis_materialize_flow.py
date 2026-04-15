@@ -238,12 +238,16 @@ def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_r
         if line.strip()
     ]
 
-    assert build_runs[0]["status"] == "running"
-    assert build_runs[0]["started_at"]
+    assert build_runs[0]["status"] == "queued"
+    assert build_runs[0]["queued_at"]
+    assert build_runs[1]["status"] == "running"
+    assert build_runs[1]["started_at"]
     assert build_runs[-1]["status"] == "completed"
+    assert build_runs[-1]["finished_at"]
     assert build_runs[-1]["cache_key"] == task_mod.CACHE_KEY
     assert manifests[-1]["cache_key"] == task_mod.CACHE_KEY
     assert manifests[-1]["rule_version"] == task_mod.RULE_VERSION
+    assert manifests[-1]["module_name"] == "balance_analysis"
 
 
 def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp_path):
