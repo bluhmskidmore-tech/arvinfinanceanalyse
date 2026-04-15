@@ -105,7 +105,6 @@ def qdb_gl_monthly_analysis_scenario_envelope(
         cache_version=CACHE_VERSION,
         source_version=source_version,
         rule_version=RULE_VERSION,
-        scenario_flag=True,
     )
     return build_formal_result_envelope(
         result_meta=meta,
