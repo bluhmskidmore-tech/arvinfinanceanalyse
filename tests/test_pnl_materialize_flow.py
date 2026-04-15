@@ -141,6 +141,10 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert build_runs[-1]["status"] == "completed"
     assert build_runs[-1]["source_version"] == payload["source_version"]
     assert manifests[-1]["cache_key"] == payload["cache_key"]
+    assert manifests[-1]["cache_version"] == task_module.PNL_RESULT_CACHE_VERSION
+    assert manifests[-1]["basis"] == "formal"
+    assert manifests[-1]["module_name"] == "pnl"
+    assert manifests[-1]["fact_tables"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
     assert manifests[-1]["source_version"] == payload["source_version"]
 
 
@@ -223,6 +227,94 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
         conn.close()
 
     assert rows == [("240001.IB", Decimal("19.00"), "src-v2")]
+
+
+def test_pnl_materialize_task_writes_recognized_formal_totals_not_standardized_totals(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    task_module.materialize_pnl_facts.fn(
+        report_date="2025-12-31",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "AC-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "持有至到期",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "5.00",
+                "capital_gain_517": "4.00",
+                "manual_adjustment": "3.00",
+                "currency_basis": "CNY",
+                "source_version": "src-recognition",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "OCI-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "可供出售",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "5.00",
+                "capital_gain_517": "4.00",
+                "manual_adjustment": "3.00",
+                "currency_basis": "CNY",
+                "source_version": "src-recognition",
+                "governance_status": "pending",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            },
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "TPL-001",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "5.00",
+                "capital_gain_517": "4.00",
+                "manual_adjustment": "3.00",
+                "currency_basis": "CNY",
+                "source_version": "src-recognition",
+                "approval_status": "pending",
+                "event_semantics": "mark_to_market",
+                "realized_flag": False,
+            },
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        rows = conn.execute(
+            """
+            select instrument_code, fair_value_change_516, capital_gain_517, manual_adjustment, total_pnl
+            from fact_formal_pnl_fi
+            order by instrument_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("AC-001", Decimal("0.00"), Decimal("4.00"), Decimal("3.00"), Decimal("17.00")),
+        ("OCI-001", Decimal("0.00"), Decimal("4.00"), Decimal("0.00"), Decimal("14.00")),
+        ("TPL-001", Decimal("5.00"), Decimal("0.00"), Decimal("0.00"), Decimal("15.00")),
+    ]
 
 
 def test_pnl_materialize_task_rejects_rows_outside_requested_report_date(tmp_path):

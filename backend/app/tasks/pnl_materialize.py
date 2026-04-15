@@ -217,9 +217,13 @@ def _materialize_pnl_facts(
                 CACHE_MANIFEST_STREAM,
                 CacheManifestRecord(
                     cache_key=CACHE_KEY,
+                    cache_version=PNL_RESULT_CACHE_VERSION,
                     source_version=source_version,
                     vendor_version="vv_none",
                     rule_version=RULE_VERSION,
+                    basis=PNL_FORMAL_BASIS,
+                    module_name="pnl",
+                    fact_tables=["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"],
                 ).model_dump(),
             ),
             (

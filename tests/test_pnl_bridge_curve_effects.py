@@ -9,6 +9,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.yield_curve_repo import FORMAL_FACT_TABLE, ensure_yield_curve_tables
 from tests.helpers import load_module
 from tests.test_pnl_api_contract import (
+    _append_balance_build_run,
     _append_manifest_override,
     _materialize_three_pnl_dates,
     _seed_pnl_bridge_balance_rows,
@@ -43,6 +44,22 @@ def test_pnl_bridge_warns_when_latest_curve_fallback_is_used_and_merges_lineage(
     _seed_pnl_bridge_balance_rows(
         duckdb_path,
         include_tyw_only_intermediate_prior=False,
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-current",
+        report_date="2025-12-31",
+        source_version="sv_balance_current",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_current",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-prior",
+        report_date="2025-10-31",
+        source_version="sv_balance_prior",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_prior",
     )
     _seed_curve_rows(
         duckdb_path,
@@ -92,6 +109,22 @@ def test_pnl_bridge_keeps_fresh_metadata_when_missing_credit_curve_is_irrelevant
         duckdb_path,
         include_tyw_only_intermediate_prior=False,
     )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="fresh-balance-current",
+        report_date="2025-12-31",
+        source_version="sv_balance_current",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_current",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="fresh-balance-prior",
+        report_date="2025-10-31",
+        source_version="sv_balance_prior",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_prior",
+    )
     _seed_curve_rows(
         duckdb_path,
         [
@@ -113,6 +146,7 @@ def test_pnl_bridge_keeps_fresh_metadata_when_missing_credit_curve_is_irrelevant
     payload = response.json()
     assert payload["result_meta"]["vendor_status"] == "ok"
     assert payload["result_meta"]["fallback_mode"] == "none"
+    assert not any("Phase 3 partial delivery" in warning for warning in payload["result"]["warnings"])
     assert not any("aaa_credit" in warning for warning in payload["result"]["warnings"])
     get_settings.cache_clear()
 

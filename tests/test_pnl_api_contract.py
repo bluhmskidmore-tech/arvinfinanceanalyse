@@ -412,8 +412,9 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
+    assert "start_pack" not in payload["result_meta"]["cache_version"]
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )
@@ -541,7 +542,7 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     assert payload["result_meta"]["rule_version"] == "rv-z-current__rv-z-prior__rv_pnl_phase2_materialize_v1"
     assert payload["result_meta"]["vendor_version"] == "vv_none"
     assert payload["result_meta"]["cache_version"] == (
-        "cv_pnl_bridge_start_pack_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
+        "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__"
         "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__"
         "cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1"
     )

@@ -70,7 +70,7 @@ PHASE3_WARNING = (
     "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
 )
 BRIDGE_CACHE_VERSION = (
-    f"cv_pnl_bridge_start_pack_v1__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
+    f"cv_pnl_bridge_formal_v1__{PNL_RESULT_CACHE_VERSION}__{BALANCE_ANALYSIS_CACHE_VERSION}__{YIELD_CURVE_CACHE_VERSION}"
 )
 ZERO = Decimal("0")
 
@@ -181,17 +181,15 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         report_date=report_date,
         rows=[PnlBridgeRowSchema.model_validate(row) for row in rows],
         summary=summary,
-        warnings=_build_warnings(
-            current_balance_rows=current_balance_rows,
-            prior_balance_rows=prior_balance_rows,
-            prior_report_date=prior_date,
-        )
-        + _compact_warnings(
-            [
-                *relevant_curve_warnings,
-            ]
-        )
-        + lineage_warnings,
+        warnings=_bridge_warnings(
+            balance_warnings=_build_warnings(
+                current_balance_rows=current_balance_rows,
+                prior_balance_rows=prior_balance_rows,
+                prior_report_date=prior_date,
+            ),
+            curve_warnings=_compact_warnings([*relevant_curve_warnings]),
+            lineage_warnings=lineage_warnings,
+        ),
     )
     result_meta = build_formal_result_meta(
         trace_id=f"tr_pnl_bridge_{report_date}",
@@ -258,7 +256,7 @@ def _build_warnings(
     prior_balance_rows: list[dict[str, object]],
     prior_report_date: str | None,
 ) -> list[str]:
-    warnings = [PHASE3_WARNING]
+    warnings: list[str] = []
     if not current_balance_rows:
         warnings.append(
             "Current balance rows unavailable; ending_dirty_mv defaults to 0 where balance data is missing."
@@ -272,6 +270,18 @@ def _build_warnings(
             f"Prior balance rows unavailable for report_date={prior_report_date}; beginning_dirty_mv defaults to 0 where prior balance data is missing."
         )
     return warnings
+
+
+def _bridge_warnings(
+    *,
+    balance_warnings: list[str],
+    curve_warnings: list[str],
+    lineage_warnings: list[str],
+) -> list[str]:
+    warnings = [*balance_warnings, *curve_warnings, *lineage_warnings]
+    if warnings:
+        return [PHASE3_WARNING, *warnings]
+    return []
 
 
 def _resolve_bridge_lineage(
