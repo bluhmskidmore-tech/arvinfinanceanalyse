@@ -183,3 +183,30 @@ def test_build_formal_result_meta_from_lineage_can_pin_default_cache_version():
     assert meta.rule_version == "rv_pnl_manifest"
     assert meta.vendor_version == "vv_pnl_manifest"
 
+
+def test_build_formal_result_envelope_from_lineage_can_pin_default_cache_version():
+    runtime_mod = load_module(
+        "backend.app.services.formal_result_runtime",
+        "backend/app/services/formal_result_runtime.py",
+    )
+
+    envelope = runtime_mod.build_formal_result_envelope_from_lineage(
+        trace_id="tr_pnl_overview",
+        result_kind="pnl.overview",
+        lineage={
+            "cache_version": "cv_manifest_override_should_not_apply",
+            "source_version": "sv_pnl_manifest",
+            "rule_version": "rv_pnl_manifest",
+            "vendor_version": "vv_pnl_manifest",
+        },
+        default_cache_version="cv_pnl_formal__rv_pnl_phase2_materialize_v1",
+        use_lineage_cache_version=False,
+        result_payload={"report_date": "2025-12-31"},
+    )
+
+    assert envelope["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+    assert envelope["result_meta"]["source_version"] == "sv_pnl_manifest"
+    assert envelope["result_meta"]["rule_version"] == "rv_pnl_manifest"
+    assert envelope["result_meta"]["vendor_version"] == "vv_pnl_manifest"
+    assert envelope["result"]["report_date"] == "2025-12-31"
+

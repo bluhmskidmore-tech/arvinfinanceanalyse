@@ -174,7 +174,7 @@ def pnl_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, ob
         formal_fi_report_dates=formal_fi_report_dates,
         nonstd_bridge_report_dates=nonstd_bridge_report_dates,
     )
-    return build_formal_result_envelope_from_lineage(
+    return _build_pnl_formal_result_envelope_from_manifest_lineage(
         governance_dir=governance_dir,
         trace_id="tr_pnl_dates",
         result_kind="pnl.dates",
@@ -194,7 +194,7 @@ def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str
         formal_fi_rows=[PnlFormalFiRow(**row) for row in repo.fetch_formal_fi_rows(report_date)],
         nonstd_bridge_rows=[PnlNonStdBridgeRow(**row) for row in repo.fetch_nonstd_bridge_rows(report_date)],
     )
-    return build_formal_result_envelope_from_lineage(
+    return _build_pnl_formal_result_envelope_from_manifest_lineage(
         governance_dir=governance_dir,
         trace_id=f"tr_pnl_data_{report_date}",
         result_kind="pnl.data",
@@ -220,7 +220,7 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
         manual_adjustment=_quantize_decimal(totals["manual_adjustment"]),
         total_pnl=_quantize_decimal(totals["total_pnl"]),
     )
-    return build_formal_result_envelope_from_lineage(
+    return _build_pnl_formal_result_envelope_from_manifest_lineage(
         governance_dir=governance_dir,
         trace_id=f"tr_pnl_overview_{report_date}",
         result_kind="pnl.overview",
@@ -228,7 +228,7 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
     )
 
 
-def build_formal_result_envelope_from_lineage(
+def _build_pnl_formal_result_envelope_from_manifest_lineage(
     *,
     governance_dir: str,
     trace_id: str,
