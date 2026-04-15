@@ -39,6 +39,55 @@ def test_governance_repository_uses_env_sql_authority_when_backend_not_explicit(
     assert rows[0]["status"] == "queued"
 
 
+def test_governance_repository_defaults_to_sql_authority_in_production(tmp_path, monkeypatch):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    sql_path = tmp_path / "governance.db"
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.delenv("MOSS_GOVERNANCE_BACKEND", raising=False)
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", f"sqlite:///{sql_path.as_posix()}")
+
+    repo = governance_mod.GovernanceRepository(base_dir=tmp_path)
+    repo.append(
+        governance_mod.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-prod-sql",
+            "job_name": "pnl_materialize",
+            "status": "completed",
+            "cache_key": "pnl:phase2:materialize:formal",
+            "source_version": "sv-prod",
+        },
+    )
+    (tmp_path / "cache_build_run.jsonl").write_text(
+        '{"run_id":"jsonl-stale","status":"failed"}\n',
+        encoding="utf-8",
+    )
+
+    rows = repo.read_all(governance_mod.CACHE_BUILD_RUN_STREAM)
+
+    assert repo.backend_mode == "sql-authority"
+    assert [row["run_id"] for row in rows] == ["run-prod-sql"]
+
+
+def test_governance_repository_rejects_jsonl_backend_in_production(tmp_path, monkeypatch):
+    governance_mod = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "jsonl")
+
+    try:
+        governance_mod.GovernanceRepository(base_dir=tmp_path)
+    except ValueError as exc:
+        assert "production" in str(exc)
+        assert "jsonl" in str(exc)
+    else:
+        raise AssertionError("production governance backend must reject jsonl")
+
+
 def test_formal_compute_lineage_uses_env_sql_authority_without_explicit_args(tmp_path, monkeypatch):
     governance_mod = load_module(
         "backend.app.repositories.governance_repo",

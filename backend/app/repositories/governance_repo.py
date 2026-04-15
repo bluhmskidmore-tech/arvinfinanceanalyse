@@ -83,6 +83,8 @@ class GovernanceRepository:
         self.sql_dsn = _resolve_governance_sql_dsn_for_repo(self.sql_dsn, backend_mode=self.backend_mode)
         if self.backend_mode not in {"jsonl", *SQL_BACKEND_MODES}:
             raise ValueError(f"Unsupported governance backend mode: {self.backend_mode}")
+        if self.backend_mode == "jsonl" and _is_production_environment():
+            raise ValueError("production governance backend cannot use jsonl authority")
         if self.backend_mode != "jsonl" and not str(self.sql_dsn or "").strip():
             raise ValueError("sql_dsn is required when governance backend mode is not jsonl")
         if self._sql_enabled:
@@ -296,22 +298,30 @@ def _sql_record_for_stream(stream: str, payload: dict[str, object]) -> dict[str,
             "job_name": str(payload.get("job_name") or ""),
             "status": str(payload.get("status") or ""),
             "cache_key": str(payload.get("cache_key") or ""),
+            "cache_version": _optional_text(payload.get("cache_version")),
             "lock": _optional_text(payload.get("lock")),
             "source_version": _optional_text(payload.get("source_version")),
             "vendor_version": _optional_text(payload.get("vendor_version")),
             "rule_version": _optional_text(payload.get("rule_version")),
+            "report_date": _optional_text(payload.get("report_date")),
+            "queued_at": _optional_text(payload.get("queued_at")),
             "started_at": _optional_text(payload.get("started_at")),
             "finished_at": _optional_text(payload.get("finished_at")),
             "error_message": _optional_text(payload.get("error_message")),
+            "failure_category": _optional_text(payload.get("failure_category")),
+            "failure_reason": _optional_text(payload.get("failure_reason")),
             "payload_json": payload_json,
             "created_at": created_at,
         }
     if stream == CACHE_MANIFEST_STREAM:
         return {
             "cache_key": str(payload.get("cache_key") or ""),
+            "cache_version": _optional_text(payload.get("cache_version")),
             "source_version": _optional_text(payload.get("source_version")),
             "vendor_version": _optional_text(payload.get("vendor_version")),
             "rule_version": _optional_text(payload.get("rule_version")),
+            "module_name": _optional_text(payload.get("module_name")),
+            "basis": _optional_text(payload.get("basis")),
             "payload_json": payload_json,
             "created_at": created_at,
         }
@@ -345,7 +355,15 @@ def _resolve_governance_backend_mode(backend_mode: str) -> str:
     if normalized:
         return normalized
     env_mode = str(os.getenv("MOSS_GOVERNANCE_BACKEND", "")).strip()
-    return env_mode or DEFAULT_GOVERNANCE_BACKEND
+    if env_mode:
+        return env_mode
+    if str(os.getenv("MOSS_ENVIRONMENT", "")).strip().lower() == "production":
+        return "sql-authority"
+    return DEFAULT_GOVERNANCE_BACKEND
+
+
+def _is_production_environment() -> bool:
+    return str(os.getenv("MOSS_ENVIRONMENT", "")).strip().lower() == "production"
 
 
 def _resolve_governance_sql_dsn_for_repo(sql_dsn: str, *, backend_mode: str) -> str:

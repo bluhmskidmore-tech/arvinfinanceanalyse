@@ -344,6 +344,46 @@ def test_governance_sql_record_uses_datetime_created_at_for_postgres_compatibili
     assert hasattr(record["created_at"], "isoformat")
 
 
+def test_governance_sql_records_promote_launch_lineage_fields_to_columns():
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+
+    build_record = module._sql_record_for_stream(
+        module.CACHE_BUILD_RUN_STREAM,
+        {
+            "run_id": "run-1",
+            "job_name": "pnl_materialize",
+            "status": "failed",
+            "cache_key": "pnl:phase2:materialize:formal",
+            "cache_version": "cv_pnl_formal",
+            "report_date": "2026-02-28",
+            "queued_at": "2026-04-15T08:00:00+00:00",
+            "failure_category": "queue_dispatch",
+            "failure_reason": "serialization",
+        },
+    )
+    manifest_record = module._sql_record_for_stream(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "pnl:phase2:materialize:formal",
+            "cache_version": "cv_pnl_formal",
+            "source_version": "sv_pnl",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_pnl",
+            "module_name": "pnl",
+            "basis": "formal",
+        },
+    )
+
+    assert build_record["cache_version"] == "cv_pnl_formal"
+    assert build_record["report_date"] == "2026-02-28"
+    assert build_record["queued_at"] == "2026-04-15T08:00:00+00:00"
+    assert build_record["failure_category"] == "queue_dispatch"
+    assert build_record["failure_reason"] == "serialization"
+    assert manifest_record["cache_version"] == "cv_pnl_formal"
+    assert manifest_record["module_name"] == "pnl"
+    assert manifest_record["basis"] == "formal"
+
+
 def test_governance_repository_uses_null_pool_for_sql_backend(tmp_path):
     module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
     repo = module.GovernanceRepository(

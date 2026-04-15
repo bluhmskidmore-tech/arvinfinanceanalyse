@@ -1,6 +1,10 @@
 import ast
 from pathlib import Path
 
+import dramatiq
+import pytest
+from dramatiq.brokers.stub import StubBroker
+
 from tests.helpers import load_module
 
 
@@ -59,3 +63,38 @@ def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
     active = broker_module.get_broker()
 
     assert active.__class__.__name__ == "RedisBroker"
+
+
+def test_broker_rejects_preconfigured_stub_broker_in_production(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    original_dramatiq_broker = dramatiq.get_broker()
+    monkeypatch.setattr(broker_module, "broker", StubBroker())
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+
+    try:
+        with pytest.raises(RuntimeError, match="production.*StubBroker|StubBroker.*production"):
+            broker_module.get_broker()
+    finally:
+        dramatiq.set_broker(original_dramatiq_broker)
+
+
+def test_broker_rejects_global_stub_broker_in_production(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    original_dramatiq_broker = dramatiq.get_broker()
+    monkeypatch.setattr(broker_module, "broker", None)
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+    dramatiq.set_broker(StubBroker())
+
+    try:
+        with pytest.raises(RuntimeError, match="production.*StubBroker|StubBroker.*production"):
+            broker_module.get_broker()
+    finally:
+        dramatiq.set_broker(original_dramatiq_broker)
