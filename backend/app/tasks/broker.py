@@ -10,12 +10,18 @@ from backend.app.governance.settings import get_settings
 broker: StubBroker | RedisBroker | None = None
 
 
+def _is_pytest_process() -> bool:
+    return "pytest" in sys.modules or bool(os.getenv("PYTEST_CURRENT_TEST"))
+
+
 def _should_use_stub_broker() -> bool:
-    if str(get_settings().environment).lower() == "production":
-        return False
     if os.getenv("MOSS_REDIS_DSN"):
         return False
-    return "pytest" in sys.modules or bool(os.getenv("PYTEST_CURRENT_TEST"))
+    if str(os.getenv("MOSS_ENVIRONMENT") or "").lower() == "production":
+        return False
+    if _is_pytest_process():
+        return True
+    return str(get_settings().environment).lower() != "production"
 
 
 def get_broker() -> StubBroker | RedisBroker:
@@ -23,8 +29,6 @@ def get_broker() -> StubBroker | RedisBroker:
 
     if broker is None:
         broker = StubBroker() if _should_use_stub_broker() else RedisBroker(url=get_settings().redis_dsn)
-        if str(get_settings().environment).lower() == "production" and isinstance(broker, StubBroker):
-            raise RuntimeError("Production worker bootstrap cannot use StubBroker.")
         dramatiq.set_broker(broker)
     return broker
 

@@ -1,4 +1,4 @@
-﻿"""
+"""
 日均资产负债（ADB）分析 — DuckDB 读模型，口径对齐 V1 `adb_service` / `analysis_service.get_adb_comparison`。
 
 - 债券：ZQTZ `zqtz_bond_daily_snapshot`，资产=非发行类（`NOT is_issuance_like`），负债=发行类。
@@ -20,7 +20,6 @@ import pandas as pd
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_series_pd
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.services.formal_result_runtime import build_result_envelope
 
 IB_ASSET_PRED = (
@@ -325,47 +324,49 @@ def _load_adb_raw_data(
     if not Path(duckdb_path).exists():
         return pd.DataFrame(), pd.DataFrame(), [], []
 
-    repo = BalanceAnalysisRepository(duckdb_path)
-    report_dates = [
-        report_date_text
-        for report_date_text in repo.list_report_dates()
-        if start_date <= date.fromisoformat(report_date_text) <= end_date
-    ]
-
     zqtz_asset_rows: list[dict[str, object]] = []
     zqtz_liability_rows: list[dict[str, object]] = []
     tyw_asset_rows: list[dict[str, object]] = []
     tyw_liability_rows: list[dict[str, object]] = []
 
-    for report_date_text in report_dates:
-        zqtz_rows = repo.fetch_formal_zqtz_rows(
-            report_date=report_date_text,
-            position_scope="all",
-            currency_basis="CNY",
-        )
-        concrete_zqtz_rows = [row for row in zqtz_rows if str(row.get("position_scope") or "") in {"asset", "liability"}]
-        scoped_zqtz_rows = concrete_zqtz_rows if concrete_zqtz_rows else zqtz_rows
-        for row in scoped_zqtz_rows:
-            if str(row.get("position_scope") or "") == "liability" or bool(row.get("is_issuance_like")):
-                zqtz_liability_rows.append(row)
-            else:
-                zqtz_asset_rows.append(row)
+    conn = _conn_ro(duckdb_path)
+    try:
+        if _table_exists(conn, "fact_formal_zqtz_balance_daily"):
+            zqtz_rows = [
+                _dict_from_row(description, row)
+                for description, row in _fetch_formal_zqtz_rows(conn, start_date, end_date)
+            ]
+            concrete_zqtz_rows = [
+                row for row in zqtz_rows if str(row.get("position_scope") or "") in {"asset", "liability"}
+            ]
+            scoped_zqtz_rows = concrete_zqtz_rows if concrete_zqtz_rows else zqtz_rows
+            for row in scoped_zqtz_rows:
+                if str(row.get("position_scope") or "") == "liability" or bool(row.get("is_issuance_like")):
+                    zqtz_liability_rows.append(row)
+                else:
+                    zqtz_asset_rows.append(row)
 
-        tyw_rows = repo.fetch_formal_tyw_rows(
-            report_date=report_date_text,
-            position_scope="all",
-            currency_basis="CNY",
-        )
-        concrete_tyw_rows = [row for row in tyw_rows if str(row.get("position_scope") or "") in {"asset", "liability"}]
-        scoped_tyw_rows = concrete_tyw_rows if concrete_tyw_rows else tyw_rows
-        for row in scoped_tyw_rows:
-            position_scope = str(row.get("position_scope") or "").lower()
-            position_side = str(row.get("position_side") or "").lower()
-            is_asset = position_scope == "asset" or (position_scope not in {"asset", "liability"} and "asset" in position_side)
-            if is_asset:
-                tyw_asset_rows.append(row)
-            else:
-                tyw_liability_rows.append(row)
+        if _table_exists(conn, "fact_formal_tyw_balance_daily"):
+            tyw_rows = [
+                _dict_from_row(description, row)
+                for description, row in _fetch_formal_tyw_rows(conn, start_date, end_date)
+            ]
+            concrete_tyw_rows = [
+                row for row in tyw_rows if str(row.get("position_scope") or "") in {"asset", "liability"}
+            ]
+            scoped_tyw_rows = concrete_tyw_rows if concrete_tyw_rows else tyw_rows
+            for row in scoped_tyw_rows:
+                position_scope = str(row.get("position_scope") or "").lower()
+                position_side = str(row.get("position_side") or "").lower()
+                is_asset = position_scope == "asset" or (
+                    position_scope not in {"asset", "liability"} and "asset" in position_side
+                )
+                if is_asset:
+                    tyw_asset_rows.append(row)
+                else:
+                    tyw_liability_rows.append(row)
+    finally:
+        conn.close()
 
     source_versions = [
         *[str(row.get("source_version") or "") for row in zqtz_asset_rows],
@@ -442,6 +443,66 @@ def _load_adb_raw_data(
         ib_df["interest_rate"] = pd.to_numeric(ib_df["interest_rate"], errors="coerce").fillna(0)
 
     return bonds_df, ib_df, source_versions, rule_versions
+
+
+def _dict_from_row(description: list[tuple], row: tuple) -> dict[str, object]:
+    return {str(column[0]): value for column, value in zip(description, row, strict=True)}
+
+
+def _fetch_formal_zqtz_rows(
+    conn: duckdb.DuckDBPyConnection,
+    start_date: date,
+    end_date: date,
+) -> list[tuple[list[tuple], tuple]]:
+    cursor = conn.execute(
+        """
+        select
+          report_date,
+          position_scope,
+          currency_basis,
+          market_value_amount,
+          ytm_value,
+          coupon_rate,
+          asset_class,
+          bond_type,
+          is_issuance_like,
+          source_version,
+          rule_version
+        from fact_formal_zqtz_balance_daily
+        where cast(report_date as date) between ? and ?
+          and currency_basis = 'CNY'
+        """,
+        [start_date, end_date],
+    )
+    description = list(cursor.description or [])
+    return [(description, row) for row in cursor.fetchall()]
+
+
+def _fetch_formal_tyw_rows(
+    conn: duckdb.DuckDBPyConnection,
+    start_date: date,
+    end_date: date,
+) -> list[tuple[list[tuple], tuple]]:
+    cursor = conn.execute(
+        """
+        select
+          report_date,
+          position_scope,
+          position_side,
+          currency_basis,
+          principal_amount,
+          funding_cost_rate,
+          product_type,
+          source_version,
+          rule_version
+        from fact_formal_tyw_balance_daily
+        where cast(report_date as date) between ? and ?
+          and currency_basis = 'CNY'
+        """,
+        [start_date, end_date],
+    )
+    description = list(cursor.description or [])
+    return [(description, row) for row in cursor.fetchall()]
 
 
 def _split_rate_frames(
