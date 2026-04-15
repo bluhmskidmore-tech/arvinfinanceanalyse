@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
+import { Link, useSearchParams } from "react-router-dom";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
@@ -1140,9 +1141,19 @@ function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookOperationalS
 
 export default function BalanceAnalysisPage() {
   const client = useApiClient();
+  const [searchParams] = useSearchParams();
+  const queryReportDate = searchParams.get("report_date")?.trim() || "";
+  const queryPositionScope = searchParams.get("position_scope");
+  const queryCurrencyBasis = searchParams.get("currency_basis");
   const [selectedReportDate, setSelectedReportDate] = useState("");
-  const [positionScope, setPositionScope] = useState<BalancePositionScope>("all");
-  const [currencyBasis, setCurrencyBasis] = useState<BalanceCurrencyBasis>("CNY");
+  const [positionScope, setPositionScope] = useState<BalancePositionScope>(
+    queryPositionScope === "asset" || queryPositionScope === "liability" || queryPositionScope === "all"
+      ? queryPositionScope
+      : "all",
+  );
+  const [currencyBasis, setCurrencyBasis] = useState<BalanceCurrencyBasis>(
+    queryCurrencyBasis === "native" || queryCurrencyBasis === "CNY" ? queryCurrencyBasis : "CNY",
+  );
   const [summaryOffset, setSummaryOffset] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExportingCsv, setIsExportingCsv] = useState(false);
@@ -1157,6 +1168,8 @@ export default function BalanceAnalysisPage() {
   const [selectedEventCalendarKey, setSelectedEventCalendarKey] = useState<string | null>(null);
   const [selectedRiskAlertKey, setSelectedRiskAlertKey] = useState<string | null>(null);
   const [decisionStatusComment, setDecisionStatusComment] = useState("");
+  const adbStartDate = selectedReportDate ? `${selectedReportDate.slice(0, 4)}-01-01` : "";
+  const adbHref = selectedReportDate ? `/average-balance?report_date=${selectedReportDate}` : "/average-balance";
 
   const datesQuery = useQuery({
     queryKey: ["balance-analysis", "dates", client.mode],
@@ -1165,11 +1178,21 @@ export default function BalanceAnalysisPage() {
   });
 
   useEffect(() => {
-    const firstDate = datesQuery.data?.result.report_dates?.[0];
-    if (!selectedReportDate && firstDate) {
+    const reportDates = datesQuery.data?.result.report_dates ?? [];
+    const firstDate = reportDates[0];
+    if (!reportDates.length) {
+      return;
+    }
+    if (queryReportDate && reportDates.includes(queryReportDate)) {
+      if (selectedReportDate !== queryReportDate) {
+        setSelectedReportDate(queryReportDate);
+      }
+      return;
+    }
+    if ((!selectedReportDate || !reportDates.includes(selectedReportDate)) && firstDate) {
       setSelectedReportDate(firstDate);
     }
-  }, [datesQuery.data?.result.report_dates, selectedReportDate]);
+  }, [datesQuery.data?.result.report_dates, queryReportDate, selectedReportDate]);
 
   useEffect(() => {
     setSummaryOffset(0);
@@ -1303,6 +1326,13 @@ export default function BalanceAnalysisPage() {
         positionScope,
         currencyBasis,
       }),
+    retry: false,
+  });
+
+  const adbComparisonQuery = useQuery({
+    queryKey: ["balance-analysis", "adb-preview", client.mode, selectedReportDate],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () => client.getAdbComparison(adbStartDate, selectedReportDate),
     retry: false,
   });
 
@@ -1658,6 +1688,53 @@ export default function BalanceAnalysisPage() {
         data-testid="balance-analysis-supplemental-panels"
         style={{ marginTop: 20, display: "grid", gap: 16 }}
       >
+        <SectionCard
+          title="ADB Analytical Preview"
+          loading={adbComparisonQuery.isLoading}
+          error={adbComparisonQuery.isError}
+          onRetry={() => void adbComparisonQuery.refetch()}
+        >
+          {adbComparisonQuery.data ? (
+            <div data-testid="balance-analysis-adb-preview" style={{ display: "grid", gap: 12 }}>
+              <strong style={{ color: "#162033", fontSize: 14 }}>ADB Analytical Preview</strong>
+              <div style={{ color: "#5c6b82", fontSize: 13 }}>
+                基于当前正式报告日生成的 analytical 区间预览，默认观察年初至报告日的 ADB 偏离与净息差。
+              </div>
+              <div style={summaryGridStyle}>
+                <PlaceholderCard
+                  title="Spot 资产"
+                  value={formatYiAmount(adbComparisonQuery.data.total_spot_assets / 100000000)}
+                  unit="亿"
+                  detail={`区间起点 ${adbComparisonQuery.data.start_date}`}
+                />
+                <PlaceholderCard
+                  title="ADB 资产"
+                  value={formatYiAmount(adbComparisonQuery.data.total_avg_assets / 100000000)}
+                  unit="亿"
+                  detail={`区间终点 ${adbComparisonQuery.data.end_date}`}
+                />
+                <PlaceholderCard
+                  title="Spot 负债"
+                  value={formatYiAmount(adbComparisonQuery.data.total_spot_liabilities / 100000000)}
+                  unit="亿"
+                  detail={`${adbComparisonQuery.data.num_days} 天`}
+                />
+                <PlaceholderCard
+                  title="NIM"
+                  value={
+                    adbComparisonQuery.data.net_interest_margin === null
+                      ? "—"
+                      : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}%`
+                  }
+                  detail="Analytical preview"
+                />
+              </div>
+              <div>
+                <Link to={adbHref}>打开 ADB 分析页</Link>
+              </div>
+            </div>
+          ) : null}
+        </SectionCard>
         <SectionCard
           title="按会计口径分解"
           loading={basisBreakdownQuery.isLoading}

@@ -24,8 +24,11 @@ vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="balance-analysis-echarts-stub" />,
 }));
 
-function renderBalanceAnalysisWithClient(client: ReturnType<typeof createApiClient>) {
-  const router = createWorkbenchMemoryRouter(["/balance-analysis"]);
+function renderBalanceAnalysisWithClient(
+  client: ReturnType<typeof createApiClient>,
+  initialEntries: string[] = ["/balance-analysis"],
+) {
+  const router = createWorkbenchMemoryRouter(initialEntries);
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
@@ -481,6 +484,22 @@ describe("BalanceAnalysisPage", () => {
     });
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
     const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+    const getAdbComparisonSpy = vi.fn(async () => ({
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 1200000000,
+      total_avg_assets: 1100000000,
+      total_spot_liabilities: 600000000,
+      total_avg_liabilities: 550000000,
+      asset_yield: 2.45,
+      liability_cost: 1.62,
+      net_interest_margin: 0.83,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    }));
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
@@ -489,6 +508,7 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisDetail: getDetailSpy,
       getBalanceAnalysisSummary: getSummarySpy,
       getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getAdbComparison: getAdbComparisonSpy,
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
@@ -588,6 +608,67 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByTestId("balance-analysis-result-meta-detail")).toHaveTextContent(
       "balance-analysis.detail",
     );
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB Analytical Preview");
+    expect(screen.getByRole("link", { name: "打开 ADB 分析页" })).toHaveAttribute(
+      "href",
+      "/average-balance?report_date=2025-12-31",
+    );
+    expect(getAdbComparisonSpy).toHaveBeenCalledWith("2025-01-01", "2025-12-31");
+  });
+
+  it("hydrates report filters from query parameters", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_query"),
+      result: {
+        report_dates: ["2025-12-31", "2025-11-30"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview_query"),
+      result: {
+        report_date: "2025-11-30",
+        position_scope: "liability" as const,
+        currency_basis: "native" as const,
+        detail_row_count: 1,
+        summary_row_count: 1,
+        total_market_value_amount: "10.00",
+        total_amortized_cost_amount: "10.00",
+        total_accrued_interest_amount: "1.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
+      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail_query"),
+      result: {
+        report_date: "2025-11-30",
+        position_scope: "liability",
+        currency_basis: "native",
+        details: [],
+        summary: [],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+
+    renderBalanceAnalysisWithClient(
+      {
+        ...baseClient,
+        getBalanceAnalysisDates: getDatesSpy,
+        getBalanceAnalysisOverview: getOverviewSpy,
+        getBalanceAnalysisDetail: getDetailSpy,
+        getBalanceAnalysisSummary: getSummarySpy,
+        getBalanceAnalysisWorkbook: getWorkbookSpy,
+      },
+      ["/balance-analysis?report_date=2025-11-30&position_scope=liability&currency_basis=native"],
+    );
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenCalledWith({
+        reportDate: "2025-11-30",
+        positionScope: "liability",
+        currencyBasis: "native",
+      });
+    });
   });
 
   it("downloads the filtered summary export as csv", async () => {

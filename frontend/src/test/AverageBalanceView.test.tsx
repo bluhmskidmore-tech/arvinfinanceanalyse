@@ -222,6 +222,10 @@ describe("AverageBalanceView", () => {
     expect(screen.getAllByText("收益率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付息率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "打开正式资产负债分析" })).toHaveAttribute(
+      "href",
+      "/balance-analysis?report_date=2026-04-14&position_scope=all&currency_basis=CNY",
+    );
   });
 
   it("renders the monthly statistics tab with YTD summary, expandable table, and deep analysis panels", async () => {

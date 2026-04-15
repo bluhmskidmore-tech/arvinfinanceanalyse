@@ -16,7 +16,7 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -194,6 +194,14 @@ export default function AverageBalanceView() {
     return selectedReportDate || datesQuery.data?.result.report_dates[0] || "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate, selectedReportDate]);
 
+  const formalAnalysisHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (reportDate) params.set("report_date", reportDate);
+    params.set("position_scope", "all");
+    params.set("currency_basis", "CNY");
+    return `/balance-analysis?${params.toString()}`;
+  }, [reportDate]);
+
   useEffect(() => {
     if (rangeKey === "custom") return;
     const range = buildPresetRange(reportDate, rangeKey);
@@ -345,6 +353,10 @@ export default function AverageBalanceView() {
         <Paragraph style={{ marginTop: 8, marginBottom: 0, maxWidth: 920, color: "#5c6b82" }}>
           聚焦 Spot vs ADB 偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，不在前端补算正式金融口径。
         </Paragraph>
+        <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
+          <Text type="secondary">当前页面为 balance-analysis 的 analytical 子视图。</Text>
+          <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
+        </Space>
       </div>
 
       <Tabs
