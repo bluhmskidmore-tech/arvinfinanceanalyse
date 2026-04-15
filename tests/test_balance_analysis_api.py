@@ -535,6 +535,47 @@ def test_balance_analysis_decision_status_update_returns_403_without_scope(tmp_p
     get_settings.cache_clear()
 
 
+def test_balance_analysis_decision_status_update_returns_503_when_scope_store_is_unavailable(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", "postgresql://invalid:invalid@127.0.0.1:1/moss")
+    monkeypatch.setenv("MOSS_GOVERNANCE_SQL_DSN", "")
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    list_response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    decision_key = list_response.json()["result"]["rows"][0]["decision_key"]
+
+    response = client.post(
+        "/ui/balance-analysis/decision-items/status",
+        headers={"X-User-Id": "unlucky-user", "X-User-Role": "viewer"},
+        json={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+            "decision_key": decision_key,
+            "status": "confirmed",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "User scope store is unavailable."
+
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_current_user_api_falls_back_to_env_identity(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
     monkeypatch.setenv("MOSS_USER_ID", "env-balance-user")

@@ -60,16 +60,19 @@ def ensure_user_allowed(
     scope_key: str | None = None,
     scope_value: str | None = None,
 ) -> None:
-    repo = UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn)
-    if repo.has_permission(
-        user_id=auth.user_id,
-        role=auth.role,
-        resource=resource,
-        action=action,
-        scope_key=scope_key,
-        scope_value=scope_value,
-    ):
-        return
+    try:
+        repo = UserScopeRepository(settings.governance_sql_dsn or settings.postgres_dsn)
+        if repo.has_permission(
+            user_id=auth.user_id,
+            role=auth.role,
+            resource=resource,
+            action=action,
+            scope_key=scope_key,
+            scope_value=scope_value,
+        ):
+            return
+    except Exception as exc:
+        raise RuntimeError("User scope store is unavailable.") from exc
     raise PermissionError(f"User is not allowed to {action} {resource}.")
 
 
