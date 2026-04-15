@@ -138,6 +138,11 @@ describe("PnlBridgePage", () => {
     });
 
     const dateSelect = await screen.findByLabelText("pnl-bridge-report-date");
+    expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("损益桥接");
+    expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("不在浏览器端做金融重算");
+    expect(screen.getByRole("heading", { name: "正式桥接汇总" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "桥接明细与归因瀑布" })).toBeInTheDocument();
+
     await waitFor(() => {
       expect(dateSelect).toHaveValue("2025-12-31");
     });

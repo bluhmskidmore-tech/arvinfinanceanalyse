@@ -8,6 +8,7 @@ import "ag-grid-community/styles/ag-theme-alpine.css";
 import { useApiClient } from "../../api/client";
 import type { PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
 import { runPollingTask } from "../../app/jobs/polling";
+import { FilterBar } from "../../components/FilterBar";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -17,6 +18,63 @@ const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 16,
+} as const;
+
+const pageHeaderStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+  marginBottom: 24,
+} as const;
+
+const pageSubtitleStyle = {
+  marginTop: 10,
+  marginBottom: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 15,
+  lineHeight: 1.75,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginBottom: 16,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
 } as const;
 
 const controlBarStyle = {
@@ -89,6 +147,20 @@ function cellText(value: string | number | null | undefined) {
     return "—";
   }
   return String(value);
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
@@ -198,7 +270,10 @@ export default function PnlPage() {
     retry: false,
   });
 
-  const reportDates = datesQuery.data?.result.report_dates ?? [];
+  const reportDates = useMemo(
+    () => datesQuery.data?.result.report_dates ?? [],
+    [datesQuery.data?.result.report_dates],
+  );
 
   useEffect(() => {
     const firstDate = reportDates[0];
@@ -349,33 +424,39 @@ export default function PnlPage() {
   }
 
   return (
-    <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1
+    <section data-testid="pnl-page">
+      <div style={pageHeaderStyle}>
+        <div>
+          <h1
+            data-testid="pnl-page-title"
+            style={{
+              margin: 0,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            损益明细
+          </h1>
+          <p
+            data-testid="pnl-page-subtitle"
+            style={pageSubtitleStyle}
+          >
+            正式口径 PnL 明细与汇总，数据由后端 API 提供；页面仅展示返回值，不在浏览器端做金融重算。
+          </p>
+        </div>
+        <span
           style={{
-            margin: 0,
-            fontSize: 32,
-            fontWeight: 600,
-            letterSpacing: "-0.03em",
+            ...modeBadgeStyle,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
           }}
         >
-          损益明细
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: "#5c6b82",
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
-          正式口径 PnL 明细与汇总，数据由后端 API 提供；页面仅展示返回值，不在浏览器端做金融重算。
-        </p>
+          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+        </span>
       </div>
 
-      <div style={controlBarStyle}>
+      <FilterBar style={controlBarStyle}>
         <label>
           <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
           <select
@@ -405,7 +486,7 @@ export default function PnlPage() {
         >
           {isRefreshing ? "刷新中..." : "刷新正式结果"}
         </button>
-      </div>
+      </FilterBar>
 
       {(refreshStatus || refreshError) && (
         <div
@@ -424,6 +505,11 @@ export default function PnlPage() {
       )}
 
       <div data-testid="pnl-overview-section" data-state={overviewState} style={{ marginBottom: 24 }}>
+        <SectionLead
+          eyebrow="Overview"
+          title="正式损益汇总"
+          description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式 read model。"
+        />
         <AsyncSection
           title="汇总概览"
           isLoading={overviewLoading}
@@ -475,6 +561,11 @@ export default function PnlPage() {
       </div>
 
       <div data-testid="pnl-data-section" data-state={dataState} style={{ marginTop: 24 }}>
+        <SectionLead
+          eyebrow="Details"
+          title="正式明细与非标桥接"
+          description="FI 明细和非标桥接共用当前报告日，保留原有 tab、AG Grid 和分页行为，不改变正式 PnL 契约。"
+        />
         <AsyncSection
           title="明细数据"
           extra={dataTabExtra}

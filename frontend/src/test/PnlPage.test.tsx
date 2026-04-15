@@ -155,6 +155,11 @@ describe("PnlPage", () => {
     });
 
     const dateSelect = await screen.findByLabelText("pnl-report-date");
+    expect(screen.getByTestId("pnl-page-title")).toHaveTextContent("损益明细");
+    expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("不在浏览器端做金融重算");
+    expect(screen.getByRole("heading", { name: "正式损益汇总" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正式明细与非标桥接" })).toBeInTheDocument();
+
     await waitFor(() => {
       expect(dateSelect).toHaveValue("2025-12-31");
     });
