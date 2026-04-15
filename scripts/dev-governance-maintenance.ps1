@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 . "$root\scripts\dev-env.ps1"
+Assert-DevBootstrapStorageReady -ProbeLabel "dev-governance-maintenance"
 . "$root\scripts\dev-python.ps1"
 $python = Resolve-DevPython
 

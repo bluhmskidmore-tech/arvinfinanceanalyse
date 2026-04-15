@@ -8,6 +8,7 @@ run_startup_storage_migrations()
 
 
 CANONICAL_TASK_MODULES: tuple[str, ...] = (
+    "backend.app.tasks.dev_health",
     "backend.app.tasks.ingest",
     "backend.app.tasks.materialize",
     "backend.app.tasks.source_preview_refresh",

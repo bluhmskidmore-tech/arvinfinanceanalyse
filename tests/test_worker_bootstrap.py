@@ -21,6 +21,7 @@ def _read_canonical_task_modules() -> tuple[str, ...]:
 
 def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
     assert _read_canonical_task_modules() == (
+        "backend.app.tasks.dev_health",
         "backend.app.tasks.ingest",
         "backend.app.tasks.materialize",
         "backend.app.tasks.source_preview_refresh",

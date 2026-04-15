@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import duckdb
 import json
 import os
 import shutil
 import socket
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +22,12 @@ DEFAULT_REDIS_DSN = "redis://127.0.0.1:6379/11"
 SMOKE_FILES = (
     "ZQTZSHOW-20251231.xls",
     "TYWLSHOW-20251231.xls",
+)
+RUNTIME_DUCKDB_SEED_TABLES = (
+    "fact_formal_bond_analytics_daily",
+    "zqtz_bond_daily_snapshot",
+    "fact_formal_zqtz_balance_daily",
+    "fact_formal_tyw_balance_daily",
 )
 
 
@@ -68,15 +76,16 @@ def build_cluster_config(repo_root: Path, pg_bin_dir: Path | None = None) -> Dev
 
 
 def build_env_mapping(config: DevPostgresClusterConfig) -> dict[str, str]:
+    storage_root = _resolve_storage_root_for_env(config)
     return {
         "MOSS_ENVIRONMENT": "development",
         "MOSS_POSTGRES_DSN": config.postgres_dsn,
         "MOSS_GOVERNANCE_SQL_DSN": config.postgres_dsn,
         "MOSS_REDIS_DSN": DEFAULT_REDIS_DSN,
-        "MOSS_DUCKDB_PATH": str(config.runtime_duckdb_path),
-        "MOSS_GOVERNANCE_PATH": str(config.runtime_governance_path),
-        "MOSS_LOCAL_ARCHIVE_PATH": str(config.runtime_archive_path),
-        "MOSS_DATA_INPUT_ROOT": str(config.runtime_data_input_path),
+        "MOSS_DUCKDB_PATH": str(storage_root / "moss.duckdb"),
+        "MOSS_GOVERNANCE_PATH": str(storage_root / "governance"),
+        "MOSS_LOCAL_ARCHIVE_PATH": str(storage_root / "archive"),
+        "MOSS_DATA_INPUT_ROOT": str(config.repo_root / "data_input" if storage_root == config.repo_root / "data" else config.runtime_data_input_path),
         "MOSS_SOURCE_PREVIEW_GOVERNANCE_BACKEND": "jsonl",
         "MOSS_OBJECT_STORE_MODE": "local",
         "MOSS_MINIO_ENDPOINT": "localhost:9000",
@@ -100,6 +109,10 @@ def resolve_pg_bin_dir() -> Path:
         if candidate and (candidate / "pg_ctl.exe").exists():
             return candidate
     raise FileNotFoundError("Unable to locate PostgreSQL bin directory. Set MOSS_PG_BIN_DIR.")
+
+
+def _resolve_python_executable() -> str:
+    return shutil.which("python") or sys.executable
 
 
 def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
@@ -132,8 +145,10 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
                 "start",
             ]
         )
+    _wait_for_postgres_ready(config)
 
     _ensure_role_and_database(config)
+    _wait_for_postgres_ready(config, database=config.database)
     _apply_alembic_migrations_and_grants(config)
     _prepare_runtime_clean_paths(config)
 
@@ -173,11 +188,15 @@ def command_status(config: DevPostgresClusterConfig) -> dict[str, object]:
 
 
 def command_print_env(config: DevPostgresClusterConfig) -> dict[str, str]:
+    try:
+        _prepare_runtime_clean_paths(config)
+    except PermissionError:
+        pass
     return build_env_mapping(config)
 
 
 def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
-    role_exists = _run_checked(
+    role_exists = _run_checked_retry(
         [
             str(config.bin_dir / "psql.exe"),
             "-h",
@@ -194,7 +213,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
         capture_output=True,
     ).strip()
     if role_exists != "1":
-        _run_checked(
+        _run_checked_retry(
             [
                 str(config.bin_dir / "psql.exe"),
                 "-h",
@@ -210,7 +229,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
             ]
         )
 
-    db_exists = _run_checked(
+    db_exists = _run_checked_retry(
         [
             str(config.bin_dir / "psql.exe"),
             "-h",
@@ -227,7 +246,7 @@ def _ensure_role_and_database(config: DevPostgresClusterConfig) -> None:
         capture_output=True,
     ).strip()
     if db_exists != "1":
-        _run_checked(
+        _run_checked_retry(
             [
                 str(config.bin_dir / "createdb.exe"),
                 "-h",
@@ -252,7 +271,7 @@ def _reset_moss_public_schema(config: DevPostgresClusterConfig) -> None:
         "GRANT ALL ON SCHEMA public TO moss; "
         "GRANT ALL ON SCHEMA public TO public;"
     )
-    _run_checked(
+    _run_checked_retry(
         [
             str(config.bin_dir / "psql.exe"),
             "-h",
@@ -299,7 +318,7 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
     env.pop("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", None)
     subprocess.run(
         [
-            sys.executable,
+            _resolve_python_executable(),
             "-m",
             "alembic",
             "-c",
@@ -351,12 +370,108 @@ def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
         target = config.runtime_data_input_path / file_name
         if source.exists() and not target.exists():
             shutil.copy2(source, target)
+    _seed_runtime_duckdb_from_repo_if_needed(config)
+
+
+def _seed_runtime_duckdb_from_repo_if_needed(config: DevPostgresClusterConfig) -> None:
+    runtime_duckdb = config.runtime_duckdb_path
+    if _duckdb_has_seed_data(runtime_duckdb):
+        return
+
+    repo_duckdb = config.repo_root / "data" / "moss.duckdb"
+    if not _duckdb_has_seed_data(repo_duckdb):
+        return
+
+    runtime_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(repo_duckdb, runtime_duckdb)
+
+
+def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:
+    if _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return config.runtime_root
+
+    repo_data_root = config.repo_root / "data"
+    if _duckdb_has_seed_data(repo_data_root / "moss.duckdb"):
+        return repo_data_root
+
+    return config.runtime_root
+
+
+def _duckdb_has_seed_data(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size <= 0:
+        return False
+    try:
+        conn = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error:
+        return False
+
+    try:
+        for table_name in RUNTIME_DUCKDB_SEED_TABLES:
+            row = conn.execute(
+                """
+                select 1
+                from information_schema.tables
+                where table_name = ?
+                limit 1
+                """,
+                [table_name],
+            ).fetchone()
+            if row is None:
+                continue
+            populated = conn.execute(f"select 1 from {table_name} limit 1").fetchone()
+            if populated is not None:
+                return True
+        return False
+    finally:
+        conn.close()
 
 
 def _is_port_open(host: str, port: int) -> bool:
     with socket.socket() as sock:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
+
+
+def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | None = None) -> bool:
+    try:
+        _run_checked_retry(
+            [
+                str(config.bin_dir / "psql.exe"),
+                "-h",
+                config.host,
+                "-p",
+                str(config.port),
+                "-U",
+                "postgres",
+                "-d",
+                database or config.admin_database,
+                "-tAc",
+                "SELECT 1",
+            ],
+            capture_output=True,
+            attempts=1,
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+
+def _wait_for_postgres_ready(
+    config: DevPostgresClusterConfig,
+    *,
+    database: str | None = None,
+    attempts: int = 20,
+    retry_delay_seconds: float = 1.0,
+) -> None:
+    for attempt in range(1, attempts + 1):
+        if _probe_postgres_ready(config, database=database):
+            return
+        if attempt < attempts:
+            time.sleep(retry_delay_seconds)
+    raise RuntimeError(
+        f"Local PostgreSQL dev cluster did not accept SQL connections for database "
+        f"{database or config.admin_database} on {config.host}:{config.port}."
+    )
 
 
 def _run_checked(args: list[str], *, capture_output: bool = False) -> str:
@@ -367,6 +482,28 @@ def _run_checked(args: list[str], *, capture_output: bool = False) -> str:
         capture_output=capture_output,
     )
     return result.stdout if capture_output else ""
+
+
+def _run_checked_retry(
+    args: list[str],
+    *,
+    capture_output: bool = False,
+    attempts: int = 5,
+    retry_delay_seconds: float = 1.0,
+    retry_returncodes: tuple[int, ...] = (2,),
+) -> str:
+    last_error: subprocess.CalledProcessError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return _run_checked(args, capture_output=capture_output)
+        except subprocess.CalledProcessError as exc:
+            last_error = exc
+            if exc.returncode not in retry_returncodes or attempt >= attempts:
+                raise
+            time.sleep(retry_delay_seconds)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("unreachable retry state")
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
