@@ -40,6 +40,37 @@ _NOT_READY_WARNINGS: tuple[str, ...] = (
 )
 
 
+def _build_partial_summary(
+    upstream_summaries: dict[str, dict[str, str | list[str]]],
+) -> tuple[dict[str, str], list[str]]:
+    return_summary = upstream_summaries.get("return_decomposition", {})
+    bridge_summary = upstream_summaries.get("pnl_bridge", {})
+
+    summary: dict[str, str] = {}
+    if str(return_summary.get("carry") or "").strip():
+        summary["carry"] = str(return_summary["carry"])
+    if str(return_summary.get("roll_down") or "").strip():
+        summary["roll_down"] = str(return_summary["roll_down"])
+    if str(return_summary.get("rate_effect") or "").strip():
+        summary["rate_effect"] = str(return_summary["rate_effect"])
+    if str(return_summary.get("spread_effect") or "").strip():
+        summary["spread_effect"] = str(return_summary["spread_effect"])
+    if str(return_summary.get("explained_pnl") or "").strip():
+        summary["explained_pnl"] = str(return_summary["explained_pnl"])
+    if str(bridge_summary.get("total_treasury_curve") or "").strip():
+        summary["treasury_curve"] = str(bridge_summary["total_treasury_curve"])
+    if str(bridge_summary.get("total_credit_spread") or "").strip():
+        summary["credit_spread"] = str(bridge_summary["total_credit_spread"])
+    if str(bridge_summary.get("total_actual_pnl") or "").strip():
+        summary["actual_pnl"] = str(bridge_summary["total_actual_pnl"])
+    if str(bridge_summary.get("total_residual") or "").strip():
+        summary["residual"] = str(bridge_summary["total_residual"])
+    if str(bridge_summary.get("quality_flag") or "").strip():
+        summary["quality_flag"] = str(bridge_summary["quality_flag"])
+
+    return summary, sorted(summary.keys())
+
+
 def _normalize_scenario_inputs(
     *,
     treasury_shift_bp: int | None = None,
@@ -77,15 +108,27 @@ def advanced_attribution_bundle_envelope(
             governance_dir=governance_dir,
         )
     )
+    partial_summary, available_components = (
+        ({}, [])
+        if is_scenario
+        else _build_partial_summary(upstream_summaries)
+    )
+    is_partial = bool(partial_summary)
     payload = AdvancedAttributionBundlePayload(
         report_date=report_date,
         mode="scenario" if is_scenario else "analytical",
         scenario_name=(scenario_name or "custom") if is_scenario else None,
         scenario_inputs=scenario_inputs,
         upstream_summaries=upstream_summaries,
-        status="not_ready",
+        status="partial" if is_partial else "not_ready",
+        summary=partial_summary,
+        available_components=available_components,
         missing_inputs=list(_NOT_READY_MISSING_INPUTS),
-        blocked_components=list(_NOT_READY_BLOCKED_COMPONENTS),
+        blocked_components=(
+            ["realized_trading", "action_attribution"]
+            if is_partial
+            else list(_NOT_READY_BLOCKED_COMPONENTS)
+        ),
         warnings=list(
             [
                 *(
@@ -94,6 +137,13 @@ def advanced_attribution_bundle_envelope(
                         "returning scenario-scoped not_ready contract only"
                     ]
                     if is_scenario
+                    else []
+                ),
+                *(
+                    [
+                        "balance-analysis.advanced_attribution_bundle: partial analytical output assembled from governed return_decomposition and pnl_bridge summaries"
+                    ]
+                    if is_partial
                     else []
                 ),
                 *upstream_warnings,

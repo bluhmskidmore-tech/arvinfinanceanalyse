@@ -117,6 +117,16 @@ def test_bond_analytics_service_uses_shared_formal_result_runtime_helper():
     assert "build_formal_result_meta_from_lineage" in src
 
 
+def test_bond_analytics_service_keeps_intentional_local_meta_for_complex_vendor_lineage_paths():
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "bond_analytics_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "def _meta(" in src
+    assert "def _apply_vendor_meta_update(" in src
+    assert "bond_analytics.return_decomposition" in src
+    assert "bond_analytics.credit_spread_migration" in src
+
+
 def test_bond_analytics_dates_envelope_resolves_manifest_lineage_not_only_latest_row_date(
     tmp_path,
     monkeypatch,

@@ -35,7 +35,7 @@ def test_advanced_attribution_accepts_stripped_valid_report_date():
     assert response.json()["result"]["report_date"] == "2025-12-31"
 
 
-def test_advanced_attribution_endpoint_returns_analytical_not_ready_contract():
+def test_advanced_attribution_endpoint_returns_analytical_partial_contract_when_upstreams_exist():
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(
         "/ui/balance-analysis/advanced-attribution",
@@ -51,16 +51,17 @@ def test_advanced_attribution_endpoint_returns_analytical_not_ready_contract():
 
     result = body["result"]
     assert result["report_date"] == "2025-12-31"
-    assert result["status"] == "not_ready"
+    assert result["status"] == "partial"
+    assert isinstance(result["summary"], dict)
+    assert isinstance(result["available_components"], list)
+    assert len(result["available_components"]) >= 1
     assert isinstance(result["missing_inputs"], list)
     assert len(result["missing_inputs"]) >= 1
     assert isinstance(result["blocked_components"], list)
     assert len(result["blocked_components"]) >= 1
     assert isinstance(result["warnings"], list)
     assert len(result["warnings"]) >= 1
-    # No fake attribution figures
     assert "attribution" not in result
-    assert "explained_pnl" not in result
 
 
 def test_advanced_attribution_endpoint_switches_to_scenario_contract_when_explicit_shocks_are_given():
@@ -161,12 +162,20 @@ def test_advanced_attribution_analytical_mode_can_expose_upstream_summaries_with
     assert env["result_meta"]["basis"] == "analytical"
     assert env["result_meta"]["scenario_flag"] is False
     result = env["result"]
-    assert result["status"] == "not_ready"
+    assert result["status"] == "partial"
     assert result["mode"] == "analytical"
     assert result["upstream_summaries"]["return_decomposition"]["explained_pnl"] == "11.50000000"
     assert result["upstream_summaries"]["pnl_bridge"]["total_residual"] == "0.20000000"
-    assert "explained_pnl" not in result
-    assert "actual_pnl" not in result
+    assert result["summary"]["carry"] == "10.00000000"
+    assert result["summary"]["roll_down"] == "2.00000000"
+    assert result["summary"]["rate_effect"] == "-1.00000000"
+    assert result["summary"]["spread_effect"] == "0.50000000"
+    assert result["summary"]["treasury_curve"] == "-0.50000000"
+    assert result["summary"]["actual_pnl"] == "10.20000000"
+    assert result["summary"]["residual"] == "0.20000000"
+    assert "carry" in result["available_components"]
+    assert "actual_pnl" in result["available_components"]
+    assert "action_attribution" in result["blocked_components"]
 
 
 def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, monkeypatch):
