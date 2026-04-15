@@ -3,7 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
+from backend.app.governance.formal_compute_lineage import (
+    resolve_completed_formal_build_lineage,
+    resolve_formal_manifest_lineage,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
@@ -174,8 +177,9 @@ def pnl_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, ob
         formal_fi_report_dates=formal_fi_report_dates,
         nonstd_bridge_report_dates=nonstd_bridge_report_dates,
     )
-    return _build_pnl_formal_result_envelope_from_manifest_lineage(
+    return _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
+        report_date=None,
         trace_id="tr_pnl_dates",
         result_kind="pnl.dates",
         result_payload=payload.model_dump(mode="json"),
@@ -194,8 +198,9 @@ def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str
         formal_fi_rows=[PnlFormalFiRow(**row) for row in repo.fetch_formal_fi_rows(report_date)],
         nonstd_bridge_rows=[PnlNonStdBridgeRow(**row) for row in repo.fetch_nonstd_bridge_rows(report_date)],
     )
-    return _build_pnl_formal_result_envelope_from_manifest_lineage(
+    return _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
+        report_date=report_date,
         trace_id=f"tr_pnl_data_{report_date}",
         result_kind="pnl.data",
         result_payload=payload.model_dump(mode="json"),
@@ -220,24 +225,26 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
         manual_adjustment=_quantize_decimal(totals["manual_adjustment"]),
         total_pnl=_quantize_decimal(totals["total_pnl"]),
     )
-    return _build_pnl_formal_result_envelope_from_manifest_lineage(
+    return _build_pnl_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
+        report_date=report_date,
         trace_id=f"tr_pnl_overview_{report_date}",
         result_kind="pnl.overview",
         result_payload=payload.model_dump(mode="json"),
     )
 
 
-def _build_pnl_formal_result_envelope_from_manifest_lineage(
+def _build_pnl_formal_result_envelope_from_lineage(
     *,
     governance_dir: str,
+    report_date: str | None,
     trace_id: str,
     result_kind: str,
     result_payload: dict[str, object],
 ) -> dict[str, object]:
-    lineage = resolve_formal_manifest_lineage(
+    lineage = _resolve_pnl_lineage(
         governance_dir=governance_dir,
-        cache_key=PNL_CACHE_KEY,
+        report_date=report_date,
     )
     return build_formal_result_envelope_from_lineage_runtime(
         trace_id=trace_id,
@@ -247,6 +254,30 @@ def _build_pnl_formal_result_envelope_from_manifest_lineage(
         use_lineage_cache_version=False,
         result_payload=result_payload,
     )
+
+
+def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dict[str, object]:
+    manifest_lineage = resolve_formal_manifest_lineage(
+        governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+    )
+    if report_date:
+        build_lineage = resolve_completed_formal_build_lineage(
+            governance_dir=governance_dir,
+            cache_key=PNL_CACHE_KEY,
+            job_name=PNL_JOB_NAME,
+            report_date=report_date,
+        )
+        if build_lineage is not None:
+            return {
+                **manifest_lineage,
+                **{
+                    key: value
+                    for key, value in build_lineage.items()
+                    if str(value or "").strip()
+                },
+            }
+    return manifest_lineage
 
 
 def _quantize_decimal(value: Decimal) -> Decimal:

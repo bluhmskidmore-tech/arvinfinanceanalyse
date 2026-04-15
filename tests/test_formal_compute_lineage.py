@@ -531,6 +531,31 @@ def test_resolve_formal_dates_lineage_uses_manifest_then_fallback_then_defaults(
     }
 
 
+def test_resolve_formal_dates_lineage_normalizes_partial_fallback_with_defaults(tmp_path):
+    lineage_mod = _load_lineage_module()
+
+    fallback_lineage = lineage_mod.resolve_formal_dates_lineage(
+        governance_dir=str(tmp_path / "missing-partial"),
+        cache_key="bond_analytics:materialize:formal",
+        report_dates=["2026-03-31"],
+        default_source_version="sv_empty",
+        default_rule_version="rv_default",
+        default_cache_version="cv_default",
+        default_vendor_version="vv_none",
+        fallback_lineage_loader=lambda _report_date: {
+            "source_version": "sv_fallback",
+            "rule_version": "",
+        },
+    )
+
+    assert fallback_lineage == {
+        "source_version": "sv_fallback",
+        "rule_version": "rv_default",
+        "cache_version": "cv_default",
+        "vendor_version": "vv_none",
+    }
+
+
 def test_resolve_formal_lineage_supports_live_postgres_sql_authority(tmp_path):
     sql_dsn = os.getenv("MOSS_TEST_POSTGRES_DSN", "").strip()
     if not sql_dsn:

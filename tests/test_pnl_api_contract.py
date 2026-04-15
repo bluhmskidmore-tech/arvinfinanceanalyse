@@ -58,7 +58,7 @@ def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_manifest_lineage(tmp_path, monkeypatch):
+def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_report_date_build_lineage(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     _append_manifest_override(governance_dir, source_version="sv_override", vendor_version="vv_override", rule_version="rv_override")
 
@@ -70,9 +70,9 @@ def test_pnl_data_returns_shared_date_with_two_explicit_lists_and_manifest_linea
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.data"
-    assert payload["result_meta"]["source_version"] == "sv_override"
-    assert payload["result_meta"]["vendor_version"] == "vv_override"
-    assert payload["result_meta"]["rule_version"] == "rv_override"
+    assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
+    assert payload["result_meta"]["vendor_version"] == "vv_none"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
     assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["formal_fi_rows"]) == 1
@@ -111,7 +111,7 @@ def test_pnl_data_returns_404_for_absent_union_date(tmp_path, monkeypatch):
     get_settings.cache_clear()
 
 
-def test_pnl_overview_returns_backend_owned_aggregation_and_manifest_lineage(tmp_path, monkeypatch):
+def test_pnl_overview_returns_backend_owned_aggregation_and_report_date_build_lineage(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     _append_manifest_override(governance_dir, source_version="sv_overview", vendor_version="vv_overview", rule_version="rv_overview")
 
@@ -123,9 +123,9 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_manifest_lineage(tmp
     assert payload["result_meta"]["basis"] == "formal"
     assert payload["result_meta"]["formal_use_allowed"] is True
     assert payload["result_meta"]["result_kind"] == "pnl.overview"
-    assert payload["result_meta"]["source_version"] == "sv_overview"
-    assert payload["result_meta"]["vendor_version"] == "vv_overview"
-    assert payload["result_meta"]["rule_version"] == "rv_overview"
+    assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
+    assert payload["result_meta"]["vendor_version"] == "vv_none"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
     assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     assert payload["result"] == {
         "report_date": "2025-12-31",
@@ -158,9 +158,9 @@ def test_pnl_overview_keeps_fixed_cache_version_even_if_manifest_contains_cache_
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["result_meta"]["source_version"] == "sv_overview_cache"
-    assert payload["result_meta"]["vendor_version"] == "vv_overview_cache"
-    assert payload["result_meta"]["rule_version"] == "rv_overview_cache"
+    assert payload["result_meta"]["source_version"] == "fi-shared-v1__nonstd-shared-v1"
+    assert payload["result_meta"]["vendor_version"] == "vv_none"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_phase2_materialize_v1"
     assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     get_settings.cache_clear()
 

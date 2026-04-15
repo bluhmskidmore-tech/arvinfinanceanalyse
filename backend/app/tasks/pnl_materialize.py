@@ -64,9 +64,11 @@ def _materialize_pnl_facts(
                 job_name=run.job_name,
                 status="running",
                 cache_key=CACHE_KEY,
+                cache_version=PNL_RESULT_CACHE_VERSION,
                 lock=PNL_MATERIALIZE_LOCK.key,
                 source_version="sv_pnl_running",
                 vendor_version="vv_none",
+                rule_version=RULE_VERSION,
             ).model_dump(),
             "report_date": report_date,
             "started_at": run.created_at,
@@ -185,9 +187,11 @@ def _materialize_pnl_facts(
             job_name=run.job_name,
             status="failed",
             cache_key=CACHE_KEY,
+            cache_version=PNL_RESULT_CACHE_VERSION,
             lock=PNL_MATERIALIZE_LOCK.key,
             source_version=source_version,
             vendor_version="vv_none",
+            rule_version=RULE_VERSION,
         ).model_dump()
         failed_record["error_message"] = str(exc)
         failed_record["report_date"] = report_date
@@ -199,9 +203,11 @@ def _materialize_pnl_facts(
         job_name=run.job_name,
         status="completed",
         cache_key=CACHE_KEY,
+        cache_version=PNL_RESULT_CACHE_VERSION,
         lock=PNL_MATERIALIZE_LOCK.key,
         source_version=source_version,
         vendor_version="vv_none",
+        rule_version=RULE_VERSION,
     ).model_dump()
     completed_run["report_date"] = report_date
 
@@ -271,7 +277,7 @@ def _assert_formal_pnl_emission_allowed(
     if not fi_rows:
         return
     if not formal_pnl_enabled:
-        raise RuntimeError("Formal pnl emission is disabled for this repo phase boundary.")
+        raise RuntimeError("Formal pnl emission is disabled by configuration.")
 
     allowed_tokens = _parse_formal_pnl_scope(formal_pnl_scope_json)
     if not allowed_tokens:
