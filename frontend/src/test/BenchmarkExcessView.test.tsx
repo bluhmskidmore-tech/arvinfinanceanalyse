@@ -90,6 +90,19 @@ describe("BenchmarkExcessView", () => {
       ),
     );
 
+    expect(await screen.findByTestId("benchmark-excess-shell-lead")).toHaveTextContent(
+      "基准超额收益",
+    );
+    expect(screen.getByTestId("benchmark-excess-shell-lead")).toHaveTextContent(
+      "不在前端重算超额收益",
+    );
+    expect(screen.getByTestId("benchmark-excess-summary-lead")).toHaveTextContent(
+      "组合与基准摘要",
+    );
+    expect(screen.getByTestId("benchmark-excess-attribution-lead")).toHaveTextContent(
+      "超额收益归因",
+    );
+
     expect(await screen.findByText("组合收益")).toBeInTheDocument();
     expect(screen.getByText("基准收益")).toBeInTheDocument();
     expect(screen.getByText("超额收益")).toBeInTheDocument();

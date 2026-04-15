@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Alert, Spin, Select, Space } from "antd";
 import ReactECharts from "../../../lib/echarts";
+import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
 import { formatBp } from "../utils/formatters";
@@ -27,6 +28,34 @@ const WATERFALL_CATEGORIES = [
 
 const CHART_TEXT = { fontSize: 13, color: "#5c6b82" } as const;
 
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
   color: "rgba(0,0,0,0)",
@@ -41,6 +70,21 @@ function formatDurationDisplay(value: string): string {
 
 function hasDisplayMetric(value: string | null | undefined): value is string {
   return value != null && value !== "";
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
@@ -196,7 +240,13 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <Space direction="vertical" size={0}>
+        <Space direction="vertical" size={4}>
+          <SectionLead
+            eyebrow="Benchmark"
+            title="基准超额收益"
+            description="按报告日、期间和基准指数读取后端归因结果；页面只展示 benchmark excess read model，不在前端重算超额收益。"
+            testId="benchmark-excess-shell-lead"
+          />
           <span style={{ color: "#5c6b82", fontSize: 13 }}>
             {data.benchmark_name ? `基准：${data.benchmark_name}` : null}
           </span>
@@ -204,7 +254,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             区间 {data.period_start} — {data.period_end} · 报表日 {data.report_date}
           </span>
         </Space>
-        <Space>
+        <FilterBar>
           <span style={{ color: "#5c6b82", fontSize: 13 }}>切换基准</span>
           <Select
             value={benchmarkId}
@@ -213,9 +263,15 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
             style={{ width: 200 }}
             size="small"
           />
-        </Space>
+        </FilterBar>
       </div>
 
+      <SectionLead
+        eyebrow="Summary"
+        title="组合与基准摘要"
+        description="先阅读组合收益、基准收益、超额收益和久期差，再进入下方效果分解和来源明细。"
+        testId="benchmark-excess-summary-lead"
+      />
       <Row gutter={16}>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
@@ -272,6 +328,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         </Row>
       )}
 
+      <SectionLead
+        eyebrow="Attribution"
+        title="超额收益归因"
+        description="分解、对账和来源明细沿用后端返回字段，保留解释项与 recon_error 的边界。"
+        testId="benchmark-excess-attribution-lead"
+      />
       <Card title="超额收益分解" size="small">
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {decomp.map((d) => {
