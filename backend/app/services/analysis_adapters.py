@@ -14,7 +14,10 @@ from backend.app.schemas.analysis_service import (
     DrillTarget,
 )
 from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_meta,
+    build_scenario_result_meta,
+)
 
 
 PRODUCT_CATEGORY_AVAILABLE_VIEWS = [
@@ -67,23 +70,32 @@ class ProductCategoryPnlAnalysisAdapter:
         liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
         grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
 
-        return AnalysisResultEnvelope(
-            result_meta=ResultMeta(
+        result_kind = (
+            "analysis.product_category_pnl"
+            if query.consumer == "analysis_service"
+            else "product_category_pnl.detail"
+        )
+        result_meta = (
+            build_scenario_result_meta(
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
-                basis=query.basis,
-                result_kind=(
-                    "analysis.product_category_pnl"
-                    if query.consumer == "analysis_service"
-                    else "product_category_pnl.detail"
-                ),
-                formal_use_allowed=query.basis != "scenario",
+                result_kind=result_kind,
                 source_version=str(rows[0]["source_version"]),
-                vendor_version="vv_none",
                 rule_version=str(rows[0]["rule_version"]),
                 cache_version="cv_product_category_pnl_v1",
                 quality_flag="ok",
-                scenario_flag=query.basis == "scenario",
-            ),
+            )
+            if query.basis == "scenario"
+            else build_formal_result_meta(
+                trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
+                result_kind=result_kind,
+                source_version=str(rows[0]["source_version"]),
+                rule_version=str(rows[0]["rule_version"]),
+                cache_version="cv_product_category_pnl_v1",
+                quality_flag="ok",
+            )
+        )
+        return AnalysisResultEnvelope(
+            result_meta=result_meta,
             result=AnalysisResultPayload(
                 report_date=query.report_date,
                 analysis_key=self.analysis_key,
@@ -132,22 +144,19 @@ def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> 
             message=BOND_ACTION_ATTRIBUTION_PLACEHOLDER_WARNING,
         )
     ]
+    result_kind = (
+        "analysis.bond_action_attribution"
+        if query.consumer == "analysis_service"
+        else "bond_analytics.action_attribution"
+    )
     return AnalysisResultEnvelope(
-        result_meta=ResultMeta(
+        result_meta=build_formal_result_meta(
             trace_id=f"tr_{query.consumer}_{query.report_date}_{period_type}",
-            basis=query.basis,
-            result_kind=(
-                "analysis.bond_action_attribution"
-                if query.consumer == "analysis_service"
-                else "bond_analytics.action_attribution"
-            ),
-            formal_use_allowed=True,
+            result_kind=result_kind,
             source_version="sv_bond_analytics_v1",
-            vendor_version="vv_none",
             rule_version="rv_bond_analytics_v1",
             cache_version="cv_none",
             quality_flag="warning",
-            scenario_flag=False,
         ),
         result=AnalysisResultPayload(
             report_date=query.report_date,

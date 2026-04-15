@@ -24,7 +24,7 @@ from backend.app.schemas.executive_dashboard import (
     SummaryPayload,
     SummaryPoint,
 )
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import build_result_envelope
 
 
 def _normalize_report_date(report_date: str | None) -> str | None:
@@ -42,24 +42,18 @@ def _envelope(
     fallback_mode: Literal["none", "latest_snapshot"] = "none",
     source_version: str = "sv_exec_dashboard_v1",
 ) -> dict[str, object]:
-    meta = ResultMeta(
-        trace_id=f"tr_{result_kind.replace('.', '_')}",
+    return build_result_envelope(
         basis="analytical",
+        trace_id=f"tr_{result_kind.replace('.', '_')}",
         result_kind=result_kind,
-        formal_use_allowed=False,
-        source_version=source_version,
-        vendor_version="vv_none",
-        rule_version="rv_exec_dashboard_v1",
         cache_version="cv_exec_dashboard_v1",
+        source_version=source_version,
+        rule_version="rv_exec_dashboard_v1",
         quality_flag=quality_flag,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
-        scenario_flag=False,
+        result_payload=result.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": result.model_dump(mode="json"),
-    }
 
 
 def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> str:

@@ -3,12 +3,11 @@ from __future__ import annotations
 from decimal import Decimal
 
 from backend.app.core_finance.bond_analytics.common import classify_asset_class, infer_curve_type
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
-from backend.app.repositories.governance_repo import (
-    CACHE_BUILD_RUN_STREAM,
-    CACHE_MANIFEST_STREAM,
-    GovernanceRepository,
+from backend.app.governance.formal_compute_lineage import (
+    resolve_completed_formal_build_lineage,
+    resolve_formal_manifest_lineage,
 )
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.core_finance.pnl_bridge import (
     PnlBridgeRow,
     build_pnl_bridge_rows,
@@ -356,16 +355,12 @@ def _resolve_balance_build_lineage(
     *,
     report_date: str,
 ) -> dict[str, object] | None:
-    rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_BUILD_RUN_STREAM)
-    matches = [
-        row
-        for row in rows
-        if str(row.get("cache_key")) == BALANCE_ANALYSIS_CACHE_KEY
-        and str(row.get("job_name")) == "balance_analysis_materialize"
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-    ]
-    return matches[-1] if matches else None
+    return resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=BALANCE_ANALYSIS_CACHE_KEY,
+        job_name="balance_analysis_materialize",
+        report_date=report_date,
+    )
 
 
 def _resolve_balance_lineage_component(
@@ -523,18 +518,10 @@ def _resolve_curve_pair_if_needed(
 
 
 def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:
-    rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_MANIFEST_STREAM)
-    matches = [row for row in rows if str(row.get("cache_key")) == PNL_CACHE_KEY]
-    if not matches:
-        raise RuntimeError(f"Canonical pnl lineage unavailable for cache_key={PNL_CACHE_KEY}.")
-    latest = matches[-1]
-    required = ("source_version", "vendor_version", "rule_version")
-    missing = [key for key in required if key not in latest or latest.get(key) in (None, "")]
-    if missing:
-        raise RuntimeError(
-            f"Canonical pnl lineage malformed for cache_key={PNL_CACHE_KEY}: missing {', '.join(missing)}."
-        )
-    return latest
+    return resolve_formal_manifest_lineage(
+        governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+    )
 
 
 def _attach_native_face_values(

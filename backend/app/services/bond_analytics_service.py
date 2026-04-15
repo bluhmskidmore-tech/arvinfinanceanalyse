@@ -5,7 +5,10 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
-from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
+from backend.app.governance.formal_compute_lineage import (
+    resolve_formal_dates_lineage,
+    resolve_formal_facts_lineage,
+)
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings, get_settings
 from backend.app.core_finance.bond_analytics.common import (
@@ -93,7 +96,12 @@ from backend.app.schemas.bond_analytics import (
     SpreadScenarioResult,
 )
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
-from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_envelope,
+    build_formal_result_envelope_from_lineage,
+    build_formal_result_meta,
+    build_formal_result_meta_from_lineage,
+)
 from backend.app.tasks.bond_analytics_materialize import (
     BOND_ANALYTICS_LOCK,
     CACHE_KEY,
@@ -154,93 +162,67 @@ def _repo() -> BondAnalyticsRepository:
 
 
 def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
-    governance = GovernanceRepository(base_dir=get_settings().governance_path)
-    build_rows = [
-        row
-        for row in governance.read_all(CACHE_BUILD_RUN_STREAM)
-        if str(row.get("cache_key")) == CACHE_KEY
-        and str(row.get("job_name")) == JOB_NAME
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-    ]
-    if not rows and not build_rows:
-        return {
-            "source_version": EMPTY_SOURCE_VERSION,
-            "rule_version": RULE_VERSION,
-            "cache_version": CACHE_VERSION,
-            "vendor_version": "vv_none",
-        }
-    manifest_rows = [row for row in governance.read_all(CACHE_MANIFEST_STREAM) if str(row.get("cache_key")) == CACHE_KEY]
-    latest_build = build_rows[-1] if build_rows else {}
-    latest_manifest = manifest_rows[-1] if manifest_rows else {}
-    row_source_versions = sorted({str(row.get("source_version") or "").strip() for row in rows if str(row.get("source_version") or "").strip()})
-    return {
-        "source_version": next(
-            (value for value in (str(latest_build.get("source_version") or "").strip(), "__".join(row_source_versions), EMPTY_SOURCE_VERSION) if value),
-            EMPTY_SOURCE_VERSION,
-        ),
-        "rule_version": next(
-            (value for value in (str(latest_build.get("rule_version") or "").strip(), str(latest_manifest.get("rule_version") or "").strip(), RULE_VERSION) if value),
-            RULE_VERSION,
-        ),
-        "cache_version": next(
-            (value for value in (str(latest_build.get("cache_version") or "").strip(), str(latest_manifest.get("cache_version") or "").strip(), CACHE_VERSION) if value),
-            CACHE_VERSION,
-        ),
-        "vendor_version": next(
-            (value for value in (str(latest_build.get("vendor_version") or "").strip(), str(latest_manifest.get("vendor_version") or "").strip(), "vv_none") if value),
-            "vv_none",
-        ),
-    }
+    return resolve_formal_facts_lineage(
+        governance_dir=str(get_settings().governance_path),
+        cache_key=CACHE_KEY,
+        job_name=JOB_NAME,
+        report_date=report_date,
+        has_rows=bool(rows),
+        row_source_versions=[
+            str(row.get("source_version") or "").strip()
+            for row in rows
+        ],
+        default_source_version=EMPTY_SOURCE_VERSION,
+        default_rule_version=RULE_VERSION,
+        default_cache_version=CACHE_VERSION,
+    )
 
 
 def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
     lineage = _lineage(report_date.isoformat(), rows)
-    return build_formal_result_meta(
+    return build_formal_result_meta_from_lineage(
         trace_id=_trace_id(),
         result_kind=result_kind,
-        cache_version=lineage["cache_version"],
-        source_version=lineage["source_version"],
-        rule_version=lineage["rule_version"],
-        vendor_version=lineage["vendor_version"],
+        lineage=lineage,
+        default_cache_version=CACHE_VERSION,
+    )
+
+
+def _build_fact_envelope(
+    *,
+    result_kind: str,
+    report_date: date,
+    rows: list[dict[str, object]],
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind=result_kind,
+        lineage=_lineage(report_date.isoformat(), rows),
+        default_cache_version=CACHE_VERSION,
+        result_payload=result_payload,
     )
 
 
 def bond_analytics_dates_envelope() -> dict[str, object]:
     report_dates = _repo().list_report_dates()
-    if report_dates:
-        try:
-            manifest = resolve_formal_manifest_lineage(
-                governance_dir=str(get_settings().governance_path),
-                cache_key=CACHE_KEY,
-            )
-            lineage = {
-                "source_version": str(manifest["source_version"]),
-                "rule_version": str(manifest["rule_version"]),
-                "cache_version": str(manifest.get("cache_version") or "").strip() or CACHE_VERSION,
-                "vendor_version": str(manifest.get("vendor_version") or "").strip() or "vv_none",
-            }
-        except RuntimeError:
-            rows = _repo().fetch_bond_analytics_rows(report_date=report_dates[0])
-            lineage = _lineage(report_dates[0], rows)
-    else:
-        lineage = {
-            "source_version": EMPTY_SOURCE_VERSION,
-            "rule_version": RULE_VERSION,
-            "cache_version": CACHE_VERSION,
-            "vendor_version": "vv_none",
-        }
-
-    meta = build_formal_result_meta(
+    lineage = resolve_formal_dates_lineage(
+        governance_dir=str(get_settings().governance_path),
+        cache_key=CACHE_KEY,
+        report_dates=report_dates,
+        default_source_version=EMPTY_SOURCE_VERSION,
+        default_rule_version=RULE_VERSION,
+        default_cache_version=CACHE_VERSION,
+        fallback_lineage_loader=lambda report_date: _lineage(
+            report_date,
+            _repo().fetch_bond_analytics_rows(report_date=report_date),
+        ),
+    )
+    return build_formal_result_envelope_from_lineage(
         trace_id=_trace_id(),
         result_kind="bond_analytics.dates",
-        cache_version=lineage["cache_version"],
-        source_version=lineage["source_version"],
-        rule_version=lineage["rule_version"],
-        vendor_version=lineage["vendor_version"],
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
+        lineage=lineage,
+        default_cache_version=CACHE_VERSION,
         result_payload={"report_dates": report_dates},
     )
 
@@ -1102,7 +1084,6 @@ def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationM
 
 def get_portfolio_headlines(report_date: date) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
-    meta = _meta("bond_analytics.portfolio_headlines", report_date, rows)
     if not rows:
         payload = PortfolioHeadlinesResponse(
             report_date=report_date,
@@ -1116,10 +1097,15 @@ def get_portfolio_headlines(report_date: date) -> dict:
             issuer_hhi=_text(ZERO),
             issuer_top5_weight=_text(ZERO),
             by_asset_class=[],
-            computed_at=meta.generated_at.isoformat(),
+            computed_at=datetime.now(timezone.utc).isoformat(),
             warnings=[EMPTY_WARNING],
         )
-        return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+        return _build_fact_envelope(
+            result_kind="bond_analytics.portfolio_headlines",
+            report_date=report_date,
+            rows=rows,
+            result_payload=payload.model_dump(mode="json"),
+        )
 
     risk = summarize_portfolio_risk(rows)
     credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
@@ -1155,25 +1141,34 @@ def get_portfolio_headlines(report_date: date) -> dict:
             )
             for row in by_ac
         ],
-        computed_at=meta.generated_at.isoformat(),
+        computed_at=datetime.now(timezone.utc).isoformat(),
         warnings=[],
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return _build_fact_envelope(
+        result_kind="bond_analytics.portfolio_headlines",
+        report_date=report_date,
+        rows=rows,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
-    meta = _meta("bond_analytics.top_holdings", report_date, rows)
     if not rows:
         payload = BondTopHoldingsResponse(
             report_date=report_date,
             top_n=top_n,
             items=[],
             total_market_value=_text(ZERO),
-            computed_at=meta.generated_at.isoformat(),
+            computed_at=datetime.now(timezone.utc).isoformat(),
             warnings=[EMPTY_WARNING],
         )
-        return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+        return _build_fact_envelope(
+            result_kind="bond_analytics.top_holdings",
+            report_date=report_date,
+            rows=rows,
+            result_payload=payload.model_dump(mode="json"),
+        )
 
     total_mv_dec = sum((safe_decimal(row.get("market_value")) for row in rows), ZERO)
     ordered = sorted(rows, key=lambda row: safe_decimal(row.get("market_value")), reverse=True)
@@ -1202,15 +1197,19 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
         top_n=top_n,
         items=items,
         total_market_value=_text(total_mv_dec),
-        computed_at=meta.generated_at.isoformat(),
+        computed_at=datetime.now(timezone.utc).isoformat(),
         warnings=[],
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return _build_fact_envelope(
+        result_kind="bond_analytics.top_holdings",
+        report_date=report_date,
+        rows=rows,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def get_accounting_class_audit(report_date: date) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
-    meta = _meta("bond_analytics.accounting_class_audit", report_date, rows)
     audit = summarize_accounting_audit(rows)
     payload = AccountingClassAuditResponse(
         report_date=report_date,
@@ -1240,10 +1239,15 @@ def get_accounting_class_audit(report_date: date) -> dict:
             )
             for row in audit["rows"]
         ],
-        computed_at=meta.generated_at.isoformat(),
+        computed_at=datetime.now(timezone.utc).isoformat(),
         warnings=[EMPTY_WARNING] if not rows else [],
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return _build_fact_envelope(
+        result_kind="bond_analytics.accounting_class_audit",
+        report_date=report_date,
+        rows=rows,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
@@ -1275,7 +1279,10 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         computed_at=str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
         warnings=warnings,
     )
-    return {"result_meta": analysis_envelope.result_meta.model_dump(mode="json"), "result": response.model_dump(mode="json")}
+    return build_formal_result_envelope(
+        result_meta=analysis_envelope.result_meta,
+        result_payload=response.model_dump(mode="json"),
+    )
 
 
 def _refresh_trigger_lock(*, report_date: str) -> LockDefinition:

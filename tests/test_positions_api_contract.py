@@ -30,6 +30,8 @@ def _insert_zqtz(
     ytm: Decimal,
     coupon: Decimal,
     is_issuance_like: bool,
+    face_value: Decimal | None = None,
+    amortized_cost: Decimal | None = None,
     rating: str = "AAA",
     industry: str = "银行",
 ) -> None:
@@ -57,9 +59,9 @@ def _insert_zqtz(
             industry,
             rating,
             "CNY",
+            face_value if face_value is not None else market_value,
             market_value,
-            market_value,
-            market_value,
+            amortized_cost if amortized_cost is not None else market_value,
             Decimal("0"),
             coupon,
             ytm,
@@ -376,3 +378,130 @@ def test_positions_routes_registered() -> None:
     assert "/api/positions/stats/industry" in paths
     assert "/api/positions/customer/details" in paths
     assert "/api/positions/customer/trend" in paths
+
+def test_positions_rating_order_follows_business_priority_not_amount_order(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        conn.execute("delete from zqtz_bond_daily_snapshot")
+        conn.execute("delete from tyw_interbank_daily_snapshot")
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="R1",
+            bond_type="Credit",
+            issuer_name="Issuer-AAA",
+            market_value=Decimal("10"),
+            ytm=Decimal("0.03"),
+            coupon=Decimal("0.03"),
+            is_issuance_like=False,
+            rating="AAA",
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="R2",
+            bond_type="Credit",
+            issuer_name="Issuer-AA",
+            market_value=Decimal("200"),
+            ytm=Decimal("0.04"),
+            coupon=Decimal("0.04"),
+            is_issuance_like=False,
+            rating="AA",
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "Credit"},
+    )
+    assert response.status_code == 200
+    items = response.json()["result"]["items"]
+    assert [item["rating"] for item in items] == ["AAA", "AA"]
+
+
+def test_positions_reads_normalize_percentage_rates_and_compute_net_price_from_market_over_face(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    db = tmp_path / "pos.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        conn.execute("delete from zqtz_bond_daily_snapshot")
+        conn.execute("delete from tyw_interbank_daily_snapshot")
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="PX1",
+            bond_type="Gov",
+            issuer_name="Issuer-Gov",
+            market_value=Decimal("120"),
+            face_value=Decimal("100"),
+            amortized_cost=Decimal("80"),
+            ytm=Decimal("3.25"),
+            coupon=Decimal("2.50"),
+            is_issuance_like=False,
+        )
+        _insert_tyw(
+            conn,
+            report_date="2026-01-10",
+            position_id="T100",
+            product_type="IB",
+            position_side="Asset",
+            counterparty="CP-A",
+            principal=Decimal("1000"),
+            rate=Decimal("2.5"),
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    bond_response = client.get(
+        "/api/positions/bonds",
+        params={"report_date": "2026-01-10", "sub_type": "Gov", "page": 1, "page_size": 10},
+    )
+    assert bond_response.status_code == 200
+    bond_item = bond_response.json()["result"]["items"][0]
+    assert bond_item["yield_rate"] == "0.03250000"
+    assert bond_item["valuation_net_price"] == "120.00000000"
+
+    ib_response = client.get(
+        "/api/positions/interbank",
+        params={
+            "report_date": "2026-01-10",
+            "product_type": "IB",
+            "direction": "Asset",
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert ib_response.status_code == 200
+    ib_item = ib_response.json()["result"]["items"][0]
+    assert ib_item["interest_rate"] == "0.02500000"
+
+
+def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    subtypes = client.get("/api/positions/bonds/sub_types")
+    assert subtypes.status_code == 200
+    assert subtypes.json()["result"]["sub_types"] == ["\u56fd\u503a"]
+
+    details = client.get(
+        "/api/positions/customer/details",
+        params={"customer_name": "\u53d1\u884c\u4eba\u7532"},
+    )
+    assert details.status_code == 200
+    assert details.json()["result"]["report_date"] == "2026-01-12"
+    assert details.json()["result"]["bond_count"] == 1

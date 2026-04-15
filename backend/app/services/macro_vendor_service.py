@@ -21,7 +21,7 @@ from backend.app.schemas.macro_vendor import (
     MacroVendorPayload,
     MacroVendorSeries,
 )
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import build_result_envelope
 
 RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
@@ -113,24 +113,19 @@ def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
         [item.vendor_version for item in payload.series],
         empty_value="vv_none",
     )
-    meta = ResultMeta(
-        trace_id="tr_preview_macro_foundation",
+    return build_result_envelope(
         basis="analytical",
+        trace_id="tr_preview_macro_foundation",
         result_kind="preview.macro-foundation",
-        formal_use_allowed=False,
-        source_version=source_version,
-        vendor_version=vendor_version,
-        rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
+        source_version=source_version,
+        rule_version=RULE_VERSION,
         quality_flag=_quality_flag_for_presence(payload.series),
+        vendor_version=vendor_version,
         vendor_status=_vendor_status_for_presence(payload.series),
         fallback_mode="none",
-        scenario_flag=False,
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -> str:
@@ -290,24 +285,19 @@ def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
         [item.vendor_version for item in payload.series],
         empty_value="vv_none",
     )
-    meta = ResultMeta(
-        trace_id="tr_choice_macro_latest",
+    return build_result_envelope(
         basis="analytical",
+        trace_id="tr_choice_macro_latest",
         result_kind="macro.choice.latest",
-        formal_use_allowed=False,
-        source_version=source_version,
-        vendor_version=vendor_version,
-        rule_version=LIVE_RULE_VERSION,
         cache_version=LIVE_CACHE_VERSION,
+        source_version=source_version,
+        rule_version=LIVE_RULE_VERSION,
         quality_flag=quality_flag,
+        vendor_version=vendor_version,
         vendor_status=_vendor_status_for_macro_latest(payload, quality_flag),
         fallback_mode=_fallback_mode_for_macro_latest(payload, quality_flag),
-        scenario_flag=False,
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:
@@ -375,24 +365,19 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
         empty_value="vv_none",
     )
     quality_flag = "ok" if payload.candidate_count == payload.materialized_count else "warning"
-    meta = ResultMeta(
-        trace_id="tr_fx_formal_status",
+    return build_result_envelope(
         basis="formal",
+        trace_id="tr_fx_formal_status",
         result_kind="fx.formal.status",
-        formal_use_allowed=True,
-        source_version=source_version,
-        vendor_version=vendor_version,
-        rule_version="rv_fx_formal_mid_v1",
         cache_version="cv_fx_formal_mid_v1",
+        source_version=source_version,
+        rule_version="rv_fx_formal_mid_v1",
         quality_flag=quality_flag,
+        vendor_version=vendor_version,
         vendor_status="ok" if payload.materialized_count else "vendor_unavailable",
         fallback_mode="latest_snapshot" if payload.carry_forward_count else "none",
-        scenario_flag=False,
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
@@ -538,24 +523,19 @@ def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:
         empty_value="vv_none",
     )
     quality_flag = _aggregate_quality_flags([point.quality_flag for point in points])
-    meta = ResultMeta(
-        trace_id="tr_fx_analytical",
+    return build_result_envelope(
         basis="analytical",
+        trace_id="tr_fx_analytical",
         result_kind="fx.analytical.groups",
-        formal_use_allowed=False,
-        source_version=source_version,
-        vendor_version=vendor_version,
-        rule_version="rv_fx_analytical_v1",
         cache_version="cv_fx_analytical_v1",
+        source_version=source_version,
+        rule_version="rv_fx_analytical_v1",
         quality_flag=quality_flag,
+        vendor_version=vendor_version,
         vendor_status=_vendor_status_for_presence(points),
         fallback_mode="latest_snapshot" if any(point.refresh_tier == "fallback" for point in points) else "none",
-        scenario_flag=False,
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def _load_latest_fx_mid_rows(

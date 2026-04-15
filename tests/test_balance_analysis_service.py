@@ -50,9 +50,11 @@ def test_balance_analysis_service_uses_shared_formal_result_runtime_helper():
 
     assert "backend.app.services.formal_result_runtime" in src
     assert "backend.app.governance.formal_compute_lineage" in src
+    assert "build_formal_result_envelope_from_lineage" in src
     assert "def _formal_result_meta" not in src
     assert "def _resolve_latest_balance_manifest_lineage" not in src
     assert "def _resolve_report_date_build_lineage" not in src
+    assert "def _resolve_balance_cache_version" not in src
 
 
 def test_balance_analysis_dates_envelope_uses_shared_manifest_lineage_helper(monkeypatch):

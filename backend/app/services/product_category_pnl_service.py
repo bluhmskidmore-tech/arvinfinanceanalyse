@@ -24,10 +24,13 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
 )
-from backend.app.schemas.result_meta import ResultMeta
 from backend.app.services.analysis_service import (
     UnifiedAnalysisService,
     build_default_analysis_service,
+)
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_envelope,
+    build_formal_result_meta,
 )
 from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
@@ -403,22 +406,17 @@ def product_category_dates_envelope(duckdb_path: str) -> dict[str, object]:
     payload = ProductCategoryDatesPayload(
         report_dates=repo.list_report_dates(),
     )
-    meta = ResultMeta(
+    meta = build_formal_result_meta(
         trace_id="tr_product_category_pnl_dates",
-        basis="formal",
         result_kind="product_category_pnl.dates",
-        formal_use_allowed=True,
         source_version=repo.latest_source_version(),
-        vendor_version="vv_none",
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
-        quality_flag="ok",
-        scenario_flag=False,
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def product_category_pnl_envelope(
@@ -455,10 +453,10 @@ def product_category_pnl_envelope(
         liability_total=liability_total,
         grand_total=grand_total,
     )
-    return {
-        "result_meta": analysis_envelope.result_meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
+    return build_formal_result_envelope(
+        result_meta=analysis_envelope.result_meta,
+        result_payload=payload.model_dump(mode="json"),
+    )
 
 
 def build_analysis_service(duckdb_path: str) -> UnifiedAnalysisService:

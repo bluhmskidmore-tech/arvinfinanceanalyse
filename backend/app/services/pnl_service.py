@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
+from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
-    CACHE_MANIFEST_STREAM,
     GovernanceRepository,
 )
 from backend.app.repositories.pnl_repo import PnlRepository
@@ -20,7 +20,9 @@ from backend.app.schemas.pnl import (
     PnlNonStdBridgeRow,
     PnlOverviewPayload,
 )
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_envelope_from_lineage as build_formal_result_envelope_from_lineage_runtime,
+)
 from backend.app.services.pnl_source_service import (
     load_latest_pnl_refresh_input,
     resolve_pnl_data_input_root,
@@ -172,15 +174,12 @@ def pnl_dates_envelope(*, duckdb_path: str, governance_dir: str) -> dict[str, ob
         formal_fi_report_dates=formal_fi_report_dates,
         nonstd_bridge_report_dates=nonstd_bridge_report_dates,
     )
-    meta = _formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
         trace_id="tr_pnl_dates",
         result_kind="pnl.dates",
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
@@ -195,15 +194,12 @@ def pnl_data_envelope(*, duckdb_path: str, governance_dir: str, report_date: str
         formal_fi_rows=[PnlFormalFiRow(**row) for row in repo.fetch_formal_fi_rows(report_date)],
         nonstd_bridge_rows=[PnlNonStdBridgeRow(**row) for row in repo.fetch_nonstd_bridge_rows(report_date)],
     )
-    meta = _formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
         trace_id=f"tr_pnl_data_{report_date}",
         result_kind="pnl.data",
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
 def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date: str) -> dict[str, object]:
@@ -224,44 +220,33 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
         manual_adjustment=_quantize_decimal(totals["manual_adjustment"]),
         total_pnl=_quantize_decimal(totals["total_pnl"]),
     )
-    meta = _formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         governance_dir=governance_dir,
         trace_id=f"tr_pnl_overview_{report_date}",
         result_kind="pnl.overview",
+        result_payload=payload.model_dump(mode="json"),
     )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": payload.model_dump(mode="json"),
-    }
 
 
-def _formal_result_meta(*, governance_dir: str, trace_id: str, result_kind: str) -> ResultMeta:
-    lineage = _resolve_pnl_manifest_lineage(governance_dir)
-    return ResultMeta(
+def build_formal_result_envelope_from_lineage(
+    *,
+    governance_dir: str,
+    trace_id: str,
+    result_kind: str,
+    result_payload: dict[str, object],
+) -> dict[str, object]:
+    lineage = resolve_formal_manifest_lineage(
+        governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+    )
+    return build_formal_result_envelope_from_lineage_runtime(
         trace_id=trace_id,
-        basis="formal",
         result_kind=result_kind,
-        formal_use_allowed=True,
-        source_version=str(lineage["source_version"]),
-        vendor_version=str(lineage["vendor_version"]),
-        rule_version=str(lineage["rule_version"]),
-        cache_version=PNL_CACHE_VERSION,
-        quality_flag="ok",
-        scenario_flag=False,
+        lineage=lineage,
+        default_cache_version=PNL_CACHE_VERSION,
+        use_lineage_cache_version=False,
+        result_payload=result_payload,
     )
-
-
-def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:
-    rows = GovernanceRepository(base_dir=governance_dir).read_all(CACHE_MANIFEST_STREAM)
-    matches = [row for row in rows if str(row.get("cache_key")) == PNL_CACHE_KEY]
-    if not matches:
-        raise RuntimeError(f"Canonical pnl lineage unavailable for cache_key={PNL_CACHE_KEY}.")
-    latest = matches[-1]
-    required = ("source_version", "vendor_version", "rule_version")
-    missing = [key for key in required if key not in latest or latest.get(key) in (None, "")]
-    if missing:
-        raise RuntimeError(f"Canonical pnl lineage malformed for cache_key={PNL_CACHE_KEY}: missing {', '.join(missing)}.")
-    return latest
 
 
 def _quantize_decimal(value: Decimal) -> Decimal:

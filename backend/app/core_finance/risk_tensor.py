@@ -183,9 +183,15 @@ def _issuer_concentration_metrics(
         key = str(row.get("issuer_name") or "unknown")
         grouped[key] += _safe_decimal(row.get("market_value"))
     ranked = sorted(grouped.items(), key=lambda item: (-item[1], item[0]))
-    hhi = sum((_ratio(value, total_market_value) ** 2 for _name, value in ranked), ZERO)
+    hhi = _calc_hhi_for_group(grouped.values(), total_market_value)
     top5 = sum((_ratio(value, total_market_value) for _name, value in ranked[:5]), ZERO)
     return hhi, top5
+
+
+def _calc_hhi_for_group(values: Any, total_market_value: Decimal) -> Decimal:
+    if total_market_value == ZERO:
+        return ZERO
+    return sum((_ratio(_safe_decimal(value), total_market_value) ** 2 for value in values), ZERO)
 
 
 def _compute_liquidity_gaps(

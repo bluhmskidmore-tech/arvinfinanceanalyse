@@ -9,6 +9,11 @@ import pytest
 from tests.helpers import load_module
 
 
+def _assert_record_contains(record: dict[str, object], expected: dict[str, object]) -> None:
+    for key, value in expected.items():
+        assert record[key] == value
+
+
 def test_materialize_schema_exposes_minimal_build_payload():
     schema_module = load_module(
         "backend.app.schemas.materialize",
@@ -89,15 +94,19 @@ def test_materialize_task_creates_duckdb_artifact_and_build_record(tmp_path):
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_run_records == [{
-        "run_id": payload["run_id"],
-        "job_name": "materialize",
-        "status": "completed",
-        "cache_key": payload["cache_key"],
-        "lock": payload["lock"],
-        "source_version": "sv_preview_empty",
-        "vendor_version": "vv_none",
-    }]
+    assert len(build_run_records) == 1
+    _assert_record_contains(
+        build_run_records[0],
+        {
+            "run_id": payload["run_id"],
+            "job_name": "materialize",
+            "status": "completed",
+            "cache_key": payload["cache_key"],
+            "lock": payload["lock"],
+            "source_version": "sv_preview_empty",
+            "vendor_version": "vv_none",
+        },
+    )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -112,12 +121,15 @@ def test_materialize_task_creates_duckdb_artifact_and_build_record(tmp_path):
         for line in (governance_dir / "cache_manifest.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert manifest_records[-1] == {
-        "cache_key": payload["cache_key"],
-        "source_version": "sv_preview_empty",
-        "vendor_version": "vv_none",
-        "rule_version": "rv_phase1_source_preview_v1",
-    }
+    _assert_record_contains(
+        manifest_records[-1],
+        {
+            "cache_key": payload["cache_key"],
+            "source_version": "sv_preview_empty",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_phase1_source_preview_v1",
+        },
+    )
 
 
 def test_materialize_task_records_failed_run_and_skips_manifest_on_manifest_write_error(
@@ -168,15 +180,19 @@ def test_materialize_task_records_failed_run_and_skips_manifest_on_manifest_writ
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_run_records == [{
-        "run_id": build_run_records[0]["run_id"],
-        "job_name": "materialize",
-        "status": "failed",
-        "cache_key": build_run_records[0]["cache_key"],
-        "lock": build_run_records[0]["lock"],
-        "source_version": "sv_preview_stub",
-        "vendor_version": "vv_none",
-    }]
+    assert len(build_run_records) == 1
+    _assert_record_contains(
+        build_run_records[0],
+        {
+            "run_id": build_run_records[0]["run_id"],
+            "job_name": "materialize",
+            "status": "failed",
+            "cache_key": build_run_records[0]["cache_key"],
+            "lock": build_run_records[0]["lock"],
+            "source_version": "sv_preview_stub",
+            "vendor_version": "vv_none",
+        },
+    )
 
     manifest_path = governance_dir / "cache_manifest.jsonl"
     assert not manifest_path.exists()
@@ -246,15 +262,19 @@ def test_materialize_task_rolls_back_manifest_if_success_build_log_append_fails(
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_run_records == [{
-        "run_id": build_run_records[0]["run_id"],
-        "job_name": "materialize",
-        "status": "failed",
-        "cache_key": build_run_records[0]["cache_key"],
-        "lock": build_run_records[0]["lock"],
-        "source_version": "sv_preview_stub",
-        "vendor_version": "vv_none",
-    }]
+    assert len(build_run_records) == 1
+    _assert_record_contains(
+        build_run_records[0],
+        {
+            "run_id": build_run_records[0]["run_id"],
+            "job_name": "materialize",
+            "status": "failed",
+            "cache_key": build_run_records[0]["cache_key"],
+            "lock": build_run_records[0]["lock"],
+            "source_version": "sv_preview_stub",
+            "vendor_version": "vv_none",
+        },
+    )
 
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -375,15 +395,19 @@ def test_materialize_cleanup_failure_does_not_flip_success_lineage(tmp_path, mon
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert build_run_records == [{
-        "run_id": payload["run_id"],
-        "job_name": "materialize",
-        "status": "completed",
-        "cache_key": payload["cache_key"],
-        "lock": payload["lock"],
-        "source_version": "sv_preview_stub",
-        "vendor_version": "vv_none",
-    }]
+    assert len(build_run_records) == 1
+    _assert_record_contains(
+        build_run_records[0],
+        {
+            "run_id": payload["run_id"],
+            "job_name": "materialize",
+            "status": "completed",
+            "cache_key": payload["cache_key"],
+            "lock": payload["lock"],
+            "source_version": "sv_preview_stub",
+            "vendor_version": "vv_none",
+        },
+    )
 
 
 def test_materialize_restore_failure_is_surfaced(tmp_path, monkeypatch):

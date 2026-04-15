@@ -362,17 +362,42 @@ def _calculate_sum(
 ) -> Decimal:
     total = ZERO
     for pattern in patterns:
-        sign = Decimal("-1") if pattern.startswith("-") else Decimal("1")
-        target = pattern[1:] if pattern.startswith("-") else pattern
+        sign_value, target = _normalize_pattern(pattern)
+        if not target:
+            continue
+        sign = Decimal(sign_value)
         subtotal = ZERO
         for row in rows:
             if row.currency != currency:
                 continue
-            matched = row.account_code == target if exact else row.account_code.startswith(target)
+            matched = _matches_account(row.account_code, target, exact=exact)
             if matched:
                 subtotal += Decimal(str(getattr(row, field_name)))
         total += sign * subtotal
     return total
+
+
+def _normalize_pattern(pattern: str | None) -> tuple[int, str]:
+    if pattern is None:
+        return 0, ""
+    normalized = str(pattern).strip()
+    if not normalized:
+        return 0, ""
+    if normalized.startswith("-"):
+        return -1, normalized[1:].strip()
+    return 1, normalized
+
+
+def _matches_account(account_code: str | None, pattern: str | None, *, exact: bool) -> bool:
+    if account_code is None or pattern is None:
+        return False
+    code = str(account_code).strip()
+    target = str(pattern).strip()
+    if not code or not target:
+        return False
+    if exact:
+        return code == target
+    return code.startswith(target)
 
 
 def _calculate_ftp(scale: Decimal, ftp_rate: Decimal, days: int) -> Decimal:

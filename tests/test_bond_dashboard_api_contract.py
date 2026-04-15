@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -72,6 +74,83 @@ def test_bond_dashboard_endpoints_envelope_empty_duckdb(tmp_path, monkeypatch) -
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
     get_settings.cache_clear()
     _check_all_on_empty_db()
+    get_settings.cache_clear()
+
+
+def test_bond_dashboard_service_uses_shared_lineage_and_meta_helpers() -> None:
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "bond_dashboard_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "resolve_formal_facts_lineage" in src
+    assert "build_formal_result_meta_from_lineage" in src
+    assert "build_formal_result_envelope_from_lineage" in src
+
+
+def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(tmp_path, monkeypatch) -> None:
+    from backend.app.core_finance.bond_analytics.engine import BondAnalyticsRow
+    from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+
+    duckdb_path = tmp_path / "dash-fallback.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "gov"))
+    get_settings.cache_clear()
+
+    repo = BondAnalyticsRepository(str(duckdb_path))
+    repo.replace_bond_analytics_rows(
+        report_date=REPORT_DATE,
+        rows=[
+            BondAnalyticsRow(
+                report_date=date.fromisoformat(REPORT_DATE),
+                instrument_code="B1",
+                instrument_name="B1",
+                portfolio_name="P1",
+                cost_center="C1",
+                asset_class_raw="x",
+                asset_class_std="rate",
+                bond_type="国债",
+                issuer_name="I",
+                industry_name="银行",
+                rating="AAA",
+                accounting_class="AC",
+                accounting_rule_id="r1",
+                currency_code="CNY",
+                face_value=Decimal("1000000"),
+                market_value_native=Decimal("1000000"),
+                market_value=Decimal("1000000"),
+                amortized_cost=Decimal("1000000"),
+                accrued_interest=Decimal("0"),
+                coupon_rate=Decimal("0.025"),
+                interest_mode="fixed",
+                interest_payment_frequency="annual",
+                interest_rate_style="fixed",
+                ytm=Decimal("0.03"),
+                maturity_date=date(2030, 1, 1),
+                next_call_date=None,
+                years_to_maturity=Decimal("2.5"),
+                tenor_bucket="1-3年",
+                macaulay_duration=Decimal("2"),
+                modified_duration=Decimal("1.9"),
+                convexity=Decimal("0.01"),
+                dv01=Decimal("100"),
+                is_credit=False,
+                spread_dv01=Decimal("0"),
+                source_version="sv_dash_row",
+                rule_version="rv_dash_row",
+                ingest_batch_id="ib",
+                trace_id="tr",
+            )
+        ],
+    )
+
+    payload = load_module(
+        "backend.app.services.bond_dashboard_service",
+        "backend/app/services/bond_dashboard_service.py",
+    ).get_bond_dashboard_dates()
+
+    assert payload["result_meta"]["source_version"] == "sv_dash_row"
+    assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
+    assert payload["result_meta"]["cache_version"] == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 
 

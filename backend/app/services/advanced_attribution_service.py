@@ -108,7 +108,6 @@ def advanced_attribution_bundle_envelope(
         cache_version=CACHE_VERSION_ADVANCED_ATTRIBUTION,
         source_version=SOURCE_VERSION_NOT_READY,
         rule_version=RULE_VERSION_ADVANCED_ATTRIBUTION,
-        formal_use_allowed=False,
         quality_flag="warning",
     )
     return build_formal_result_envelope(

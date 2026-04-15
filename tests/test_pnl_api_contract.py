@@ -29,6 +29,15 @@ def test_fastapi_application_registers_pnl_routes():
     assert "/api/data/import_status/pnl" in paths
 
 
+def test_pnl_service_uses_shared_formal_lineage_and_result_meta_helpers():
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "pnl_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "resolve_formal_manifest_lineage" in src
+    assert "build_formal_result_envelope_from_lineage" in src
+    assert "def _resolve_pnl_manifest_lineage" not in src
+
+
 def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
@@ -128,6 +137,31 @@ def test_pnl_overview_returns_backend_owned_aggregation_and_manifest_lineage(tmp
         "manual_adjustment": "0.50",
         "total_pnl": "111.50",
     }
+    get_settings.cache_clear()
+
+
+def test_pnl_overview_keeps_fixed_cache_version_even_if_manifest_contains_cache_version(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_overview_cache",
+        vendor_version="vv_overview_cache",
+        rule_version="rv_overview_cache",
+        cache_version="cv_manifest_override_should_not_apply",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/overview", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_overview_cache"
+    assert payload["result_meta"]["vendor_version"] == "vv_overview_cache"
+    assert payload["result_meta"]["rule_version"] == "rv_overview_cache"
+    assert payload["result_meta"]["cache_version"] == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
     get_settings.cache_clear()
 
 
@@ -340,6 +374,65 @@ def test_pnl_bridge_result_meta_merges_report_date_specific_balance_build_lineag
         "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
     )
     assert any("No treasury curve available" in warning for warning in payload["result"]["warnings"])
+    get_settings.cache_clear()
+
+
+def test_pnl_bridge_prefers_latest_valid_balance_build_when_newer_completed_row_has_blank_source_version(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    duckdb_path = tmp_path / "moss.duckdb"
+    _append_manifest_override(
+        governance_dir,
+        source_version="sv_pnl_bridge_meta",
+        vendor_version="vv_pnl_bridge_meta",
+        rule_version="rv_pnl_bridge_meta",
+    )
+    _seed_pnl_bridge_balance_rows(
+        duckdb_path,
+        include_tyw_only_intermediate_prior=False,
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-current-valid",
+        report_date="2025-12-31",
+        source_version="sv_balance_current_valid",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_current_valid",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-current-invalid-newer",
+        report_date="2025-12-31",
+        source_version="",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_current_invalid",
+    )
+    _append_balance_build_run(
+        governance_dir,
+        run_id="balance-prior",
+        report_date="2025-10-31",
+        source_version="sv_balance_prior",
+        vendor_version="vv_balance",
+        rule_version="rv_balance_prior",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == (
+        "sv_balance_current_valid__sv_balance_prior__sv_pnl_bridge_meta"
+    )
+    assert payload["result_meta"]["rule_version"] == (
+        "rv_balance_current_valid__rv_balance_prior__rv_pnl_bridge_meta"
+    )
+    assert not any(
+        "Balance lineage fallback used for report_date=2025-12-31" in warning
+        for warning in payload["result"]["warnings"]
+    )
     get_settings.cache_clear()
 
 
@@ -1050,13 +1143,21 @@ def _materialize_three_pnl_dates(tmp_path, monkeypatch):
     return governance_dir
 
 
-def _append_manifest_override(governance_dir, *, source_version: str, vendor_version: str, rule_version: str):
+def _append_manifest_override(
+    governance_dir,
+    *,
+    source_version: str,
+    vendor_version: str,
+    rule_version: str,
+    cache_version: str | None = None,
+):
     manifest_path = governance_dir / "cache_manifest.jsonl"
     with manifest_path.open("a", encoding="utf-8") as handle:
         handle.write(
             json.dumps(
                 {
                     "cache_key": "pnl:phase2:materialize:formal",
+                    "cache_version": cache_version,
                     "source_version": source_version,
                     "vendor_version": vendor_version,
                     "rule_version": rule_version,

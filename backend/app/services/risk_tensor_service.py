@@ -12,8 +12,7 @@ from backend.app.repositories.risk_tensor_repo import (
 )
 from backend.app.schemas.risk_tensor import RiskTensorPayload
 from backend.app.services.formal_result_runtime import (
-    build_formal_result_envelope,
-    build_formal_result_meta,
+    build_formal_result_envelope_from_lineage,
 )
 from backend.app.tasks.risk_tensor_materialize import CACHE_KEY, CACHE_VERSION, RULE_VERSION
 
@@ -23,20 +22,16 @@ def risk_tensor_dates_envelope(
     governance_dir: str,
 ) -> dict[str, object]:
     report_dates = RiskTensorRepository(str(duckdb_path)).list_report_dates()
-    cache_version_value = CACHE_VERSION
-    source_version_value = ""
+    manifest_lineage: dict[str, object] | None = None
+    source_version_value = "sv_risk_tensor_empty"
     rule_version_value = RULE_VERSION
     vendor_version_value = "vv_none"
     if report_dates:
         try:
-            manifest = resolve_formal_manifest_lineage(
+            manifest_lineage = resolve_formal_manifest_lineage(
                 governance_dir=governance_dir,
                 cache_key=CACHE_KEY,
             )
-            cache_version_value = str(manifest.get("cache_version") or "").strip() or CACHE_VERSION
-            source_version_value = str(manifest.get("source_version") or "").strip()
-            rule_version_value = str(manifest.get("rule_version") or "").strip() or RULE_VERSION
-            vendor_version_value = str(manifest.get("vendor_version") or "").strip() or "vv_none"
         except RuntimeError:
             try:
                 latest_lineage = load_latest_bond_analytics_lineage(
@@ -46,18 +41,19 @@ def risk_tensor_dates_envelope(
             except RuntimeError:
                 latest_lineage = None
             if latest_lineage is not None:
-                source_version_value = str(latest_lineage.get("source_version") or "")
+                source_version_value = (
+                    str(latest_lineage.get("source_version") or "").strip()
+                    or source_version_value
+                )
 
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=_trace_id(),
         result_kind="risk.tensor.dates",
-        cache_version=cache_version_value,
-        source_version=source_version_value or "sv_risk_tensor_empty",
+        lineage=manifest_lineage,
+        default_cache_version=CACHE_VERSION,
+        source_version=source_version_value,
         rule_version=rule_version_value,
         vendor_version=vendor_version_value,
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
         result_payload={"report_dates": report_dates},
     )
 
@@ -141,16 +137,15 @@ def risk_tensor_envelope(
         quality_flag=str(row["quality_flag"]),
         warnings=list(row["warnings"]),
     )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=_trace_id(),
         result_kind="risk.tensor",
-        cache_version=str(row.get("cache_version") or CACHE_VERSION),
+        lineage=row,
+        default_cache_version=CACHE_VERSION,
         source_version=str(row["source_version"]),
         rule_version=str(row.get("rule_version") or RULE_VERSION),
         vendor_version="vv_none",
-    ).model_copy(update={"quality_flag": payload.quality_flag})
-    return build_formal_result_envelope(
-        result_meta=meta,
+        quality_flag=payload.quality_flag,
         result_payload=payload.model_dump(mode="json"),
     )
 

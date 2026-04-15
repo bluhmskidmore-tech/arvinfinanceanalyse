@@ -9,6 +9,30 @@ from pathlib import Path
 import duckdb
 
 Q8 = Decimal("0.00000001")
+ONE_HUNDRED = Decimal("100")
+RATING_ORDER = {
+    "AAA": 1,
+    "AA+": 2,
+    "AA": 3,
+    "AA-": 4,
+    "A+": 5,
+    "A": 6,
+    "A-": 7,
+    "BBB+": 8,
+    "BBB": 9,
+    "BBB-": 10,
+    "BB+": 11,
+    "BB": 12,
+    "BB-": 13,
+    "B+": 14,
+    "B": 15,
+    "B-": 16,
+    "CCC": 17,
+    "CC": 18,
+    "C": 19,
+    "D": 20,
+    "未评级": 99,
+}
 
 
 def _fmt_amount(val: object | None) -> str:
@@ -25,6 +49,26 @@ def _fmt_opt(val: object | None) -> str | None:
     return format(d.quantize(Q8, rounding=ROUND_HALF_UP), "f")
 
 
+def _normalize_rate_decimal(val: object | None, *, is_interbank: bool) -> Decimal | None:
+    if val is None:
+        return None
+    rate = Decimal(str(val))
+    if is_interbank:
+        if rate > 1:
+            rate = rate / ONE_HUNDRED
+        return rate.quantize(Q8, rounding=ROUND_HALF_UP)
+    if rate > 1 and rate <= ONE_HUNDRED:
+        rate = rate / ONE_HUNDRED
+    return rate.quantize(Q8, rounding=ROUND_HALF_UP)
+
+
+def _fmt_rate(val: object | None, *, is_interbank: bool) -> str | None:
+    normalized = _normalize_rate_decimal(val, is_interbank=is_interbank)
+    if normalized is None:
+        return None
+    return format(normalized, "f")
+
+
 def _map_direction(position_side: str | None) -> str:
     side = position_side or ""
     low = side.lower()
@@ -38,6 +82,11 @@ def _asset_side_predicate(column: str = "position_side") -> str:
         f"(instr(lower(coalesce({column}, '')), 'asset') > 0 "
         f"OR instr(coalesce({column}, ''), '资产') > 0)"
     )
+
+
+def _rating_sort_key(item: dict[str, object]) -> tuple[int, str]:
+    rating = str(item.get("rating") or "").strip() or "未评级"
+    return (RATING_ORDER.get(rating, 50), rating)
 
 
 @dataclass
@@ -70,6 +119,18 @@ class PositionsRepository:
             return row is not None
         finally:
             conn.close()
+
+    def resolve_latest_report_date(self) -> str | None:
+        latest_dates: list[str] = []
+        if self._table_exists("zqtz_bond_daily_snapshot"):
+            rows = self._fetch_rows("select max(report_date) from zqtz_bond_daily_snapshot")
+            if rows and rows[0][0] is not None:
+                latest_dates.append(str(rows[0][0]))
+        if self._table_exists("tyw_interbank_daily_snapshot"):
+            rows = self._fetch_rows("select max(report_date) from tyw_interbank_daily_snapshot")
+            if rows and rows[0][0] is not None:
+                latest_dates.append(str(rows[0][0]))
+        return max(latest_dates) if latest_dates else None
 
     def collect_lineage_versions(
         self,
@@ -112,6 +173,7 @@ class PositionsRepository:
         return src, rule
 
     def list_bond_sub_types(self, report_date: str) -> list[str]:
+        report_date = report_date.strip() or str(self.resolve_latest_report_date() or "")
         if not report_date.strip() or not self._table_exists("zqtz_bond_daily_snapshot"):
             return []
         rows = self._fetch_rows(
@@ -165,6 +227,11 @@ class PositionsRepository:
         )
         items: list[dict[str, object]] = []
         for row in rows:
+            market_value = Decimal(str(row[4] or 0))
+            face_value = Decimal(str(row[5] or 0))
+            net_price = None
+            if face_value > 0 and market_value > 0:
+                net_price = (market_value / face_value * ONE_HUNDRED).quantize(Q8, rounding=ROUND_HALF_UP)
             items.append(
                 {
                     "bond_code": str(row[0] or ""),
@@ -173,13 +240,14 @@ class PositionsRepository:
                     "asset_class": str(row[3]) if row[3] is not None else None,
                     "market_value": _fmt_opt(row[4]),
                     "face_value": _fmt_opt(row[5]),
-                    "valuation_net_price": _fmt_opt(row[6]),
-                    "yield_rate": _fmt_opt(row[7]),
+                    "valuation_net_price": format(net_price, "f") if net_price is not None else None,
+                    "yield_rate": _fmt_rate(row[7], is_interbank=False),
                 }
             )
         return items, total
 
     def list_interbank_product_types(self, report_date: str) -> list[str]:
+        report_date = report_date.strip() or str(self.resolve_latest_report_date() or "")
         if not report_date.strip() or not self._table_exists("tyw_interbank_daily_snapshot"):
             return []
         rows = self._fetch_rows(
@@ -244,7 +312,7 @@ class PositionsRepository:
                     "product_type": str(row[2]) if row[2] is not None else None,
                     "direction": _map_direction(str(row[3]) if row[3] is not None else None),
                     "amount": _fmt_amount(row[4]),
-                    "interest_rate": _fmt_opt(row[5]),
+                    "interest_rate": _fmt_rate(row[5], is_interbank=True),
                     "maturity_date": str(row[6]) if row[6] is not None else None,
                 }
             )
@@ -550,6 +618,7 @@ class PositionsRepository:
                     "percentage": _fmt_amount(pct),
                 }
             )
+        items.sort(key=_rating_sort_key)
         return {
             "start_date": start_date,
             "end_date": end_date,
@@ -636,6 +705,7 @@ class PositionsRepository:
         }
 
     def get_customer_bond_details(self, customer_name: str, report_date: str) -> dict[str, object]:
+        report_date = report_date.strip() or str(self.resolve_latest_report_date() or "")
         if (
             not customer_name.strip()
             or not report_date.strip()

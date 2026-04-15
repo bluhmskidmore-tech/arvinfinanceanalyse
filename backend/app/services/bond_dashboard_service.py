@@ -6,11 +6,17 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Literal
 
-from backend.app.governance.formal_compute_lineage import resolve_formal_manifest_lineage
+from backend.app.governance.formal_compute_lineage import (
+    resolve_formal_dates_lineage,
+    resolve_formal_facts_lineage,
+)
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
-from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
+from backend.app.services.formal_result_runtime import (
+    build_formal_result_envelope,
+    build_formal_result_envelope_from_lineage,
+    build_formal_result_meta_from_lineage,
+)
 
 # Mirrors `FormalComputeModuleDescriptor` for bond_analytics materialize (avoid importing tasks module).
 BOND_ANALYTICS_JOB_NAME = "bond_analytics_materialize"
@@ -45,127 +51,31 @@ def _rate(value: object) -> str:
 
 
 def _facts_lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
-    governance = GovernanceRepository(base_dir=get_settings().governance_path)
-    build_rows = [
-        row
-        for row in governance.read_all(CACHE_BUILD_RUN_STREAM)
-        if str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
-        and str(row.get("job_name")) == BOND_ANALYTICS_JOB_NAME
-        and str(row.get("status")) == "completed"
-        and str(row.get("report_date")) == report_date
-    ]
-    if not rows and not build_rows:
-        return {
-            "source_version": EMPTY_SOURCE_VERSION,
-            "rule_version": BOND_ANALYTICS_RULE_VERSION,
-            "cache_version": BOND_ANALYTICS_CACHE_VERSION,
-            "vendor_version": "vv_none",
-        }
-    manifest_rows = [
-        row for row in governance.read_all(CACHE_MANIFEST_STREAM) if str(row.get("cache_key")) == BOND_ANALYTICS_CACHE_KEY
-    ]
-    latest_build = build_rows[-1] if build_rows else {}
-    latest_manifest = manifest_rows[-1] if manifest_rows else {}
-    row_source_versions = sorted(
-        {str(row.get("source_version") or "").strip() for row in rows if str(row.get("source_version") or "").strip()}
+    return resolve_formal_facts_lineage(
+        governance_dir=str(get_settings().governance_path),
+        cache_key=BOND_ANALYTICS_CACHE_KEY,
+        job_name=BOND_ANALYTICS_JOB_NAME,
+        report_date=report_date,
+        has_rows=bool(rows),
+        row_source_versions=[
+            str(row.get("source_version") or "").strip()
+            for row in rows
+        ],
+        default_source_version=EMPTY_SOURCE_VERSION,
+        default_rule_version=BOND_ANALYTICS_RULE_VERSION,
+        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
     )
-    return {
-        "source_version": next(
-            (
-                value
-                for value in (
-                    str(latest_build.get("source_version") or "").strip(),
-                    "__".join(row_source_versions),
-                    EMPTY_SOURCE_VERSION,
-                )
-                if value
-            ),
-            EMPTY_SOURCE_VERSION,
-        ),
-        "rule_version": next(
-            (
-                value
-                for value in (
-                    str(latest_build.get("rule_version") or "").strip(),
-                    str(latest_manifest.get("rule_version") or "").strip(),
-                    BOND_ANALYTICS_RULE_VERSION,
-                )
-                if value
-            ),
-            BOND_ANALYTICS_RULE_VERSION,
-        ),
-        "cache_version": next(
-            (
-                value
-                for value in (
-                    str(latest_build.get("cache_version") or "").strip(),
-                    str(latest_manifest.get("cache_version") or "").strip(),
-                    BOND_ANALYTICS_CACHE_VERSION,
-                )
-                if value
-            ),
-            BOND_ANALYTICS_CACHE_VERSION,
-        ),
-        "vendor_version": next(
-            (
-                value
-                for value in (
-                    str(latest_build.get("vendor_version") or "").strip(),
-                    str(latest_manifest.get("vendor_version") or "").strip(),
-                    "vv_none",
-                )
-                if value
-            ),
-            "vv_none",
-        ),
-    }
 
 
 def _meta(*, result_kind: str, report_date: str) -> object:
     repo = _repo()
     rows = repo.fetch_bond_analytics_rows(report_date=report_date)
     lineage = _facts_lineage(report_date, rows)
-    return build_formal_result_meta(
+    return build_formal_result_meta_from_lineage(
         trace_id=_trace_id(),
         result_kind=result_kind,
-        cache_version=lineage["cache_version"],
-        source_version=lineage["source_version"],
-        rule_version=lineage["rule_version"],
-        vendor_version=lineage["vendor_version"],
-    )
-
-
-def _dates_meta() -> object:
-    report_dates = _repo().list_report_dates()
-    if report_dates:
-        try:
-            manifest = resolve_formal_manifest_lineage(
-                governance_dir=str(get_settings().governance_path),
-                cache_key=BOND_ANALYTICS_CACHE_KEY,
-            )
-            lineage = {
-                "source_version": str(manifest["source_version"]),
-                "rule_version": str(manifest["rule_version"]),
-                "cache_version": str(manifest.get("cache_version") or "").strip() or BOND_ANALYTICS_CACHE_VERSION,
-                "vendor_version": str(manifest.get("vendor_version") or "").strip() or "vv_none",
-            }
-        except RuntimeError:
-            rows = _repo().fetch_bond_analytics_rows(report_date=report_dates[0])
-            lineage = _facts_lineage(report_dates[0], rows)
-    else:
-        lineage = {
-            "source_version": EMPTY_SOURCE_VERSION,
-            "rule_version": BOND_ANALYTICS_RULE_VERSION,
-            "cache_version": BOND_ANALYTICS_CACHE_VERSION,
-            "vendor_version": "vv_none",
-        }
-    return build_formal_result_meta(
-        trace_id=_trace_id(),
-        result_kind="bond_dashboard.dates",
-        cache_version=lineage["cache_version"],
-        source_version=lineage["source_version"],
-        rule_version=lineage["rule_version"],
-        vendor_version=lineage["vendor_version"],
+        lineage=lineage,
+        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
     )
 
 
@@ -206,11 +116,29 @@ def _kpi_block_from_row(row: dict[str, Any]) -> dict[str, object]:
 
 
 def get_bond_dashboard_dates() -> dict[str, object]:
-    meta = _dates_meta()
     report_dates = _repo().list_report_dates()
-    return build_formal_result_envelope(
-        result_meta=meta,
+    return build_formal_result_envelope_from_lineage(
+        trace_id=_trace_id(),
+        result_kind="bond_dashboard.dates",
+        lineage=_dates_lineage(),
+        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
         result_payload={"report_dates": report_dates},
+    )
+
+
+def _dates_lineage() -> dict[str, str]:
+    report_dates = _repo().list_report_dates()
+    return resolve_formal_dates_lineage(
+        governance_dir=str(get_settings().governance_path),
+        cache_key=BOND_ANALYTICS_CACHE_KEY,
+        report_dates=report_dates,
+        default_source_version=EMPTY_SOURCE_VERSION,
+        default_rule_version=BOND_ANALYTICS_RULE_VERSION,
+        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+        fallback_lineage_loader=lambda report_date: _facts_lineage(
+            report_date,
+            _repo().fetch_bond_analytics_rows(report_date=report_date),
+        ),
     )
 
 

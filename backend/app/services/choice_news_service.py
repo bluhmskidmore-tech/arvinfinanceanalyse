@@ -4,7 +4,7 @@ from pathlib import Path
 
 import duckdb
 
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import build_result_envelope
 
 RULE_VERSION = "rv_choice_news_v1"
 CACHE_VERSION = "cv_choice_news_v1"
@@ -79,27 +79,21 @@ def choice_news_latest_envelope(
         for event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json in rows
     ]
 
-    meta = ResultMeta(
-        trace_id="tr_choice_news_latest",
+    return build_result_envelope(
         basis="analytical",
+        trace_id="tr_choice_news_latest",
         result_kind="news.choice.latest",
-        formal_use_allowed=False,
-        source_version=f"sv_choice_news_{len(payload_rows)}",
-        vendor_version="vv_none",
-        rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
+        source_version=f"sv_choice_news_{len(payload_rows)}",
+        rule_version=RULE_VERSION,
         quality_flag="ok",
-        scenario_flag=False,
-    )
-    return {
-        "result_meta": meta.model_dump(mode="json"),
-        "result": {
+        result_payload={
             "total_rows": int(total_rows),
             "limit": limit,
             "offset": offset,
             "events": payload_rows,
         },
-    }
+    )
 
 
 def _choice_news_filters(

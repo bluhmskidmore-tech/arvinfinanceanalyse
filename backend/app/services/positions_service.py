@@ -44,6 +44,13 @@ def _repo() -> PositionsRepository:
     return PositionsRepository(str(settings.duckdb_path))
 
 
+def _resolve_report_date(repo: PositionsRepository, report_date: str) -> str:
+    candidate = report_date.strip()
+    if candidate:
+        return candidate
+    return str(repo.resolve_latest_report_date() or "")
+
+
 def _meta(*, result_kind: str, src: list[str], rule: list[str]) -> object:
     return build_formal_result_meta(
         trace_id=_trace_id(),
@@ -56,10 +63,11 @@ def _meta(*, result_kind: str, src: list[str], rule: list[str]) -> object:
 
 def bond_sub_types_envelope(report_date: str) -> dict[str, object]:
     repo = _repo()
-    sub_types = repo.list_bond_sub_types(report_date)
+    resolved_report_date = _resolve_report_date(repo, report_date)
+    sub_types = repo.list_bond_sub_types(resolved_report_date)
     src, rule = repo.collect_lineage_versions(
         zqtz_where_sql="report_date = ?::date",
-        zqtz_params=[report_date],
+        zqtz_params=[resolved_report_date],
         tyw_where_sql="1=0",
         tyw_params=[],
     )
@@ -124,12 +132,13 @@ def counterparty_bonds_envelope(
 
 def interbank_product_types_envelope(report_date: str) -> dict[str, object]:
     repo = _repo()
-    types_list = repo.list_interbank_product_types(report_date)
+    resolved_report_date = _resolve_report_date(repo, report_date)
+    types_list = repo.list_interbank_product_types(resolved_report_date)
     src, rule = repo.collect_lineage_versions(
         zqtz_where_sql="1=0",
         zqtz_params=[],
         tyw_where_sql="report_date = ?::date",
-        tyw_params=[report_date],
+        tyw_params=[resolved_report_date],
     )
     payload = ProductTypesResponse(product_types=types_list)
     return build_formal_result_envelope(
@@ -224,10 +233,11 @@ def stats_industry_envelope(
 
 def customer_details_envelope(*, customer_name: str, report_date: str) -> dict[str, object]:
     repo = _repo()
-    raw = repo.get_customer_bond_details(customer_name, report_date)
+    resolved_report_date = _resolve_report_date(repo, report_date)
+    raw = repo.get_customer_bond_details(customer_name, resolved_report_date)
     src, rule = repo.collect_lineage_versions(
         zqtz_where_sql="report_date = ?::date",
-        zqtz_params=[report_date],
+        zqtz_params=[resolved_report_date],
         tyw_where_sql="1=0",
         tyw_params=[],
     )

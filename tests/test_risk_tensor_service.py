@@ -206,6 +206,15 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     get_settings.cache_clear()
 
 
+def test_risk_tensor_service_uses_shared_formal_result_runtime_helper():
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "risk_tensor_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "backend.app.services.formal_result_runtime" in src
+    assert "build_formal_result_envelope_from_lineage" in src
+    assert "build_formal_result_meta(" not in src
+
+
 def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
     service_mod = load_module(
@@ -234,6 +243,41 @@ def test_risk_tensor_dates_envelope_uses_risk_tensor_manifest_lineage(tmp_path, 
     assert Path(str(calls[0]["governance_dir"])).resolve() == Path(str(governance_dir)).resolve()
     assert payload["result_meta"]["result_kind"] == "risk.tensor.dates"
     assert payload["result_meta"]["source_version"]
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
+    get_settings.cache_clear()
+
+
+def test_risk_tensor_dates_envelope_falls_back_to_upstream_source_version_when_manifest_missing(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize_risk_tensor(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.risk_tensor_service",
+        "backend/app/services/risk_tensor_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "resolve_formal_manifest_lineage",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("missing manifest")),
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **_kwargs: {
+            "source_version": "sv_bond_analytics_fallback",
+        },
+    )
+
+    payload = service_mod.risk_tensor_dates_envelope(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["result_meta"]["source_version"] == "sv_bond_analytics_fallback"
+    assert payload["result_meta"]["rule_version"] == service_mod.RULE_VERSION
+    assert payload["result_meta"]["cache_version"] == service_mod.CACHE_VERSION
     assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 

@@ -93,6 +93,13 @@ def test_risk_tensor_materialize_writes_fact_and_governance_records(tmp_path):
     assert payload["cache_key"] == risk_task_mod.CACHE_KEY
     assert payload["rule_version"] == risk_task_mod.RULE_VERSION
     assert payload["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
+    assert payload["payload"]["run"]["status"] == "completed"
+    assert payload["payload"]["lineage"]["module_name"] == "risk_tensor"
+    assert payload["payload"]["lineage"]["basis"] == "formal"
+    assert payload["payload"]["lineage"]["source_version"] == payload["source_version"]
+    assert payload["payload"]["lineage"]["rule_version"] == payload["rule_version"]
+    assert payload["payload"]["lineage"]["vendor_version"] == payload["vendor_version"]
+    assert payload["payload"]["result"]["bond_count"] == 3
     assert row is not None
     assert row["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
     assert row["upstream_source_version"] == "sv_bond_snap_1"
@@ -150,6 +157,8 @@ def test_risk_tensor_materialize_preserves_computed_source_version_when_write_fa
     risk_runs = [row for row in build_runs if row["cache_key"] == risk_task_mod.CACHE_KEY]
     assert risk_runs[-1]["status"] == "failed"
     assert risk_runs[-1]["source_version"] == "sv_risk_tensor__sv_bond_snap_1"
+    assert risk_runs[-1]["finished_at"]
+    assert risk_runs[-1]["failure_category"] == "materialize_failure"
 
 
 def test_risk_tensor_module_descriptor_registers_without_collision():

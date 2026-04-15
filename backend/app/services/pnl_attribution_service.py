@@ -22,7 +22,6 @@ from backend.app.schemas.pnl_attribution import (
     TPLMarketCorrelationPayload,
     VolumeRateAttributionPayload,
 )
-from backend.app.schemas.result_meta import ResultMeta
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
 
 RULE_VERSION = "rv_pnl_attribution_workbench_v1"
@@ -38,7 +37,7 @@ def _trace_id() -> str:
     return f"tr_{uuid.uuid4().hex[:12]}"
 
 
-def _meta_ok(result_kind: str) -> ResultMeta:
+def _meta_ok(result_kind: str):
     return build_formal_result_meta(
         trace_id=_trace_id(),
         result_kind=result_kind,
@@ -48,14 +47,11 @@ def _meta_ok(result_kind: str) -> ResultMeta:
     )
 
 
-def _meta_warn(result_kind: str) -> ResultMeta:
-    return ResultMeta(
+def _meta_warn(result_kind: str):
+    return build_formal_result_meta(
         trace_id=_trace_id(),
-        basis="formal",
         result_kind=result_kind,
-        formal_use_allowed=True,
         source_version=SOURCE_EMPTY,
-        vendor_version="vv_none",
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="warning",

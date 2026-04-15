@@ -114,6 +114,23 @@ def test_issuer_hhi_calculation():
     assert tensor.issuer_top5_weight == Decimal("1")
 
 
+def test_calc_hhi_for_group_matches_v1_style_sum_of_squared_weights():
+    mod = _risk_tensor_module()
+
+    hhi = mod._calc_hhi_for_group(
+        [Decimal("60"), Decimal("30"), Decimal("10")],
+        Decimal("100"),
+    )
+
+    assert hhi == Decimal("0.46")
+
+
+def test_calc_hhi_for_group_returns_zero_when_total_market_value_is_zero():
+    mod = _risk_tensor_module()
+
+    assert mod._calc_hhi_for_group([Decimal("10"), Decimal("20")], Decimal("0")) == Decimal("0")
+
+
 def test_liquidity_gap_date_filter():
     mod = _risk_tensor_module()
     report_date = date(2026, 3, 31)

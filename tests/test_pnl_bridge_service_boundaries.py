@@ -36,3 +36,12 @@ def test_pnl_bridge_service_does_not_open_duckdb_or_query_fact_tables_directly()
     assert "duckdb.connect(" not in text
     assert re.search(r"\bfrom\s+fact_formal_", text) is None
     assert re.search(r"\bselect\b.+\bfact_formal_", text, flags=re.IGNORECASE | re.DOTALL) is None
+
+
+def test_pnl_bridge_service_uses_shared_formal_lineage_helpers():
+    text = SERVICE_FILE.read_text(encoding="utf-8")
+
+    assert "resolve_formal_manifest_lineage" in text
+    assert "resolve_completed_formal_build_lineage" in text
+    assert "read_latest_manifest(" not in text
+    assert "read_latest_completed_run(" not in text

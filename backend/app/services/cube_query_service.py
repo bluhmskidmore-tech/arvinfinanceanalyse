@@ -7,7 +7,7 @@ from typing import Callable, Sequence
 
 from backend.app.repositories.cube_query_repo import CubeQueryRepository
 from backend.app.schemas.cube_query import CubeQueryRequest, CubeQueryResponse, DrillPath
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.services.formal_result_runtime import build_formal_result_meta
 
 
 _MEASURE_RE = re.compile(r"^(?P<func>[a-z]+)\((?P<field>\*|[a-zA-Z_][a-zA-Z0-9_]*)\)$")
@@ -151,17 +151,13 @@ class CubeQueryService:
             rows=rows,
             total_rows=total_rows,
             drill_paths=drill_paths,
-            result_meta=ResultMeta(
+            result_meta=build_formal_result_meta(
                 trace_id=f"tr_cube_query_{uuid.uuid4().hex[:12]}",
-                basis=request.basis,
                 result_kind=f"cube_query.{request.fact_table}",
-                formal_use_allowed=True,
                 source_version=source_version,
-                vendor_version="vv_none",
                 rule_version=rule_version,
                 cache_version=self.CACHE_VERSIONS[request.fact_table],
                 quality_flag="ok" if matching_row_count > 0 else "warning",
-                scenario_flag=False,
             ),
         )
 

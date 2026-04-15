@@ -18,6 +18,7 @@ from openpyxl.styles import Alignment, Font
 from openpyxl.worksheet.worksheet import Worksheet
 
 from backend.app.core_finance.balance_analysis import FormalTywBalanceFactRow, FormalZqtzBalanceFactRow
+from backend.app.core_finance.module_registry import get_formal_module_by_fact_table
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
     resolve_formal_manifest_lineage,
@@ -56,16 +57,25 @@ from backend.app.schemas.balance_analysis import (
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.services.formal_result_runtime import (
-    build_formal_result_envelope,
-    build_formal_result_meta,
+    build_formal_result_envelope_from_lineage,
 )
 from backend.app.tasks.balance_analysis_materialize import (
-    BALANCE_ANALYSIS_LOCK,
-    CACHE_KEY,
-    CACHE_VERSION,
-    RULE_VERSION,
     materialize_balance_analysis_facts,
 )
+
+BALANCE_ANALYSIS_PRIMARY_FACT_TABLE = "fact_formal_zqtz_balance_daily"
+BALANCE_ANALYSIS_MODULE = get_formal_module_by_fact_table(BALANCE_ANALYSIS_PRIMARY_FACT_TABLE)
+BALANCE_ANALYSIS_SECONDARY_FACT_TABLE = "fact_formal_tyw_balance_daily"
+if BALANCE_ANALYSIS_SECONDARY_FACT_TABLE not in BALANCE_ANALYSIS_MODULE.fact_tables:
+    raise RuntimeError(
+        "Balance-analysis module registration mismatch: expected secondary fact table "
+        f"{BALANCE_ANALYSIS_SECONDARY_FACT_TABLE!r} in module {BALANCE_ANALYSIS_MODULE.module_name!r}."
+    )
+
+CACHE_KEY = BALANCE_ANALYSIS_MODULE.cache_key
+CACHE_VERSION = BALANCE_ANALYSIS_MODULE.cache_version
+RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
+BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
 
 BALANCE_ANALYSIS_JOB_NAME = "balance_analysis_materialize"
 PENDING_SOURCE_VERSION = "sv_balance_analysis_pending"
@@ -184,15 +194,11 @@ def balance_analysis_dates_envelope(*, duckdb_path: str, governance_dir: str) ->
         governance_dir=governance_dir,
         cache_key=CACHE_KEY,
     )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id="tr_balance_analysis_dates",
         result_kind="balance-analysis.dates",
-        cache_version=_resolve_balance_cache_version(lineage),
-        source_version=str(lineage["source_version"]),
-        rule_version=str(lineage["rule_version"]),
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
+        lineage=lineage,
+        default_cache_version=CACHE_VERSION,
         result_payload=payload.model_dump(mode="json"),
     )
 
@@ -224,24 +230,16 @@ def balance_analysis_overview_envelope(
         job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=_require_balance_lineage_value(
-            build_lineage["source_version"] if build_lineage is not None else None,
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        rule_version=overview.get("rule_version"),
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
             report_date=report_date,
-            field_name="source_version",
         ),
-        rule_version=_require_balance_lineage_value(
-            (build_lineage.get("rule_version") if build_lineage is not None else None)
-            or overview.get("rule_version"),
-            report_date=report_date,
-            field_name="rule_version",
-        ),
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
         result_payload={
             "report_date": str(overview["report_date"]),
             "position_scope": str(overview["position_scope"]),
@@ -286,33 +284,24 @@ def balance_analysis_summary_envelope(
         job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_summary_{report_date}_{position_scope}_{currency_basis}_{offset}_{limit}",
         result_kind="balance-analysis.summary",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=_require_balance_lineage_value(
-            build_lineage["source_version"] if build_lineage is not None else None,
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
             report_date=report_date,
-            field_name="source_version",
         ),
-        rule_version=_require_balance_lineage_value(
-            build_lineage["rule_version"] if build_lineage is not None else None,
+        result_payload=BalanceAnalysisSummaryTablePayload(
             report_date=report_date,
-            field_name="rule_version",
-        ),
-    )
-    payload = BalanceAnalysisSummaryTablePayload(
-        report_date=report_date,
-        position_scope=position_scope,
-        currency_basis=currency_basis,
-        limit=limit,
-        offset=offset,
-        total_rows=int(table["total_rows"]),
-        rows=[_to_summary_table_row(row) for row in table["rows"]],
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            limit=limit,
+            offset=offset,
+            total_rows=int(table["total_rows"]),
+            rows=[_to_summary_table_row(row) for row in table["rows"]],
+        ).model_dump(mode="json"),
     )
 
 
@@ -343,30 +332,21 @@ def balance_analysis_basis_breakdown_envelope(
         job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_basis_breakdown_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.basis-breakdown",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=_require_balance_lineage_value(
-            build_lineage["source_version"] if build_lineage is not None else None,
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
             report_date=report_date,
-            field_name="source_version",
         ),
-        rule_version=_require_balance_lineage_value(
-            build_lineage["rule_version"] if build_lineage is not None else None,
+        result_payload=BalanceAnalysisBasisBreakdownPayload(
             report_date=report_date,
-            field_name="rule_version",
-        ),
-    )
-    payload = BalanceAnalysisBasisBreakdownPayload(
-        report_date=report_date,
-        position_scope=position_scope,
-        currency_basis=currency_basis,
-        rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
+        ).model_dump(mode="json"),
     )
 
 
@@ -473,31 +453,24 @@ def balance_analysis_detail_envelope(
         report_date=report_date,
     )
 
-    payload = BalanceAnalysisPayload(
-        report_date=report_date,
-        position_scope=position_scope,
-        currency_basis=currency_basis,
-        details=details,
-        summary=summary,
-    )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_detail_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.detail",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=(
-            str(build_lineage["source_version"])
-            if build_lineage is not None
-            else _combine_lineage_values([*zqtz_rows, *tyw_rows], "source_version")
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        source_version=_combine_lineage_values([*zqtz_rows, *tyw_rows], "source_version"),
+        rule_version=_combine_lineage_values([*zqtz_rows, *tyw_rows], "rule_version") or RULE_VERSION,
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
+            report_date=report_date,
         ),
-        rule_version=(
-            str(build_lineage["rule_version"])
-            if build_lineage is not None and str(build_lineage.get("rule_version") or "").strip()
-            else _combine_lineage_values([*zqtz_rows, *tyw_rows], "rule_version") or RULE_VERSION
-        ),
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
+        result_payload=BalanceAnalysisPayload(
+            report_date=report_date,
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            details=details,
+            summary=summary,
+        ).model_dump(mode="json"),
     )
 
 
@@ -520,79 +493,70 @@ def balance_analysis_workbook_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    payload = BalanceAnalysisWorkbookPayload(
-        report_date=workbook["report_date"],
-        position_scope=workbook["position_scope"],
-        currency_basis=workbook["currency_basis"],
-        cards=[
-            BalanceAnalysisWorkbookCard(**card)
-            for card in workbook["cards"]
-        ],
-        tables=[
-            BalanceAnalysisWorkbookTable(
-                key=table["key"],
-                title=table["title"],
-                section_kind=table["section_kind"],
-                columns=[BalanceAnalysisWorkbookColumn(**column) for column in table["columns"]],
-                rows=table["rows"],
-            )
-            for table in workbook["tables"]
-            if str(table.get("section_kind")) == "table"
-        ],
-        operational_sections=[
-            *[
-                BalanceAnalysisDecisionItemsSection(
-                    key="decision_items",
-                    title=str(section["title"]),
-                    section_kind="decision_items",
-                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
-                    rows=[BalanceAnalysisDecisionItemRow(**row) for row in section["rows"]],
-                )
-                for section in workbook["tables"]
-                if str(section.get("section_kind")) == "decision_items"
-            ],
-            *[
-                BalanceAnalysisEventCalendarSection(
-                    key="event_calendar",
-                    title=str(section["title"]),
-                    section_kind="event_calendar",
-                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
-                    rows=[BalanceAnalysisEventCalendarRow(**row) for row in section["rows"]],
-                )
-                for section in workbook["tables"]
-                if str(section.get("section_kind")) == "event_calendar"
-            ],
-            *[
-                BalanceAnalysisRiskAlertsSection(
-                    key="risk_alerts",
-                    title=str(section["title"]),
-                    section_kind="risk_alerts",
-                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
-                    rows=[BalanceAnalysisRiskAlertRow(**row) for row in section["rows"]],
-                )
-                for section in workbook["tables"]
-                if str(section.get("section_kind")) == "risk_alerts"
-            ],
-        ],
-    )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=_require_balance_lineage_value(
-            build_lineage["source_version"] if build_lineage is not None else None,
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
             report_date=report_date,
-            field_name="source_version",
         ),
-        rule_version=_require_balance_lineage_value(
-            build_lineage["rule_version"] if build_lineage is not None else None,
-            report_date=report_date,
-            field_name="rule_version",
-        ),
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
+        result_payload=BalanceAnalysisWorkbookPayload(
+            report_date=workbook["report_date"],
+            position_scope=workbook["position_scope"],
+            currency_basis=workbook["currency_basis"],
+            cards=[
+                BalanceAnalysisWorkbookCard(**card)
+                for card in workbook["cards"]
+            ],
+            tables=[
+                BalanceAnalysisWorkbookTable(
+                    key=table["key"],
+                    title=table["title"],
+                    section_kind=table["section_kind"],
+                    columns=[BalanceAnalysisWorkbookColumn(**column) for column in table["columns"]],
+                    rows=table["rows"],
+                )
+                for table in workbook["tables"]
+                if str(table.get("section_kind")) == "table"
+            ],
+            operational_sections=[
+                *[
+                    BalanceAnalysisDecisionItemsSection(
+                        key="decision_items",
+                        title=str(section["title"]),
+                        section_kind="decision_items",
+                        columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                        rows=[BalanceAnalysisDecisionItemRow(**row) for row in section["rows"]],
+                    )
+                    for section in workbook["tables"]
+                    if str(section.get("section_kind")) == "decision_items"
+                ],
+                *[
+                    BalanceAnalysisEventCalendarSection(
+                        key="event_calendar",
+                        title=str(section["title"]),
+                        section_kind="event_calendar",
+                        columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                        rows=[BalanceAnalysisEventCalendarRow(**row) for row in section["rows"]],
+                    )
+                    for section in workbook["tables"]
+                    if str(section.get("section_kind")) == "event_calendar"
+                ],
+                *[
+                    BalanceAnalysisRiskAlertsSection(
+                        key="risk_alerts",
+                        title=str(section["title"]),
+                        section_kind="risk_alerts",
+                        columns=[BalanceAnalysisWorkbookColumn(**column) for column in section["columns"]],
+                        rows=[BalanceAnalysisRiskAlertRow(**row) for row in section["rows"]],
+                    )
+                    for section in workbook["tables"]
+                    if str(section.get("section_kind")) == "risk_alerts"
+                ],
+            ],
+        ).model_dump(mode="json"),
     )
 
 
@@ -621,37 +585,28 @@ def balance_analysis_decision_items_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    payload = BalanceAnalysisDecisionItemsPayload(
-        report_date=report_date,
-        position_scope=position_scope,
-        currency_basis=currency_basis,
-        columns=[
-            BalanceAnalysisWorkbookColumn(**column)
-            for column in decision_section.get("columns", [])
-        ],
-        rows=[
-            _to_decision_item_status_row(row, latest_statuses)
-            for row in decision_section.get("rows", [])
-        ],
-    )
-    meta = build_formal_result_meta(
+    return build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_decision_items_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.decision-items",
-        cache_version=_resolve_balance_cache_version(build_lineage),
-        source_version=_require_balance_lineage_value(
-            build_lineage["source_version"] if build_lineage is not None else None,
+        lineage=build_lineage,
+        default_cache_version=CACHE_VERSION,
+        missing_field_message=lambda field_name: _balance_lineage_missing_message(
+            field_name=field_name,
             report_date=report_date,
-            field_name="source_version",
         ),
-        rule_version=_require_balance_lineage_value(
-            build_lineage["rule_version"] if build_lineage is not None else None,
+        result_payload=BalanceAnalysisDecisionItemsPayload(
             report_date=report_date,
-            field_name="rule_version",
-        ),
-    )
-    return build_formal_result_envelope(
-        result_meta=meta,
-        result_payload=payload.model_dump(mode="json"),
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            columns=[
+                BalanceAnalysisWorkbookColumn(**column)
+                for column in decision_section.get("columns", [])
+            ],
+            rows=[
+                _to_decision_item_status_row(row, latest_statuses)
+                for row in decision_section.get("rows", [])
+            ],
+        ).model_dump(mode="json"),
     )
 
 
@@ -1139,12 +1094,8 @@ def _autosize_sheet_columns(sheet: Worksheet) -> None:
         sheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 10), 40)
 
 
-def _resolve_balance_cache_version(lineage: dict[str, object] | None) -> str:
-    if lineage is not None:
-        resolved = str(lineage.get("cache_version") or "").strip()
-        if resolved:
-            return resolved
-    return CACHE_VERSION
+def _balance_lineage_missing_message(*, field_name: str, report_date: str) -> str:
+    return f"Canonical balance-analysis {field_name} unavailable for report_date={report_date}."
 
 
 def _validate_balance_overview_filters(*, position_scope: str, currency_basis: str) -> None:

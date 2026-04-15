@@ -109,6 +109,14 @@ def test_bond_analytics_service_returns_available_report_dates(tmp_path, monkeyp
     get_settings.cache_clear()
 
 
+def test_bond_analytics_service_uses_shared_formal_result_runtime_helper():
+    path = Path(__file__).resolve().parents[1] / "backend" / "app" / "services" / "bond_analytics_service.py"
+    src = path.read_text(encoding="utf-8")
+
+    assert "backend.app.services.formal_result_runtime" in src
+    assert "build_formal_result_meta_from_lineage" in src
+
+
 def test_bond_analytics_dates_envelope_resolves_manifest_lineage_not_only_latest_row_date(
     tmp_path,
     monkeypatch,
@@ -118,23 +126,51 @@ def test_bond_analytics_dates_envelope_resolves_manifest_lineage_not_only_latest
         "backend.app.services.bond_analytics_service",
         "backend/app/services/bond_analytics_service.py",
     )
-    lineage_mod = load_module(
-        "backend.app.governance.formal_compute_lineage",
-        "backend/app/governance/formal_compute_lineage.py",
-    )
     calls: list[dict[str, str]] = []
 
     def _capture(**kwargs):
         calls.append(kwargs)
-        return lineage_mod.resolve_formal_manifest_lineage(**kwargs)
+        return {
+            "source_version": "sv_manifest_test",
+            "rule_version": "rv_manifest_test",
+            "cache_version": service_mod.CACHE_VERSION,
+            "vendor_version": "vv_none",
+        }
 
-    monkeypatch.setattr(service_mod, "resolve_formal_manifest_lineage", _capture)
+    monkeypatch.setattr(service_mod, "resolve_formal_dates_lineage", _capture)
 
-    service_mod.bond_analytics_dates_envelope()
+    payload = service_mod.bond_analytics_dates_envelope()
 
     assert len(calls) == 1
     assert calls[0]["cache_key"] == service_mod.CACHE_KEY
+    assert calls[0]["report_dates"] == [REPORT_DATE]
     assert Path(str(calls[0]["governance_dir"])).resolve() == (tmp_path / "governance").resolve()
+    assert payload["result_meta"]["source_version"] == "sv_manifest_test"
+    get_settings.cache_clear()
+
+
+def test_bond_analytics_dates_envelope_falls_back_to_local_lineage_when_manifest_missing(
+    tmp_path,
+    monkeypatch,
+):
+    _configure_and_materialize(tmp_path, monkeypatch)
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    def _fallback_dates_lineage(**kwargs):
+        report_dates = kwargs["report_dates"]
+        return kwargs["fallback_lineage_loader"](report_dates[0])
+
+    monkeypatch.setattr(service_mod, "resolve_formal_dates_lineage", _fallback_dates_lineage)
+
+    payload = service_mod.bond_analytics_dates_envelope()
+
+    assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
+    assert payload["result_meta"]["rule_version"] == service_mod.RULE_VERSION
+    assert payload["result_meta"]["cache_version"] == service_mod.CACHE_VERSION
+    assert payload["result"]["report_dates"] == [REPORT_DATE]
     get_settings.cache_clear()
 
 
