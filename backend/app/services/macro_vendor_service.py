@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import date
+from decimal import Decimal
 
 import duckdb
 
+from backend.app.core_finance.fx_rates import get_usd_cny_rate
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
@@ -444,7 +447,7 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
 
     groups: dict[str, list[FxAnalyticalSeriesPoint]] = {}
     for series_id, rows in grouped_rows.items():
-        latest = rows[0]
+        latest = _resolve_fx_analytical_latest_row(rows)
         recent_points = [
             ChoiceMacroRecentPoint(
                 trade_date=str(row["trade_date"]),
@@ -505,6 +508,31 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
             )
         )
     return FxAnalyticalPayload(groups=ordered_groups)
+
+
+def _resolve_fx_analytical_latest_row(rows: list[dict[str, object]]) -> dict[str, object]:
+    latest = rows[0]
+    if not _is_usd_cny_middle_rate(str(latest["series_name"])):
+        return latest
+    target_date = date.fromisoformat(str(latest["trade_date"]))
+    rate, observed_date, warnings = get_usd_cny_rate(
+        [
+            (date.fromisoformat(str(row["trade_date"])), Decimal(str(row["value_numeric"])))
+            for row in rows
+        ],
+        target_date,
+    )
+    quality_flag = "warning" if warnings else str(latest["quality_flag"])
+    return {
+        **latest,
+        "trade_date": observed_date.isoformat() if observed_date is not None else str(latest["trade_date"]),
+        "value_numeric": float(rate),
+        "quality_flag": quality_flag,
+    }
+
+
+def _is_usd_cny_middle_rate(series_name: str) -> bool:
+    return "中间价" in series_name and "美元" in series_name and "人民币" in series_name
 
 
 def fx_analytical_envelope(duckdb_path: str) -> dict[str, object]:

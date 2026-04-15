@@ -236,3 +236,32 @@ def test_fx_service_separates_formal_status_from_analytical_groups(tmp_path, mon
     assert analytical.groups[1].series[0].series_id == "EMM01607834"
     assert analytical.groups[2].series[0].series_id == "EMI01743799"
     get_settings.cache_clear()
+
+
+def test_fx_analytical_usd_middle_rate_consumes_fx_rates_helper(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    duckdb_path = tmp_path / "market-data.duckdb"
+    _write_catalog(catalog_path)
+    _seed_fx_duckdb(duckdb_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    get_settings.cache_clear()
+
+    module = load_module(
+        "backend.app.services.macro_vendor_service",
+        "backend/app/services/macro_vendor_service.py",
+    )
+    calls = []
+
+    def fake_get_usd_cny_rate(rows, target_date):
+        calls.append((rows, target_date))
+        return 7.77, target_date, ["synthetic analytical fallback"]
+
+    monkeypatch.setattr(module, "get_usd_cny_rate", fake_get_usd_cny_rate)
+
+    analytical = module.load_fx_analytical_payload(str(duckdb_path))
+
+    middle_rate = analytical.groups[0].series[0]
+    assert middle_rate.series_id == "EMM00058124"
+    assert middle_rate.value_numeric == 7.77
+    assert calls
+    get_settings.cache_clear()

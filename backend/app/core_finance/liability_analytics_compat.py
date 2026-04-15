@@ -7,6 +7,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from backend.app.core_finance.rate_units import pct_to_decimal
+
 ZERO = Decimal("0")
 ONE_HUNDRED = Decimal("100")
 ONE_HUNDRED_MILLION = Decimal("100000000")
@@ -129,7 +131,7 @@ def normalize_bond_rate_decimal(value: object | None) -> Decimal | None:
 def normalize_interbank_rate_decimal(value: object | None) -> Decimal | None:
     if value in (None, ""):
         return None
-    return Decimal(str(value)) / ONE_HUNDRED
+    return Decimal(str(pct_to_decimal(float(value))))
 
 
 def weighted_rate(pairs: list[tuple[Decimal, Decimal | None]]) -> Decimal | None:

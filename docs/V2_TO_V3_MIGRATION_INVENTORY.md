@@ -34,15 +34,17 @@
 | --- | --- | --- | --- |
 | `backend/app/core_finance/safe_decimal.py` | Decimal 安全转换；防御 `NaN / Inf / numpy` | `library` | `库级实现` |
 | `backend/app/core_finance/decimal_utils.py` | `to_decimal / fmt_yuan / fmt_yi / fmt_money` | `library` | `库级实现` |
-| `backend/app/core_finance/rate_units.py` | 利率单位换算：`pct <-> decimal <-> bp`；含启发式归一 | `library` | `库级实现` |
+| `backend/app/core_finance/rate_units.py` | 利率单位换算：`pct <-> decimal <-> bp`；含启发式归一 | `wired` | `主流程实现` |
 | `backend/app/core_finance/var_engine.py` | 参数法 VaR：`DV01 × z_score × vol` | `library` | `库级实现` |
 | `backend/app/core_finance/reconciliation_checks.py` | `Position vs Ledger vs PnL` 对账纯函数 | `wired` | `主流程实现` |
-| `backend/app/core_finance/fx_rates.py` | USD/CNY 汇率回溯取值；30 天回看；默认值 `7.25` | `library` | `库级实现` |
+| `backend/app/core_finance/fx_rates.py` | USD/CNY 汇率回溯取值；30 天回看；默认值 `7.25` | `wired` | `主流程实现` |
 
 说明：
 
 - 这 6 个文件属于“已迁入的基础模块库”。
 - 它们当前是否被 `V3` 正式主流程全面消费，是单独问题；不影响其作为有效迁移资产登记。
+- `rate_units.py` 当前已被 `backend/app/core_finance/liability_analytics_compat.py` 消费，用于同业资金成本率的百分数转小数归一。
+- `fx_rates.py` 当前已被 `backend/app/services/macro_vendor_service.py` 的 FX analytical read surface 消费，用于 USD/CNY middle-rate 展示解析；该接入不改变 formal FX materialize / formal balance-analysis lookup 的 fail-closed 规则。
 - `reconciliation_checks.py` 当前已被以下主流程消费：
   - `backend/app/services/product_category_pnl_service.py`：产品分类 PnL 汇总完整性质量门禁
   - `backend/app/services/pnl_service.py`：PnL overview 总额 vs 组成项汇总质量门禁

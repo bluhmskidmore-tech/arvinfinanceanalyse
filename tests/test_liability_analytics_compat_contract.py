@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
+from backend.app.core_finance import liability_analytics_compat as compat
 from backend.app.core_finance.liability_analytics_compat import (
     classify_counterparty,
     classify_monthly_counterparty,
@@ -37,6 +38,19 @@ def test_normalize_interbank_rate_decimal_always_treats_input_as_percent() -> No
     assert normalize_interbank_rate_decimal(None) is None
     assert normalize_interbank_rate_decimal("2.5") == Decimal("0.025")
     assert normalize_interbank_rate_decimal("0.8") == Decimal("0.008")
+
+
+def test_normalize_interbank_rate_decimal_consumes_rate_units_pct_to_decimal(monkeypatch) -> None:
+    calls: list[float] = []
+
+    def fake_pct_to_decimal(value: float) -> float:
+        calls.append(value)
+        return 0.1234
+
+    monkeypatch.setattr(compat, "pct_to_decimal", fake_pct_to_decimal)
+
+    assert compat.normalize_interbank_rate_decimal("2.5") == Decimal("0.1234")
+    assert calls == [2.5]
 
 
 def test_weighted_rate_ignores_zero_amount_and_missing_rate() -> None:
