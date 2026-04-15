@@ -47,6 +47,77 @@ def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
     assert "default_cache_version=PNL_CACHE_VERSION" in src
 
 
+def test_pnl_refresh_serializes_decimal_rows_before_queue_dispatch(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    pnl_service = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    source_service = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    monkeypatch.setattr(
+        pnl_service,
+        "load_latest_pnl_refresh_input",
+        lambda **_kwargs: source_service.PnlRefreshInput(
+            report_date="2026-02-28",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2026-02-28",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "invest_type_raw": "交易性金融资产",
+                    "interest_income_514": Decimal("12.34"),
+                    "fair_value_change_516": Decimal("-5.67"),
+                    "capital_gain_517": Decimal("1.00"),
+                    "manual_adjustment": Decimal("0"),
+                    "currency_basis": "CNY",
+                    "source_version": "sv_decimal",
+                    "rule_version": "rv_decimal",
+                    "ingest_batch_id": "ib_decimal",
+                    "trace_id": "trace-decimal",
+                }
+            ],
+            nonstd_rows_by_type={
+                "516": [
+                    {
+                        "voucher_date": "2026-02-28",
+                        "account_code": "51601010004",
+                        "asset_code": "240001.IB",
+                        "portfolio_name": "FI Desk",
+                        "cost_center": "CC100",
+                        "dc_flag": "credit",
+                        "event_type": "mtm",
+                        "raw_amount": Decimal("8.90"),
+                        "source_file": "nonstd-516.xlsx",
+                        "source_version": "sv_decimal_nonstd",
+                        "rule_version": "rv_decimal",
+                        "ingest_batch_id": "ib_decimal",
+                        "trace_id": "trace-decimal-nonstd",
+                    }
+                ]
+            },
+        ),
+    )
+    dispatched: list[dict[str, object]] = []
+
+    def fake_send(**kwargs):
+        json.dumps(kwargs)
+        dispatched.append(kwargs)
+
+    monkeypatch.setattr(pnl_service.materialize_pnl_facts, "send", fake_send)
+
+    payload = pnl_service.refresh_pnl(get_settings())
+
+    assert payload["status"] == "queued"
+    assert dispatched[0]["fi_rows"][0]["interest_income_514"] == "12.34"
+    assert dispatched[0]["nonstd_rows_by_type"]["516"][0]["raw_amount"] == "8.90"
+    get_settings.cache_clear()
+
+
 def test_pnl_overview_service_consumes_pnl_vs_ledger_reconciliation_check():
     service_module = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
     check = service_module._pnl_overview_reconciliation_check(

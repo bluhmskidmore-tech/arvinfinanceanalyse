@@ -102,8 +102,8 @@ def refresh_pnl(settings: Settings, *, report_date: str | None = None) -> dict[s
             actor_kwargs = {
                 "report_date": refresh_input.report_date,
                 "is_month_end": refresh_input.is_month_end,
-                "fi_rows": refresh_input.fi_rows,
-                "nonstd_rows_by_type": refresh_input.nonstd_rows_by_type,
+                "fi_rows": _json_safe_payload(refresh_input.fi_rows),
+                "nonstd_rows_by_type": _json_safe_payload(refresh_input.nonstd_rows_by_type),
                 "duckdb_path": str(settings.duckdb_path),
                 "governance_dir": str(settings.governance_path),
                 "run_id": run_id,
@@ -293,6 +293,18 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dic
 
 def _quantize_decimal(value: Decimal) -> Decimal:
     return value.quantize(TWOPLACES)
+
+
+def _json_safe_payload(value: object) -> object:
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, list):
+        return [_json_safe_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_json_safe_payload(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe_payload(item) for key, item in value.items()}
+    return value
 
 
 def _pnl_overview_reconciliation_check(totals: dict[str, Decimal]) -> dict[str, object]:
