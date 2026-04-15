@@ -260,7 +260,7 @@ export default function AverageBalanceView() {
       ? ((dailyData.total_spot_liabilities - dailyData.total_avg_liabilities) / dailyData.total_avg_liabilities) * 100
       : 0;
 
-  const comparisonRows = useMemo<ComparisonChartRow[]>(() => {
+  const comparisonRows = useMemo<AdbComparisonChartRow[]>(() => {
     if (!dailyData) return [];
     const mapRows = (items: AdbCategoryItem[], prefix: string) =>
       items.map((item) => ({
