@@ -267,4 +267,15 @@ describe("AverageBalanceView", () => {
     expect(await screen.findByText("可用报告日加载失败，请先恢复报告日列表后再查看日均分析。")).toBeInTheDocument();
     expect(screen.queryByText("Spot 总资产")).not.toBeInTheDocument();
   });
+
+  it("shows an explicit daily error state when comparison loading fails", async () => {
+    renderView({
+      async getAdbComparison() {
+        throw new Error("comparison unavailable");
+      },
+    });
+
+    expect(await screen.findByText("日均分析加载失败")).toBeInTheDocument();
+    expect(screen.queryByText("Spot 总资产")).not.toBeInTheDocument();
+  });
 });
