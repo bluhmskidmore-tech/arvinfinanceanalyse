@@ -47,6 +47,42 @@ def test_pnl_service_keeps_intentional_local_cache_version_wrapper():
     assert "default_cache_version=PNL_CACHE_VERSION" in src
 
 
+def test_pnl_overview_service_consumes_pnl_vs_ledger_reconciliation_check():
+    service_module = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    check = service_module._pnl_overview_reconciliation_check(
+        {
+            "interest_income_514": Decimal("10"),
+            "fair_value_change_516": Decimal("-2"),
+            "capital_gain_517": Decimal("3"),
+            "manual_adjustment": Decimal("1"),
+            "total_pnl": Decimal("12"),
+        }
+    )
+
+    assert check == {
+        "pnl_total": 12.0,
+        "ledger_pnl_total": 12.0,
+        "diff": 0.0,
+        "breached": False,
+    }
+
+
+def test_pnl_overview_reconciliation_check_flags_inconsistent_total():
+    service_module = load_module("backend.app.services.pnl_service", "backend/app/services/pnl_service.py")
+    check = service_module._pnl_overview_reconciliation_check(
+        {
+            "interest_income_514": Decimal("10"),
+            "fair_value_change_516": Decimal("-2"),
+            "capital_gain_517": Decimal("3"),
+            "manual_adjustment": Decimal("1"),
+            "total_pnl": Decimal("11"),
+        }
+    )
+
+    assert check["breached"] is True
+    assert check["diff"] == -1.0
+
+
 def test_pnl_dates_returns_union_and_constituent_lists(tmp_path, monkeypatch):
     _materialize_three_pnl_dates(tmp_path, monkeypatch)
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)

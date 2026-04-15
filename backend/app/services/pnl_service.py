@@ -9,6 +9,7 @@ from backend.app.governance.formal_compute_lineage import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
+from backend.app.core_finance.reconciliation_checks import pnl_vs_ledger_diff
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -215,6 +216,7 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
         )
 
     totals = repo.overview_totals(report_date)
+    reconciliation = _pnl_overview_reconciliation_check(totals)
     payload = PnlOverviewPayload(
         report_date=report_date,
         formal_fi_row_count=int(totals["formal_fi_row_count"]),
@@ -231,6 +233,7 @@ def pnl_overview_envelope(*, duckdb_path: str, governance_dir: str, report_date:
         trace_id=f"tr_pnl_overview_{report_date}",
         result_kind="pnl.overview",
         result_payload=payload.model_dump(mode="json"),
+        quality_flag="warning" if reconciliation["breached"] else None,
     )
 
 
@@ -241,6 +244,7 @@ def _build_pnl_formal_result_envelope_from_lineage(
     trace_id: str,
     result_kind: str,
     result_payload: dict[str, object],
+    quality_flag: str | None = None,
 ) -> dict[str, object]:
     lineage = _resolve_pnl_lineage(
         governance_dir=governance_dir,
@@ -253,6 +257,7 @@ def _build_pnl_formal_result_envelope_from_lineage(
         default_cache_version=PNL_CACHE_VERSION,
         use_lineage_cache_version=False,
         result_payload=result_payload,
+        quality_flag=quality_flag,
     )
 
 
@@ -288,6 +293,20 @@ def _resolve_pnl_lineage(*, governance_dir: str, report_date: str | None) -> dic
 
 def _quantize_decimal(value: Decimal) -> Decimal:
     return value.quantize(TWOPLACES)
+
+
+def _pnl_overview_reconciliation_check(totals: dict[str, Decimal]) -> dict[str, object]:
+    component_total = (
+        totals["interest_income_514"]
+        + totals["fair_value_change_516"]
+        + totals["capital_gain_517"]
+        + totals["manual_adjustment"]
+    )
+    return pnl_vs_ledger_diff(
+        pnl_total=float(totals["total_pnl"]),
+        ledger_pnl_total=float(component_total),
+        threshold_yuan=0.01,
+    )
 
 
 def _build_run_id() -> str:

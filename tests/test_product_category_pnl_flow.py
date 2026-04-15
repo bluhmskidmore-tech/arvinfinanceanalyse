@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 from openpyxl import Workbook
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.product_category_pnl import ProductCategoryPnlRow
 from backend.app.services.product_category_pnl_service import AVAILABLE_VIEWS
+from backend.app.services.product_category_pnl_service import _product_category_completeness_check
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
@@ -26,6 +28,61 @@ from tests.helpers import load_module
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
+
+
+def _pnl_row_payload(
+    category_id: str,
+    business_net_income: str,
+) -> ProductCategoryPnlRow:
+    return ProductCategoryPnlRow(
+        category_id=category_id,
+        category_name=category_id,
+        side="all",
+        level=0,
+        view="monthly",
+        report_date="2026-01-31",
+        baseline_ftp_rate_pct=Decimal("1.75"),
+        cnx_scale=Decimal("0"),
+        cny_scale=Decimal("0"),
+        foreign_scale=Decimal("0"),
+        cnx_cash=Decimal("0"),
+        cny_cash=Decimal("0"),
+        foreign_cash=Decimal("0"),
+        cny_ftp=Decimal("0"),
+        foreign_ftp=Decimal("0"),
+        cny_net=Decimal("0"),
+        foreign_net=Decimal("0"),
+        business_net_income=Decimal(business_net_income),
+        weighted_yield=None,
+        is_total=True,
+        children=[],
+    )
+
+
+def test_product_category_service_consumes_reconciliation_completeness_check() -> None:
+    check = _product_category_completeness_check(
+        asset_total=_pnl_row_payload("asset_total", "10"),
+        liability_total=_pnl_row_payload("liability_total", "-3"),
+        grand_total=_pnl_row_payload("grand_total", "7"),
+    )
+
+    assert check == {
+        "product_category_total": 7.0,
+        "pnl_total": 7.0,
+        "diff": 0.0,
+        "breached": False,
+    }
+
+
+def test_product_category_completeness_check_flags_inconsistent_totals() -> None:
+    check = _product_category_completeness_check(
+        asset_total=_pnl_row_payload("asset_total", "10"),
+        liability_total=_pnl_row_payload("liability_total", "-3"),
+        grand_total=_pnl_row_payload("grand_total", "6"),
+    )
+
+    assert check["breached"] is True
+    assert check["diff"] == -1.0
 
 
 def _load_product_category_pnl_service_module():

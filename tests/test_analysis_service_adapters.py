@@ -394,6 +394,96 @@ def test_product_category_service_delegates_to_unified_analysis_service(monkeypa
     assert payload["result_meta"]["result_kind"] == "product_category_pnl.detail"
 
 
+def test_product_category_service_warns_when_totals_are_incomplete(monkeypatch):
+    schema_module = load_module(
+        "backend.app.schemas.analysis_service",
+        "backend/app/schemas/analysis_service.py",
+    )
+    result_meta_module = load_module(
+        "backend.app.schemas.result_meta",
+        "backend/app/schemas/result_meta.py",
+    )
+    service_module = load_module(
+        "backend.app.services.product_category_pnl_service",
+        "backend/app/services/product_category_pnl_service.py",
+    )
+
+    def row(category_id: str, category_name: str, side: str, business_net_income: str):
+        return {
+            "category_id": category_id,
+            "category_name": category_name,
+            "side": side,
+            "level": 0,
+            "view": "monthly",
+            "report_date": "2026-02-28",
+            "baseline_ftp_rate_pct": "1.50",
+            "cnx_scale": "0",
+            "cny_scale": "0",
+            "foreign_scale": "0",
+            "cnx_cash": "0",
+            "cny_cash": "0",
+            "foreign_cash": "0",
+            "cny_ftp": "0",
+            "foreign_ftp": "0",
+            "cny_net": "0",
+            "foreign_net": "0",
+            "business_net_income": business_net_income,
+            "weighted_yield": None,
+            "is_total": True,
+            "children": [],
+            "scenario_rate_pct": None,
+        }
+
+    class FakeAnalysisService:
+        def execute(self, query):
+            return schema_module.AnalysisResultEnvelope(
+                result_meta=result_meta_module.ResultMeta(
+                    trace_id="tr_product_category_analysis",
+                    basis="formal",
+                    result_kind="product_category_pnl.detail",
+                    formal_use_allowed=True,
+                    source_version="sv_analysis",
+                    vendor_version="vv_none",
+                    rule_version="rv_analysis",
+                    cache_version="cv_analysis",
+                    quality_flag="ok",
+                    scenario_flag=False,
+                ),
+                result=schema_module.AnalysisResultPayload(
+                    report_date="2026-02-28",
+                    analysis_key="product_category_pnl",
+                    basis="formal",
+                    view="monthly",
+                    rows=[
+                        row("asset_total", "资产合计", "asset", "10.00"),
+                        row("liability_total", "负债合计", "liability", "3.00"),
+                        row("grand_total", "总计", "all", "14.00"),
+                    ],
+                    summary={
+                        "available_views": ["monthly"],
+                        "asset_total": {"category_id": "asset_total"},
+                        "liability_total": {"category_id": "liability_total"},
+                        "grand_total": {"category_id": "grand_total"},
+                    },
+                ),
+            )
+
+    monkeypatch.setattr(
+        service_module,
+        "build_analysis_service",
+        lambda duckdb_path: FakeAnalysisService(),
+    )
+
+    payload = service_module.product_category_pnl_envelope(
+        duckdb_path="ignored.duckdb",
+        report_date="2026-02-28",
+        view="monthly",
+    )
+
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["result"]["grand_total"]["business_net_income"] == "14.00"
+
+
 def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
     schema_module = load_module(
         "backend.app.schemas.analysis_service",

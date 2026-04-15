@@ -10,6 +10,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import (
@@ -443,6 +444,11 @@ def product_category_pnl_envelope(
     asset_total = next(row for row in typed_rows if row.category_id == "asset_total")
     liability_total = next(row for row in typed_rows if row.category_id == "liability_total")
     grand_total = next(row for row in typed_rows if row.category_id == "grand_total")
+    completeness = _product_category_completeness_check(
+        asset_total=asset_total,
+        liability_total=liability_total,
+        grand_total=grand_total,
+    )
     payload = ProductCategoryPnlPayload(
         report_date=report_date,
         view=view,
@@ -453,14 +459,33 @@ def product_category_pnl_envelope(
         liability_total=liability_total,
         grand_total=grand_total,
     )
+    result_meta = (
+        analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})
+        if completeness["breached"]
+        else analysis_envelope.result_meta
+    )
     return build_formal_result_envelope(
-        result_meta=analysis_envelope.result_meta,
+        result_meta=result_meta,
         result_payload=payload.model_dump(mode="json"),
     )
 
 
 def build_analysis_service(duckdb_path: str) -> UnifiedAnalysisService:
     return build_default_analysis_service(duckdb_path=duckdb_path)
+
+
+def _product_category_completeness_check(
+    *,
+    asset_total: ProductCategoryPnlRow,
+    liability_total: ProductCategoryPnlRow,
+    grand_total: ProductCategoryPnlRow,
+) -> dict[str, object]:
+    expected_total = asset_total.business_net_income + liability_total.business_net_income
+    return completeness_check(
+        product_category_total=float(grand_total.business_net_income),
+        pnl_total=float(expected_total),
+        threshold_yuan=0.01,
+    )
 
 
 def _build_run_id() -> str:
