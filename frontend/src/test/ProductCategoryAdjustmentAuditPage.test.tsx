@@ -88,6 +88,20 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
       }),
     });
 
+    expect(await screen.findByTestId("product-category-audit-page-title")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-audit-boundary-copy")).toHaveTextContent(
+      "查看产品类别损益",
+    );
+    expect(screen.getByText(/Audit view records adjustment events/)).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-audit-filter-lead")).toHaveTextContent(
+      "审计筛选与排序",
+    );
+    expect(screen.getByTestId("product-category-audit-manual-lead")).toHaveTextContent(
+      "手工调整录入",
+    );
+    expect(screen.getByTestId("product-category-audit-timeline-lead")).toHaveTextContent(
+      "调整审计时间线",
+    );
     expect(await screen.findByTestId("audit-current-state")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-list")).toBeInTheDocument();
     expect(screen.getByText("audit-account")).toBeInTheDocument();
@@ -849,6 +863,19 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     );
 
     expect(await screen.findByTestId("monthly-operating-analysis-audit-page")).toBeInTheDocument();
+    expect(screen.getByTestId("monthly-operating-analysis-audit-title")).toHaveTextContent(
+      "月度经营分析调整审计",
+    );
+    expect(screen.getByTestId("monthly-operating-analysis-audit-boundary-copy")).toHaveTextContent(
+      "手工调整",
+    );
+    expect(screen.getByText(/preserves separation from legacy product-category formal results/)).toBeInTheDocument();
+    expect(screen.getByTestId("monthly-operating-analysis-audit-form-lead")).toHaveTextContent(
+      "月度经营调整录入",
+    );
+    expect(screen.getByTestId("monthly-operating-analysis-audit-list-lead")).toHaveTextContent(
+      "月度经营调整记录",
+    );
     await user.selectOptions(screen.getByTestId("monthly-operating-analysis-adjustment-class"), "analysis_adjustment");
     await user.type(screen.getByTestId("monthly-operating-analysis-adjustment-value"), "manual_override");
     await user.click(screen.getByTestId("monthly-operating-analysis-adjustment-submit"));

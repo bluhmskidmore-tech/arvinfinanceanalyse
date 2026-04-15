@@ -4,12 +4,67 @@ import { useSearchParams } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   ProductCategoryManualAdjustmentQuery,
   ProductCategoryManualAdjustmentRequest,
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
+
+const pageHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  padding: 20,
+  borderRadius: 18,
+  border: "1px solid #d7dfea",
+  background: "#fbfcfe",
+  marginBottom: 18,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "#edf3ff",
+  color: "#1f5eff",
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginBottom: 14,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
 
 const DEFAULT_FILTERS: ProductCategoryManualAdjustmentQuery = {
   adjustmentId: "",
@@ -107,6 +162,21 @@ function didFiltersChange<K extends keyof ProductCategoryManualAdjustmentQuery>(
   keys: readonly K[],
 ) {
   return keys.some((key) => hasValueChanged(left[key], right[key]));
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 function LegacyProductCategoryAdjustmentAuditBody() {
@@ -342,24 +412,15 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   }
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          padding: 20,
-          borderRadius: 18,
-          border: "1px solid #d7dfea",
-          background: "#fbfcfe",
-          marginBottom: 18,
-        }}
-      >
+    <section data-testid="product-category-audit-page">
+      <div style={pageHeaderStyle}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>产品损益调整审计</h1>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+          <h1 data-testid="product-category-audit-page-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>产品损益调整审计</h1>
+          <p data-testid="product-category-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
             查看产品类别损益的手工调整当前状态、完整事件时间线和刷新结果。
+          </p>
+          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            Audit view records adjustment events and refresh evidence; it does not mutate formal read models directly.
           </p>
           {lastRefreshRunId ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
@@ -377,7 +438,10 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             </p>
           ) : null}
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
+        <FilterBar style={{ justifyContent: "flex-end" }}>
+          <span style={modeBadgeStyle}>
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
           <a href="/product-category-pnl">返回产品损益页</a>
           <button
             type="button"
@@ -406,9 +470,15 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           >
             {isRefreshing ? "刷新中..." : "刷新损益数据"}
           </button>
-        </div>
+        </FilterBar>
       </div>
 
+      <SectionLead
+        eyebrow="Filters"
+        title="审计筛选与排序"
+        description="筛选条件只驱动调整审计查询、分页和导出请求，不改变产品类别损益 formal baseline。"
+        testId="product-category-audit-filter-lead"
+      />
       <div
         style={{
           display: "grid",
@@ -633,6 +703,12 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         </div>
       </div>
 
+      <SectionLead
+        eyebrow="Workflow"
+        title="手工调整录入"
+        description="手工调整继续走既有 create / update / refresh workflow；本区只记录调整事件，不在前端写入正式结果。"
+        testId="product-category-audit-manual-lead"
+      />
       {showManualForm ? (
         <div
           data-testid="audit-manual-form"
@@ -765,6 +841,12 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         </div>
       ) : null}
 
+      <SectionLead
+        eyebrow="Timeline"
+        title="调整审计时间线"
+        description="当前状态和完整事件时间线分开展示，保留现有 current / event pagination、排序和导出语义。"
+        testId="product-category-audit-timeline-lead"
+      />
       <AsyncSection
         title="调整审计"
         isLoading={adjustmentsQuery.isLoading}

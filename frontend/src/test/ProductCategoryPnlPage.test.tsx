@@ -33,6 +33,19 @@ describe("ProductCategoryPnlPage", () => {
     renderWorkbenchApp(["/product-category-pnl"]);
 
     const table = await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-page-title")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-boundary-copy")).toHaveTextContent(
+      "formal read model drives the baseline table",
+    );
+    expect(screen.getByTestId("product-category-adjustment-lead")).toHaveTextContent(
+      "手工调整与审计",
+    );
+    expect(screen.getByTestId("product-category-scenario-lead")).toHaveTextContent(
+      "scenario 查询",
+    );
+    expect(screen.getByTestId("product-category-formal-table-lead")).toHaveTextContent(
+      "正式产品类别损益表",
+    );
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("1.75");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.85");
     expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");

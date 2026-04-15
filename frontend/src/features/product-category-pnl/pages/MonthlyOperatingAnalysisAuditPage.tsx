@@ -2,10 +2,65 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   QdbGlMonthlyAnalysisManualAdjustmentPayload,
   QdbGlMonthlyAnalysisManualAdjustmentRequest,
 } from "../../../api/contracts";
+
+const pageHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  padding: 20,
+  borderRadius: 18,
+  border: "1px solid #d7dfea",
+  background: "#fbfcfe",
+  marginBottom: 18,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "#edf3ff",
+  color: "#1f5eff",
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginBottom: 14,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
 
 const COPY = {
   title: "\u6708\u5ea6\u7ecf\u8425\u5206\u6790\u8c03\u6574\u5ba1\u8ba1",
@@ -99,6 +154,21 @@ function serializeTarget(item: QdbGlMonthlyAnalysisManualAdjustmentPayload): str
     return `${target.section_key} / ${target.row_key} / ${target.metric_key}`;
   }
   return JSON.stringify(target ?? {});
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 export default function MonthlyOperatingAnalysisAuditPage() {
@@ -235,23 +305,14 @@ export default function MonthlyOperatingAnalysisAuditPage() {
 
   return (
     <section data-testid="monthly-operating-analysis-audit-page">
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          padding: 20,
-          borderRadius: 18,
-          border: "1px solid #d7dfea",
-          background: "#fbfcfe",
-          marginBottom: 18,
-        }}
-      >
+      <div style={pageHeaderStyle}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{COPY.title}</h1>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+          <h1 data-testid="monthly-operating-analysis-audit-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{COPY.title}</h1>
+          <p data-testid="monthly-operating-analysis-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
             {COPY.subtitle}
+          </p>
+          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            Monthly operating audit adjusts analytical branch records and preserves separation from legacy product-category formal results.
           </p>
           {lastActionId ? (
             <p style={{ margin: "8px 0 0", color: "#5c6b82", fontSize: 12 }}>{lastActionId}</p>
@@ -260,7 +321,10 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             <p style={{ margin: "8px 0 0", color: "#b42318", fontSize: 12 }}>{errorMessage}</p>
           ) : null}
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "end" }}>
+        <FilterBar style={{ justifyContent: "flex-end" }}>
+          <span style={modeBadgeStyle}>
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
           <label style={{ display: "grid", gap: 8 }}>
             {COPY.reportMonth}
             <select value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)}>
@@ -278,9 +342,15 @@ export default function MonthlyOperatingAnalysisAuditPage() {
           >
             {COPY.exportAudit}
           </button>
-        </div>
+        </FilterBar>
       </div>
 
+      <SectionLead
+        eyebrow="Adjustment"
+        title="月度经营调整录入"
+        description="mapping adjustment 修正映射类字段，analysis adjustment 修正指定分析单元格，均沿用既有 adjustment API。"
+        testId="monthly-operating-analysis-audit-form-lead"
+      />
       <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
         <div
           style={{
@@ -456,6 +526,12 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         </div>
       </div>
 
+      <SectionLead
+        eyebrow="Audit"
+        title="月度经营调整记录"
+        description="列表和事件区继续展示后端返回的 adjustments / events，并保留编辑、撤销、恢复与导出行为。"
+        testId="monthly-operating-analysis-audit-list-lead"
+      />
       <div data-testid="monthly-operating-analysis-adjustment-list" style={{ display: "grid", gap: 12 }}>
         {(adjustmentsQuery.data?.adjustments ?? []).map((item) => (
           <div

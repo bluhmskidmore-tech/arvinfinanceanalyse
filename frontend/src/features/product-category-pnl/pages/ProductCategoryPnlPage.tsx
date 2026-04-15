@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   DecimalLike,
   ProductCategoryManualAdjustmentRequest,
@@ -10,6 +11,60 @@ import type {
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
+
+const pageHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  padding: 20,
+  borderRadius: 18,
+  border: "1px solid #d7dfea",
+  background: "#fbfcfe",
+  marginBottom: 18,
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "#edf3ff",
+  color: "#1f5eff",
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginBottom: 14,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
 
 const DISPLAY_ORDER = [
   "interbank_lending_assets",
@@ -96,6 +151,21 @@ function toneForValue(value: DecimalLike | null | undefined) {
     return "#b42318";
   }
   return "#162033";
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 export default function ProductCategoryPnlPage() {
@@ -350,14 +420,8 @@ export default function ProductCategoryPnlPage() {
 
   if (selectedBranch === "monthly_operating_analysis") {
     return (
-      <section>
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 16,
-          }}
-        >
+      <section data-testid="product-category-page">
+        <FilterBar style={{ marginBottom: 16 }}>
           <button
             type="button"
             data-testid="product-category-branch-product-category-pnl"
@@ -374,21 +438,15 @@ export default function ProductCategoryPnlPage() {
           >
             月度经营分析
           </button>
-        </div>
+        </FilterBar>
         <MonthlyOperatingAnalysisBranch />
       </section>
     );
   }
 
   return (
-    <section>
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
+    <section data-testid="product-category-page">
+      <FilterBar style={{ marginBottom: 16 }}>
         <button
           type="button"
           data-testid="product-category-branch-product-category-pnl"
@@ -405,22 +463,11 @@ export default function ProductCategoryPnlPage() {
         >
           月度经营分析
         </button>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-start",
-          gap: 16,
-          padding: 20,
-          borderRadius: 18,
-          border: "1px solid #d7dfea",
-          background: "#fbfcfe",
-          marginBottom: 18,
-        }}
-      >
+      </FilterBar>
+      <div style={pageHeaderStyle}>
         <div>
           <h1
+            data-testid="product-category-page-title"
             style={{
               margin: 0,
               fontSize: 28,
@@ -431,6 +478,7 @@ export default function ProductCategoryPnlPage() {
             产品类别损益分析
           </h1>
           <p
+            data-testid="product-category-page-subtitle"
             style={{
               marginTop: 8,
               marginBottom: 0,
@@ -440,6 +488,9 @@ export default function ProductCategoryPnlPage() {
             }}
           >
             基于总账对账和日均数据的产品类别损益分析表
+          </p>
+          <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            formal read model drives the baseline table; scenario preview only applies after the explicit apply action.
           </p>
           {lastRefreshRunId ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
@@ -458,6 +509,9 @@ export default function ProductCategoryPnlPage() {
           ) : null}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          <span style={modeBadgeStyle}>
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
           <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
             查看调整审计
           </a>
@@ -650,6 +704,12 @@ export default function ProductCategoryPnlPage() {
         </div>
       ) : null}
 
+      <SectionLead
+        eyebrow="Governance"
+        title="手工调整与审计"
+        description="手工调整仍走既有 create / update / revoke / restore API，完整事件时间线保留在独立审计视图。"
+        testId="product-category-adjustment-lead"
+      />
       <AsyncSection
         title="手工调整历史"
         isLoading={adjustmentsQuery.isLoading}
@@ -760,6 +820,12 @@ export default function ProductCategoryPnlPage() {
         </div>
       </AsyncSection>
 
+      <SectionLead
+        eyebrow="Scenario"
+        title="报告口径与场景预览"
+        description="报告月份和视图模式驱动 formal baseline；FTP 场景只有点击应用后才触发 scenario 查询，不覆盖正式结果。"
+        testId="product-category-scenario-lead"
+      />
       <div
         style={{
           display: "grid",
@@ -866,6 +932,12 @@ export default function ProductCategoryPnlPage() {
         </button>
       </div>
 
+      <SectionLead
+        eyebrow="Formal"
+        title="正式产品类别损益表"
+        description="表格继续展示后端返回的产品类别 read model，资产/负债符号展示、scenario 行为和合计行保持原有逻辑。"
+        testId="product-category-formal-table-lead"
+      />
       <AsyncSection
         title="产品类别损益分析表（单位：亿元）"
         isLoading={baselineQuery.isLoading}

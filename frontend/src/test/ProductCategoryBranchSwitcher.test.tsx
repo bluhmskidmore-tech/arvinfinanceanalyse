@@ -114,7 +114,17 @@ describe("ProductCategoryPnlPage branch switching", () => {
         "aria-pressed",
         "true",
       );
-      expect(screen.getByRole("heading", { name: "月度经营分析" })).toBeInTheDocument();
+      expect(screen.getByTestId("monthly-operating-analysis-page-title")).toHaveTextContent("月度经营分析");
+      expect(screen.getByTestId("monthly-operating-analysis-boundary-copy")).toHaveTextContent(
+        "月度经营分析工作簿",
+      );
+      expect(screen.getByText(/Analytical workbook only/)).toBeInTheDocument();
+      expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveTextContent(
+        "月度工作簿控制",
+      );
+      expect(screen.getByTestId("monthly-operating-analysis-workbook-lead")).toHaveTextContent(
+        "月度经营分析工作表",
+      );
       expect(screen.getByText("Overview")).toBeInTheDocument();
       expect(screen.getByText("Alerts")).toBeInTheDocument();
       expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
