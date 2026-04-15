@@ -147,13 +147,14 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "average-balance",
-    label: "日均管理",
+    label: "ADB Analytical (legacy)",
     path: "/average-balance",
     icon: "analysis",
-    description: "日均资产负债（ADB）、时点 vs 日均偏离与月度 NIM",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "已接 /api/analysis/adb* DuckDB 读链路，口径对齐 V1 ZQTZ+TYWL。",
+    description: "ADB analytical compatibility view; formal balance truth lives in balance-analysis.",
+    readiness: "placeholder",
+    readinessLabel: "Analytical",
+    readinessNote:
+      "Legacy analytical entry retained as a thin shell; formal balance analysis is the primary governed surface.",
   },
   {
     key: "risk-overview",

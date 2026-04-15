@@ -625,6 +625,11 @@ describe("BalanceAnalysisPage", () => {
         "balance-analysis-echarts-stub",
       ),
     ).toHaveLength(2);
+    expect(
+      within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
+        "adb-monthly-breakdown-table",
+      ),
+    ).toHaveLength(1);
     expect(screen.getByRole("link", { name: "打开 ADB 分析页" })).toHaveAttribute(
       "href",
       "/average-balance?report_date=2025-12-31",

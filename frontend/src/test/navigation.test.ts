@@ -128,6 +128,16 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "platform-config")).toBe(false);
   });
 
+  it("keeps average-balance as a secondary legacy analytical entry", () => {
+    const adb = workbenchNavigation.find((s) => s.key === "average-balance");
+    expect(adb?.path).toBe("/average-balance");
+    expect(adb?.readiness).toBe("placeholder");
+    expect(adb?.readinessLabel).toBe("Analytical");
+    expect(adb?.label).toContain("ADB");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(true);
+  });
+
   it("tracks reserved modules outside the live primary navigation", () => {
     expect(
       secondaryWorkbenchNavigation.every((s) => s.readiness !== "live"),
@@ -135,6 +145,6 @@ describe("workbench navigation mocks", () => {
     expect(primaryWorkbenchNavigation.length + secondaryWorkbenchNavigation.length).toBe(
       workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
-    expect(secondaryWorkbenchNavigation.length).toBe(0);
+    expect(secondaryWorkbenchNavigation.length).toBe(1);
   });
 });
