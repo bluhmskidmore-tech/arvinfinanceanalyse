@@ -46,6 +46,7 @@
 - `reconciliation_checks.py` 当前已被以下主流程消费：
   - `backend/app/services/product_category_pnl_service.py`：产品分类 PnL 汇总完整性质量门禁
   - `backend/app/services/pnl_service.py`：PnL overview 总额 vs 组成项汇总质量门禁
+  - `backend/app/core_finance/qdb_gl_monthly_analysis.py`：QDB GL workbook 的 position-vs-ledger 告警门禁
 
 ---
 

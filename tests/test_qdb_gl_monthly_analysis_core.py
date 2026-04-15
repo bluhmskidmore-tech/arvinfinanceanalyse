@@ -97,6 +97,86 @@ def test_build_workbook_payload_computes_metrics_gap_alerts_and_foreign_split(tm
     assert foreign_rows["14401000001"]["外币部分"] == 30
 
 
+def test_qdb_gl_position_vs_ledger_check_uses_reconciliation_helper():
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    rows_3d = [
+        {"科目代码": "101", "期末余额": 100},
+        {"科目代码": "201", "期末余额": -40},
+    ]
+
+    checks = module._qdb_gl_position_vs_ledger_check(
+        position_totals={"总资产": 100, "总负债": 40},
+        ledger_rows_3d=rows_3d,
+    )
+
+    assert checks == [
+        {
+            "dimension": "total_assets",
+            "position_value": 100.0,
+            "ledger_value": 100.0,
+            "diff": 0.0,
+            "breached": False,
+        },
+        {
+            "dimension": "total_liabilities",
+            "position_value": 40.0,
+            "ledger_value": 40.0,
+            "diff": 0.0,
+            "breached": False,
+        },
+        {
+            "dimension": "net_assets",
+            "position_value": 60.0,
+            "ledger_value": 60.0,
+            "diff": 0.0,
+            "breached": False,
+        },
+    ]
+
+
+def test_qdb_gl_workbook_alerts_position_vs_ledger_mismatch():
+    module = load_module(
+        "backend.app.core_finance.qdb_gl_monthly_analysis",
+        "backend/app/core_finance/qdb_gl_monthly_analysis.py",
+    )
+    merged_data = {
+        "3位": [
+            {"科目代码": "101", "名称": "现金", "期初余额": 100, "期末余额": 100, "变动额": 0, "月日均": 100, "年日均": 100},
+            {"科目代码": "201", "名称": "单位活期存款", "期初余额": -40, "期末余额": -40, "变动额": 0, "月日均": -40, "年日均": -40},
+        ],
+        "11位": [],
+        "5位_公司贷款": [],
+        "5位_活期存款": [],
+        "5位_定期存款": [],
+        "外币分析": [],
+    }
+    original = module.compute_asset_liability_structure
+
+    def mismatched_metrics(rows_3d):
+        metrics = original(rows_3d)
+        metrics["总资产"] = metrics["总资产"] + 1
+        return metrics
+
+    module.compute_asset_liability_structure = mismatched_metrics
+    try:
+        workbook = module.build_qdb_gl_monthly_analysis_workbook(
+            report_month="202602",
+            merged_data=merged_data,
+        )
+    finally:
+        module.compute_asset_liability_structure = original
+
+    alerts_sheet = next(sheet for sheet in workbook["sheets"] if sheet["key"] == "alerts")
+    assert any(
+        row["异动类型"] == "position_vs_ledger_reconciliation"
+        and row["科目代码"] == "total_assets"
+        for row in alerts_sheet["rows"]
+    )
+
+
 def test_exported_workbook_contains_all_required_sheets(tmp_path):
     module = load_module(
         "backend.app.core_finance.qdb_gl_monthly_analysis",

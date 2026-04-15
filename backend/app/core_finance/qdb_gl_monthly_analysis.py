@@ -8,6 +8,8 @@ from typing import Any
 
 from openpyxl import Workbook, load_workbook
 
+from backend.app.core_finance.reconciliation_checks import position_vs_ledger_diff
+
 
 ZERO = Decimal("0")
 ONE_HUNDRED_MILLION = Decimal("100000000")
@@ -230,7 +232,15 @@ def build_qdb_gl_monthly_analysis_workbook(
     m11 = compute_deviation(merged_data.get("11位", []))
     metrics = compute_asset_liability_structure(m3)
     gap_rows = compute_industry_gap(merged_data)
-    alert_rows = generate_alerts(merged_data, analysis_config=analysis_cfg)
+    alert_rows = [
+        *generate_alerts(merged_data, analysis_config=analysis_cfg),
+        *_position_ledger_reconciliation_alerts(
+            _qdb_gl_position_vs_ledger_check(
+                position_totals=metrics,
+                ledger_rows_3d=m3,
+            )
+        ),
+    ]
     foreign_rows = build_foreign_currency_rows(merged_data.get("外币分析", []))
 
     sheets = [
@@ -327,6 +337,65 @@ def compute_asset_liability_structure(rows_3d: list[dict[str, Any]]) -> dict[str
         "活期率%": _pct(demand_deposit, deposit_total),
         "高流动性占比%": _pct(liquid_total, total_assets),
     }
+
+
+def _qdb_gl_position_vs_ledger_check(
+    *,
+    position_totals: dict[str, Any],
+    ledger_rows_3d: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ledger_totals = _qdb_gl_ledger_totals(ledger_rows_3d)
+    total_assets = _as_decimal(position_totals.get("总资产")) or ZERO
+    total_liabilities = _as_decimal(position_totals.get("总负债")) or ZERO
+    return position_vs_ledger_diff(
+        {
+            "total_assets": float(total_assets),
+            "total_liabilities": float(total_liabilities),
+            "net_assets": float(total_assets - total_liabilities),
+        },
+        ledger_totals,
+        threshold_yuan=0.01,
+    )
+
+
+def _qdb_gl_ledger_totals(rows_3d: list[dict[str, Any]]) -> dict[str, float]:
+    total_assets = sum(
+        (_as_decimal(row.get("期末余额")) or ZERO)
+        for row in rows_3d
+        if (_as_decimal(row.get("期末余额")) or ZERO) > ZERO
+    )
+    total_liabilities = abs(
+        sum(
+            (_as_decimal(row.get("期末余额")) or ZERO)
+            for row in rows_3d
+            if str(row.get("科目代码") or "").startswith("2")
+        )
+    )
+    return {
+        "total_assets": float(total_assets),
+        "total_liabilities": float(total_liabilities),
+        "net_assets": float(total_assets - total_liabilities),
+    }
+
+
+def _position_ledger_reconciliation_alerts(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    alerts: list[dict[str, Any]] = []
+    for check in checks:
+        if not check["breached"]:
+            continue
+        alerts.append(
+            {
+                "科目代码": check["dimension"],
+                "科目名称": "Position vs Ledger",
+                "预警级别": "严重",
+                "期末余额(亿)": _display_number(_to_yi(Decimal(str(check["position_value"])))),
+                "月日均(亿)": _display_number(_to_yi(Decimal(str(check["ledger_value"])))),
+                "偏离额(亿)": _display_number(_to_yi(Decimal(str(check["diff"])))),
+                "偏离%": None,
+                "异动类型": "position_vs_ledger_reconciliation",
+            }
+        )
+    return alerts
 
 
 def compute_industry_gap(merged_data: dict[str, Any]) -> list[dict[str, Any]]:
