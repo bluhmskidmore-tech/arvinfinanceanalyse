@@ -3,6 +3,7 @@ from pathlib import Path
 
 import dramatiq
 import pytest
+from dramatiq.brokers.redis import RedisBroker
 from dramatiq.brokers.stub import StubBroker
 
 from tests.helpers import load_module
@@ -56,11 +57,16 @@ def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
         "backend.app.tasks.broker",
         "backend/app/tasks/broker.py",
     )
+    original_dramatiq_broker = dramatiq.get_broker()
     broker_module.broker = None
     monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
     monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+    dramatiq.set_broker(RedisBroker(url="redis://localhost:6379/0"))
 
-    active = broker_module.get_broker()
+    try:
+        active = broker_module.get_broker()
+    finally:
+        dramatiq.set_broker(original_dramatiq_broker)
 
     assert active.__class__.__name__ == "RedisBroker"
 

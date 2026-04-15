@@ -26,22 +26,29 @@ def test_dev_postgres_cluster_builds_expected_local_layout():
     assert config.user == "moss"
 
 
-def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root():
+def test_dev_postgres_cluster_env_mapping_prefers_seeded_storage_root(tmp_path):
     module = load_module(
         "scripts.dev_postgres_cluster",
         "scripts/dev_postgres_cluster.py",
     )
 
-    config = module.build_cluster_config(ROOT)
+    repo_root = tmp_path / "repo"
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    config = module.build_cluster_config(repo_root)
     env = module.build_env_mapping(config)
 
     assert env["MOSS_POSTGRES_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
     assert env["MOSS_GOVERNANCE_SQL_DSN"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
     assert env["MOSS_REDIS_DSN"] == "redis://127.0.0.1:6379/11"
-    assert env["MOSS_DUCKDB_PATH"] == str(ROOT / "data" / "moss.duckdb")
-    assert env["MOSS_GOVERNANCE_PATH"] == str(ROOT / "data" / "governance")
-    assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(ROOT / "data" / "archive")
-    assert env["MOSS_DATA_INPUT_ROOT"] == str(ROOT / "data_input")
+    assert env["MOSS_DUCKDB_PATH"] == str(repo_root / "data" / "moss.duckdb")
+    assert env["MOSS_GOVERNANCE_PATH"] == str(repo_root / "data" / "governance")
+    assert env["MOSS_LOCAL_ARCHIVE_PATH"] == str(repo_root / "data" / "archive")
+    assert env["MOSS_DATA_INPUT_ROOT"] == str(repo_root / "data_input")
 
 
 def test_prepare_runtime_clean_paths_does_not_overwrite_existing_smoke_files(tmp_path):

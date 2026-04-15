@@ -6,8 +6,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from backend.app.core_finance.interest_mode import coupon_interval_months, is_bullet_repayment
-
 ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
@@ -74,9 +72,9 @@ def project_bond_cashflows(
         face_value = _coerce_decimal(_get_value(row, "face_value", "face_value_amount", "face_value_native"))
         coupon_rate = _coerce_decimal(_get_value(row, "coupon_rate"))
         interest_mode = _get_text(row, "interest_mode")
-        interval_months = coupon_interval_months(interest_mode)
+        interval_months = _coupon_interval_months(interest_mode)
 
-        if is_bullet_repayment(interest_mode):
+        if _is_bullet_repayment(interest_mode):
             if maturity_date <= horizon_end and face_value > ZERO and coupon_rate > ZERO:
                 events.append(
                     CashflowEvent(
@@ -350,6 +348,18 @@ def compute_duration_gap(
 def _append_warning(warnings: list[str], message: str) -> None:
     if message and message not in warnings:
         warnings.append(message)
+
+
+def _coupon_interval_months(interest_mode: str) -> int:
+    from backend.app.core_finance.interest_mode import coupon_interval_months
+
+    return coupon_interval_months(interest_mode)
+
+
+def _is_bullet_repayment(interest_mode: str) -> bool:
+    from backend.app.core_finance.interest_mode import is_bullet_repayment
+
+    return is_bullet_repayment(interest_mode)
 
 
 def _coupon_amount(face_value: Decimal, coupon_rate: Decimal, interval_months: int) -> Decimal:

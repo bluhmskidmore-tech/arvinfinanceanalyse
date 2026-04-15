@@ -20,6 +20,8 @@ from backend.app.api.routes.qdb_gl_monthly_analysis import router as qdb_gl_mont
 from backend.app.api.routes.bond_analytics import router as bond_analytics_router
 from backend.app.api.routes.bond_dashboard import router as bond_dashboard_router
 from backend.app.api.routes.risk_tensor import router as risk_tensor_router
+from backend.app.api.routes.campisi_attribution import router as campisi_attribution_router
+from backend.app.api.routes.ledger_pnl import router as ledger_pnl_router
 from backend.app.api.routes.source_preview import router as source_preview_router
 
 router = APIRouter()
@@ -42,5 +44,7 @@ router.include_router(pnl_attribution_router)
 router.include_router(positions_router, tags=["positions"])
 router.include_router(product_category_pnl_router, tags=["product-category-pnl"])
 router.include_router(qdb_gl_monthly_analysis_router, tags=["qdb-gl-monthly-analysis"])
+router.include_router(campisi_attribution_router, tags=["campisi-attribution"])
+router.include_router(ledger_pnl_router, tags=["ledger-pnl"])
 router.include_router(risk_tensor_router, tags=["risk"])
 router.include_router(source_preview_router, tags=["preview"])

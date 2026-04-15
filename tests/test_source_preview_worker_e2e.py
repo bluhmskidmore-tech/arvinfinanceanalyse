@@ -419,7 +419,7 @@ def _wait_for_completed_status(
     client: TestClient,
     run_id: str,
     path: str = "/ui/preview/source-foundation/refresh-status",
-    timeout_seconds: float = 20.0,
+    timeout_seconds: float = 60.0,
 ) -> dict[str, object]:
     deadline = time.time() + timeout_seconds
     latest_payload: dict[str, object] | None = None

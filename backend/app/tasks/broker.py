@@ -15,7 +15,12 @@ def _is_pytest_process() -> bool:
 
 
 def _is_production_environment() -> bool:
-    return str(os.getenv("MOSS_ENVIRONMENT") or get_settings().environment).lower() == "production"
+    env_value = os.getenv("MOSS_ENVIRONMENT")
+    if env_value is not None:
+        return str(env_value).lower() == "production"
+    if _is_pytest_process():
+        return False
+    return str(get_settings().environment).lower() == "production"
 
 
 def _should_use_stub_broker() -> bool:
