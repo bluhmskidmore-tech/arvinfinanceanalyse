@@ -16,6 +16,7 @@ from backend.app.models.governance import (  # noqa: F401
     CacheManifest,
     RuleVersionRegistry,
     SourceVersionRegistry,
+    UserRoleScope,
 )
 from backend.app.models.job_state import JobRunState  # noqa: F401
 from tests.helpers import load_module
@@ -31,6 +32,7 @@ _EXPECTED_TABLES = frozenset(
         "cache_manifest",
         "source_version_registry",
         "rule_version_registry",
+        "user_role_scope",
     }
 )
 

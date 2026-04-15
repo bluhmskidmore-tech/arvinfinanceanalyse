@@ -19,6 +19,7 @@ from backend.app.models.governance import (  # noqa: F401
     CacheManifest,
     RuleVersionRegistry,
     SourceVersionRegistry,
+    UserRoleScope,
 )
 from backend.app.models.job_state import JobRunState  # noqa: F401
 

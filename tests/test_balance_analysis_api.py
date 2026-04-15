@@ -42,6 +42,23 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
+def _seed_balance_decision_scope(tmp_path, monkeypatch, *, user_id: str, role: str | None = None) -> None:
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    get_settings.cache_clear()
+    repo_mod = load_module(
+        "backend.app.repositories.user_scope_repo",
+        "backend/app/repositories/user_scope_repo.py",
+    )
+    repo = repo_mod.UserScopeRepository(f"sqlite:///{sqlite_path.as_posix()}")
+    repo.grant_scope(
+        user_id=user_id,
+        role=role,
+        resource="balance_analysis.decision_status",
+        action="write",
+    )
+
+
 def _seed_overview_lineage_fixture(duckdb_path, governance_dir) -> None:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -423,6 +440,7 @@ def test_balance_analysis_current_user_api_uses_same_auth_context_as_status_writ
 
 def test_balance_analysis_decision_status_update_overlays_latest_state(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_balance_decision_scope(tmp_path, monkeypatch, user_id="balance-owner")
 
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     list_response = client.get(
@@ -475,6 +493,44 @@ def test_balance_analysis_decision_status_update_overlays_latest_state(tmp_path,
         "updated_by": "balance-owner",
         "comment": "Reviewed and accepted.",
     }
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_decision_status_update_returns_403_without_scope(tmp_path, monkeypatch):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    sqlite_path = tmp_path / "auth-scope.db"
+    monkeypatch.setenv("MOSS_POSTGRES_DSN", f"sqlite:///{sqlite_path.as_posix()}")
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    list_response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    decision_key = list_response.json()["result"]["rows"][0]["decision_key"]
+
+    response = client.post(
+        "/ui/balance-analysis/decision-items/status",
+        headers={"X-User-Id": "unauthorized-user", "X-User-Role": "viewer"},
+        json={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+            "decision_key": decision_key,
+            "status": "confirmed",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "User is not allowed to update balance-analysis decision status."
 
     get_settings.cache_clear()
 

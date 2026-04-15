@@ -10,7 +10,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from backend.app.governance.settings import get_settings
-from backend.app.security.auth_stub import AuthContext, get_auth_context
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.services.advanced_attribution_service import advanced_attribution_bundle_envelope
 from backend.app.services.balance_analysis_service import (
     BalanceAnalysisRefreshConflictError,
@@ -240,12 +240,23 @@ def update_decision_status(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
+        ensure_user_allowed(
+            auth=auth,
+            settings=settings,
+            resource="balance_analysis.decision_status",
+            action="write",
+        )
         return update_balance_analysis_decision_status(
             duckdb_path=str(settings.duckdb_path),
             governance_dir=str(settings.governance_path),
             update=payload,
             updated_by=auth.user_id,
         ).model_dump(mode="json")
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="User is not allowed to update balance-analysis decision status.",
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RuntimeError as exc:

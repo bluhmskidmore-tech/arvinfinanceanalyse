@@ -1,6 +1,8 @@
 import ast
 from pathlib import Path
 
+from tests.helpers import load_module
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,3 +44,18 @@ def test_worker_bootstrap_loads_canonical_modules_on_import():
     text = bootstrap_path.read_text(encoding="utf-8")
     assert "import_module" in text
     assert "CANONICAL_TASK_MODULES" in text
+    assert "get_broker()" in text
+
+
+def test_broker_uses_redis_broker_in_production_even_under_pytest(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    broker_module.broker = None
+    monkeypatch.setenv("MOSS_ENVIRONMENT", "production")
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+
+    active = broker_module.get_broker()
+
+    assert active.__class__.__name__ == "RedisBroker"

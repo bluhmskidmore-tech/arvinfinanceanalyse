@@ -18,6 +18,7 @@ def test_settings_defaults():
     s = Settings()
     assert s.environment == "development"
     assert s.agent_enabled is False
+    assert s.governance_backend == "jsonl"
     assert s.object_store_mode == "local"
     assert s.ftp_rate_pct == Decimal("1.75")
     assert isinstance(s.governance_path, Path)
@@ -28,6 +29,7 @@ def test_settings_defaults():
 def test_settings_env_overrides(monkeypatch):
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "minio")
     monkeypatch.setenv("MOSS_FTP_RATE_PCT", "2.5")
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", "custom/gov")
@@ -37,6 +39,7 @@ def test_settings_env_overrides(monkeypatch):
     s = Settings()
     assert s.environment == "staging"
     assert s.agent_enabled is True
+    assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")
     assert s.governance_path == Path("custom/gov")

@@ -26,5 +26,5 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
 
 # Ensure the Redis broker is configured before loading actor modules that use
 # direct @dramatiq.actor decoration.
-import_module("backend.app.tasks.broker")
+import_module("backend.app.tasks.broker").get_broker()
 LOADED_TASK_MODULES = tuple(import_module(module_path) for module_path in CANONICAL_TASK_MODULES)

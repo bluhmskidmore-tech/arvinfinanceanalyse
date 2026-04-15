@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     agent_enabled: bool = False
     postgres_dsn: str = DEFAULT_POSTGRES_DSN
     governance_sql_dsn: str = ""
+    governance_backend: str = "jsonl"
     source_preview_governance_backend: str = "jsonl"
     job_state_dsn: str = ""
     redis_dsn: str = "redis://localhost:6379/0"
