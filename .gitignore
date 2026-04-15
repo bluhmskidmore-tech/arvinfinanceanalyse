@@ -13,6 +13,7 @@ frontend/*.js
 frontend/*.js.map
 frontend/*.tsbuildinfo
 __pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
 *.log
@@ -28,6 +29,7 @@ py_temp_pytest/
 
 # Local verification scratch (locks, catalogs)
 py_verify/
+.tmp-lock-case/
 
 # Ephemeral working directories
 tmphv10t71n/
