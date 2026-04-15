@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 
 RATE_INPUT_OVERRIDES: dict[str, str] = {
-    "yield_to_maturity": "decimal",
-    "coupon_rate": "decimal",
-    "interest_rate": "decimal",
+    "yield_to_maturity": "auto",
+    "coupon_rate": "auto",
+    "interest_rate": "auto",
     "interbank_interest_rate": "percent",
 }
 

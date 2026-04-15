@@ -1,4 +1,4 @@
-"""Contract tests for ADB (/api/analysis/adb*) — DuckDB 读模型与 V1 口径对齐。"""
+"""Contract tests for ADB (/api/analysis/adb*)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,18 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
+
+
+BOND_ASSET_CLASS = "\u503a\u5238\u7c7b"
+BOND_GOV = "\u56fd\u503a"
+BOND_CORP = "\u4fe1\u7528\u503a\u5238-\u4f01\u4e1a"
+BOND_CERT = "\u51ed\u8bc1\u5f0f\u56fd\u503a"
+INTERBANK_PLACE = "\u540c\u4e1a\u5b58\u653e"
+POSITION_ASSET = "\u8d44\u4ea7"
+POSITION_LIABILITY = "\u8d1f\u503a"
+INTEREST_FIXED = "\u56fa\u5b9a"
+MONTH_LABEL_JAN = "2025\u5e741\u6708"
+MONTH_LABEL_FEB = "2025\u5e742\u6708"
 
 
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
@@ -27,6 +39,8 @@ def _insert_zqtz(
     bond_type: str,
     market_value: Decimal,
     is_issuance_like: bool,
+    coupon_rate: Decimal = Decimal("0.03"),
+    ytm_value: Decimal = Decimal("0.035"),
 ) -> None:
     conn.execute(
         """
@@ -46,23 +60,23 @@ def _insert_zqtz(
             "p1",
             "cc1",
             "cat",
-            "债券类",
+            BOND_ASSET_CLASS,
             bond_type,
             "issuer-x",
-            "银行",
+            "\u94f6\u884c",
             "AAA",
             "CNY",
             market_value,
             market_value,
             market_value,
             Decimal("0"),
-            Decimal("0.03"),
-            Decimal("0.035"),
+            coupon_rate,
+            ytm_value,
             "2030-01-01",
             None,
             0,
             is_issuance_like,
-            "固定",
+            INTEREST_FIXED,
             "sv-adb",
             "rv-adb",
             "ib-adb",
@@ -122,7 +136,7 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             conn,
             report_date="2025-06-02",
             instrument_code="B1",
-            bond_type="国债",
+            bond_type=BOND_GOV,
             market_value=Decimal("100000000"),
             is_issuance_like=False,
         )
@@ -130,7 +144,7 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             conn,
             report_date="2025-06-03",
             instrument_code="B1",
-            bond_type="国债",
+            bond_type=BOND_GOV,
             market_value=Decimal("200000000"),
             is_issuance_like=False,
         )
@@ -138,8 +152,8 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             conn,
             report_date="2025-06-03",
             position_id="T1",
-            product_type="拆放同业",
-            position_side="资产",
+            product_type="\u62c6\u653e\u540c\u4e1a",
+            position_side=POSITION_ASSET,
             principal=Decimal("50000000"),
             rate=Decimal("2.5"),
         )
@@ -150,44 +164,57 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     main_mod = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main_mod.app)
 
-    r = client.get("/api/analysis/adb", params={"start_date": "2025-06-02", "end_date": "2025-06-03"})
-    assert r.status_code == 200, r.text
-    body = r.json()
+    response = client.get(
+        "/api/analysis/adb",
+        params={"start_date": "2025-06-02", "end_date": "2025-06-03"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
     assert "summary" in body and "trend" in body and "breakdown" in body
     assert body["summary"]["total_avg_assets"] > 0
 
-    c = client.get(
+    comparison = client.get(
         "/api/analysis/adb-comparison",
         params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
     )
-    assert c.status_code == 200, c.text
-    cmp = c.json()
-    assert cmp["num_days"] == 2
-    assert "assets" in cmp and isinstance(cmp["assets"], list)
-    assert cmp["report_date"] == "2025-06-03"
-    assert "assets_breakdown" in cmp and isinstance(cmp["assets_breakdown"], list)
-    assert "liabilities_breakdown" in cmp and isinstance(cmp["liabilities_breakdown"], list)
-    assert "total_spot_assets" in cmp
-    assert "total_avg_assets" in cmp
-    assert "asset_yield" in cmp
-    assert "liability_cost" in cmp
-    assert "net_interest_margin" in cmp
+    assert comparison.status_code == 200, comparison.text
+    payload = comparison.json()
+    assert payload["num_days"] == 2
+    assert payload["report_date"] == "2025-06-03"
+    assert "assets_breakdown" in payload and isinstance(payload["assets_breakdown"], list)
+    assert "liabilities_breakdown" in payload and isinstance(payload["liabilities_breakdown"], list)
+    assert "assets" not in payload
+    assert "liabilities" not in payload
+    assert "deviation" not in payload["assets_breakdown"][0]
+    assert "total_spot_assets" in payload
+    assert "total_avg_assets" in payload
+    assert "asset_yield" in payload
+    assert "liability_cost" in payload
+    assert "net_interest_margin" in payload
 
-    c_alias = client.get(
+    alias = client.get(
         "/api/analysis/adb/comparison",
         params={"start_date": "2025-06-02", "end_date": "2025-06-03", "top_n": 5},
     )
-    assert c_alias.status_code == 200, c_alias.text
-    cmp_alias = c_alias.json()
-    assert cmp_alias["report_date"] == cmp["report_date"]
-    assert cmp_alias["total_spot_assets"] == cmp["total_spot_assets"]
-    assert cmp_alias["total_avg_assets"] == cmp["total_avg_assets"]
+    assert alias.status_code == 200, alias.text
+    alias_payload = alias.json()
+    assert alias_payload["report_date"] == payload["report_date"]
+    assert alias_payload["total_spot_assets"] == payload["total_spot_assets"]
+    assert alias_payload["total_avg_assets"] == payload["total_avg_assets"]
 
-    m = client.get("/api/analysis/adb/monthly", params={"year": 2025})
-    assert m.status_code == 200, m.text
-    mon = m.json()
-    assert mon["year"] == 2025
-    assert "months" in mon and "ytd_avg_assets" in mon
+    monthly = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+    assert monthly.status_code == 200, monthly.text
+    monthly_payload = monthly.json()
+    assert monthly_payload["year"] == 2025
+    assert "months" in monthly_payload and "ytd_avg_assets" in monthly_payload
+    assert "ytd_nim" in monthly_payload
+    assert "ytd_net_interest_margin" not in monthly_payload
+    assert "mom_change_assets" in monthly_payload["months"][0]
+    assert "mom_change_pct_assets" in monthly_payload["months"][0]
+    assert "mom_change_liabilities" in monthly_payload["months"][0]
+    assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
+    assert "assets_mom_change" not in monthly_payload["months"][0]
+    assert "liabilities_mom_change" not in monthly_payload["months"][0]
 
 
 def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
@@ -207,3 +234,136 @@ def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
 
     assert response.status_code == 500, response.text
     assert response.json()["detail"] == "Failed to get adb comparison: adb comparison exploded"
+
+
+def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "adb-rates.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-05-16",
+            instrument_code="B-RATE-1",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    settings_mod = load_module("backend.app.governance.settings", "backend/app/governance/settings.py")
+    settings_mod.get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-05-16", "end_date": "2025-05-16", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["simulated"] is True
+    assert payload["assets_breakdown"][0]["category"] == BOND_CORP
+    assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
+    assert payload["asset_yield"] == 2.4
+
+
+def test_adb_monthly_normalizes_rates_and_exposes_new_contract_fields(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "adb-monthly-rates.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-1",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-15",
+            instrument_code="B-MONTH-NULL",
+            bond_type=BOND_CERT,
+            market_value=Decimal("0"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("0"),
+            ytm_value=Decimal("0"),
+        )
+        _insert_tyw(
+            conn,
+            report_date="2025-01-15",
+            position_id="TYW-LIAB-1",
+            product_type=INTERBANK_PLACE,
+            position_side=POSITION_LIABILITY,
+            principal=Decimal("50000000"),
+            rate=Decimal("1.50"),
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-02-15",
+            instrument_code="B-MONTH-2",
+            bond_type=BOND_CORP,
+            market_value=Decimal("120000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+        _insert_tyw(
+            conn,
+            report_date="2025-02-15",
+            position_id="TYW-LIAB-2",
+            product_type=INTERBANK_PLACE,
+            position_side=POSITION_LIABILITY,
+            principal=Decimal("60000000"),
+            rate=Decimal("1.50"),
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db_path))
+    settings_mod = load_module("backend.app.governance.settings", "backend/app/governance/settings.py")
+    settings_mod.get_settings.cache_clear()
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get("/api/analysis/adb/monthly", params={"year": 2025})
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    first_month = payload["months"][0]
+    second_month = payload["months"][1]
+
+    assert first_month["asset_yield"] == 2.4
+    assert first_month["liability_cost"] == 1.5
+    assert first_month["net_interest_margin"] == 0.9
+    assert first_month["month_label"] == MONTH_LABEL_JAN
+    assert first_month["mom_change_assets"] is None
+    assert first_month["mom_change_pct_assets"] is None
+    assert first_month["mom_change_liabilities"] is None
+    assert first_month["mom_change_pct_liabilities"] is None
+
+    assert second_month["month_label"] == MONTH_LABEL_FEB
+    assert second_month["mom_change_assets"] == 20000000.0
+    assert second_month["mom_change_pct_assets"] == 20.0
+    assert second_month["mom_change_liabilities"] == 10000000.0
+    assert second_month["mom_change_pct_liabilities"] == 20.0
+
+    assert payload["ytd_nim"] == 0.9
+    assert "ytd_net_interest_margin" not in payload
+
+    null_rate_item = next(
+        item for item in first_month["breakdown_assets"] if item["category"] == BOND_CERT
+    )
+    assert null_rate_item["weighted_rate"] is None

@@ -1,11 +1,13 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { WarningFilled } from "@ant-design/icons";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
+  Button,
   Card,
   Col,
+  Input,
   Row,
-  Segmented,
   Select,
   Space,
   Spin,
@@ -18,91 +20,162 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
-  AdbBreakdownItem,
-  AdbComparisonBreakdownItem,
-  AdbComparisonRow,
-  AdbMonthlyItem,
+  AdbCategoryItem,
+  AdbMonthlyBreakdownItem,
+  AdbMonthlyDataItem,
 } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
 
-const { Title, Text } = Typography;
-
-type RangeKey = "7d" | "30d" | "ytd";
-type PageTab = "daily" | "monthly";
-type DailyChartRow = {
-  category: string;
-  spot_yi: number;
-  avg_yi: number;
-  deviation_yi: number;
-};
-type MonthlyBarRow = {
-  category: string;
-  avg_yi: number;
-  weighted_rate?: number | null;
-};
-
+const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
 
-function formatYi(v: number | null | undefined): string {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return `${(v / YI).toFixed(2)} 亿元`;
+type RangeKey = "7d" | "30d" | "ytd" | "custom";
+type PageTab = "daily" | "monthly";
+type BreakdownKind = "asset" | "liability";
+type ComparisonChartRow = { label: string; spot: number; avg: number; deviationPct: number };
+type MonthlyBarRow = { category: string; avgYi: number; weightedRate: number | null };
+
+function formatYi(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${(value / YI).toFixed(2)} 亿元`;
 }
 
-function formatPct(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "—";
-  return `${v.toFixed(2)}%`;
+function formatPct(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${value.toFixed(2)}%`;
 }
 
-function rangeToParams(endDate: string, range: RangeKey): { start_date: string; end_date: string } | null {
-  if (!endDate) return null;
-  const end = new Date(`${endDate}T12:00:00`);
+function formatSignedPct(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  return `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function toDateInput(date: Date): string {
+  return [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, "0"),
+    `${date.getDate()}`.padStart(2, "0"),
+  ].join("-");
+}
+
+function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custom">) {
+  if (!reportDate) return null;
+  const end = new Date(`${reportDate}T12:00:00`);
   if (Number.isNaN(end.getTime())) return null;
-  const yyyy = end.getFullYear();
-  const mm = String(end.getMonth() + 1).padStart(2, "0");
-  const dd = String(end.getDate()).padStart(2, "0");
-  const endStr = `${yyyy}-${mm}-${dd}`;
-  let startStr = endStr;
-  if (range === "7d") {
-    const s = new Date(end);
-    s.setDate(s.getDate() - 6);
-    startStr = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, "0")}-${String(s.getDate()).padStart(2, "0")}`;
-  } else if (range === "30d") {
-    const s = new Date(end);
-    s.setDate(s.getDate() - 29);
-    startStr = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, "0")}-${String(s.getDate()).padStart(2, "0")}`;
-  } else {
-    startStr = `${yyyy}-01-01`;
-  }
-  return { start_date: startStr, end_date: endStr };
+  const start = new Date(end);
+  if (rangeKey === "7d") start.setDate(start.getDate() - 6);
+  if (rangeKey === "30d") start.setDate(start.getDate() - 29);
+  if (rangeKey === "ytd") start.setMonth(0, 1);
+  return { startDate: toDateInput(start), endDate: toDateInput(end) };
 }
 
-function deviationAlert(rows: AdbComparisonRow[]): { show: boolean; detail: string } {
-  const pos = rows.filter((r) => r.deviation > 0);
-  if (pos.length === 0) return { show: false, detail: "" };
-  const top = [...pos].sort((a, b) => b.deviation - a.deviation)[0];
-  const rel = top.avg > 0 ? top.deviation / top.avg : 0;
-  const absOk = top.deviation >= 0.5 * YI;
-  const relOk = rel >= 0.05;
-  if (!absOk && !relOk) return { show: false, detail: "" };
+function buildComparisonOption(rows: ComparisonChartRow[]) {
   return {
-    show: true,
-    detail: `「${top.category}」期末时点高于区间日均约 ${formatYi(top.deviation)}，可能存在窗口粉饰 / 月末冲量 — 请结合业务核实。`,
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (items: { dataIndex: number }[]) => {
+        if (!items.length) return "";
+        const row = rows[items[0].dataIndex];
+        return [
+          row.label,
+          `Spot：${(row.spot / YI).toFixed(2)} 亿元`,
+          `ADB：${(row.avg / YI).toFixed(2)} 亿元`,
+          `偏离度：${formatSignedPct(row.deviationPct)}`,
+        ].join("<br/>");
+      },
+    },
+    legend: { data: ["Spot（期末）", "ADB（日均）"], top: 0 },
+    grid: { left: 24, right: 24, top: 44, bottom: 76 },
+    xAxis: {
+      type: "category",
+      data: rows.map((row) => row.label),
+      axisLabel: { interval: 0, rotate: 20, fontSize: 11 },
+    },
+    yAxis: { type: "value", axisLabel: { formatter: (value: number) => `${(value / YI).toFixed(0)}亿` } },
+    series: [
+      { name: "Spot（期末）", type: "bar", data: rows.map((row) => row.spot), itemStyle: { color: "#3b82f6" }, barGap: "10%" },
+      {
+        name: "ADB（日均）",
+        type: "bar",
+        data: rows.map((row) => row.avg),
+        itemStyle: { color: "#f97316" },
+        label: {
+          show: true,
+          position: "top",
+          formatter: ({ dataIndex }: { dataIndex: number }) => formatSignedPct(rows[dataIndex]?.deviationPct ?? 0),
+          color: "#475569",
+          fontSize: 11,
+        },
+      },
+    ],
   };
 }
 
-function comparisonRowsToBreakdown(rows: AdbComparisonRow[]): AdbComparisonBreakdownItem[] {
-  return rows.map((row) => ({
-    category: row.category,
-    spot_balance: row.spot,
-    avg_balance: row.avg,
-    deviation: row.deviation,
-  }));
+function buildHorizontalOption(rows: MonthlyBarRow[], title: string, color: string) {
+  return {
+    title: { text: title, left: 0, textStyle: { fontSize: 13, fontWeight: 600 } },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (items: { dataIndex: number }[]) => {
+        if (!items.length) return "";
+        const row = rows[items[0].dataIndex];
+        return [row.category, `日均：${row.avgYi.toFixed(2)} 亿元`, `加权利率：${formatPct(row.weightedRate)}`].join("<br/>");
+      },
+    },
+    grid: { left: 120, right: 24, top: 44, bottom: 24 },
+    xAxis: { type: "value", axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` } },
+    yAxis: { type: "category", data: rows.map((row) => row.category), axisLabel: { fontSize: 11 } },
+    series: [
+      {
+        type: "bar",
+        data: rows.map((row) => row.avgYi),
+        itemStyle: { color },
+        label: { show: true, position: "right", formatter: ({ dataIndex }: { dataIndex: number }) => rows[dataIndex]?.avgYi.toFixed(2) ?? "0.00" },
+      },
+    ],
+  };
+}
+
+function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
+  return [
+    { title: "分类", dataIndex: "category", key: "category" },
+    { title: "Spot(亿元)", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
+    { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
+  ];
+}
+
+function buildMonthlyBreakdownColumns(kind: BreakdownKind): ColumnsType<AdbMonthlyBreakdownItem> {
+  return [
+    { title: "分类", dataIndex: "category", key: "category" },
+    { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number | null | undefined) => (value === null || value === undefined ? "—" : value.toFixed(2)) },
+    { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
+  ];
+}
+
+function buildMonthlyRows(breakdown: AdbMonthlyBreakdownItem[]): MonthlyBarRow[] {
+  return breakdown
+    .slice()
+    .sort((left, right) => right.avg_balance - left.avg_balance)
+    .slice(0, 10)
+    .map((row) => ({ category: row.category, avgYi: row.avg_balance / YI, weightedRate: row.weighted_rate ?? null }));
 }
 
 export default function AverageBalanceView() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+  const [selectedReportDate, setSelectedReportDate] = useState("");
+  const [activeTab, setActiveTab] = useState<PageTab>("daily");
+  const [rangeKey, setRangeKey] = useState<RangeKey>("ytd");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedMonth, setSelectedMonth] = useState("");
 
   const datesQuery = useQuery({
     queryKey: ["average-balance", "balance-analysis-dates", client.mode],
@@ -112,48 +185,37 @@ export default function AverageBalanceView() {
 
   const dateOptions = useMemo(() => {
     const dates = datesQuery.data?.result.report_dates ?? [];
-    if (explicitReportDate && !dates.includes(explicitReportDate)) {
-      return [explicitReportDate, ...dates];
-    }
+    if (explicitReportDate && !dates.includes(explicitReportDate)) return [explicitReportDate, ...dates];
     return dates;
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
 
-  const [selectedReportDate, setSelectedReportDate] = useState("");
   const reportDate = useMemo(() => {
     if (explicitReportDate) return explicitReportDate;
     return selectedReportDate || datesQuery.data?.result.report_dates[0] || "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate, selectedReportDate]);
 
-  const [range, setRange] = useState<RangeKey>("30d");
-  const [activeTab, setActiveTab] = useState<PageTab>("daily");
-  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
-  const [expandedMonth, setExpandedMonth] = useState<string | null>(null);
-  const [selectedMonthForBreakdown, setSelectedMonthForBreakdown] = useState("");
+  useEffect(() => {
+    if (rangeKey === "custom") return;
+    const range = buildPresetRange(reportDate, rangeKey);
+    if (!range) return;
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  }, [rangeKey, reportDate]);
 
-  const rangeParams = useMemo(() => rangeToParams(reportDate, range), [reportDate, range]);
+  useEffect(() => {
+    const year = Number(reportDate.slice(0, 4));
+    if (Number.isFinite(year) && year > 0) setSelectedYear(year);
+  }, [reportDate]);
 
-  const adbQuery = useQuery({
-    queryKey: ["average-balance", "adb", client.mode, rangeParams?.start_date, rangeParams?.end_date],
-    queryFn: async () => {
-      const p = rangeParams!;
-      return client.getAdb({ startDate: p.start_date, endDate: p.end_date });
-    },
-    enabled: activeTab === "daily" && Boolean(rangeParams),
-    retry: false,
-  });
-
-  const cmpQuery = useQuery({
-    queryKey: ["average-balance", "adb-cmp", client.mode, rangeParams?.start_date, rangeParams?.end_date],
-    queryFn: async () => {
-      const p = rangeParams!;
-      return client.getAdbComparison({ startDate: p.start_date, endDate: p.end_date, topN: 20 });
-    },
-    enabled: activeTab === "daily" && Boolean(rangeParams),
+  const comparisonQuery = useQuery({
+    queryKey: ["average-balance", "comparison", client.mode, startDate, endDate],
+    queryFn: () => client.getAdbComparison(startDate, endDate),
+    enabled: activeTab === "daily" && Boolean(startDate && endDate),
     retry: false,
   });
 
   const monthlyQuery = useQuery({
-    queryKey: ["average-balance", "adb-monthly", client.mode, selectedYear],
+    queryKey: ["average-balance", "monthly", client.mode, selectedYear],
     queryFn: () => client.getAdbMonthly(selectedYear),
     enabled: activeTab === "monthly",
     retry: false,
@@ -161,775 +223,334 @@ export default function AverageBalanceView() {
 
   useEffect(() => {
     const months = monthlyQuery.data?.months ?? [];
-    if (months.length > 0 && !selectedMonthForBreakdown) {
-      setSelectedMonthForBreakdown(months[0].month);
+    if (!months.length) {
+      setSelectedMonth("");
+      return;
     }
-  }, [monthlyQuery.data?.months, selectedMonthForBreakdown]);
+    if (!selectedMonth || !months.some((item) => item.month === selectedMonth)) {
+      setSelectedMonth(months[0].month);
+    }
+  }, [monthlyQuery.data?.months, selectedMonth]);
 
-  const selectedMonthData = useMemo(() => {
-    return monthlyQuery.data?.months.find((m) => m.month === selectedMonthForBreakdown) ?? null;
-  }, [monthlyQuery.data?.months, selectedMonthForBreakdown]);
-  const adbAssetRows = useMemo(
-    () => (adbQuery.data?.breakdown ?? []).filter((item) => item.side === "Asset"),
-    [adbQuery.data?.breakdown],
-  );
-  const adbLiabilityRows = useMemo(
-    () => (adbQuery.data?.breakdown ?? []).filter((item) => item.side === "Liability"),
-    [adbQuery.data?.breakdown],
-  );
-
-  const assetComparisonRows = useMemo(
-    () => cmpQuery.data?.assets_breakdown ?? comparisonRowsToBreakdown(cmpQuery.data?.assets ?? []),
-    [cmpQuery.data?.assets_breakdown, cmpQuery.data?.assets],
-  );
-  const liabilityComparisonRows = useMemo(
-    () => cmpQuery.data?.liabilities_breakdown ?? comparisonRowsToBreakdown(cmpQuery.data?.liabilities ?? []),
-    [cmpQuery.data?.liabilities_breakdown, cmpQuery.data?.liabilities],
-  );
-  const totalSpotAssets = cmpQuery.data?.total_spot_assets ?? adbQuery.data?.summary.end_spot_assets ?? 0;
-  const totalAvgAssets = cmpQuery.data?.total_avg_assets ?? adbQuery.data?.summary.total_avg_assets ?? 0;
-  const totalSpotLiabilities = cmpQuery.data?.total_spot_liabilities ?? adbQuery.data?.summary.end_spot_liabilities ?? 0;
-  const totalAvgLiabilities = cmpQuery.data?.total_avg_liabilities ?? adbQuery.data?.summary.total_avg_liabilities ?? 0;
+  const dailyData = comparisonQuery.data;
+  const dailyBootstrapBlocked = !explicitReportDate && datesQuery.isError;
+  const canRunDailyQuery = Boolean(startDate && endDate) && !dailyBootstrapBlocked;
   const assetDeviationPct =
-    totalAvgAssets > 0 ? ((totalSpotAssets - totalAvgAssets) / totalAvgAssets) * 100 : 0;
+    dailyData && dailyData.total_avg_assets > 0
+      ? ((dailyData.total_spot_assets - dailyData.total_avg_assets) / dailyData.total_avg_assets) * 100
+      : 0;
   const liabilityDeviationPct =
-    totalAvgLiabilities > 0
-      ? ((totalSpotLiabilities - totalAvgLiabilities) / totalAvgLiabilities) * 100
+    dailyData && dailyData.total_avg_liabilities > 0
+      ? ((dailyData.total_spot_liabilities - dailyData.total_avg_liabilities) / dailyData.total_avg_liabilities) * 100
       : 0;
 
-  const cmpAssets = useMemo(
-    () =>
-      assetComparisonRows.map((it) => ({
-        category: it.category,
-        spot_yi: (it.spot_balance || 0) / YI,
-        avg_yi: (it.avg_balance || 0) / YI,
-        deviation_yi: ((it.deviation ?? it.spot_balance - it.avg_balance) || 0) / YI,
-      })),
-    [assetComparisonRows],
-  );
-  const cmpLiab = useMemo(
-    () =>
-      liabilityComparisonRows.map((it) => ({
-        category: it.category,
-        spot_yi: (it.spot_balance || 0) / YI,
-        avg_yi: (it.avg_balance || 0) / YI,
-        deviation_yi: ((it.deviation ?? it.spot_balance - it.avg_balance) || 0) / YI,
-      })),
-    [liabilityComparisonRows],
-  );
-  const adbAssetTotal = useMemo(
-    () => adbAssetRows.reduce((sum, row) => sum + (Number(row.avg_balance) || 0), 0),
-    [adbAssetRows],
-  );
-  const adbLiabilityTotal = useMemo(
-    () => adbLiabilityRows.reduce((sum, row) => sum + (Number(row.avg_balance) || 0), 0),
-    [adbLiabilityRows],
-  );
-  const adbAssetMax = useMemo(
-    () => adbAssetRows.reduce((max, row) => Math.max(max, Number(row.avg_balance) || 0), 0),
-    [adbAssetRows],
-  );
-  const adbLiabilityMax = useMemo(
-    () => adbLiabilityRows.reduce((max, row) => Math.max(max, Number(row.avg_balance) || 0), 0),
-    [adbLiabilityRows],
-  );
-  const hasComparisonBreakdown = assetComparisonRows.length > 0 || liabilityComparisonRows.length > 0;
+  const comparisonRows = useMemo<ComparisonChartRow[]>(() => {
+    if (!dailyData) return [];
+    const mapRows = (items: AdbCategoryItem[], prefix: string) =>
+      items.map((item) => ({
+        label: `${prefix} · ${item.category}`,
+        spot: item.spot_balance,
+        avg: item.avg_balance,
+        deviationPct: item.avg_balance > 0 ? ((item.spot_balance - item.avg_balance) / item.avg_balance) * 100 : 0,
+      }));
+    return [...mapRows(dailyData.assets_breakdown, "资产"), ...mapRows(dailyData.liabilities_breakdown, "负债")];
+  }, [dailyData]);
 
-  const dressingAssets = useMemo(
-    () => deviationAlert(cmpQuery.data?.assets ?? []),
-    [cmpQuery.data?.assets],
-  );
-  const dressingLiab = useMemo(
-    () => deviationAlert(cmpQuery.data?.liabilities ?? []),
-    [cmpQuery.data?.liabilities],
-  );
+  const monthlyData = monthlyQuery.data;
+  const selectedMonthData = monthlyData?.months.find((item) => item.month === selectedMonth) ?? null;
+  const monthlyAssetRows = useMemo(() => buildMonthlyRows(selectedMonthData?.breakdown_assets ?? []), [selectedMonthData?.breakdown_assets]);
+  const monthlyLiabilityRows = useMemo(() => buildMonthlyRows(selectedMonthData?.breakdown_liabilities ?? []), [selectedMonthData?.breakdown_liabilities]);
 
-  const trendOption = useMemo(() => {
-    const data = adbQuery.data?.trend ?? [];
-    return {
-      tooltip: { trigger: "axis" },
-      legend: { data: ["每日规模", "30日滚动均值"] },
-      grid: { left: 48, right: 24, top: 40, bottom: 48 },
-      xAxis: { type: "category", data: data.map((d) => d.date) },
-      yAxis: {
-        type: "value",
-        axisLabel: { formatter: (v: number) => `${(v / YI).toFixed(0)}` },
-        name: "亿元",
+  const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
+  const dailyLiabilityColumns = useMemo(() => buildDetailColumns("liability"), []);
+  const monthlyAssetColumns = useMemo(() => buildMonthlyBreakdownColumns("asset"), []);
+  const monthlyLiabilityColumns = useMemo(() => buildMonthlyBreakdownColumns("liability"), []);
+
+  const monthlyTableColumns: ColumnsType<AdbMonthlyDataItem> = useMemo(
+    () => [
+      { title: "月份", dataIndex: "month_label", key: "month_label", render: (value: string) => <Text strong>{value}</Text> },
+      { title: "天数", dataIndex: "num_days", key: "num_days", align: "right" },
+      { title: "日均资产(亿元)", dataIndex: "avg_assets", key: "avg_assets", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+      { title: "日均负债(亿元)", dataIndex: "avg_liabilities", key: "avg_liabilities", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+      { title: "资产收益率", dataIndex: "asset_yield", key: "asset_yield", align: "right", render: (value: number | null) => formatPct(value) },
+      { title: "负债付息率", dataIndex: "liability_cost", key: "liability_cost", align: "right", render: (value: number | null) => formatPct(value) },
+      {
+        title: "NIM",
+        dataIndex: "net_interest_margin",
+        key: "net_interest_margin",
+        align: "right",
+        render: (value: number | null) => <Text type={value !== null && value < 0 ? "danger" : undefined}>{formatPct(value)}</Text>,
       },
-      series: [
-        {
-          name: "每日规模",
-          type: "line",
-          smooth: true,
-          areaStyle: { opacity: 0.12 },
-          data: data.map((d) => d.daily_balance),
-        },
-        {
-          name: "30日滚动均值",
-          type: "line",
-          smooth: true,
-          data: data.map((d) => d.moving_average_30d),
-        },
-      ],
-    };
-  }, [adbQuery.data?.trend]);
-
-  function barOption(rows: DailyChartRow[], title: string) {
-    return {
-      title: { text: title, left: 0, textStyle: { fontSize: 13 } },
-      tooltip: {
-        trigger: "axis",
-        formatter: (items: { name: string; value: number; seriesName: string; dataIndex: number }[]) => {
-          if (!items?.length) return "";
-          const idx = items[0].dataIndex;
-          const row = rows[idx];
-          if (!row) return "";
-          const dev = row.spot_yi - row.avg_yi;
-          const hint =
-            dev > 0
-              ? `时点较日均高 ${dev.toFixed(2)} 亿元（关注窗口粉饰 / 月末冲量）`
-              : dev < 0
-                ? `时点较日均低 ${Math.abs(dev).toFixed(2)} 亿元`
-                : "时点与日均基本一致";
-          return `${row.category}<br/>时点：${row.spot_yi.toFixed(2)} 亿<br/>日均：${row.avg_yi.toFixed(2)} 亿<br/><span style="color:${dev > 0 ? "#b91c1c" : "#1d4ed8"}">${hint}</span>`;
-        },
+      {
+        title: "资产环比",
+        dataIndex: "mom_change_pct_assets",
+        key: "mom_change_pct_assets",
+        align: "right",
+        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_assets ?? row.mom_change_assets),
       },
-      grid: { left: 12, right: 12, top: 36, bottom: 72 },
-      xAxis: {
-        type: "category",
-        data: rows.map((r) => r.category),
-        axisLabel: { rotate: 25, fontSize: 10 },
+      {
+        title: "负债环比",
+        dataIndex: "mom_change_pct_liabilities",
+        key: "mom_change_pct_liabilities",
+        align: "right",
+        render: (_value: number | null, row) => formatSignedPct(row.mom_change_pct_liabilities ?? row.mom_change_liabilities),
       },
-      yAxis: { type: "value", name: "亿元" },
-      series: [
-        { name: "时点", type: "bar", data: rows.map((r) => r.spot_yi), itemStyle: { color: "#2563eb" } },
-        { name: "日均", type: "bar", data: rows.map((r) => r.avg_yi), itemStyle: { color: "#93c5fd" } },
-      ],
-    };
-  }
-
-  function horizontalBarOption(rows: MonthlyBarRow[], title: string, color: string) {
-    return {
-      title: { text: title, left: 0, textStyle: { fontSize: 13 } },
-      tooltip: {
-        trigger: "axis",
-        axisPointer: { type: "shadow" },
-        formatter: (items: { dataIndex: number }[]) => {
-          if (!items?.length) return "";
-          const row = rows[items[0].dataIndex];
-          if (!row) return "";
-          return [
-            row.category,
-            `日均：${row.avg_yi.toFixed(2)} 亿`,
-            `加权利率：${formatPct(row.weighted_rate ?? null)}`,
-          ].join("<br/>");
-        },
-      },
-      grid: { left: 100, right: 20, top: 36, bottom: 24 },
-      xAxis: { type: "value", name: "亿元" },
-      yAxis: {
-        type: "category",
-        data: rows.map((row) => row.category),
-        axisLabel: { fontSize: 11 },
-      },
-      series: [
-        {
-          type: "bar",
-          data: rows.map((row) => row.avg_yi),
-          itemStyle: { color },
-          label: {
-            show: true,
-            position: "right",
-            formatter: ({ dataIndex }: { dataIndex: number }) => rows[dataIndex]?.avg_yi.toFixed(2) ?? "0.00",
-          },
-        },
-      ],
-    };
-  }
-
-  const breakdownColumns: ColumnsType<AdbBreakdownItem> = [
-    { title: "类别", dataIndex: "category", key: "category" },
-    {
-      title: "日均(亿元)",
-      dataIndex: "avg_balance",
-      key: "avg_balance",
-      align: "right",
-      render: (v: number) => (v / YI).toFixed(2),
-    },
-    {
-      title: "占比",
-      key: "pct",
-      align: "right",
-      render: (_: unknown, row) => {
-        const total = row.side === "Asset" ? adbAssetTotal : adbLiabilityTotal;
-        const pct = total > 0 ? (row.avg_balance / total) * 100 : 0;
-        return `${pct.toFixed(2)}%`;
-      },
-    },
-    {
-      title: "规模条",
-      key: "bar",
-      render: (_: unknown, row) => {
-        const max = row.side === "Asset" ? adbAssetMax : adbLiabilityMax;
-        const total = row.side === "Asset" ? adbAssetTotal : adbLiabilityTotal;
-        const pct = total > 0 ? (row.avg_balance / total) * 100 : 0;
-        const width = max > 0 ? Math.min(100, (row.avg_balance / max) * 100) : 0;
-        return (
-          <div>
-            <Text type="secondary" style={{ fontSize: 11 }}>
-              {pct.toFixed(1)}%
-            </Text>
-            <div style={{ height: 6, background: "#f1f5f9", borderRadius: 2 }}>
-              <div
-                style={{
-                  width: `${width}%`,
-                  height: 6,
-                  borderRadius: 2,
-                  background: row.side === "Asset" ? "#2563eb" : "#dc2626",
-                }}
-              />
-            </div>
-          </div>
-        );
-      },
-    },
-  ];
-
-  const dailyBreakdownColumns: ColumnsType<AdbComparisonBreakdownItem> = [
-    { title: "类别", dataIndex: "category", key: "category" },
-    {
-      title: "时点(亿元)",
-      dataIndex: "spot_balance",
-      key: "spot_balance",
-      align: "right",
-      render: (v: number) => (v / YI).toFixed(2),
-    },
-    {
-      title: "日均(亿元)",
-      dataIndex: "avg_balance",
-      key: "avg_balance",
-      align: "right",
-      render: (v: number) => (v / YI).toFixed(2),
-    },
-    {
-      title: "占比",
-      dataIndex: "proportion",
-      key: "proportion",
-      align: "right",
-      render: (v: number | null | undefined) => `${(v ?? 0).toFixed(2)}%`,
-    },
-    {
-      title: "加权利率",
-      dataIndex: "weighted_rate",
-      key: "weighted_rate",
-      align: "right",
-      render: (v: number | null | undefined) => formatPct(v ?? null),
-    },
-  ];
-
-  const monthlyAssetChartRows = useMemo(
-    () =>
-      (selectedMonthData?.breakdown_assets ?? [])
-        .slice()
-        .sort((a, b) => b.avg_balance - a.avg_balance)
-        .slice(0, 10)
-        .map((row) => ({
-          category: row.category,
-          avg_yi: row.avg_balance / YI,
-          weighted_rate: row.weighted_rate,
-        })),
-    [selectedMonthData?.breakdown_assets],
-  );
-  const monthlyLiabilityChartRows = useMemo(
-    () =>
-      (selectedMonthData?.breakdown_liabilities ?? [])
-        .slice()
-        .sort((a, b) => b.avg_balance - a.avg_balance)
-        .slice(0, 10)
-        .map((row) => ({
-          category: row.category,
-          avg_yi: row.avg_balance / YI,
-          weighted_rate: row.weighted_rate,
-        })),
-    [selectedMonthData?.breakdown_liabilities],
+    ],
+    [],
   );
 
-  const monthlyColumns: ColumnsType<AdbMonthlyItem> = [
-    {
-      title: "月份",
-      dataIndex: "month_label",
-      key: "ml",
-      render: (t: string) => <Text strong>{t}</Text>,
-    },
-    { title: "日均资产", dataIndex: "avg_assets", key: "aa", align: "right", render: (v: number) => formatYi(v) },
-    { title: "日均负债", dataIndex: "avg_liabilities", key: "al", align: "right", render: (v: number) => formatYi(v) },
-    {
-      title: "资产环比",
-      dataIndex: "assets_mom_change",
-      key: "am",
-      align: "right",
-      render: (v: number | null) =>
-        v === null || v === undefined ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`,
-    },
-    {
-      title: "负债环比",
-      dataIndex: "liabilities_mom_change",
-      key: "lm",
-      align: "right",
-      render: (v: number | null) =>
-        v === null || v === undefined ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`,
-    },
-    {
-      title: "收益率",
-      dataIndex: "asset_yield",
-      key: "ay",
-      align: "right",
-      render: (v: number | null) => formatPct(v),
-    },
-    {
-      title: "付息率",
-      dataIndex: "liability_cost",
-      key: "lc",
-      align: "right",
-      render: (v: number | null) => formatPct(v),
-    },
-    {
-      title: "净息差",
-      dataIndex: "net_interest_margin",
-      key: "nim",
-      align: "right",
-      render: (v: number | null) => (
-        <Text type={v !== null && v < 0 ? "danger" : undefined}>{formatPct(v)}</Text>
-      ),
-    },
-    { title: "天数", dataIndex: "num_days", key: "nd", align: "right" },
-  ];
+  const yearOptions = useMemo(() => {
+    const reportYear = Number(reportDate.slice(0, 4));
+    const currentYear = new Date().getFullYear();
+    return Array.from(new Set([currentYear - 2, currentYear - 1, currentYear, reportYear].filter((item) => Number.isFinite(item) && item > 0)))
+      .sort((left, right) => right - left)
+      .map((item) => ({ label: `${item}`, value: item }));
+  }, [reportDate]);
 
-  const loadingDaily = adbQuery.isLoading || datesQuery.isLoading;
-  const errorDaily = adbQuery.error ? String(adbQuery.error) : null;
+  const applyPreset = (nextKey: Exclude<RangeKey, "custom">) => {
+    setRangeKey(nextKey);
+    const range = buildPresetRange(reportDate, nextKey);
+    if (!range) return;
+    setStartDate(range.startDate);
+    setEndDate(range.endDate);
+  };
+
+  const onCustomRangeChange = (field: "start" | "end", value: string) => {
+    setRangeKey("custom");
+    if (field === "start") {
+      setStartDate(value);
+      return;
+    }
+    setEndDate(value);
+  };
+
+  const deviationWarning =
+    assetDeviationPct > 5 || liabilityDeviationPct > 5
+      ? "偏离度 > 5%，存在“窗口粉饰”风险，请结合实际头寸变化核查。"
+      : null;
+  const dailyErrorMessage = dailyBootstrapBlocked
+    ? "可用报告日加载失败，请先恢复报告日列表后再查看日均分析。"
+    : datesQuery.isError
+      ? "可用报告日加载失败"
+      : comparisonQuery.isError
+        ? "日均分析加载失败"
+        : null;
 
   return (
-    <div style={{ padding: 16 }}>
-      <Space direction="vertical" size="large" style={{ width: "100%" }}>
-        <Row justify="space-between" align="middle" gutter={[16, 16]}>
-          <Col flex="auto">
-            <Title level={3} style={{ margin: 0 }}>
-              日均资产负债（ADB）
-            </Title>
-            <Text type="secondary">
-              {activeTab === "daily" && rangeParams
-                ? `区间：${rangeParams.start_date} ~ ${rangeParams.end_date}`
-                : `${selectedYear} 年度月度统计`}
-            </Text>
-          </Col>
-          <Col>
-            <Tabs
-              activeKey={activeTab}
-              onChange={(k) => setActiveTab(k as PageTab)}
-              items={[
-                { key: "daily", label: "日均分析" },
-                { key: "monthly", label: "月度统计" },
-              ]}
-            />
-          </Col>
-          {activeTab === "daily" && (
-            <Col>
-              <Space>
-                <Text type="secondary">报告日</Text>
-                <Select
-                  style={{ minWidth: 160 }}
-                  value={reportDate || undefined}
-                  options={dateOptions.map((d) => ({ label: d, value: d }))}
-                  onChange={(v) => setSelectedReportDate(v)}
-                  disabled={Boolean(explicitReportDate)}
-                  placeholder="选择日期"
-                />
-              </Space>
-            </Col>
-          )}
-        </Row>
+    <section data-testid="average-balance-page">
+      <div style={{ marginBottom: 24 }}>
+        <Title level={2} style={{ margin: 0 }}>
+          日均管理
+        </Title>
+        <Paragraph style={{ marginTop: 8, marginBottom: 0, maxWidth: 920, color: "#5c6b82" }}>
+          聚焦 Spot vs ADB 偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，不在前端补算正式金融口径。
+        </Paragraph>
+      </div>
 
-        {activeTab === "daily" && (
-          <>
-            {errorDaily && (
-              <Alert type="error" message="日均分析加载失败" description={errorDaily} showIcon />
-            )}
-            <Segmented<RangeKey>
-              value={range}
-              onChange={(v) => setRange(v)}
-              options={[
-                { label: "近7天", value: "7d" },
-                { label: "近30天", value: "30d" },
-                { label: "本年迄今(YTD)", value: "ytd" },
-              ]}
-            />
-
-            {loadingDaily ? (
-              <Spin tip="加载中…" />
-            ) : (
-              <>
-                <Row gutter={[16, 16]}>
-                  {[
-                    ["资产偏离度", assetDeviationPct],
-                    ["负债偏离度", liabilityDeviationPct],
-                    ["资产收益率", cmpQuery.data?.asset_yield ?? null],
-                    ["负债付息率", cmpQuery.data?.liability_cost ?? null],
-                    ["NIM", cmpQuery.data?.net_interest_margin ?? null],
-                  ].map(([label, val]) => (
-                    <Col xs={24} sm={12} lg={4} key={String(label)}>
-                      <Card size="small">
-                        <Text type="secondary">{label}</Text>
-                        <Title
-                          level={4}
-                          style={{ marginTop: 8 }}
-                          type={typeof val === "number" && val < 0 ? "danger" : undefined}
-                        >
-                          {formatPct(typeof val === "number" ? val : null)}
-                        </Title>
-                      </Card>
+      <Tabs
+        activeKey={activeTab}
+        onChange={(key) => setActiveTab(key as PageTab)}
+        destroyOnHidden
+        items={[
+          {
+            key: "daily",
+            label: "日均分析",
+            children: (
+              <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                <Card size="small">
+                  <Row gutter={[16, 16]} align="middle" justify="space-between">
+                    <Col flex="auto">
+                      <Space wrap>
+                        <Text type="secondary">报告日</Text>
+                        <Select
+                          aria-label="adb-report-date"
+                          style={{ minWidth: 160 }}
+                          value={reportDate || undefined}
+                          options={dateOptions.map((item) => ({ label: item, value: item }))}
+                          onChange={setSelectedReportDate}
+                          disabled={Boolean(explicitReportDate)}
+                          placeholder="选择日期"
+                        />
+                        <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7D</Button>
+                        <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30D</Button>
+                        <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>YTD</Button>
+                        <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
+                        <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
+                      </Space>
                     </Col>
-                  ))}
-                </Row>
-
-                <Row gutter={[16, 16]}>
-                  {[
-                    ["资产期末时点", totalSpotAssets],
-                    ["资产区间日均", totalAvgAssets],
-                    ["负债期末时点", totalSpotLiabilities],
-                    ["负债区间日均", totalAvgLiabilities],
-                  ].map(([label, val]) => (
-                    <Col xs={24} sm={12} lg={6} key={String(label)}>
-                      <Card size="small">
-                        <Text type="secondary">{label}</Text>
-                        <Title level={4} style={{ marginTop: 8 }}>
-                          {formatYi(val as number)}
-                        </Title>
-                      </Card>
+                    <Col>
+                      <Text strong>有效天数：{dailyData?.num_days ?? "—"} 天</Text>
                     </Col>
-                  ))}
-                </Row>
-
-                <Card title="资产规模趋势（Spot vs 滚动日均）" size="small">
-                  <ReactECharts option={trendOption} style={{ height: 360 }} notMerge lazyUpdate />
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    浅线：每日实际规模；深线：30日滚动均值（不足 30 天按可用窗口）。Y 轴单位：亿元。
-                  </Text>
+                  </Row>
+                  {dailyData?.simulated ? (
+                    <Alert style={{ marginTop: 16 }} type="info" showIcon message="当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑" />
+                  ) : null}
                 </Card>
 
-                {(dressingAssets.show || dressingLiab.show) && (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    message="窗口粉饰风险提示"
-                    description={
-                      <div>
-                        {dressingAssets.show && <div>资产端：{dressingAssets.detail}</div>}
-                        {dressingLiab.show && <div>负债端：{dressingLiab.detail}</div>}
-                      </div>
-                    }
-                  />
-                )}
+                {datesQuery.isLoading || comparisonQuery.isLoading ? <Spin /> : null}
+                {dailyErrorMessage ? <Alert type="error" showIcon message={dailyErrorMessage} /> : null}
+                {!datesQuery.isLoading &&
+                !datesQuery.isError &&
+                !explicitReportDate &&
+                dateOptions.length === 0 ? (
+                  <Alert type="warning" showIcon message="暂无可用报告日，暂无法展示日均分析。" />
+                ) : null}
 
-                <Card
-                  title="时点 vs 日均偏离（按类别）"
-                  size="small"
-                  extra={
-                    <Space direction="vertical" align="end" size={0}>
-                      {cmpQuery.data?.simulated && (
-                        <Text type="warning" style={{ fontSize: 12 }}>
-                          当前区间仅 1 天：已启用稳态模拟日均（与 V1 一致，便于展示对比逻辑）
-                        </Text>
-                      )}
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        Spot=期末时点；Avg=区间日均（元口径聚合，图内为亿元）
-                      </Text>
-                    </Space>
-                  }
-                >
-                  {cmpQuery.isLoading ? (
-                    <Spin />
-                  ) : cmpQuery.isError ? (
-                    <Alert type="error" message={String(cmpQuery.error)} />
-                  ) : (
+                {canRunDailyQuery && dailyData ? (
+                  <>
+                    <Alert type="info" showIcon message={`口径说明：Spot=期末（${dailyData.end_date}）时点规模；Avg=区间日均规模`} />
+                    {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
+
                     <Row gutter={[16, 16]}>
-                      <Col xs={24} lg={12}>
-                        <ReactECharts
-                          option={barOption(cmpAssets, "资产端 Top偏离")}
-                          style={{ height: 380 }}
-                          notMerge
-                          lazyUpdate
-                        />
+                      {[
+                        { title: "Spot 总资产", value: formatYi(dailyData.total_spot_assets) },
+                        { title: "ADB 总资产", value: formatYi(dailyData.total_avg_assets) },
+                        { title: "偏离度（资产）", value: formatSignedPct(assetDeviationPct), danger: assetDeviationPct > 5 },
+                        { title: "Spot 总负债", value: formatYi(dailyData.total_spot_liabilities) },
+                        { title: "ADB 总负债", value: formatYi(dailyData.total_avg_liabilities) },
+                        { title: "偏离度（负债）", value: formatSignedPct(liabilityDeviationPct), danger: liabilityDeviationPct > 5 },
+                      ].map((item) => (
+                        <Col xs={24} sm={12} xl={8} key={item.title}>
+                          <Card size="small">
+                            <Text type="secondary">{item.title}</Text>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                              <Title level={4} style={{ margin: 0 }} type={item.danger ? "danger" : undefined}>
+                                {item.value}
+                              </Title>
+                              {item.danger ? <WarningFilled style={{ color: "#cf1322", fontSize: 16 }} /> : null}
+                            </div>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    <Row gutter={[16, 16]}>
+                      {[
+                        { title: "资产收益率（年化）", value: formatPct(dailyData.asset_yield) },
+                        { title: "负债付息率（年化）", value: formatPct(dailyData.liability_cost) },
+                        { title: "NIM（年化）", value: formatPct(dailyData.net_interest_margin), danger: dailyData.net_interest_margin !== null && dailyData.net_interest_margin < 0 },
+                      ].map((item) => (
+                        <Col xs={24} md={8} key={item.title}>
+                          <Card size="small">
+                            <Text type="secondary">{item.title}</Text>
+                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }} type={item.danger ? "danger" : undefined}>
+                              {item.value}
+                            </Title>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    <Card title="Spot vs ADB 偏离对比" size="small">
+                      <ReactECharts option={buildComparisonOption(comparisonRows)} style={{ height: 420 }} notMerge lazyUpdate />
+                    </Card>
+
+                    <Row gutter={[16, 16]}>
+                      <Col xs={24} xl={12}>
+                        <Card title="资产端分类明细" size="small">
+                          <Table size="small" pagination={false} rowKey={(row) => `asset-${row.category}`} columns={dailyAssetColumns} dataSource={dailyData.assets_breakdown} locale={{ emptyText: "暂无数据" }} />
+                        </Card>
                       </Col>
-                      <Col xs={24} lg={12}>
-                        <ReactECharts
-                          option={barOption(cmpLiab, "负债端 Top 偏离")}
-                          style={{ height: 380 }}
-                          notMerge
-                          lazyUpdate
-                        />
+                      <Col xs={24} xl={12}>
+                        <Card title="负债端分类明细" size="small">
+                          <Table size="small" pagination={false} rowKey={(row) => `liability-${row.category}`} columns={dailyLiabilityColumns} dataSource={dailyData.liabilities_breakdown} locale={{ emptyText: "暂无数据" }} />
+                        </Card>
                       </Col>
                     </Row>
-                  )}
+                  </>
+                ) : null}
+              </Space>
+            ),
+          },
+          {
+            key: "monthly",
+            label: "月度统计",
+            children: (
+              <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                <Card size="small">
+                  <Space wrap>
+                    <Text type="secondary">年份</Text>
+                    <Select aria-label="adb-year" style={{ width: 140 }} value={selectedYear} options={yearOptions} onChange={setSelectedYear} />
+                  </Space>
                 </Card>
 
-                <Row gutter={[16, 16]}>
-                  <Col xs={24} lg={12}>
-                    <Card title="资产端分类日均规模" size="small">
-                      <Table
-                        size="small"
-                        pagination={false}
-                        rowKey={(row) => `a-${row.category}`}
-                        columns={hasComparisonBreakdown ? dailyBreakdownColumns : breakdownColumns}
-                        dataSource={hasComparisonBreakdown ? assetComparisonRows : adbAssetRows}
-                        locale={{ emptyText: "暂无数据" }}
-                      />
-                    </Card>
-                  </Col>
-                  <Col xs={24} lg={12}>
-                    <Card title="负债端分类日均规模" size="small">
-                      <Table
-                        size="small"
-                        pagination={false}
-                        rowKey={(row) => `l-${row.category}`}
-                        columns={hasComparisonBreakdown ? dailyBreakdownColumns : breakdownColumns}
-                        dataSource={hasComparisonBreakdown ? liabilityComparisonRows : adbLiabilityRows}
-                        locale={{ emptyText: "暂无数据" }}
-                      />
-                    </Card>
-                  </Col>
-                </Row>
-              </>
-            )}
-          </>
-        )}
+                {monthlyQuery.isLoading ? <Spin /> : null}
+                {monthlyQuery.isError ? <Alert type="error" showIcon message="月度统计加载失败" /> : null}
 
-        {activeTab === "monthly" && (
-          <>
-            <Space>
-              <Text>年份</Text>
-              <Select
-                style={{ width: 120 }}
-                value={selectedYear}
-                onChange={(y) => {
-                  setSelectedYear(y);
-                  setExpandedMonth(null);
-                  setSelectedMonthForBreakdown("");
-                }}
-                options={[2023, 2024, 2025, 2026].map((y) => ({ label: `${y}年`, value: y }))}
-              />
-            </Space>
-            {monthlyQuery.isLoading ? (
-              <Spin />
-            ) : monthlyQuery.isError ? (
-              <Alert type="error" message={String(monthlyQuery.error)} />
-            ) : (
-              <>
-                {monthlyQuery.data && monthlyQuery.data.months.length > 0 && (
-                  <Alert
-                    type="info"
-                    showIcon
-                    message="YTD 汇总（年初至今）"
-                    description={
-                      <Space wrap size="large">
-                        <Text>日均资产：{formatYi(monthlyQuery.data.ytd_avg_assets)}</Text>
-                        <Text>日均负债：{formatYi(monthlyQuery.data.ytd_avg_liabilities)}</Text>
-                        <Text>资产收益率：{formatPct(monthlyQuery.data.ytd_asset_yield)}</Text>
-                        <Text>负债付息率：{formatPct(monthlyQuery.data.ytd_liability_cost)}</Text>
-                        <Text strong>净息差：{formatPct(monthlyQuery.data.ytd_net_interest_margin)}</Text>
-                      </Space>
-                    }
-                  />
-                )}
-                <Card title="月度统计" size="small">
-                  <Table<AdbMonthlyItem>
-                    size="small"
-                    pagination={false}
-                    rowKey={(r) => r.month}
-                    columns={monthlyColumns}
-                    dataSource={monthlyQuery.data?.months ?? []}
-                    expandable={{
-                      expandRowByClick: true,
-                      expandedRowRender: (row) => (
-                        <Row gutter={16}>
-                          <Col span={12}>
-                            <Title level={5}>资产端分类明细</Title>
-                            <Table
-                              size="small"
-                              pagination={false}
-                              rowKey={(b) => `ba-${b.category}`}
-                              dataSource={row.breakdown_assets}
-                              columns={[
-                                { title: "分类", dataIndex: "category", key: "c" },
-                                {
-                                  title: "日均(亿)",
-                                  dataIndex: "avg_balance",
-                                  key: "a",
-                                  align: "right",
-                                  render: (v: number) => (v / YI).toFixed(2),
-                                },
-                                {
-                                  title: "占比",
-                                  dataIndex: "proportion",
-                                  key: "p",
-                                  align: "right",
-                                  render: (v: number) => `${v?.toFixed?.(1) ?? v}%`,
-                                },
-                                {
-                                  title: "收益率",
-                                  dataIndex: "weighted_rate",
-                                  key: "w",
-                                  align: "right",
-                                  render: (v: number | null) => formatPct(v),
-                                },
-                              ]}
-                            />
+                {monthlyData ? (
+                  <>
+                    <Row gutter={[16, 16]}>
+                      {[
+                        { title: "YTD 日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
+                        { title: "YTD 日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
+                        { title: "YTD 资产收益率", value: formatPct(monthlyData.ytd_asset_yield) },
+                        { title: "YTD 负债付息率", value: formatPct(monthlyData.ytd_liability_cost) },
+                        { title: "YTD NIM", value: formatPct(monthlyData.ytd_nim) },
+                      ].map((item) => (
+                        <Col xs={24} sm={12} xl={4} key={item.title}>
+                          <Card size="small">
+                            <Text type="secondary">{item.title}</Text>
+                            <Title level={4} style={{ marginTop: 10, marginBottom: 0 }}>{item.value}</Title>
+                          </Card>
+                        </Col>
+                      ))}
+                    </Row>
+
+                    <Card title="月度汇总表" size="small">
+                      <Table<AdbMonthlyDataItem>
+                        size="small"
+                        rowKey={(row) => row.month}
+                        pagination={false}
+                        columns={monthlyTableColumns}
+                        dataSource={monthlyData.months}
+                        expandable={{
+                          expandedRowRender: (row) => (
+                            <Row gutter={[16, 16]}>
+                              <Col xs={24} xl={12}>
+                                <Card size="small" title="资产端分类明细">
+                                  <Table size="small" pagination={false} rowKey={(item) => `expanded-asset-${row.month}-${item.category}`} columns={monthlyAssetColumns} dataSource={row.breakdown_assets} />
+                                </Card>
+                              </Col>
+                              <Col xs={24} xl={12}>
+                                <Card size="small" title="负债端分类明细">
+                                  <Table size="small" pagination={false} rowKey={(item) => `expanded-liability-${row.month}-${item.category}`} columns={monthlyLiabilityColumns} dataSource={row.breakdown_liabilities} />
+                                </Card>
+                              </Col>
+                            </Row>
+                          ),
+                        }}
+                      />
+                    </Card>
+
+                    {selectedMonthData ? (
+                      <Card
+                        title="按月度日均分析 - 深度分析"
+                        size="small"
+                        extra={<Select aria-label="adb-month" style={{ width: 160 }} value={selectedMonth} options={monthlyData.months.map((item) => ({ label: item.month_label, value: item.month }))} onChange={setSelectedMonth} />}
+                      >
+                        <Row gutter={[16, 16]}>
+                          <Col xs={24} xl={12}>
+                            <Card size="small" title="资产端分类明细">
+                              <ReactECharts option={buildHorizontalOption(monthlyAssetRows, `${selectedMonthData.month_label} 资产端`, "#2563EB")} style={{ height: 320, marginBottom: 16 }} notMerge lazyUpdate />
+                              <Table size="small" pagination={false} rowKey={(row) => `asset-deep-${row.category}`} columns={monthlyAssetColumns} dataSource={selectedMonthData.breakdown_assets} />
+                            </Card>
                           </Col>
-                          <Col span={12}>
-                            <Title level={5}>负债端分类明细</Title>
-                            <Table
-                              size="small"
-                              pagination={false}
-                              rowKey={(b) => `bl-${b.category}`}
-                              dataSource={row.breakdown_liabilities}
-                              columns={[
-                                { title: "分类", dataIndex: "category", key: "c" },
-                                {
-                                  title: "日均(亿)",
-                                  dataIndex: "avg_balance",
-                                  key: "a",
-                                  align: "right",
-                                  render: (v: number) => (v / YI).toFixed(2),
-                                },
-                                {
-                                  title: "占比",
-                                  dataIndex: "proportion",
-                                  key: "p",
-                                  align: "right",
-                                  render: (v: number) => `${v?.toFixed?.(1) ?? v}%`,
-                                },
-                                {
-                                  title: "付息率",
-                                  dataIndex: "weighted_rate",
-                                  key: "w",
-                                  align: "right",
-                                  render: (v: number | null) => formatPct(v),
-                                },
-                              ]}
-                            />
+                          <Col xs={24} xl={12}>
+                            <Card size="small" title="负债端分类明细">
+                              <ReactECharts option={buildHorizontalOption(monthlyLiabilityRows, `${selectedMonthData.month_label} 负债端`, "#DC2626")} style={{ height: 320, marginBottom: 16 }} notMerge lazyUpdate />
+                              <Table size="small" pagination={false} rowKey={(row) => `liability-deep-${row.category}`} columns={monthlyLiabilityColumns} dataSource={selectedMonthData.breakdown_liabilities} />
+                            </Card>
                           </Col>
                         </Row>
-                      ),
-                      expandedRowKeys: expandedMonth ? [expandedMonth] : [],
-                      onExpand: (expanded, record) => {
-                        setExpandedMonth(expanded ? record.month : null);
-                      },
-                    }}
-                  />
-                </Card>
-
-                {selectedMonthData && (
-                  <Card
-                    title="按月度日均 — 资产负债结构"
-                    size="small"
-                    extra={
-                      <Select
-                        style={{ width: 140 }}
-                        value={selectedMonthForBreakdown}
-                        onChange={setSelectedMonthForBreakdown}
-                        options={(monthlyQuery.data?.months ?? []).map((m) => ({
-                          label: m.month_label,
-                          value: m.month,
-                        }))}
-                      />
-                    }
-                  >
-                    <Row gutter={16}>
-                      <Col xs={24} lg={12}>
-                        <Title level={5}>{selectedMonthData.month_label} · 资产</Title>
-                        <ReactECharts
-                          option={horizontalBarOption(monthlyAssetChartRows, `${selectedMonthData.month_label} 资产分类`, "#2563eb")}
-                          style={{ height: 320, marginBottom: 16 }}
-                          notMerge
-                          lazyUpdate
-                        />
-                        <Table
-                          size="small"
-                          pagination={false}
-                          dataSource={selectedMonthData.breakdown_assets}
-                          rowKey={(b) => `sa-${b.category}`}
-                          columns={[
-                            { title: "类别", dataIndex: "category", key: "c" },
-                            {
-                              title: "日均(亿元)",
-                              dataIndex: "avg_balance",
-                              key: "a",
-                              align: "right",
-                              render: (v: number) => (v / YI).toFixed(2),
-                            },
-                            {
-                              title: "占比",
-                              dataIndex: "proportion",
-                              key: "p",
-                              align: "right",
-                              render: (v: number) => `${v?.toFixed?.(2) ?? v}%`,
-                            },
-                            {
-                              title: "收益率",
-                              dataIndex: "weighted_rate",
-                              key: "w",
-                              align: "right",
-                              render: (v: number | null) => formatPct(v),
-                            },
-                          ]}
-                        />
-                      </Col>
-                      <Col xs={24} lg={12}>
-                        <Title level={5}>{selectedMonthData.month_label} · 负债</Title>
-                        <ReactECharts
-                          option={horizontalBarOption(monthlyLiabilityChartRows, `${selectedMonthData.month_label} 负债分类`, "#dc2626")}
-                          style={{ height: 320, marginBottom: 16 }}
-                          notMerge
-                          lazyUpdate
-                        />
-                        <Table
-                          size="small"
-                          pagination={false}
-                          dataSource={selectedMonthData.breakdown_liabilities}
-                          rowKey={(b) => `sl-${b.category}`}
-                          columns={[
-                            { title: "类别", dataIndex: "category", key: "c" },
-                            {
-                              title: "日均(亿元)",
-                              dataIndex: "avg_balance",
-                              key: "a",
-                              align: "right",
-                              render: (v: number) => (v / YI).toFixed(2),
-                            },
-                            {
-                              title: "占比",
-                              dataIndex: "proportion",
-                              key: "p",
-                              align: "right",
-                              render: (v: number) => `${v?.toFixed?.(2) ?? v}%`,
-                            },
-                            {
-                              title: "付息率",
-                              dataIndex: "weighted_rate",
-                              key: "w",
-                              align: "right",
-                              render: (v: number | null) => formatPct(v),
-                            },
-                          ]}
-                        />
-                      </Col>
-                    </Row>
-                  </Card>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </Space>
-    </div>
+                      </Card>
+                    ) : null}
+                  </>
+                ) : null}
+              </Space>
+            ),
+          },
+        ]}
+      />
+    </section>
   );
 }

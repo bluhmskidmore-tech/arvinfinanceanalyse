@@ -2426,80 +2426,67 @@ export type AdbPayload = {
   breakdown: AdbBreakdownItem[];
 };
 
-export type AdbComparisonRow = {
-  category: string;
-  spot: number;
-  avg: number;
-  deviation: number;
-};
-
-export type AdbComparisonBreakdownItem = {
+export type AdbCategoryItem = {
   category: string;
   spot_balance: number;
   avg_balance: number;
-  deviation?: number;
-  proportion?: number | null;
+  proportion: number;
   weighted_rate?: number | null;
 };
 
-export type AdbComparisonPayload = {
-  report_date?: string;
+export type AdbComparisonResponse = {
+  report_date: string;
   start_date: string;
   end_date: string;
   num_days: number;
   simulated: boolean;
-  total_spot_assets?: number;
-  total_avg_assets?: number;
-  total_spot_liabilities?: number;
-  total_avg_liabilities?: number;
-  asset_yield?: number | null;
-  liability_cost?: number | null;
-  net_interest_margin?: number | null;
-  assets_breakdown?: AdbComparisonBreakdownItem[];
-  liabilities_breakdown?: AdbComparisonBreakdownItem[];
-  assets: AdbComparisonRow[];
-  liabilities: AdbComparisonRow[];
+  total_spot_assets: number;
+  total_avg_assets: number;
+  total_spot_liabilities: number;
+  total_avg_liabilities: number;
+  asset_yield: number | null;
+  liability_cost: number | null;
+  net_interest_margin: number | null;
+  assets_breakdown: AdbCategoryItem[];
+  liabilities_breakdown: AdbCategoryItem[];
   detail?: string;
 };
 
 export type AdbMonthlyBreakdownItem = {
   category: string;
-  side: string;
   avg_balance: number;
-  proportion: number;
-  weighted_rate: number | null;
+  proportion?: number | null;
+  weighted_rate?: number | null;
 };
 
-export type AdbMonthlyItem = {
+export type AdbMonthlyDataItem = {
   month: string;
   month_label: string;
+  num_days: number;
   avg_assets: number;
   avg_liabilities: number;
-  end_spot_assets: number;
-  end_spot_liabilities: number;
-  assets_mom_change: number | null;
-  liabilities_mom_change: number | null;
   asset_yield: number | null;
   liability_cost: number | null;
   net_interest_margin: number | null;
+  mom_change_assets: number | null;
+  mom_change_pct_assets: number | null;
+  mom_change_liabilities: number | null;
+  mom_change_pct_liabilities: number | null;
   breakdown_assets: AdbMonthlyBreakdownItem[];
   breakdown_liabilities: AdbMonthlyBreakdownItem[];
-  num_days: number;
 };
 
-export type AdbMonthlyPayload = {
+export type AdbMonthlyResponse = {
   year: number;
-  months: AdbMonthlyItem[];
+  months: AdbMonthlyDataItem[];
   ytd_avg_assets: number;
   ytd_avg_liabilities: number;
   ytd_asset_yield: number | null;
   ytd_liability_cost: number | null;
-  ytd_net_interest_margin: number | null;
+  ytd_nim: number | null;
   unit?: string;
 };
 
 /** @deprecated 使用 AdbMonthlyItem — 保留别名供旧代码类型引用 */
-export type LiabilityAdbMonthlyItem = AdbMonthlyItem;
 
 /** @deprecated 使用 AdbMonthlyPayload */
-export type LiabilityAdbMonthlyPayload = AdbMonthlyPayload;

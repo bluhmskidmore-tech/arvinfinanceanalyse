@@ -303,8 +303,6 @@ def get_adb_comparison(
             "net_interest_margin": None,
             "assets_breakdown": [],
             "liabilities_breakdown": [],
-            "assets": [],
-            "liabilities": [],
         }
         if detail:
             payload["detail"] = detail
@@ -591,7 +589,6 @@ def get_adb_comparison(
                     "category": row["category"],
                     "spot_balance": float(row["spot"]),
                     "avg_balance": avg_balance,
-                    "deviation": float(row["deviation"]),
                     "proportion": round(avg_balance / total_avg * 100, 2) if total_avg > 0 else 0.0,
                     "weighted_rate": rate_map.get(row["category"]),
                 }
@@ -613,8 +610,6 @@ def get_adb_comparison(
         "net_interest_margin": net_interest_margin,
         "assets_breakdown": enrich_breakdown(assets, total_avg_assets, asset_rate_map),
         "liabilities_breakdown": enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map),
-        "assets": assets,
-        "liabilities": liabilities,
     }
 
 
@@ -679,7 +674,7 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> dict[str, Any]:
         "ytd_avg_liabilities": 0.0,
         "ytd_asset_yield": None,
         "ytd_liability_cost": None,
-        "ytd_net_interest_margin": None,
+        "ytd_nim": None,
         "unit": "percent",
     }
 
@@ -1018,11 +1013,15 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> dict[str, Any]:
             ytd_days += num_days
 
             assets_mom = None
+            assets_mom_pct = None
             liab_mom = None
+            liab_mom_pct = None
             if prev_avg_assets is not None and prev_avg_assets != 0:
-                assets_mom = round((avg_assets - prev_avg_assets) / prev_avg_assets * 100, 2)
+                assets_mom = round(avg_assets - prev_avg_assets, 2)
+                assets_mom_pct = round((avg_assets - prev_avg_assets) / prev_avg_assets * 100, 2)
             if prev_avg_liabilities is not None and prev_avg_liabilities != 0:
-                liab_mom = round((avg_liab - prev_avg_liabilities) / prev_avg_liabilities * 100, 2)
+                liab_mom = round(avg_liab - prev_avg_liabilities, 2)
+                liab_mom_pct = round((avg_liab - prev_avg_liabilities) / prev_avg_liabilities * 100, 2)
 
             asset_yield = round(float(total_assets_weighted / total_assets * 100), 4) if total_assets > 0 else None
             liab_cost = round(float(total_liab_weighted / total_liab * 100), 4) if total_liab > 0 else None
@@ -1031,13 +1030,15 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> dict[str, Any]:
             months_data.append(
                 {
                     "month": f"{year}-{month:02d}",
-                    "month_label": f"{month}月",
+                    "month_label": f"{year}年{month}月",
                     "avg_assets": avg_assets,
                     "avg_liabilities": avg_liab,
                     "end_spot_assets": end_spot_assets,
                     "end_spot_liabilities": end_spot_liab,
-                    "assets_mom_change": assets_mom,
-                    "liabilities_mom_change": liab_mom,
+                    "mom_change_assets": assets_mom,
+                    "mom_change_pct_assets": assets_mom_pct,
+                    "mom_change_liabilities": liab_mom,
+                    "mom_change_pct_liabilities": liab_mom_pct,
                     "asset_yield": asset_yield,
                     "liability_cost": liab_cost,
                     "net_interest_margin": nim,
@@ -1072,7 +1073,7 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> dict[str, Any]:
         "ytd_avg_liabilities": ytd_avg_liab,
         "ytd_asset_yield": ytd_asset_yield,
         "ytd_liability_cost": ytd_liab_cost,
-        "ytd_net_interest_margin": ytd_nim,
+        "ytd_nim": ytd_nim,
         "unit": "percent",
     }
 

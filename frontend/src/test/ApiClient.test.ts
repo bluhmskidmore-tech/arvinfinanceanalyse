@@ -226,8 +226,6 @@ describe("createApiClient", () => {
         net_interest_margin: null,
         assets_breakdown: [],
         liabilities_breakdown: [],
-        assets: [],
-        liabilities: [],
       }),
     }));
 
@@ -237,11 +235,10 @@ describe("createApiClient", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await client.getAdbComparison({
-      startDate: "2025-06-02",
-      endDate: "2025-06-03",
-      topN: 5,
-    });
+    const payload = await client.getAdbComparison("2025-06-02", "2025-06-03", { topN: 5 });
+
+    expect(payload).not.toHaveProperty("assets");
+    expect(payload).not.toHaveProperty("liabilities");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",

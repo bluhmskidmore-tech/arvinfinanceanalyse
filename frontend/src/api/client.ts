@@ -53,11 +53,10 @@ import type {
   CubeQueryRequest,
   CubeQueryResult,
   CustomerBalanceTrendResponse,
-  AdbComparisonPayload,
-  AdbMonthlyPayload,
+  AdbComparisonResponse,
+  AdbMonthlyResponse,
   AdbPayload,
   LiabilitiesMonthlyPayload,
-  LiabilityAdbMonthlyPayload,
   LiabilityCounterpartyPayload,
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
@@ -503,14 +502,16 @@ export type ApiClient = {
     topN?: number;
   }) => Promise<LiabilityCounterpartyPayload>;
   getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
-  getLiabilityAdbMonthly: (year: number) => Promise<LiabilityAdbMonthlyPayload>;
+  getLiabilityAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
-  getAdbComparison: (params: {
-    startDate: string;
-    endDate: string;
-    topN?: number;
-  }) => Promise<AdbComparisonPayload>;
-  getAdbMonthly: (year: number) => Promise<AdbMonthlyPayload>;
+  getAdbComparison: (
+    startDate: string,
+    endDate: string,
+    options?: {
+      topN?: number;
+    },
+  ) => Promise<AdbComparisonResponse>;
+  getAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   refreshBondAnalytics: (reportDate: string) => Promise<BondAnalyticsRefreshPayload>;
   getBondAnalyticsRefreshStatus: (
     runId: string,
@@ -2665,6 +2666,136 @@ const requestPlainJson = async <T>(
   return (await response.json()) as T;
 };
 
+function normalizeAdbComparisonResponse(raw: Record<string, unknown>): AdbComparisonResponse {
+  const mapBreakdown = (items: unknown[]) =>
+    items.map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        category: String(row.category ?? ""),
+        spot_balance: Number(row.spot_balance ?? 0),
+        avg_balance: Number(row.avg_balance ?? 0),
+        proportion: Number(row.proportion ?? 0),
+        weighted_rate:
+          row.weighted_rate === null || row.weighted_rate === undefined
+            ? null
+            : Number(row.weighted_rate),
+      };
+    });
+
+  const assetsBreakdown = mapBreakdown(
+    Array.isArray(raw.assets_breakdown) ? raw.assets_breakdown : [],
+  );
+  const liabilitiesBreakdown = mapBreakdown(
+    Array.isArray(raw.liabilities_breakdown) ? raw.liabilities_breakdown : [],
+  );
+
+  return {
+    report_date: String(raw.report_date ?? raw.end_date ?? ""),
+    start_date: String(raw.start_date ?? ""),
+    end_date: String(raw.end_date ?? ""),
+    num_days: Number(raw.num_days ?? 0),
+    simulated: Boolean(raw.simulated),
+    total_spot_assets: Number(raw.total_spot_assets ?? 0),
+    total_avg_assets: Number(raw.total_avg_assets ?? 0),
+    total_spot_liabilities: Number(raw.total_spot_liabilities ?? 0),
+    total_avg_liabilities: Number(raw.total_avg_liabilities ?? 0),
+    asset_yield:
+      raw.asset_yield === null || raw.asset_yield === undefined ? null : Number(raw.asset_yield),
+    liability_cost:
+      raw.liability_cost === null || raw.liability_cost === undefined
+        ? null
+        : Number(raw.liability_cost),
+    net_interest_margin:
+      raw.net_interest_margin === null || raw.net_interest_margin === undefined
+        ? null
+        : Number(raw.net_interest_margin),
+    assets_breakdown: assetsBreakdown,
+    liabilities_breakdown: liabilitiesBreakdown,
+    detail: raw.detail ? String(raw.detail) : undefined,
+  };
+}
+
+function normalizeAdbMonthlyResponse(raw: Record<string, unknown>): AdbMonthlyResponse {
+  const months = Array.isArray(raw.months) ? raw.months : [];
+  return {
+    year: Number(raw.year ?? 0),
+    months: months.map((item) => {
+      const row = item as Record<string, unknown>;
+      const breakdownAssets = Array.isArray(row.breakdown_assets) ? row.breakdown_assets : [];
+      const breakdownLiabilities = Array.isArray(row.breakdown_liabilities)
+        ? row.breakdown_liabilities
+        : [];
+      const mapBreakdown = (entries: unknown[]) =>
+        entries.map((entry) => {
+          const breakdown = entry as Record<string, unknown>;
+          return {
+            category: String(breakdown.category ?? ""),
+            avg_balance: Number(breakdown.avg_balance ?? 0),
+            proportion:
+              breakdown.proportion === null || breakdown.proportion === undefined
+                ? null
+                : Number(breakdown.proportion),
+            weighted_rate:
+              breakdown.weighted_rate === null || breakdown.weighted_rate === undefined
+                ? null
+                : Number(breakdown.weighted_rate),
+          };
+        });
+
+      return {
+        month: String(row.month ?? ""),
+        month_label: String(row.month_label ?? row.month ?? ""),
+        num_days: Number(row.num_days ?? 0),
+        avg_assets: Number(row.avg_assets ?? 0),
+        avg_liabilities: Number(row.avg_liabilities ?? 0),
+        asset_yield:
+          row.asset_yield === null || row.asset_yield === undefined
+            ? null
+            : Number(row.asset_yield),
+        liability_cost:
+          row.liability_cost === null || row.liability_cost === undefined
+            ? null
+            : Number(row.liability_cost),
+        net_interest_margin:
+          row.net_interest_margin === null || row.net_interest_margin === undefined
+            ? null
+            : Number(row.net_interest_margin),
+        mom_change_assets:
+          row.mom_change_assets === null || row.mom_change_assets === undefined
+            ? null
+            : Number(row.mom_change_assets),
+        mom_change_pct_assets:
+          row.mom_change_pct_assets === null || row.mom_change_pct_assets === undefined
+            ? null
+            : Number(row.mom_change_pct_assets),
+        mom_change_liabilities:
+          row.mom_change_liabilities === null || row.mom_change_liabilities === undefined
+            ? null
+            : Number(row.mom_change_liabilities),
+        mom_change_pct_liabilities:
+          row.mom_change_pct_liabilities === null || row.mom_change_pct_liabilities === undefined
+            ? null
+            : Number(row.mom_change_pct_liabilities),
+        breakdown_assets: mapBreakdown(breakdownAssets),
+        breakdown_liabilities: mapBreakdown(breakdownLiabilities),
+      };
+    }),
+    ytd_avg_assets: Number(raw.ytd_avg_assets ?? 0),
+    ytd_avg_liabilities: Number(raw.ytd_avg_liabilities ?? 0),
+    ytd_asset_yield:
+      raw.ytd_asset_yield === null || raw.ytd_asset_yield === undefined
+        ? null
+        : Number(raw.ytd_asset_yield),
+    ytd_liability_cost:
+      raw.ytd_liability_cost === null || raw.ytd_liability_cost === undefined
+        ? null
+        : Number(raw.ytd_liability_cost),
+    ytd_nim:
+      raw.ytd_nim === null || raw.ytd_nim === undefined ? null : Number(raw.ytd_nim),
+    unit: raw.unit ? String(raw.unit) : undefined,
+  };
+}
+
 const requestActionJson = async <T>(
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -4635,7 +4766,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         ytd_avg_liabilities: 0,
         ytd_asset_yield: null,
         ytd_liability_cost: null,
-        ytd_net_interest_margin: null,
+        ytd_nim: null,
         unit: "percent",
       };
     },
@@ -4652,7 +4783,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         breakdown: [],
       };
     },
-    async getAdbComparison(_params: { startDate: string; endDate: string; topN?: number }) {
+    async getAdbComparison(_startDate: string, _endDate: string, _options?: { topN?: number }) {
       await delay();
       return {
         report_date: "",
@@ -4669,8 +4800,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         net_interest_margin: null,
         assets_breakdown: [],
         liabilities_breakdown: [],
-        assets: [],
-        liabilities: [],
       };
     },
     async getAdbMonthly(year: number) {
@@ -4682,7 +4811,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         ytd_avg_liabilities: 0,
         ytd_asset_yield: null,
         ytd_liability_cost: null,
-        ytd_net_interest_margin: null,
+        ytd_nim: null,
         unit: "percent",
       };
     },
@@ -5502,7 +5631,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,
       ),
     getLiabilityAdbMonthly: (year) =>
-      requestPlainJson<LiabilityAdbMonthlyPayload>(
+      requestPlainJson<AdbMonthlyResponse>(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
@@ -5517,24 +5646,28 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/analysis/adb?${params.toString()}`,
       );
     },
-    getAdbComparison: ({ startDate, endDate, topN }) => {
+    getAdbComparison: async (startDate, endDate, options) => {
       const params = new URLSearchParams();
       params.set("start_date", startDate.trim());
       params.set("end_date", endDate.trim());
+      const topN = options?.topN;
       if (topN !== undefined) {
         params.set("top_n", String(topN));
       }
-      return requestPlainJson<AdbComparisonPayload>(
+      const raw = await requestPlainJson<Record<string, unknown>>(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/comparison?${params.toString()}`,
       );
+      return normalizeAdbComparisonResponse(raw);
     },
-    getAdbMonthly: (year) =>
-      requestPlainJson<AdbMonthlyPayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
+    getAdbMonthly: async (year) =>
+      normalizeAdbMonthlyResponse(
+        await requestPlainJson<Record<string, unknown>>(
+          fetchImpl,
+          baseUrl,
+          `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
+        ),
       ),
     getContribution: () =>
       requestJson<ContributionPayload>(

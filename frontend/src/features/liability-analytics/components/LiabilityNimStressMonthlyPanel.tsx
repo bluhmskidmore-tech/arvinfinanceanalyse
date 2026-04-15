@@ -1,13 +1,13 @@
 import { Card, Col, Row, Typography } from "antd";
 
-import type { LiabilityAdbMonthlyItem } from "../../../api/contracts";
+import type { AdbMonthlyDataItem } from "../../../api/contracts";
 
 const { Text } = Typography;
 
 export function LiabilityNimStressMonthlyPanel({
   adbMonth,
 }: {
-  adbMonth: LiabilityAdbMonthlyItem | null;
+  adbMonth: AdbMonthlyDataItem | null;
 }) {
   const nim = adbMonth?.net_interest_margin;
   const projected =
