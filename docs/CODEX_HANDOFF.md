@@ -40,13 +40,14 @@
 1. `AGENTS.md`
 2. `prd-moss-agent-analytics-os.md`
 3. `docs/MOSS-V2 系统架构说明`
-4. `docs/DOCUMENT_AUTHORITY.md`
-5. `docs/IMPLEMENTATION_PLAN.md`
-6. `docs/calc_rules.md`
-7. `docs/data_contracts.md`
-8. `docs/CACHE_SPEC.md`
-9. `docs/acceptance_tests.md`
-10. `MOSS 系统：取值逻辑、计算层与规则总览`
+4. `docs/V2_TO_V3_MIGRATION_INVENTORY.md`
+5. `docs/DOCUMENT_AUTHORITY.md`
+6. `docs/IMPLEMENTATION_PLAN.md`
+7. `docs/calc_rules.md`
+8. `docs/data_contracts.md`
+9. `docs/CACHE_SPEC.md`
+10. `docs/acceptance_tests.md`
+11. `MOSS 系统：取值逻辑、计算层与规则总览`
 
 ## 5. 技术栈冻结
 
@@ -197,3 +198,9 @@ repo/
 - 未完成项
 - 下一轮建议
 - 风险说明
+
+## 11. 迁移资产入口
+
+涉及历史模块来源、V2 迁移资产分层、`library / wired / candidate` 状态、以及
+`库级实现 / 主流程实现 / 端到端实现` 判断时，统一以
+`docs/V2_TO_V3_MIGRATION_INVENTORY.md` 为当前入口文档。
