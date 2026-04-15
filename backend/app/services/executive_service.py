@@ -73,6 +73,24 @@ def _fmt_signed_segment_yi(yi: float) -> str:
     return f"{sign}{yi:.2f} 亿"
 
 
+def _unavailable_metric(
+    *,
+    metric_id: str,
+    label: str,
+    detail: str,
+    delta: str = "未接入",
+    tone: Literal["positive", "neutral", "warning", "negative"] = "warning",
+) -> ExecutiveMetric:
+    return ExecutiveMetric(
+        id=metric_id,
+        label=label,
+        value="—",
+        delta=delta,
+        tone=tone,
+        detail=detail,
+    )
+
+
 def _tone_for_signed(yi: float) -> str:
     if yi > 0:
         return "positive"
@@ -186,9 +204,66 @@ def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPa
     )
 
 
+def _pnl_attribution_unavailable_payload() -> PnlAttributionPayload:
+    zero = [
+        ("carry", "Carry", 0.0),
+        ("roll", "Roll-down", 0.0),
+        ("credit", "信用利差", 0.0),
+        ("trading", "交易损益", 0.0),
+        ("other", "其他", 0.0),
+    ]
+    segments = [
+        AttributionSegment(
+            id=key,
+            label=label,
+            amount=0.0,
+            display_amount=_fmt_signed_segment_yi(val),
+            tone=_tone_for_signed(val),
+        )
+        for key, label, val in zero
+    ]
+    return PnlAttributionPayload(
+        title="收益归因（当前无受控产品分类月度数据）",
+        total="0 亿",
+        segments=segments,
+    )
+
+
 def _contribution_explicit_miss_payload(report_date: str) -> ContributionPayload:
     return ContributionPayload(
         title=f"团队 / 账户 / 策略贡献（{report_date} 无受控产品分类月度数据）",
+        rows=[
+            ContributionRow(
+                id="rates",
+                name="利率组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+            ContributionRow(
+                id="credit",
+                name="信用组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+            ContributionRow(
+                id="trading",
+                name="交易组",
+                owner="按团队",
+                contribution="+0.00 亿",
+                completion=0,
+                status="待观察",
+            ),
+        ],
+    )
+
+
+def _contribution_unavailable_payload() -> ContributionPayload:
+    return ContributionPayload(
+        title="团队 / 账户 / 策略贡献（当前无受控产品分类月度数据）",
         rows=[
             ContributionRow(
                 id="rates",
@@ -299,12 +374,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
 
-    uses_shell_demo = aum_raw is None or ytd_raw is None
-    aum_value = (
-        _fmt_yi_amount(aum_raw, signed=False)
-        if aum_raw is not None
-        else "1,023.47 亿"
-    )
+    aum_value = _fmt_yi_amount(aum_raw, signed=False) if aum_raw is not None else "—"
     if aum_raw is not None:
         aum_detail = (
             f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
@@ -314,15 +384,11 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     elif normalized_report_date is not None:
         aum_detail = (
             f"指定日期 {normalized_report_date} 未能读取受控 AUM；"
-            "以下为壳层演示占位，不代表该日期的 governed truth。"
+            "当前返回 unavailable state。"
         )
     else:
-        aum_detail = "较上月保持温和扩张，当前仅提供受控展示值（壳层演示，非 governed live）。"
-    ytd_value = (
-        _fmt_yi_amount(ytd_raw, signed=True)
-        if ytd_raw is not None
-        else "+12.63 亿"
-    )
+        aum_detail = "当前无受控 AUM 读面，返回 unavailable state。"
+    ytd_value = _fmt_yi_amount(ytd_raw, signed=True) if ytd_raw is not None else "—"
     if ytd_raw is not None:
         ytd_detail = (
             f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
@@ -332,10 +398,10 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     elif normalized_report_date is not None:
         ytd_detail = (
             f"指定日期 {normalized_report_date} 未能读取受控年内收益；"
-            "以下为壳层演示占位，不代表 governed truth。"
+            "当前返回 unavailable state。"
         )
     else:
-        ytd_detail = "收益口径后续由正式服务替换，当前为受控演示值（壳层占位）。"
+        ytd_detail = "当前无受控年内收益读面，返回 unavailable state。"
 
     payload = OverviewPayload(
         title="经营总览",
@@ -356,36 +422,24 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 tone="positive",
                 detail=ytd_detail,
             ),
-            ExecutiveMetric(
-                id="goal",
+            _unavailable_metric(
+                metric_id="goal",
                 label="目标完成率",
-                value="63.1%",
-                delta="目标 20.00 亿",
-                tone="neutral",
-                detail="用于壳层阶段的完成进度展示。",
+                detail="当前未接入受治理目标完成率读面，返回 unavailable state。",
             ),
-            ExecutiveMetric(
-                id="risk-budget",
+            _unavailable_metric(
+                metric_id="risk-budget",
                 label="风险预算使用率",
-                value="68.7%",
-                delta="+3.6pp",
-                tone="warning",
-                detail="保持对风险预算接近上限的提示能力。",
+                detail="当前未接入受治理风险预算读面，返回 unavailable state。",
             ),
         ],
     )
-    overview_quality: Literal["ok", "warning", "error", "stale"] = (
-        "warning" if uses_shell_demo else "ok"
-    )
+    has_missing_governed_metrics = aum_raw is None or ytd_raw is None
     return _envelope(
         "executive.overview",
         payload,
-        quality_flag=overview_quality,
-        source_version=(
-            "sv_exec_dashboard_shell_demo_v1"
-            if uses_shell_demo
-            else "sv_exec_dashboard_v1"
-        ),
+        quality_flag="warning" if has_missing_governed_metrics else "ok",
+        source_version="sv_exec_dashboard_explicit_miss_v1" if has_missing_governed_metrics else "sv_exec_dashboard_v1",
     )
 
 
@@ -461,52 +515,11 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             source_version="sv_exec_dashboard_explicit_miss_v1",
         )
 
-    payload = PnlAttributionPayload(
-        title="收益归因",
-        total="12.63 亿",
-        segments=[
-            AttributionSegment(
-                id="carry",
-                label="Carry",
-                amount=5.21,
-                display_amount="+5.21 亿",
-                tone="positive",
-            ),
-            AttributionSegment(
-                id="roll",
-                label="Roll-down",
-                amount=2.18,
-                display_amount="+2.18 亿",
-                tone="positive",
-            ),
-            AttributionSegment(
-                id="credit",
-                label="信用利差",
-                amount=1.42,
-                display_amount="+1.42 亿",
-                tone="positive",
-            ),
-            AttributionSegment(
-                id="trading",
-                label="交易损益",
-                amount=-0.85,
-                display_amount="-0.85 亿",
-                tone="negative",
-            ),
-            AttributionSegment(
-                id="other",
-                label="其他",
-                amount=0.67,
-                display_amount="+0.67 亿",
-                tone="neutral",
-            ),
-        ],
-    )
     return _envelope(
         "executive.pnl-attribution",
-        payload,
+        _pnl_attribution_unavailable_payload(),
         quality_flag="warning",
-        source_version="sv_exec_dashboard_shell_demo_v1",
+        source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
 
@@ -709,30 +722,30 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
             RiskSignal(
                 id="duration",
                 label="久期风险",
-                value="32.1%",
-                status="stable",
-                detail="久期暴露仍处于本周可接受区间（壳层演示占位）。",
+                value="—",
+                status="warning",
+                detail="当前无受控久期风险快照，返回 unavailable state。",
             ),
             RiskSignal(
                 id="leverage",
                 label="杠杆风险",
-                value="54.3%",
+                value="—",
                 status="watch",
-                detail="杠杆使用率上行，需结合资金窗口观察（壳层演示）。",
+                detail="当前无受控杠杆风险快照，返回 unavailable state。",
             ),
             RiskSignal(
                 id="credit",
                 label="信用集中度",
-                value="78.9%",
+                value="—",
                 status="warning",
-                detail="集中度已逼近预警阈值（壳层演示）。",
+                detail="当前无受控信用集中度快照，返回 unavailable state。",
             ),
             RiskSignal(
                 id="liquidity",
                 label="流动性风险",
-                value="41.2%",
-                status="stable",
-                detail="流动性缓冲仍具备调节空间（壳层演示）。",
+                value="—",
+                status="warning",
+                detail="当前无受控流动性风险快照，返回 unavailable state。",
             ),
         ],
     )
@@ -740,7 +753,7 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
         "executive.risk-overview",
         payload,
         quality_flag="warning",
-        source_version="sv_exec_dashboard_shell_demo_v1",
+        source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
 
@@ -785,40 +798,11 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
             source_version="sv_exec_dashboard_explicit_miss_v1",
         )
 
-    payload = ContributionPayload(
-        title="团队 / 账户 / 策略贡献",
-        rows=[
-            ContributionRow(
-                id="rates",
-                name="利率组",
-                owner="按团队",
-                contribution="+4.21 亿",
-                completion=65,
-                status="核心拉动",
-            ),
-            ContributionRow(
-                id="credit",
-                name="信用组",
-                owner="按团队",
-                contribution="+2.18 亿",
-                completion=58,
-                status="稳定贡献",
-            ),
-            ContributionRow(
-                id="trading",
-                name="交易组",
-                owner="按团队",
-                contribution="+0.32 亿",
-                completion=31,
-                status="波动偏大",
-            ),
-        ],
-    )
     return _envelope(
         "executive.contribution",
-        payload,
+        _contribution_unavailable_payload(),
         quality_flag="warning",
-        source_version="sv_exec_dashboard_shell_demo_v1",
+        source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
 
@@ -827,25 +811,11 @@ def _fallback_executive_alerts() -> dict[str, object]:
         title="预警与事件",
         items=[
             AlertItem(
-                id="a1",
-                severity="high",
-                title="久期敞口接近上限",
-                occurred_at="10:15",
-                detail="账户 B 久期 6.82，接近上限 7.00。",
-            ),
-            AlertItem(
-                id="a2",
                 severity="medium",
-                title="信用集中度预警",
-                occurred_at="09:48",
-                detail="城投敞口 23.5%，接近阈值 25%。",
-            ),
-            AlertItem(
-                id="a3",
-                severity="medium",
-                title="杠杆使用率上升",
-                occurred_at="09:30",
-                detail="当前 1.82x，较上周上升 0.06x。",
+                id="governed-data-unavailable",
+                title="当前无受控预警数据",
+                occurred_at="--:--",
+                detail="债券分析快照缺失或未接入，当前返回 unavailable state。",
             ),
         ],
     )
@@ -853,7 +823,7 @@ def _fallback_executive_alerts() -> dict[str, object]:
         "executive.alerts",
         payload,
         quality_flag="warning",
-        source_version="sv_exec_dashboard_shell_demo_v1",
+        source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
 
