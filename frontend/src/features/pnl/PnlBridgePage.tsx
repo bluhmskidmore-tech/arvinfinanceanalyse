@@ -16,6 +16,11 @@ import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { pnlSurfaceQualityToTone, toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
+import { PnlDebugPanel, PnlRefreshStatus } from "./PnlRuntimePanels";
+import {
+  pnlActionButtonStyle,
+  resolvePnlSectionState,
+} from "./PnlRuntimeSupport";
 
 const summaryGridStyle = {
   display: "grid",
@@ -95,35 +100,6 @@ const controlStyle = {
   border: "1px solid #d7dfea",
   background: "#ffffff",
   color: "#162033",
-} as const;
-
-const actionButtonStyle = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
-  fontWeight: 600,
-  cursor: "pointer",
-} as const;
-
-const debugPanelStyle = {
-  marginTop: 24,
-  padding: 16,
-  borderRadius: 16,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
-} as const;
-
-const debugPreStyle = {
-  margin: 0,
-  padding: 16,
-  overflowX: "auto",
-  borderRadius: 12,
-  background: shellTokens.colorBgMuted,
-  color: shellTokens.colorText,
-  fontSize: 12,
-  lineHeight: 1.6,
 } as const;
 
 const BRIDGE_CATEGORIES = [
@@ -289,27 +265,6 @@ function fxTranslationValueFormatter(params: ValueFormatterParams) {
   return formatWan(String(value).replace(/,/g, ""));
 }
 
-function resolveSectionState({
-  isLoading,
-  isError,
-  isEmpty,
-}: {
-  isLoading: boolean;
-  isError: boolean;
-  isEmpty: boolean;
-}): "loading" | "error" | "empty" | "ready" {
-  if (isLoading) {
-    return "loading";
-  }
-  if (isError) {
-    return "error";
-  }
-  if (isEmpty) {
-    return "empty";
-  }
-  return "ready";
-}
-
 const bridgeGridDefaultColDef: ColDef = {
   sortable: true,
   filter: true,
@@ -444,12 +399,12 @@ export default function PnlBridgePage() {
     !bridgeQuery.isError &&
     (!selectedReportDate || rows.length === 0);
 
-  const summaryState = resolveSectionState({
+  const summaryState = resolvePnlSectionState({
     isLoading: summaryLoading,
     isError: summaryError,
     isEmpty: summaryEmpty,
   });
-  const detailState = resolveSectionState({
+  const detailState = resolvePnlSectionState({
     isLoading: detailLoading,
     isError: detailError,
     isEmpty: detailEmpty,
@@ -579,27 +534,13 @@ export default function PnlBridgePage() {
           type="button"
           disabled={refreshDisabled}
           onClick={() => void handleRefresh()}
-          style={actionButtonStyle}
+          style={pnlActionButtonStyle}
         >
           {isRefreshing ? "刷新中..." : "刷新正式结果"}
         </button>
       </FilterBar>
 
-      {(refreshStatus || refreshError) && (
-        <div
-          data-testid="pnl-bridge-refresh-status"
-          style={{
-            marginBottom: 16,
-            padding: 14,
-            borderRadius: 14,
-            border: "1px solid #e4ebf5",
-            background: refreshError ? "#fff2f0" : "#f7f9fc",
-            color: refreshError ? "#c83b3b" : "#5c6b82",
-          }}
-        >
-          {refreshError ?? refreshStatus}
-        </div>
-      )}
+      <PnlRefreshStatus testId="pnl-bridge-refresh-status" status={refreshStatus} error={refreshError} />
 
       <div data-testid="pnl-bridge-summary-section" data-state={summaryState} style={{ marginBottom: 24 }}>
         <SectionLead
@@ -731,14 +672,7 @@ export default function PnlBridgePage() {
         </AsyncSection>
       </div>
 
-      <details data-testid="pnl-bridge-result-meta-panel" style={debugPanelStyle}>
-        <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorText }}>
-          result_meta / 调试
-        </summary>
-        <div style={{ marginTop: 12 }}>
-          <pre style={debugPreStyle}>{JSON.stringify(debugSnapshot, null, 2)}</pre>
-        </div>
-      </details>
+      <PnlDebugPanel testId="pnl-bridge-result-meta-panel" snapshot={debugSnapshot} />
     </section>
   );
 }

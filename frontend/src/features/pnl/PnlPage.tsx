@@ -13,6 +13,11 @@ import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
+import { PnlDebugPanel, PnlRefreshStatus } from "./PnlRuntimePanels";
+import {
+  pnlActionButtonStyle,
+  resolvePnlSectionState,
+} from "./PnlRuntimeSupport";
 
 const summaryGridStyle = {
   display: "grid",
@@ -101,35 +106,6 @@ const tabBarStyle = {
   flexWrap: "wrap",
 } as const;
 
-const debugPanelStyle = {
-  marginTop: 24,
-  padding: 16,
-  borderRadius: 16,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
-} as const;
-
-const debugPreStyle = {
-  margin: 0,
-  padding: 16,
-  overflowX: "auto",
-  borderRadius: 12,
-  background: shellTokens.colorBgMuted,
-  color: shellTokens.colorText,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const actionButtonStyle = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
-  fontWeight: 600,
-  cursor: "pointer",
-} as const;
-
 function tabButtonStyle(active: boolean) {
   return {
     padding: "10px 16px",
@@ -209,27 +185,6 @@ function withNumericFormatters<T>(defs: ColDef<T>[]): ColDef<T>[] {
   return defs.map((def) =>
     def.type === "numericColumn" ? { ...def, valueFormatter: thousandsValueFormatter } : def,
   );
-}
-
-function resolveSectionState({
-  isLoading,
-  isError,
-  isEmpty,
-}: {
-  isLoading: boolean;
-  isError: boolean;
-  isEmpty: boolean;
-}): "loading" | "error" | "empty" | "ready" {
-  if (isLoading) {
-    return "loading";
-  }
-  if (isError) {
-    return "error";
-  }
-  if (isEmpty) {
-    return "empty";
-  }
-  return "ready";
 }
 
 type DataTab = "fi" | "nonstd";
@@ -322,12 +277,12 @@ export default function PnlPage() {
     !dataQuery.isError &&
     (!selectedReportDate || (formalRows.length === 0 && nonstdRows.length === 0));
 
-  const overviewState = resolveSectionState({
+  const overviewState = resolvePnlSectionState({
     isLoading: overviewLoading,
     isError: overviewError,
     isEmpty: overviewEmpty,
   });
-  const dataState = resolveSectionState({
+  const dataState = resolvePnlSectionState({
     isLoading: dataLoading,
     isError: dataError,
     isEmpty: dataEmpty,
@@ -482,27 +437,13 @@ export default function PnlPage() {
           type="button"
           disabled={refreshDisabled}
           onClick={() => void handleRefresh()}
-          style={actionButtonStyle}
+          style={pnlActionButtonStyle}
         >
           {isRefreshing ? "刷新中..." : "刷新正式结果"}
         </button>
       </FilterBar>
 
-      {(refreshStatus || refreshError) && (
-        <div
-          data-testid="pnl-refresh-status"
-          style={{
-            marginBottom: 16,
-            padding: 14,
-            borderRadius: 14,
-            border: "1px solid #e4ebf5",
-            background: refreshError ? "#fff2f0" : "#f7f9fc",
-            color: refreshError ? "#c83b3b" : "#5c6b82",
-          }}
-        >
-          {refreshError ?? refreshStatus}
-        </div>
-      )}
+      <PnlRefreshStatus testId="pnl-refresh-status" status={refreshStatus} error={refreshError} />
 
       <div data-testid="pnl-overview-section" data-state={overviewState} style={{ marginBottom: 24 }}>
         <SectionLead
@@ -608,14 +549,7 @@ export default function PnlPage() {
         </AsyncSection>
       </div>
 
-      <details data-testid="pnl-result-meta-panel" style={debugPanelStyle}>
-        <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorText }}>
-          result_meta / 调试
-        </summary>
-        <div style={{ marginTop: 12 }}>
-          <pre style={debugPreStyle}>{JSON.stringify(debugSnapshot, null, 2)}</pre>
-        </div>
-      </details>
+      <PnlDebugPanel testId="pnl-result-meta-panel" snapshot={debugSnapshot} />
     </section>
   );
 }
