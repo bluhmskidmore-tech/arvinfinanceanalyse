@@ -5655,7 +5655,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,
       ),
     getLiabilityAdbMonthly: (year) =>
-      requestPlainJson<AdbMonthlyResponse>(
+      requestEnvelopeOrPlainJson<AdbMonthlyResponse>(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
@@ -5664,7 +5664,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       const params = new URLSearchParams();
       params.set("start_date", startDate.trim());
       params.set("end_date", endDate.trim());
-      return requestPlainJson<AdbPayload>(
+      return requestEnvelopeOrPlainJson<AdbPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb?${params.toString()}`,
@@ -5678,7 +5678,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       if (topN !== undefined) {
         params.set("top_n", String(topN));
       }
-      const raw = await requestPlainJson<Record<string, unknown>>(
+      const raw = await requestEnvelopeOrPlainJson<Record<string, unknown>>(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/comparison?${params.toString()}`,
@@ -5687,7 +5687,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     getAdbMonthly: async (year) =>
       normalizeAdbMonthlyResponse(
-        await requestPlainJson<Record<string, unknown>>(
+        await requestEnvelopeOrPlainJson<Record<string, unknown>>(
           fetchImpl,
           baseUrl,
           `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
