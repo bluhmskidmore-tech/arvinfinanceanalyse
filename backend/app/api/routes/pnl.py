@@ -28,7 +28,7 @@ def dates() -> dict[str, object]:
 def data(
     date: str = Query(
         ...,
-        description="Requested report date for future formal /api/pnl data.",
+        description="Requested report date for formal /api/pnl data.",
     ),
 ) -> dict[str, object]:
     settings = get_settings()
@@ -63,7 +63,7 @@ def pnl_bridge(
 
 @router.get("/pnl/overview")
 def overview(
-    report_date: str = Query(..., description="Requested report date for formal /pnl overview."),
+    report_date: str = Query(..., description="Requested report date for formal /api/pnl overview."),
 ) -> dict[str, object]:
     settings = get_settings()
     try:

@@ -406,6 +406,11 @@ class ActionAttributionResponse(BaseModel):
     period_start_dv01: str
     period_end_dv01: str
 
+    status: str = "ready"
+    available_components: list[str] = Field(default_factory=list)
+    missing_inputs: list[str] = Field(default_factory=list)
+    blocked_components: list[str] = Field(default_factory=list)
+
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
 

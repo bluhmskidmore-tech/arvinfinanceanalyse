@@ -12,7 +12,6 @@ CurrencyBasis = Literal["CNY", "CNX"]
 JournalType = Literal["514", "516", "517", "adjustment"]
 
 ZERO = Decimal("0")
-_PHASE2_PLACEHOLDER = "Phase 2 /pnl formal semantics are not implemented yet."
 
 
 @dataclass(slots=True, frozen=True)

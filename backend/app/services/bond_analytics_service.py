@@ -1276,6 +1276,10 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         duration_change_from_actions=str(summary["duration_change_from_actions"]),
         period_start_dv01=str(summary["period_start_dv01"]),
         period_end_dv01=str(summary["period_end_dv01"]),
+        status=str(summary.get("status") or "unavailable"),
+        available_components=[str(item) for item in list(summary.get("available_components") or [])],
+        missing_inputs=[str(item) for item in list(summary.get("missing_inputs") or [])],
+        blocked_components=[str(item) for item in list(summary.get("blocked_components") or [])],
         computed_at=str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
         warnings=warnings,
     )

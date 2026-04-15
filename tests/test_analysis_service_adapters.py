@@ -168,9 +168,18 @@ def test_bond_action_placeholder_envelope_shape():
     assert result.result_meta.quality_flag == "warning"
     assert result.result.summary["period_type"] == "MoM"
     assert result.result.summary["total_actions"] == 0
+    assert result.result.summary["status"] == "unavailable"
+    assert result.result.summary["missing_inputs"] == [
+        "trade_level_action_facts",
+        "trade_execution_metadata",
+    ]
+    assert result.result.summary["blocked_components"] == [
+        "realized_trading",
+        "action_attribution",
+    ]
     assert result.result.facets["action_details"] == []
     assert result.result.warnings
-    assert "placeholder" in result.result.warnings[0].message.lower()
+    assert "unavailable" in result.result.warnings[0].message.lower()
 
 
 def test_product_category_adapter_rejects_formal_basis_with_scenario_rate_pct():
@@ -431,6 +440,10 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
                     "duration_change_from_actions": "0",
                     "period_start_dv01": "0",
                     "period_end_dv01": "0",
+                    "status": "unavailable",
+                    "available_components": [],
+                    "missing_inputs": ["trade_level_action_facts"],
+                    "blocked_components": ["action_attribution"],
                 },
                 facets={
                     "by_action_type": [],
@@ -457,3 +470,5 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
     assert captured["query"].analysis_key == "bond_action_attribution"
     assert payload["result"]["period_type"] == "MoM"
     assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result"]["status"] == "unavailable"
+    assert payload["result"]["missing_inputs"] == ["trade_level_action_facts"]

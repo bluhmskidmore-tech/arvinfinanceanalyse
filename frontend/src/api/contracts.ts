@@ -422,6 +422,10 @@ export type ActionAttributionPayload = {
   duration_change_from_actions: string;
   period_start_dv01: string;
   period_end_dv01: string;
+  status?: string;
+  available_components?: string[];
+  missing_inputs?: string[];
+  blocked_components?: string[];
   warnings: string[];
   computed_at: string;
 };
@@ -1080,7 +1084,9 @@ export type BalanceAnalysisAdvancedAttributionBundlePayload = {
   scenario_name: string | null;
   scenario_inputs: Record<string, number>;
   upstream_summaries: Record<string, Record<string, string | string[]>>;
-  status: "not_ready";
+  status: "not_ready" | "partial";
+  summary?: Record<string, string>;
+  available_components?: string[];
   missing_inputs: string[];
   blocked_components: string[];
   warnings: string[];

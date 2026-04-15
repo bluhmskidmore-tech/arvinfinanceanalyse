@@ -183,11 +183,13 @@
 #### Integration tests：materialize / service / cache / lineage 一致性
 - 目标：验证跨 task、fact、service、cache、result_meta 的链路一致，不只看单点规则。
 - 重点覆盖：
-  - `fi_pnl_record -> fact_formal_pnl_fi` 时，formal recognized total 与 standardized total 不混淆。
-  - `fact_nonstd_pnl_bridge` 保持 bridge grain，不被 scenario / analytical 结果污染。
-  - `basis / formal_use_allowed / scenario_flag` 在 materialize、service response、cache manifest 中一致。
-  - formal / scenario / analytical cache isolation：主 `cache_key`、lock key、latest cache version key 都必须带 `basis`。
-  - manifest / lineage / meta fields consistency：`trace_id`、`source_version`、`rule_version`、`cache_version`、`basis`、`scenario_flag`、`formal_use_allowed` 不能互相矛盾。
+- `fi_pnl_record -> fact_formal_pnl_fi` 时，formal recognized total 与 standardized total 不混淆。
+- `fact_nonstd_pnl_bridge` 保持 bridge grain，不被 scenario / analytical 结果污染。
+- `basis / formal_use_allowed / scenario_flag` 在 materialize、service response、cache manifest 中一致。
+- `pnl.data` / `pnl.overview` 在存在 `report_date` 对应 completed build record 时，`result_meta.source_version / vendor_version / rule_version` 必须优先取该 build lineage，不得被最新 manifest 覆盖；仅在缺失 report-date build 时才允许回退到 manifest lineage。
+- `pnl.bridge` 在存在 `report_date` 对应 completed `pnl_materialize` build record 时，Pnl formal lineage部分必须优先取该 build lineage，不得被最新 manifest 覆盖；balance-analysis 与 yield-curve lineage 继续按各自 report-date build / snapshot 规则合并。
+- formal / scenario / analytical cache isolation：主 `cache_key`、lock key、latest cache version key 都必须带 `basis`。
+- manifest / lineage / meta fields consistency：`trace_id`、`source_version`、`rule_version`、`cache_version`、`basis`、`scenario_flag`、`formal_use_allowed` 不能互相矛盾。
 - 建议复用：
   - `tests/test_pnl_materialize_flow.py`
   - `tests/test_pnl_api_contract.py`
@@ -286,6 +288,13 @@
   - `fail`
   - `not_applicable`
 - 输出必须保持为 lineage-aware pass/fail evidence，不得产出分析指标、read model 或 materialized target 描述。
+
+### 3.6F Liability Analytics Envelope Contract
+
+- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 必须统一返回 `{ result_meta, result }` envelope。
+- 上述 liability endpoints 的 `result_meta.basis` 必须为 `analytical`，`formal_use_allowed=false`，`scenario_flag=false`。
+- `result` 内部仍保留当前 V1 兼容字段名与层级，不得为了 envelope 化而重命名 `top_10`、`by_type`、`liabilities_structure`、`months` 等现有 consumer 字段。
+- envelope 化不得改变 `backend/app/core_finance/liability_analytics_compat.py` 的兼容计算语义；本轮只收口 transport contract 与 lineage metadata。
 
 本轮对应测试文件：
 - `tests/test_qdb_gl_input_contract_validation.py`

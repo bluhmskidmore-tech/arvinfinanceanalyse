@@ -116,8 +116,16 @@ class ProductCategoryPnlAnalysisAdapter:
 
 BOND_ACTION_ATTRIBUTION_KEY = "bond_action_attribution"
 BOND_ACTION_ATTRIBUTION_PLACEHOLDER_WARNING = (
-    "Trade-level action data not yet available; returning placeholder attribution until trade records are integrated."
+    "Governed trade-action facts unavailable; returning unavailable action-attribution contract until trade records are integrated."
 )
+BOND_ACTION_ATTRIBUTION_MISSING_INPUTS = [
+    "trade_level_action_facts",
+    "trade_execution_metadata",
+]
+BOND_ACTION_ATTRIBUTION_BLOCKED_COMPONENTS = [
+    "realized_trading",
+    "action_attribution",
+]
 
 
 def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> AnalysisResultEnvelope:
@@ -174,6 +182,10 @@ def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> 
                 "duration_change_from_actions": "0",
                 "period_start_dv01": "0",
                 "period_end_dv01": "0",
+                "status": "unavailable",
+                "available_components": [],
+                "missing_inputs": list(BOND_ACTION_ATTRIBUTION_MISSING_INPUTS),
+                "blocked_components": list(BOND_ACTION_ATTRIBUTION_BLOCKED_COMPONENTS),
                 "computed_at": query.report_date,
             },
             facets={

@@ -225,6 +225,10 @@ def test_action_attribution_defaults_and_nested():
         period_end_dv01="10",
     )
     assert detail.opportunity_cost is None
+    assert resp.status == "ready"
+    assert resp.available_components == []
+    assert resp.missing_inputs == []
+    assert resp.blocked_components == []
     assert resp.warnings == []
 
 
