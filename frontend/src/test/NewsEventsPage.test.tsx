@@ -116,12 +116,18 @@ describe("NewsEventsPage", () => {
       getChoiceNewsEvents,
     });
 
-    expect(await screen.findByRole("heading", { name: "新闻事件" })).toBeInTheDocument();
+    expect(await screen.findByTestId("news-events-page-title")).toHaveTextContent("新闻事件");
+    expect(screen.getByText("事件概览")).toBeInTheDocument();
+    expect(screen.getByText("筛选与事件列表")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-topic-code")).toBeInTheDocument();
     expect(screen.getByLabelText("news-events-error-only")).toBeInTheDocument();
 
     expect(await screen.findByText("第一页摘要 A")).toBeInTheDocument();
     expect(screen.getByText("第一页摘要 B")).toBeInTheDocument();
+    expect(screen.getByTestId("news-events-total-count")).toHaveTextContent("75");
+    expect(screen.getByTestId("news-events-current-page-kpi")).toHaveTextContent("1 / 2");
+    expect(screen.getByTestId("news-events-error-count")).toHaveTextContent("0");
+    expect(screen.getByTestId("news-events-active-topic")).toHaveTextContent("全部专题");
 
     expect(screen.getByTestId("news-events-page")).toHaveTextContent("1 / 2");
 
@@ -160,5 +166,6 @@ describe("NewsEventsPage", () => {
         limit: PAGE_SIZE,
       });
     });
+    expect(screen.getByTestId("news-events-active-topic")).toHaveTextContent(firstTopic);
   });
 });

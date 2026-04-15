@@ -281,12 +281,24 @@ describe("SourcePreviewPage", () => {
 
     renderPage(client);
 
+    expect(await screen.findByTestId("source-preview-page-title")).toHaveTextContent(
+      "数据源规则预览",
+    );
+    expect(screen.getByText("预览概览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "规则预览摘要" })).toBeInTheDocument();
+    expect(screen.getByText("来源、批次与明细下钻")).toBeInTheDocument();
     expect(await screen.findByRole("combobox", { name: "source-family" })).toBeInTheDocument();
     expect(await screen.findByRole("combobox", { name: "ingest-batch" })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(historyCalls).toContainEqual({ sourceFamily: "zqtz", limit: 2, offset: 0 });
     });
+    expect(screen.getByTestId("source-preview-source-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("source-preview-family-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("source-preview-active-family")).toHaveTextContent("zqtz");
+    expect(screen.getByTestId("source-preview-history-total-kpi")).toHaveTextContent("3");
+    expect(screen.getByTestId("source-preview-rows-total-kpi")).toHaveTextContent("55");
+    expect(screen.getByTestId("source-preview-traces-total-kpi")).toHaveTextContent("44");
     expect(screen.getByTestId("source-preview-history-page")).toHaveTextContent("1 / 2");
     await waitFor(() => {
       expect(rowCalls).toContainEqual({
@@ -340,6 +352,11 @@ describe("SourcePreviewPage", () => {
       expect(historyCalls).toContainEqual({ sourceFamily: "tyw", limit: 2, offset: 0 });
     });
     expect(screen.getByTestId("source-preview-history-page")).toHaveTextContent("1 / 1");
+    expect(screen.getByTestId("source-preview-active-family")).toHaveTextContent("tyw");
+    expect(screen.getByTestId("source-preview-active-batch")).toHaveTextContent("t-batch-2");
+    expect(screen.getByTestId("source-preview-history-total-kpi")).toHaveTextContent("2");
+    expect(screen.getByTestId("source-preview-rows-total-kpi")).toHaveTextContent("14");
+    expect(screen.getByTestId("source-preview-traces-total-kpi")).toHaveTextContent("8");
     await waitFor(() => {
       expect(rowCalls).toContainEqual({
         sourceFamily: "tyw",

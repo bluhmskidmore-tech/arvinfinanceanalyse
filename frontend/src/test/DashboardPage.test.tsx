@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 
@@ -55,10 +55,10 @@ describe("DashboardPage", () => {
     renderDashboard(slowClient);
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "驾驶舱" }),
-    ).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-structure-teaser")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
     await waitFor(() => {
       expect(releaseOverview).toBeDefined();
     });
@@ -66,14 +66,21 @@ describe("DashboardPage", () => {
     expect(await screen.findAllByText(/MOSS/i)).not.toHaveLength(0);
   });
 
-  it("renders dashboard shell after queries settle", async () => {
+  it("renders module links and action panels after queries settle", async () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { level: 1, name: "驾驶舱" }),
-    ).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
+
+    const moduleSnapshot = screen.getByTestId("dashboard-module-snapshot");
+    expect(within(moduleSnapshot).getAllByRole("link")).toHaveLength(4);
+
+    const structureTeaser = screen.getByTestId("dashboard-structure-teaser");
+    expect(within(structureTeaser).getAllByRole("link")).toHaveLength(2);
+
+    const tasksAndCalendar = screen.getByTestId("dashboard-tasks-calendar");
+    expect(within(tasksAndCalendar).getAllByText("演示数据")).toHaveLength(2);
+
     expect(await screen.findAllByText(/MOSS/i)).not.toHaveLength(0);
   });
 });

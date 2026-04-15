@@ -5,7 +5,14 @@ import { useApiClient } from "../../api/client";
 import type { HealthCheckStatus, HealthResponse, SourcePreviewSummary } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
+import { KpiCard } from "../workbench/components/KpiCard";
 import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+} as const;
 
 const healthGridStyle = {
   display: "grid",
@@ -40,6 +47,35 @@ const tdStyle = {
   borderBottom: `1px solid ${t.colorBgMuted}`,
   color: t.colorTextPrimary,
 };
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: t.colorTextPrimary,
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: t.colorTextSecondary,
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
 
 function resolveCheck(
   data: HealthResponse,
@@ -91,6 +127,20 @@ function StatusBadge({ ok }: { ok: boolean }) {
   );
 }
 
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
+
 export default function PlatformConfigPage() {
   const client = useApiClient();
 
@@ -117,36 +167,101 @@ export default function PlatformConfigPage() {
   const redis = health ? resolveCheck(health, "redis") : null;
   const pg = health ? resolveCheck(health, "postgresql") : null;
   const envLabel = health ? environmentLabel(health) : "—";
+  const overallStatusLabel = health?.status ? String(health.status) : "—";
+  const sourceCount = sources.length;
+  const abnormalSourceCount = useMemo(
+    () => sources.filter((summary) => !sourceRowOk(summary)).length,
+    [sources],
+  );
+  const manualReviewRows = useMemo(
+    () => sources.reduce((sum, summary) => sum + summary.manual_review_count, 0),
+    [sources],
+  );
 
   return (
     <section>
-      <div style={{ marginBottom: 24 }}>
-        <h1
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <h1
+            data-testid="platform-config-page-title"
+            style={{
+              margin: 0,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: "-0.03em",
+              color: t.colorTextPrimary,
+            }}
+          >
+            中台配置
+          </h1>
+          <p
+            style={{
+              marginTop: 10,
+              marginBottom: 0,
+              maxWidth: 860,
+              color: t.colorTextSecondary,
+              fontSize: 15,
+              lineHeight: 1.75,
+            }}
+          >
+            系统健康状态、数据源概览与治理信息。
+          </p>
+        </div>
+        <span
           style={{
-            margin: 0,
-            fontSize: 32,
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            fontSize: 12,
             fontWeight: 600,
-            letterSpacing: "-0.03em",
-            color: t.colorTextPrimary,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
           }}
         >
-          中台配置
-        </h1>
-        <p
-          style={{
-            marginTop: 10,
-            marginBottom: 0,
-            maxWidth: 860,
-            color: t.colorTextSecondary,
-            fontSize: 15,
-            lineHeight: 1.75,
-          }}
-        >
-          系统健康状态、数据源概览与治理信息。
-        </p>
+          {client.mode === "real" ? "真实治理读链路" : "本地演示数据"}
+        </span>
+      </div>
+
+      <SectionLead
+        eyebrow="Overview"
+        title="平台概览"
+        description="先看系统状态、运行环境和数据源摘要，再下钻到健康检查卡片与数据源表格，保持配置页的阅读顺序与其他标准壳层一致。"
+      />
+      <div style={summaryGridStyle}>
+        <div data-testid="platform-config-overall-status">
+          <KpiCard title="系统状态" value={overallStatusLabel} detail="后端 health 总状态" valueVariant="text" />
+        </div>
+        <div data-testid="platform-config-environment-kpi">
+          <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
+        </div>
+        <div data-testid="platform-config-source-count">
+          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前 source foundation 摘要中的来源数" valueVariant="text" />
+        </div>
+        <div data-testid="platform-config-abnormal-sources">
+          <KpiCard title="异常来源" value={String(abnormalSourceCount)} detail="行数为 0 或仍有人工复核的来源" valueVariant="text" />
+        </div>
+        <div data-testid="platform-config-manual-review-rows">
+          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的 manual_review_count 汇总" valueVariant="text" />
+        </div>
       </div>
 
       <div style={{ display: "grid", gap: 24 }}>
+        <SectionLead
+          eyebrow="Health"
+          title="系统健康状态"
+          description="健康区保持现有后端检查语义，只在前端整理层级与阅读节奏，不新增任何推导逻辑。"
+        />
         <AsyncSection
           title="系统健康状态"
           isLoading={healthQuery.isLoading}
@@ -188,6 +303,11 @@ export default function PlatformConfigPage() {
           ) : null}
         </AsyncSection>
 
+        <SectionLead
+          eyebrow="Sources"
+          title="数据源列表"
+          description="数据源列表继续展示最新批次、行数、更新时间和状态，作为治理页的只读汇总表。"
+        />
         <AsyncSection
           title="数据源列表"
           isLoading={sourcesQuery.isLoading}

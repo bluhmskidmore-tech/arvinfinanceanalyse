@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type { SourcePreviewColumn } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
+import { KpiCard } from "../../workbench/components/KpiCard";
 import {
   buildSourcePreviewHistoryQuery,
   buildSourcePreviewRowsQuery,
@@ -36,6 +38,41 @@ const pagerRow: CSSProperties = {
   alignItems: "center",
   gap: 8,
   marginTop: 14,
+};
+
+const summaryGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+};
+
+const sectionLeadWrapStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+};
+
+const sectionEyebrowStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+};
+
+const sectionDescriptionStyle: CSSProperties = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
 };
 
 function readString(row: Record<string, unknown>, key: string) {
@@ -78,6 +115,20 @@ function currentPage(offset: number, pageSize: number) {
 
 function totalPages(totalRows: number, pageSize: number) {
   return Math.max(1, Math.ceil(totalRows / pageSize));
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 function buildRefreshStatusText(payload: {
@@ -265,6 +316,8 @@ export default function SourcePreviewPage() {
   const rowColumns = rowsQuery.data?.result.columns ?? [];
   const tracesTotal = tracesQuery.data?.result.total_rows ?? 0;
   const traceColumns = tracesQuery.data?.result.columns ?? [];
+  const activeSourceLabel = selectedSourceFamily || "待选择";
+  const activeBatchLabel = effectiveBatchId || "待选择";
   const isEmpty =
     !previewQuery.isLoading && !previewQuery.isError && sources.length === 0;
 
@@ -333,6 +386,7 @@ export default function SourcePreviewPage() {
       >
         <div>
           <h1
+            data-testid="source-preview-page-title"
             style={{
               marginTop: 0,
               marginBottom: 10,
@@ -379,26 +433,86 @@ export default function SourcePreviewPage() {
             </p>
           ) : null}
         </div>
-        <button
-          type="button"
-          data-testid="source-preview-refresh-button"
-          onClick={() => void handleRefresh()}
-          disabled={isRefreshing}
+        <div
           style={{
-            padding: "10px 16px",
-            borderRadius: 12,
-            border: "1px solid #162033",
-            background: "#fbfcfe",
-            color: "#162033",
-            fontWeight: 600,
-            cursor: isRefreshing ? "progress" : "pointer",
-            opacity: isRefreshing ? 0.7 : 1,
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: 12,
           }}
         >
-          {isRefreshing ? "刷新中..." : "刷新数据源预览"}
-        </button>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {client.mode === "real" ? "真实预览读链路" : "本地演示数据"}
+          </span>
+          <button
+            type="button"
+            data-testid="source-preview-refresh-button"
+            onClick={() => void handleRefresh()}
+            disabled={isRefreshing}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 12,
+              border: "1px solid #162033",
+              background: "#fbfcfe",
+              color: "#162033",
+              fontWeight: 600,
+              cursor: isRefreshing ? "progress" : "pointer",
+              opacity: isRefreshing ? 0.7 : 1,
+            }}
+          >
+            {isRefreshing ? "刷新中..." : "刷新数据源预览"}
+          </button>
+        </div>
       </div>
 
+      <SectionLead
+        eyebrow="Overview"
+        title="预览概览"
+        description="先确认当前来源数量、已选来源与批次，再进入批次历史、行级预览和规则轨迹，保持 source-preview 的阅读顺序更接近标准工作台壳层。"
+      />
+      <div style={summaryGridStyle}>
+        <div data-testid="source-preview-source-count">
+          <KpiCard title="来源数量" value={String(sources.length)} detail="当前预览摘要中的 source family 数量" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-family-count">
+          <KpiCard title="来源种类" value={String(sourceFamilies.length)} detail="可切换的 source family 数量" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-active-family">
+          <KpiCard title="当前来源" value={activeSourceLabel} detail="切换来源会重置批次与分页" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-active-batch">
+          <KpiCard title="当前批次" value={activeBatchLabel} detail="随历史批次选择同步切换下钻视图" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-history-total-kpi">
+          <KpiCard title="历史批次" value={String(historyTotalRows)} detail="当前来源对应的历史批次数量" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-rows-total-kpi">
+          <KpiCard title="行级预览行数" value={String(rowsTotal)} detail="当前批次的行级预览总行数" valueVariant="text" />
+        </div>
+        <div data-testid="source-preview-traces-total-kpi">
+          <KpiCard title="规则轨迹行数" value={String(tracesTotal)} detail="当前批次的规则轨迹总行数" valueVariant="text" />
+        </div>
+      </div>
+
+      <SectionLead
+        eyebrow="Summary"
+        title="规则预览摘要"
+        description="摘要区只负责展示各来源的批次概况和人工复核信号，不在这里展开行级细节。"
+      />
       <section style={sectionShell}>
         <div style={sectionHeaderRow}>
           <span style={{ fontWeight: 600 }}>规则预览摘要</span>
@@ -436,51 +550,58 @@ export default function SourcePreviewPage() {
         </AsyncSection>
       </section>
 
+      <SectionLead
+        eyebrow="Drilldown"
+        title="来源、批次与明细下钻"
+        description="先选择来源和批次，再阅读行级预览与规则轨迹；保留现有分页、刷新和后端列元数据驱动方式。"
+      />
       <section style={{ ...sectionShell, marginTop: 18 }}>
         <div style={sectionHeaderRow}>
           <span style={{ fontWeight: 600 }}>下钻明细</span>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 16,
-            marginBottom: 20,
-          }}
-        >
-          <label style={{ display: "grid", gap: 8 }}>
-            <span>Source family</span>
-            <select
-              aria-label="source-family"
-              value={selectedSourceFamily}
-              onChange={(event) => handleSourceFamilyChange(event.target.value)}
-            >
-              {sourceFamilies.map((family) => (
-                <option key={family} value={family}>
-                  {family}
-                </option>
-              ))}
-            </select>
-          </label>
+        <FilterBar style={{ marginBottom: 20 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 16,
+              width: "100%",
+            }}
+          >
+            <label style={{ display: "grid", gap: 8 }}>
+              <span>Source family</span>
+              <select
+                aria-label="source-family"
+                value={selectedSourceFamily}
+                onChange={(event) => handleSourceFamilyChange(event.target.value)}
+              >
+                {sourceFamilies.map((family) => (
+                  <option key={family} value={family}>
+                    {family}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label style={{ display: "grid", gap: 8 }}>
-            <span>Ingest batch</span>
-            <select
-              aria-label="ingest-batch"
-              value={effectiveBatchId}
-              onChange={(event) => handleBatchChange(event.target.value)}
-            >
-              {historyRows.map((batch) => (
-                <option
-                  key={batch.ingest_batch_id ?? batch.source_version}
-                  value={batch.ingest_batch_id ?? ""}
-                >
-                  {batch.ingest_batch_id}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+            <label style={{ display: "grid", gap: 8 }}>
+              <span>Ingest batch</span>
+              <select
+                aria-label="ingest-batch"
+                value={effectiveBatchId}
+                onChange={(event) => handleBatchChange(event.target.value)}
+              >
+                {historyRows.map((batch) => (
+                  <option
+                    key={batch.ingest_batch_id ?? batch.source_version}
+                    value={batch.ingest_batch_id ?? ""}
+                  >
+                    {batch.ingest_batch_id}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </FilterBar>
 
         <div style={pagerRow}>
           <button

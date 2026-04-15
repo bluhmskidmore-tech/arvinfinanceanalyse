@@ -51,17 +51,17 @@ describe("RiskOverviewSection", () => {
 
     expect(screen.getByText("DV01")).toBeInTheDocument();
     expect(screen.getByText("12.4")).toBeInTheDocument();
-    expect(screen.getByText("stable")).toBeInTheDocument();
+    expect(screen.getByText("稳定")).toBeInTheDocument();
     expect(screen.getByText("限额内")).toBeInTheDocument();
 
     expect(screen.getByText("集中度")).toBeInTheDocument();
     expect(screen.getByText("偏高")).toBeInTheDocument();
-    expect(screen.getByText("watch")).toBeInTheDocument();
+    expect(screen.getByText("关注")).toBeInTheDocument();
     expect(screen.getByText("接近预警线")).toBeInTheDocument();
 
     expect(screen.getByText("流动性")).toBeInTheDocument();
     expect(screen.getByText("紧张")).toBeInTheDocument();
-    expect(screen.getByText("warning")).toBeInTheDocument();
+    expect(screen.getByText("预警")).toBeInTheDocument();
     expect(screen.getByText("需压降")).toBeInTheDocument();
   });
 

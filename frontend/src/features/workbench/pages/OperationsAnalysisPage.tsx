@@ -7,6 +7,7 @@ import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
+import { FilterBar } from "../../../components/FilterBar";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
@@ -58,6 +59,15 @@ const cardStyle = {
   gap: 12,
 } as const;
 
+const controlStyle = {
+  minWidth: 172,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid #d7dfea",
+  background: "#ffffff",
+  color: "#162033",
+} as const;
+
 const linkStyle = {
   color: "#1f5eff",
   fontWeight: 600,
@@ -71,6 +81,35 @@ const balanceOverviewGridStyle = {
   marginTop: 16,
 } as const;
 
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
 function formatOverviewNumber(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
     return "—";
@@ -80,6 +119,20 @@ function formatOverviewNumber(raw: string | number | null | undefined): string {
     return String(raw);
   }
   return n.toLocaleString("zh-CN");
+}
+
+function buildStatusCardContent(input: {
+  isError: boolean;
+  value: string;
+  detail: string;
+}) {
+  if (input.isError) {
+    return {
+      value: "不可用",
+      detail: "当前查询失败，请在下方面板重试。",
+    };
+  }
+  return input;
 }
 
 function summarizeNewsPayload(event: {
@@ -95,9 +148,9 @@ function summarizeNewsPayload(event: {
     return event.payload_json;
   }
   if (event.error_code !== 0) {
-    return event.error_msg || "Vendor callback returned an empty error envelope.";
+    return event.error_msg || "供应商回调返回了空错误信息。";
   }
-  return "Empty callback envelope.";
+  return "回调内容为空。";
 }
 
 function buildPnlRefreshStatusText(payload: {
@@ -112,12 +165,26 @@ function buildPnlRefreshStatusText(payload: {
     `最近结果：${payload.status}`,
     payload.job_name ? `任务 ${payload.job_name}` : null,
     payload.trigger_mode ? `触发 ${payload.trigger_mode}` : null,
-    payload.cache_key ? `cache ${payload.cache_key}` : null,
+    payload.cache_key ? `缓存 ${payload.cache_key}` : null,
     payload.report_date ? `报告日 ${payload.report_date}` : null,
-    payload.source_version ? `source ${payload.source_version}` : null,
+    payload.source_version ? `源版本 ${payload.source_version}` : null,
   ]
     .filter(Boolean)
-    .join(" 路 ");
+    .join(" / ");
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 export default function OperationsAnalysisPage() {
@@ -234,6 +301,26 @@ export default function OperationsAnalysisPage() {
     () => balanceSummaryQuery.data?.result.rows ?? [],
     [balanceSummaryQuery.data?.result.rows],
   );
+  const sourceStatusCard = buildStatusCardContent({
+    isError: sourceQuery.isError,
+    value: String(sourceSummaries.length),
+    detail: "来自数据源预览总览的来源摘要数量。",
+  });
+  const macroStatusCard = buildStatusCardContent({
+    isError: macroCatalogQuery.isError || macroLatestQuery.isError,
+    value: String(macroLatest.length),
+    detail: `宏观目录 ${macroCatalog.length} 条，最新交易日 ${latestTradeDate}`,
+  });
+  const newsStatusCard = buildStatusCardContent({
+    isError: newsQuery.isError,
+    value: String(newsTotal),
+    detail: "来自 Choice 新闻事件流的当前查询总行数。",
+  });
+  const formalFxStatusCard = buildStatusCardContent({
+    isError: fxFormalStatusQuery.isError,
+    value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
+    detail: `最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} / 沿用前值数量 ${fxFormalStatus?.carry_forward_count ?? 0}`,
+  });
 
   async function handlePnlRefresh() {
     setIsPnlRefreshing(true);
@@ -292,7 +379,7 @@ export default function OperationsAnalysisPage() {
               lineHeight: 1.75,
             }}
           >
-            上方为经营管理读面（示意 KPI、结论与贡献摘要）；下方折叠区保留数据源预览、宏观与新闻观测、formal FX 状态及
+            当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和
             PnL 刷新入口。所有正式数值均以后端契约为准。
           </p>
         </div>
@@ -313,6 +400,41 @@ export default function OperationsAnalysisPage() {
           {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
         </span>
       </div>
+
+      <FilterBar style={{ marginBottom: 20 }}>
+        <label>
+          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+            范围
+          </span>
+          <select style={controlStyle} disabled>
+            <option>金融市场条线</option>
+          </select>
+        </label>
+        <label>
+          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+            口径
+          </span>
+          <select style={controlStyle} disabled>
+            <option>静态经营</option>
+          </select>
+        </label>
+        <label>
+          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+            币种
+          </span>
+          <select style={controlStyle} disabled>
+            <option>全部</option>
+          </select>
+        </label>
+        <label>
+          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+            周期
+          </span>
+          <select style={controlStyle} disabled>
+            <option>单日截面</option>
+          </select>
+        </label>
+      </FilterBar>
 
       <div data-testid="operations-business-kpis" style={summaryGridStyle}>
         <KpiCard
@@ -361,11 +483,58 @@ export default function OperationsAnalysisPage() {
         />
       </div>
 
+      <SectionLead
+        eyebrow="核心视图"
+        title="结论、桥接与质量观察"
+        description="先看管理层结论，再看收益成本桥和质量观察，确认当前经营判断、利差来源和压力点是否一致。"
+      />
+      <div style={tripleGridStyle}>
+        <BusinessConclusion />
+        <RevenueCostBridge />
+        <QualityObservation />
+      </div>
+
+      <SectionLead
+        eyebrow="经营贡献"
+        title="经营贡献与重点事项"
+        description="这一组把余额贡献、重点事项和经营日历放在同一层，方便从结论直接过渡到行动与跟踪。"
+      />
+      <div style={tripleGridStyle}>
+        <BusinessContributionTable
+          reportDate={latestBalanceReportDate}
+          rows={balanceSummaryRows}
+          loading={balanceSummaryQuery.isLoading}
+          error={balanceSummaryQuery.isError}
+          onRetry={() => void balanceSummaryQuery.refetch()}
+        />
+        <SectionCard title="关注事项">
+          <AlertList items={OPERATIONS_WATCH_ITEMS} />
+        </SectionCard>
+        <SectionCard title="经营日历">
+          <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
+        </SectionCard>
+      </div>
+
+      <SectionLead
+        eyebrow="结构解读"
+        title="期限结构与管理输出"
+        description="将期限缺口、集中度和管理输出并排，形成经营判断之后的结构解释层。"
+      />
+      <div style={pairGridStyle}>
+        <TenorConcentrationPanel />
+        <ManagementOutput />
+      </div>
+
+      <SectionLead
+        eyebrow="专题入口"
+        title="专题入口"
+        description="经营分析页只保留专题速览和跳转，正式工作簿与细项下钻仍在对应主题页中查看。"
+      />
       <div
         data-testid="operations-entry-balance-section"
         style={{
-          marginTop: 28,
-          marginBottom: 28,
+          marginTop: 12,
+          marginBottom: 4,
           paddingLeft: 20,
           borderLeft: "4px solid #1f5eff",
         }}
@@ -405,7 +574,7 @@ export default function OperationsAnalysisPage() {
                   color: "#162033",
                 }}
               >
-                资产负债分析（正式读面速览）
+                专题入口：资产负债正式读面
               </h2>
               <Link to="/balance-analysis" style={linkStyle} aria-label="进入资产负债分析">
                 进入资产负债分析
@@ -428,16 +597,15 @@ export default function OperationsAnalysisPage() {
                   {balanceOverviewQuery.data.result.report_date}
                 </span>
                 ，口径 position_scope={balanceOverviewQuery.data.result.position_scope}，
-                currency_basis={balanceOverviewQuery.data.result.currency_basis}。下列数值由{" "}
-                <code style={{ fontSize: 13 }}>/ui/balance-analysis/overview</code>{" "}
-                直接返回，单位与正式工作簿一致（亿元字段以后端约定为准）。
+                currency_basis={balanceOverviewQuery.data.result.currency_basis}。这里仅保留正式工作簿速览，
+                作为经营分析后的专题入口，不在本页展开完整工作簿。
               </p>
               <div style={balanceOverviewGridStyle}>
                 <div data-testid="operations-entry-balance-detail-rows">
                   <KpiCard
                     title="明细行数"
                     value={String(balanceOverviewQuery.data.result.detail_row_count)}
-                    detail="overview.detail_row_count"
+                    detail="正式读面明细行数"
                     valueVariant="text"
                   />
                 </div>
@@ -445,7 +613,7 @@ export default function OperationsAnalysisPage() {
                   <KpiCard
                     title="汇总行数"
                     value={String(balanceOverviewQuery.data.result.summary_row_count)}
-                    detail="overview.summary_row_count"
+                    detail="正式读面汇总行数"
                     valueVariant="text"
                   />
                 </div>
@@ -453,7 +621,7 @@ export default function OperationsAnalysisPage() {
                   <KpiCard
                     title="总市值合计"
                     value={formatOverviewNumber(balanceOverviewQuery.data.result.total_market_value_amount)}
-                    detail="overview.total_market_value_amount"
+                    detail="正式读面总市值"
                     valueVariant="text"
                   />
                 </div>
@@ -463,7 +631,7 @@ export default function OperationsAnalysisPage() {
                     value={formatOverviewNumber(
                       balanceOverviewQuery.data.result.total_amortized_cost_amount,
                     )}
-                    detail="overview.total_amortized_cost_amount"
+                    detail="正式读面摊余成本"
                     valueVariant="text"
                   />
                 </div>
@@ -473,7 +641,7 @@ export default function OperationsAnalysisPage() {
                     value={formatOverviewNumber(
                       balanceOverviewQuery.data.result.total_accrued_interest_amount,
                     )}
-                    detail="overview.total_accrued_interest_amount"
+                    detail="正式读面应计利息"
                     valueVariant="text"
                   />
                 </div>
@@ -481,33 +649,6 @@ export default function OperationsAnalysisPage() {
             </div>
           ) : null}
         </AsyncSection>
-      </div>
-
-      <div style={tripleGridStyle}>
-        <BusinessConclusion />
-        <RevenueCostBridge />
-        <QualityObservation />
-      </div>
-
-      <div style={tripleGridStyle}>
-        <BusinessContributionTable
-          reportDate={latestBalanceReportDate}
-          rows={balanceSummaryRows}
-          loading={balanceSummaryQuery.isLoading}
-          error={balanceSummaryQuery.isError}
-          onRetry={() => void balanceSummaryQuery.refetch()}
-        />
-        <SectionCard title="关注事项">
-          <AlertList items={OPERATIONS_WATCH_ITEMS} />
-        </SectionCard>
-        <SectionCard title="经营日历">
-          <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
-        </SectionCard>
-      </div>
-
-      <div style={pairGridStyle}>
-        <TenorConcentrationPanel />
-        <ManagementOutput />
       </div>
 
       <Collapse
@@ -524,33 +665,37 @@ export default function OperationsAnalysisPage() {
                   <div data-testid="operations-entry-source-count">
                     <KpiCard
                       title="数据源批次"
-                      value={String(sourceSummaries.length)}
-                      detail="来自 source preview 总览的 source_family 摘要数量。"
+                      value={sourceStatusCard.value}
+                      detail={sourceStatusCard.detail}
                       valueVariant="text"
+                      status={sourceQuery.isError ? "warning" : "normal"}
                     />
                   </div>
                   <div data-testid="operations-entry-macro-count">
                     <KpiCard
                       title="宏观最新点位"
-                      value={String(macroLatest.length)}
-                      detail={`宏观目录 ${macroCatalog.length} 条，最新交易日 ${latestTradeDate}`}
+                      value={macroStatusCard.value}
+                      detail={macroStatusCard.detail}
                       valueVariant="text"
+                      status={macroCatalogQuery.isError || macroLatestQuery.isError ? "warning" : "normal"}
                     />
                   </div>
                   <div data-testid="operations-entry-news-count">
                     <KpiCard
                       title="新闻事件"
-                      value={String(newsTotal)}
-                      detail="来自 Choice news 事件流的当前查询总行数。"
+                      value={newsStatusCard.value}
+                      detail={newsStatusCard.detail}
                       valueVariant="text"
+                      status={newsQuery.isError ? "warning" : "normal"}
                     />
                   </div>
                   <div data-testid="operations-entry-formal-fx-count">
                     <KpiCard
-                      title="Formal FX status"
-                      value={`${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`}
-                      detail={`latest_trade_date ${fxFormalStatus?.latest_trade_date ?? "pending"} 路 carry_forward_count ${fxFormalStatus?.carry_forward_count ?? 0}`}
+                      title="正式 FX 状态"
+                      value={formalFxStatusCard.value}
+                      detail={formalFxStatusCard.detail}
                       valueVariant="text"
+                      status={fxFormalStatusQuery.isError ? "warning" : "normal"}
                     />
                   </div>
                 </div>
@@ -583,11 +728,11 @@ export default function OperationsAnalysisPage() {
                         >
                           <strong>{summary.source_family.toUpperCase()}</strong>
                           <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            报告日期 {summary.report_date ?? "—"} 路 行数 {summary.total_rows} 路 人工复核{" "}
+                            报告日 {summary.report_date ?? "—"} / 行数 {summary.total_rows} / 人工复核{" "}
                             {summary.manual_review_count}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            ingest_batch_id {summary.ingest_batch_id ?? "latest"}
+                            导入批次 {summary.ingest_batch_id ?? "latest"}
                           </div>
                         </div>
                       ))}
@@ -630,10 +775,10 @@ export default function OperationsAnalysisPage() {
                         >
                           <strong>{point.series_name}</strong>
                           <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            {point.trade_date} 路 {point.value_numeric.toFixed(2)} {point.unit}
+                            {point.trade_date} / {point.value_numeric.toFixed(2)} {point.unit}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            source_version {point.source_version}
+                            源版本 {point.source_version}
                           </div>
                         </div>
                       ))}
@@ -667,7 +812,7 @@ export default function OperationsAnalysisPage() {
                         >
                           <strong>{event.topic_code}</strong>
                           <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            {event.group_id} 路 {event.received_at}
+                            分组 {event.group_id} / {event.received_at}
                           </div>
                           <div style={{ color: "#162033", fontSize: 14, lineHeight: 1.6 }}>
                             {summarizeNewsPayload(event)}
@@ -678,7 +823,7 @@ export default function OperationsAnalysisPage() {
                   </AsyncSection>
 
                   <AsyncSection
-                    title="Formal FX middle-rate status"
+                    title="正式 FX 中间价状态"
                     isLoading={fxFormalStatusQuery.isLoading}
                     isError={fxFormalStatusQuery.isError}
                     isEmpty={
@@ -688,14 +833,15 @@ export default function OperationsAnalysisPage() {
                   >
                     <div data-testid="operations-entry-formal-fx-status" style={cardStyle}>
                       <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
-                        Formal FX middle-rate status comes directly from the backend formal read model and is
-                        displayed separately from analytical market observations.
+                        正式 FX 中间价状态直接来自后端正式读模型，并与分析口径的市场观察分开展示。
                       </div>
                       <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
-                        <div>latest_trade_date {fxFormalStatus?.latest_trade_date ?? "pending"}</div>
-                        <div>carry_forward_count {fxFormalStatus?.carry_forward_count ?? 0}</div>
-                        <div>vendor_priority {(fxFormalStatus?.vendor_priority ?? []).join(" > ") || "pending"}</div>
-                        <div>trace_id {fxFormalStatusQuery.data?.result_meta.trace_id ?? "pending"}</div>
+                        <div>最新交易日 {fxFormalStatus?.latest_trade_date ?? "待定"}</div>
+                        <div>沿用前值数量 {fxFormalStatus?.carry_forward_count ?? 0}</div>
+                        <div>
+                          供应商优先级 {(fxFormalStatus?.vendor_priority ?? []).join(" > ") || "待定"}
+                        </div>
+                        <div>trace_id {fxFormalStatusQuery.data?.result_meta.trace_id ?? "待定"}</div>
                       </div>
                       <div style={{ display: "grid", gap: 10 }}>
                         {fxFormalRows.map((row) => (
@@ -712,20 +858,20 @@ export default function OperationsAnalysisPage() {
                           >
                             <strong>{row.pair_label}</strong>
                             <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                              status {row.status} 路 trade_date {row.trade_date ?? "pending"} 路 observed{" "}
-                              {row.observed_trade_date ?? "pending"}
+                              状态 {row.status} / 交易日 {row.trade_date ?? "待定"} / 观测日{" "}
+                              {row.observed_trade_date ?? "待定"}
                             </div>
                             <div style={{ color: "#8090a8", fontSize: 12 }}>
                               {row.status === "missing"
-                                ? `missing ${row.pair_label}`
-                                : `mid_rate ${row.mid_rate ?? "n/a"} 路 vendor ${row.vendor_name ?? "n/a"} 路 carry_forward ${row.is_carry_forward ?? false}`}
+                                ? `缺失 ${row.pair_label}`
+                                : `中间价 ${row.mid_rate ?? "n/a"} / 供应商 ${row.vendor_name ?? "n/a"} / 沿用前值 ${row.is_carry_forward ?? false}`}
                             </div>
                           </div>
                         ))}
                       </div>
                       {missingFxRows.length > 0 ? (
                         <div style={{ color: "#b42318", fontSize: 13 }}>
-                          Missing formal FX pairs: {missingFxRows.map((row) => row.pair_label).join(", ")}
+                          缺失的正式 FX 货币对：{missingFxRows.map((row) => row.pair_label).join(", ")}
                         </div>
                       ) : null}
                     </div>
@@ -751,7 +897,7 @@ export default function OperationsAnalysisPage() {
                             lineHeight: 1.7,
                           }}
                         >
-                          手动触发正式损益（PnL）物化任务，与 formal FX 状态读面相互独立。该入口只负责发起刷新与展示任务状态，
+                          手动触发正式损益（PnL）物化任务，与正式 FX 状态读面相互独立。该入口只负责发起刷新与展示任务状态，
                           不在当前页面演绎正式损益大表。
                         </p>
                         {lastPnlRefreshRunId ? (

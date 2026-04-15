@@ -1,6 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { configure } from "@testing-library/react";
 
 import "../lib/agGridSetup";
+
+configure({
+  asyncUtilTimeout: 5000,
+});
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,

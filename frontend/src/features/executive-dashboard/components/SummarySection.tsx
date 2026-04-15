@@ -37,13 +37,24 @@ export function SummarySection({
           fontSize: 14,
           lineHeight: 1.8,
           marginTop: 0,
+          marginBottom: 18,
         }}
       >
         {data?.narrative}
       </p>
       <div style={{ display: "grid", gap: 16 }}>
         {data?.points.map((item) => (
-          <div key={item.id} style={{ display: "grid", gap: 8 }}>
+          <div
+            key={item.id}
+            style={{
+              display: "grid",
+              gap: 8,
+              padding: 14,
+              borderRadius: 16,
+              background: "#ffffff",
+              border: "1px solid #e8edf5",
+            }}
+          >
             <span
               style={{
                 width: "fit-content",
@@ -55,9 +66,9 @@ export function SummarySection({
                 fontWeight: 600,
               }}
             >
-                {item.label}
+              {item.label}
             </span>
-            <span style={{ color: "#5c6b82" }}>{item.text}</span>
+            <span style={{ color: "#5c6b82", lineHeight: 1.7 }}>{item.text}</span>
           </div>
         ))}
       </div>

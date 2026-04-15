@@ -109,14 +109,20 @@ describe("PlatformConfigPage", () => {
       getSourceFoundation,
     });
 
-    expect(await screen.findByRole("heading", { name: "中台配置" })).toBeInTheDocument();
+    expect(await screen.findByTestId("platform-config-page-title")).toHaveTextContent("中台配置");
     expect(screen.getByText("系统健康状态、数据源概览与治理信息。")).toBeInTheDocument();
+    expect(screen.getByText("平台概览")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "系统健康状态" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "数据源列表" })).toBeInTheDocument();
 
     expect(await screen.findByText("DuckDB 状态")).toBeInTheDocument();
+    expect(screen.getByTestId("platform-config-overall-status")).toHaveTextContent("degraded");
+    expect(screen.getByTestId("platform-config-environment-kpi")).toHaveTextContent("test");
+    expect(screen.getByTestId("platform-config-source-count")).toHaveTextContent("2");
+    expect(screen.getByTestId("platform-config-abnormal-sources")).toHaveTextContent("1");
+    expect(screen.getByTestId("platform-config-manual-review-rows")).toHaveTextContent("3");
     expect(screen.getByText("Redis 状态")).toBeInTheDocument();
     expect(screen.getByText("PostgreSQL 状态")).toBeInTheDocument();
-    expect(screen.getByText("系统环境")).toBeInTheDocument();
-    expect(screen.getByText("test")).toBeInTheDocument();
 
     const sourcesTable = await screen.findByTestId("platform-config-sources-table");
     expect(sourcesTable).toHaveTextContent("ZQTZ");

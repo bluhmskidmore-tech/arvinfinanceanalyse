@@ -4,6 +4,7 @@ import { Collapse, Select } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
@@ -29,6 +30,13 @@ const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 16,
+} as const;
+
+const observationGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 16,
+  marginTop: 16,
 } as const;
 
 const sectionGridStyle = {
@@ -59,21 +67,8 @@ const macroChartShellStyle = {
 } as const;
 
 const terminalRowGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 16,
-} as const;
-
-const filterStripStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 12,
-  alignItems: "end",
-  marginBottom: 18,
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
+  ...observationGridStyle,
+  marginTop: 0,
 } as const;
 
 const filterLabelStyle = {
@@ -82,6 +77,44 @@ const filterLabelStyle = {
   fontSize: 12,
   fontWeight: 600,
   color: "#5c6b82",
+} as const;
+
+const filterControlStyle = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #d7dfea",
+  fontSize: 13,
+  color: "#162033",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
 } as const;
 
 /** 利率走势：国债 10Y / 国开 5Y / SHIBOR 隔夜（Choice series_id） */
@@ -466,6 +499,20 @@ function MetadataPanel({
   );
 }
 
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
+
 export default function MarketDataPage() {
   const client = useApiClient();
   const catalogQuery = useQuery({
@@ -659,6 +706,7 @@ export default function MarketDataPage() {
       >
         <div>
           <h1
+            data-testid="market-data-page-title"
             style={{
               margin: 0,
               fontSize: 32,
@@ -666,8 +714,18 @@ export default function MarketDataPage() {
               letterSpacing: "-0.03em",
             }}
           >
-            市场数据工作台
+            市场数据
           </h1>
+          <p
+            style={{
+              marginTop: 8,
+              marginBottom: 0,
+              color: "#64748b",
+              fontSize: 13,
+            }}
+          >
+            观察日期 {watchDate}
+          </p>
           <p
             style={{
               marginTop: 10,
@@ -678,45 +736,55 @@ export default function MarketDataPage() {
               lineHeight: 1.75,
             }}
           >
-            页面同时展示宏观观察与 analytical FX 观察，但 formal FX 中间价状态仍保持为单独的后端治理读面，
-            不在浏览器侧推导、不混入 macro latest sections。
+            当前页按“市场观察、分析观察、结果证据”三层阅读顺序展示内容。宏观观察与 analytical FX 观察继续共存，
+            但 formal FX 中间价状态和 result metadata 仍保持为独立后端读面，不在前端补算、不混入口径。
           </p>
         </div>
-        <span
+        <div
           style={{
-            display: "inline-flex",
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
             alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
+            gap: 12,
           }}
         >
-          {client.mode === "real" ? "真实 DuckDB 读路径" : "本地演示数据"}
-        </span>
-        <button
-          type="button"
-          data-testid="market-data-refresh-button"
-          disabled={isRefreshing}
-          onClick={() => void handleRefresh()}
-          style={{
-            padding: "8px 18px",
-            borderRadius: 999,
-            border: "none",
-            background: isRefreshing ? "#c5d0e0" : "#1f5eff",
-            color: "#fff",
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: isRefreshing ? "not-allowed" : "pointer",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {isRefreshing ? "刷新中…" : "刷新宏观数据"}
-        </button>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 12px",
+              borderRadius: 999,
+              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              fontSize: 12,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+              textTransform: "uppercase",
+            }}
+          >
+            {client.mode === "real" ? "真实 DuckDB 读路径" : "本地演示数据"}
+          </span>
+          <button
+            type="button"
+            data-testid="market-data-refresh-button"
+            disabled={isRefreshing}
+            onClick={() => void handleRefresh()}
+            style={{
+              padding: "8px 18px",
+              borderRadius: 999,
+              border: "none",
+              background: isRefreshing ? "#c5d0e0" : "#1f5eff",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: isRefreshing ? "not-allowed" : "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {isRefreshing ? "刷新中…" : "刷新宏观数据"}
+          </button>
+        </div>
       </div>
       {(refreshStatus || refreshError) && (
         <div
@@ -733,63 +801,72 @@ export default function MarketDataPage() {
         </div>
       )}
 
-      <div data-testid="market-data-filter-strip" style={filterStripStyle}>
-        <label style={filterLabelStyle}>
-          日期
-          <input
-            type="date"
-            value={watchDate}
-            onChange={(e) => setWatchDate(e.target.value)}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #d7dfea",
-              fontSize: 13,
-              color: "#162033",
-            }}
-          />
-        </label>
-        <label style={filterLabelStyle}>
-          国债 / 国开
-          <Select
-            value={curveFilter}
-            onChange={(v) => setCurveFilter(v)}
-            options={[
-              { value: "treasury", label: "国债" },
-              { value: "cdb", label: "国开" },
-              { value: "both", label: "全部" },
-            ]}
-            style={{ width: "100%" }}
-          />
-        </label>
-        <label style={filterLabelStyle}>
-          中票 / 城投
-          <Select
-            value={creditSegment}
-            onChange={(v) => setCreditSegment(v)}
-            options={[
-              { value: "mtn", label: "中票" },
-              { value: "urban", label: "城投" },
-              { value: "both", label: "全部" },
-            ]}
-            style={{ width: "100%" }}
-          />
-        </label>
-        <label style={filterLabelStyle}>
-          来源
-          <Select
-            value={sourceFilter}
-            onChange={(v) => setSourceFilter(v)}
-            options={[
-              { value: "all", label: "全部" },
-              { value: "choice", label: "Choice" },
-              { value: "internal", label: "内部" },
-            ]}
-            style={{ width: "100%" }}
-          />
-        </label>
+      <div data-testid="market-data-filter-strip">
+        <FilterBar
+          style={{
+            marginBottom: 18,
+            padding: 16,
+            borderRadius: 16,
+            border: "1px solid #e4ebf5",
+            background: "#ffffff",
+          }}
+        >
+          <label style={filterLabelStyle}>
+            日期
+            <input
+              type="date"
+              value={watchDate}
+              onChange={(e) => setWatchDate(e.target.value)}
+              style={filterControlStyle}
+            />
+          </label>
+          <label style={filterLabelStyle}>
+            国债 / 国开
+            <Select
+              value={curveFilter}
+              onChange={(v) => setCurveFilter(v)}
+              options={[
+                { value: "treasury", label: "国债" },
+                { value: "cdb", label: "国开" },
+                { value: "both", label: "全部" },
+              ]}
+              style={{ width: 200 }}
+            />
+          </label>
+          <label style={filterLabelStyle}>
+            中票 / 城投
+            <Select
+              value={creditSegment}
+              onChange={(v) => setCreditSegment(v)}
+              options={[
+                { value: "mtn", label: "中票" },
+                { value: "urban", label: "城投" },
+                { value: "both", label: "全部" },
+              ]}
+              style={{ width: 200 }}
+            />
+          </label>
+          <label style={filterLabelStyle}>
+            来源
+            <Select
+              value={sourceFilter}
+              onChange={(v) => setSourceFilter(v)}
+              options={[
+                { value: "all", label: "全部" },
+                { value: "choice", label: "Choice" },
+                { value: "internal", label: "内部" },
+              ]}
+              style={{ width: 200 }}
+            />
+          </label>
+        </FilterBar>
       </div>
 
+      <SectionLead
+        eyebrow="Overview"
+        title="市场概览"
+        description="先确认当前序列覆盖、稳定回收和 analytical 观察范围，再进入利率、资金和成交明细。"
+      />
       <div style={summaryGridStyle}>
         <div data-testid="market-data-catalog-count">
           <KpiCard
@@ -836,14 +913,14 @@ export default function MarketDataPage() {
         </div>
         <div data-testid="market-data-fx-analytical-group-count">
           <KpiCard
-            title="FX analytical groups"
+            title="FX 观察分组"
             value={String(fxAnalyticalGroups.length)}
             detail="后端返回的 analytical FX 分组数量。"
           />
         </div>
         <div data-testid="market-data-fx-analytical-series-count">
           <KpiCard
-            title="FX analytical series"
+            title="FX 观察序列"
             value={String(fxAnalyticalSeriesCount)}
             detail="Analytical FX 观察值与 formal FX 状态保持分离。"
           />
@@ -859,7 +936,12 @@ export default function MarketDataPage() {
         </div>
       </div>
 
-      <div style={{ ...terminalRowGridStyle, marginTop: 18 }}>
+      <SectionLead
+        eyebrow="Core Watch"
+        title="利率、资金与成交观察"
+        description="市场主观察区优先展示利率行情、曲线、资金面和成交窗口，阅读顺序与标准市场数据页保持一致。"
+      />
+      <div style={terminalRowGridStyle}>
         <RateQuoteTable />
         <div
           data-testid="market-data-macro-charts"
@@ -905,21 +987,26 @@ export default function MarketDataPage() {
         <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
       </div>
 
-      <div style={{ ...terminalRowGridStyle, marginTop: 16 }}>
+      <div style={observationGridStyle}>
         <MoneyMarketTable />
         <BondFuturesTable />
         <NcdMatrix />
       </div>
 
-      <div style={{ ...terminalRowGridStyle, marginTop: 16 }}>
+      <div style={observationGridStyle}>
         <BondTradeDetail />
         <CreditBondTradesTable />
         <NewsAndCalendar />
       </div>
 
+      <SectionLead
+        eyebrow="Observation"
+        title="宏观序列与分析观察"
+        description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
+      />
       <div style={{ marginTop: 18 }}>
         <AsyncSection
-          title="可用 Choice 点位"
+          title="宏观序列观察"
           isLoading={latestQuery.isLoading}
           isError={latestQuery.isError}
           isEmpty={!latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0}
@@ -1014,7 +1101,7 @@ export default function MarketDataPage() {
 
       <div style={{ marginTop: 18 }}>
         <AsyncSection
-          title="FX analytical observations"
+          title="FX analytical 观察"
           isLoading={fxAnalyticalQuery.isLoading}
           isError={fxAnalyticalQuery.isError}
           isEmpty={
@@ -1053,6 +1140,11 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
+      <SectionLead
+        eyebrow="Analytical"
+        title="宏观-债市联动"
+        description="联动区保留为分析口径折叠块，继续显式标注 analytical / non-formal，不向 formal 结果读面越界。"
+      />
       <Collapse
         data-testid="market-data-linkage-collapse"
         style={{ marginTop: 18 }}
@@ -1365,6 +1457,11 @@ export default function MarketDataPage() {
         ]}
       />
 
+      <SectionLead
+        eyebrow="Evidence"
+        title="目录与结果元数据"
+        description="页尾集中展示目录补充信息与 result metadata，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
+      />
       <div style={sectionGridStyle}>
         <AsyncSection
           title="宏观序列目录"
@@ -1399,20 +1496,20 @@ export default function MarketDataPage() {
         </AsyncSection>
 
         <MetadataPanel
-          title="Result metadata"
+          title="结果元数据"
           meta={macroMeta}
           extraLine={`visible_vendor_versions: ${vendorVersions.join(", ") || "暂无"}`}
           testId="market-data-result-meta"
         />
 
         <MetadataPanel
-          title="FX analytical metadata"
+          title="FX 观察元数据"
           meta={fxAnalyticalMeta}
           testId="market-data-fx-analytical-meta"
         />
 
         <MetadataPanel
-          title="Macro linkage metadata"
+          title="联动元数据"
           meta={macroBondLinkageMeta}
           extraLine={`report_date: ${linkageReportDate || "pending"}`}
           testId="market-data-linkage-meta"

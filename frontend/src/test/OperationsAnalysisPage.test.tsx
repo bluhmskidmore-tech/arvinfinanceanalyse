@@ -1,4 +1,4 @@
-﻿import { createElement, useState, type ReactNode } from "react";
+import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
@@ -233,8 +233,12 @@ describe("OperationsAnalysisPage", () => {
     expect(
       await screen.findByRole("heading", { name: "经营分析" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("范围")).toBeInTheDocument();
+    expect(screen.getByText("口径")).toBeInTheDocument();
+    expect(screen.getByText("币种")).toBeInTheDocument();
+    expect(screen.getByText("周期")).toBeInTheDocument();
     expect(
-      await screen.findByRole("heading", { name: "资产负债分析（正式读面速览）" }),
+      await screen.findByRole("heading", { name: "专题入口：资产负债正式读面" }),
     ).toBeInTheDocument();
     const balanceAnalysisLinks = screen.getAllByRole("link", { name: "进入资产负债分析" });
     expect(balanceAnalysisLinks.length).toBeGreaterThanOrEqual(1);
@@ -360,16 +364,16 @@ describe("OperationsAnalysisPage", () => {
     });
     await waitFor(() => {
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
-        "Formal FX middle-rate status",
+        "正式 FX 中间价状态",
       );
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
-        "latest_trade_date 2026-04-11",
+        "最新交易日 2026-04-11",
       );
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
-        "carry_forward_count 1",
+        "沿用前值数量 1",
       );
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
-        "missing EUR/CNY",
+        "缺失 EUR/CNY",
       );
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
         "tr_fx_formal_status_test",
@@ -501,6 +505,40 @@ describe("OperationsAnalysisPage", () => {
     });
 
     pollingSpy.mockRestore();
+  });
+
+  it("shows unavailable summary cards when source or status queries fail", async () => {
+    const user = userEvent.setup();
+    const base = createApiClient({ mode: "mock" });
+
+    renderPage({
+      ...base,
+      getSourceFoundation: vi.fn(async () => {
+        throw new Error("source failed");
+      }),
+      getMacroFoundation: vi.fn(async () => {
+        throw new Error("macro catalog failed");
+      }),
+      getChoiceMacroLatest: vi.fn(async () => {
+        throw new Error("macro latest failed");
+      }),
+      getChoiceNewsEvents: vi.fn(async () => {
+        throw new Error("news failed");
+      }),
+      getFxFormalStatus: vi.fn(async () => {
+        throw new Error("fx failed");
+      }),
+    });
+
+    await screen.findByRole("heading", { name: "经营分析" });
+    await expandOperationsDataSourcesPanel(user);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-source-count")).toHaveTextContent("不可用");
+      expect(screen.getByTestId("operations-entry-macro-count")).toHaveTextContent("不可用");
+      expect(screen.getByTestId("operations-entry-news-count")).toHaveTextContent("不可用");
+      expect(screen.getByTestId("operations-entry-formal-fx-count")).toHaveTextContent("不可用");
+    });
   });
 });
 

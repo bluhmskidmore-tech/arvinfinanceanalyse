@@ -31,6 +31,35 @@ const detailPanelStyle = {
   boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05)",
 } as const;
 
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 24,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#0f172a",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#64748b",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
 const sparkStroke: Record<ResolvedCrossAssetKpi["changeTone"], string> = {
   positive: "#52c41a",
   negative: "#f5222d",
@@ -85,6 +114,20 @@ function formatSignedNumber(value: number | string | null | undefined, suffix = 
   }
   const sign = numericValue > 0 ? "+" : "";
   return `${sign}${numericValue.toFixed(2)}${suffix}`;
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 export default function CrossAssetPage() {
@@ -167,7 +210,7 @@ export default function CrossAssetPage() {
           <h1
             style={{
               margin: 0,
-              fontSize: 28,
+              fontSize: 32,
               fontWeight: 600,
               letterSpacing: "-0.03em",
               color: "#0f172a",
@@ -175,21 +218,43 @@ export default function CrossAssetPage() {
           >
             跨资产驱动
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 14 }}>
+          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 13 }}>
             数据日期{" "}
             <strong style={{ color: "#334155" }}>
               {crossAssetDataDate || linkageReportDate || "—"}
             </strong>
-            <span style={{ marginLeft: 12 }}>
-              完整序列见{" "}
-              <Link to="/market-data" style={{ color: "#1890ff", fontWeight: 600 }}>
-                市场数据
-              </Link>
-            </span>
+          </p>
+          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 15, lineHeight: 1.75 }}>
+            当前页按“环境概览、驱动判断、走势观察、分析输出”顺序阅读。完整宏观序列仍在{" "}
+            <Link to="/market-data" style={{ color: "#1890ff", fontWeight: 600 }}>
+              市场数据
+            </Link>{" "}
+            查看，这里只保留跨资产驱动判断与 analytical 联动输出。
           </p>
         </div>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {client.mode === "real" ? "真实分析读链路" : "本地演示数据"}
+        </span>
       </header>
 
+      <SectionLead
+        eyebrow="Overview"
+        title="环境概览"
+        description="先看顶部环境 KPI，确认利率锚、风险资产、汇率与海外约束的当前方向，再进入判断与候选动作。"
+      />
       <div
         style={{
           display: "grid",
@@ -212,6 +277,11 @@ export default function CrossAssetPage() {
             ))}
           </div>
 
+          <SectionLead
+            eyebrow="Core Read"
+            title="判断、驱动与候选动作"
+            description="这一层把市场判断、驱动拆解和候选动作并排组织，先形成结论，再下沉到执行候选。"
+          />
           <div
             style={{
               display: "grid",
@@ -326,6 +396,11 @@ export default function CrossAssetPage() {
 
           <MarketCandidateActions />
 
+          <SectionLead
+            eyebrow="Observation"
+            title="走势、事件与观察"
+            description="在完成环境判断后，再看归一化走势、事件日历和观察清单，避免把事件噪音提前放到结论层。"
+          />
           <div style={detailPanelStyle}>
             <h2 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产走势</h2>
             <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: 12 }}>近 20 个交易日，归一化至基期=100</p>
@@ -364,6 +439,11 @@ export default function CrossAssetPage() {
             </p>
           </div>
 
+          <SectionLead
+            eyebrow="Analytical"
+            title="分析结果与输出"
+            description="联动评分与组合影响继续保持 analytical 口径，并把页面输出与右侧热图放在同一证据层，避免误读为正式结果。"
+          />
           <AsyncSection
             title="宏观 — 债券联动（评分与组合影响）"
             isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}

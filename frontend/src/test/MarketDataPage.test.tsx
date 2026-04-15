@@ -1,13 +1,18 @@
 ﻿import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { vi } from "vitest";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="market-data-echarts-stub" />,
 }));
 
+vi.mock("../app/jobs/polling", () => ({
+  runPollingTask: vi.fn(),
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
+import { runPollingTask } from "../app/jobs/polling";
 import type { ResultMeta } from "../api/contracts";
 import MarketDataPage from "../features/market-data/pages/MarketDataPage";
 
@@ -37,6 +42,10 @@ function renderPage(client: ApiClient) {
 }
 
 describe("MarketDataPage", () => {
+  afterEach(() => {
+    vi.mocked(runPollingTask).mockReset();
+  });
+
   it("renders macro catalog plus trend and lineage evidence from the API client contract", async () => {
     const base = createApiClient({ mode: "mock" });
     const foundationMeta: ResultMeta = {
@@ -185,6 +194,12 @@ describe("MarketDataPage", () => {
       getChoiceMacroLatest,
     });
 
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(screen.getByText(/观察日期/)).toBeInTheDocument();
+    expect(screen.getByText("市场概览")).toBeInTheDocument();
+    expect(screen.getByText("利率、资金与成交观察")).toBeInTheDocument();
+    expect(screen.getByText("宏观序列与分析观察")).toBeInTheDocument();
+    expect(screen.getByText("目录与结果元数据")).toBeInTheDocument();
     expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
     expect(screen.getAllByText("DR007")).toHaveLength(3);
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
@@ -211,6 +226,9 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("tier fallback");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("latest / single");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("low-frequency latest-only lane");
+    expect(screen.getByText("宏观序列观察")).toBeInTheDocument();
+    expect(screen.getByText("FX analytical 观察")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "结果元数据" })).toBeInTheDocument();
 
     expect(screen.getByText("利率走势图")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-rate-quote-table")).toBeInTheDocument();
@@ -493,6 +511,144 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-linkage-meta")).toHaveTextContent(
       "formal_use_allowed: false",
     );
+  });
+
+  it("runs refresh polling and refetches the market-data queries after completion", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMacroFoundation = vi.fn(() => base.getMacroFoundation());
+    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
+    const getFxAnalytical = vi.fn(() => base.getFxAnalytical());
+    const getMacroBondLinkageAnalysis = vi.fn((options: { reportDate: string }) =>
+      base.getMacroBondLinkageAnalysis(options),
+    );
+    const refreshChoiceMacro = vi.fn(async () => ({
+      status: "queued",
+      run_id: "run-market-data-1",
+      detail: null,
+      error_message: null,
+    }));
+    const getChoiceMacroRefreshStatus = vi.fn(async () => ({
+      status: "completed",
+      run_id: "run-market-data-1",
+      detail: null,
+      error_message: null,
+    }));
+
+    let completeRefresh: (() => void) | null = null;
+    vi.mocked(runPollingTask).mockImplementation(async ({ start, getStatus, onUpdate }) => {
+      const started = await start();
+      onUpdate?.(started);
+      await new Promise<void>((resolve) => {
+        completeRefresh = resolve;
+      });
+      const completed = await getStatus(started.run_id ?? "");
+      onUpdate?.(completed);
+      return completed;
+    });
+
+    renderPage({
+      ...base,
+      getMacroFoundation,
+      getChoiceMacroLatest,
+      getFxAnalytical,
+      getMacroBondLinkageAnalysis,
+      refreshChoiceMacro,
+      getChoiceMacroRefreshStatus,
+    });
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getMacroFoundation).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+      expect(getFxAnalytical).toHaveBeenCalledTimes(1);
+      expect(getMacroBondLinkageAnalysis).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByTestId("market-data-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshChoiceMacro).toHaveBeenCalledWith(30);
+      expect(screen.getByTestId("market-data-refresh-button")).toBeDisabled();
+      expect(screen.getByText("queued · run-market-data-1")).toBeInTheDocument();
+    });
+
+    const finishRefresh = completeRefresh as (() => void) | null;
+    expect(finishRefresh).not.toBeNull();
+    if (!finishRefresh) {
+      throw new Error("Expected refresh completer to be registered");
+    }
+    finishRefresh();
+
+    await waitFor(() => {
+      expect(getChoiceMacroRefreshStatus).toHaveBeenCalledWith("run-market-data-1");
+      expect(screen.getByText("刷新完成")).toBeInTheDocument();
+      expect(screen.getByTestId("market-data-refresh-button")).not.toBeDisabled();
+    });
+
+    await waitFor(() => {
+      expect(getMacroFoundation).toHaveBeenCalledTimes(2);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(2);
+      expect(getFxAnalytical).toHaveBeenCalledTimes(2);
+      expect(getMacroBondLinkageAnalysis).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("updates shell filter state locally without changing the current query contract", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMacroFoundation = vi.fn(() => base.getMacroFoundation());
+    const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
+
+    renderPage({
+      ...base,
+      getMacroFoundation,
+      getChoiceMacroLatest,
+    });
+
+    expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getMacroFoundation).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.change(screen.getByLabelText("日期"), { target: { value: "2026-03-01" } });
+    expect(screen.getByText("观察日期 2026-03-01")).toBeInTheDocument();
+
+    const curveLabel = screen.getByText("国债 / 国开").closest("label");
+    const sourceLabel = screen.getByText("来源").closest("label");
+    if (!curveLabel || !sourceLabel) {
+      throw new Error("filter label shell not found");
+    }
+
+    const curveSelector = curveLabel.querySelector(".ant-select-selector");
+    const sourceSelector = sourceLabel.querySelector(".ant-select-selector");
+    if (!curveSelector || !sourceSelector) {
+      throw new Error("select shell not found");
+    }
+
+    fireEvent.mouseDown(curveSelector);
+    const curveOption = (await screen.findAllByText("国债")).at(-1);
+    if (!curveOption) {
+      throw new Error("curve option not found");
+    }
+    fireEvent.click(curveOption);
+    await waitFor(() => {
+      expect(curveLabel).toHaveTextContent("国债");
+    });
+
+    fireEvent.mouseDown(sourceSelector);
+    const sourceOption = (await screen.findAllByText("Choice")).at(-1);
+    if (!sourceOption) {
+      throw new Error("source option not found");
+    }
+    fireEvent.click(sourceOption);
+    await waitFor(() => {
+      expect(sourceLabel).toHaveTextContent("Choice");
+    });
+
+    await waitFor(() => {
+      expect(getMacroFoundation).toHaveBeenCalledTimes(1);
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

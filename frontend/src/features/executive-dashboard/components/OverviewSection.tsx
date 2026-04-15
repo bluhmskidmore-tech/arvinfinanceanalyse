@@ -54,33 +54,37 @@ export function OverviewSection({
             key={metric.id}
             style={{
               display: "grid",
-              gap: 8,
+              gap: 10,
               padding: 18,
-              borderRadius: 18,
-              background: "#f7f9fc",
+              borderRadius: 20,
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(246,249,253,0.98) 100%)",
               border: "1px solid #e4ebf5",
             }}
           >
-            <span style={{ color: "#8090a8", fontSize: 13 }}>
+            <span style={{ color: "#8090a8", fontSize: 12, letterSpacing: "0.04em" }}>
               {metric.label}
             </span>
-            <div style={{ margin: 0, fontSize: 28, fontWeight: 600 }}>
-              {metric.value}
-            </div>
             <span
               style={{
+                width: "fit-content",
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "#eef3fb",
                 color: toneColor[metric.tone],
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: 600,
               }}
             >
               {metric.delta}
             </span>
+            <div style={{ margin: 0, fontSize: 28, fontWeight: 600 }}>{metric.value}</div>
             <p
               style={{
                 margin: 0,
                 color: "#5c6b82",
                 fontSize: 13,
+                lineHeight: 1.6,
               }}
             >
               {metric.detail}

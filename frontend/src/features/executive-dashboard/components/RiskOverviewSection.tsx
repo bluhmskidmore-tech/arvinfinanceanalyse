@@ -9,9 +9,9 @@ type RiskOverviewSectionProps = {
 };
 
 const statusMap = {
-  stable: { bg: "#e8f6ee", fg: "#2f8f63" },
-  watch: { bg: "#fff3dd", fg: "#cc7a1a" },
-  warning: { bg: "#fde8e6", fg: "#b74c45" },
+  stable: { bg: "#e8f6ee", fg: "#2f8f63", label: "稳定" },
+  watch: { bg: "#fff3dd", fg: "#cc7a1a", label: "关注" },
+  warning: { bg: "#fde8e6", fg: "#b74c45", label: "预警" },
 } as const;
 
 export function RiskOverviewSection({
@@ -48,10 +48,9 @@ export function RiskOverviewSection({
                     background: statusMap[signal.status].bg,
                     color: statusMap[signal.status].fg,
                     fontSize: 12,
-                    textTransform: "capitalize",
                   }}
                 >
-                  {signal.status}
+                  {statusMap[signal.status].label}
                 </span>
               </div>
             </div>

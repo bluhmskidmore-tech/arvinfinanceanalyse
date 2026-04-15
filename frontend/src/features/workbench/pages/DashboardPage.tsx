@@ -102,7 +102,7 @@ export default function DashboardPage() {
       >
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 600 }}>驾驶舱</h1>
-          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>报期 2026-03-01</p>
+          <p style={{ margin: "6px 0 0", color: "#64748b", fontSize: 13 }}>报告日 2026-03-01</p>
         </div>
         <span
           style={{
@@ -123,7 +123,7 @@ export default function DashboardPage() {
       <FilterBar style={{ marginBottom: 20 }}>
         <label>
           <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
-            区间
+            范围
           </span>
           <select style={controlStyle} disabled>
             <option>金融市场条线</option>
@@ -158,7 +158,7 @@ export default function DashboardPage() {
       <div
         style={{
           display: "grid",
-          gap: 18,
+          gap: 20,
         }}
       >
         <OverviewSection
@@ -171,7 +171,7 @@ export default function DashboardPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
             gap: 18,
             alignItems: "stretch",
           }}
@@ -183,20 +183,27 @@ export default function DashboardPage() {
             isError={summaryQuery.isError}
             onRetry={() => void summaryQuery.refetch()}
           />
-          <DashboardStructureMaturityTeaser />
+          <DashboardModuleSnapshot />
+          <AlertsSection
+            sectionTitle="预警中心"
+            data={alertsQuery.data?.result}
+            isLoading={alertsQuery.isLoading}
+            isError={alertsQuery.isError}
+            onRetry={() => void alertsQuery.refetch()}
+          />
         </div>
 
-        <DashboardModuleSnapshot />
-
-        <AlertsSection
-          sectionTitle="预警中心"
-          data={alertsQuery.data?.result}
-          isLoading={alertsQuery.isLoading}
-          isError={alertsQuery.isError}
-          onRetry={() => void alertsQuery.refetch()}
-        />
-
-        <DashboardTasksAndCalendar />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 18,
+            alignItems: "stretch",
+          }}
+        >
+          <DashboardStructureMaturityTeaser />
+          <DashboardTasksAndCalendar />
+        </div>
 
         <section data-testid="dashboard-extended-panels" style={{ display: "grid", gap: 16 }}>
           <h2 style={extendedSectionTitleStyle}>收益归因与风险分解</h2>

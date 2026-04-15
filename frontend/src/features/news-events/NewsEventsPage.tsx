@@ -2,8 +2,10 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
+import { FilterBar } from "../../components/FilterBar";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
+import { KpiCard } from "../workbench/components/KpiCard";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 
@@ -31,11 +33,46 @@ const pagerRow: CSSProperties = {
   marginTop: 14,
 };
 
+const summaryGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+};
+
 const filterGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 16,
-  marginBottom: 20,
+  width: "100%",
+};
+
+const sectionLeadWrapStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+};
+
+const sectionEyebrowStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+};
+
+const sectionTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+};
+
+const sectionDescriptionStyle: CSSProperties = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
 };
 
 function summarizeNewsPayload(event: {
@@ -72,6 +109,20 @@ function totalPages(totalRows: number, pageSize: number) {
   return Math.max(1, Math.ceil(totalRows / pageSize));
 }
 
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
+
 export default function NewsEventsPage() {
   const client = useApiClient();
   const topicOptions = useMemo(() => listChoiceNewsTopicFilterOptions(), []);
@@ -98,12 +149,21 @@ export default function NewsEventsPage() {
     retry: false,
   });
 
-  const events = eventsQuery.data?.result.events ?? [];
+  const events = useMemo(
+    () => eventsQuery.data?.result.events ?? [],
+    [eventsQuery.data?.result.events],
+  );
   const totalRows = eventsQuery.data?.result.total_rows ?? 0;
   const isEmpty =
     !eventsQuery.isLoading &&
     !eventsQuery.isError &&
     events.length === 0;
+  const errorRowsOnPage = useMemo(
+    () => events.filter((event) => event.error_code !== 0).length,
+    [events],
+  );
+  const activeTopicLabel = topicCode || "全部专题";
+  const pageLabel = `${currentPage(offset, NEWS_EVENTS_PAGE_SIZE)} / ${totalPages(totalRows, NEWS_EVENTS_PAGE_SIZE)}`;
 
   return (
     <section>
@@ -118,6 +178,7 @@ export default function NewsEventsPage() {
       >
         <div>
           <h1
+            data-testid="news-events-page-title"
             style={{
               marginTop: 0,
               marginBottom: 10,
@@ -140,52 +201,95 @@ export default function NewsEventsPage() {
             查看 Choice 新闻回调事件流水，可按专题与错误筛选，数据来自服务端最新事件接口。
           </p>
         </div>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+        </span>
       </div>
 
+      <SectionLead
+        eyebrow="Overview"
+        title="事件概览"
+        description="先看事件总数、当前页和错误行，再进入筛选与明细列表，保持新闻事件页的阅读顺序和其他标准壳层一致。"
+      />
+      <div style={summaryGridStyle}>
+        <div data-testid="news-events-total-count">
+          <KpiCard title="事件总数" value={String(totalRows)} detail="当前查询返回的总行数" valueVariant="text" />
+        </div>
+        <div data-testid="news-events-current-page-kpi">
+          <KpiCard title="当前页" value={pageLabel} detail="按固定分页窗口展示" valueVariant="text" />
+        </div>
+        <div data-testid="news-events-error-count">
+          <KpiCard title="错误行数" value={String(errorRowsOnPage)} detail="当前页 error_code != 0" valueVariant="text" />
+        </div>
+        <div data-testid="news-events-active-topic">
+          <KpiCard title="当前专题" value={activeTopicLabel} detail="切换专题后分页会自动归零" valueVariant="text" />
+        </div>
+      </div>
+
+      <SectionLead
+        eyebrow="Browse"
+        title="筛选与事件列表"
+        description="筛选条只控制 `topic_code`、错误开关与分页，不改变后端事件契约；下方表格继续显示服务端返回的事件流水。"
+      />
       <section style={sectionShell}>
         <div style={sectionHeaderRow}>
           <span style={{ fontWeight: 600 }}>事件列表</span>
         </div>
 
-        <div style={filterGrid}>
-          <label style={{ display: "grid", gap: 8 }}>
-            <span>专题 (topic_code)</span>
-            <select
-              aria-label="news-events-topic-code"
-              value={topicCode}
-              onChange={(e) => {
-                setTopicCode(e.target.value);
-                setOffset(0);
+        <FilterBar style={{ marginBottom: 20 }}>
+          <div style={filterGrid}>
+            <label style={{ display: "grid", gap: 8 }}>
+              <span>专题 (topic_code)</span>
+              <select
+                aria-label="news-events-topic-code"
+                value={topicCode}
+                onChange={(e) => {
+                  setTopicCode(e.target.value);
+                  setOffset(0);
+                }}
+              >
+                <option value="">全部</option>
+                {topicOptions.map((opt) => (
+                  <option key={opt.topicCode} value={opt.topicCode}>
+                    {opt.label} ({opt.topicCode})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                marginTop: 24,
               }}
             >
-              <option value="">全部</option>
-              {topicOptions.map((opt) => (
-                <option key={opt.topicCode} value={opt.topicCode}>
-                  {opt.label} ({opt.topicCode})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginTop: 24,
-            }}
-          >
-            <input
-              type="checkbox"
-              aria-label="news-events-error-only"
-              checked={errorOnly}
-              onChange={(e) => {
-                setErrorOnly(e.target.checked);
-                setOffset(0);
-              }}
-            />
-            <span>仅错误 (error_only)</span>
-          </label>
-        </div>
+              <input
+                type="checkbox"
+                aria-label="news-events-error-only"
+                checked={errorOnly}
+                onChange={(e) => {
+                  setErrorOnly(e.target.checked);
+                  setOffset(0);
+                }}
+              />
+              <span>仅错误 (error_only)</span>
+            </label>
+          </div>
+        </FilterBar>
 
         <AsyncSection
           title="新闻事件"
