@@ -1,13 +1,63 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card, Col, Row, Select, Space, Spin, Table, Typography, Alert } from "antd";
+import { Alert, Card, Col, Row, Select, Space, Spin, Table, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type { CashflowMonthlyBucket } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { KpiCard } from "../../workbench/components/KpiCard";
 import { shellTokens as t } from "../../../theme/tokens";
 
 const pageStyle = { maxWidth: 1280, margin: "0 auto" } as const;
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
 
 export default function CashflowProjectionPage() {
   const client = useApiClient();
@@ -78,14 +128,46 @@ export default function CashflowProjectionPage() {
 
   return (
     <section data-testid="cashflow-projection-page" style={pageStyle}>
-      <Typography.Title level={2} style={{ marginBottom: 8 }}>
-        现金流预测
-      </Typography.Title>
-      <Typography.Paragraph type="secondary" style={{ marginBottom: 20, maxWidth: 720 }}>
-        久期缺口、利率敏感度与 24 个月现金流分桶；报告日来自资产负债分析可用日期。
-      </Typography.Paragraph>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <Typography.Title
+            level={2}
+            style={{ marginBottom: 8 }}
+            data-testid="cashflow-page-title"
+          >
+            现金流预测
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 0, maxWidth: 860, lineHeight: 1.75 }}>
+            久期缺口、利率敏感度与 24 个月现金流分桶；报告日来自资产负债分析可用日期。
+          </Typography.Paragraph>
+        </div>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
+          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+        </span>
+      </div>
 
-      <Space wrap style={{ marginBottom: 20 }} align="start">
+      <FilterBar style={{ marginBottom: 20 }}>
         <div>
           <Typography.Text type="secondary">报告日</Typography.Text>
           <div style={{ marginTop: 4 }}>
@@ -101,7 +183,7 @@ export default function CashflowProjectionPage() {
             />
           </div>
         </div>
-      </Space>
+      </FilterBar>
 
       {projectionQuery.isLoading ? (
         <div style={{ textAlign: "center", padding: 48 }}>
@@ -111,37 +193,37 @@ export default function CashflowProjectionPage() {
         <Alert type="error" message="加载现金流预测失败，请稍后重试。" showIcon />
       ) : result ? (
         <>
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} sm={12} lg={6}>
-              <Card data-testid="cashflow-kpi-duration-gap" size="small" title="久期缺口（年）">
-                <Typography.Text style={{ fontSize: 20, fontWeight: 600 }}>
-                  {result.duration_gap}
-                </Typography.Text>
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card data-testid="cashflow-kpi-asset-dur" size="small" title="资产久期（年）">
-                <Typography.Text style={{ fontSize: 20, fontWeight: 600 }}>
-                  {result.asset_duration}
-                </Typography.Text>
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card data-testid="cashflow-kpi-liability-dur" size="small" title="负债久期（年）">
-                <Typography.Text style={{ fontSize: 20, fontWeight: 600 }}>
-                  {result.liability_duration}
-                </Typography.Text>
-              </Card>
-            </Col>
-            <Col xs={24} sm={12} lg={6}>
-              <Card data-testid="cashflow-kpi-dv01" size="small" title="1bp 敏感度">
-                <Typography.Text style={{ fontSize: 20, fontWeight: 600 }}>
-                  {result.rate_sensitivity_1bp}
-                </Typography.Text>
-              </Card>
-            </Col>
-          </Row>
+          <SectionLead
+            eyebrow="Overview"
+            title="现金流概览"
+            description="先看久期缺口、资产负债久期和敏感度，再进入月度投影与到期资产列表，保持阅读顺序与其他标准页一致。"
+          />
+          <div style={summaryGridStyle}>
+            <div data-testid="cashflow-kpi-duration-gap">
+              <KpiCard title="久期缺口（年）" value={result.duration_gap} detail="资产久期 - 负债久期" valueVariant="text" />
+            </div>
+            <div data-testid="cashflow-kpi-asset-dur">
+              <KpiCard title="资产久期（年）" value={result.asset_duration} detail="资产侧久期" valueVariant="text" />
+            </div>
+            <div data-testid="cashflow-kpi-liability-dur">
+              <KpiCard title="负债久期（年）" value={result.liability_duration} detail="负债侧久期" valueVariant="text" />
+            </div>
+            <div data-testid="cashflow-kpi-dv01">
+              <KpiCard title="1bp 敏感度" value={result.rate_sensitivity_1bp} detail="利率敏感度" valueVariant="text" />
+            </div>
+            <div data-testid="cashflow-kpi-equity-dur">
+              <KpiCard title="权益久期（年）" value={result.equity_duration} detail="权益侧久期" valueVariant="text" />
+            </div>
+            <div data-testid="cashflow-kpi-reinvest">
+              <KpiCard title="再投资风险（12M）" value={result.reinvestment_risk_12m} detail="12 个月再投资风险" valueVariant="text" />
+            </div>
+          </div>
 
+          <SectionLead
+            eyebrow="Projection"
+            title="月度投影"
+            description="图表区继续展示 24 个月现金流投影，右侧保留补充指标，不改变现有图表与数据口径。"
+          />
           <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
             <Col xs={24} lg={16}>
               <Card
@@ -163,12 +245,12 @@ export default function CashflowProjectionPage() {
             </Col>
             <Col xs={24} lg={8}>
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card data-testid="cashflow-kpi-equity-dur" size="small" title="权益久期（年）">
+                <Card size="small" title="权益久期（年）">
                   <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
                     {result.equity_duration}
                   </Typography.Text>
                 </Card>
-                <Card data-testid="cashflow-kpi-reinvest" size="small" title="再投资风险（12M）">
+                <Card size="small" title="再投资风险（12M）">
                   <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
                     {result.reinvestment_risk_12m}
                   </Typography.Text>
@@ -177,6 +259,11 @@ export default function CashflowProjectionPage() {
             </Col>
           </Row>
 
+          <SectionLead
+            eyebrow="Maturity"
+            title="到期资产与提示"
+            description="Top10 到期资产列表和 warning 区保持现有契约，只调整为更清晰的阅读层级。"
+          />
           <Card
             size="small"
             title="12 个月内 Top10 到期资产"

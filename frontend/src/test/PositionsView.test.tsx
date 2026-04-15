@@ -32,7 +32,8 @@ describe("PositionsView", () => {
     );
 
     expect(await screen.findByTestId("positions-page")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "持仓透视" })).toBeInTheDocument();
+    expect(await screen.findByTestId("positions-page-title")).toHaveTextContent("持仓透视");
+    expect(screen.getByText("持仓概览")).toBeInTheDocument();
     expect(
       await screen.findByRole("combobox", { name: "positions-report-date" }),
     ).toBeInTheDocument();

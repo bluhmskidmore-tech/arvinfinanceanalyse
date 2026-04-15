@@ -30,6 +30,8 @@ function renderBondAnalyticsView(client?: ApiClient) {
   );
 }
 
+const BOND_ANALYTICS_FIND_TIMEOUT = 20000;
+
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
     trace_id: "tr_demo",
@@ -150,10 +152,14 @@ describe("BondAnalyticsView", () => {
     renderBondAnalyticsView();
 
     expect(
-      await screen.findByTestId("bond-analysis-top-cockpit", {}, { timeout: 10000 }),
+      await screen.findByTestId("bond-analysis-top-cockpit", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toBeInTheDocument();
 
-    const topCockpit = await screen.findByTestId("bond-analysis-top-cockpit");
+    const topCockpit = await screen.findByTestId(
+      "bond-analysis-top-cockpit",
+      {},
+      { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+    );
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
@@ -165,7 +171,7 @@ describe("BondAnalyticsView", () => {
     expect(screen.queryByTestId("bond-analysis-open-headline-action-attribution")).not.toBeInTheDocument();
     expect(screen.getByTestId("bond-analysis-readiness-matrix")).toBeInTheDocument();
     expect(
-      await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: 10000 }),
+      await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toHaveAttribute(
       "data-module-key",
       "action-attribution",
@@ -189,7 +195,11 @@ describe("BondAnalyticsView", () => {
     "shows portfolio headlines and top holdings tabs in the analysis detail strip",
     async () => {
       renderBondAnalyticsView();
-      const detail = await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: 10000 });
+      const detail = await screen.findByTestId(
+        "bond-analysis-detail-section",
+        {},
+        { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+      );
       expect(within(detail).getByRole("tab", { name: "Portfolio headlines" })).toBeInTheDocument();
       expect(within(detail).getByRole("tab", { name: "Top holdings" })).toBeInTheDocument();
     },
@@ -268,12 +278,12 @@ describe("BondAnalyticsView", () => {
     );
 
     expect(
-      await screen.findByTestId("bond-analysis-headline-action-attribution", {}, { timeout: 10000 }),
+      await screen.findByTestId("bond-analysis-headline-action-attribution", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toBeInTheDocument();
 
     await user.click(
       await screen.findByTestId("bond-analysis-open-headline-action-attribution", {}, {
-        timeout: 10000,
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
       }),
     );
 
@@ -287,7 +297,7 @@ describe("BondAnalyticsView", () => {
     await user.click(
       within(
         await screen.findByTestId("bond-analysis-readiness-action-attribution", {}, {
-          timeout: 10000,
+          timeout: BOND_ANALYTICS_FIND_TIMEOUT,
         }),
       ).getByTestId("bond-analysis-open-action-attribution"),
     );

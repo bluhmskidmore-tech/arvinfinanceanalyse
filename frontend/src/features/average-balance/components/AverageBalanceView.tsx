@@ -29,6 +29,7 @@ import AdbComparisonChart from "./AdbComparisonChart";
 import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
+import AdbMonthlyBreakdownTable from "./AdbMonthlyBreakdownTable";
 
 const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
@@ -129,32 +130,6 @@ function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custo
   if (rangeKey === "30d") start.setDate(start.getDate() - 29);
   if (rangeKey === "ytd") start.setMonth(0, 1);
   return { startDate: toDateInput(start), endDate: toDateInput(end) };
-}
-
-function buildHorizontalOption(rows: MonthlyBarRow[], title: string, color: string) {
-  return {
-    title: { text: title, left: 0, textStyle: { fontSize: 13, fontWeight: 600 } },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (items: { dataIndex: number }[]) => {
-        if (!items.length) return "";
-        const row = rows[items[0].dataIndex];
-        return [row.category, `日均：${row.avgYi.toFixed(2)} 亿元`, `加权利率：${formatPct(row.weightedRate)}`].join("<br/>");
-      },
-    },
-    grid: { left: 120, right: 24, top: 44, bottom: 24 },
-    xAxis: { type: "value", axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` } },
-    yAxis: { type: "category", data: rows.map((row) => row.category), axisLabel: { fontSize: 11 } },
-    series: [
-      {
-        type: "bar",
-        data: rows.map((row) => row.avgYi),
-        itemStyle: { color },
-        label: { show: true, position: "right", formatter: ({ dataIndex }: { dataIndex: number }) => rows[dataIndex]?.avgYi.toFixed(2) ?? "0.00" },
-      },
-    ],
-  };
 }
 
 function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
@@ -593,13 +568,13 @@ export default function AverageBalanceView() {
                           <Col xs={24} xl={12}>
                             <Card size="small" title="资产端分类明细">
                               <AdbMonthlyHorizontalChart rows={monthlyAssetRows} title={`${selectedMonthData.month_label} 资产端`} color="#2563EB" style={{ marginBottom: 16 }} />
-                              <Table size="small" pagination={false} rowKey={(row) => `asset-deep-${row.category}`} columns={monthlyAssetColumns} dataSource={selectedMonthData.breakdown_assets} />
+                              <Table data-testid="adb-monthly-breakdown-table" size="small" pagination={false} rowKey={(row) => `asset-deep-${row.category}`} columns={monthlyAssetColumns} dataSource={selectedMonthData.breakdown_assets} />
                             </Card>
                           </Col>
                           <Col xs={24} xl={12}>
                             <Card size="small" title="负债端分类明细">
                               <AdbMonthlyHorizontalChart rows={monthlyLiabilityRows} title={`${selectedMonthData.month_label} 负债端`} color="#DC2626" style={{ marginBottom: 16 }} />
-                              <Table size="small" pagination={false} rowKey={(row) => `liability-deep-${row.category}`} columns={monthlyLiabilityColumns} dataSource={selectedMonthData.breakdown_liabilities} />
+                              <Table data-testid="adb-monthly-breakdown-table" size="small" pagination={false} rowKey={(row) => `liability-deep-${row.category}`} columns={monthlyLiabilityColumns} dataSource={selectedMonthData.breakdown_liabilities} />
                             </Card>
                           </Col>
                         </Row>

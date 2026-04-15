@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
@@ -31,6 +32,45 @@ const headerCardStyle = {
   border: "1px solid #e4ebf5",
   background: "#ffffff",
   boxShadow: "0 8px 24px rgba(19, 37, 70, 0.06)",
+} as const;
+
+const modeBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "8px 12px",
+  borderRadius: 999,
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: "0.04em",
+  textTransform: "uppercase",
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 900,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
 } as const;
 
 const tabBarStyle = {
@@ -71,6 +111,21 @@ function formatYi(value: number | null | undefined): string {
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
+}
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={props.testId} style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
 }
 
 type Tab = "volume-rate" | "tpl-market" | "composition" | "advanced";
@@ -152,24 +207,37 @@ export function PnlAttributionView({ reportDate }: Props) {
       <div style={headerCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#162033" }}>损益归因分析</h2>
+            <h2 data-testid="pnl-attribution-page-title" style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#162033" }}>
+              损益归因分析
+            </h2>
             <p style={{ margin: "8px 0 0", fontSize: 13, color: "#5c6b82", maxWidth: 640, lineHeight: 1.6 }}>
               规模/利率一阶与交叉效应、TPL 与市场、损益构成，以及 Carry–Roll、利差、KRD 与 Campisi
               四效应（收入、国债、利差、选择）对照阅读。
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void loadData()}
-            disabled={loading}
-            style={{
-              ...tabStyle(false),
-              alignSelf: "flex-start",
-              opacity: loading ? 0.6 : 1,
-            }}
-          >
-            {loading ? "刷新中…" : "刷新"}
-          </button>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+            <span
+              style={{
+                ...modeBadgeStyle,
+                background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+                color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              }}
+            >
+              {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            </span>
+            <button
+              type="button"
+              onClick={() => void loadData()}
+              disabled={loading}
+              style={{
+                ...tabStyle(false),
+                alignSelf: "flex-start",
+                opacity: loading ? 0.6 : 1,
+              }}
+            >
+              {loading ? "刷新中…" : "刷新"}
+            </button>
+          </div>
         </div>
 
         {keyFindings.length > 0 && (
@@ -196,7 +264,13 @@ export function PnlAttributionView({ reportDate }: Props) {
       </div>
 
       <div style={{ ...headerCardStyle, padding: 16 }}>
-        <div style={tabBarStyle}>
+        <SectionLead
+          eyebrow="Workbench"
+          title="归因分析工作台"
+          description="先选择归因视图，再阅读对应图表和关键发现；本页消费后端归因 read model，不在前端补算正式损益。"
+          testId="pnl-attribution-workbench-lead"
+        />
+        <FilterBar style={{ ...tabBarStyle, marginTop: 14 }}>
           <button type="button" style={tabStyle(activeTab === "volume-rate")} onClick={() => setActiveTab("volume-rate")}>
             规模 / 利率效应
           </button>
@@ -231,8 +305,15 @@ export function PnlAttributionView({ reportDate }: Props) {
               </button>
             </div>
           )}
-        </div>
+        </FilterBar>
       </div>
+
+      <SectionLead
+        eyebrow="Analysis"
+        title="当前归因视图"
+        description="下方内容随 tab 切换，保留现有 volume-rate、TPL market、composition、advanced + Campisi 数据边界。"
+        testId="pnl-attribution-current-view-lead"
+      />
 
       {error && (
         <div

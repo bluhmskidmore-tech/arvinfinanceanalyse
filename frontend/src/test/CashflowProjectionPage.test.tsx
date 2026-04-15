@@ -25,10 +25,16 @@ describe("CashflowProjectionPage", () => {
     );
 
     expect(await screen.findByTestId("cashflow-projection-page")).toBeInTheDocument();
+    expect(screen.getByTestId("cashflow-page-title")).toHaveTextContent("现金流预测");
     expect(await screen.findByTestId("cashflow-kpi-duration-gap")).toBeInTheDocument();
     expect(await screen.findByTestId("cashflow-kpi-asset-dur")).toBeInTheDocument();
     expect(await screen.findByTestId("cashflow-kpi-liability-dur")).toBeInTheDocument();
     expect(await screen.findByTestId("cashflow-kpi-dv01")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-equity-dur")).toBeInTheDocument();
+    expect(await screen.findByTestId("cashflow-kpi-reinvest")).toBeInTheDocument();
+    expect(screen.getByText("现金流概览")).toBeInTheDocument();
+    expect(screen.getByText("月度投影")).toBeInTheDocument();
+    expect(screen.getByText("到期资产与提示")).toBeInTheDocument();
   });
 
   it("renders chart region when monthly buckets are present", async () => {

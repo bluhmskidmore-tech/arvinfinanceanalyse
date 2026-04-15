@@ -147,10 +147,19 @@ describe("TeamPerformancePage", () => {
       getProductCategoryPnl,
     });
 
-    expect(await screen.findByRole("heading", { name: "团队绩效" })).toBeInTheDocument();
+    expect(await screen.findByTestId("team-performance-page-title")).toHaveTextContent("团队绩效");
+    expect(screen.getByText("团队概览")).toBeInTheDocument();
+    expect(screen.getByText("团队贡献")).toBeInTheDocument();
 
     const monthSelect = await screen.findByLabelText("团队绩效-报表月份");
     expect(monthSelect).toHaveValue("2026-02-28");
+
+    await waitFor(() => {
+      expect(getProductCategoryPnl).toHaveBeenCalledWith({
+        reportDate: "2026-02-28",
+        view: "monthly",
+      });
+    });
 
     const kpi = await screen.findByTestId("team-performance-kpi");
     expect(kpi).toHaveTextContent("1000");
@@ -167,12 +176,5 @@ describe("TeamPerformancePage", () => {
     expect(table).toHaveTextContent("99.5");
     expect(table).toHaveTextContent("248");
     expect(table).toHaveTextContent("0.03125");
-
-    await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledWith({
-        reportDate: "2026-02-28",
-        view: "monthly",
-      });
-    });
   });
 });

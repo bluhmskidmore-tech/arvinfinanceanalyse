@@ -296,9 +296,11 @@ describe("SourcePreviewPage", () => {
     expect(screen.getByTestId("source-preview-source-count")).toHaveTextContent("2");
     expect(screen.getByTestId("source-preview-family-count")).toHaveTextContent("2");
     expect(screen.getByTestId("source-preview-active-family")).toHaveTextContent("zqtz");
-    expect(screen.getByTestId("source-preview-history-total-kpi")).toHaveTextContent("3");
-    expect(screen.getByTestId("source-preview-rows-total-kpi")).toHaveTextContent("55");
-    expect(screen.getByTestId("source-preview-traces-total-kpi")).toHaveTextContent("44");
+    await waitFor(() => {
+      expect(screen.getByTestId("source-preview-history-total-kpi")).toHaveTextContent("3");
+      expect(screen.getByTestId("source-preview-rows-total-kpi")).toHaveTextContent("55");
+      expect(screen.getByTestId("source-preview-traces-total-kpi")).toHaveTextContent("44");
+    });
     expect(screen.getByTestId("source-preview-history-page")).toHaveTextContent("1 / 2");
     await waitFor(() => {
       expect(rowCalls).toContainEqual({

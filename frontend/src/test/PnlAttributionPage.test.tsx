@@ -26,7 +26,10 @@ describe("PnlAttributionPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByRole("heading", { name: "损益归因分析" })).toBeInTheDocument();
+    expect(await screen.findByTestId("pnl-attribution-page-title")).toHaveTextContent("损益归因分析");
+    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toHaveTextContent("归因分析工作台");
+    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toHaveTextContent("不在前端补算正式损益");
+    expect(screen.getByTestId("pnl-attribution-current-view-lead")).toHaveTextContent("当前归因视图");
 
     await user.click(screen.getByRole("button", { name: "TPL 市场相关性" }));
     expect(screen.getByRole("button", { name: "TPL 市场相关性" })).toBeInTheDocument();

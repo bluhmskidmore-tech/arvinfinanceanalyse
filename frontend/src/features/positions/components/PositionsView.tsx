@@ -17,7 +17,9 @@ import {
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { FilterBar } from "../../../components/FilterBar";
 import type { PositionDirection } from "../../../api/contracts";
+import { KpiCard } from "../../workbench/components/KpiCard";
 import CustomerDetailModal from "./CustomerDetailModal";
 import IndustryDistributionCard from "./IndustryDistributionCard";
 import RatingDistributionCard from "./RatingDistributionCard";
@@ -27,6 +29,55 @@ const PAGE_SIZE = 20;
 
 type TabKey = "bonds" | "interbank";
 type InterbankDirectionFilter = PositionDirection | "ALL";
+
+const summaryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 16,
+} as const;
+
+const sectionLeadWrapStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 28,
+} as const;
+
+const sectionEyebrowStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.08em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const sectionTitleStyle = {
+  margin: 0,
+  fontSize: 18,
+  fontWeight: 600,
+  color: "#162033",
+} as const;
+
+const sectionDescriptionStyle = {
+  margin: 0,
+  maxWidth: 860,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.7,
+} as const;
+
+function SectionLead(props: {
+  eyebrow: string;
+  title: string;
+  description: string;
+}) {
+  return (
+    <div style={sectionLeadWrapStyle}>
+      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
+      <h2 style={sectionTitleStyle}>{props.title}</h2>
+      <p style={sectionDescriptionStyle}>{props.description}</p>
+    </div>
+  );
+}
 
 export default function PositionsView() {
   const client = useApiClient();
@@ -249,19 +300,45 @@ export default function PositionsView() {
 
   return (
     <section data-testid="positions-page">
-      <div style={{ marginBottom: 24 }}>
-        <Typography.Title level={2} style={{ margin: 0 }}>
-          持仓透视
-        </Typography.Title>
-        <Typography.Paragraph
-          style={{ marginTop: 8, marginBottom: 0, maxWidth: 900, color: "#5c6b82" }}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <Typography.Title level={2} style={{ margin: 0 }} data-testid="positions-page-title">
+            持仓透视
+          </Typography.Title>
+          <Typography.Paragraph
+            style={{ marginTop: 8, marginBottom: 0, maxWidth: 900, color: "#5c6b82" }}
+          >
+            报表日：{reportDate || "—"}，区间：{startDate || "—"} ~ {endDate || "—"}
+            （日均分母=有数据 report_date 数）。数据来源：ZQTZ + TYWL
+          </Typography.Paragraph>
+        </div>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
         >
-          报表日：{reportDate || "—"}，区间：{startDate || "—"} ~ {endDate || "—"}
-          （日均分母=有数据 report_date 数）。数据来源：ZQTZ + TYWL
-        </Typography.Paragraph>
+          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+        </span>
       </div>
 
-      <Space wrap style={{ marginBottom: 16 }} align="start">
+      <FilterBar style={{ marginBottom: 16 }} >
         <div>
           <Typography.Text type="secondary">报告日</Typography.Text>
           <div>
@@ -309,7 +386,7 @@ export default function PositionsView() {
             已由 URL <code>?report_date=</code> 固定
           </Typography.Text>
         ) : null}
-      </Space>
+      </FilterBar>
 
       {datesBlockingError ? (
         <Typography.Text type="danger">无法加载资产负债可用日期，请稍后重试。</Typography.Text>
@@ -318,6 +395,11 @@ export default function PositionsView() {
         <Typography.Text type="secondary">暂无可用报告日。</Typography.Text>
       ) : null}
 
+      <SectionLead
+        eyebrow="Overview"
+        title="持仓概览"
+        description="先确认报告日和观察区间，再在债券持仓与同业持仓之间切换，查看右侧分布和客户维度信息。"
+      />
       <Tabs
         activeKey={tab}
         onChange={(k) => setTab(k as TabKey)}
@@ -329,7 +411,41 @@ export default function PositionsView() {
       />
 
       {tab === "bonds" ? (
-        <Row gutter={[16, 16]}>
+        <>
+          <SectionLead
+            eyebrow="Bonds"
+            title="债券持仓"
+            description="债券侧继续保留业务种类筛选、主表、评级/行业分布和授信主体视图，不改现有查询与分页逻辑。"
+          />
+          <Row gutter={[16, 16]}>
+            <Col xs={24}>
+              <div style={summaryGridStyle}>
+                <KpiCard
+                  title="区间起始"
+                  value={startDate || "—"}
+                  detail="当前查询起始日"
+                  valueVariant="text"
+                />
+                <KpiCard
+                  title="区间结束"
+                  value={endDate || "—"}
+                  detail="当前查询结束日"
+                  valueVariant="text"
+                />
+                <KpiCard
+                  title="业务种类"
+                  value={selectedSubType || "未选择"}
+                  detail="债券侧主筛选"
+                  valueVariant="text"
+                />
+                <KpiCard
+                  title="客户搜索"
+                  value={searchText || "未输入"}
+                  detail="影响右侧客户表"
+                  valueVariant="text"
+                />
+              </div>
+            </Col>
           <Col xs={24} xl={16}>
             <Card size="small" style={{ marginBottom: 16 }}>
               <Space wrap style={{ width: "100%" }} align="end">
@@ -518,8 +634,40 @@ export default function PositionsView() {
             </Space>
           </Col>
         </Row>
+        </>
       ) : (
         <>
+          <SectionLead
+            eyebrow="Interbank"
+            title="同业持仓"
+            description="同业侧继续保留产品类型、方向筛选、主表与资产/负债端客户排名，只做壳层层级收敛。"
+          />
+          <div style={summaryGridStyle}>
+            <KpiCard
+              title="区间起始"
+              value={startDate || "—"}
+              detail="当前查询起始日"
+              valueVariant="text"
+            />
+            <KpiCard
+              title="区间结束"
+              value={endDate || "—"}
+              detail="当前查询结束日"
+              valueVariant="text"
+            />
+            <KpiCard
+              title="产品类型"
+              value={selectedProductType || "未选择"}
+              detail="同业侧主筛选"
+              valueVariant="text"
+            />
+            <KpiCard
+              title="方向"
+              value={direction}
+              detail="同业方向筛选"
+              valueVariant="text"
+            />
+          </div>
           <Row gutter={[16, 16]}>
             <Col xs={24} xl={16}>
               <Card size="small" style={{ marginBottom: 16 }}>
