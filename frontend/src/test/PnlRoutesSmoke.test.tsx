@@ -146,7 +146,9 @@ describe("pnl routed pages smoke", () => {
     renderWorkbenchApp(["/pnl"], { client: buildPnlClient() });
 
     expect(await screen.findByTestId("pnl-page")).toBeInTheDocument();
-    expect(await screen.findByLabelText("pnl-report-date")).toHaveValue("2025-12-31");
+    await waitFor(() => {
+      expect(screen.getByLabelText("pnl-report-date")).toHaveValue("2025-12-31");
+    });
     expect(await screen.findByTestId("pnl-refresh-button")).toBeInTheDocument();
     expect(await screen.findByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_route_data");
 
@@ -160,7 +162,9 @@ describe("pnl routed pages smoke", () => {
     renderWorkbenchApp(["/pnl-bridge"], { client: buildPnlClient() });
 
     expect(await screen.findByTestId("pnl-bridge-page")).toBeInTheDocument();
-    expect(await screen.findByLabelText("pnl-bridge-report-date")).toHaveValue("2025-12-31");
+    await waitFor(() => {
+      expect(screen.getByLabelText("pnl-bridge-report-date")).toHaveValue("2025-12-31");
+    });
     expect(await screen.findByTestId("pnl-bridge-refresh-button")).toBeInTheDocument();
     expect(await screen.findByTestId("pnl-bridge-result-meta-panel")).toHaveTextContent("tr_route_bridge");
 

@@ -25,7 +25,7 @@ import type {
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
 } from "../../../api/contracts";
-import AdbComparisonChart from "./AdbComparisonChart";
+import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
 import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
