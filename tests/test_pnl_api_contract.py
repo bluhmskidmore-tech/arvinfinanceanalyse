@@ -384,6 +384,32 @@ def test_pnl_bridge_prefers_report_date_specific_pnl_build_lineage_over_latest_m
     get_settings.cache_clear()
 
 
+def test_pnl_bridge_uses_report_date_specific_pnl_build_lineage_without_manifest(
+    tmp_path,
+    monkeypatch,
+):
+    governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
+    _append_pnl_build_run(
+        governance_dir,
+        run_id="pnl-build-2025-12",
+        status="completed",
+        source_version="sv_pnl_build_2025_12",
+        vendor_version="vv_pnl_build_2025_12",
+        rule_version="rv_pnl_build_2025_12",
+        report_date="2025-12-31",
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get("/api/pnl/bridge", params={"report_date": "2025-12-31"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["source_version"] == "sv_pnl_build_2025_12"
+    assert payload["result_meta"]["vendor_version"] == "vv_pnl_build_2025_12"
+    assert payload["result_meta"]["rule_version"] == "rv_pnl_build_2025_12"
+    get_settings.cache_clear()
+
+
 def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tmp_path, monkeypatch):
     governance_dir = _materialize_three_pnl_dates(tmp_path, monkeypatch)
     duckdb_path = tmp_path / "moss.duckdb"

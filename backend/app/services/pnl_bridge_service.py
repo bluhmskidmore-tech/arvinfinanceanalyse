@@ -283,7 +283,10 @@ def _resolve_bridge_lineage(
     prior_balance_rows: list[dict[str, object]],
     curve_snapshots: list[dict[str, object]],
 ) -> tuple[dict[str, str], list[str]]:
-    pnl_lineage = _resolve_pnl_manifest_lineage(governance_dir)
+    pnl_lineage = _resolve_pnl_lineage(
+        governance_dir=governance_dir,
+        report_date=report_date,
+    )
     current_build = _resolve_balance_build_lineage(governance_dir, report_date=report_date)
     prior_build = (
         _resolve_balance_build_lineage(governance_dir, report_date=prior_report_date)
@@ -517,7 +520,29 @@ def _resolve_curve_pair_if_needed(
     return current_snapshot, current_warning
 
 
-def _resolve_pnl_manifest_lineage(governance_dir: str) -> dict[str, object]:
+def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, object]:
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=PNL_CACHE_KEY,
+        job_name="pnl_materialize",
+        report_date=report_date,
+    )
+    if build_lineage is not None:
+        try:
+            manifest_lineage = resolve_formal_manifest_lineage(
+                governance_dir=governance_dir,
+                cache_key=PNL_CACHE_KEY,
+            )
+        except RuntimeError:
+            return build_lineage
+        return {
+            **manifest_lineage,
+            **{
+                key: value
+                for key, value in build_lineage.items()
+                if str(value or "").strip()
+            },
+        }
     return resolve_formal_manifest_lineage(
         governance_dir=governance_dir,
         cache_key=PNL_CACHE_KEY,
