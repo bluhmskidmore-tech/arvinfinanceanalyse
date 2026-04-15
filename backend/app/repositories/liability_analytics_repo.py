@@ -79,7 +79,7 @@ class LiabilityAnalyticsRepository:
                 """
                 select report_date, instrument_code, instrument_name, asset_class, bond_type, is_issuance_like,
                        face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, ytm_value, maturity_date
+                       coupon_rate, ytm_value, maturity_date, source_version, rule_version
                 from zqtz_bond_daily_snapshot
                 where report_date = ?::date
                 """,
@@ -100,6 +100,7 @@ class LiabilityAnalyticsRepository:
                 f"""
                 select report_date, position_id, product_type, position_side, counterparty_name,
                        core_customer_type, principal_native, funding_cost_rate, maturity_date,
+                       source_version, rule_version,
                        case when {IB_ASSET_PREDICATE} then true else false end as is_asset_side
                 from tyw_interbank_daily_snapshot
                 where report_date = ?::date
@@ -121,7 +122,7 @@ class LiabilityAnalyticsRepository:
                 """
                 select report_date, instrument_code, instrument_name, asset_class, bond_type,
                        face_value_native, market_value_native, amortized_cost_native,
-                       coupon_rate, maturity_date
+                       coupon_rate, maturity_date, source_version, rule_version
                 from zqtz_bond_daily_snapshot
                 where report_date between ?::date and ?::date
                   and coalesce(is_issuance_like, false)
@@ -142,7 +143,8 @@ class LiabilityAnalyticsRepository:
                 conn,
                 f"""
                 select report_date, position_id, product_type, position_side, counterparty_name,
-                       core_customer_type, principal_native, funding_cost_rate, maturity_date
+                       core_customer_type, principal_native, funding_cost_rate, maturity_date,
+                       source_version, rule_version
                 from tyw_interbank_daily_snapshot
                 where report_date between ?::date and ?::date
                   and not ({IB_ASSET_PREDICATE})

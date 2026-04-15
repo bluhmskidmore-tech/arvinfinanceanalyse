@@ -167,7 +167,7 @@ export type ApiClient = {
   getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
   getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
-  refreshFormalPnl: () => Promise<FormalPnlRefreshPayload>;
+  refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
   getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getVolumeRateAttribution: (options?: {
@@ -2666,6 +2666,23 @@ const requestPlainJson = async <T>(
   return (await response.json()) as T;
 };
 
+const requestEnvelopeOrPlainJson = async <T>(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+): Promise<T> => {
+  const payload = await requestPlainJson<Record<string, unknown>>(fetchImpl, baseUrl, path);
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "result_meta" in payload &&
+    "result" in payload
+  ) {
+    return payload.result as T;
+  }
+  return payload as T;
+};
+
 function normalizeAdbComparisonResponse(raw: Record<string, unknown>): AdbComparisonResponse {
   const mapBreakdown = (items: unknown[]) =>
     items.map((item) => {
@@ -3047,7 +3064,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
-    async refreshFormalPnl() {
+    async refreshFormalPnl(reportDate?: string) {
       await delay();
       return {
         status: "queued",
@@ -3055,7 +3072,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         job_name: "pnl_materialize",
         trigger_mode: "async",
         cache_key: "pnl:phase2:materialize:formal",
-        report_date: "2026-02-28",
+        report_date: reportDate ?? "2026-02-28",
       };
     },
     async getFormalPnlImportStatus(runId?: string) {
@@ -5093,10 +5110,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/pnl/bridge?report_date=${encodeURIComponent(reportDate)}`,
       ),
-    refreshFormalPnl: () =>
-      requestActionJson<FormalPnlRefreshPayload>(fetchImpl, baseUrl, "/api/data/refresh_pnl", {
-        method: "POST",
-      }),
+    refreshFormalPnl: (reportDate?: string) =>
+      requestActionJson<FormalPnlRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        reportDate
+          ? `/api/data/refresh_pnl?report_date=${encodeURIComponent(reportDate)}`
+          : "/api/data/refresh_pnl",
+        {
+          method: "POST",
+        },
+      ),
     getFormalPnlImportStatus: (runId?: string) =>
       requestActionJson<FormalPnlRefreshPayload>(
         fetchImpl,
@@ -5591,7 +5615,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestPlainJson<LiabilityRiskBucketsPayload>(
+      return requestEnvelopeOrPlainJson<LiabilityRiskBucketsPayload>(
         fetchImpl,
         baseUrl,
         `/api/risk/buckets${q ? `?${q}` : ""}`,
@@ -5603,7 +5627,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         params.set("report_date", reportDate.trim());
       }
       const q = params.toString();
-      return requestPlainJson<LiabilityYieldMetricsPayload>(
+      return requestEnvelopeOrPlainJson<LiabilityYieldMetricsPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/yield_metrics${q ? `?${q}` : ""}`,
@@ -5618,14 +5642,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         params.set("top_n", String(topN));
       }
       const q = params.toString();
-      return requestPlainJson<LiabilityCounterpartyPayload>(
+      return requestEnvelopeOrPlainJson<LiabilityCounterpartyPayload>(
         fetchImpl,
         baseUrl,
         `/api/analysis/liabilities/counterparty${q ? `?${q}` : ""}`,
       );
     },
     getLiabilitiesMonthly: (year) =>
-      requestPlainJson<LiabilitiesMonthlyPayload>(
+      requestEnvelopeOrPlainJson<LiabilitiesMonthlyPayload>(
         fetchImpl,
         baseUrl,
         `/api/liabilities/monthly?year=${encodeURIComponent(String(year))}`,

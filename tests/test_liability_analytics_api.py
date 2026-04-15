@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Contract tests for liability analytics V1-compatible plain JSON endpoints."""
+"""Contract tests for liability analytics V1-compatible payloads inside governed envelopes."""
 
 from __future__ import annotations
 
@@ -132,6 +132,17 @@ def _build_client(db_path: Path, monkeypatch) -> TestClient:
     return TestClient(main_mod.app)
 
 
+def _unwrap_liability_envelope(body: dict[str, object], *, result_kind: str) -> dict[str, object]:
+    assert "result_meta" in body
+    assert "result" in body
+    meta = body["result_meta"]
+    assert meta["basis"] == "analytical"
+    assert meta["formal_use_allowed"] is False
+    assert meta["scenario_flag"] is False
+    assert meta["result_kind"] == result_kind
+    return body["result"]
+
+
 def test_liability_analytics_v1_compatible_endpoints(tmp_path: Path, monkeypatch) -> None:
     db_path = tmp_path / "liability.duckdb"
     conn = duckdb.connect(str(db_path))
@@ -257,14 +268,20 @@ def test_liability_analytics_v1_compatible_endpoints(tmp_path: Path, monkeypatch
 
     risk = client.get("/api/risk/buckets", params={"report_date": "2026-01-31"})
     assert risk.status_code == 200, risk.text
-    risk_payload = risk.json()
+    risk_payload = _unwrap_liability_envelope(
+        risk.json(),
+        result_kind="liability_analytics.risk_buckets",
+    )
     totals = {item["name"]: item["amount"] for item in risk_payload["liabilities_structure"]}
     _assert_close(totals["同业负债"], 550000000.0)
     _assert_close(totals["发行负债"], 300000000.0)
 
     yld = client.get("/api/analysis/yield_metrics", params={"report_date": "2026-01-31"})
     assert yld.status_code == 200, yld.text
-    yld_payload = yld.json()
+    yld_payload = _unwrap_liability_envelope(
+        yld.json(),
+        result_kind="liability_analytics.yield_metrics",
+    )
     _assert_close(yld_payload["kpi"]["asset_yield"], 0.029)
     _assert_close(yld_payload["kpi"]["market_liability_cost"], 0.02411764705882353)
     _assert_close(yld_payload["kpi"]["nim"], 0.004882352941176468)
@@ -274,7 +291,10 @@ def test_liability_analytics_v1_compatible_endpoints(tmp_path: Path, monkeypatch
         params={"report_date": "2026-01-31", "top_n": 2000},
     )
     assert cp.status_code == 200, cp.text
-    cp_payload = cp.json()
+    cp_payload = _unwrap_liability_envelope(
+        cp.json(),
+        result_kind="liability_analytics.counterparty",
+    )
     _assert_close(cp_payload["total_value"], 500000000.0)
     assert [row["name"] for row in cp_payload["top_10"]] == ["银行A", "基金公司B"]
     by_type = {item["name"]: item["value"] for item in cp_payload["by_type"]}
@@ -347,7 +367,10 @@ def test_liability_counterparty_uses_v1_type_labels_and_contains_based_self_excl
         params={"report_date": "2026-02-26", "top_n": 2000},
     )
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.counterparty",
+    )
 
     top_map = {item["name"]: item for item in payload["top_10"]}
     assert top_map["中国农业银行股份有限公司"]["type"] == "Bank"
@@ -412,7 +435,10 @@ def test_liability_yield_metrics_normalizes_percentage_style_bond_rates(tmp_path
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/analysis/yield_metrics", params={"report_date": "2026-02-26"})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.yield_metrics",
+    )
 
     _assert_close(payload["kpi"]["asset_yield"], 0.024)
     _assert_close(payload["kpi"]["liability_cost"], 0.017)
@@ -463,7 +489,10 @@ def test_liability_yield_metrics_uses_interest_bearing_bond_asset_scope(tmp_path
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/analysis/yield_metrics", params={"report_date": "2026-02-26"})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.yield_metrics",
+    )
 
     _assert_close(payload["kpi"]["asset_yield"], 0.03)
 
@@ -522,7 +551,10 @@ def test_liability_risk_buckets_use_market_value_for_issuance_and_short_bucket_f
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/risk/buckets", params={"report_date": "2026-02-26"})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.risk_buckets",
+    )
 
     structure = {item["name"]: item["amount"] for item in payload["issued_liabilities_structure"]}
     _assert_close(structure["同业存单"], 100000000.0)
@@ -555,7 +587,10 @@ def test_liability_risk_buckets_use_v1_day_boundaries_for_term_buckets(tmp_path:
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/risk/buckets", params={"report_date": "2026-02-26"})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.risk_buckets",
+    )
 
     term = {item["bucket"]: item["amount"] for item in payload["interbank_liabilities_term_buckets"]}
     _assert_close(term["6-12个月"], 500000000.0)
@@ -624,7 +659,10 @@ def test_liabilities_monthly_uses_v1_counterparty_proportion_and_type_collapse(
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/liabilities/monthly", params={"year": 2026})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.monthly",
+    )
 
     month = payload["months"][0]
     detail_map = {item["name"]: item for item in month["counterparty_details"]}
@@ -703,7 +741,10 @@ def test_liabilities_monthly_uses_v1_term_buckets_and_shape_fields(
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/liabilities/monthly", params={"year": 2026})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.monthly",
+    )
 
     month = payload["months"][0]
     assert [item["bucket"] for item in month["term_buckets"]] == [
@@ -775,7 +816,10 @@ def test_liability_monthly_and_risk_buckets_use_amortized_cost_for_issued_bonds(
 
     monthly = client.get("/api/liabilities/monthly", params={"year": 2026})
     assert monthly.status_code == 200, monthly.text
-    monthly_payload = monthly.json()
+    monthly_payload = _unwrap_liability_envelope(
+        monthly.json(),
+        result_kind="liability_analytics.monthly",
+    )
     month = monthly_payload["months"][0]
     _assert_close(month["avg_issued_liabilities"], 101000000.0)
     _assert_close(month["avg_total_liabilities"], 101000000.0)
@@ -784,7 +828,10 @@ def test_liability_monthly_and_risk_buckets_use_amortized_cost_for_issued_bonds(
 
     risk = client.get("/api/risk/buckets", params={"report_date": "2026-02-26"})
     assert risk.status_code == 200, risk.text
-    risk_payload = risk.json()
+    risk_payload = _unwrap_liability_envelope(
+        risk.json(),
+        result_kind="liability_analytics.risk_buckets",
+    )
     issued = {item["name"]: item["amount"] for item in risk_payload["issued_liabilities_structure"]}
     _assert_close(issued["CD"], 101000000.0)
 
@@ -839,7 +886,10 @@ def test_liabilities_monthly_uses_v1_tie_break_for_equal_counterparty_avg_values
     client = _build_client(db_path, monkeypatch)
     response = client.get("/api/liabilities/monthly", params={"year": 2026})
     assert response.status_code == 200, response.text
-    payload = response.json()
+    payload = _unwrap_liability_envelope(
+        response.json(),
+        result_kind="liability_analytics.monthly",
+    )
 
     names = [item["name"] for item in payload["months"][0]["counterparty_details"]]
     assert names == ["ZETA BANK", "ALPHA BANK", "MID BANK"]
