@@ -1,6 +1,7 @@
 ﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as ReactRouterDom from "react-router-dom";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -38,13 +39,14 @@ function renderBalanceAnalysisWithClient(
     },
   });
 
-  return render(
+  const renderResult = render(
     <ApiClientProvider client={client}>
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} future={routerFuture} />
       </QueryClientProvider>
     </ApiClientProvider>,
   );
+  return { router, queryClient, ...renderResult };
 }
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
@@ -609,6 +611,12 @@ describe("BalanceAnalysisPage", () => {
       "balance-analysis.detail",
     );
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB Analytical Preview");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("Spot vs ADB 偏离对比");
+    expect(
+      within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
+        "balance-analysis-echarts-stub",
+      ),
+    ).toHaveLength(1);
     expect(screen.getByRole("link", { name: "打开 ADB 分析页" })).toHaveAttribute(
       "href",
       "/average-balance?report_date=2025-12-31",
@@ -669,6 +677,90 @@ describe("BalanceAnalysisPage", () => {
         currencyBasis: "native",
       });
     });
+  });
+
+  it("reacts to query-string scope and currency updates while mounted", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_query_update"),
+      result: {
+        report_dates: ["2025-12-31", "2025-11-30"],
+      },
+    }));
+    const getOverviewSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }) => ({
+      result_meta: buildMeta("balance-analysis.overview", `tr_balance_overview_${reportDate}_${positionScope}_${currencyBasis}`),
+      result: {
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        detail_row_count: 1,
+        summary_row_count: 1,
+        total_market_value_amount: "10.00",
+        total_amortized_cost_amount: "10.00",
+        total_accrued_interest_amount: "1.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
+      result_meta: buildMeta("balance-analysis.detail", `tr_balance_detail_${reportDate}_${positionScope}_${currencyBasis}`),
+      result: {
+        report_date: reportDate,
+        position_scope: positionScope,
+        currency_basis: currencyBasis,
+        details: [],
+        summary: [],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => buildWorkbookResponse());
+    let currentSearch = "report_date=2025-11-30&position_scope=liability&currency_basis=native";
+    const useSearchParamsSpy = vi
+      .spyOn(ReactRouterDom, "useSearchParams")
+      .mockImplementation(
+        () => [new URLSearchParams(currentSearch), vi.fn()] as ReturnType<typeof ReactRouterDom.useSearchParams>,
+      );
+
+    const client = {
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+    };
+
+    const rendered = renderBalanceAnalysisWithClient(client, ["/balance-analysis"]);
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenCalledWith({
+        reportDate: "2025-11-30",
+        positionScope: "liability",
+        currencyBasis: "native",
+      });
+    });
+
+    currentSearch = "report_date=2025-12-31&position_scope=asset&currency_basis=CNY";
+    rendered.rerender(
+      <ApiClientProvider client={client}>
+        <QueryClientProvider client={rendered.queryClient}>
+          <RouterProvider router={rendered.router} future={routerFuture} />
+        </QueryClientProvider>
+      </ApiClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(getOverviewSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "asset",
+        currencyBasis: "CNY",
+      });
+      expect(getDetailSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        positionScope: "asset",
+        currencyBasis: "CNY",
+      });
+    });
+
+    useSearchParamsSpy.mockRestore();
   });
 
   it("downloads the filtered summary export as csv", async () => {
@@ -1216,6 +1308,22 @@ describe("BalanceAnalysisPage", () => {
       },
     }));
     const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getAdbComparisonSpy = vi.fn(async () => ({
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 1200000000,
+      total_avg_assets: 1100000000,
+      total_spot_liabilities: 600000000,
+      total_avg_liabilities: 550000000,
+      asset_yield: 2.45,
+      liability_cost: 1.62,
+      net_interest_margin: 0.83,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    }));
 
     renderBalanceAnalysisWithClient({
       ...baseClient,
@@ -1223,6 +1331,7 @@ describe("BalanceAnalysisPage", () => {
       getBalanceAnalysisOverview: getOverviewSpy,
       getBalanceAnalysisDetail: getDetailSpy,
       getBalanceAnalysisSummary: getSummarySpy,
+      getAdbComparison: getAdbComparisonSpy,
       refreshBalanceAnalysis: refreshSpy,
       getBalanceAnalysisRefreshStatus: statusSpy,
     });
@@ -1238,6 +1347,7 @@ describe("BalanceAnalysisPage", () => {
       expect(getOverviewSpy.mock.calls.length).toBeGreaterThan(1);
       expect(getDetailSpy.mock.calls.length).toBeGreaterThan(1);
       expect(getSummarySpy.mock.calls.length).toBeGreaterThan(1);
+      expect(getAdbComparisonSpy.mock.calls.length).toBeGreaterThan(1);
     });
   });
 });

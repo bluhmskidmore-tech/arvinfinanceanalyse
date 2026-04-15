@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
@@ -29,6 +29,7 @@ import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../workbench/components/KpiCard";
 import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
+import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
@@ -1139,6 +1140,14 @@ function renderWorkbookRightRailPanel(table: BalanceAnalysisWorkbookOperationalS
   return null;
 }
 
+function normalizePositionScopeParam(value: string | null): BalancePositionScope {
+  return value === "asset" || value === "liability" || value === "all" ? value : "all";
+}
+
+function normalizeCurrencyBasisParam(value: string | null): BalanceCurrencyBasis {
+  return value === "native" || value === "CNY" ? value : "CNY";
+}
+
 export default function BalanceAnalysisPage() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
@@ -1147,12 +1156,10 @@ export default function BalanceAnalysisPage() {
   const queryCurrencyBasis = searchParams.get("currency_basis");
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [positionScope, setPositionScope] = useState<BalancePositionScope>(
-    queryPositionScope === "asset" || queryPositionScope === "liability" || queryPositionScope === "all"
-      ? queryPositionScope
-      : "all",
+    normalizePositionScopeParam(queryPositionScope),
   );
   const [currencyBasis, setCurrencyBasis] = useState<BalanceCurrencyBasis>(
-    queryCurrencyBasis === "native" || queryCurrencyBasis === "CNY" ? queryCurrencyBasis : "CNY",
+    normalizeCurrencyBasisParam(queryCurrencyBasis),
   );
   const [summaryOffset, setSummaryOffset] = useState(0);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1193,6 +1200,21 @@ export default function BalanceAnalysisPage() {
       setSelectedReportDate(firstDate);
     }
   }, [datesQuery.data?.result.report_dates, queryReportDate, selectedReportDate]);
+
+  useEffect(() => {
+    if (queryPositionScope !== null) {
+      const nextPositionScope = normalizePositionScopeParam(queryPositionScope);
+      if (positionScope !== nextPositionScope) {
+        setPositionScope(nextPositionScope);
+      }
+    }
+    if (queryCurrencyBasis !== null) {
+      const nextCurrencyBasis = normalizeCurrencyBasisParam(queryCurrencyBasis);
+      if (currencyBasis !== nextCurrencyBasis) {
+        setCurrencyBasis(nextCurrencyBasis);
+      }
+    }
+  }, [queryPositionScope, queryCurrencyBasis, positionScope, currencyBasis]);
 
   useEffect(() => {
     setSummaryOffset(0);
@@ -1463,6 +1485,7 @@ export default function BalanceAnalysisPage() {
         detailQuery.refetch(),
         summaryQuery.refetch(),
         basisBreakdownQuery.refetch(),
+        adbComparisonQuery.refetch(),
         advancedAttributionQuery.refetch(),
       ]);
     } catch (error) {
@@ -1694,46 +1717,7 @@ export default function BalanceAnalysisPage() {
           error={adbComparisonQuery.isError}
           onRetry={() => void adbComparisonQuery.refetch()}
         >
-          {adbComparisonQuery.data ? (
-            <div data-testid="balance-analysis-adb-preview" style={{ display: "grid", gap: 12 }}>
-              <strong style={{ color: "#162033", fontSize: 14 }}>ADB Analytical Preview</strong>
-              <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                基于当前正式报告日生成的 analytical 区间预览，默认观察年初至报告日的 ADB 偏离与净息差。
-              </div>
-              <div style={summaryGridStyle}>
-                <PlaceholderCard
-                  title="Spot 资产"
-                  value={formatYiAmount(adbComparisonQuery.data.total_spot_assets / 100000000)}
-                  unit="亿"
-                  detail={`区间起点 ${adbComparisonQuery.data.start_date}`}
-                />
-                <PlaceholderCard
-                  title="ADB 资产"
-                  value={formatYiAmount(adbComparisonQuery.data.total_avg_assets / 100000000)}
-                  unit="亿"
-                  detail={`区间终点 ${adbComparisonQuery.data.end_date}`}
-                />
-                <PlaceholderCard
-                  title="Spot 负债"
-                  value={formatYiAmount(adbComparisonQuery.data.total_spot_liabilities / 100000000)}
-                  unit="亿"
-                  detail={`${adbComparisonQuery.data.num_days} 天`}
-                />
-                <PlaceholderCard
-                  title="NIM"
-                  value={
-                    adbComparisonQuery.data.net_interest_margin === null
-                      ? "—"
-                      : `${adbComparisonQuery.data.net_interest_margin.toFixed(2)}%`
-                  }
-                  detail="Analytical preview"
-                />
-              </div>
-              <div>
-                <Link to={adbHref}>打开 ADB 分析页</Link>
-              </div>
-            </div>
-          ) : null}
+          {adbComparisonQuery.data ? <AdbAnalyticalPreview comparison={adbComparisonQuery.data} href={adbHref} /> : null}
         </SectionCard>
         <SectionCard
           title="按会计口径分解"
