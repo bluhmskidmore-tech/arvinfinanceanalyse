@@ -330,6 +330,73 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
+def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(
+    tmp_path,
+    monkeypatch,
+):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    backend_dir = repo_root / "backend"
+    backend_dir.mkdir(parents=True, exist_ok=True)
+    (backend_dir / "alembic.ini").write_text("[alembic]\n", encoding="utf-8")
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=repo_root / "tmp-governance" / "pgdev" / "data",
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+
+    alembic_results = iter(
+        [
+            subprocess.CompletedProcess(
+                ["python", "-m", "alembic"],
+                1,
+                stdout="",
+                stderr="psycopg.errors.ConnectionTimeout: connection timeout expired",
+            ),
+            subprocess.CompletedProcess(
+                ["python", "-m", "alembic"],
+                0,
+                stdout="",
+                stderr="",
+            ),
+        ]
+    )
+    recorded_waits: list[dict[str, object]] = []
+    recorded_grants: list[list[str]] = []
+
+    def fake_run(args, **kwargs):
+        return next(alembic_results)
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        module,
+        "_wait_for_postgres_ready",
+        lambda _config, **kwargs: recorded_waits.append(kwargs),
+    )
+    monkeypatch.setattr(
+        module,
+        "_run_checked",
+        lambda args, *, capture_output=False: recorded_grants.append(args) or "",
+    )
+
+    module._apply_alembic_migrations_and_grants(config)
+
+    assert recorded_waits == [{"database": config.database, "attempts": 5, "retry_delay_seconds": 1.0}]
+    assert recorded_grants, "expected post-alembic GRANT statement to run after retry succeeds"
+
+
 def test_resolve_python_executable_prefers_path_python(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",

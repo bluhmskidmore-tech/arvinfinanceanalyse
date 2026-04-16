@@ -316,20 +316,45 @@ def _apply_alembic_migrations_and_grants(config: DevPostgresClusterConfig) -> No
     env["MOSS_POSTGRES_DSN"] = config.postgres_dsn
     env.pop("MOSS_SKIP_POSTGRES_MIGRATIONS", None)
     env.pop("MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS", None)
-    subprocess.run(
-        [
-            _resolve_python_executable(),
-            "-m",
-            "alembic",
-            "-c",
-            str(backend_dir / "alembic.ini"),
-            "upgrade",
-            "head",
-        ],
-        cwd=str(backend_dir),
-        check=True,
-        env=env,
-    )
+    alembic_args = [
+        _resolve_python_executable(),
+        "-m",
+        "alembic",
+        "-c",
+        str(backend_dir / "alembic.ini"),
+        "upgrade",
+        "head",
+    ]
+    for attempt in range(1, 4):
+        result = subprocess.run(
+            alembic_args,
+            cwd=str(backend_dir),
+            check=False,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            break
+
+        combined_output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        normalized_output = combined_output.lower()
+        is_transient_connect_timeout = "connection timeout expired" in normalized_output
+        if is_transient_connect_timeout and attempt < 3:
+            _wait_for_postgres_ready(config, database=config.database, attempts=5, retry_delay_seconds=1.0)
+            continue
+
+        if result.stdout:
+            print(result.stdout, end="", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            alembic_args,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+
     _run_checked(
         [
             str(config.bin_dir / "psql.exe"),

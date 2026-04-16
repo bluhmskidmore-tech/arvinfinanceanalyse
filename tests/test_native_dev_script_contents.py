@@ -93,11 +93,11 @@ def test_dev_postgres_down_script_parses_json_status_payload():
     assert "exit 0" in script
 
 
-def test_dev_postgres_common_script_uses_redirected_json_only_subprocess_execution():
+def test_dev_postgres_common_script_runs_dev_cluster_helper_directly():
     script = (ROOT / "scripts" / "dev-postgres-common.ps1").read_text(encoding="utf-8")
-    assert "RedirectStandardOutput" in script
-    assert "RedirectStandardError" in script
+    assert "& $python" in script
     assert "ConvertFrom-Json" in script
+    assert "Start-Process" not in script
 
 
 def test_dev_down_script_stops_native_processes_and_local_postgres():
