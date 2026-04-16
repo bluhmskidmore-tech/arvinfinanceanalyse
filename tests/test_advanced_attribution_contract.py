@@ -176,6 +176,8 @@ def test_advanced_attribution_analytical_mode_can_expose_upstream_summaries_with
     assert "carry" in result["available_components"]
     assert "actual_pnl" in result["available_components"]
     assert "action_attribution" in result["blocked_components"]
+    assert not any("status=not_ready" in warning for warning in result["warnings"])
+    assert not any("no attribution figures are returned" in warning for warning in result["warnings"])
 
 
 def test_governed_workbook_tables_exclude_advanced_attribution_bundle(tmp_path, monkeypatch):

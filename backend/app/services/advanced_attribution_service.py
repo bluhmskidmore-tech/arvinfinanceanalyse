@@ -38,6 +38,9 @@ _NOT_READY_WARNINGS: tuple[str, ...] = (
     "bond_analytics.phase3: roll_down / rate_effect / spread_effect / trading require Phase 3 curve and trade data",
     "balance-analysis.advanced_attribution_bundle: status=not_ready; no attribution figures are returned",
 )
+_PARTIAL_WARNINGS: tuple[str, ...] = (
+    "bond_analytics.phase3: realized_trading / action_attribution require trade-level history",
+)
 
 
 def _build_partial_summary(
@@ -147,7 +150,7 @@ def advanced_attribution_bundle_envelope(
                     else []
                 ),
                 *upstream_warnings,
-                *_NOT_READY_WARNINGS,
+                *(_PARTIAL_WARNINGS if is_partial else _NOT_READY_WARNINGS),
             ]
         ),
     )
