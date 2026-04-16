@@ -1,0 +1,22 @@
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_native_development_scripts_exist():
+    expected = [
+        ROOT / "scripts" / "dev-api.ps1",
+        ROOT / "scripts" / "dev-worker.ps1",
+        ROOT / "scripts" / "dev-env.ps1",
+        ROOT / "scripts" / "dev-up.ps1",
+        ROOT / "scripts" / "dev-down.ps1",
+        ROOT / "scripts" / "dev-postgres-up.ps1",
+        ROOT / "scripts" / "dev-postgres-down.ps1",
+        ROOT / "scripts" / "dev-postgres-status.ps1",
+        ROOT / "scripts" / "dev-python.ps1",
+        ROOT / "scripts" / "dev-governance-maintenance.ps1",
+    ]
+
+    missing = [str(path) for path in expected if not path.exists()]
+    assert not missing, "Missing native development scripts:\n" + "\n".join(missing)

@@ -1,0 +1,223 @@
+import type {
+  AlertsPayload,
+  ContributionPayload,
+  OverviewPayload,
+  PlaceholderSnapshot,
+  PnlAttributionPayload,
+  RiskOverviewPayload,
+  SummaryPayload,
+} from "../api/contracts";
+
+export const overviewPayload: OverviewPayload = {
+  title: "经营总览（演示）",
+  metrics: [
+    {
+      id: "aum",
+      label: "示例指标一",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
+    },
+    {
+      id: "yield",
+      label: "示例指标二",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
+    },
+    {
+      id: "goal",
+      label: "示例指标三",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
+    },
+    {
+      id: "risk",
+      label: "示例指标四",
+      value: "—",
+      delta: "—",
+      tone: "neutral",
+      detail: "静态演示字段，不代表任何业务口径。",
+    },
+  ],
+};
+
+export const summaryPayload: SummaryPayload = {
+  title: "管理摘要（演示）",
+  narrative:
+    "以下为前端壳层占位文案，用于展示排版与异步状态，请勿当作分析结论或正式口径。",
+  points: [
+    {
+      id: "income",
+      label: "要点一",
+      tone: "neutral",
+      text: "演示：后续替换为后端返回的摘要条目。",
+    },
+    {
+      id: "risk",
+      label: "要点二",
+      tone: "neutral",
+      text: "演示：后续替换为后端返回的摘要条目。",
+    },
+    {
+      id: "action",
+      label: "要点三",
+      tone: "neutral",
+      text: "演示：后续替换为后端返回的摘要条目。",
+    },
+  ],
+};
+
+export const pnlAttributionPayload: PnlAttributionPayload = {
+  title: "收益归因（演示）",
+  total: "—",
+  segments: [
+    { id: "a", label: "分段 A", amount: 0, display_amount: "—", tone: "neutral" },
+    { id: "b", label: "分段 B", amount: 0, display_amount: "—", tone: "neutral" },
+    { id: "c", label: "分段 C", amount: 0, display_amount: "—", tone: "neutral" },
+  ],
+};
+
+export const riskOverviewPayload: RiskOverviewPayload = {
+  title: "风险全景（演示）",
+  signals: [
+    {
+      id: "duration",
+      label: "示例信号一",
+      value: "—",
+      status: "stable",
+      detail: "演示占位，不代表监控结果。",
+    },
+    {
+      id: "leverage",
+      label: "示例信号二",
+      value: "—",
+      status: "watch",
+      detail: "演示占位，不代表监控结果。",
+    },
+    {
+      id: "credit",
+      label: "示例信号三",
+      value: "—",
+      status: "warning",
+      detail: "演示占位，不代表监控结果。",
+    },
+  ],
+};
+
+export const contributionPayload: ContributionPayload = {
+  title: "贡献列表（演示）",
+  rows: [
+    {
+      id: "rates",
+      name: "示例行一",
+      owner: "演示",
+      contribution: "—",
+      completion: 0,
+      status: "占位",
+    },
+    {
+      id: "credit",
+      name: "示例行二",
+      owner: "演示",
+      contribution: "—",
+      completion: 0,
+      status: "占位",
+    },
+  ],
+};
+
+export const alertsPayload: AlertsPayload = {
+  title: "预警与事件（演示）",
+  items: [
+    {
+      id: "a1",
+      severity: "low",
+      title: "示例事件一",
+      occurred_at: "—",
+      detail: "演示占位，非真实告警。",
+    },
+    {
+      id: "a2",
+      severity: "low",
+      title: "示例事件二",
+      occurred_at: "—",
+      detail: "演示占位，非真实告警。",
+    },
+  ],
+};
+
+const placeholderSummary =
+  "此工作台为壳层占位：路由与布局已就绪，业务页面与契约字段后续接入。";
+
+export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
+  dashboard: {
+    title: "管理层驾驶舱",
+    summary:
+      "首页演示：可切换数据源适配器并消费后端契约；展示层只渲染返回结果，不推导业务口径。",
+    highlights: [
+      "独立查询与 loading / empty / error / 重试。",
+      "懒加载分区降低首屏体积。",
+      "其余菜单项保持薄占位页面。",
+    ],
+  },
+  "operations-analysis": {
+    title: "经营分析",
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+  },
+  "risk-overview": {
+    title: "风险总览",
+    summary: "风险总览路由已保留，但当前风险张量与 Bond Analytics 下钻物化结果尚未进入可用状态。",
+    highlights: ["formal risk tensor 表未落地", "Bond Analytics 下钻结果未就绪", "当前阶段只保留入口与状态说明"],
+  },
+  "risk-tensor": {
+    title: "风险张量",
+    summary: "风险张量页依赖的 formal risk tensor 表尚未物化，当前不展示失败查询结果，只保留阶段说明。",
+    highlights: ["依赖表未落地", "不在前端补算风险指标", "完成物化后再切回真实页面"],
+  },
+  "team-performance": {
+    title: "团队绩效",
+    summary: "团队绩效仍是壳层占位模块，当前只保留入口和规划说明。",
+    highlights: ["无真实读链路", "无正式指标计算", "后续按治理面能力补齐"],
+  },
+  "decision-matters": {
+    title: "决策事项",
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+  },
+  "bond-analysis": {
+    title: "债券分析",
+    summary: "债券分析驾驶舱仍未到可展示阶段，当前不直接暴露未完成的 Bond Analytics 页面。",
+    highlights: ["bond analytics 物化表未就绪", "入口保留但不触发失败接口", "待治理读模型稳定后恢复"],
+  },
+  "product-category-pnl": {
+    title: "产品损益",
+    summary: "产品损益页面路由已搭好，但当前 read model 还没有可消费报告日，因此先落回占位说明。",
+    highlights: ["report_dates 为空", "不展示空表和错误态", "等 read model 物化后恢复"],
+  },
+  pnl: {
+    title: "损益明细",
+    summary: "PnL 明细依赖的 formal pnl 事实表尚未物化，当前页面不再发失败请求。",
+    highlights: ["fact_formal_pnl_fi 未落地", "fact_nonstd_pnl_bridge 未落地", "完成物化后恢复真实工作台"],
+  },
+  "pnl-bridge": {
+    title: "损益桥接",
+    summary: "PnL bridge 仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
+    highlights: ["桥接结果未稳定", "不暴露失败接口", "后续以正式读模型为准切回"],
+  },
+  "platform-config": {
+    title: "中台配置",
+    summary: "中台配置当前仍为占位入口，暂不展示未完成的治理页细节。",
+    highlights: ["仅保留入口", "不展示假数据", "待治理面成熟后恢复真实页面"],
+  },
+  "market-data": {
+    title: "市场数据",
+    summary: placeholderSummary,
+    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+  },
+};

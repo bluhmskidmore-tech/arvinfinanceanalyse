@@ -1,0 +1,7 @@
+choice:
+  emquant_parent: F:/EMQuantAPI_Python/python3
+  start_options:
+  request_options: Ispandas=1,RECVtimeout=5
+
+log_level: INFO
+log_path:

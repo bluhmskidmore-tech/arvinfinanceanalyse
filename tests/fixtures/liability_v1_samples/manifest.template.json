@@ -1,0 +1,162 @@
+{
+  "version": 1,
+  "duckdb_path_env": "MOSS_DUCKDB_PATH",
+  "notes": [
+    "Copy this file to manifest.json and replace placeholders with captured V1 HTTP payloads.",
+    "Compatibility payloads are frozen seam expectations only. Semantic sign-off is tracked separately and must follow the authority matrix."
+  ],
+  "samples": [
+    {
+      "sample_id": "risk-buckets-2026-01-31",
+      "interface": "risk_buckets",
+      "request": {
+        "report_date": "2026-01-31"
+      },
+      "expected": {
+        "compatibility": {
+          "oracle": "v1_payload",
+          "payload": {
+            "report_date": "2026-01-31",
+            "liabilities_structure": [],
+            "liabilities_term_buckets": [],
+            "interbank_liabilities_structure": [],
+            "interbank_liabilities_term_buckets": [],
+            "issued_liabilities_structure": [],
+            "issued_liabilities_term_buckets": []
+          }
+        },
+        "semantic": {
+          "oracle": "authority_matrix",
+          "status": "pending",
+          "authority_field_paths": [
+            "liabilities_structure[].amount",
+            "liabilities_term_buckets[].bucket"
+          ],
+          "notes": [
+            "Record allowed_source and V1 binding level before treating any amount mismatch as an implementation defect."
+          ]
+        }
+      },
+      "source": {
+        "origin": "replace-with-v1-http-capture",
+        "captured_at": "2026-04-14T00:00:00+08:00",
+        "sha256": "replace-with-sha256",
+        "binding_level": "compatibility_only"
+      }
+    },
+    {
+      "sample_id": "yield-metrics-2026-01-31",
+      "interface": "yield_metrics",
+      "request": {
+        "report_date": "2026-01-31"
+      },
+      "expected": {
+        "compatibility": {
+          "oracle": "v1_payload",
+          "payload": {
+            "report_date": "2026-01-31",
+            "kpi": {
+              "asset_yield": null,
+              "liability_cost": null,
+              "market_liability_cost": null,
+              "nim": null
+            }
+          }
+        },
+        "semantic": {
+          "oracle": "authority_matrix",
+          "status": "pending",
+          "authority_field_paths": [
+            "kpi.asset_yield",
+            "kpi.nim"
+          ],
+          "notes": [
+            "Keep percentage-versus-decimal normalization under the semantic oracle. Do not infer formal authority from frozen V1 values."
+          ]
+        }
+      },
+      "source": {
+        "origin": "replace-with-v1-http-capture",
+        "captured_at": "2026-04-14T00:00:00+08:00",
+        "sha256": "replace-with-sha256",
+        "binding_level": "compatibility_only"
+      }
+    },
+    {
+      "sample_id": "liabilities-counterparty-2026-01-31",
+      "interface": "liabilities_counterparty",
+      "request": {
+        "report_date": "2026-01-31"
+      },
+      "expected": {
+        "compatibility": {
+          "oracle": "v1_payload",
+          "payload": {
+            "report_date": "2026-01-31",
+            "total_value": 0.0,
+            "top_10": [],
+            "by_type": []
+          }
+        },
+        "semantic": {
+          "oracle": "authority_matrix",
+          "status": "pending",
+          "authority_field_paths": [
+            "top_10[].weighted_cost",
+            "by_type[].value"
+          ],
+          "notes": [
+            "Track the Qingdao Bank exclusion and counterparty type mapping under the authority matrix before semantic approval."
+          ]
+        }
+      },
+      "source": {
+        "origin": "replace-with-v1-http-capture",
+        "captured_at": "2026-04-14T00:00:00+08:00",
+        "sha256": "replace-with-sha256",
+        "binding_level": "compatibility_only"
+      }
+    },
+    {
+      "sample_id": "liabilities-monthly-2026",
+      "interface": "liabilities_monthly",
+      "request": {
+        "year": 2026
+      },
+      "expected": {
+        "compatibility": {
+          "oracle": "v1_payload",
+          "payload": {
+            "year": 2026,
+            "months": [],
+            "ytd_avg_total_liabilities": 0.0,
+            "ytd_avg_liability_cost": null
+          }
+        },
+        "semantic": {
+          "oracle": "authority_matrix",
+          "status": "pending",
+          "authority_field_paths": [
+            "months[].avg_total_liabilities",
+            "months[].num_days",
+            "ytd_avg_liability_cost"
+          ],
+          "basis_gate": {
+            "status": "approved",
+            "basis": "observed",
+            "reason": "Use observed-day averaging for the liability monthly seam unless a stronger governed rule supersedes it."
+          },
+          "notes": [
+            "Monthly samples may freeze compatibility payloads now, and semantic review should treat the seam basis as observed."
+          ]
+        }
+      },
+      "source": {
+        "origin": "replace-with-v1-http-capture",
+        "captured_at": "2026-04-14T00:00:00+08:00",
+        "sha256": "replace-with-sha256",
+        "binding_level": "compatibility_only"
+      }
+    }
+  ]
+}

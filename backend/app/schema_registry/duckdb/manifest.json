@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "description": "Ordered DuckDB DDL slices; keep in sync with backend.app.duckdb_schema_bootstrap.upgrade_duckdb_schema_head.",
+  "files": [
+    {
+      "path": "01_snapshot.sql",
+      "ensure_module": "backend.app.repositories.snapshot_repo",
+      "ensure_symbol": "ensure_snapshot_tables"
+    },
+    {
+      "path": "02_bond_analytics.sql",
+      "ensure_module": "backend.app.repositories.bond_analytics_repo",
+      "ensure_symbol": "ensure_bond_analytics_tables"
+    },
+    {
+      "path": "03_yield_curve.sql",
+      "ensure_module": "backend.app.repositories.yield_curve_repo",
+      "ensure_symbol": "ensure_yield_curve_tables"
+    },
+    {
+      "path": "04_risk_tensor.sql",
+      "ensure_module": "backend.app.repositories.risk_tensor_repo",
+      "ensure_symbol": "ensure_risk_tensor_table"
+    },
+    {
+      "path": "05_balance_analysis.sql",
+      "ensure_module": "backend.app.repositories.balance_analysis_repo",
+      "ensure_symbol": "ensure_balance_analysis_tables"
+    },
+    {
+      "path": "06_source_preview.sql",
+      "ensure_module": "backend.app.repositories.source_preview_repo",
+      "ensure_symbol": "ensure_source_preview_schema_tables"
+    },
+    {
+      "path": "07_pnl_materialize.sql",
+      "ensure_module": "backend.app.tasks.pnl_materialize",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "08_product_category_pnl.sql",
+      "ensure_module": "backend.app.tasks.product_category_pnl",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "09_phase1_materialize_runs.sql",
+      "ensure_module": "backend.app.tasks.materialize",
+      "ensure_symbol": "ensure_phase1_materialize_runs_table"
+    },
+    {
+      "path": "10_fx_mid.sql",
+      "ensure_module": "backend.app.tasks.fx_mid_materialize",
+      "ensure_symbol": "_ensure_fx_mid_table"
+    },
+    {
+      "path": "11_choice_macro.sql",
+      "ensure_module": "backend.app.tasks.choice_macro",
+      "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "12_choice_news.sql",
+      "ensure_module": "backend.app.tasks.choice_news",
+      "ensure_symbol": "ensure_choice_news_event_schema"
+    }
+  ]
+}

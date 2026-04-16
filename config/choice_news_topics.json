@@ -1,0 +1,109 @@
+{
+  "catalog_version": "2026-04-10.choice-news.v1",
+  "vendor_name": "choice",
+  "generated_at": "2026-04-10T18:10:00+08:00",
+  "generated_from": "config/choice_news_cnq_2026-04-09.txt",
+  "subscription_mode": "cnq",
+  "content_type": "sectornews",
+  "callback_name": "cnqCallback",
+  "groups": [
+    {
+      "group_id": "news_cmd1",
+      "group_name": "Choice News Topics 2026-04-09",
+      "is_core": true,
+      "tags": [
+        "choice",
+        "news",
+        "macro",
+        "policy",
+        "market"
+      ],
+      "topics": [
+        {
+          "topic_code": "C000022",
+          "topic_name": "热门资讯"
+        },
+        {
+          "topic_code": "S888010007API",
+          "topic_name": "经济数据"
+        },
+        {
+          "topic_code": "C000003006",
+          "topic_name": "政策跟踪"
+        },
+        {
+          "topic_code": "S888005003API",
+          "topic_name": "要闻聚集"
+        },
+        {
+          "topic_code": "C000003002",
+          "topic_name": "央行动态"
+        },
+        {
+          "topic_code": "C000003003",
+          "topic_name": "监管政策"
+        },
+        {
+          "topic_code": "S888010003API",
+          "topic_name": "宏观经济"
+        },
+        {
+          "topic_code": "S888010005API",
+          "topic_name": "国内经济"
+        },
+        {
+          "topic_code": "S888010004API",
+          "topic_name": "产业经济"
+        },
+        {
+          "topic_code": "C000004005",
+          "topic_name": "宏观预警"
+        },
+        {
+          "topic_code": "C000004006",
+          "topic_name": "行业预警"
+        },
+        {
+          "topic_code": "C000004004API",
+          "topic_name": "监管处罚"
+        },
+        {
+          "topic_code": "C000004002API",
+          "topic_name": "债市预警"
+        },
+        {
+          "topic_code": "S888005004API",
+          "topic_name": "国际资讯"
+        },
+        {
+          "topic_code": "C000021001",
+          "topic_name": "交易快讯"
+        },
+        {
+          "topic_code": "S888005005API",
+          "topic_name": "公司资讯"
+        },
+        {
+          "topic_code": "C000011013",
+          "topic_name": "金融市场"
+        },
+        {
+          "topic_code": "S888009004API",
+          "topic_name": "美国股市"
+        },
+        {
+          "topic_code": "S888009011API",
+          "topic_name": "外汇市场"
+        },
+        {
+          "topic_code": "S888009008API",
+          "topic_name": "期货市场"
+        },
+        {
+          "topic_code": "S888009007API",
+          "topic_name": "债券市场"
+        }
+      ]
+    }
+  ]
+}
