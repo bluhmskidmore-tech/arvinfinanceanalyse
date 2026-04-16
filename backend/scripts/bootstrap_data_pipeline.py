@@ -27,6 +27,13 @@ if str(_REPO_ROOT) not in sys.path:
 
 os.environ.setdefault("MOSS_OBJECT_STORE_MODE", "local")
 os.environ.setdefault("MOSS_GOVERNANCE_BACKEND", "jsonl")
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+# Fix Windows GBK terminal encoding
+if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("gbk"):
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 
 def _step(label: str):
