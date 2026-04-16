@@ -1,28 +1,59 @@
+## Local environment and secrets
+.env
+.env.*
+config/.env
+frontend/.env.development
+frontend/.env.local
+
+## Local runtime and orchestration state
 .omx/
+.cursor/
+tmp-governance/
+
+## Data and generated artifacts
 data/
 backend/data/
 data_input/
+*.duckdb
+*.db
+*.sqlite
+*.wal
+*.xls
+*.xlsx
+*.csv
+*.parquet
+*.pkl
+*.log
+
+## Node / frontend build state
+node_modules/
 frontend/node_modules/
+dist/
+build/
+coverage/
 frontend/dist/
-frontend/.env.development
-frontend/.env.local
-config/.env
 frontend/playwright-*.png
 frontend/*.d.ts
 frontend/*.js
 frontend/*.js.map
 frontend/*.tsbuildinfo
+*.tsbuildinfo
+
+## Python
+.venv/
 __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
-*.log
+*.py[cod]
 .tmp-pnl-refresh.json
 
 # Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
 .pytest_cache/
 .tmp_pytest/
 py_temp_pytest/
+tmp_pytest_*/
+tmpzh*/
 
 # Accidental Windows reserved-name stub (cannot be indexed by Git on Windows)
 /CON
