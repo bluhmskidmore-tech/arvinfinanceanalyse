@@ -32,3 +32,5 @@ def test_bond_action_attribution_service_returns_explicit_unavailable_contract()
     ]
     assert any("unavailable" in warning.lower() for warning in payload["result"]["warnings"])
     assert not any("ready" in warning.lower() for warning in payload["result"]["warnings"])
+    assert not any("placeholder" in warning.lower() for warning in payload["result"]["warnings"])
+    assert not any("fabricated" in warning.lower() for warning in payload["result"]["warnings"])
