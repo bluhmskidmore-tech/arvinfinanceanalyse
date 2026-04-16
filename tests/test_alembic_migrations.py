@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from alembic import command
@@ -104,12 +105,12 @@ def test_upgrade_postgres_schema_head_passes_resolved_dev_cluster_dsn_to_subproc
 
     captured: dict[str, object] = {}
 
-    def _fake_run(args, *, cwd, check, env):
+    def _fake_run(args, *, cwd, check, env, capture_output=False, text=False):
         captured["args"] = args
         captured["cwd"] = cwd
         captured["check"] = check
         captured["dsn"] = env.get("MOSS_POSTGRES_DSN")
-        return None
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
     monkeypatch.setattr(module, "skip_auto_storage_migrations", lambda: False)
     monkeypatch.setattr(module.subprocess, "run", _fake_run)
@@ -119,5 +120,60 @@ def test_upgrade_postgres_schema_head_passes_resolved_dev_cluster_dsn_to_subproc
     module.upgrade_postgres_schema_head()
 
     assert captured["cwd"] == str(backend_root)
-    assert captured["check"] is True
+    assert captured["check"] is False
     assert captured["dsn"] == "postgresql://moss:moss@127.0.0.1:55432/moss"
+
+
+def test_upgrade_postgres_schema_head_retries_transient_connection_timeout(
+    monkeypatch, tmp_path
+) -> None:
+    module = load_module(
+        "backend.app.postgres_migrations",
+        "backend/app/postgres_migrations.py",
+    )
+    repo_root = tmp_path / "repo"
+    backend_root = repo_root / "backend"
+    app_root = backend_root / "app"
+    app_root.mkdir(parents=True, exist_ok=True)
+    (backend_root / "alembic.ini").write_text("[alembic]\nscript_location = alembic\n", encoding="utf-8")
+    (repo_root / "tmp-governance" / "pgdev" / "data").mkdir(parents=True, exist_ok=True)
+
+    results = iter(
+        [
+            subprocess.CompletedProcess(
+                ["python", "-m", "alembic"],
+                1,
+                stdout="",
+                stderr="psycopg.errors.ConnectionTimeout: connection timeout expired",
+            ),
+            subprocess.CompletedProcess(
+                ["python", "-m", "alembic"],
+                0,
+                stdout="",
+                stderr="",
+            ),
+        ]
+    )
+    captured_waits: list[tuple[str, Path]] = []
+
+    monkeypatch.setattr(module, "skip_auto_storage_migrations", lambda: False)
+    monkeypatch.setattr(module.Path, "resolve", lambda _self: app_root / "postgres_migrations.py")
+    monkeypatch.setattr(
+        module.subprocess,
+        "run",
+        lambda *args, **kwargs: next(results),
+    )
+    monkeypatch.setattr(
+        module,
+        "resolve_postgres_dsn",
+        lambda dsn, *, repo_root: "postgresql://moss:moss@127.0.0.1:55432/moss",
+    )
+    monkeypatch.setattr(
+        module,
+        "_wait_for_postgres_sql_ready",
+        lambda dsn, *, repo_root: captured_waits.append((dsn, repo_root)),
+    )
+
+    module.upgrade_postgres_schema_head()
+
+    assert captured_waits == [("postgresql://moss:moss@127.0.0.1:55432/moss", backend_root.parent)]
