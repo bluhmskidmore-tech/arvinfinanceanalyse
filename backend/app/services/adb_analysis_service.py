@@ -14,11 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-import numpy as np
 import pandas as pd
 
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
-from backend.app.core_finance.adb_rate_normalize import normalize_rate_series_pd
+from backend.app.core_finance.adb_rate_normalize import normalize_rate_series_pd, normalize_rate_values
 from backend.app.governance.settings import get_settings
 from backend.app.services.formal_result_runtime import build_result_envelope
 
@@ -101,206 +100,6 @@ def _build_analytical_envelope(
         vendor_version="vv_none",
         result_payload=result_payload,
     )
-
-
-def calculate_adb(duckdb_path: str, start_date: date, end_date: date) -> dict[str, Any]:
-    if not Path(duckdb_path).exists():
-        return _empty_adb_response()
-
-    num_days = (end_date - start_date).days + 1
-    all_days = [start_date + timedelta(days=i) for i in range(num_days)]
-
-    conn = _conn_ro(duckdb_path)
-    try:
-        has_bonds = _table_exists(conn, "zqtz_bond_daily_snapshot")
-        has_ib = _table_exists(conn, "tyw_interbank_daily_snapshot")
-        if not has_bonds and not has_ib:
-            return _empty_adb_response()
-
-        bonds_assets: dict[date, Decimal] = {}
-        bonds_liab: dict[date, Decimal] = {}
-        ib_assets: dict[date, Decimal] = {}
-        ib_liab: dict[date, Decimal] = {}
-
-        if has_bonds:
-            for rd, mv in conn.execute(
-                f"""
-                select report_date, sum(coalesce(market_value_native, 0))
-                from zqtz_bond_daily_snapshot
-                where report_date between ? and ?
-                  and not coalesce(is_issuance_like, false)
-                group by 1
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                bonds_assets[rd] = Decimal(str(mv or 0))
-
-            for rd, mv in conn.execute(
-                f"""
-                select report_date, sum(coalesce(market_value_native, 0))
-                from zqtz_bond_daily_snapshot
-                where report_date between ? and ?
-                  and coalesce(is_issuance_like, false)
-                group by 1
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                bonds_liab[rd] = Decimal(str(mv or 0))
-
-        if has_ib:
-            for rd, amt in conn.execute(
-                f"""
-                select report_date, sum(coalesce(principal_native, 0))
-                from tyw_interbank_daily_snapshot
-                where report_date between ? and ?
-                  and {IB_ASSET_PRED}
-                group by 1
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                ib_assets[rd] = Decimal(str(amt or 0))
-
-            for rd, amt in conn.execute(
-                f"""
-                select report_date, sum(coalesce(principal_native, 0))
-                from tyw_interbank_daily_snapshot
-                where report_date between ? and ?
-                  and not ({IB_ASSET_PRED})
-                group by 1
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                ib_liab[rd] = Decimal(str(amt or 0))
-    finally:
-        conn.close()
-
-    daily_assets: dict[date, Decimal] = {}
-    daily_liab: dict[date, Decimal] = {}
-    daily_total_assets_sum = Decimal("0")
-    daily_total_liab_sum = Decimal("0")
-
-    for d in all_days:
-        a = bonds_assets.get(d, Decimal("0")) + ib_assets.get(d, Decimal("0"))
-        l = bonds_liab.get(d, Decimal("0")) + ib_liab.get(d, Decimal("0"))
-        daily_assets[d] = a
-        daily_liab[d] = l
-        daily_total_assets_sum += a
-        daily_total_liab_sum += l
-
-    nd = Decimal(str(num_days)) if num_days else Decimal("0")
-    total_avg_assets = (daily_total_assets_sum / nd) if nd else Decimal("0")
-    total_avg_liab = (daily_total_liab_sum / nd) if nd else Decimal("0")
-    end_spot_assets = daily_assets.get(end_date, Decimal("0"))
-    end_spot_liab = daily_liab.get(end_date, Decimal("0"))
-
-    trend: list[dict[str, float]] = []
-    window: list[Decimal] = []
-    window_sum = Decimal("0")
-    for d in all_days:
-        spot = daily_assets[d]
-        window.append(spot)
-        window_sum += spot
-        if len(window) > 30:
-            window_sum -= window.pop(0)
-        wn = len(window)
-        ma = (window_sum / Decimal(str(wn))) if wn else Decimal("0")
-        trend.append(
-            {
-                "date": d.strftime("%Y-%m-%d"),
-                "daily_balance": float(spot),
-                "moving_average_30d": float(ma),
-            }
-        )
-
-    breakdown = _adb_breakdown(duckdb_path, start_date, end_date, num_days)
-    return {
-        "summary": {
-            "total_avg_assets": float(total_avg_assets),
-            "total_avg_liabilities": float(total_avg_liab),
-            "end_spot_assets": float(end_spot_assets),
-            "end_spot_liabilities": float(end_spot_liab),
-        },
-        "trend": trend,
-        "breakdown": breakdown,
-    }
-
-
-def _adb_breakdown(duckdb_path: str, start_date: date, end_date: date, num_days: int) -> list[dict[str, Any]]:
-    if not Path(duckdb_path).exists() or num_days <= 0:
-        return []
-    conn = _conn_ro(duckdb_path)
-    breakdown_sum: dict[tuple[str, str], Decimal] = {}
-    try:
-        if _table_exists(conn, "zqtz_bond_daily_snapshot"):
-            for _, sub, mv in conn.execute(
-                """
-                select report_date,
-                       coalesce(nullif(trim(cast(bond_type as varchar)), ''), '债券-其他') as sub_type,
-                       sum(coalesce(market_value_native, 0))
-                from zqtz_bond_daily_snapshot
-                where report_date between ? and ?
-                  and not coalesce(is_issuance_like, false)
-                group by report_date, sub_type
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                cat = str(sub or "债券-其他")
-                k = (cat, "Asset")
-                breakdown_sum[k] = breakdown_sum.get(k, Decimal("0")) + Decimal(str(mv or 0))
-
-            for _, sub, mv in conn.execute(
-                """
-                select report_date,
-                       coalesce(nullif(trim(cast(bond_type as varchar)), ''), '其他') as sub_type,
-                       sum(coalesce(market_value_native, 0))
-                from zqtz_bond_daily_snapshot
-                where report_date between ? and ?
-                  and coalesce(is_issuance_like, false)
-                group by report_date, sub_type
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                cat = f"发行债券-{(sub or '其他')}"
-                k = (cat, "Liability")
-                breakdown_sum[k] = breakdown_sum.get(k, Decimal("0")) + Decimal(str(mv or 0))
-
-        if _table_exists(conn, "tyw_interbank_daily_snapshot"):
-            for _, pt, amt in conn.execute(
-                f"""
-                select report_date, product_type, sum(coalesce(principal_native, 0))
-                from tyw_interbank_daily_snapshot
-                where report_date between ? and ? and {IB_ASSET_PRED}
-                group by report_date, product_type
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                side = "Asset"
-                cat = map_ib_category(str(pt) if pt is not None else None, side)
-                k = (cat, side)
-                breakdown_sum[k] = breakdown_sum.get(k, Decimal("0")) + Decimal(str(amt or 0))
-
-            for _, pt, amt in conn.execute(
-                f"""
-                select report_date, product_type, sum(coalesce(principal_native, 0))
-                from tyw_interbank_daily_snapshot
-                where report_date between ? and ? and not ({IB_ASSET_PRED})
-                group by report_date, product_type
-                """,
-                [start_date, end_date],
-            ).fetchall():
-                side = "Liability"
-                cat = map_ib_category(str(pt) if pt is not None else None, side)
-                k = (cat, side)
-                breakdown_sum[k] = breakdown_sum.get(k, Decimal("0")) + Decimal(str(amt or 0))
-    finally:
-        conn.close()
-
-    nd = Decimal(str(num_days))
-    out: list[dict[str, Any]] = []
-    for (cat, side), total in sorted(breakdown_sum.items(), key=lambda x: float(x[1] or 0), reverse=True):
-        avg_val = (total / nd) if nd else Decimal("0")
-        out.append({"category": cat, "side": side, "avg_balance": float(avg_val)})
-    return out
 
 
 def _empty_adb_response() -> dict[str, Any]:
@@ -432,21 +231,151 @@ def _load_adb_raw_data(
         ]
     )
 
-    if not bonds_df.empty:
-        bonds_df["report_date"] = pd.to_datetime(bonds_df["report_date"])
-        for col in ("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"):
-            bonds_df[col] = pd.to_numeric(bonds_df[col], errors="coerce").fillna(0)
-
-    if not ib_df.empty:
-        ib_df["report_date"] = pd.to_datetime(ib_df["report_date"])
-        ib_df["amount"] = pd.to_numeric(ib_df["amount"], errors="coerce").fillna(0)
-        ib_df["interest_rate"] = pd.to_numeric(ib_df["interest_rate"], errors="coerce").fillna(0)
+    bonds_df = _normalize_adb_frame(
+        bonds_df,
+        date_columns=("report_date",),
+        numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
+    )
+    ib_df = _normalize_adb_frame(
+        ib_df,
+        date_columns=("report_date",),
+        numeric_columns=("amount", "interest_rate"),
+    )
 
     return bonds_df, ib_df, source_versions, rule_versions
 
 
 def _dict_from_row(description: list[tuple], row: tuple) -> dict[str, object]:
     return {str(column[0]): value for column, value in zip(description, row, strict=True)}
+
+
+def _decimal_or_zero(value: object) -> Decimal:
+    return Decimal(str(value or 0))
+
+
+def _frame_unique_dates(frame: pd.DataFrame) -> set[date]:
+    if frame.empty:
+        return set()
+    return {
+        row.report_date.date()
+        for row in frame.itertuples(index=False)
+        if getattr(row, "report_date", None) is not None
+    }
+
+
+def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Decimal]:
+    totals: dict[date, Decimal] = {}
+    if frame.empty:
+        return totals
+    for row in frame.itertuples(index=False):
+        report_date = getattr(row, "report_date", None)
+        if report_date is None:
+            continue
+        day = report_date.date()
+        totals[day] = totals.get(day, Decimal("0")) + _decimal_or_zero(getattr(row, amount_attr))
+    return totals
+
+
+def _frame_total_amounts(frame: pd.DataFrame, amount_attr: str) -> tuple[float, float]:
+    total_amount = 0.0
+    total_weighted = 0.0
+    if frame.empty:
+        return total_amount, total_weighted
+    for row in frame.itertuples(index=False):
+        total_amount += float(getattr(row, amount_attr) or 0)
+        total_weighted += float(getattr(row, "weighted", 0) or 0)
+    return total_amount, total_weighted
+
+
+def _frame_spot_total_for_date(frame: pd.DataFrame, amount_attr: str, target_date: date) -> float:
+    if frame.empty:
+        return 0.0
+    total = 0.0
+    for row in frame.itertuples(index=False):
+        report_date = getattr(row, "report_date", None)
+        if report_date is not None and report_date.date() == target_date:
+            total += float(getattr(row, amount_attr) or 0)
+    return total
+
+
+def _frame_breakdown_rows(
+    frame: pd.DataFrame,
+    *,
+    category_attr: str,
+    amount_attr: str,
+    num_days: int,
+    prefix: str = "",
+) -> list[dict[str, Any]]:
+    if frame.empty or num_days <= 0:
+        return []
+    totals: dict[str, tuple[float, float]] = {}
+    for row in frame.itertuples(index=False):
+        category = f"{prefix}{_clean_cat(getattr(row, category_attr, None))}"
+        amount = float(getattr(row, amount_attr) or 0)
+        weighted = float(getattr(row, "weighted", 0) or 0)
+        current_amount, current_weighted = totals.get(category, (0.0, 0.0))
+        totals[category] = (current_amount + amount, current_weighted + weighted)
+
+    rows: list[dict[str, Any]] = []
+    for category, (total_amount, total_weighted) in totals.items():
+        rows.append(
+            {
+                "category": category,
+                "avg_balance": total_amount / num_days if num_days > 0 else 0.0,
+                "weighted_rate": (total_weighted / total_amount * 100) if total_amount > 0 else None,
+            }
+        )
+    return rows
+
+
+def _accumulate_spot_and_sum_maps(
+    frame: pd.DataFrame,
+    *,
+    amount_attr: str,
+    end_date: date,
+    category_resolver,
+    spot_map: dict[str, Decimal],
+    sum_map: dict[str, Decimal],
+) -> None:
+    if frame.empty:
+        return
+    for row in frame.itertuples(index=False):
+        category = _clean_cat(category_resolver(row))
+        amount = _decimal_or_zero(getattr(row, amount_attr))
+        sum_map[category] = sum_map.get(category, Decimal("0")) + amount
+        report_date = getattr(row, "report_date", None)
+        if report_date is not None and report_date.date() == end_date:
+            spot_map[category] = spot_map.get(category, Decimal("0")) + amount
+
+
+def _normalize_adb_frame(
+    frame: pd.DataFrame,
+    *,
+    date_columns: tuple[str, ...],
+    numeric_columns: tuple[str, ...],
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame
+    normalized = frame.copy()
+    for column in date_columns:
+        if column in normalized.columns:
+            normalized[column] = pd.to_datetime(normalized[column], errors="coerce")
+    for column in numeric_columns:
+        if column in normalized.columns:
+            normalized[column] = pd.to_numeric(normalized[column], errors="coerce").fillna(0)
+    return normalized
+
+
+def _filter_frame_between_dates(frame: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame()
+    rows = [
+        row._asdict()
+        for row in frame.itertuples(index=False)
+        if getattr(row, "report_date", None) is not None
+        and start_date <= row.report_date.date() <= end_date
+    ]
+    return pd.DataFrame(rows, columns=frame.columns)
 
 
 def _fetch_formal_zqtz_rows(
@@ -520,8 +449,8 @@ def _split_rate_frames(
         if not bonds_assets_df.empty:
             bonds_assets_df["category"] = bonds_assets_df["sub_type"].apply(_clean_cat)
             bonds_assets_df["balance"] = pd.to_numeric(bonds_assets_df["market_value"], errors="coerce").fillna(0.0)
-            bonds_assets_df["rate_decimal"] = normalize_rate_series_pd(
-                bonds_assets_df["yield_to_maturity"],
+            bonds_assets_df["rate_decimal"] = normalize_rate_values(
+                bonds_assets_df["yield_to_maturity"].tolist(),
                 "yield_to_maturity",
             )
             bonds_assets_df["weighted"] = bonds_assets_df["balance"] * bonds_assets_df["rate_decimal"]
@@ -531,11 +460,14 @@ def _split_rate_frames(
         if not bonds_liab_df.empty:
             bonds_liab_df["category"] = bonds_liab_df["sub_type"].apply(_clean_cat)
             bonds_liab_df["balance"] = pd.to_numeric(bonds_liab_df["market_value"], errors="coerce").fillna(0.0)
-            bonds_liab_df["rate_decimal"] = np.where(
-                pd.notna(bonds_liab_df["coupon_rate"]) & (bonds_liab_df["coupon_rate"] != 0),
-                normalize_rate_series_pd(bonds_liab_df["coupon_rate"], "coupon_rate"),
-                0.0,
-            )
+            bonds_liab_df["rate_decimal"] = [
+                rate if coupon not in (None, 0, 0.0) else 0.0
+                for coupon, rate in zip(
+                    bonds_liab_df["coupon_rate"].tolist(),
+                    normalize_rate_values(bonds_liab_df["coupon_rate"].tolist(), "coupon_rate"),
+                    strict=True,
+                )
+            ]
             bonds_liab_df["weighted"] = bonds_liab_df["balance"] * bonds_liab_df["rate_decimal"]
             liability_frames.append(bonds_liab_df[["category", "balance", "weighted"]])
 
@@ -546,8 +478,8 @@ def _split_rate_frames(
         if not ib_assets_df.empty:
             ib_assets_df["category"] = ib_assets_df["product_type"].apply(_clean_cat)
             ib_assets_df["balance"] = pd.to_numeric(ib_assets_df["amount"], errors="coerce").fillna(0.0)
-            ib_assets_df["rate_decimal"] = normalize_rate_series_pd(
-                ib_assets_df["interest_rate"],
+            ib_assets_df["rate_decimal"] = normalize_rate_values(
+                ib_assets_df["interest_rate"].tolist(),
                 "interbank_interest_rate",
             )
             ib_assets_df["weighted"] = ib_assets_df["balance"] * ib_assets_df["rate_decimal"]
@@ -557,8 +489,8 @@ def _split_rate_frames(
         if not ib_liab_df.empty:
             ib_liab_df["category"] = ib_liab_df["product_type"].apply(_clean_cat)
             ib_liab_df["balance"] = pd.to_numeric(ib_liab_df["amount"], errors="coerce").fillna(0.0)
-            ib_liab_df["rate_decimal"] = normalize_rate_series_pd(
-                ib_liab_df["interest_rate"],
+            ib_liab_df["rate_decimal"] = normalize_rate_values(
+                ib_liab_df["interest_rate"].tolist(),
                 "interbank_interest_rate",
             )
             ib_liab_df["weighted"] = ib_liab_df["balance"] * ib_liab_df["rate_decimal"]
@@ -570,17 +502,22 @@ def _split_rate_frames(
 def _build_rate_map(frames: list[pd.DataFrame]) -> tuple[dict[str, float | None], float | None]:
     if not frames:
         return {}, None
-    merged = pd.concat(frames, ignore_index=True)
-    if merged.empty:
-        return {}, None
-    grouped = merged.groupby("category", dropna=False)[["balance", "weighted"]].sum().reset_index()
     rate_map: dict[str, float | None] = {}
-    total_balance = float(grouped["balance"].sum())
-    total_weighted = float(grouped["weighted"].sum())
-    for _, row in grouped.iterrows():
-        category = _clean_cat(row["category"])
-        balance = float(row["balance"])
-        weighted = float(row["weighted"])
+    totals: dict[str, tuple[float, float]] = {}
+    total_balance = 0.0
+    total_weighted = 0.0
+    for frame in frames:
+        if frame.empty:
+            continue
+        for row in frame.itertuples(index=False):
+            category = _clean_cat(getattr(row, "category", None))
+            balance = float(getattr(row, "balance", 0) or 0)
+            weighted = float(getattr(row, "weighted", 0) or 0)
+            current_balance, current_weighted = totals.get(category, (0.0, 0.0))
+            totals[category] = (current_balance + balance, current_weighted + weighted)
+            total_balance += balance
+            total_weighted += weighted
+    for category, (balance, weighted) in totals.items():
         rate_map[category] = round(weighted / balance * 100, 4) if balance > 0 else None
     total_rate = round(total_weighted / total_balance * 100, 4) if total_balance > 0 else None
     return rate_map, total_rate
@@ -599,22 +536,22 @@ def _adb_breakdown_from_frames(
         issued_mask = _issued_mask(bonds_df)
         bonds_assets_df = bonds_df[~issued_mask].copy()
         bonds_liab_df = bonds_df[issued_mask].copy()
-        for _, row in bonds_assets_df.iterrows():
-            key = (_clean_cat(row.get("sub_type")), "Asset")
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + Decimal(str(row.get("market_value") or 0))
-        for _, row in bonds_liab_df.iterrows():
-            key = (f"Issuance-{_clean_cat(row.get('sub_type'))}", "Liability")
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + Decimal(str(row.get("market_value") or 0))
+        for row in bonds_assets_df.itertuples(index=False):
+            key = (_clean_cat(getattr(row, "sub_type", None)), "Asset")
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
+        for row in bonds_liab_df.itertuples(index=False):
+            key = (f"Issuance-{_clean_cat(getattr(row, 'sub_type', None))}", "Liability")
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "market_value"))
 
     if not interbank_df.empty:
-        for _, row in interbank_df.iterrows():
-            side = "Asset" if str(row.get("direction") or "").upper() == "ASSET" else "Liability"
+        for row in interbank_df.itertuples(index=False):
+            side = "Asset" if str(getattr(row, "direction", "") or "").upper() == "ASSET" else "Liability"
             category = map_ib_category(
-                str(row.get("product_type")) if row.get("product_type") is not None else None,
+                str(getattr(row, "product_type")) if getattr(row, "product_type", None) is not None else None,
                 side,
             )
             key = (category, side)
-            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + Decimal(str(row.get("amount") or 0))
+            breakdown_sum[key] = breakdown_sum.get(key, Decimal("0")) + _decimal_or_zero(getattr(row, "amount"))
 
     nd = Decimal(str(num_days))
     out: list[dict[str, Any]] = []
@@ -647,26 +584,14 @@ def calculate_adb(
         issued_mask = _issued_mask(bonds_df)
         bonds_assets_df = bonds_df[~issued_mask].copy()
         bonds_liab_df = bonds_df[issued_mask].copy()
-        if not bonds_assets_df.empty:
-            grouped = bonds_assets_df.groupby("report_date")["market_value"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                bonds_assets[row["report_date"].date()] = Decimal(str(row["market_value"] or 0))
-        if not bonds_liab_df.empty:
-            grouped = bonds_liab_df.groupby("report_date")["market_value"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                bonds_liabilities[row["report_date"].date()] = Decimal(str(row["market_value"] or 0))
+        bonds_assets = _frame_sum_by_date(bonds_assets_df, "market_value")
+        bonds_liabilities = _frame_sum_by_date(bonds_liab_df, "market_value")
 
     if not interbank_df.empty:
         ib_assets_df = interbank_df[interbank_df["direction"] == "ASSET"].copy()
         ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
-        if not ib_assets_df.empty:
-            grouped = ib_assets_df.groupby("report_date")["amount"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                ib_assets[row["report_date"].date()] = Decimal(str(row["amount"] or 0))
-        if not ib_liab_df.empty:
-            grouped = ib_liab_df.groupby("report_date")["amount"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                ib_liabilities[row["report_date"].date()] = Decimal(str(row["amount"] or 0))
+        ib_assets = _frame_sum_by_date(ib_assets_df, "amount")
+        ib_liabilities = _frame_sum_by_date(ib_liab_df, "amount")
 
     daily_assets: dict[date, Decimal] = {}
     daily_liabilities: dict[date, Decimal] = {}
@@ -760,63 +685,46 @@ def get_adb_comparison(
     sum_assets: dict[str, Decimal] = {}
     sum_liabilities: dict[str, Decimal] = {}
 
-    def add(target: dict[str, Decimal], key: str, value: object) -> None:
-        clean_key = _clean_cat(key)
-        amount = Decimal(str(value or 0))
-        target[clean_key] = target.get(clean_key, Decimal("0")) + amount
-
     if not bonds_df.empty:
         issued_mask = _issued_mask(bonds_df)
         bonds_assets_df = bonds_df[~issued_mask].copy()
         bonds_liab_df = bonds_df[issued_mask].copy()
-        if not bonds_assets_df.empty:
-            for cat, value in (
-                bonds_assets_df[bonds_assets_df["report_date"].dt.date == end_date]
-                .groupby("sub_type")["market_value"]
-                .sum()
-                .items()
-            ):
-                add(spot_assets, str(cat), value)
-            grouped = bonds_assets_df.groupby(["report_date", "sub_type"])["market_value"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                add(sum_assets, str(row["sub_type"]), row["market_value"])
-        if not bonds_liab_df.empty:
-            for cat, value in (
-                bonds_liab_df[bonds_liab_df["report_date"].dt.date == end_date]
-                .groupby("sub_type")["market_value"]
-                .sum()
-                .items()
-            ):
-                add(spot_liabilities, str(cat), value)
-            grouped = bonds_liab_df.groupby(["report_date", "sub_type"])["market_value"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                add(sum_liabilities, str(row["sub_type"]), row["market_value"])
+        _accumulate_spot_and_sum_maps(
+            bonds_assets_df,
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "sub_type", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _accumulate_spot_and_sum_maps(
+            bonds_liab_df,
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "sub_type", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
 
     if not interbank_df.empty:
         ib_assets_df = interbank_df[interbank_df["direction"] == "ASSET"].copy()
         ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
-        if not ib_assets_df.empty:
-            for cat, value in (
-                ib_assets_df[ib_assets_df["report_date"].dt.date == end_date]
-                .groupby("product_type")["amount"]
-                .sum()
-                .items()
-            ):
-                add(spot_assets, str(cat), value)
-            grouped = ib_assets_df.groupby(["report_date", "product_type"])["amount"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                add(sum_assets, str(row["product_type"]), row["amount"])
-        if not ib_liab_df.empty:
-            for cat, value in (
-                ib_liab_df[ib_liab_df["report_date"].dt.date == end_date]
-                .groupby("product_type")["amount"]
-                .sum()
-                .items()
-            ):
-                add(spot_liabilities, str(cat), value)
-            grouped = ib_liab_df.groupby(["report_date", "product_type"])["amount"].sum().reset_index()
-            for _, row in grouped.iterrows():
-                add(sum_liabilities, str(row["product_type"]), row["amount"])
+        _accumulate_spot_and_sum_maps(
+            ib_assets_df,
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _accumulate_spot_and_sum_maps(
+            ib_liab_df,
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
 
     simulated = bool(simulate_if_single_snapshot and num_days <= 1)
 
@@ -918,16 +826,12 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         interbank_df,
     )
     all_dates: set[date] = set()
-    if not bonds_df.empty:
-        all_dates.update(bonds_df["report_date"].dt.date.unique())
-    if not interbank_df.empty:
-        all_dates.update(interbank_df["report_date"].dt.date.unique())
+    all_dates.update(_frame_unique_dates(bonds_df))
+    all_dates.update(_frame_unique_dates(interbank_df))
     if not all_dates:
         return empty, source_versions, rule_versions
 
-    all_dates_df = pd.DataFrame({"report_date": pd.to_datetime(pd.Series(sorted(all_dates)))})
-    all_dates_df["year_month"] = all_dates_df["report_date"].dt.to_period("M")
-    available_months = sorted(all_dates_df["year_month"].unique())
+    available_months = sorted({(current_day.year, current_day.month) for current_day in all_dates})
 
     months_data: list[dict[str, Any]] = []
     prev_avg_assets: float | None = None
@@ -938,72 +842,41 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     ytd_liabilities_weighted = Decimal("0")
     ytd_days = 0
 
-    for month_period in available_months:
-        month_start = month_period.start_time.date()
-        month_end = min(month_period.end_time.date(), date.today())
+    for month_year, month_number in available_months:
+        month_start = date(month_year, month_number, 1)
+        if month_number == 12:
+            month_end = date(month_year, 12, 31)
+        else:
+            month_end = date(month_year, month_number + 1, 1) - timedelta(days=1)
+        month_end = min(month_end, date.today())
         if month_start > date.today():
             continue
 
-        month_bonds_assets = bonds_assets_df[
-            (bonds_assets_df["report_date"].dt.date >= month_start)
-            & (bonds_assets_df["report_date"].dt.date <= month_end)
-        ].copy() if not bonds_assets_df.empty else pd.DataFrame()
-        month_bonds_liab = bonds_liab_df[
-            (bonds_liab_df["report_date"].dt.date >= month_start)
-            & (bonds_liab_df["report_date"].dt.date <= month_end)
-        ].copy() if not bonds_liab_df.empty else pd.DataFrame()
-        month_ib_assets = ib_assets_df[
-            (ib_assets_df["report_date"].dt.date >= month_start)
-            & (ib_assets_df["report_date"].dt.date <= month_end)
-        ].copy() if not ib_assets_df.empty else pd.DataFrame()
-        month_ib_liab = ib_liab_df[
-            (ib_liab_df["report_date"].dt.date >= month_start)
-            & (ib_liab_df["report_date"].dt.date <= month_end)
-        ].copy() if not ib_liab_df.empty else pd.DataFrame()
+        month_bonds_assets = _filter_frame_between_dates(bonds_assets_df, month_start, month_end)
+        month_bonds_liab = _filter_frame_between_dates(bonds_liab_df, month_start, month_end)
+        month_ib_assets = _filter_frame_between_dates(ib_assets_df, month_start, month_end)
+        month_ib_liab = _filter_frame_between_dates(ib_liab_df, month_start, month_end)
 
         all_month_dates: set[date] = set()
         for frame in (month_bonds_assets, month_bonds_liab, month_ib_assets, month_ib_liab):
-            if not frame.empty:
-                all_month_dates.update(frame["report_date"].dt.date.unique())
+            all_month_dates.update(_frame_unique_dates(frame))
         if not all_month_dates:
             continue
 
         num_days = len(all_month_dates)
-
-        def _daily_totals(frame: pd.DataFrame, amount_col: str) -> pd.DataFrame:
-            grouped = frame.groupby("report_date").agg({amount_col: "sum", "weighted": "sum"}).reset_index()
-            if amount_col != "market_value":
-                grouped.rename(columns={amount_col: "market_value"}, inplace=True)
-            return grouped
-
-        asset_daily_frames = []
-        liability_daily_frames = []
-        if not month_bonds_assets.empty:
-            asset_daily_frames.append(_daily_totals(month_bonds_assets, "market_value"))
-        if not month_ib_assets.empty:
-            asset_daily_frames.append(_daily_totals(month_ib_assets, "amount"))
-        if not month_bonds_liab.empty:
-            liability_daily_frames.append(_daily_totals(month_bonds_liab, "market_value"))
-        if not month_ib_liab.empty:
-            liability_daily_frames.append(_daily_totals(month_ib_liab, "amount"))
-
         total_assets = 0.0
         total_assets_weighted = 0.0
-        if asset_daily_frames:
-            grouped = pd.concat(asset_daily_frames, ignore_index=True).groupby("report_date").agg(
-                {"market_value": "sum", "weighted": "sum"}
-            ).reset_index()
-            total_assets = float(grouped["market_value"].sum())
-            total_assets_weighted = float(grouped["weighted"].sum())
+        for frame, amount_col in ((month_bonds_assets, "market_value"), (month_ib_assets, "amount")):
+            frame_total, frame_weighted = _frame_total_amounts(frame, amount_col)
+            total_assets += frame_total
+            total_assets_weighted += frame_weighted
 
         total_liabilities = 0.0
         total_liabilities_weighted = 0.0
-        if liability_daily_frames:
-            grouped = pd.concat(liability_daily_frames, ignore_index=True).groupby("report_date").agg(
-                {"market_value": "sum", "weighted": "sum"}
-            ).reset_index()
-            total_liabilities = float(grouped["market_value"].sum())
-            total_liabilities_weighted = float(grouped["weighted"].sum())
+        for frame, amount_col in ((month_bonds_liab, "market_value"), (month_ib_liab, "amount")):
+            frame_total, frame_weighted = _frame_total_amounts(frame, amount_col)
+            total_liabilities += frame_total
+            total_liabilities_weighted += frame_weighted
 
         if total_assets == 0 and total_liabilities == 0:
             continue
@@ -1011,29 +884,37 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         avg_assets = total_assets / num_days if num_days > 0 else 0.0
         avg_liabilities = total_liabilities / num_days if num_days > 0 else 0.0
 
-        def _build_breakdown(frame: pd.DataFrame, key_col: str, amount_col: str, prefix: str = "") -> list[dict[str, Any]]:
-            if frame.empty:
-                return []
-            grouped = frame.groupby(["report_date", key_col]).agg(
-                {amount_col: "sum", "weighted": "sum"}
-            ).reset_index().groupby(key_col).agg({amount_col: "sum", "weighted": "sum"}).reset_index()
-            rows: list[dict[str, Any]] = []
-            for _, row in grouped.iterrows():
-                category = f"{prefix}{row[key_col] if pd.notna(row[key_col]) else 'Other'}"
-                total_mv = float(row[amount_col])
-                rows.append(
-                    {
-                        "category": category,
-                        "avg_balance": total_mv / num_days if num_days > 0 else 0.0,
-                        "weighted_rate": (float(row["weighted"]) / total_mv * 100) if total_mv > 0 else None,
-                    }
-                )
-            return rows
-
-        breakdown_assets = _build_breakdown(month_bonds_assets, "sub_type", "market_value")
-        breakdown_assets.extend(_build_breakdown(month_ib_assets, "product_type", "amount", prefix="同业-"))
-        breakdown_liabilities = _build_breakdown(month_ib_liab, "product_type", "amount", prefix="同业-")
-        breakdown_liabilities.extend(_build_breakdown(month_bonds_liab, "sub_type", "market_value", prefix="发行债券-"))
+        breakdown_assets = _frame_breakdown_rows(
+            month_bonds_assets,
+            category_attr="sub_type",
+            amount_attr="market_value",
+            num_days=num_days,
+        )
+        breakdown_assets.extend(
+            _frame_breakdown_rows(
+                month_ib_assets,
+                category_attr="product_type",
+                amount_attr="amount",
+                num_days=num_days,
+                prefix="同业-",
+            )
+        )
+        breakdown_liabilities = _frame_breakdown_rows(
+            month_ib_liab,
+            category_attr="product_type",
+            amount_attr="amount",
+            num_days=num_days,
+            prefix="同业-",
+        )
+        breakdown_liabilities.extend(
+            _frame_breakdown_rows(
+                month_bonds_liab,
+                category_attr="sub_type",
+                amount_attr="market_value",
+                num_days=num_days,
+                prefix="发行债券-",
+            )
+        )
         for item in breakdown_assets:
             item["proportion"] = round(item["avg_balance"] / avg_assets * 100, 2) if avg_assets > 0 else 0
             item["side"] = "Asset"
@@ -1044,16 +925,10 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         breakdown_liabilities.sort(key=lambda row: row["avg_balance"], reverse=True)
 
         last_data_date = max(all_month_dates)
-        end_spot_assets = 0.0
-        end_spot_liabilities = 0.0
-        if not month_bonds_assets.empty:
-            end_spot_assets += float(month_bonds_assets[month_bonds_assets["report_date"].dt.date == last_data_date]["market_value"].sum())
-        if not month_ib_assets.empty:
-            end_spot_assets += float(month_ib_assets[month_ib_assets["report_date"].dt.date == last_data_date]["amount"].sum())
-        if not month_bonds_liab.empty:
-            end_spot_liabilities += float(month_bonds_liab[month_bonds_liab["report_date"].dt.date == last_data_date]["market_value"].sum())
-        if not month_ib_liab.empty:
-            end_spot_liabilities += float(month_ib_liab[month_ib_liab["report_date"].dt.date == last_data_date]["amount"].sum())
+        end_spot_assets = _frame_spot_total_for_date(month_bonds_assets, "market_value", last_data_date)
+        end_spot_assets += _frame_spot_total_for_date(month_ib_assets, "amount", last_data_date)
+        end_spot_liabilities = _frame_spot_total_for_date(month_bonds_liab, "market_value", last_data_date)
+        end_spot_liabilities += _frame_spot_total_for_date(month_ib_liab, "amount", last_data_date)
 
         ytd_total_assets += Decimal(str(total_assets))
         ytd_total_liabilities += Decimal(str(total_liabilities))
@@ -1078,8 +953,8 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
 
         months_data.append(
             {
-                "month": f"{year}-{month_period.month:02d}",
-                "month_label": f"{year}年{month_period.month}月",
+                "month": f"{month_year}-{month_number:02d}",
+                "month_label": f"{month_year}年{month_number}月",
                 "avg_assets": avg_assets,
                 "avg_liabilities": avg_liabilities,
                 "end_spot_assets": end_spot_assets,

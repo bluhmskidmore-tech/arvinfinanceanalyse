@@ -694,6 +694,39 @@ def test_agent_query_enabled_path_returns_real_market_data_and_audit(tmp_path, m
     assert audit_payload["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
 
 
+def test_agent_query_market_data_degrades_when_formal_fx_catalog_is_missing(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss-market-missing-catalog.duckdb"
+    governance_dir = tmp_path / "governance-market-missing-catalog"
+    _seed_agent_market_data_tables(duckdb_path)
+
+    monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_CATALOG_FILE",
+        str(tmp_path / "missing-choice-macro-catalog.json"),
+    )
+
+    client = TestClient(_fresh_main_module().app)
+    response = client.post(
+        "/api/agent/query",
+        json={
+            "question": "market data",
+            "context": {"user_id": "u_market_missing_catalog"},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["basis"] == "analytical"
+    assert payload["result_meta"]["formal_use_allowed"] is False
+    assert payload["result_meta"]["quality_flag"] == "warning"
+    assert payload["evidence"]["tables_used"] == ["fact_choice_macro_daily", "fx_daily_mid"]
+    assert int(next(card["value"] for card in payload["cards"] if card["title"] == "Series Count")) == 1
+    assert int(next(card["value"] for card in payload["cards"] if card["title"] == "Formal FX Candidates")) == 0
+    assert any(card["title"] == "Formal FX Status Warning" for card in payload["cards"])
+
+
 def test_agent_query_enabled_path_returns_real_news_and_audit(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss-news.duckdb"
     governance_dir = tmp_path / "governance-news"

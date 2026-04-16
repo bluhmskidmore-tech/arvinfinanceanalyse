@@ -29,6 +29,18 @@ def resolve_governance_sql_dsn(governance_sql_dsn: str, postgres_dsn: str) -> st
     return normalized or str(postgres_dsn).strip()
 
 
+def resolve_repo_relative_path(path_value: str, *, repo_root: Path = _REPO_ROOT) -> str:
+    normalized = str(path_value or "").strip()
+    if not normalized:
+        return normalized
+
+    candidate = Path(normalized)
+    if candidate.is_absolute():
+        return str(candidate)
+
+    return str((repo_root / candidate).resolve())
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILES, env_prefix="MOSS_", extra="ignore")
 
@@ -76,6 +88,18 @@ class Settings(BaseSettings):
         self.governance_sql_dsn = resolve_governance_sql_dsn(
             self.governance_sql_dsn,
             self.postgres_dsn,
+        )
+        self.choice_macro_catalog_file = resolve_repo_relative_path(
+            self.choice_macro_catalog_file,
+            repo_root=_REPO_ROOT,
+        )
+        self.choice_macro_commands_file = resolve_repo_relative_path(
+            self.choice_macro_commands_file,
+            repo_root=_REPO_ROOT,
+        )
+        self.choice_news_topics_file = resolve_repo_relative_path(
+            self.choice_news_topics_file,
+            repo_root=_REPO_ROOT,
         )
 
 

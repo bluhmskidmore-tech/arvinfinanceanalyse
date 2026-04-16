@@ -5,6 +5,8 @@ export type PollingTaskPayload = {
   run_id?: string;
   detail?: string | null;
   error_message?: string | null;
+  report_date?: string;
+  source_version?: string;
 };
 
 export type RunPollingTaskOptions<TPayload extends PollingTaskPayload> = {

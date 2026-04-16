@@ -75,14 +75,8 @@ def test_executive_overview_fallback_when_repos_fail(monkeypatch, exec_mod):
     _assert_analytical_meta(meta)
     assert meta["result_kind"] == "executive.overview"
     assert meta["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
-    metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["aum"]["value"] == "—"
-    assert metrics["yield"]["value"] == "—"
-    assert metrics["goal"]["value"] == "—"
-    assert metrics["risk-budget"]["value"] == "—"
-    assert "无受控" in metrics["aum"]["detail"] or "未能读取" in metrics["aum"]["detail"]
-    assert "无受控" in metrics["yield"]["detail"] or "未能读取" in metrics["yield"]["detail"]
-    assert "fact_formal_zqtz_balance_daily" not in metrics["aum"]["detail"]
+    assert meta["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["metrics"] == []
 
 
 def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
@@ -112,10 +106,9 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     out = exec_mod.executive_overview()
     assert out["result_meta"]["result_kind"] == "executive.overview"
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert set(metrics) == {"aum", "yield"}
     assert metrics["aum"]["value"] == "1,023.47 亿"
     assert metrics["yield"]["value"] == "+12.63 亿"
-    assert metrics["goal"]["value"] == "—"
-    assert metrics["risk-budget"]["value"] == "—"
     assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
     assert "fact_formal_pnl_fi 当年" in metrics["yield"]["detail"]
 
@@ -291,13 +284,9 @@ def test_executive_contribution_fallback(monkeypatch, exec_mod):
     monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", BadRepo)
     out = exec_mod.executive_contribution()
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
-    rows = out["result"]["rows"]
-    names = [r["name"] for r in rows]
-    assert "利率组" in names
-    assert "信用组" in names
-    assert "交易组" in names
-    assert "无受控" in out["result"]["title"]
-    assert all(row["contribution"] == "+0.00 亿" for row in rows)
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["title"] == "团队 / 账户 / 策略贡献"
+    assert out["result"]["rows"] == []
 
 
 def test_executive_contribution_repo_grouping_and_status(monkeypatch, exec_mod):
@@ -375,10 +364,9 @@ def test_executive_risk_overview_fallback(monkeypatch, exec_mod):
     out = exec_mod.executive_risk_overview()
     assert out["result_meta"]["result_kind"] == "executive.risk-overview"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
-    labels = [s["label"] for s in out["result"]["signals"]]
-    for want in ("久期风险", "杠杆风险", "信用集中度", "流动性风险"):
-        assert want in labels
-    assert all(signal["value"] == "—" for signal in out["result"]["signals"])
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result"]["title"] == "风险全景"
+    assert out["result"]["signals"] == []
 
 
 def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
@@ -449,9 +437,9 @@ def test_executive_alerts_fallback_empty_dates(monkeypatch, exec_mod):
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["result_kind"] == "executive.alerts"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert out["result"]["title"] == "预警与事件"
-    assert len(out["result"]["items"]) == 1
-    assert out["result"]["items"][0]["id"] == "governed-data-unavailable"
+    assert out["result"]["items"] == []
 
 
 def test_executive_alerts_fallback_on_exception(monkeypatch, exec_mod):
@@ -462,8 +450,8 @@ def test_executive_alerts_fallback_on_exception(monkeypatch, exec_mod):
     monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", Boom)
     out = exec_mod.executive_alerts()
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
-    assert len(out["result"]["items"]) == 1
     assert out["result"]["title"] == "预警与事件"
+    assert out["result"]["items"] == []
 
 
 def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
@@ -535,10 +523,8 @@ def test_executive_risk_overview_no_demo_fallback_when_requested_date_not_govern
     out = exec_mod.executive_risk_overview(report_date="2025-11-20")
 
     assert out["result_meta"]["result_kind"] == "executive.risk-overview"
-    for sig in out["result"]["signals"]:
-        assert sig["value"] == "—"
-        assert "2025-11-20" in sig["detail"]
-        assert "演示" in sig["detail"]
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result"]["signals"] == []
 
 
 def test_executive_alerts_no_demo_fallback_when_requested_date_not_governed(monkeypatch, exec_mod):
@@ -556,9 +542,8 @@ def test_executive_alerts_no_demo_fallback_when_requested_date_not_governed(monk
     out = exec_mod.executive_alerts(report_date="2025-11-20")
 
     assert out["result_meta"]["result_kind"] == "executive.alerts"
-    assert len(out["result"]["items"]) == 1
-    assert out["result"]["items"][0]["id"] == "governed-date-miss"
-    assert "2025-11-20" in out["result"]["items"][0]["detail"]
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
+    assert out["result"]["items"] == []
 
 
 def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):

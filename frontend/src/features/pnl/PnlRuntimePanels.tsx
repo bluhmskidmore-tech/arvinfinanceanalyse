@@ -48,7 +48,7 @@ export function PnlDebugPanel({
         background: "#ffffff",
       }}
     >
-      <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorText }}>
+      <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorTextPrimary }}>
         result_meta / 调试
       </summary>
       <div style={{ marginTop: 12 }}>
@@ -59,7 +59,7 @@ export function PnlDebugPanel({
             overflowX: "auto",
             borderRadius: 12,
             background: shellTokens.colorBgMuted,
-            color: shellTokens.colorText,
+            color: shellTokens.colorTextPrimary,
             fontSize: 12,
             lineHeight: 1.6,
           }}

@@ -11,6 +11,7 @@ from backend.app.governance.settings import (
     get_settings,
     resolve_governance_sql_dsn,
     resolve_postgres_dsn,
+    resolve_repo_relative_path,
 )
 
 
@@ -88,3 +89,20 @@ def test_resolve_postgres_dsn_preserves_explicit_nondefault_value(tmp_path):
 def test_resolve_governance_sql_dsn_defaults_to_resolved_postgres_dsn_when_empty():
     assert resolve_governance_sql_dsn("", DEV_POSTGRES_DSN) == DEV_POSTGRES_DSN
     assert resolve_governance_sql_dsn("postgresql://other", DEV_POSTGRES_DSN) == "postgresql://other"
+
+
+def test_resolve_repo_relative_path_anchors_relative_config_paths_to_repo_root(tmp_path):
+    repo_root = tmp_path / "repo"
+    expected = (repo_root / "config" / "choice_macro_catalog.json").resolve()
+
+    assert resolve_repo_relative_path(
+        "config/choice_macro_catalog.json",
+        repo_root=repo_root,
+    ) == str(expected)
+
+
+def test_resolve_repo_relative_path_preserves_absolute_and_empty_values(tmp_path):
+    absolute = tmp_path / "choice_macro_catalog.json"
+
+    assert resolve_repo_relative_path(str(absolute), repo_root=tmp_path) == str(absolute)
+    assert resolve_repo_relative_path("", repo_root=tmp_path) == ""

@@ -305,9 +305,18 @@ def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
 
 def load_fx_formal_status_payload(duckdb_path: str) -> FxFormalStatusPayload:
     settings = get_settings()
-    candidates = discover_formal_fx_candidates(
-        catalog_path=Path(settings.choice_macro_catalog_file)
-    )
+    try:
+        candidates = discover_formal_fx_candidates(
+            catalog_path=Path(settings.choice_macro_catalog_file)
+        )
+    except FileNotFoundError:
+        return FxFormalStatusPayload(
+            candidate_count=0,
+            materialized_count=0,
+            latest_trade_date=None,
+            carry_forward_count=0,
+            rows=[],
+        )
     rows_by_pair = _load_latest_fx_mid_rows(
         duckdb_path=duckdb_path,
         base_currencies=[candidate.base_currency for candidate in candidates],
@@ -367,7 +376,11 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
         [row.vendor_version or "" for row in payload.rows if row.status == "ok"],
         empty_value="vv_none",
     )
-    quality_flag = "ok" if payload.candidate_count == payload.materialized_count else "warning"
+    quality_flag = (
+        "ok"
+        if payload.candidate_count > 0 and payload.candidate_count == payload.materialized_count
+        else "warning"
+    )
     return build_result_envelope(
         basis="formal",
         trace_id="tr_fx_formal_status",
@@ -377,7 +390,7 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
         rule_version="rv_fx_formal_mid_v1",
         quality_flag=quality_flag,
         vendor_version=vendor_version,
-        vendor_status="ok" if payload.materialized_count else "vendor_unavailable",
+        vendor_status="ok" if payload.materialized_count and payload.candidate_count else "vendor_unavailable",
         fallback_mode="latest_snapshot" if payload.carry_forward_count else "none",
         result_payload=payload.model_dump(mode="json"),
     )

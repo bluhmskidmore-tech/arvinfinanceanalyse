@@ -231,65 +231,29 @@ def _pnl_attribution_unavailable_payload() -> PnlAttributionPayload:
 
 def _contribution_explicit_miss_payload(report_date: str) -> ContributionPayload:
     return ContributionPayload(
-        title=f"团队 / 账户 / 策略贡献（{report_date} 无受控产品分类月度数据）",
-        rows=[
-            ContributionRow(
-                id="rates",
-                name="利率组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-            ContributionRow(
-                id="credit",
-                name="信用组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-            ContributionRow(
-                id="trading",
-                name="交易组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-        ],
+        title="团队 / 账户 / 策略贡献",
+        rows=[],
     )
 
 
 def _contribution_unavailable_payload() -> ContributionPayload:
     return ContributionPayload(
-        title="团队 / 账户 / 策略贡献（当前无受控产品分类月度数据）",
-        rows=[
-            ContributionRow(
-                id="rates",
-                name="利率组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-            ContributionRow(
-                id="credit",
-                name="信用组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-            ContributionRow(
-                id="trading",
-                name="交易组",
-                owner="按团队",
-                contribution="+0.00 亿",
-                completion=0,
-                status="待观察",
-            ),
-        ],
+        title="团队 / 账户 / 策略贡献",
+        rows=[],
+    )
+
+
+def _empty_risk_overview_payload() -> RiskOverviewPayload:
+    return RiskOverviewPayload(
+        title="风险全景",
+        signals=[],
+    )
+
+
+def _empty_alerts_payload() -> AlertsPayload:
+    return AlertsPayload(
+        title="预警与事件",
+        items=[],
     )
 
 
@@ -374,71 +338,45 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
 
-    aum_value = _fmt_yi_amount(aum_raw, signed=False) if aum_raw is not None else "—"
+    metrics: list[ExecutiveMetric] = []
     if aum_raw is not None:
-        aum_detail = (
-            f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
-            if normalized_report_date is not None
-            else "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
-        )
-    elif normalized_report_date is not None:
-        aum_detail = (
-            f"指定日期 {normalized_report_date} 未能读取受控 AUM；"
-            "当前返回 unavailable state。"
-        )
-    else:
-        aum_detail = "当前无受控 AUM 读面，返回 unavailable state。"
-    ytd_value = _fmt_yi_amount(ytd_raw, signed=True) if ytd_raw is not None else "—"
-    if ytd_raw is not None:
-        ytd_detail = (
-            f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
-            if normalized_report_date is not None
-            else f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
-        )
-    elif normalized_report_date is not None:
-        ytd_detail = (
-            f"指定日期 {normalized_report_date} 未能读取受控年内收益；"
-            "当前返回 unavailable state。"
-        )
-    else:
-        ytd_detail = "当前无受控年内收益读面，返回 unavailable state。"
-
-    payload = OverviewPayload(
-        title="经营总览",
-        metrics=[
+        metrics.append(
             ExecutiveMetric(
                 id="aum",
                 label="资产规模",
-                value=aum_value,
+                value=_fmt_yi_amount(aum_raw, signed=False),
                 delta="+2.35%",
                 tone="positive",
-                detail=aum_detail,
-            ),
+                detail=(
+                    f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
+                    if normalized_report_date is not None
+                    else "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
+                ),
+            )
+        )
+    if ytd_raw is not None:
+        metrics.append(
             ExecutiveMetric(
                 id="yield",
                 label="年内收益",
-                value=ytd_value,
+                value=_fmt_yi_amount(ytd_raw, signed=True),
                 delta="+8.72%",
                 tone="positive",
-                detail=ytd_detail,
-            ),
-            _unavailable_metric(
-                metric_id="goal",
-                label="目标完成率",
-                detail="当前未接入受治理目标完成率读面，返回 unavailable state。",
-            ),
-            _unavailable_metric(
-                metric_id="risk-budget",
-                label="风险预算使用率",
-                detail="当前未接入受治理风险预算读面，返回 unavailable state。",
-            ),
-        ],
-    )
+                detail=(
+                    f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
+                    if normalized_report_date is not None
+                    else f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
+                ),
+            )
+        )
+
+    payload = OverviewPayload(title="经营总览", metrics=metrics)
     has_missing_governed_metrics = aum_raw is None or ytd_raw is None
     return _envelope(
         "executive.overview",
         payload,
         quality_flag="warning" if has_missing_governed_metrics else "ok",
+        vendor_status="vendor_unavailable" if has_missing_governed_metrics else "ok",
         source_version="sv_exec_dashboard_explicit_miss_v1" if has_missing_governed_metrics else "sv_exec_dashboard_v1",
     )
 
@@ -486,6 +424,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
                 "executive.pnl-attribution",
                 _pnl_attribution_explicit_miss_payload(normalized),
                 quality_flag="warning",
+                vendor_status="vendor_unavailable",
                 source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         repo = None
@@ -512,6 +451,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             "executive.pnl-attribution",
             _pnl_attribution_explicit_miss_payload(normalized),
             quality_flag="warning",
+            vendor_status="vendor_unavailable",
             source_version="sv_exec_dashboard_explicit_miss_v1",
         )
 
@@ -519,6 +459,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
         "executive.pnl-attribution",
         _pnl_attribution_unavailable_payload(),
         quality_flag="warning",
+        vendor_status="vendor_unavailable",
         source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
@@ -531,46 +472,11 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
         if normalized_report_date is not None:
             available_bond_dates = repo.list_report_dates()
             if available_bond_dates and normalized_report_date not in available_bond_dates:
-                detail_txt = (
-                    f"指定日期 {normalized_report_date} 无可用债券分析快照，"
-                    "未回退到演示占位百分比。"
-                )
                 return _envelope(
                     "executive.risk-overview",
-                    RiskOverviewPayload(
-                        title="风险全景",
-                        signals=[
-                            RiskSignal(
-                                id="duration",
-                                label="久期风险",
-                                value="—",
-                                status="warning",
-                                detail=detail_txt,
-                            ),
-                            RiskSignal(
-                                id="leverage",
-                                label="杠杆风险",
-                                value="—",
-                                status="warning",
-                                detail=detail_txt,
-                            ),
-                            RiskSignal(
-                                id="credit",
-                                label="信用集中度",
-                                value="—",
-                                status="warning",
-                                detail=detail_txt,
-                            ),
-                            RiskSignal(
-                                id="liquidity",
-                                label="流动性风险",
-                                value="—",
-                                status="warning",
-                                detail=detail_txt,
-                            ),
-                        ],
-                    ),
+                    _empty_risk_overview_payload(),
                     quality_flag="warning",
+                    vendor_status="vendor_unavailable",
                     source_version="sv_exec_dashboard_explicit_miss_v1",
                 )
         snapshot = (
@@ -628,131 +534,21 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                     ],
                 )
                 return _envelope("executive.risk-overview", payload)
-        if normalized_report_date is not None:
-            detail_txt = (
-                f"指定日期 {normalized_report_date} 未能聚合风险快照（数据缺失或字段不完整）；"
-                "未回退到演示占位百分比。"
-            )
-            return _envelope(
-                "executive.risk-overview",
-                RiskOverviewPayload(
-                    title="风险全景",
-                    signals=[
-                        RiskSignal(
-                            id="duration",
-                            label="久期风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="leverage",
-                            label="杠杆风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="credit",
-                            label="信用集中度",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="liquidity",
-                            label="流动性风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                    ],
-                ),
-                quality_flag="warning",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
-            )
+        return _envelope(
+            "executive.risk-overview",
+            _empty_risk_overview_payload(),
+            quality_flag="warning",
+            vendor_status="vendor_unavailable",
+            source_version="sv_exec_dashboard_explicit_miss_v1",
+        )
     except (RuntimeError, OSError, TypeError, ValueError):
-        if normalized_report_date is not None:
-            detail_txt = (
-                f"指定日期 {normalized_report_date} 风险快照读取失败；"
-                "未回退到演示占位百分比。"
-            )
-            return _envelope(
-                "executive.risk-overview",
-                RiskOverviewPayload(
-                    title="风险全景",
-                    signals=[
-                        RiskSignal(
-                            id="duration",
-                            label="久期风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="leverage",
-                            label="杠杆风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="credit",
-                            label="信用集中度",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                        RiskSignal(
-                            id="liquidity",
-                            label="流动性风险",
-                            value="—",
-                            status="warning",
-                            detail=detail_txt,
-                        ),
-                    ],
-                ),
-                quality_flag="warning",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
-            )
+        pass
 
-    payload = RiskOverviewPayload(
-        title="风险全景",
-        signals=[
-            RiskSignal(
-                id="duration",
-                label="久期风险",
-                value="—",
-                status="warning",
-                detail="当前无受控久期风险快照，返回 unavailable state。",
-            ),
-            RiskSignal(
-                id="leverage",
-                label="杠杆风险",
-                value="—",
-                status="watch",
-                detail="当前无受控杠杆风险快照，返回 unavailable state。",
-            ),
-            RiskSignal(
-                id="credit",
-                label="信用集中度",
-                value="—",
-                status="warning",
-                detail="当前无受控信用集中度快照，返回 unavailable state。",
-            ),
-            RiskSignal(
-                id="liquidity",
-                label="流动性风险",
-                value="—",
-                status="warning",
-                detail="当前无受控流动性风险快照，返回 unavailable state。",
-            ),
-        ],
-    )
     return _envelope(
         "executive.risk-overview",
-        payload,
+        _empty_risk_overview_payload(),
         quality_flag="warning",
+        vendor_status="vendor_unavailable",
         source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
@@ -769,6 +565,7 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
                 "executive.contribution",
                 _contribution_explicit_miss_payload(normalized),
                 quality_flag="warning",
+                vendor_status="vendor_unavailable",
                 source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         repo = None
@@ -783,6 +580,7 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
                     "executive.contribution",
                     _contribution_explicit_miss_payload(normalized),
                     quality_flag="warning",
+                    vendor_status="vendor_unavailable",
                     source_version="sv_exec_dashboard_explicit_miss_v1",
                 )
             built = None
@@ -795,6 +593,7 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
             "executive.contribution",
             _contribution_explicit_miss_payload(normalized),
             quality_flag="warning",
+            vendor_status="vendor_unavailable",
             source_version="sv_exec_dashboard_explicit_miss_v1",
         )
 
@@ -802,27 +601,17 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
         "executive.contribution",
         _contribution_unavailable_payload(),
         quality_flag="warning",
+        vendor_status="vendor_unavailable",
         source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
 
 def _fallback_executive_alerts() -> dict[str, object]:
-    payload = AlertsPayload(
-        title="预警与事件",
-        items=[
-            AlertItem(
-                severity="medium",
-                id="governed-data-unavailable",
-                title="当前无受控预警数据",
-                occurred_at="--:--",
-                detail="债券分析快照缺失或未接入，当前返回 unavailable state。",
-            ),
-        ],
-    )
     return _envelope(
         "executive.alerts",
-        payload,
+        _empty_alerts_payload(),
         quality_flag="warning",
+        vendor_status="vendor_unavailable",
         source_version="sv_exec_dashboard_explicit_miss_v1",
     )
 
@@ -841,22 +630,9 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         elif normalized_report_date not in repo.list_report_dates():
             return _envelope(
                 "executive.alerts",
-                AlertsPayload(
-                    title="预警与事件",
-                    items=[
-                        AlertItem(
-                            id="governed-date-miss",
-                            severity="medium",
-                            title="指定日期无债券分析数据",
-                            occurred_at="--:--",
-                            detail=(
-                                f"report_date={normalized_report_date} 不在可用日期列表中，"
-                                "未回退到演示占位预警。"
-                            ),
-                        )
-                    ],
-                ),
+                _empty_alerts_payload(),
                 quality_flag="warning",
+                vendor_status="vendor_unavailable",
                 source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         report_date_value = date.fromisoformat(normalized_report_date)
@@ -880,22 +656,9 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
         if explicit_requested is not None:
             return _envelope(
                 "executive.alerts",
-                AlertsPayload(
-                    title="预警与事件",
-                    items=[
-                        AlertItem(
-                            id="governed-read-failure",
-                            severity="medium",
-                            title="指定日期预警读取失败",
-                            occurred_at="--:--",
-                            detail=(
-                                f"无法在指定日期 {explicit_requested} 完成受控预警编排；"
-                                "未回退到演示占位预警。"
-                            ),
-                        )
-                    ],
-                ),
+                _empty_alerts_payload(),
                 quality_flag="warning",
+                vendor_status="vendor_unavailable",
                 source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         return _fallback_executive_alerts()

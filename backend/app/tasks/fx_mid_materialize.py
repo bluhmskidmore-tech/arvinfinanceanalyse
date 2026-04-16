@@ -225,13 +225,23 @@ def _fetch_choice_fx_mid_rows_for_report_date(
 
     for offset in range(CHOICE_FX_LOOKBACK_DAYS + 1):
         query_date = (requested_date - timedelta(days=offset)).isoformat()
-        result = client.edb(
-            vendor_codes,
-            options=(
-                f"IsLatest=0,StartDate={query_date},EndDate={query_date},"
-                f"Ispandas=1,RECVtimeout={CHOICE_REQUEST_TIMEOUT_SECONDS}"
-            ),
+        request_options = (
+            f"IsLatest=0,StartDate={query_date},EndDate={query_date},"
+            f"RECVtimeout={CHOICE_REQUEST_TIMEOUT_SECONDS}"
         )
+        try:
+            result = client.edb(
+                vendor_codes,
+                options=request_options,
+                exclude_option_prefixes=("ispandas=",),
+            )
+        except TypeError as exc:
+            if "exclude_option_prefixes" not in str(exc):
+                raise
+            result = client.edb(
+                vendor_codes,
+                options=request_options,
+            )
         normalized_rows: list[tuple[object, ...]] = []
         observed_rows: list[dict[str, object]] = []
         for candidate in candidates:

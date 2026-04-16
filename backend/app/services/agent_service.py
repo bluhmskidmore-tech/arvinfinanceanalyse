@@ -417,32 +417,51 @@ def _market_data_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
 
     macro_upstream = choice_macro_latest_envelope(duckdb_path)
     fx_upstream = fx_analytical_envelope(duckdb_path)
-    fx_formal_upstream = fx_formal_status_envelope(duckdb_path)
     meta = dict(macro_upstream.get("result_meta", {}))
     series = list(macro_upstream.get("result", {}).get("series", []))
     fx_groups = list(fx_upstream.get("result", {}).get("groups", []))
-    fx_rows = list(fx_formal_upstream.get("result", {}).get("rows", []))
+    fx_rows: list[dict[str, Any]] = []
+    fx_formal_meta: dict[str, Any] = {}
+    formal_fx_warning: str | None = None
+    try:
+        fx_formal_upstream = fx_formal_status_envelope(duckdb_path)
+        fx_formal_meta = dict(fx_formal_upstream.get("result_meta", {}))
+        fx_rows = list(fx_formal_upstream.get("result", {}).get("rows", []))
+    except FileNotFoundError:
+        formal_fx_warning = "Formal FX catalog unavailable; market-data response degraded to macro-only view."
+    if formal_fx_warning is None and (
+        str(fx_formal_meta.get("vendor_status") or "") == "vendor_unavailable" or not fx_rows
+    ):
+        formal_fx_warning = "Formal FX candidates unavailable; market-data response degraded to macro-only view."
+
+    cards: list[dict[str, Any]] = [
+        {"type": "metric", "title": "Series Count", "value": str(len(series))},
+        {"type": "metric", "title": "Formal FX Candidates", "value": str(len(fx_rows))},
+        {"type": "metric", "title": "Analytical FX Groups", "value": str(len(fx_groups))},
+        {"type": "table", "title": "Latest Macro Series", "data": series[:10]},
+        {"type": "table", "title": "Formal FX Status", "data": fx_rows[:10]},
+    ]
+    if formal_fx_warning is not None:
+        cards.append({"type": "status", "title": "Formal FX Status Warning", "value": formal_fx_warning})
     return {
-        "answer": "Latest governed market-data payload returned, including macro series plus analytical and formal FX status surfaces.",
-        "cards": [
-            {"type": "metric", "title": "Series Count", "value": str(len(series))},
-            {"type": "metric", "title": "Formal FX Candidates", "value": str(len(fx_rows))},
-            {"type": "metric", "title": "Analytical FX Groups", "value": str(len(fx_groups))},
-            {"type": "table", "title": "Latest Macro Series", "data": series[:10]},
-            {"type": "table", "title": "Formal FX Status", "data": fx_rows[:10]},
-        ],
+        "answer": (
+            "Latest governed market-data payload returned, including macro series plus analytical FX surfaces."
+            if formal_fx_warning is None
+            else "Latest governed market-data payload returned with degraded formal FX coverage."
+        ),
+        "cards": cards,
         "tables_used": ["fact_choice_macro_daily", "fx_daily_mid"],
         "filters_applied": _audit_filters(request, None, resolution="not_applicable"),
         "row_count": len(series) + len(fx_rows),
-        "quality_flag": str(meta.get("quality_flag") or "warning"),
-        "basis": str(meta.get("basis") or "analytical"),
-        "formal_use_allowed": bool(meta.get("formal_use_allowed", False)),
-        "scenario_flag": bool(meta.get("scenario_flag", False)),
+        "quality_flag": "warning" if formal_fx_warning is not None else str(meta.get("quality_flag") or "warning"),
+        "basis": "analytical",
+        "formal_use_allowed": False,
+        "scenario_flag": False,
         "source_version": str(meta.get("source_version") or "sv_agent_market_data"),
         "vendor_version": str(meta.get("vendor_version") or "vv_none"),
         "rule_version": str(meta.get("rule_version") or RULE_VERSION),
         "cache_version": str(meta.get("cache_version") or "cv_agent_market_data_v1"),
-        "vendor_status": str(meta.get("vendor_status") or "ok"),
+        "vendor_status": "vendor_unavailable" if formal_fx_warning is not None else str(meta.get("vendor_status") or "ok"),
         "fallback_mode": str(meta.get("fallback_mode") or "none"),
         "result_kind": "agent.market_data",
         "next_drill": [{"dimension": "series_id", "label": "Inspect macro or FX series"}],

@@ -265,3 +265,30 @@ def test_fx_analytical_usd_middle_rate_consumes_fx_rates_helper(tmp_path, monkey
     assert middle_rate.value_numeric == 7.77
     assert calls
     get_settings.cache_clear()
+
+
+def test_fx_formal_status_missing_catalog_degrades_to_empty_warning_envelope(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "market-data.duckdb"
+    _seed_fx_duckdb(duckdb_path)
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_CATALOG_FILE",
+        str(tmp_path / "missing-choice-macro-catalog.json"),
+    )
+    get_settings.cache_clear()
+
+    module = load_module(
+        "backend.app.services.macro_vendor_service",
+        "backend/app/services/macro_vendor_service.py",
+    )
+
+    payload = module.load_fx_formal_status_payload(str(duckdb_path))
+    envelope = module.fx_formal_status_envelope(str(duckdb_path))
+
+    assert payload.candidate_count == 0
+    assert payload.materialized_count == 0
+    assert payload.rows == []
+    assert envelope["result_meta"]["basis"] == "formal"
+    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert envelope["result"]["candidate_count"] == 0
+    get_settings.cache_clear()
