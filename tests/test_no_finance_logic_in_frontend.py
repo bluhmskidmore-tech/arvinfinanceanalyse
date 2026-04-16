@@ -54,3 +54,18 @@ def test_frontend_source_does_not_contain_formal_finance_logic_tokens():
                 violations.append(f"{path}: {token}")
 
     assert not violations, "Finance logic leaked into frontend:\n" + "\n".join(violations)
+
+
+def test_bond_dashboard_portfolio_table_does_not_recompute_governed_totals():
+    portfolio_table = (
+        FRONTEND_SRC
+        / "features"
+        / "bond-dashboard"
+        / "components"
+        / "PortfolioTable.tsx"
+    )
+    assert portfolio_table.exists(), f"Missing bond dashboard portfolio table: {portfolio_table}"
+
+    text = portfolio_table.read_text(encoding="utf-8")
+    assert "rows.reduce(" not in text
+    assert "summary={() =>" not in text

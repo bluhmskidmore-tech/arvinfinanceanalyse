@@ -229,8 +229,9 @@ def _fetch_choice_fx_mid_rows_for_report_date(
             vendor_codes,
             options=(
                 f"IsLatest=0,StartDate={query_date},EndDate={query_date},"
-                f"Ispandas=1,RECVtimeout={CHOICE_REQUEST_TIMEOUT_SECONDS}"
+                f"RECVtimeout={CHOICE_REQUEST_TIMEOUT_SECONDS}"
             ),
+            exclude_option_prefixes=("ispandas=",),
         )
         normalized_rows: list[tuple[object, ...]] = []
         observed_rows: list[dict[str, object]] = []

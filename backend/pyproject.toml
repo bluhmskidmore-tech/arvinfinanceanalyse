@@ -14,6 +14,8 @@ dependencies = [
   "alembic>=1.14,<2",
   "psycopg[binary]>=3.2,<4",
   "duckdb>=1.2,<2",
+  "polars>=1,<2",
+  "pandas>=2.2,<3",
   "redis>=6,<7",
   "dramatiq>=1.17,<2",
   "minio>=7.2,<8",
@@ -24,7 +26,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "httpx>=0.28,<1",
-  "pandas>=2.2,<3",
   "pytest>=8.3,<9",
 ]
 

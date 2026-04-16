@@ -23,10 +23,20 @@ class ChoiceClient:
         self._started = True
         return result
 
-    def edb(self, codes: list[str], options: str = "") -> Any:
+    def edb(
+        self,
+        codes: list[str],
+        options: str = "",
+        *,
+        exclude_option_prefixes: tuple[str, ...] = (),
+    ) -> Any:
         self.start()
         cmod = _get_em_c()
-        merged = self._merge_request_options(options, include_recv_timeout=True)
+        merged = self._merge_request_options(
+            options,
+            include_recv_timeout=True,
+            exclude_option_prefixes=exclude_option_prefixes,
+        )
         return cmod.edb(codes, merged)
 
     def edbquery(self, codes: str, options: str = "") -> Any:
@@ -82,15 +92,28 @@ class ChoiceClient:
         merged = self._merge_request_options(options, include_recv_timeout=True)
         return cmod.csd(*args, merged)
 
-    def _merge_request_options(self, options: str, include_recv_timeout: bool) -> str:
+    def _merge_request_options(
+        self,
+        options: str,
+        include_recv_timeout: bool,
+        *,
+        exclude_option_prefixes: tuple[str, ...] = (),
+    ) -> str:
         merged = ",".join(
             item.strip()
             for item in [self.settings.choice_request_options, options]
             if item and item.strip()
         )
-        if include_recv_timeout:
-            return merged
-        return ",".join(
-            part for part in merged.split(",")
-            if part and not part.strip().lower().startswith("recvtimeout=")
-        )
+        excluded_prefixes = tuple(prefix.lower() for prefix in exclude_option_prefixes)
+        kept_parts: list[str] = []
+        for part in merged.split(","):
+            if not part:
+                continue
+            stripped = part.strip()
+            lowered = stripped.lower()
+            if not include_recv_timeout and lowered.startswith("recvtimeout="):
+                continue
+            if excluded_prefixes and any(lowered.startswith(prefix) for prefix in excluded_prefixes):
+                continue
+            kept_parts.append(stripped)
+        return ",".join(kept_parts)

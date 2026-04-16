@@ -85,7 +85,12 @@ def test_treasury_choice_fallback_returns_normalized_snapshot(monkeypatch):
         "backend/app/repositories/akshare_adapter.py",
     )
     monkeypatch.setattr(module.VendorAdapter, "_fetch_akshare_curve", lambda *args, **kwargs: None)
-    monkeypatch.setattr(module.ChoiceClient, "edb", lambda *args, **kwargs: _TreasuryChoiceResult())
+
+    def _fake_edb(*args, **kwargs):
+        assert "Ispandas=1" not in kwargs.get("options", "")
+        return _TreasuryChoiceResult()
+
+    monkeypatch.setattr(module.ChoiceClient, "edb", _fake_edb)
 
     snapshot = module.VendorAdapter().fetch_yield_curve("treasury", "2026-04-10")
 
@@ -223,6 +228,34 @@ def test_partial_choice_curve_falls_back_to_gkh(monkeypatch):
     snapshot = module.VendorAdapter().fetch_yield_curve("cdb", "2026-04-10")
 
     assert snapshot.vendor_name == "chinabond_gkh"
+
+
+def test_gkh_html_parser_returns_row_dicts_without_pandas_dependency() -> None:
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    html = """
+    <html>
+      <body>
+        <table id="conter">
+          <tr>
+            <th>曲线名称</th><th>关键期限(年)</th><th>查询日收益率(%)</th>
+          </tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>1</td><td>1.42</td></tr>
+          <tr><td>中债国开债收益率曲线（到期）</td><td>3</td><td>1.58</td></tr>
+        </table>
+      </body>
+    </html>
+    """
+
+    rows = module._read_chinabond_gkh_html_tables(html)
+
+    assert rows == [
+        {"曲线名称": "中债国开债收益率曲线（到期）", "关键期限(年)": "1", "查询日收益率(%)": "1.42"},
+        {"曲线名称": "中债国开债收益率曲线（到期）", "关键期限(年)": "3", "查询日收益率(%)": "1.58"},
+    ]
 
 
 def test_cdb_gkh_fallback_returns_normalized_snapshot(monkeypatch):

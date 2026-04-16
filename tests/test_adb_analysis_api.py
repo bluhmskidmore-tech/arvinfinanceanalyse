@@ -308,8 +308,11 @@ def test_adb_comparison_normalizes_bond_rates_from_percent_inputs(tmp_path: Path
     )
 
     assert response.status_code == 200, response.text
-    payload = response.json()["result"]
+    body = response.json()
+    payload = body["result"]
     assert payload["simulated"] is True
+    assert body["result_meta"]["quality_flag"] == "warning"
+    assert "single snapshot" in str(payload["detail"]).lower()
     assert payload["assets_breakdown"][0]["category"] == BOND_CORP
     assert payload["assets_breakdown"][0]["weighted_rate"] == 2.4
     assert payload["asset_yield"] == 2.4
@@ -452,7 +455,66 @@ def test_adb_comparison_returns_analytical_envelope(tmp_path: Path, monkeypatch)
     assert payload["result_meta"]["formal_use_allowed"] is False
     assert payload["result_meta"]["scenario_flag"] is False
     assert payload["result_meta"]["result_kind"] == "adb.comparison"
+    assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result"]["report_date"] == "2025-06-03"
+    assert "single snapshot" in str(payload["result"]["detail"]).lower()
+
+
+def test_adb_comparison_alias_preserves_single_snapshot_warning_contract(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    db_path = tmp_path / "adb-alias-warning.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-03",
+            instrument_code="B-ALIAS-1",
+            bond_type=BOND_CORP,
+            market_value=Decimal("100000000"),
+            is_issuance_like=False,
+            coupon_rate=Decimal("2.50"),
+            ytm_value=Decimal("2.40"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-03"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    primary = client.get(
+        "/api/analysis/adb-comparison",
+        params={"start_date": "2025-06-03", "end_date": "2025-06-03", "top_n": 5},
+    )
+    alias = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-03", "end_date": "2025-06-03", "top_n": 5},
+    )
+
+    for response in (primary, alias):
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["result_meta"]["basis"] == "analytical"
+        assert body["result_meta"]["quality_flag"] == "warning"
+        assert body["result"]["simulated"] is True
+        assert body["result"]["report_date"] == "2025-06-03"
+        assert "single snapshot" in str(body["result"]["detail"]).lower()
+
+    primary_payload = primary.json()["result"]
+    alias_payload = alias.json()["result"]
+    assert alias_payload["simulated"] == primary_payload["simulated"]
+    assert alias_payload["detail"] == primary_payload["detail"]
+    assert alias_payload["asset_yield"] == primary_payload["asset_yield"]
+    assert alias_payload["assets_breakdown"] == primary_payload["assets_breakdown"]
 
 
 def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Path, monkeypatch) -> None:

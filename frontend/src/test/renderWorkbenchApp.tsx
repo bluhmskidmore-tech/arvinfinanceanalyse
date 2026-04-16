@@ -6,8 +6,7 @@ import {
   type RouteObject,
 } from "react-router-dom";
 
-import { AppProviders } from "../app/providers";
-import { ApiClientProvider, type ApiClient } from "../api/client";
+import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { routerFuture } from "../router/routerFuture";
 import { workbenchRoutes } from "../router/routes";
 
@@ -32,25 +31,18 @@ export function renderWorkbenchApp(
 ): RenderResult {
   const routes = options?.routes ?? workbenchRoutes;
   const router = createWorkbenchMemoryRouter(initialEntries, routes);
-
-  if (options?.client) {
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
-      },
-    });
-    return render(
-      <QueryClientProvider client={queryClient}>
-        <ApiClientProvider client={options.client}>
-          <RouterProvider router={router} future={routerFuture} />
-        </ApiClientProvider>
-      </QueryClientProvider>,
-    );
-  }
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false },
+    },
+  });
+  const client = options?.client ?? createApiClient({ mode: "mock" });
 
   return render(
-    <AppProviders>
-      <RouterProvider router={router} future={routerFuture} />
-    </AppProviders>,
+    <QueryClientProvider client={queryClient}>
+      <ApiClientProvider client={client}>
+        <RouterProvider router={router} future={routerFuture} />
+      </ApiClientProvider>
+    </QueryClientProvider>,
   );
 }

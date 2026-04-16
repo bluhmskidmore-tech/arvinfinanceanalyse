@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+CHOICE_NEWS_SERVICE = ROOT / "backend" / "app" / "services" / "choice_news_service.py"
 EXECUTIVE_SERVICE = ROOT / "backend" / "app" / "services" / "executive_service.py"
+MACRO_BOND_LINKAGE_SERVICE = ROOT / "backend" / "app" / "services" / "macro_bond_linkage_service.py"
+MACRO_VENDOR_SERVICE = ROOT / "backend" / "app" / "services" / "macro_vendor_service.py"
 PNL_BRIDGE_SERVICE = ROOT / "backend" / "app" / "services" / "pnl_bridge_service.py"
 
 
@@ -38,9 +41,26 @@ def _assert_service_avoids_direct_storage_and_formal_sql(path: Path, text: str) 
     )
 
 
+def test_choice_news_service_avoids_storage_bypass():
+    text = _read_source(CHOICE_NEWS_SERVICE)
+    assert "duckdb.connect(" not in text, (
+        f"{CHOICE_NEWS_SERVICE.name}: must not call duckdb.connect; use repositories for storage access."
+    )
+
+
 def test_executive_service_avoids_storage_bypass():
     text = _read_source(EXECUTIVE_SERVICE)
     _assert_service_avoids_direct_storage_and_formal_sql(EXECUTIVE_SERVICE, text)
+
+
+def test_macro_bond_linkage_service_avoids_storage_bypass():
+    text = _read_source(MACRO_BOND_LINKAGE_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(MACRO_BOND_LINKAGE_SERVICE, text)
+
+
+def test_macro_vendor_service_avoids_storage_bypass():
+    text = _read_source(MACRO_VENDOR_SERVICE)
+    _assert_service_avoids_direct_storage_and_formal_sql(MACRO_VENDOR_SERVICE, text)
 
 
 def test_pnl_bridge_service_avoids_storage_bypass():

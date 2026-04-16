@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
+import { Alert, Card, Col, Row, Spin, Statistic, Table, Tag } from "antd";
+
 import { useApiClient } from "../../../api/client";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
@@ -41,10 +42,10 @@ const detailColumns = [
     dataIndex: "pnl_economic",
     key: "pnl_economic",
     width: 120,
-    render: (v: string) => {
-      const num = parseFloat(v);
-      const color = num >= 0 ? "#cf1322" : "#3f8600";
-      return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
+    render: (value: string) => {
+      const amount = parseFloat(value);
+      const color = amount >= 0 ? "#cf1322" : "#3f8600";
+      return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(value)}</span>;
     },
   },
   {
@@ -52,7 +53,7 @@ const detailColumns = [
     dataIndex: "delta_duration",
     key: "delta_duration",
     width: 80,
-    render: (v: string) => parseFloat(v).toFixed(4),
+    render: (value: string) => parseFloat(value).toFixed(4),
   },
 ];
 
@@ -64,27 +65,70 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
         const envelope = await client.getBondAnalyticsActionAttribution(reportDate, periodType);
-        if (!cancelled) setData(envelope.result);
-      } catch (e: unknown) {
-        if (!cancelled) setError((e as Error).message);
+        if (!cancelled) {
+          setData(envelope.result);
+        }
+      } catch (cause: unknown) {
+        if (!cancelled) {
+          setError((cause as Error).message);
+        }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     };
-    if (reportDate) fetchData();
+
+    if (reportDate) {
+      void fetchData();
+    }
+
     return () => {
       cancelled = true;
     };
-  }, [client, reportDate, periodType]);
+  }, [client, periodType, reportDate]);
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
-  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
-  if (!data) return null;
+  if (loading) {
+    return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  }
+
+  if (error) {
+    return <Alert type="error" message={`加载失败：${error}`} />;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  if (data.status === "unavailable") {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <SectionLead
+          eyebrow="Action Attribution"
+          title="交易动作归因概览"
+          description="该视图读取后端动作归因状态；当前仅明确展示可用性，不在前端补算正式归因。"
+          testId="action-attribution-shell-lead"
+        />
+        <Alert
+          data-testid="action-attribution-unavailable-alert"
+          type="warning"
+          showIcon
+          message="Unavailable"
+          description={
+            data.warnings.length > 0
+              ? data.warnings.map((warning, index) => <div key={index}>{warning}</div>)
+              : "Trade-level action attribution is not available yet."
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -94,6 +138,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         description="按报告日和期间读取后端 action attribution read model；页面只展示动作数量、损益贡献、久期和 DV01 变化，不在前端补算正式归因。"
         testId="action-attribution-shell-lead"
       />
+
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -197,7 +242,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
           type="warning"
           showIcon
           message="提示"
-          description={data.warnings.map((w, i) => <div key={i}>{w}</div>)}
+          description={data.warnings.map((warning, index) => <div key={index}>{warning}</div>)}
         />
       )}
     </div>

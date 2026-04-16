@@ -3,13 +3,61 @@
 import { createApiClient } from "../api/client";
 
 describe("createApiClient", () => {
-  it("uses mock mode by default", async () => {
+  it("uses mock mode when explicitly requested", async () => {
     const client = createApiClient({ mode: "mock" });
 
     const payload = await client.getOverview();
 
     expect(payload.result_meta.basis).toBe("mock");
     expect(payload.result.title).toBe("经营总览（演示）");
+  });
+
+  it("defaults to real mode when VITE_DATA_SOURCE is unset", async () => {
+    vi.stubEnv("VITE_DATA_SOURCE", "");
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_overview_default_real",
+          basis: "formal",
+          result_kind: "executive.overview",
+          formal_use_allowed: true,
+          source_version: "sv_real",
+          vendor_version: "vv_none",
+          rule_version: "rv_real",
+          cache_version: "cv_real",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-09T09:00:00Z",
+        },
+        result: {
+          title: "经营总览",
+          metrics: [],
+        },
+      }),
+    }));
+
+    try {
+      const client = createApiClient({
+        baseUrl: "http://localhost:8000",
+        fetchImpl: fetchMock as unknown as typeof fetch,
+      });
+
+      await client.getOverview();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/home/overview",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
   });
 
   it("includes required vendor metadata in mock envelopes", async () => {
@@ -334,6 +382,13 @@ describe("createApiClient", () => {
     expect(returnDecomposition.result.report_date).toBe("2026-03-31");
     expect(benchmarkExcess.result.benchmark_id).toBe("CDB_INDEX");
     expect(actionAttribution.result_meta.result_kind).toBe("bond_analytics.action_attribution");
+    expect(actionAttribution.result_meta.basis).toBe("mock");
+    expect(actionAttribution.result_meta.formal_use_allowed).toBe(false);
+    expect(actionAttribution.result_meta.quality_flag).toBe("warning");
+    expect(actionAttribution.result.status).toBe("unavailable");
+    expect(actionAttribution.result.warnings).toContain(
+      "Trade-level action attribution is not available in mock mode.",
+    );
     expect(accountingAudit.result_meta.result_kind).toBe("bond_analytics.accounting_class_audit");
     expect(portfolioHeadlines.result_meta.result_kind).toBe("bond_analytics.portfolio_headlines");
     expect(topHoldings.result_meta.result_kind).toBe("bond_analytics.top_holdings");
@@ -2631,5 +2686,3 @@ describe("createApiClient", () => {
     expect(result.result_meta.result_kind).toBe("cube.query");
   });
 });
-
-

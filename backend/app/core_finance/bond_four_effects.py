@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import math
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict
@@ -26,15 +27,29 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
             v = None
         if v is None:
             continue
-        try:
-            import pandas as pd
-
-            if pd.isna(v):
-                continue
-        except Exception:
-            pass
+        if _is_missing_value(v):
+            continue
         return v
     return default
+
+
+def _is_missing_value(value: Any) -> bool:
+    candidate = value
+    if hasattr(candidate, "item"):
+        try:
+            candidate = candidate.item()
+        except Exception:
+            pass
+    if candidate is None:
+        return True
+    if isinstance(candidate, float):
+        return math.isnan(candidate) or math.isinf(candidate)
+    if isinstance(candidate, str):
+        return candidate.strip().lower() in {"", "nan", "none", "null", "<na>"}
+    try:
+        return math.isnan(candidate)
+    except (TypeError, ValueError):
+        return False
 
 
 def compute_bond_four_effects(

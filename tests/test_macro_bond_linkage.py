@@ -824,6 +824,47 @@ def test_service_conservative_top_correlations_mirror_method_variant(tmp_path, m
     get_settings.cache_clear()
 
 
+def test_service_records_research_run_manifest_for_reproducibility(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-research-run.duckdb"
+    governance_dir = tmp_path / "governance"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    svc = _service_module()
+    governance_module = load_module(
+        "backend.app.repositories.governance_repo",
+        "backend/app/repositories/governance_repo.py",
+    )
+
+    envelope = svc.get_macro_bond_linkage(REPORT_DATE)
+    manifests = governance_module.GovernanceRepository(base_dir=governance_dir).read_all(
+        "research_run_manifest"
+    )
+
+    assert len(manifests) == 1
+    manifest = manifests[0]
+    assert manifest["run_kind"] == "analysis"
+    assert manifest["basis"] == "analytical"
+    assert manifest["source_version"] == envelope["result_meta"]["source_version"]
+    assert manifest["vendor_version"] == envelope["result_meta"]["vendor_version"]
+    assert manifest["rule_version"] == envelope["result_meta"]["rule_version"]
+    assert manifest["temporal_policy"] == "fail_closed"
+    assert manifest["window"]["as_of_date"] == REPORT_DATE.isoformat()
+    assert manifest["window"]["end_date"] == REPORT_DATE.isoformat()
+    assert manifest["parameters"]["lookback_days"] == svc.LOOKBACK_DAYS
+    assert manifest["parameters"]["min_trade_dates"] == svc.MIN_TRADE_DATES
+    assert manifest["parameters"]["top_correlation_limit"] == svc.TOP_CORRELATION_LIMIT
+    assert manifest["universe"]["macro_table"] == "fact_choice_macro_daily"
+    assert manifest["universe"]["curve_table"] == "fact_formal_yield_curve_daily"
+    assert manifest["universe"]["risk_table"] == "fact_formal_risk_tensor_daily"
+    assert manifest["code_ref"] == "backend.app.services.macro_bond_linkage_service:get_macro_bond_linkage"
+    assert str(manifest["parameter_hash"]).startswith("ph_")
+
+    get_settings.cache_clear()
+
+
 def test_api_returns_warning_when_macro_history_is_insufficient(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "macro-bond-linkage-insufficient.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=20, rising_rates=True)

@@ -17,6 +17,7 @@ from backend.app.core_finance.bond_analytics.common import (
     resolve_period,
     safe_decimal,
 )
+from backend.app.core_finance.action_attribution import compute_action_attribution_bonds
 from backend.app.core_finance.bond_analytics.read_models import (
     build_asset_class_risk_summary,
     build_concentration,
@@ -31,6 +32,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     weighted_average_by_market_value,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.pnl_repo import PnlRepository
 try:
     from backend.app.repositories.yield_curve_repo import (
         FX_LATEST_FALLBACK_PREFIX,
@@ -1251,6 +1253,103 @@ def get_accounting_class_audit(report_date: date) -> dict:
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
+    period_start, period_end = resolve_period(report_date, period_type)
+    current_rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    if current_rows:
+        prior_rows = _repo().fetch_bond_analytics_rows(report_date=period_start.isoformat())
+        pnl_repo = PnlRepository(str(get_settings().duckdb_path))
+        pnl_rows = pnl_repo.fetch_formal_fi_rows(report_date.isoformat())
+        pnl_by_key: dict[str, Decimal] = {}
+        for row in pnl_rows:
+            instrument_code = str(row.get("instrument_code") or "").strip()
+            portfolio_name = str(row.get("portfolio_name") or "").strip()
+            cost_center = str(row.get("cost_center") or "").strip()
+            if not instrument_code:
+                continue
+            book_id = f"{portfolio_name}|{cost_center}"
+            key = f"{instrument_code}::{book_id}"
+            pnl_by_key[key] = pnl_by_key.get(key, ZERO) + safe_decimal(row.get("total_pnl"))
+
+        def _to_action_row(row: dict[str, object]) -> dict[str, object]:
+            instrument_code = str(row.get("instrument_code") or "").strip()
+            portfolio_name = str(row.get("portfolio_name") or "").strip()
+            cost_center = str(row.get("cost_center") or "").strip()
+            return {
+                "instrument_id": instrument_code,
+                "bond_code": instrument_code,
+                "book_id": f"{portfolio_name}|{cost_center}",
+                "market_value": row.get("market_value"),
+                "modified_duration": row.get("modified_duration"),
+                "asset_class": row.get("accounting_class") or "",
+            }
+
+        computed = compute_action_attribution_bonds(
+            period_start=period_start,
+            period_end=period_end,
+            positions_start=[_to_action_row(row) for row in prior_rows],
+            positions_end=[_to_action_row(row) for row in current_rows],
+            pnl_by_key=pnl_by_key,
+        )
+        meta = _meta("bond_analytics.action_attribution", report_date, current_rows)
+        warnings = _ordered_unique_warnings([str(item) for item in list(computed.get("warnings") or [])])
+        if warnings:
+            meta = meta.model_copy(update={"quality_flag": "warning"})
+        response = ActionAttributionResponse(
+            report_date=report_date,
+            period_type=period_type,
+            period_start=date.fromisoformat(str(computed["period_start"])),
+            period_end=date.fromisoformat(str(computed["period_end"])),
+            total_actions=int(computed["total_actions"]),
+            total_pnl_from_actions=str(computed["total_pnl_from_actions"]),
+            by_action_type=[
+                ActionTypeSummary(
+                    action_type=str(item["action_type"]),
+                    action_type_name=str(item["action_type_name"]),
+                    action_count=int(item["action_count"]),
+                    total_pnl_economic=str(item["total_pnl_economic"]),
+                    total_pnl_accounting=str(item["total_pnl_accounting"]),
+                    avg_pnl_per_action=str(item["avg_pnl_per_action"]),
+                )
+                for item in list(computed.get("by_action_type") or [])
+            ],
+            action_details=[
+                ActionDetail(
+                    action_id=str(item["action_id"]),
+                    action_type=str(item["action_type"]),
+                    action_date=str(item["action_date"]),
+                    bonds_involved=[str(code) for code in list(item.get("bonds_involved") or [])],
+                    description=str(item["description"]),
+                    pnl_economic=str(item["pnl_economic"]),
+                    pnl_accounting=str(item["pnl_accounting"]),
+                    delta_duration=str(item["delta_duration"]),
+                    delta_dv01=str(item["delta_dv01"]),
+                    delta_spread_dv01=str(item["delta_spread_dv01"]),
+                    opportunity_cost=(str(item["opportunity_cost"]) if item.get("opportunity_cost") is not None else None),
+                    opportunity_cost_method=(
+                        str(item["opportunity_cost_method"])
+                        if item.get("opportunity_cost_method") is not None
+                        else None
+                    ),
+                )
+                for item in list(computed.get("action_details") or [])
+            ],
+            period_start_duration=str(computed["period_start_duration"]),
+            period_end_duration=str(computed["period_end_duration"]),
+            duration_change_from_actions=str(computed["duration_change_from_actions"]),
+            period_start_dv01=str(computed["period_start_dv01"]),
+            period_end_dv01=str(computed["period_end_dv01"]),
+            status="ready",
+            available_components=[],
+            missing_inputs=[],
+            blocked_components=[],
+            computed_at=meta.generated_at.isoformat(),
+            warnings=warnings,
+        )
+        return build_formal_result_envelope(
+            result_meta=meta,
+            result_payload=response.model_dump(mode="json"),
+        )
+
     analysis_envelope = build_bond_action_attribution_placeholder_envelope(
         AnalysisQuery(
             consumer="bond_analytics.action_attribution",

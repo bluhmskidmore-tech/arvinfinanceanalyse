@@ -2054,10 +2054,13 @@ function buildMockChoiceNewsEnvelope(options: {
 const normalizeBaseUrl = (value?: string) =>
   value ? value.replace(/\/$/, "") : "";
 
-const parseEnvMode = (): DataSourceMode => {
-  const raw = import.meta.env.VITE_DATA_SOURCE;
+export const resolveDataSourceMode = (raw: unknown): DataSourceMode => {
   const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  return envValue === "real" ? "real" : "mock";
+  return envValue === "mock" ? "mock" : "real";
+};
+
+const parseEnvMode = (): DataSourceMode => {
+  return resolveDataSourceMode(import.meta.env.VITE_DATA_SOURCE);
 };
 
 const parseBaseUrl = () => {
@@ -4412,8 +4415,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           period_type: periodType,
           period_start: reportDate,
           period_end: reportDate,
+          status: "unavailable",
           total_actions: 0,
           total_pnl_from_actions: "0",
+          available_components: [],
+          missing_inputs: ["trade_action_lineage"],
+          blocked_components: ["action_summary", "action_details"],
           by_action_type: [],
           action_details: [],
           period_start_duration: "0",
@@ -4421,10 +4428,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           duration_change_from_actions: "0",
           period_start_dv01: "0",
           period_end_dv01: "0",
-          warnings: [],
+          warnings: ["Trade-level action attribution is not available in mock mode."],
           computed_at: "2026-04-13T00:00:00Z",
         },
-        { basis: "formal", formal_use_allowed: true },
+        { quality_flag: "warning" },
       );
     },
     async getBondAnalyticsAccountingClassAudit(reportDate: string) {
@@ -6389,5 +6396,3 @@ export function useApiClient(): ApiClient {
 
   return client;
 }
-
-

@@ -42,6 +42,7 @@ def refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     backfill_days: int = 0,
+    run_id: str | None = None,
 ) -> dict[str, object]:
     _init_runtime()
     settings = get_settings()
@@ -63,7 +64,7 @@ def refresh_choice_macro_snapshot(
         status="running",
         cache_key="choice_macro.latest",
     )
-    run_id = f"{run.job_name}:{run.created_at}"
+    run_id = run_id or f"{run.job_name}:{run.created_at}"
     source_version = "sv_choice_macro_pending"
     vendor_version = "vv_none"
 

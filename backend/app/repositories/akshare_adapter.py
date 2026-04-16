@@ -3,12 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import hashlib
-from io import StringIO
 import json
 import os
 from decimal import Decimal
 
-import pandas as pd
 import requests
 
 from backend.app.repositories.choice_client import ChoiceClient
@@ -106,12 +104,8 @@ MIN_REQUIRED_TENORS_BY_TYPE = {
 }
 
 
-def _read_chinabond_gkh_html_tables(html: str) -> list[pd.DataFrame]:
-    """Parse ChinaBond GKH HTML. Prefer pandas' lxml path when installed; else BeautifulSoup + html.parser."""
-    try:
-        return pd.read_html(StringIO(html))
-    except ImportError:
-        pass
+def _read_chinabond_gkh_html_tables(html: str) -> list[dict[str, object]]:
+    """Parse ChinaBond GKH HTML into row dicts without requiring pandas/lxml."""
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "html.parser")
@@ -125,15 +119,18 @@ def _read_chinabond_gkh_html_tables(html: str) -> list[pd.DataFrame]:
     columns = [c.get_text(strip=True) for c in header_cells]
     if not columns:
         return []
-    rows_data: list[list[object]] = []
+    rows_data: list[dict[str, object]] = []
     for tr in table.find_all("tr")[1:]:
         cells = tr.find_all("td")
         if len(cells) != len(columns):
             continue
-        rows_data.append([c.get_text(strip=True) for c in cells])
-    if not rows_data:
-        return []
-    return [pd.DataFrame(rows_data, columns=columns)]
+        rows_data.append(
+            {
+                column: cell.get_text(strip=True)
+                for column, cell in zip(columns, cells, strict=True)
+            }
+        )
+    return rows_data
 
 
 @dataclass
@@ -337,17 +334,11 @@ class VendorAdapter(VendorAdapterBase):
             timeout=20,
         )
         response.raise_for_status()
-        frames = _read_chinabond_gkh_html_tables(response.text)
-        target_frame = None
-        for frame in frames:
-            columns = {str(column) for column in frame.columns}
-            if "曲线名称" in columns and "关键期限(年)" in columns and "查询日收益率(%)" in columns:
-                target_frame = frame
-                break
-        if target_frame is None:
+        rows = _read_chinabond_gkh_html_tables(response.text)
+        if not rows:
             return None
         points: list[YieldCurvePoint] = []
-        for _, row in target_frame.iterrows():
+        for row in rows:
             curve_name = str(row.get("曲线名称") or "").strip()
             if curve_name != CHINABOND_GKH_CURVE_NAME:
                 continue
@@ -410,7 +401,8 @@ class VendorAdapter(VendorAdapterBase):
         client = ChoiceClient()
         raw_result = client.edb(
             codes=list(code_map.values()),
-            options=f"IsLatest=0,StartDate={trade_date},EndDate={trade_date},Ispandas=1",
+            options=f"IsLatest=0,StartDate={trade_date},EndDate={trade_date}",
+            exclude_option_prefixes=("ispandas=",),
         )
         code_to_tenor = {vendor_code: tenor for tenor, vendor_code in code_map.items()}
         points = []

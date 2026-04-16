@@ -247,7 +247,7 @@ def test_materialize_fx_mid_for_report_date_uses_choice_for_complete_candidate_s
     data_input_root = tmp_path / "data_input"
 
     class _FakeChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **kwargs):
             assert codes == [
                 "EMM00058124",
                 "EMM00058125",
@@ -257,6 +257,8 @@ def test_materialize_fx_mid_for_report_date_uses_choice_for_complete_candidate_s
             ]
             assert "StartDate=2026-02-27" in options
             assert "EndDate=2026-02-27" in options
+            assert "Ispandas=1" not in options
+            assert kwargs.get("exclude_option_prefixes") == ("ispandas=",)
             return _ChoiceMultiResult()
 
     class _UnexpectedAkShareVendor:
@@ -311,7 +313,7 @@ def test_materialize_fx_mid_for_report_date_uses_akshare_when_choice_is_incomple
     duckdb_path = tmp_path / "moss.duckdb"
 
     class _FakeChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **kwargs):
             return _ChoiceIncompleteResult()
 
     class _FakeAkShareVendor:
@@ -371,7 +373,7 @@ def test_materialize_fx_mid_for_report_date_fails_closed_without_silent_csv_fall
     get_settings.cache_clear()
 
     class _FailingChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **kwargs):
             raise RuntimeError("choice unavailable")
 
     class _FailingAkShareVendor:

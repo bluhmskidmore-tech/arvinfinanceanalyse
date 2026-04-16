@@ -122,10 +122,10 @@ def test_merge_request_options_merges_strips_and_recvtimeout_flag():
     client = client_module.ChoiceClient(settings=settings)
 
     merged_keep = client._merge_request_options("  extra=2  , ", include_recv_timeout=True)
-    assert merged_keep == "base=1 ,  recvTimeout=99,extra=2  ,"
+    assert merged_keep == "base=1,recvTimeout=99,extra=2"
 
     merged_drop = client._merge_request_options("extra=2", include_recv_timeout=False)
-    assert merged_drop == "base=1 ,extra=2"
+    assert merged_drop == "base=1,extra=2"
 
     only_timeout = client_module.ChoiceClient(
         settings=_make_settings(choice_request_options="recvTimeout=1", choice_start_options="")
@@ -135,6 +135,13 @@ def test_merge_request_options_merges_strips_and_recvtimeout_flag():
     empty_both = client_module.ChoiceClient(settings=_make_settings(choice_request_options="  "))
     assert empty_both._merge_request_options("   ", include_recv_timeout=True) == ""
     assert empty_both._merge_request_options("   ", include_recv_timeout=False) == ""
+
+    stripped = client._merge_request_options(
+        "extra=2",
+        include_recv_timeout=True,
+        exclude_option_prefixes=("ispandas=",),
+    )
+    assert stripped == "base=1,recvTimeout=99,extra=2"
 
 
 def test_edb_and_edbquery_call_start_and_merge_options(monkeypatch):
@@ -170,6 +177,32 @@ def test_edb_and_edbquery_call_start_and_merge_options(monkeypatch):
     assert client.edb(["a"], "x=1") == ("edb", ("a",), "recvTimeout=9,x=1")
     assert client.edbquery("codes", "x=1") == ("edbquery", "codes", "x=1")
     assert started == [True, True]
+
+
+def test_edb_can_exclude_ispandas_from_merged_options(monkeypatch):
+    client_module = load_module(
+        "backend.app.repositories.choice_client_contract_e2",
+        "backend/app/repositories/choice_client.py",
+    )
+
+    class FakeC:
+        def start(self, options: str):
+            return SimpleNamespace(ErrorCode=0)
+
+        def edb(self, codes, merged: str):
+            return ("edb", tuple(codes), merged)
+
+    monkeypatch.setattr(client_module, "configure_emquant_parent", lambda _p: None)
+    monkeypatch.setattr(client_module, "_get_em_c", lambda: FakeC())
+
+    client = client_module.ChoiceClient(settings=_make_settings(choice_request_options="Ispandas=1,recvTimeout=9"))
+    result = client.edb(
+        ["a"],
+        "IsLatest=0",
+        exclude_option_prefixes=("ispandas=",),
+    )
+
+    assert result == ("edb", ("a",), "recvTimeout=9,IsLatest=0")
 
 
 def test_cnq_and_cnqcancel_raise_on_nonzero_error_code(monkeypatch):

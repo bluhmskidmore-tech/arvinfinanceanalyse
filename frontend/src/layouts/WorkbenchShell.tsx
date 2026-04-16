@@ -18,6 +18,7 @@ import {
   secondaryWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
+import { resolveDataSourceMode } from "../api/client";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -69,9 +70,7 @@ export function WorkbenchShell() {
   const currentSection =
     workbenchNavigation.find((item) => pathMatchesSection(item.path, location.pathname)) ??
     workbenchNavigation[0];
-  const dataSourceRaw = import.meta.env.VITE_DATA_SOURCE;
-  const isMockDataSource =
-    typeof dataSourceRaw !== "string" || dataSourceRaw.trim().toLowerCase() !== "real";
+  const isMockDataSource = resolveDataSourceMode(import.meta.env.VITE_DATA_SOURCE) === "mock";
 
   return (
     <div

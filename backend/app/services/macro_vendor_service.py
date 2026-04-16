@@ -1,17 +1,21 @@
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
-
-import duckdb
+from pathlib import Path
 
 from backend.app.core_finance.fx_rates import get_usd_cny_rate
-from backend.app.governance.settings import get_settings
+from backend.app.governance.settings import Settings, get_settings
+from backend.app.repositories.governance_repo import (
+    CACHE_BUILD_RUN_STREAM,
+    GovernanceRepository,
+)
+from backend.app.repositories.macro_vendor_repo import MacroVendorRepository
 from backend.app.repositories.choice_fx_catalog import (
     classify_fx_series_group,
     discover_formal_fx_candidates,
 )
+from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroLatestPayload,
     FxAnalyticalGroup,
@@ -25,56 +29,112 @@ from backend.app.schemas.macro_vendor import (
     MacroVendorSeries,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.tasks.choice_macro import CHOICE_MACRO_LOCK, refresh_choice_macro_snapshot
 
 RULE_VERSION = "rv_phase1_macro_vendor_v1"
 CACHE_VERSION = "cv_phase1_macro_vendor_v1"
 LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
+CHOICE_MACRO_JOB_NAME = "choice_macro_refresh"
+CHOICE_MACRO_CACHE_KEY = "choice_macro.latest"
+PENDING_SOURCE_VERSION = "sv_choice_macro_pending"
+
+
+class ChoiceMacroRefreshServiceError(RuntimeError):
+    pass
+
+
+def queue_choice_macro_refresh(
+    settings: Settings,
+    *,
+    backfill_days: int = 0,
+) -> dict[str, object]:
+    run_id = f"{CHOICE_MACRO_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+    queued_at = datetime.now(timezone.utc).isoformat()
+    repo = GovernanceRepository(base_dir=settings.governance_path)
+    repo.append(
+        CACHE_BUILD_RUN_STREAM,
+        {
+            **CacheBuildRunRecord(
+                run_id=run_id,
+                job_name=CHOICE_MACRO_JOB_NAME,
+                status="queued",
+                cache_key=CHOICE_MACRO_CACHE_KEY,
+                lock=CHOICE_MACRO_LOCK.key,
+                source_version=PENDING_SOURCE_VERSION,
+                vendor_version="vv_none",
+            ).model_dump(),
+            "queued_at": queued_at,
+        },
+    )
+
+    try:
+        refresh_choice_macro_snapshot.send(
+            duckdb_path=str(settings.duckdb_path),
+            governance_dir=str(settings.governance_path),
+            backfill_days=backfill_days,
+            run_id=run_id,
+        )
+    except Exception as exc:
+        repo.append(
+            CACHE_BUILD_RUN_STREAM,
+            {
+                **CacheBuildRunRecord(
+                    run_id=run_id,
+                    job_name=CHOICE_MACRO_JOB_NAME,
+                    status="failed",
+                    cache_key=CHOICE_MACRO_CACHE_KEY,
+                    lock=CHOICE_MACRO_LOCK.key,
+                    source_version=PENDING_SOURCE_VERSION,
+                    vendor_version="vv_none",
+                ).model_dump(),
+                "queued_at": queued_at,
+                "error_message": "Choice-macro refresh queue dispatch failed.",
+            },
+        )
+        raise ChoiceMacroRefreshServiceError(
+            "Choice-macro refresh queue dispatch failed."
+        ) from exc
+
+    return {
+        "status": "queued",
+        "run_id": run_id,
+        "job_name": CHOICE_MACRO_JOB_NAME,
+        "trigger_mode": "async",
+        "cache_key": CHOICE_MACRO_CACHE_KEY,
+    }
+
+
+def choice_macro_refresh_status(settings: Settings, *, run_id: str = "") -> dict[str, object]:
+    records = [
+        record
+        for record in GovernanceRepository(base_dir=settings.governance_path).read_all(
+            CACHE_BUILD_RUN_STREAM
+        )
+        if str(record.get("job_name")) == CHOICE_MACRO_JOB_NAME
+        and str(record.get("cache_key")) == CHOICE_MACRO_CACHE_KEY
+    ]
+    if run_id:
+        records = [record for record in records if str(record.get("run_id")) == run_id]
+    if not records:
+        return {"status": "unknown", "run_id": run_id}
+
+    latest = records[-1]
+    status = str(latest.get("status", "unknown"))
+    return {
+        "status": status,
+        "run_id": str(latest.get("run_id", "")),
+        "job_name": str(latest.get("job_name", CHOICE_MACRO_JOB_NAME)),
+        "trigger_mode": "async" if status in {"queued", "running"} else "terminal",
+        "cache_key": str(latest.get("cache_key", CHOICE_MACRO_CACHE_KEY)),
+        "error_message": latest.get("error_message"),
+    }
 
 
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
+    rows = MacroVendorRepository(duckdb_path).list_macro_vendor_catalog_rows()
+    if not rows:
         return MacroVendorPayload(series=[])
-
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
-
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "phase1_macro_vendor_catalog" not in tables:
-            return MacroVendorPayload(series=[])
-
-        available_columns = {
-            str(row[1])
-            for row in conn.execute("pragma table_info('phase1_macro_vendor_catalog')").fetchall()
-        }
-        select_columns = [
-            "series_id",
-            "series_name",
-            "vendor_name",
-            "vendor_version",
-            "frequency",
-            "unit",
-            _catalog_column_expr("refresh_tier", available_columns, "NULL"),
-            _catalog_column_expr("fetch_mode", available_columns, "NULL"),
-            _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
-            _catalog_column_expr("policy_note", available_columns, "NULL"),
-        ]
-        rows = conn.execute(
-            f"""
-            select
-              {", ".join(select_columns)}
-            from phase1_macro_vendor_catalog
-            order by vendor_name, series_id
-            """
-        ).fetchall()
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
-    finally:
-        conn.close()
 
     return MacroVendorPayload(
         series=[
@@ -132,69 +192,19 @@ def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
 
 
 def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -> str:
-    if not series_ids:
-        return "sv_macro_vendor_empty"
-
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
-        return "sv_macro_vendor_empty"
-
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
-
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "choice_market_snapshot" not in tables:
-            return "sv_macro_vendor_empty"
-
-        placeholders = ", ".join(["?"] * len(series_ids))
-        rows = conn.execute(
-            f"""
-            select distinct source_version
-            from choice_market_snapshot
-            where series_id in ({placeholders})
-              and source_version is not null and source_version <> ''
-            order by source_version
-            """,
-            series_ids,
-        ).fetchall()
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
-    finally:
-        conn.close()
-
+    rows = MacroVendorRepository(duckdb_path).list_macro_vendor_source_versions(series_ids)
     return _aggregate_lineage_value(
-        [str(row[0]) for row in rows if row and row[0]],
+        rows,
         empty_value="sv_macro_vendor_empty",
     )
 
 
 def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPayload:
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
-        return ChoiceMacroLatestPayload(series=[])
-
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
-
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "fact_choice_macro_daily" not in tables:
-            return ChoiceMacroLatestPayload(series=[])
-
-        recent_rows = _load_choice_macro_recent_rows(conn, tables)
-        catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
-    finally:
-        conn.close()
-
+    repo = MacroVendorRepository(duckdb_path)
+    recent_rows = repo.list_choice_macro_recent_rows()
     if not recent_rows:
         return ChoiceMacroLatestPayload(series=[])
+    catalog_by_series = repo.load_choice_macro_catalog_map()
 
     grouped_rows: dict[str, list[dict[str, object]]] = {}
     for (
@@ -384,34 +394,14 @@ def fx_formal_status_envelope(duckdb_path: str) -> dict[str, object]:
 
 
 def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
+    repo = MacroVendorRepository(duckdb_path)
+    recent_rows = repo.list_choice_macro_recent_rows()
+    if not recent_rows:
         return FxAnalyticalPayload(groups=[])
-
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
+    catalog_by_series = repo.load_choice_macro_catalog_map()
+    name_by_series = repo.load_choice_macro_series_name_map()
+    if not name_by_series:
         return FxAnalyticalPayload(groups=[])
-
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "fact_choice_macro_daily" not in tables or "phase1_macro_vendor_catalog" not in tables:
-            return FxAnalyticalPayload(groups=[])
-        recent_rows = _load_choice_macro_recent_rows(conn, tables)
-        catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
-        name_by_series = {
-            str(row[0]): str(row[1])
-            for row in conn.execute(
-                """
-                select distinct series_id, series_name
-                from phase1_macro_vendor_catalog
-                """
-            ).fetchall()
-        }
-    except duckdb.Error:
-        return FxAnalyticalPayload(groups=[])
-    finally:
-        conn.close()
 
     grouped_rows: dict[str, list[dict[str, object]]] = {}
     for (
@@ -571,218 +561,9 @@ def _load_latest_fx_mid_rows(
     duckdb_path: str,
     base_currencies: list[str],
 ) -> dict[tuple[str, str], dict[str, object]]:
-    if not base_currencies:
-        return {}
-    duckdb_file = Path(duckdb_path)
-    if not duckdb_file.exists():
-        return {}
-    try:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return {}
-    try:
-        tables = {row[0] for row in conn.execute("show tables").fetchall()}
-        if "fx_daily_mid" not in tables:
-            return {}
-        placeholders = ", ".join(["?"] * len(base_currencies))
-        rows = conn.execute(
-            f"""
-            with ranked as (
-              select
-                base_currency,
-                quote_currency,
-                cast(trade_date as varchar) as trade_date,
-                cast(observed_trade_date as varchar) as observed_trade_date,
-                cast(mid_rate as double) as mid_rate,
-                source_name,
-                coalesce(vendor_name, '') as vendor_name,
-                coalesce(vendor_version, '') as vendor_version,
-                source_version,
-                is_business_day,
-                is_carry_forward,
-                row_number() over (
-                  partition by upper(base_currency), upper(quote_currency)
-                  order by trade_date desc
-                ) as rn
-              from fx_daily_mid
-              where upper(base_currency) in ({placeholders})
-                and upper(quote_currency) = 'CNY'
-            )
-            select
-              base_currency,
-              quote_currency,
-              trade_date,
-              observed_trade_date,
-              mid_rate,
-              source_name,
-              vendor_name,
-              vendor_version,
-              source_version,
-              is_business_day,
-              is_carry_forward
-            from ranked
-            where rn = 1
-            """,
-            [item.upper() for item in base_currencies],
-        ).fetchall()
-    except duckdb.Error:
-        return {}
-    finally:
-        conn.close()
-
-    result: dict[tuple[str, str], dict[str, object]] = {}
-    for row in rows:
-        key = (str(row[0]).upper(), str(row[1]).upper())
-        result[key] = {
-            "base_currency": str(row[0]).upper(),
-            "quote_currency": str(row[1]).upper(),
-            "trade_date": str(row[2]) if row[2] is not None else None,
-            "observed_trade_date": str(row[3]) if row[3] is not None else None,
-            "mid_rate": float(row[4]) if row[4] is not None else None,
-            "source_name": str(row[5]) if row[5] is not None else None,
-            "vendor_name": str(row[6]) if row[6] is not None else None,
-            "vendor_version": str(row[7]) if row[7] is not None else None,
-            "source_version": str(row[8]) if row[8] is not None else None,
-            "is_business_day": bool(row[9]) if row[9] is not None else None,
-            "is_carry_forward": bool(row[10]) if row[10] is not None else None,
-        }
-    return result
-
-
-def _load_choice_macro_recent_rows(
-    conn: duckdb.DuckDBPyConnection,
-    tables: set[str],
-) -> list[tuple[object, ...]]:
-    if "choice_market_snapshot" in tables:
-        snapshot_count = conn.execute(
-            "select count(*) from choice_market_snapshot"
-        ).fetchone()
-        if snapshot_count and int(snapshot_count[0]) > 0:
-            return conn.execute(
-                """
-                with active_series as (
-                  select distinct series_id
-                  from choice_market_snapshot
-                ),
-                ranked as (
-                  select
-                    fact.series_id,
-                    fact.series_name,
-                    fact.trade_date,
-                    fact.value_numeric,
-                    fact.frequency,
-                    fact.unit,
-                    fact.source_version,
-                    fact.vendor_version,
-                    fact.quality_flag,
-                    row_number() over(partition by fact.series_id order by fact.trade_date desc) as rn
-                  from fact_choice_macro_daily as fact
-                  inner join active_series on active_series.series_id = fact.series_id
-                )
-                select
-                  series_id,
-                  series_name,
-                  trade_date,
-                  value_numeric,
-                  frequency,
-                  unit,
-                  source_version,
-                  vendor_version,
-                  quality_flag,
-                  rn
-                from ranked
-                where rn <= 3
-                order by series_id, rn
-                """
-            ).fetchall()
-
-    return conn.execute(
-        """
-        with ranked as (
-          select
-            series_id,
-            series_name,
-            trade_date,
-            value_numeric,
-            frequency,
-            unit,
-            source_version,
-            vendor_version,
-            quality_flag,
-            row_number() over(partition by series_id order by trade_date desc) as rn
-          from fact_choice_macro_daily
-        )
-        select
-          series_id,
-          series_name,
-          trade_date,
-          value_numeric,
-          frequency,
-          unit,
-          source_version,
-          vendor_version,
-          quality_flag,
-          rn
-        from ranked
-        where rn <= 3
-        order by series_id, rn
-        """
-    ).fetchall()
-
-
-def _load_choice_macro_catalog_map(
-    conn: duckdb.DuckDBPyConnection,
-    tables: set[str],
-) -> dict[str, dict[str, object]]:
-    if "phase1_macro_vendor_catalog" not in tables:
-        return {}
-
-    available_columns = {
-        str(row[1])
-        for row in conn.execute("pragma table_info('phase1_macro_vendor_catalog')").fetchall()
-    }
-    select_columns = [
-        "series_id",
-        _catalog_column_expr("refresh_tier", available_columns, "NULL"),
-        _catalog_column_expr("fetch_mode", available_columns, "NULL"),
-        _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
-        _catalog_column_expr("policy_note", available_columns, "NULL"),
-        "frequency",
-        "unit",
-    ]
-    rows = conn.execute(
-        f"""
-        select
-          {", ".join(select_columns)}
-        from phase1_macro_vendor_catalog
-        """
-    ).fetchall()
-
-    catalog_by_series: dict[str, dict[str, object]] = {}
-    for (
-        series_id,
-        refresh_tier,
-        fetch_mode,
-        fetch_granularity,
-        policy_note,
-        frequency,
-        unit,
-    ) in rows:
-        catalog_by_series[str(series_id)] = {
-            "refresh_tier": _as_optional_string(refresh_tier),
-            "fetch_mode": _as_optional_string(fetch_mode),
-            "fetch_granularity": _as_optional_string(fetch_granularity),
-            "policy_note": _as_optional_string(policy_note),
-            "frequency": str(frequency or ""),
-            "unit": str(unit or ""),
-        }
-    return catalog_by_series
-
-
-def _catalog_column_expr(column: str, available_columns: set[str], fallback_sql: str) -> str:
-    if column in available_columns:
-        return column
-    return f"{fallback_sql} as {column}"
+    return MacroVendorRepository(duckdb_path).load_latest_fx_mid_rows(
+        base_currencies=base_currencies
+    )
 
 
 def _aggregate_lineage_value(values: list[str], empty_value: str) -> str:

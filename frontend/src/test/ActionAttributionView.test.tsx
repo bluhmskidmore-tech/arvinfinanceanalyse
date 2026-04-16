@@ -140,4 +140,18 @@ describe("ActionAttributionView", () => {
     expect(await screen.findByText("提示")).toBeInTheDocument();
     expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();
   });
+  it("surfaces unavailable status as a gated placeholder instead of live analytics cards", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    render(
+      <ApiClientProvider client={client}>
+        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("action-attribution-unavailable-alert")).toBeInTheDocument();
+    expect(screen.getByText("Trade-level action attribution is not available in mock mode.")).toBeInTheDocument();
+    expect(screen.queryByTestId("action-attribution-summary-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("action-attribution-detail-lead")).not.toBeInTheDocument();
+  });
 });
