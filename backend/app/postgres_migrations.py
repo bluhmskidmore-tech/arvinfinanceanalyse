@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -12,6 +13,8 @@ from sqlalchemy import create_engine, text
 
 from backend.app.governance.settings import DEFAULT_POSTGRES_DSN, resolve_postgres_dsn
 from backend.app.storage_migration_flags import skip_auto_storage_migrations
+
+logger = logging.getLogger(__name__)
 
 
 def _wait_for_postgres_sql_ready(
@@ -80,9 +83,9 @@ def upgrade_postgres_schema_head() -> None:
             continue
 
         if result.stdout:
-            print(result.stdout, end="", file=sys.stderr)
+            logger.error(result.stdout)
         if result.stderr:
-            print(result.stderr, end="", file=sys.stderr)
+            logger.error(result.stderr)
         raise subprocess.CalledProcessError(
             result.returncode,
             alembic_args,

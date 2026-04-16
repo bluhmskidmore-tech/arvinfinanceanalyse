@@ -9,6 +9,7 @@ All DuckDB writes happen inside invoked tasks (`ingest_demo_manifest` side effec
 
 import argparse
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
@@ -19,6 +20,8 @@ from backend.app.tasks.balance_analysis_materialize import materialize_balance_a
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import ingest_demo_manifest
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_formal_runtime_payload(
@@ -256,7 +259,7 @@ def main() -> None:
         archive_dir=args.archive_dir,
         fx_source_path=args.fx_source_path,
     )
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    logger.info(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
