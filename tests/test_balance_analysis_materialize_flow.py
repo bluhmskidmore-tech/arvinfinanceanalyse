@@ -175,6 +175,63 @@ def _seed_snapshot_and_fx_tables(duckdb_path: str) -> None:
         conn.close()
 
 
+def test_choice_fx_fetch_accepts_legacy_choice_client_signature(monkeypatch):
+    fx_mod = _load_fx_module()
+
+    class _ChoiceResult:
+        Codes = ["EMM00058124"]
+        Dates = ["2025-12-31"]
+        Data = {"EMM00058124": [[Decimal("7.20")]]}
+
+    class _LegacyChoiceClient:
+        def __init__(self):
+            self.calls: list[tuple[list[str], str]] = []
+
+        def edb(self, codes, options=""):
+            self.calls.append((list(codes), options))
+            return _ChoiceResult()
+
+    legacy_client = _LegacyChoiceClient()
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: legacy_client)
+
+    rows = fx_mod._fetch_choice_fx_mid_rows_for_report_date(
+        "2025-12-31",
+        candidates=[
+            fx_mod.FormalFxCandidate(
+                series_id="EMM00058124",
+                series_name="中间价:美元兑人民币",
+                vendor_series_code="EMM00058124",
+                base_currency="USD",
+                quote_currency="CNY",
+                invert_result=False,
+            )
+        ],
+    )
+
+    assert rows == [
+        (
+            "2025-12-31",
+            "USD",
+            "CNY",
+            Decimal("7.20"),
+            fx_mod.CHOICE_SOURCE_NAME,
+            True,
+            False,
+            rows[0][7],
+            "choice",
+            rows[0][9],
+            "EMM00058124",
+            "2025-12-31",
+        )
+    ]
+    assert legacy_client.calls == [
+        (
+            ["EMM00058124"],
+            "IsLatest=0,StartDate=2025-12-31,EndDate=2025-12-31,RECVtimeout=5",
+        )
+    ]
+
+
 def test_balance_analysis_materialize_writes_formal_fact_tables_and_governance_records(tmp_path, monkeypatch):
     repo_mod, task_mod = _load_modules()
 
@@ -271,7 +328,11 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
         monkeypatch.setattr(
             fx_mod,
             "ChoiceClient",
-            lambda: type("FailingChoiceClient", (), {"edb": lambda self, codes, options="": (_ for _ in ()).throw(RuntimeError("choice unavailable"))})(),
+            lambda: type(
+                "FailingChoiceClient",
+                (),
+                {"edb": lambda self, codes, options="", **_kwargs: (_ for _ in ()).throw(RuntimeError("choice unavailable"))},
+            )(),
         )
         monkeypatch.setattr(
             fx_mod,
@@ -478,7 +539,11 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
         monkeypatch.setattr(
             fx_mod,
             "ChoiceClient",
-            lambda: type("FailingChoiceClient", (), {"edb": lambda self, codes, options="": (_ for _ in ()).throw(RuntimeError("choice unavailable"))})(),
+            lambda: type(
+                "FailingChoiceClient",
+                (),
+                {"edb": lambda self, codes, options="", **_kwargs: (_ for _ in ()).throw(RuntimeError("choice unavailable"))},
+            )(),
         )
         monkeypatch.setattr(
             fx_mod,
@@ -516,7 +581,7 @@ def test_balance_analysis_materialize_normalizes_snapshot_currency_labels_for_fx
         Data = {"EMM00058124": [[Decimal("7.20")]]}
 
     class _FakeChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **_kwargs):
             return _ChoiceResult()
 
     monkeypatch = pytest.MonkeyPatch()
@@ -600,7 +665,7 @@ def test_balance_analysis_materialize_treats_cnx_as_identity_not_spot_fx(tmp_pat
         Data = {"EMM00058124": [[Decimal("7.20")]]}
 
     class _FakeChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **_kwargs):
             return _ChoiceResult()
 
     monkeypatch = pytest.MonkeyPatch()
@@ -657,7 +722,7 @@ def test_balance_analysis_materialize_does_not_autodiscover_fx_csv_from_data_inp
     )
 
     class _FailingChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **_kwargs):
             raise RuntimeError("choice unavailable")
 
     class _FailingAkShareVendor:
@@ -840,7 +905,7 @@ def test_balance_analysis_materialize_auto_populates_fx_from_choice_when_no_csv_
         Data = {"EMM00058124": [[Decimal("7.20")]]}
 
     class _FakeChoiceClient:
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **_kwargs):
             return _ChoiceResult()
 
     _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
@@ -889,7 +954,7 @@ def test_balance_analysis_materialize_marks_choice_fx_carry_forward_when_prior_b
         def __init__(self):
             self.calls: list[str] = []
 
-        def edb(self, codes, options=""):
+        def edb(self, codes, options="", **_kwargs):
             self.calls.append(options)
             if "StartDate=2025-12-31" in options:
                 return type("EmptyChoiceResult", (), {"Codes": [], "Dates": [], "Data": {}})()
