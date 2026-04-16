@@ -20,10 +20,10 @@ import sys
 import time
 from pathlib import Path
 
-# 确保 backend 在 sys.path 中
-_BACKEND_ROOT = Path(__file__).resolve().parents[1]
-if str(_BACKEND_ROOT) not in sys.path:
-    sys.path.insert(0, str(_BACKEND_ROOT))
+# 确保 MOSS-V3 根目录（backend 的父目录）在 sys.path 中，这样 `from backend.app...` 才能工作
+_REPO_ROOT = Path(__file__).resolve().parents[2]  # scripts -> backend -> MOSS-V3
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 os.environ.setdefault("MOSS_OBJECT_STORE_MODE", "local")
 os.environ.setdefault("MOSS_GOVERNANCE_BACKEND", "jsonl")
