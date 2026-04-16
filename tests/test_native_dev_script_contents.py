@@ -64,6 +64,7 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "55432" in script
     assert "/health" in script
     assert "/api/bond-analytics/dates" in script
+    assert "exit 0" in script
 
 
 def test_dev_postgres_up_script_fails_when_cluster_is_not_running():

@@ -178,3 +178,4 @@ Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Frontend:     $($frontendRoot.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
+exit 0
