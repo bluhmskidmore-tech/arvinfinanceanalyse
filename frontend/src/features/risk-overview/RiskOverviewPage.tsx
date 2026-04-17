@@ -4,6 +4,7 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
+import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
@@ -160,20 +161,14 @@ export default function RiskOverviewPage() {
 
   const krdQuery = useQuery({
     queryKey: ["risk-overview", "krd-curve-risk", reportDate],
-    queryFn: async (): Promise<KRDCurveRiskResponse> => {
-      const envelope = await client.getBondAnalyticsKrdCurveRisk(reportDate);
-      return envelope.result;
-    },
+    queryFn: () => client.getBondAnalyticsKrdCurveRisk(reportDate),
     enabled: Boolean(reportDate),
     retry: false,
   });
 
   const creditQuery = useQuery({
     queryKey: ["risk-overview", "credit-spread-migration", reportDate],
-    queryFn: async (): Promise<CreditSpreadMigrationResponse> => {
-      const envelope = await client.getBondAnalyticsCreditSpreadMigration(reportDate);
-      return envelope.result;
-    },
+    queryFn: () => client.getBondAnalyticsCreditSpreadMigration(reportDate),
     enabled: Boolean(reportDate),
     retry: false,
   });
@@ -185,8 +180,8 @@ export default function RiskOverviewPage() {
     tensorResult !== undefined &&
     tensorResult.bond_count === 0;
 
-  const krd = krdQuery.data;
-  const credit = creditQuery.data;
+  const krd = krdQuery.data?.result as KRDCurveRiskResponse | undefined;
+  const credit = creditQuery.data?.result as CreditSpreadMigrationResponse | undefined;
 
   const krdChartOption = useMemo((): EChartsOption | null => {
     if (!tensorResult) {
@@ -775,6 +770,16 @@ export default function RiskOverviewPage() {
           )}
         </AsyncSection>
       </div>
+
+      <FormalResultMetaPanel
+        testId="risk-overview-result-meta-panel"
+        sections={[
+          { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
+          { key: "tensor", title: "风险张量主读面", meta: tensorQuery.data?.result_meta },
+          { key: "krd", title: "KRD 物化下钻", meta: krdQuery.data?.result_meta },
+          { key: "issuer", title: "发行人集中度下钻", meta: creditQuery.data?.result_meta },
+        ]}
+      />
     </section>
   );
 }

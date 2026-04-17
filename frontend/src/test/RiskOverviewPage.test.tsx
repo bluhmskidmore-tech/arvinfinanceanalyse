@@ -94,6 +94,8 @@ describe("RiskOverviewPage", () => {
     expect(await screen.findByText("120.5")).toBeInTheDocument();
     expect(screen.getByText("42")).toBeInTheDocument();
     expect(screen.getByText("正式风险张量（主数据）")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent("test_trace");
+    expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent("sv_test");
   });
 
   it("uses backend risk tensor dates for the default report date", async () => {
@@ -283,5 +285,11 @@ describe("RiskOverviewPage", () => {
     expect(screen.getByTestId("risk-overview-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-overview-issuer-drill")).toHaveTextContent("城投集团A");
     expect(screen.getByTestId("risk-overview-issuer-drill")).toHaveTextContent("0.18");
+    expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent(
+      "bond_analytics.krd_curve_risk",
+    );
+    expect(screen.getByTestId("risk-overview-result-meta-panel")).toHaveTextContent(
+      "bond_analytics.credit_spread_migration",
+    );
   });
 });

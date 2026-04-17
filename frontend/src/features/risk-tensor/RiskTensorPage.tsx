@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
+import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -546,6 +547,14 @@ export default function RiskTensorPage() {
           </>
         ) : null}
       </AsyncSection>
+
+      <FormalResultMetaPanel
+        testId="risk-tensor-result-meta-panel"
+        sections={[
+          { key: "dates", title: "风险报告日列表", meta: datesQuery.data?.result_meta },
+          { key: "tensor", title: "风险张量主读面", meta: tensorQuery.data?.result_meta },
+        ]}
+      />
     </section>
   );
 }

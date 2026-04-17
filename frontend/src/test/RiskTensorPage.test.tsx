@@ -102,6 +102,8 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
     expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_2026-02-28");
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("sv_tensor_test");
 
     await waitFor(() => {
       expect(getRiskTensorDates).toHaveBeenCalled();
@@ -151,5 +153,6 @@ describe("RiskTensorPage", () => {
 
     expect(await screen.findByText("后端未返回可用风险报告日。")).toBeInTheDocument();
     expect(getRiskTensor).not.toHaveBeenCalled();
+    expect(screen.getByTestId("risk-tensor-result-meta-panel")).toHaveTextContent("tr_tensor_dates_empty");
   });
 });
