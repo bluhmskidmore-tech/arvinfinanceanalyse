@@ -180,3 +180,37 @@ def test_descriptor_uses_canonical_identity_rules():
     assert descriptor.cache_version == "cv_mock_standard_module_formal__rv_mock_standard_v1"
     assert descriptor.stable_output_version == descriptor.cache_version
     assert descriptor.running_source_version == "sv_mock_standard_module_running"
+
+
+def test_descriptor_supports_validated_identity_overrides():
+    contracts_mod, _registry_mod = _load_registry_modules()
+    descriptor = _descriptor(
+        contracts_mod,
+        module_name="pnl",
+        fact_tables=("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"),
+        result_kind_family="pnl",
+        rule_version="rv_pnl_phase2_materialize_v1",
+        cache_key_override="pnl:phase2:materialize:formal",
+        lock_key_override="lock:duckdb:formal:pnl:phase2:materialize",
+    )
+
+    assert descriptor.cache_key == "pnl:phase2:materialize:formal"
+    assert descriptor.lock_key == "lock:duckdb:formal:pnl:phase2:materialize"
+    assert descriptor.cache_version == "cv_pnl_formal__rv_pnl_phase2_materialize_v1"
+
+
+def test_pnl_materialize_registers_formal_module_with_shared_runtime_identity():
+    contracts_mod, registry_mod = _load_registry_modules()
+    registry_mod.clear_formal_modules()
+    pnl_task_module = load_module(
+        "backend.app.tasks.pnl_materialize",
+        "backend/app/tasks/pnl_materialize.py",
+    )
+
+    descriptor = registry_mod.get_formal_module("pnl")
+
+    assert isinstance(descriptor, contracts_mod.FormalComputeModuleDescriptor)
+    assert descriptor.fact_tables == ("fact_formal_pnl_fi", "fact_nonstd_pnl_bridge")
+    assert descriptor.cache_key == pnl_task_module.CACHE_KEY
+    assert descriptor.lock_key == pnl_task_module.PNL_MATERIALIZE_LOCK.key
+    assert descriptor.cache_version == pnl_task_module.PNL_RESULT_CACHE_VERSION
