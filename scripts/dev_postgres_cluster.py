@@ -118,18 +118,7 @@ def _resolve_python_executable() -> str:
 def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
     config.cluster_root.mkdir(parents=True, exist_ok=True)
     if not config.data_dir.exists():
-        _run_checked(
-            [
-                str(config.bin_dir / "initdb.exe"),
-                "-D",
-                str(config.data_dir),
-                "-U",
-                "postgres",
-                "-A",
-                "trust",
-                "--no-instructions",
-            ]
-        )
+        _initdb_with_locale_fallback(config)
 
     if not _is_port_open(config.host, config.port):
         _run_checked(
@@ -497,6 +486,32 @@ def _wait_for_postgres_ready(
         f"Local PostgreSQL dev cluster did not accept SQL connections for database "
         f"{database or config.admin_database} on {config.host}:{config.port}."
     )
+
+
+def _initdb_with_locale_fallback(config: DevPostgresClusterConfig) -> None:
+    base_args = [
+        str(config.bin_dir / "initdb.exe"),
+        "-D",
+        str(config.data_dir),
+        "-U",
+        "postgres",
+        "-A",
+        "trust",
+        "--no-instructions",
+    ]
+    try:
+        _run_checked(base_args)
+    except subprocess.CalledProcessError as exc:
+        if not _is_locale_text_search_failure(exc):
+            raise
+        _run_checked([*base_args, "--no-locale", "--encoding=UTF8"])
+
+
+def _is_locale_text_search_failure(exc: subprocess.CalledProcessError) -> bool:
+    output = "\n".join(
+        part for part in (getattr(exc, "output", None), getattr(exc, "stderr", None)) if part
+    ).lower()
+    return "text search configuration" in output and "locale" in output
 
 
 def _run_checked(args: list[str], *, capture_output: bool = False) -> str:
