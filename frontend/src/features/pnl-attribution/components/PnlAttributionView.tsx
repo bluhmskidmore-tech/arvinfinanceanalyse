@@ -5,6 +5,9 @@ import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
+  CampisiEnhancedPayload,
+  CampisiFourEffectsPayload,
+  CampisiMaturityBucketsPayload,
   CarryRollDownPayload,
   KRDAttributionPayload,
   PnlAttributionAnalysisSummary,
@@ -16,6 +19,8 @@ import type {
 import { AdvancedAttributionChart } from "./AdvancedAttributionChart";
 import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
 import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
+import { CampisiEnhancedPanel } from "./CampisiEnhancedPanel";
+import { CampisiMaturityBucketPanel } from "./CampisiMaturityBucketPanel";
 import { PnLCompositionChart } from "./PnLCompositionChart";
 import { TPLMarketChart } from "./TPLMarketChart";
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
@@ -151,6 +156,9 @@ export function PnlAttributionView({ reportDate }: Props) {
   const [krdData, setKrdData] = useState<KRDAttributionPayload | null>(null);
   const [advancedSummary, setAdvancedSummary] = useState<AdvancedAttributionSummary | null>(null);
   const [campisiData, setCampisiData] = useState<CampisiAttributionPayload | null>(null);
+  const [campisiFourEffects, setCampisiFourEffects] = useState<CampisiFourEffectsPayload | null>(null);
+  const [campisiEnhanced, setCampisiEnhanced] = useState<CampisiEnhancedPayload | null>(null);
+  const [campisiMaturityBuckets, setCampisiMaturityBuckets] = useState<CampisiMaturityBucketsPayload | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -174,18 +182,24 @@ export function PnlAttributionView({ reportDate }: Props) {
         });
         setCompositionData(data.result);
       } else {
-        const [carry, spread, krd, summary, campisi] = await Promise.all([
+        const [carry, spread, krd, summary, campisi, campisiFour, campisiEnhancedData, campisiBuckets] = await Promise.all([
           client.getPnlCarryRollDown(reportDate),
           client.getPnlSpreadAttribution({ reportDate, lookbackDays: 30 }),
           client.getPnlKrdAttribution({ reportDate, lookbackDays: 30 }),
           client.getPnlAdvancedAttributionSummary(reportDate),
           client.getPnlCampisiAttribution({ lookbackDays: 30 }),
+          client.getPnlCampisiFourEffects({ endDate: reportDate, lookbackDays: 30 }),
+          client.getPnlCampisiEnhanced({ endDate: reportDate, lookbackDays: 30 }),
+          client.getPnlCampisiMaturityBuckets({ endDate: reportDate, lookbackDays: 30 }),
         ]);
         setCarryRollDownData(carry.result);
         setSpreadData(spread.result);
         setKrdData(krd.result);
         setAdvancedSummary(summary.result);
         setCampisiData(campisi.result);
+        setCampisiFourEffects(campisiFour.result);
+        setCampisiEnhanced(campisiEnhancedData.result);
+        setCampisiMaturityBuckets(campisiBuckets.result);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "加载失败";
@@ -413,7 +427,9 @@ export function PnlAttributionView({ reportDate }: Props) {
 
       {!loading && !error && activeTab === "advanced" && (
         <>
-          <CampisiAttributionPanel data={campisiData} />
+          <CampisiAttributionPanel data={campisiFourEffects ?? campisiData} />
+          <CampisiEnhancedPanel data={campisiEnhanced} />
+          <CampisiMaturityBucketPanel data={campisiMaturityBuckets} />
           <AdvancedAttributionChart
             carryData={carryRollDownData}
             spreadData={spreadData}

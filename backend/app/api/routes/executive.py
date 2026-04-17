@@ -28,7 +28,13 @@ def _require_landed_executive_surface(
     payload: dict[str, object],
     *,
     route_name: str,
+    promoted: bool = True,
 ) -> dict[str, object]:
+    if not promoted:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Executive route {route_name} is not backed by governed data yet.",
+        )
     meta = payload.get("result_meta")
     if isinstance(meta, dict) and meta.get("vendor_status") == "vendor_unavailable":
         raise HTTPException(
@@ -58,6 +64,7 @@ def risk_overview(report_date: str | None = None) -> dict[str, object]:
     return _require_landed_executive_surface(
         executive_risk_overview(report_date=_normalize_report_date(report_date)),
         route_name="risk_overview",
+        promoted=False,
     )
 
 
@@ -66,6 +73,7 @@ def contribution(report_date: str | None = None) -> dict[str, object]:
     return _require_landed_executive_surface(
         executive_contribution(report_date=_normalize_report_date(report_date)),
         route_name="contribution",
+        promoted=False,
     )
 
 
@@ -74,4 +82,5 @@ def alerts(report_date: str | None = None) -> dict[str, object]:
     return _require_landed_executive_surface(
         executive_alerts(report_date=_normalize_report_date(report_date)),
         route_name="alerts",
+        promoted=False,
     )

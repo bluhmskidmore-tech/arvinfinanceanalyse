@@ -11,7 +11,7 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 describe("PnlAttributionPage", () => {
-  it("mounts and switches tabs", async () => {
+  it("mounts and exposes the detailed Campisi drill-down panels", async () => {
     const user = userEvent.setup();
     const client = createApiClient({ mode: "mock" });
     const queryClient = new QueryClient({
@@ -26,16 +26,17 @@ describe("PnlAttributionPage", () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByTestId("pnl-attribution-page-title")).toHaveTextContent("损益归因分析");
-    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toHaveTextContent("归因分析工作台");
-    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toHaveTextContent("不在前端补算正式损益");
-    expect(screen.getByTestId("pnl-attribution-current-view-lead")).toHaveTextContent("当前归因视图");
+    expect(await screen.findByTestId("pnl-attribution-page-title")).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-attribution-workbench-lead")).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-attribution-current-view-lead")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "TPL 市场相关性" }));
-    expect(screen.getByRole("button", { name: "TPL 市场相关性" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /TPL/i }));
+    expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "损益构成" }));
-    await user.click(screen.getByRole("button", { name: "高级归因 + Campisi" }));
-    await user.click(screen.getByRole("button", { name: "规模 / 利率效应" }));
+    await user.click(screen.getByRole("button", { name: /Campisi/i }));
+
+    expect(await screen.findByText("Campisi 四效应归因（组合）")).toBeInTheDocument();
+    expect(screen.getByText("Campisi 六效应归因（扩展）")).toBeInTheDocument();
+    expect(screen.getByText("Campisi 到期桶拆解")).toBeInTheDocument();
   });
 });

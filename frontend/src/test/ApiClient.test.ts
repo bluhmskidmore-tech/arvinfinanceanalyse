@@ -267,6 +267,271 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch ledger pnl dates, summary, and detail payloads", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ledger_dates",
+            basis: "formal",
+            result_kind: "ledger_pnl.dates",
+            formal_use_allowed: true,
+            source_version: "sv_ledger_dates",
+            vendor_version: "vv_none",
+            rule_version: "rv_ledger",
+            cache_version: "cv_ledger",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: { dates: ["2025-12-31"] },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ledger_summary",
+            basis: "formal",
+            result_kind: "ledger_pnl.summary",
+            formal_use_allowed: true,
+            source_version: "sv_ledger_summary",
+            vendor_version: "vv_none",
+            rule_version: "rv_ledger",
+            cache_version: "cv_ledger",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            report_date: "2025-12-31",
+            source_version: "sv_ledger_summary",
+            ledger_total_assets: { yuan: "10.00", yi: "0.00", wan: "0.00" },
+            ledger_total_liabilities: { yuan: "5.00", yi: "0.00", wan: "0.00" },
+            ledger_net_assets: { yuan: "5.00", yi: "0.00", wan: "0.00" },
+            ledger_monthly_pnl_core: { yuan: "1.00", yi: "0.00", wan: "0.00" },
+            ledger_monthly_pnl_all: { yuan: "2.00", yi: "0.00", wan: "0.00" },
+            by_currency: [],
+            by_account: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_ledger_data",
+            basis: "formal",
+            result_kind: "ledger_pnl.data",
+            formal_use_allowed: true,
+            source_version: "sv_ledger_data",
+            vendor_version: "vv_none",
+            rule_version: "rv_ledger",
+            cache_version: "cv_ledger",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            report_date: "2025-12-31",
+            items: [],
+            summary: {
+              total_pnl_cnx: { yuan: "1.00", yi: "0.00", wan: "0.00" },
+              total_pnl_cny: { yuan: "0.00", yi: "0.00", wan: "0.00" },
+              total_pnl: { yuan: "1.00", yi: "0.00", wan: "0.00" },
+              count: 0,
+            },
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLedgerPnlDates();
+    await client.getLedgerPnlSummary("2025-12-31", "CNX");
+    await client.getLedgerPnlData("2025-12-31", "CNX");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/ledger-pnl/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/ledger-pnl/summary?date=2025-12-31&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/ledger-pnl/data?date=2025-12-31&currency=CNX",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("uses real mode to fetch detailed Campisi drill-down endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_four",
+            basis: "formal",
+            result_kind: "campisi.four_effects",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            num_days: 30,
+            totals: {
+              income_return: 1,
+              treasury_effect: 2,
+              spread_effect: 3,
+              selection_effect: 4,
+              total_return: 10,
+              market_value_start: 100,
+            },
+            by_asset_class: [],
+            by_bond: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_enhanced",
+            basis: "formal",
+            result_kind: "campisi.enhanced",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            report_date: "2026-03-31",
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            num_days: 30,
+            totals: {
+              income_return: 1,
+              treasury_effect: 2,
+              spread_effect: 3,
+              convexity_effect: 0.2,
+              cross_effect: 0.1,
+              reinvestment_effect: 0,
+              selection_effect: 4,
+              total_return: 10,
+              market_value_start: 100,
+            },
+            by_asset_class: [],
+            by_bond: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_campisi_bucket",
+            basis: "formal",
+            result_kind: "campisi.maturity_buckets",
+            formal_use_allowed: true,
+            source_version: "sv_campisi",
+            vendor_version: "vv_none",
+            rule_version: "rv_campisi",
+            cache_version: "cv_campisi",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-17T00:00:00Z",
+          },
+          result: {
+            period_start: "2026-03-01",
+            period_end: "2026-03-31",
+            buckets: {
+              "0-1Y": {
+                market_value_start: 100,
+                income_return: 1,
+                treasury_effect: 2,
+                spread_effect: 3,
+                selection_effect: 4,
+                total_return: 10,
+              },
+            },
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getPnlCampisiFourEffects({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiEnhanced({ endDate: "2026-03-31", lookbackDays: 30 });
+    await client.getPnlCampisiMaturityBuckets({ endDate: "2026-03-31", lookbackDays: 30 });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/pnl-attribution/campisi/four-effects?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl-attribution/campisi/enhanced?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl-attribution/campisi/maturity-buckets?end_date=2026-03-31&lookback_days=30",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch source preview foundation endpoint", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -2697,4 +2962,3 @@ describe("createApiClient", () => {
     expect(result.result_meta.result_kind).toBe("cube.query");
   });
 });
-

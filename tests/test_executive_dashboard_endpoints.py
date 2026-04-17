@@ -31,21 +31,16 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
 def test_executive_dashboard_endpoints_return_result_meta_envelopes():
     module = _load_executive_routes_module()
 
-    for name in (
-        "overview",
-        "summary",
-        "pnl_attribution",
-        "risk_overview",
-        "alerts",
-    ):
+    for name in ("overview", "summary", "pnl_attribution"):
         payload = getattr(module, name)()
         assert "result_meta" in payload
         assert "result" in payload
         assert payload["result_meta"]["result_kind"].startswith("executive.")
 
-    with pytest.raises(HTTPException) as exc_info:
-        module.contribution()
-    assert exc_info.value.status_code == 503
+    for name in ("risk_overview", "alerts", "contribution"):
+        with pytest.raises(HTTPException) as exc_info:
+            getattr(module, name)()
+        assert exc_info.value.status_code == 503
 
 
 def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200():
@@ -55,8 +50,6 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
-        "/ui/risk/overview",
-        "/ui/home/alerts",
     ]
     kinds: list[str] = []
     for path in ok_paths:
@@ -72,11 +65,14 @@ def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_a
     assert "executive.overview" in kinds
     assert "executive.summary" in kinds
     assert "executive.pnl-attribution" in kinds
-    assert "executive.risk-overview" in kinds
-    assert "executive.alerts" in kinds
 
-    response = client.get("/ui/home/contribution")
-    assert response.status_code == 503
+    for path in (
+        "/ui/risk/overview",
+        "/ui/home/alerts",
+        "/ui/home/contribution",
+    ):
+        response = client.get(path)
+        assert response.status_code == 503, path
 
 
 def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailable(monkeypatch):
@@ -113,6 +109,43 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
         assert exc_info.value.status_code == 503
 
 
+def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):
+    module = _load_executive_routes_module()
+
+    def _ok_payload(result_kind: str) -> dict[str, object]:
+        return {
+            "result_meta": {
+                "result_kind": result_kind,
+                "basis": "analytical",
+                "formal_use_allowed": False,
+                "scenario_flag": False,
+                "vendor_status": "ok",
+            },
+            "result": {},
+        }
+
+    monkeypatch.setattr(
+        module,
+        "executive_risk_overview",
+        lambda report_date=None: _ok_payload("executive.risk-overview"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_contribution",
+        lambda report_date=None: _ok_payload("executive.contribution"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_alerts",
+        lambda report_date=None: _ok_payload("executive.alerts"),
+    )
+
+    for name in ("risk_overview", "contribution", "alerts"):
+        with pytest.raises(HTTPException) as exc_info:
+            getattr(module, name)()
+        assert exc_info.value.status_code == 503
+
+
 def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
     module = _load_executive_routes_module()
 
@@ -133,9 +166,11 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
 
     assert module.overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.overview"
     assert module.pnl_attribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.pnl-attribution"
-    assert module.risk_overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.risk-overview"
-    assert module.contribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.contribution"
-    assert module.alerts(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.alerts"
+
+    for name in ("risk_overview", "contribution", "alerts"):
+        with pytest.raises(HTTPException) as exc_info:
+            getattr(module, name)(report_date="2025-11-20")
+        assert exc_info.value.status_code == 503
 
     assert calls == [
         ("overview", "2025-11-20"),

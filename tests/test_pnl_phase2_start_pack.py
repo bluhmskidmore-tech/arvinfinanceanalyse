@@ -314,6 +314,65 @@ def test_phase2_nonstd_bridge_uses_month_end_mtd_semantics():
     ]
 
 
+def test_phase2_nonstd_bridge_normalizes_lineage_versions_with_double_underscore_separator():
+    entries = [
+        NonStdJournalEntry(
+            voucher_date=date(2025, 12, 30),
+            account_code="51601010004",
+            asset_code="BOND-001",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            journal_type="516",
+            signed_amount=Decimal("-40.00"),
+            dc_flag="credit",
+            event_type="mtm",
+            source_file="nonstd-516-a.xlsx",
+            source_version="src-v1",
+            rule_version="rule-v1",
+            ingest_batch_id="batch-001",
+            trace_id="trace-001",
+        ),
+        NonStdJournalEntry(
+            voucher_date=date(2025, 12, 31),
+            account_code="51601010004",
+            asset_code="BOND-001",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            journal_type="516",
+            signed_amount=Decimal("-60.00"),
+            dc_flag="credit",
+            event_type="mtm",
+            source_file="nonstd-516-b.xlsx",
+            source_version="src-v2",
+            rule_version="rule-v2",
+            ingest_batch_id="batch-001",
+            trace_id="trace-002",
+        ),
+    ]
+
+    assert build_nonstd_pnl_bridge_rows(
+        entries,
+        target_date=date(2025, 12, 31),
+        is_month_end=True,
+    ) == [
+        NonStdPnlBridgeRow(
+            report_date=date(2025, 12, 31),
+            bond_code="BOND-001",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            interest_income_514=Decimal("0"),
+            fair_value_change_516=Decimal("-100.00"),
+            capital_gain_517=Decimal("0"),
+            manual_adjustment=Decimal("0"),
+            total_pnl=Decimal("-100.00"),
+            source_version="src-v1__src-v2",
+            rule_version="rule-v1__rule-v2",
+            ingest_batch_id="batch-001",
+            trace_id="trace-001,trace-002",
+        )
+    ]
+
+
 def test_phase2_nonstd_bridge_uses_unlabeled_fallback_when_asset_code_is_missing():
     entries = [
         NonStdJournalEntry(

@@ -70,6 +70,9 @@ const PositionsPage = lazy(() => import("../features/positions/pages/PositionsPa
 const AverageBalancePage = lazy(
   () => import("../features/average-balance/pages/AverageBalancePage"),
 );
+const LedgerPnlPage = lazy(
+  () => import("../features/ledger-pnl/pages/LedgerPnlPage"),
+);
 const KpiPerformancePage = lazy(
   () => import("../features/kpi-performance/pages/KpiPerformancePage"),
 );
@@ -240,6 +243,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<AverageBalancePage />),
+      };
+    }
+
+    if (section.path === "/ledger-pnl") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<LedgerPnlPage />),
       };
     }
 

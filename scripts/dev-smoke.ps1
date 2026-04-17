@@ -40,7 +40,14 @@ if ($health.status -ne "ok") {
 
 $ingest = python -c "from backend.app.tasks.ingest import ingest_demo_manifest; import json; print(json.dumps(ingest_demo_manifest.fn(), ensure_ascii=False))"
 $materialize = python -c "from backend.app.tasks.materialize import materialize_cache_view; import json; print(json.dumps(materialize_cache_view.fn(), ensure_ascii=False))"
+$audit = python "$root\scripts\audit_governance_lineage.py" --governance-dir $smokeGovernance
+$auditSummary = $audit | ConvertFrom-Json
+if ($auditSummary.dirty_rows -ne 0) {
+  throw "Governance lineage audit failed: dirty_rows=$($auditSummary.dirty_rows)"
+}
 
 Write-Output "HEALTH_OK"
 Write-Output $ingest
 Write-Output $materialize
+Write-Output "AUDIT_OK"
+Write-Output $audit

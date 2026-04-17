@@ -13,3 +13,4 @@ def test_native_smoke_script_exists_and_references_native_chain():
     assert "/health" in text
     assert "ingest_demo_manifest" in text
     assert "materialize_cache_view" in text
+    assert "audit_governance_lineage.py" in text

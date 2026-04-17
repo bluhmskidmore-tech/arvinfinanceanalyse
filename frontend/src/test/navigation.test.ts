@@ -129,14 +129,21 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "platform-config")).toBe(false);
   });
 
-  it("keeps average-balance as a secondary legacy analytical entry", () => {
+  it("promotes average-balance into the live primary navigation", () => {
     const adb = workbenchNavigation.find((s) => s.key === "average-balance");
     expect(adb?.path).toBe("/average-balance");
-    expect(adb?.readiness).toBe("placeholder");
-    expect(adb?.readinessLabel).toBe("Analytical");
+    expect(adb?.readiness).toBe("live");
     expect(adb?.label).toContain("ADB");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(true);
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(false);
+  });
+
+  it("promotes ledger-pnl into the live primary navigation", () => {
+    const ledger = workbenchNavigation.find((s) => s.key === "ledger-pnl");
+    expect(ledger?.path).toBe("/ledger-pnl");
+    expect(ledger?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "ledger-pnl")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "ledger-pnl")).toBe(false);
   });
 
   it("tracks reserved modules outside the live primary navigation", () => {
@@ -146,7 +153,7 @@ describe("workbench navigation mocks", () => {
     expect(primaryWorkbenchNavigation.length + secondaryWorkbenchNavigation.length).toBe(
       workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
-    expect(secondaryWorkbenchNavigation.length).toBe(1);
+    expect(secondaryWorkbenchNavigation.length).toBe(0);
   });
 
   it("groups live entries into a smaller set of primary workspaces", () => {

@@ -417,6 +417,9 @@ export default function ProductCategoryPnlPage() {
       </span>
     </div>
   ) : null;
+  const ledgerPnlHref = selectedDate
+    ? `/ledger-pnl?report_date=${encodeURIComponent(selectedDate)}`
+    : "/ledger-pnl";
 
   if (selectedBranch === "monthly_operating_analysis") {
     return (
@@ -514,6 +517,9 @@ export default function ProductCategoryPnlPage() {
           </span>
           <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
             查看调整审计
+          </a>
+          <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
+            Ledger PnL
           </a>
           <button
             type="button"

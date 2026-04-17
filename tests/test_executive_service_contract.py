@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import duckdb
@@ -23,7 +24,10 @@ def _exec_service_module():
 
 
 def _fake_settings(tmp_path):
-    ns = SimpleNamespace(duckdb_path=str(tmp_path / "x.duckdb"))
+    ns = SimpleNamespace(
+        duckdb_path=str(tmp_path / "x.duckdb"),
+        governance_path=Path(tmp_path / "governance"),
+    )
     return ns
 
 
@@ -40,6 +44,22 @@ def _assert_analytical_meta(meta: dict) -> None:
     assert meta["scenario_flag"] is False
 
 
+def test_executive_lineage_tokens_split_dirty_comma_separated_values(exec_mod):
+    tokens = exec_mod._lineage_tokens(
+        "sv_clean_a__sv_dirty_a,sv_dirty_b",
+        "sv_dirty_b",
+        "sv_clean_c, sv_clean_d",
+    )
+
+    assert tokens == [
+        "sv_clean_a",
+        "sv_clean_c",
+        "sv_clean_d",
+        "sv_dirty_a",
+        "sv_dirty_b",
+    ]
+
+
 def test_executive_summary_static_contract(exec_mod):
     out = exec_mod.executive_summary()
     meta = out["result_meta"]
@@ -54,6 +74,26 @@ def test_executive_summary_static_contract(exec_mod):
     texts = " ".join(p["text"] for p in res["points"])
     assert "票息" in texts or "利率" in texts
     assert "集中度" in texts or "暴露" in texts
+
+
+def test_executive_summary_uses_overview_lineage_when_available(monkeypatch, exec_mod):
+    monkeypatch.setattr(
+        exec_mod,
+        "executive_overview",
+        lambda report_date=None: {
+            "result_meta": {
+                "source_version": "sv_summary_dep_a__sv_summary_dep_b",
+                "rule_version": "rv_summary_dep_a__rv_summary_dep_b",
+                "vendor_status": "ok",
+            },
+            "result": {"metrics": []},
+        },
+    )
+
+    out = exec_mod.executive_summary()
+
+    assert out["result_meta"]["source_version"] == "sv_summary_dep_a__sv_summary_dep_b"
+    assert out["result_meta"]["rule_version"] == "rv_summary_dep_a__rv_summary_dep_b"
 
 
 def test_executive_overview_fallback_when_repos_fail(monkeypatch, exec_mod):
@@ -100,6 +140,24 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
                 "2030-02-28": 1000.00e8,
             }
             return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+
+        def fetch_formal_overview(self, **kwargs):
+            values = {
+                "2030-03-15": 1023.47e8,
+                "2030-02-28": 1000.00e8,
+            }
+            return {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 10,
+                "summary_row_count": 10,
+                "total_market_value_amount": values[kwargs["report_date"]],
+                "total_amortized_cost_amount": values[kwargs["report_date"]],
+                "total_accrued_interest_amount": 0.0,
+                "source_version": "sv_balance_union",
+                "rule_version": "rv_balance_union",
+            }
 
     class OkPnl:
         def __init__(self, *_a, **_k):
@@ -170,6 +228,29 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", OkBondRepo)
     monkeypatch.setattr(
         exec_mod,
+        "resolve_completed_formal_build_lineage",
+        lambda **kwargs: {
+            "source_version": "sv_pnl_formal",
+            "rule_version": "rv_pnl_formal",
+            "cache_version": "cv_pnl_formal",
+            "vendor_version": "vv_none",
+            "report_date": kwargs["report_date"],
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **kwargs: {
+            "source_version": "sv_bond_analytics",
+            "rule_version": "rv_bond_analytics",
+            "cache_version": "cv_bond_analytics",
+            "vendor_version": "vv_none",
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        exec_mod,
         "compute_liability_yield_metrics",
         lambda report_date, zqtz_rows, tyw_rows: {
             "report_date": report_date,
@@ -207,6 +288,12 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
 
     out = exec_mod.executive_overview()
     assert out["result_meta"]["result_kind"] == "executive.overview"
+    assert out["result_meta"]["source_version"] == (
+        "sv-liab-t__sv-liab-z__sv_balance_union__sv_bond_analytics__sv_exec_dashboard_v1__sv_pnl_formal"
+    )
+    assert out["result_meta"]["rule_version"] == (
+        "rv-liab__rv_balance_union__rv_bond_analytics__rv_exec_dashboard_v1__rv_pnl_formal"
+    )
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
     assert metrics["aum"]["value"] == "1,023.47 亿"
@@ -551,36 +638,48 @@ def test_executive_pnl_attribution_repo_aggregation_contract(monkeypatch, exec_m
                 "is_total": False,
                 "category_id": "bond_tpl",
                 "business_net_income": 1e8,
+                "source_version": "sv_pc_a",
+                "rule_version": "rv_pc_a",
             },
             {
                 "level": 1,
                 "is_total": False,
                 "category_id": "bond_ac",
                 "business_net_income": 2e8,
+                "source_version": "sv_pc_a",
+                "rule_version": "rv_pc_a",
             },
             {
                 "level": 1,
                 "is_total": False,
                 "category_id": "bond_fvoci",
                 "business_net_income": 1e8,
+                "source_version": "sv_pc_b",
+                "rule_version": "rv_pc_b",
             },
             {
                 "level": 1,
                 "is_total": False,
                 "category_id": "bond_ac_other",
                 "business_net_income": 0.5e8,
+                "source_version": "sv_pc_b",
+                "rule_version": "rv_pc_b",
             },
             {
                 "level": 1,
                 "is_total": False,
                 "category_id": "bond_valuation_spread",
                 "business_net_income": -3e8,
+                "source_version": "sv_pc_c",
+                "rule_version": "rv_pc_c",
             },
             {
                 "level": 1,
                 "is_total": False,
                 "category_id": "unknown_bucket",
                 "business_net_income": 0.25e8,
+                "source_version": "sv_pc_c",
+                "rule_version": "rv_pc_c",
             },
         ]
 
@@ -599,6 +698,8 @@ def test_executive_pnl_attribution_repo_aggregation_contract(monkeypatch, exec_m
     monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
     out = exec_mod.executive_pnl_attribution()
     assert out["result_meta"]["result_kind"] == "executive.pnl-attribution"
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c"
+    assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c"
     segs = {s["id"]: s for s in out["result"]["segments"]}
     assert segs["carry"]["amount"] == pytest.approx(3.0)
     assert segs["carry"]["display_amount"] == "+3.00 亿"
@@ -629,6 +730,8 @@ def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_
                     "is_total": False,
                     "category_id": "bond_ac",
                     "business_net_income": 2e8,
+                    "source_version": "sv_pc_req",
+                    "rule_version": "rv_pc_req",
                 }
             ]
 
@@ -637,6 +740,8 @@ def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_
 
     assert calls == [("2025-11-20", "monthly")]
     assert out["result"]["total"] == "+2.00 亿"
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_pc_req"
+    assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_pc_req"
 
 
 def test_executive_contribution_fallback(monkeypatch, exec_mod):
@@ -657,10 +762,10 @@ def test_executive_contribution_repo_grouping_and_status(monkeypatch, exec_mod):
 
     def rows():
         return [
-            {"level": 1, "is_total": False, "category_id": "bond_ac", "business_net_income": 10e8},
-            {"level": 1, "is_total": False, "category_id": "bond_valuation_spread", "business_net_income": 5e8},
-            {"level": 1, "is_total": False, "category_id": "bond_ac_other", "business_net_income": 8e8},
-            {"level": 1, "is_total": False, "category_id": "bond_tpl", "business_net_income": 2e8},
+            {"level": 1, "is_total": False, "category_id": "bond_ac", "business_net_income": 10e8, "source_version": "sv_contrib_a", "rule_version": "rv_contrib_a"},
+            {"level": 1, "is_total": False, "category_id": "bond_valuation_spread", "business_net_income": 5e8, "source_version": "sv_contrib_b", "rule_version": "rv_contrib_b"},
+            {"level": 1, "is_total": False, "category_id": "bond_ac_other", "business_net_income": 8e8, "source_version": "sv_contrib_b", "rule_version": "rv_contrib_b"},
+            {"level": 1, "is_total": False, "category_id": "bond_tpl", "business_net_income": 2e8, "source_version": "sv_contrib_c", "rule_version": "rv_contrib_c"},
         ]
 
     class Repo:
@@ -675,6 +780,8 @@ def test_executive_contribution_repo_grouping_and_status(monkeypatch, exec_mod):
 
     monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
     out = exec_mod.executive_contribution()
+    assert out["result_meta"]["source_version"] == "sv_contrib_a__sv_contrib_b__sv_contrib_c__sv_exec_dashboard_v1"
+    assert out["result_meta"]["rule_version"] == "rv_contrib_a__rv_contrib_b__rv_contrib_c__rv_exec_dashboard_v1"
     assert out["result"]["title"] == "团队 / 账户 / 策略贡献"
     by_id = {r["id"]: r for r in out["result"]["rows"]}
     assert by_id["rates"]["name"] == "利率组"
@@ -702,14 +809,16 @@ def test_executive_contribution_uses_requested_report_date(monkeypatch, exec_mod
         def fetch_rows(self, rd, grain):
             calls.append((rd, grain))
             return [
-                {"level": 1, "is_total": False, "category_id": "bond_tpl", "business_net_income": 1e8},
-                {"level": 1, "is_total": False, "category_id": "bond_ac", "business_net_income": 3e8},
+                {"level": 1, "is_total": False, "category_id": "bond_tpl", "business_net_income": 1e8, "source_version": "sv_contrib_req", "rule_version": "rv_contrib_req"},
+                {"level": 1, "is_total": False, "category_id": "bond_ac", "business_net_income": 3e8, "source_version": "sv_contrib_req", "rule_version": "rv_contrib_req"},
             ]
 
     monkeypatch.setattr(exec_mod, "ProductCategoryPnlRepository", Repo)
     out = exec_mod.executive_contribution(report_date="2025-11-20")
 
     assert calls == [("2025-11-20", "monthly")]
+    assert out["result_meta"]["source_version"] == "sv_contrib_req__sv_exec_dashboard_v1"
+    assert out["result_meta"]["rule_version"] == "rv_contrib_req__rv_exec_dashboard_v1"
     rows = {row["id"]: row for row in out["result"]["rows"]}
     assert rows["rates"]["contribution"] == "+3.00 亿"
     assert rows["trading"]["contribution"] == "+1.00 亿"
@@ -749,8 +858,21 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
             return snap
 
     monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", OkBond)
+    monkeypatch.setattr(
+        exec_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **kwargs: {
+            "source_version": "sv_risk_lineage",
+            "rule_version": "rv_risk_lineage",
+            "cache_version": "cv_risk_lineage",
+            "vendor_version": "vv_none",
+        },
+        raising=False,
+    )
     out = exec_mod.executive_risk_overview()
     assert out["result_meta"]["result_kind"] == "executive.risk-overview"
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_risk_lineage"
+    assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_risk_lineage"
     by_label = {s["label"]: s for s in out["result"]["signals"]}
     assert "4.57" in by_label["久期风险"]["value"]
     assert "1,234,568" in by_label["杠杆风险"]["value"] or "1234568" in by_label["杠杆风险"]["value"]
@@ -849,6 +971,17 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
     monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
     monkeypatch.setattr(
         exec_mod,
+        "load_latest_bond_analytics_lineage",
+        lambda **kwargs: {
+            "source_version": "sv_alerts_lineage",
+            "rule_version": "rv_alerts_lineage",
+            "cache_version": "cv_alerts_lineage",
+            "vendor_version": "vv_none",
+        },
+        raising=False,
+    )
+    monkeypatch.setattr(
+        exec_mod,
         "compute_portfolio_risk_tensor",
         lambda rows, report_date: FakeTensor(),
     )
@@ -862,6 +995,8 @@ def test_executive_alerts_repo_orchestration_contract(monkeypatch, exec_mod):
 
     out = exec_mod.executive_alerts()
     items = out["result"]["items"]
+    assert out["result_meta"]["source_version"] == "sv_alerts_lineage__sv_exec_dashboard_v1"
+    assert out["result_meta"]["rule_version"] == "rv_alerts_lineage__rv_exec_dashboard_v1"
     assert len(items) == 2
     assert items[0]["id"] == "rule-a"
     assert items[0]["severity"] == "high"
@@ -1062,6 +1197,115 @@ def test_executive_overview_latest_governed_ytd_uses_latest_report_date(monkeypa
     assert "2024-12-31" in metrics["yield"]["detail"]
     assert ("pnl", "2024-12-31") in calls
     assert ("pnl", "2024-11-30") in calls
+
+
+def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, exec_mod):
+    calls: list[tuple[str, object]] = []
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            calls.append(("balance-dates", None))
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_formal_overview(self, **kwargs):
+            calls.append(("balance-overview", kwargs))
+            values = {
+                "2026-02-28": 3572.76e8,
+                "2026-02-27": 3712.29e8,
+            }
+            return {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 10,
+                "summary_row_count": 10,
+                "total_market_value_amount": values[kwargs["report_date"]],
+                "total_amortized_cost_amount": values[kwargs["report_date"]],
+                "total_accrued_interest_amount": 0.0,
+                "source_version": "sv_balance_union",
+                "rule_version": "rv_balance_union",
+            }
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 4.69e8 if report_date == "2026-02-28" else 4.60e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-02-28"
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 13826218.0 if report_date == "2026-02-28" else 13855000.0,
+            }
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {"nim": 0.01},
+        },
+    )
+    monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", lambda **_kwargs: [])
+
+    out = exec_mod.executive_overview(report_date="2026-02-28")
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert metrics["aum"]["value"].startswith("3,572.76")
+    assert metrics["aum"]["delta"] == "-3.76%"
+    assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
+    assert "fact_formal_tyw_balance_daily" in metrics["aum"]["detail"]
+    assert ("balance-dates", None) in calls
+    assert (
+        "balance-overview",
+        {
+            "report_date": "2026-02-28",
+            "position_scope": "asset",
+            "currency_basis": "CNY",
+        },
+    ) in calls
+    assert (
+        "balance-overview",
+        {
+            "report_date": "2026-02-27",
+            "position_scope": "asset",
+            "currency_basis": "CNY",
+        },
+    ) in calls
 
 
 def test_formal_balance_metrics_repo_lists_report_dates(tmp_path):

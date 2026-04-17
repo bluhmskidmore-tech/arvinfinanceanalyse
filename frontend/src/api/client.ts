@@ -40,6 +40,9 @@ import type {
   AccountingClassAuditPayload,
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
+  CampisiEnhancedPayload,
+  CampisiFourEffectsPayload,
+  CampisiMaturityBucketsPayload,
   CashflowProjectionPayload,
   CarryRollDownPayload,
   KRDCurveRiskPayload,
@@ -80,6 +83,9 @@ import type {
   KpiPeriodSummaryResponse,
   KpiReportResponse,
   KpiValuesResponse,
+  LedgerPnlDataPayload,
+  LedgerPnlDatesPayload,
+  LedgerPnlSummaryPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
   MaturityStructurePayload,
@@ -170,6 +176,15 @@ export type ApiClient = {
     reportDate: string,
     basis?: PnlBasis,
   ) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+  getLedgerPnlDates: () => Promise<ApiEnvelope<LedgerPnlDatesPayload>>;
+  getLedgerPnlData: (
+    reportDate: string,
+    currency?: string,
+  ) => Promise<ApiEnvelope<LedgerPnlDataPayload>>;
+  getLedgerPnlSummary: (
+    reportDate: string,
+    currency?: string,
+  ) => Promise<ApiEnvelope<LedgerPnlSummaryPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -206,6 +221,21 @@ export type ApiClient = {
     endDate?: string;
     lookbackDays?: number;
   }) => Promise<ApiEnvelope<CampisiAttributionPayload>>;
+  getPnlCampisiFourEffects: (options?: {
+    startDate?: string;
+    endDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<CampisiFourEffectsPayload>>;
+  getPnlCampisiEnhanced: (options?: {
+    startDate?: string;
+    endDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<CampisiEnhancedPayload>>;
+  getPnlCampisiMaturityBuckets: (options?: {
+    startDate?: string;
+    endDate?: string;
+    lookbackDays?: number;
+  }) => Promise<ApiEnvelope<CampisiMaturityBucketsPayload>>;
   getRiskOverview: () => Promise<ApiEnvelope<RiskOverviewPayload>>;
   getRiskTensorDates: () => Promise<ApiEnvelope<RiskTensorDatesPayload>>;
   getRiskTensor: (reportDate: string) => Promise<ApiEnvelope<RiskTensorPayload>>;
@@ -642,6 +672,209 @@ const buildMockApiEnvelope = <T>(
 function buildPnlBasisQuerySegment(basis?: PnlBasis) {
   return basis && basis !== "formal" ? `&basis=${encodeURIComponent(basis)}` : "";
 }
+
+function buildCampisiQuery(options?: {
+  startDate?: string;
+  endDate?: string;
+  lookbackDays?: number;
+}) {
+  const params = new URLSearchParams();
+  if (options?.startDate?.trim()) {
+    params.set("start_date", options.startDate.trim());
+  }
+  if (options?.endDate?.trim()) {
+    params.set("end_date", options.endDate.trim());
+  }
+  if (Number.isFinite(options?.lookbackDays)) {
+    params.set("lookback_days", String(options?.lookbackDays));
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+const mockLedgerMoney = (yuan: string) => ({
+  yuan,
+  yi: (Number(yuan) / 100_000_000).toFixed(2),
+  wan: (Number(yuan) / 10_000).toFixed(2),
+});
+
+const mockLedgerPnlDates: LedgerPnlDatesPayload = {
+  dates: ["2025-12-31", "2025-11-30"],
+};
+
+const mockLedgerPnlSummary: LedgerPnlSummaryPayload = {
+  report_date: "2025-12-31",
+  source_version: "sv_mock_ledger",
+  ledger_total_assets: mockLedgerMoney("1250000000"),
+  ledger_total_liabilities: mockLedgerMoney("980000000"),
+  ledger_net_assets: mockLedgerMoney("270000000"),
+  ledger_monthly_pnl_core: mockLedgerMoney("3520000"),
+  ledger_monthly_pnl_all: mockLedgerMoney("4180000"),
+  by_currency: [
+    { currency: "CNX", total_pnl: mockLedgerMoney("3010000") },
+    { currency: "CNY", total_pnl: mockLedgerMoney("510000") },
+  ],
+  by_account: [
+    {
+      account_code: "514100",
+      account_name: "利息收入",
+      total_pnl: mockLedgerMoney("2120000"),
+      count: 18,
+    },
+    {
+      account_code: "516100",
+      account_name: "公允价值变动损益",
+      total_pnl: mockLedgerMoney("880000"),
+      count: 9,
+    },
+  ],
+};
+
+const mockLedgerPnlData: LedgerPnlDataPayload = {
+  report_date: "2025-12-31",
+  items: [
+    {
+      account_code: "514100",
+      account_name: "利息收入",
+      currency: "CNX",
+      beginning_balance: mockLedgerMoney("101200000"),
+      ending_balance: mockLedgerMoney("106500000"),
+      monthly_pnl: mockLedgerMoney("880000"),
+      daily_avg_balance: mockLedgerMoney("104100000"),
+      days_in_period: 31,
+    },
+    {
+      account_code: "516100",
+      account_name: "公允价值变动损益",
+      currency: "CNX",
+      beginning_balance: mockLedgerMoney("10000000"),
+      ending_balance: mockLedgerMoney("11200000"),
+      monthly_pnl: mockLedgerMoney("420000"),
+      daily_avg_balance: mockLedgerMoney("10600000"),
+      days_in_period: 31,
+    },
+  ],
+  summary: {
+    total_pnl_cnx: mockLedgerMoney("1300000"),
+    total_pnl_cny: mockLedgerMoney("0"),
+    total_pnl: mockLedgerMoney("1300000"),
+    count: 2,
+  },
+};
+
+const mockCampisiFourEffects: CampisiFourEffectsPayload = {
+  report_date: "2026-03-31",
+  period_start: "2026-03-01",
+  period_end: "2026-03-31",
+  num_days: 30,
+  totals: {
+    income_return: 820000,
+    treasury_effect: -210000,
+    spread_effect: 160000,
+    selection_effect: 95000,
+    total_return: 865000,
+    market_value_start: 128000000,
+  },
+  by_asset_class: [
+    {
+      asset_class: "政策性金融债",
+      market_value_start: 78000000,
+      income_return: 520000,
+      treasury_effect: -180000,
+      spread_effect: 120000,
+      selection_effect: 50000,
+      total_return: 510000,
+      weight_pct: 60.94,
+    },
+  ],
+  by_bond: [
+    {
+      bond_code: "240001.IB",
+      asset_class: "政策性金融债",
+      maturity_bucket: "1-3Y",
+      market_value_start: 32000000,
+      income_return: 210000,
+      treasury_effect: -70000,
+      spread_effect: 42000,
+      selection_effect: 20000,
+      total_return: 202000,
+      mod_duration: 2.7,
+    },
+  ],
+};
+
+const mockCampisiEnhanced: CampisiEnhancedPayload = {
+  report_date: "2026-03-31",
+  period_start: "2026-03-01",
+  period_end: "2026-03-31",
+  num_days: 30,
+  totals: {
+    income_return: 820000,
+    treasury_effect: -210000,
+    spread_effect: 160000,
+    convexity_effect: 18000,
+    cross_effect: 6000,
+    reinvestment_effect: 0,
+    selection_effect: 81000,
+    total_return: 875000,
+    market_value_start: 128000000,
+  },
+  by_asset_class: [
+    {
+      asset_class: "政策性金融债",
+      market_value_start: 78000000,
+      income_return: 520000,
+      treasury_effect: -180000,
+      spread_effect: 120000,
+      convexity_effect: 12000,
+      cross_effect: 3000,
+      reinvestment_effect: 0,
+      selection_effect: 45000,
+      total_return: 520000,
+      weight_pct: 60.94,
+    },
+  ],
+  by_bond: [
+    {
+      bond_code: "240001.IB",
+      asset_class: "政策性金融债",
+      maturity_bucket: "1-3Y",
+      market_value_start: 32000000,
+      income_return: 210000,
+      treasury_effect: -70000,
+      spread_effect: 42000,
+      convexity_effect: 5000,
+      cross_effect: 1000,
+      reinvestment_effect: 0,
+      selection_effect: 17000,
+      total_return: 205000,
+      mod_duration: 2.7,
+    },
+  ],
+};
+
+const mockCampisiMaturityBuckets: CampisiMaturityBucketsPayload = {
+  period_start: "2026-03-01",
+  period_end: "2026-03-31",
+  buckets: {
+    "0-1Y": {
+      market_value_start: 18000000,
+      income_return: 90000,
+      treasury_effect: -20000,
+      spread_effect: 15000,
+      selection_effect: 6000,
+      total_return: 91000,
+    },
+    "1-3Y": {
+      market_value_start: 52000000,
+      income_return: 330000,
+      treasury_effect: -82000,
+      spread_effect: 61000,
+      selection_effect: 26000,
+      total_return: 335000,
+    },
+  },
+};
 
 /** Inline mock for `getSourceFoundation` in mock mode only (mirrors backend preview shape). */
 const MOCK_SOURCE_FOUNDATION_SUMMARIES: SourcePreviewSummary[] = [
@@ -3040,6 +3273,41 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis, formal_use_allowed: basis === "formal" },
       );
     },
+    async getLedgerPnlDates() {
+      await delay();
+      return buildMockApiEnvelope("ledger_pnl.dates", mockLedgerPnlDates, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
+    },
+    async getLedgerPnlData(reportDate: string, currency) {
+      await delay();
+      return buildMockApiEnvelope(
+        "ledger_pnl.data",
+        {
+          ...mockLedgerPnlData,
+          report_date: reportDate,
+          items: currency
+            ? mockLedgerPnlData.items.filter((item) => item.currency === currency)
+            : mockLedgerPnlData.items,
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
+    async getLedgerPnlSummary(reportDate: string, currency) {
+      await delay();
+      return buildMockApiEnvelope(
+        "ledger_pnl.summary",
+        {
+          ...mockLedgerPnlSummary,
+          report_date: reportDate,
+          by_currency: currency
+            ? mockLedgerPnlSummary.by_currency.filter((item) => item.currency === currency)
+            : mockLedgerPnlSummary.by_currency,
+        },
+        { basis: "formal", formal_use_allowed: true },
+      );
+    },
     async getPnlBridge(reportDate: string) {
       await delay();
       return buildMockApiEnvelope(
@@ -3143,6 +3411,27 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getPnlCampisiAttribution(_options) {
       await delay();
       return buildMockApiEnvelope("pnl_attribution.campisi", mockCampisiAttribution);
+    },
+    async getPnlCampisiFourEffects(_options) {
+      await delay();
+      return buildMockApiEnvelope("campisi.four_effects", mockCampisiFourEffects, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
+    },
+    async getPnlCampisiEnhanced(_options) {
+      await delay();
+      return buildMockApiEnvelope("campisi.enhanced", mockCampisiEnhanced, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
+    },
+    async getPnlCampisiMaturityBuckets(_options) {
+      await delay();
+      return buildMockApiEnvelope("campisi.maturity_buckets", mockCampisiMaturityBuckets, {
+        basis: "formal",
+        formal_use_allowed: true,
+      });
     },
     async getRiskOverview() {
       await delay();
@@ -5116,6 +5405,34 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}${buildPnlBasisQuerySegment(basis)}`,
       ),
+    getLedgerPnlDates: () =>
+      requestJson<LedgerPnlDatesPayload>(fetchImpl, baseUrl, "/api/ledger-pnl/dates"),
+    getLedgerPnlData: (reportDate: string, currency?: string) => {
+      const params = new URLSearchParams({
+        date: reportDate,
+      });
+      if (currency?.trim()) {
+        params.set("currency", currency.trim());
+      }
+      return requestJson<LedgerPnlDataPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/data?${params.toString()}`,
+      );
+    },
+    getLedgerPnlSummary: (reportDate: string, currency?: string) => {
+      const params = new URLSearchParams({
+        date: reportDate,
+      });
+      if (currency?.trim()) {
+        params.set("currency", currency.trim());
+      }
+      return requestJson<LedgerPnlSummaryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/ledger-pnl/summary?${params.toString()}`,
+      );
+    },
     getPnlBridge: (reportDate: string) =>
       requestJson<PnlBridgePayload>(
         fetchImpl,
@@ -5259,23 +5576,31 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       );
     },
     getPnlCampisiAttribution: (options) => {
-      const params = new URLSearchParams();
-      if (options?.startDate?.trim()) {
-        params.set("start_date", options.startDate.trim());
-      }
-      if (options?.endDate?.trim()) {
-        params.set("end_date", options.endDate.trim());
-      }
-      if (options?.lookbackDays !== undefined) {
-        params.set("lookback_days", String(options.lookbackDays));
-      }
-      const q = params.toString();
+      const q = buildCampisiQuery(options);
       return requestJson<CampisiAttributionPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl-attribution/advanced/campisi${q ? `?${q}` : ""}`,
+        `/api/pnl-attribution/advanced/campisi${q}`,
       );
     },
+    getPnlCampisiFourEffects: (options) =>
+      requestJson<CampisiFourEffectsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/campisi/four-effects${buildCampisiQuery(options)}`,
+      ),
+    getPnlCampisiEnhanced: (options) =>
+      requestJson<CampisiEnhancedPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/campisi/enhanced${buildCampisiQuery(options)}`,
+      ),
+    getPnlCampisiMaturityBuckets: (options) =>
+      requestJson<CampisiMaturityBucketsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl-attribution/campisi/maturity-buckets${buildCampisiQuery(options)}`,
+      ),
     getRiskOverview: () =>
       requestJson<RiskOverviewPayload>(
         fetchImpl,

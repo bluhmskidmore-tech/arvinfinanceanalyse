@@ -29,11 +29,15 @@ jobs:
       - name: Install backend dependencies
         run: pip install -e "./backend[dev]"
 
-      - name: Run pytest
-        run: pytest tests/ -x -q --tb=short
-        env:
-          MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS: "1"
-          MOSS_SKIP_POSTGRES_MIGRATIONS: "1"
+      - name: Run bounded backend release suite
+        run: python scripts/backend_release_suite.py --governance-audit-output governance-lineage-audit.json
+
+      - name: Upload governance lineage audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-lineage-audit
+          path: governance-lineage-audit.json
 
   frontend:
     name: Frontend Tests

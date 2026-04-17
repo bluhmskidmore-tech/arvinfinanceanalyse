@@ -45,6 +45,8 @@ def test_dev_smoke_script_validates_storage_bootstrap():
     script = (ROOT / "scripts" / "dev-smoke.ps1").read_text(encoding="utf-8")
     assert ". .\\scripts\\dev-env.ps1" in script or ". \"$root\\scripts\\dev-env.ps1\"" in script
     assert "Assert-DevBootstrapStorageReady" in script
+    assert "audit_governance_lineage.py" in script
+    assert "AUDIT_OK" in script
 
 
 def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
@@ -64,6 +66,8 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "55432" in script
     assert "/health" in script
     assert "/api/bond-analytics/dates" in script
+    assert "audit_governance_lineage.py" in script
+    assert "Governance lineage audit failed" in script
     assert "exit 0" in script
 
 

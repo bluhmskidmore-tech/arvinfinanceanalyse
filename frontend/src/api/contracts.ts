@@ -2107,6 +2107,149 @@ export type CampisiAttributionPayload = {
   items: CampisiAttributionItem[];
 };
 
+export type LedgerMoneyValue = {
+  yuan: string;
+  yi: string;
+  wan: string;
+};
+
+export type LedgerPnlDatesPayload = {
+  dates: string[];
+};
+
+export type LedgerPnlDataItem = {
+  account_code: string;
+  account_name: string;
+  currency: string;
+  beginning_balance: LedgerMoneyValue;
+  ending_balance: LedgerMoneyValue;
+  monthly_pnl: LedgerMoneyValue;
+  daily_avg_balance: LedgerMoneyValue;
+  days_in_period: number;
+};
+
+export type LedgerPnlDataPayload = {
+  report_date: string;
+  items: LedgerPnlDataItem[];
+  summary: {
+    total_pnl_cnx: LedgerMoneyValue;
+    total_pnl_cny: LedgerMoneyValue;
+    total_pnl: LedgerMoneyValue;
+    count: number;
+  };
+};
+
+export type LedgerPnlSummaryByCurrency = {
+  currency: string;
+  total_pnl: LedgerMoneyValue;
+};
+
+export type LedgerPnlSummaryByAccount = {
+  account_code: string;
+  account_name: string;
+  total_pnl: LedgerMoneyValue;
+  count: number;
+};
+
+export type LedgerPnlSummaryPayload = {
+  report_date: string;
+  source_version: string;
+  ledger_total_assets: LedgerMoneyValue;
+  ledger_total_liabilities: LedgerMoneyValue;
+  ledger_net_assets: LedgerMoneyValue;
+  ledger_monthly_pnl_core: LedgerMoneyValue;
+  ledger_monthly_pnl_all: LedgerMoneyValue;
+  by_currency: LedgerPnlSummaryByCurrency[];
+  by_account: LedgerPnlSummaryByAccount[];
+};
+
+export type CampisiFourEffectsTotals = {
+  income_return: number;
+  treasury_effect: number;
+  spread_effect: number;
+  selection_effect: number;
+  total_return: number;
+  market_value_start: number;
+};
+
+export type CampisiEnhancedTotals = CampisiFourEffectsTotals & {
+  convexity_effect: number;
+  cross_effect: number;
+  reinvestment_effect: number;
+};
+
+export type CampisiFourEffectsRow = {
+  asset_class: string;
+  market_value_start: number;
+  income_return: number;
+  treasury_effect: number;
+  spread_effect: number;
+  selection_effect: number;
+  total_return: number;
+  weight_pct?: number;
+};
+
+export type CampisiFourEffectsBondRow = CampisiFourEffectsRow & {
+  bond_code: string;
+  maturity_bucket: string;
+  mod_duration: number;
+};
+
+export type CampisiEnhancedRow = {
+  asset_class: string;
+  market_value_start: number;
+  income_return: number;
+  treasury_effect: number;
+  spread_effect: number;
+  convexity_effect: number;
+  cross_effect: number;
+  reinvestment_effect: number;
+  selection_effect: number;
+  total_return: number;
+  weight_pct?: number;
+};
+
+export type CampisiEnhancedBondRow = CampisiEnhancedRow & {
+  bond_code: string;
+  maturity_bucket: string;
+  mod_duration: number;
+};
+
+export type CampisiFourEffectsPayload = {
+  report_date: string;
+  period_start: string;
+  period_end: string;
+  num_days: number;
+  totals: CampisiFourEffectsTotals;
+  by_asset_class: CampisiFourEffectsRow[];
+  by_bond: CampisiFourEffectsBondRow[];
+};
+
+export type CampisiEnhancedPayload = {
+  report_date: string;
+  period_start: string;
+  period_end: string;
+  num_days: number;
+  totals: CampisiEnhancedTotals;
+  by_asset_class: CampisiEnhancedRow[];
+  by_bond: CampisiEnhancedBondRow[];
+};
+
+export type CampisiMaturityBucketBreakdown = {
+  market_value_start: number;
+  income_return: number;
+  treasury_effect: number;
+  spread_effect: number;
+  selection_effect: number;
+  total_return: number;
+};
+
+export type CampisiMaturityBucketsPayload = {
+  period_start: string;
+  period_end: string;
+  buckets: Record<string, CampisiMaturityBucketBreakdown>;
+};
+
 // --- 现金流预测 / 久期缺口 (`/api/cashflow-projection`) ---
 export type CashflowMonthlyBucket = {
   year_month: string;

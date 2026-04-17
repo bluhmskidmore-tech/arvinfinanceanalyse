@@ -53,6 +53,10 @@ describe("ProductCategoryPnlPage", () => {
       "href",
       "/product-category-pnl/audit",
     );
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      "/ledger-pnl?report_date=2026-02-28",
+    );
     expect(within(table).getAllByRole("row")).toHaveLength(20);
   });
 

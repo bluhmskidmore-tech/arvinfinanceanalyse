@@ -28,6 +28,7 @@ def test_settings_defaults():
 
 
 def test_settings_env_overrides(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("MOSS_ENVIRONMENT", "staging")
     monkeypatch.setenv("MOSS_AGENT_ENABLED", "true")
     monkeypatch.setenv("MOSS_GOVERNANCE_BACKEND", "sql-authority")
@@ -43,9 +44,23 @@ def test_settings_env_overrides(monkeypatch):
     assert s.governance_backend == "sql-authority"
     assert s.object_store_mode == "minio"
     assert s.ftp_rate_pct == Decimal("2.5")
-    assert s.governance_path == Path("custom/gov")
-    assert s.data_input_root == Path("custom/in")
-    assert s.local_archive_path == Path("custom/archive")
+    assert s.governance_path == (repo_root / "custom" / "gov").resolve()
+    assert s.data_input_root == (repo_root / "custom" / "in").resolve()
+    assert s.local_archive_path == (repo_root / "custom" / "archive").resolve()
+
+
+def test_settings_core_storage_paths_resolve_relative_to_repo_root():
+    repo_root = Path(__file__).resolve().parents[1]
+
+    s = Settings()
+
+    assert s.duckdb_path == str((repo_root / "data" / "moss.duckdb").resolve())
+    assert s.governance_path == (repo_root / "data" / "governance").resolve()
+    assert s.data_input_root == (repo_root / "data_input").resolve()
+    assert s.local_archive_path == (repo_root / "data" / "archive").resolve()
+    assert s.product_category_source_dir == (
+        repo_root / "data_input" / "pnl_总账对账-日均"
+    ).resolve()
 
 
 def test_get_settings_returns_settings_instance():

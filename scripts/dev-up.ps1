@@ -166,6 +166,12 @@ $frontendProcess = Assert-NativeProcessRunning -Description "frontend" -Predicat
   $_.CommandLine -like "*vite*"
 }
 
+$audit = python "$root\scripts\audit_governance_lineage.py" --governance-dir (Join-Path $root "data\governance")
+$auditSummary = $audit | ConvertFrom-Json
+if ($auditSummary.dirty_rows -ne 0) {
+  throw "Governance lineage audit failed: dirty_rows=$($auditSummary.dirty_rows)"
+}
+
 Write-Host "Native MOSS dev stack launched." -ForegroundColor Cyan
 Write-Host "API:      http://127.0.0.1:7888" -ForegroundColor Gray
 Write-Host "Frontend: http://127.0.0.1:5888" -ForegroundColor Gray
@@ -178,4 +184,5 @@ Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Frontend:     $($frontendRoot.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
+Write-Host "Lineage audit: clean" -ForegroundColor DarkGray
 exit 0

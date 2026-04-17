@@ -89,6 +89,34 @@ class Settings(BaseSettings):
             self.governance_sql_dsn,
             self.postgres_dsn,
         )
+        self.duckdb_path = resolve_repo_relative_path(
+            self.duckdb_path,
+            repo_root=_REPO_ROOT,
+        )
+        self.governance_path = Path(
+            resolve_repo_relative_path(
+                str(self.governance_path),
+                repo_root=_REPO_ROOT,
+            )
+        )
+        self.data_input_root = Path(
+            resolve_repo_relative_path(
+                str(self.data_input_root),
+                repo_root=_REPO_ROOT,
+            )
+        )
+        self.local_archive_path = Path(
+            resolve_repo_relative_path(
+                str(self.local_archive_path),
+                repo_root=_REPO_ROOT,
+            )
+        )
+        self.product_category_source_dir = Path(
+            resolve_repo_relative_path(
+                str(self.product_category_source_dir),
+                repo_root=_REPO_ROOT,
+            )
+        )
         self.choice_macro_catalog_file = resolve_repo_relative_path(
             self.choice_macro_catalog_file,
             repo_root=_REPO_ROOT,
@@ -99,6 +127,14 @@ class Settings(BaseSettings):
         )
         self.choice_news_topics_file = resolve_repo_relative_path(
             self.choice_news_topics_file,
+            repo_root=_REPO_ROOT,
+        )
+        self.fx_official_source_path = resolve_repo_relative_path(
+            self.fx_official_source_path,
+            repo_root=_REPO_ROOT,
+        )
+        self.fx_mid_csv_path = resolve_repo_relative_path(
+            self.fx_mid_csv_path,
             repo_root=_REPO_ROOT,
         )
 

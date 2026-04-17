@@ -308,6 +308,9 @@ export default function PnlPage() {
       : "暂无可选报告日";
   const reportDateSelectDisabled = datesQuery.isLoading || datesQuery.isError || reportDates.length === 0;
   const refreshDisabled = !selectedReportDate || isRefreshing || basis !== "formal";
+  const ledgerPnlHref = selectedReportDate
+    ? `/ledger-pnl?report_date=${encodeURIComponent(selectedReportDate)}`
+    : "/ledger-pnl";
 
   const dataTabExtra = (
     <div style={tabBarStyle}>
@@ -380,15 +383,35 @@ export default function PnlPage() {
             正式口径 PnL 明细与汇总，数据由后端 API 提供；页面仅展示返回值，不在浏览器端做金融重算。
           </p>
         </div>
-        <span
-          style={{
-            ...modeBadgeStyle,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-          }}
-        >
-          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
-        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <span
+            style={{
+              ...modeBadgeStyle,
+              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            }}
+          >
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
+          <a
+            data-testid="pnl-ledger-link"
+            href={ledgerPnlHref}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              padding: "8px 12px",
+              borderRadius: 999,
+              border: "1px solid #d7dfea",
+              background: "#ffffff",
+              color: "#162033",
+              fontSize: 12,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            查看 Ledger PnL
+          </a>
+        </div>
       </div>
 
       <FilterBar style={controlBarStyle}>

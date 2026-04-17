@@ -206,8 +206,8 @@ def build_nonstd_pnl_bridge_rows(
                 capital_gain_517=capital_gain_517,
                 manual_adjustment=manual_adjustment,
                 total_pnl=total_pnl,
-                source_version=",".join(source_versions),
-                rule_version=",".join(rule_versions),
+                source_version="__".join(source_versions),
+                rule_version="__".join(rule_versions),
                 ingest_batch_id=",".join(ingest_batch_ids),
                 trace_id=",".join(trace_ids),
             )
