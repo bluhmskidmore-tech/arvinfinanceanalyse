@@ -47,4 +47,9 @@ def _ingest_demo_manifest(
     return summary.model_dump(mode="json")
 
 
-ingest_demo_manifest = register_actor_once("ingest_demo_manifest", _ingest_demo_manifest)
+ingest_demo_manifest = register_actor_once(
+    "ingest_demo_manifest",
+    _ingest_demo_manifest,
+    max_retries=3,
+    time_limit_ms=300_000,
+)

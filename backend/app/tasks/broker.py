@@ -8,6 +8,9 @@ from dramatiq.brokers.stub import StubBroker
 from backend.app.governance.settings import get_settings
 
 broker: StubBroker | RedisBroker | None = None
+DEFAULT_MAX_RETRIES = 20
+DEFAULT_MIN_BACKOFF_MS = 15_000
+DEFAULT_TIME_LIMIT_MS = 600_000
 
 
 def _is_pytest_process() -> bool:
@@ -47,10 +50,21 @@ def get_broker() -> StubBroker | RedisBroker:
     return broker
 
 
-def register_actor_once(actor_name: str, fn):
+def register_actor_once(
+    actor_name: str,
+    fn,
+    max_retries: int = 3,
+    time_limit_ms: int = 3_600_000,
+):
     active_broker = get_broker()
+    options = {
+        "max_retries": max_retries,
+        "min_backoff": DEFAULT_MIN_BACKOFF_MS,
+        "time_limit": time_limit_ms,
+    }
     existing = active_broker.actors.get(actor_name)
     if existing is not None:
         existing.fn = fn
+        existing.options.update(options)
         return existing
-    return dramatiq.actor(fn, actor_name=actor_name)
+    return dramatiq.actor(fn, actor_name=actor_name, **options)

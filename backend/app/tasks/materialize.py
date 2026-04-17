@@ -1,4 +1,5 @@
 import duckdb
+import logging
 import os
 import hashlib
 import sys
@@ -20,6 +21,8 @@ from backend.app.schemas.materialize import (
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_data_input_root() -> Path:
@@ -134,8 +137,8 @@ def _materialize_cache_view(
                 )
                 try:
                     cleanup_preview_backups(str(duckdb_file))
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("cleanup failed: %s", e)
 
                 return MaterializeBuildPayload(
                     status="completed",
@@ -172,8 +175,8 @@ def _materialize_cache_view(
                         raise RuntimeError("Failed to restore preview tables after materialize error") from restore_error
                     try:
                         cleanup_preview_backups(str(duckdb_file))
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("cleanup failed: %s", e)
                 if append_error is not None:
                     raise RuntimeError("Failed to append failed materialize lineage") from append_error
                 raise original_error
