@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """
 Balance-analysis read surfaces: DuckDB access only via `BalanceAnalysisRepository` and other read repositories.
@@ -870,6 +870,34 @@ def _parse_timestamp(raw_value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _update_run_status(
+    *,
+    settings: Settings,
+    run_id: str,
+    report_date: str,
+    error_message: str,
+    source_version: str,
+    finished_at: str | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "run_id": run_id,
+        "job_name": BALANCE_ANALYSIS_JOB_NAME,
+        "status": "failed",
+        "cache_key": CACHE_KEY,
+        "lock": BALANCE_ANALYSIS_LOCK.key,
+        "source_version": source_version,
+        "vendor_version": "vv_none",
+        "report_date": report_date,
+        "error_message": error_message,
+    }
+    if finished_at is not None:
+        payload["finished_at"] = finished_at
+    GovernanceRepository(base_dir=settings.governance_path).append(
+        CACHE_BUILD_RUN_STREAM,
+        payload,
+    )
+
+
 def _record_dispatch_failure(
     *,
     settings: Settings,
@@ -877,19 +905,12 @@ def _record_dispatch_failure(
     report_date: str,
     error_message: str,
 ) -> None:
-    GovernanceRepository(base_dir=settings.governance_path).append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            "run_id": run_id,
-            "job_name": BALANCE_ANALYSIS_JOB_NAME,
-            "status": "failed",
-            "cache_key": CACHE_KEY,
-            "lock": BALANCE_ANALYSIS_LOCK.key,
-            "source_version": "sv_balance_analysis_failed",
-            "vendor_version": "vv_none",
-            "report_date": report_date,
-            "error_message": error_message,
-        },
+    _update_run_status(
+        settings=settings,
+        run_id=run_id,
+        report_date=report_date,
+        error_message=error_message,
+        source_version="sv_balance_analysis_failed",
     )
 
 
@@ -900,20 +921,13 @@ def _mark_stale_inflight_run(
     report_date: str,
     error_message: str,
 ) -> None:
-    GovernanceRepository(base_dir=settings.governance_path).append(
-        CACHE_BUILD_RUN_STREAM,
-        {
-            "run_id": run_id,
-            "job_name": BALANCE_ANALYSIS_JOB_NAME,
-            "status": "failed",
-            "cache_key": CACHE_KEY,
-            "lock": BALANCE_ANALYSIS_LOCK.key,
-            "source_version": "sv_balance_analysis_stale",
-            "vendor_version": "vv_none",
-            "report_date": report_date,
-            "error_message": error_message,
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-        },
+    _update_run_status(
+        settings=settings,
+        run_id=run_id,
+        report_date=report_date,
+        error_message=error_message,
+        source_version="sv_balance_analysis_stale",
+        finished_at=datetime.now(timezone.utc).isoformat(),
     )
 
 
