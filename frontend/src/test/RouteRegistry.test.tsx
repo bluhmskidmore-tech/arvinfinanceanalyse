@@ -232,12 +232,14 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("positions-report-date")).toBeInTheDocument();
   });
 
-  it("renders the liability-analytics route", async () => {
+  it("renders the liability-analytics route as a placeholder surface", async () => {
     renderWorkbenchApp(["/liability-analytics"], { client: mockClient });
 
-    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "负债结构分析" })).toBeInTheDocument();
-    expect(await screen.findByLabelText("liability-report-date")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/当前仅保留 compatibility 模块入口/i)).length,
+    ).toBeGreaterThan(0);
   });
 
   it("renders the cashflow-projection route", async () => {
@@ -292,12 +294,14 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "损益归因分析" })).toBeInTheDocument();
   });
 
-  it("renders the risk-overview route", async () => {
+  it("renders the risk-overview route as a placeholder surface", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险总览" })).toBeInTheDocument();
-    expect(await screen.findByText("主指标来自正式风险张量接口")).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText(/executive risk overview 仍在当前 cutover 之外/i)).length,
+    ).toBeGreaterThan(0);
   });
 
   it("renders the risk-tensor route", async () => {
@@ -328,10 +332,13 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "平台配置" })).toBeInTheDocument();
   });
 
-  it("renders the cube-query route", async () => {
+  it("renders the cube-query route as a placeholder surface", async () => {
     renderWorkbenchApp(["/cube-query"], { client: mockClient });
 
-    expect(await screen.findByTestId("cube-query-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
+    expect(
+      await screen.findByText(/cube query 入口保留，但当前不把自由聚合查询页宣称为 repo-wide phase 2 已晋升消费面/i),
+    ).toBeInTheDocument();
   });
 });

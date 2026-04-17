@@ -3,7 +3,8 @@
 ## Status
 
 - document type: release-governance overlay
-- current repo status: `not yet at cutoff`
+- current repo status: `accepted at cutoff for the included scope`
+- current declaration: `GO` in `docs/V3_CUTOFF_DECLARATION_2026-04-17.md`
 - intended scope: current repo-wide `Phase 2` governed formal-compute release, not a whole-repo "everything is live" declaration
 
 ## Purpose
@@ -47,6 +48,12 @@ This cutoff does **not** require promotion of surfaces that are still explicitly
 - `/ui/home/alerts`
 - `/ui/home/contribution`
 - Agent MVP / real `/api/agent/query` enablement
+- reserved `/api/cube/query` / `/api/cube/dimensions/*` public rollout
+- reserved liability-analytics compatibility public rollout:
+  - `/api/risk/buckets`
+  - `/api/analysis/yield_metrics`
+  - `/api/analysis/liabilities/counterparty`
+  - `/api/liabilities/monthly`
 - `source_preview`
 - `macro-data`
 - `choice-news`
@@ -56,7 +63,7 @@ This cutoff does **not** require promotion of surfaces that are still explicitly
 - cube-query broad rollout
 - other `Phase 3 / Phase 4` style expansion work
 
-Excluded surfaces may remain hidden, analytical-only, or explicit `503` without blocking this cutoff.
+Excluded surfaces may remain hidden, placeholder-only, analytical-only, or explicit `503` without blocking this cutoff.
 
 ## Cutoff Goals
 
@@ -140,6 +147,7 @@ At cutoff time, the release evidence pack must include all of the following:
    - current named gate: `python scripts/backend_release_suite.py`
    - route and contract tests for the in-scope chains
    - route tests for excluded executive surfaces staying `503`
+   - route tests for reserved `cube-query` / liability-analytics compatibility routes staying `503`
 
 3. Route smoke
    - direct `TestClient` or equivalent smoke for included routes
@@ -181,6 +189,17 @@ These routes must remain explicit fail-closed until a later cutover promotes the
 - `/ui/risk/overview`
 - `/ui/home/alerts`
 - `/ui/home/contribution`
+
+### E3A. Reserved Query / Compat Surfaces Stay Reserved
+
+These routes must remain explicit `503` or equivalent reserved behavior until a later cutover promotes them:
+
+- `/api/cube/query`
+- `/api/cube/dimensions/*`
+- `/api/risk/buckets`
+- `/api/analysis/yield_metrics`
+- `/api/analysis/liabilities/counterparty`
+- `/api/liabilities/monthly`
 
 ### E4. Storage Path Resolution Is Context-Stable
 
@@ -226,26 +245,38 @@ The following must agree with actual route/test behavior:
 
 ## Current Gap Snapshot (2026-04-17)
 
-Based on the current audit and route verification:
+Based on the current audit, route verification, and live preflight:
 
 ### Confirmed good enough now
 
 - frontend test/build/lint gates are passing
 - named bounded backend gate exists:
   - `python scripts/backend_release_suite.py`
-  - current observed result: `135 passed`
+  - current observed result: `141 passed in 228.49s (0:03:48)`
 - CI workflow runs the same named bounded backend gate
+- code-level excluded/reserved route tests are green:
+  - `python -m pytest -q tests/test_executive_dashboard_endpoints.py tests/test_cube_query_api.py tests/test_liability_analytics_api.py tests/test_liability_analytics_envelope_contract.py`
+  - current observed result: `13 passed`
 - included executive E1 routes are stable
 - excluded executive routes are now stable `503`
+- reserved `cube-query` public routes are now stable `503`
+- reserved liability-analytics compatibility public routes are now stable `503`
 - core storage-path resolution is stable across repo-root and backend working directories
+- product-category PnL formal read route is live again in the current workspace
 - parity matrix exists
 - live audit exists
 
-### Still not at cutoff
+### Cutoff declaration
 
-- full backend `pytest` still does not complete within the current audit window
-- the named bounded backend gate is not yet elevated in the authority hierarchy as the sole canonical backend gate
-- cutoff has not yet been explicitly declared by a maintainer against the current blocker inventory
+- the included scope is now explicitly declared at cutoff:
+  - `docs/V3_CUTOFF_DECLARATION_2026-04-17.md`
+- live `python scripts/governed_phase2_preflight.py` now passes after reconciling the stale `7888` listener with current route code
+- the canonical backend gate is additionally hardened so `cube_query` and `liability_analytics` fail-closed route tests are now part of `python scripts/backend_release_suite.py`
+
+### Non-blocking carried debt
+
+- full backend `python -m pytest -q` still does not complete within the current audit window; under `E5` this remains broader diagnostic debt, not the current cutoff blocker
+- frontend lint currently passes with warnings; keep the warnings visible until a later cleanup slice
 
 ## Recommended Release Shape
 
@@ -259,7 +290,7 @@ Describe it as:
 
 - governed `Phase 2` formal-compute cutoff candidate
 - plus `executive-consumer cutover v1`
-- with explicit excluded surfaces still fail-closed
+- with explicit excluded surfaces still fail-closed or held at placeholder / reserved status
 
 ## Maintenance Rule
 

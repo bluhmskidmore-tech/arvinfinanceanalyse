@@ -25,6 +25,17 @@
 - 如果 `前端便利` 与 `正式金融计算唯一入口` 冲突，以 `backend/app/core_finance/` 唯一入口为准。
 - 如果 `计划材料` 与 `当前执行边界` 冲突，以权威文档中的当前边界说明和 dated execution update 为准。
 
+## Backend Canonical Gate
+
+对于当前 repo-wide `Phase 2` governed formal-compute release，backend canonical gate 为：
+
+- `python scripts/backend_release_suite.py`
+
+说明：
+
+- 该命令是当前 release cutoff 使用的 named bounded backend release suite。
+- `python -m pytest -q` 仍可作为 broader diagnostic command 使用，但不作为当前 release cutoff 的 canonical backend gate。
+
 ## 阶段边界规则
 
 - 仓库默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
@@ -76,6 +87,13 @@ repo-wide `Phase 2` 当前明确不放开的范围包括：
 - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
 - 无关工作流的 `next slice`
 - broad frontend rollout
+
+当前这些排除面的运行语义应按以下方式理解：
+
+- excluded executive surfaces：显式 `503 fail-closed`
+- reserved `cube-query` public routes：显式 `503 reserved surface`
+- reserved liability-analytics compatibility public routes：显式 `503 reserved surface`
+- retained frontend entries：placeholder / compat / hidden，不代表已晋升 live governed page
 
 ## PnL 附录（fixture 对照）
 

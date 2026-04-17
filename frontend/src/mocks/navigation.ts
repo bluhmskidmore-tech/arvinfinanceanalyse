@@ -56,7 +56,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
     label: "风险工作台",
     description: "聚焦风险张量、集中度和流动性压力。",
     icon: "risk",
-    defaultPath: "/risk-overview",
+    defaultPath: "/risk-tensor",
   },
   {
     key: "performance",
@@ -182,10 +182,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/liability-analytics",
     icon: "analysis",
     description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
-    readiness: "live",
-    readinessLabel: "Live",
+    readiness: "placeholder",
+    readinessLabel: "Compat",
     readinessNote:
-      "前端已按 V1 契约对接 /api/risk/buckets 等原始 JSON；后端路由待补齐时页面将显示加载/空态。",
+      "当前仅保留 compatibility 模块入口；正式 Phase 2 主链未纳入 liability_analytics_compat 消费面。",
   },
   {
     key: "market-data",
@@ -264,9 +264,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/risk-overview",
     icon: "risk",
     description: "风险总览与风险下钻入口",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "已接正式 risk tensor 主链，并串接 bond analytics 下钻只读结果。",
+    readiness: "placeholder",
+    readinessLabel: "Placeholder",
+    readinessNote:
+      "executive risk overview 仍在当前 cutover 之外；请优先使用风险张量与已落地的 bond analytics 读面。",
   },
   {
     key: "risk-tensor",
@@ -364,9 +365,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/cube-query",
     icon: "analysis",
     description: "对事实表进行自由维度聚合、筛选、钻取",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "已接 /api/cube 查询与维度发现链路。",
+    readiness: "placeholder",
+    readinessLabel: "Deferred",
+    readinessNote:
+      "cube-query 仍按保留入口处理，不作为当前 repo-wide Phase 2 cutover 的已晋升消费面宣称。",
   },
   {
     key: "agent",

@@ -94,33 +94,63 @@ def build_canonical_facts(pair: SourcePair) -> list[CanonicalFactRow]:
 def _parse_ledger_workbook(path: Path) -> dict[tuple[str, str], dict[str, object]]:
     workbook = load_workbook(path, read_only=True, data_only=True)
     rows: dict[tuple[str, str], dict[str, object]] = {}
-    for worksheet in workbook.worksheets[:2]:
-        for row in worksheet.iter_rows(min_row=7, values_only=True):
-            if not row or row[0] is None:
-                continue
-            account_code = _coerce_account_code(row[0])
-            currency = str(row[2] or "").strip()
-            if not currency:
-                continue
-            beginning_balance = _to_decimal(row[3])
-            period_debit = _to_decimal(row[4])
-            period_credit = _to_decimal(row[5])
-            ending_balance = _to_decimal(row[6])
-            rows[(account_code, currency)] = {
-                "account_name": str(row[1] or "").strip(),
-                "beginning_balance": beginning_balance,
-                "ending_balance": ending_balance,
-                "monthly_pnl": derive_monthly_pnl(period_debit, period_credit),
-            }
+    try:
+        for worksheet in workbook.worksheets[:2]:
+            for row in worksheet.iter_rows(min_row=7, values_only=True):
+                if not row:
+                    continue
+                if _looks_like_currency(row[2] if len(row) > 2 else None):
+                    account_index = 0
+                    name_index = 1
+                    currency_index = 2
+                    amount_offset = 3
+                elif _looks_like_currency(row[3] if len(row) > 3 else None):
+                    account_index = 1
+                    name_index = 2
+                    currency_index = 3
+                    amount_offset = 4
+                else:
+                    continue
+
+                if row[account_index] is None:
+                    continue
+                currency = str(row[currency_index] or "").strip()
+                if not currency:
+                    continue
+
+                account_code = _coerce_account_code(row[account_index])
+                beginning_balance = _to_decimal(row[amount_offset])
+                period_debit = _to_decimal(row[amount_offset + 1])
+                period_credit = _to_decimal(row[amount_offset + 2])
+                ending_balance = _to_decimal(row[amount_offset + 3])
+                rows[(account_code, currency)] = {
+                    "account_name": str(row[name_index] or "").strip(),
+                    "beginning_balance": beginning_balance,
+                    "ending_balance": ending_balance,
+                    "monthly_pnl": derive_monthly_pnl(period_debit, period_credit),
+                }
+    finally:
+        workbook.close()
     return rows
+
+
+def _looks_like_currency(value: object) -> bool:
+    text = str(value or "").strip()
+    return bool(re.fullmatch(r"[A-Z]{3}", text))
 
 
 def _parse_average_workbook(path: Path) -> tuple[dict[tuple[str, str], Decimal], dict[tuple[str, str], Decimal]]:
     workbook = load_workbook(path, read_only=True, data_only=True)
-    return (
-        _parse_average_sheet(workbook.worksheets[0]),
-        _parse_average_sheet(workbook.worksheets[1]),
-    )
+    annual_rows: dict[tuple[str, str], Decimal] = {}
+    monthly_rows: dict[tuple[str, str], Decimal] = {}
+    try:
+        if workbook.worksheets:
+            annual_rows = _parse_average_sheet(workbook.worksheets[0])
+        if len(workbook.worksheets) > 1:
+            monthly_rows = _parse_average_sheet(workbook.worksheets[1])
+    finally:
+        workbook.close()
+    return annual_rows, monthly_rows
 
 
 def _parse_average_sheet(worksheet) -> dict[tuple[str, str], Decimal]:

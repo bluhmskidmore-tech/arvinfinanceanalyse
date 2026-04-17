@@ -66,6 +66,11 @@ The following are outside the current active boundary:
 - other `Phase 3 / Phase 4` style expansion items
 
 An excluded surface may still expose placeholder, explicit `503`, hidden-route, or analytical-only behavior without contradicting repo-wide `Phase 2`, as long as the exclusion remains documented.
+For the current code state, the preferred interpretation is:
+
+- excluded executive routes: explicit `503`
+- reserved query/compat routes such as `/api/cube/*` and the liability-analytics compatibility HTTP routes: explicit `503`
+- retained workbench entries for excluded surfaces: placeholder / compat readiness, not live promotion
 
 ## Invariants
 
@@ -93,5 +98,9 @@ As of `2026-04-17`:
 - key active boundary documents are aligned to repo-wide `Phase 2`
 - `executive-consumer cutover v1` is adopted for overview / summary / pnl-attribution
 - excluded surfaces are explicitly called out
-- backend `pytest tests -q` is green
+- excluded executive routes are fail-closed at `503`
+- reserved `cube-query` public routes are fail-closed at `503`
+- reserved `liability_analytics_compat` public routes are fail-closed at `503`
+- workbench shell keeps `/risk-overview`、`/liability-analytics`、`/cube-query` outside live primary navigation
+- backend canonical gate `python scripts/backend_release_suite.py` is green
 - future inclusion of the remaining `executive.*` routes, Agent, or other excluded surfaces requires a new explicit cutover update

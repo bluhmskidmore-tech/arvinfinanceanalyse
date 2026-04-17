@@ -175,6 +175,11 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
     summary: "风险总览路由已保留，但当前风险张量与 Bond Analytics 下钻物化结果尚未进入可用状态。",
     highlights: ["formal risk tensor 表未落地", "Bond Analytics 下钻结果未就绪", "当前阶段只保留入口与状态说明"],
   },
+  "liability-analytics": {
+    title: "负债结构分析",
+    summary: "负债结构分析当前只保留 compatibility 入口，不宣称已进入 repo-wide Phase 2 的正式主链消费面。",
+    highlights: ["仍属 compatibility 模块", "不把 analytical 结果冒充 formal cutover", "待后续阶段定义后再晋升"],
+  },
   "risk-tensor": {
     title: "风险张量",
     summary: "风险张量页依赖的 formal risk tensor 表尚未物化，当前不展示失败查询结果，只保留阶段说明。",
@@ -219,5 +224,10 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
     title: "市场数据",
     summary: placeholderSummary,
     highlights: ["规划要点一", "规划要点二", "规划要点三"],
+  },
+  "cube-query": {
+    title: "多维查询",
+    summary: "Cube query 入口保留，但当前不把自由聚合查询页宣称为 repo-wide Phase 2 已晋升消费面。",
+    highlights: ["保留后续扩展入口", "当前以边界说明替代 live 宣称", "避免把实验/保留面误写成正式主链"],
   },
 };

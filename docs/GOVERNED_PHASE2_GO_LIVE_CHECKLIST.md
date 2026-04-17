@@ -14,12 +14,19 @@ This checklist applies only to the currently authorized governed `Phase 2` launc
 
 It does not widen the launch boundary to excluded surfaces such as Agent MVP, broader `executive.*` expansion, preview/vendor/analytical-only surfaces, or later `Phase 3 / Phase 4` work.
 
+For the current code state, excluded surfaces are expected to remain visibly excluded:
+
+- excluded executive routes stay explicit `503`
+- reserved `cube-query` public routes stay explicit `503`
+- reserved liability-analytics compatibility public routes stay explicit `503`
+- retained frontend entries for excluded surfaces may stay placeholder / compat instead of live
+
 ## Hard Gates
 
 All of the following must be true before calling this scope launch-ready:
 
 1. Backend regression is green:
-   - `python -m pytest tests -q`
+   - `python scripts/backend_release_suite.py`
 2. Frontend regression is green:
    - `npm test`
    - `npm run typecheck`
@@ -138,4 +145,17 @@ These do not block controlled rollout, but should stay visible:
 
 - environment/vendor prerequisites can still fail closed even when code regressions are green
 - rollout authority remains limited to governed `Phase 2`; excluded surfaces remain excluded
+- excluded-surface behavior must stay explicit; placeholder routes or `503` reserved routes should not drift into accidental promotion
 - frontend bundle size is still larger than ideal and should be optimized in a later slice
+
+## Canonical Backend Gate
+
+For the current governed `Phase 2` launch scope, the canonical backend cutoff gate is:
+
+- `python scripts/backend_release_suite.py`
+
+Interpretation:
+
+- this command is the named bounded backend release suite for the current included scope
+- `python -m pytest -q` may still be used as a broader diagnostic command
+- broader diagnostic commands do not replace the canonical backend cutoff gate for this checklist

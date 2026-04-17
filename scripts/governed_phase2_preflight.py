@@ -105,9 +105,18 @@ def _fetch_json(url: str, timeout_seconds: int = 20) -> ProbeResult:
         )
 
 
-def _named_probe(name: str, url: str) -> ProbeResult:
+def _named_probe(
+    name: str,
+    url: str,
+    *,
+    allowed_statuses: tuple[int, ...] = (200,),
+) -> ProbeResult:
     result = _fetch_json(url)
     result.name = name
+    if isinstance(result.status, int) and result.status in allowed_statuses:
+        result.outcome = "pass"
+    else:
+        result.outcome = "blocked"
     return result
 
 
@@ -195,16 +204,23 @@ def build_preflight_report(*, api_base: str, frontend_base: str) -> dict[str, An
     probes.append(pnl_dates)
     pnl_report_dates = pnl_dates.report_dates or []
     if pnl_report_dates:
+        report_date = pnl_report_dates[0]
         probes.append(
             _named_probe(
                 "pnl_overview",
-                f"{api_base}/api/pnl/overview?report_date={pnl_report_dates[0]}",
+                f"{api_base}/api/pnl/overview?report_date={report_date}",
             )
         )
         probes.append(
             _named_probe(
                 "pnl_bridge",
-                f"{api_base}/api/pnl/bridge?report_date={pnl_report_dates[0]}",
+                f"{api_base}/api/pnl/bridge?report_date={report_date}",
+            )
+        )
+        probes.append(
+            _named_probe(
+                "executive_pnl_attribution",
+                f"{api_base}/ui/pnl/attribution?report_date={report_date}",
             )
         )
     else:
@@ -222,29 +238,114 @@ def build_preflight_report(*, api_base: str, frontend_base: str) -> dict[str, An
                 "Skipped because pnl dates are unavailable.",
             )
         )
+        probes.append(
+            _skipped_probe(
+                "executive_pnl_attribution",
+                f"{api_base}/ui/pnl/attribution",
+                "Skipped because pnl dates are unavailable.",
+            )
+        )
+
+    product_category_dates = _named_probe(
+        "product_category_dates",
+        f"{api_base}/ui/pnl/product-category/dates",
+    )
+    probes.append(product_category_dates)
+    product_category_report_dates = product_category_dates.report_dates or []
+    if product_category_report_dates:
+        probes.append(
+            _named_probe(
+                "product_category_monthly",
+                (
+                    f"{api_base}/ui/pnl/product-category"
+                    f"?report_date={product_category_report_dates[0]}&view=monthly"
+                ),
+            )
+        )
+    else:
+        probes.append(
+            _skipped_probe(
+                "product_category_monthly",
+                f"{api_base}/ui/pnl/product-category",
+                "Skipped because product-category dates are unavailable.",
+            )
+        )
+
+    probes.append(_named_probe("executive_overview", f"{api_base}/ui/home/overview"))
+    probes.append(_named_probe("executive_summary", f"{api_base}/ui/home/summary"))
+
+    probes.append(
+        _named_probe(
+            "ui_risk_overview",
+            f"{api_base}/ui/risk/overview",
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "ui_home_alerts",
+            f"{api_base}/ui/home/alerts",
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "ui_home_contribution",
+            f"{api_base}/ui/home/contribution",
+            allowed_statuses=(503,),
+        )
+    )
+
+    reserved_report_date = risk_report_dates[0] if risk_report_dates else "2025-12-31"
+    reserved_year = reserved_report_date[:4]
+    probes.append(
+        _named_probe(
+            "api_cube_dimensions_reserved",
+            f"{api_base}/api/cube/dimensions/bond_analytics",
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "api_risk_buckets_reserved",
+            f"{api_base}/api/risk/buckets?report_date={reserved_report_date}",
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "api_yield_metrics_reserved",
+            f"{api_base}/api/analysis/yield_metrics?report_date={reserved_report_date}",
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "api_liabilities_counterparty_reserved",
+            (
+                f"{api_base}/api/analysis/liabilities/counterparty"
+                f"?report_date={reserved_report_date}&top_n=10"
+            ),
+            allowed_statuses=(503,),
+        )
+    )
+    probes.append(
+        _named_probe(
+            "api_liabilities_monthly_reserved",
+            f"{api_base}/api/liabilities/monthly?year={reserved_year}",
+            allowed_statuses=(503,),
+        )
+    )
 
     outcome_counts = {
         "pass": sum(1 for probe in probes if probe.outcome == "pass"),
         "blocked": sum(1 for probe in probes if probe.outcome == "blocked"),
         "skipped": sum(1 for probe in probes if probe.outcome == "skipped"),
     }
-    required_probe_names = {
-        "health",
-        "frontend_root",
-        "bond_dates",
-        "bond_return_decomposition",
-        "risk_dates",
-        "risk_tensor",
-        "balance_dates",
-        "balance_overview",
-        "pnl_dates",
-        "pnl_overview",
-        "pnl_bridge",
-    }
     required_failures = [
         probe.name
         for probe in probes
-        if probe.name in required_probe_names and probe.outcome in {"blocked", "skipped"}
+        if probe.outcome in {"blocked", "skipped"}
     ]
     verdict = "pass" if not required_failures else "blocked"
 

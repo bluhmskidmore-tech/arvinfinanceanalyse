@@ -34,6 +34,11 @@
   - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
   - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
   - cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
+- 当前排除面的公开行为应按“显式保留 / fail-closed”解释，而不是按“已晋升但缺数据”解释：
+  - `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution` 当前返回显式 `503`
+  - `/api/cube/query` 与 `/api/cube/dimensions/*` 当前返回显式 `503 reserved surface`
+  - `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 当前返回显式 `503 reserved surface`
+  - 前端工作台当前将 `/risk-overview`、`/liability-analytics`、`/cube-query` 作为 placeholder / compat 入口，而不是 live primary navigation
 
 ## 当前代码状态
 
@@ -65,6 +70,7 @@
 - 不自动等于 `Phase 4` 已开始
 - `executive-consumer cutover v1` 现已纳入当前边界
 - 其余 `executive.*` 路由仍不属于本次 repo-wide `Phase 2` cutover 范围
+- 当前工作台导航已把 `/risk-overview` 从 live 主导航降回 placeholder 语义，避免把 excluded executive surface 误读为已晋升 governed page
 
 ### 3. Source Preview / Preview Closeout
 
@@ -148,11 +154,24 @@
 - Agent 仍按 `Phase 1 Agent skeleton` 解释
 - Agent 明确不在本次 repo-wide `Phase 2` cutover 范围内
 
+### 8. Reserved compatibility / query surfaces
+
+已落地：
+
+- `cube_query_service`、`liability_analytics_compat` 等内部实现与测试资产仍保留
+- 对应前端页面/客户端代码仍保留后续恢复入口
+
+当前判断：
+
+- 这些能力当前只保留“代码资产 / 后续恢复点”语义
+- 公开 HTTP surface 当前按 reserved route 解释，并显式 `503 fail-closed`
+- 不得把“实现仍在仓库中”误读为“当前已纳入 repo-wide Phase 2 governed rollout”
+
 ## 当前验证状态
 
 截至本次 handoff：
 
-- 后端：`pytest tests -q` 当前结果为 `1253 passed, 3 skipped, 4 failed`
+- 后端 canonical gate：`python scripts/backend_release_suite.py` 当前结果为 `135 passed in 103.08s`
 - 前端：`npm run typecheck` 通过
 - 前端：`npm test` 通过
 
@@ -160,6 +179,7 @@
 
 - frontend 通过不自动代表所有 consumer 已进入 cutover
 - executive 当前边界应理解为“overview / summary / pnl-attribution 纳入，risk / alerts / contribution 继续排除”
+- `python -m pytest -q` 仍可作为 broader diagnostic command 使用，但不再作为当前 release cutoff 的 canonical backend gate
 
 ## 执行判断规则
 

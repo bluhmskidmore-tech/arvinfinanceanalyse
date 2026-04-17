@@ -58,8 +58,9 @@ describe("WorkbenchShell", () => {
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
     expect(hrefs).toEqual(
-      expect.arrayContaining(["/platform-config", "/reports", "/cube-query"]),
+      expect.arrayContaining(["/platform-config", "/reports"]),
     );
+    expect(hrefs).not.toContain("/cube-query");
   });
 
   it("renders the reserved modules section outside the grouped workspace nav", async () => {

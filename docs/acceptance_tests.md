@@ -8,6 +8,15 @@
 - 样例数据回归测试
 - 关键 API smoke tests
 
+当前 repo-wide `Phase 2` governed formal-compute release 的 backend canonical gate 为：
+
+- `python scripts/backend_release_suite.py`
+
+说明：
+
+- 该命令是当前 release cutoff 使用的 bounded backend release suite。
+- `python -m pytest -q` 仍可作为 broader diagnostic command 使用，但不作为当前 release cutoff 的 canonical backend gate。
+
 ## 2. Phase 1：骨架验收
 
 ### 2.1 目录
@@ -289,19 +298,24 @@
   - `not_applicable`
 - 输出必须保持为 lineage-aware pass/fail evidence，不得产出分析指标、read model 或 materialized target 描述。
 
-### 3.6F Liability Analytics Envelope Contract
+### 3.6F Liability Analytics Compatibility Reserved-Surface Contract
 
-- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 必须统一返回 `{ result_meta, result }` envelope。
-- 上述 liability endpoints 的 `result_meta.basis` 必须为 `analytical`，`formal_use_allowed=false`，`scenario_flag=false`。
-- `result` 内部仍保留当前 V1 兼容字段名与层级，不得为了 envelope 化而重命名 `top_10`、`by_type`、`liabilities_structure`、`months` 等现有 consumer 字段。
-- envelope 化不得改变 `backend/app/core_finance/liability_analytics_compat.py` 的兼容计算语义；本轮只收口 transport contract 与 lineage metadata。
+- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly` 当前属于 repo-wide `Phase 2` 明确排除面。
+- 上述 public routes 当前必须显式 `503 fail-closed` / `reserved surface`，不得冒充当前已晋升 analytical consumer surface。
+- 上述 public routes 当前不得返回 `{ result_meta, result }` envelope；reserved 状态下不得伪装为已纳入 governed 或 analytical rollout。
+- `report_date` 与 `year` 等基础参数校验仍可保留；参数非法时允许继续返回 `422`。
+- `backend/app/core_finance/liability_analytics_compat.py` 的兼容实现与单测资产可继续保留，但不得因此误写为当前 active public rollout。
 
 本轮对应测试文件：
-- `tests/test_qdb_gl_input_contract_validation.py`
+- `tests/test_liability_analytics_api.py`
+- `tests/test_liability_analytics_envelope_contract.py`
 
 ## 4. Phase 3：分析深钻验收
 
-### 4.1 cube query
+### 4.1 cube query（future / excluded surface）
+- 当前 repo-wide `Phase 2` 边界下，`/api/cube/query` 与 `/api/cube/dimensions/*` 仍属明确排除面。
+- 当前 public route contract 应为显式 `503 reserved surface`，而不是 current governed rollout。
+- 下列能力要求仅作为未来阶段验收目标保留，不构成当前 active cutover 验收：
 - 支持 `dimensions`
 - 支持 `measures`
 - 支持 `filters`

@@ -36,11 +36,11 @@ describe("workbench navigation mocks", () => {
     expect(dash?.path).toBe("/");
   });
 
-  it("promotes risk-overview into the live primary navigation", () => {
+  it("keeps risk-overview outside the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
-    expect(riskOverview?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(riskOverview?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
   });
 
   it("promotes bond-dashboard into the live primary navigation", () => {
@@ -73,12 +73,12 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(false);
   });
 
-  it("promotes liability-analytics into the live primary navigation", () => {
+  it("keeps liability-analytics outside the live primary navigation", () => {
     const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
     expect(liab?.path).toBe("/liability-analytics");
-    expect(liab?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
+    expect(liab?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
   });
 
   it("promotes cashflow-projection into the live primary navigation", () => {
@@ -105,12 +105,12 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "team-performance")).toBe(false);
   });
 
-  it("promotes cube-query into the live primary navigation", () => {
+  it("keeps cube-query outside the live primary navigation", () => {
     const cube = workbenchNavigation.find((s) => s.key === "cube-query");
     expect(cube?.path).toBe("/cube-query");
-    expect(cube?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
+    expect(cube?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
   });
 
   it("promotes pnl-attribution into the live primary navigation", () => {
@@ -153,7 +153,7 @@ describe("workbench navigation mocks", () => {
     expect(primaryWorkbenchNavigation.length + secondaryWorkbenchNavigation.length).toBe(
       workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
-    expect(secondaryWorkbenchNavigation.length).toBe(0);
+    expect(secondaryWorkbenchNavigation.length).toBeGreaterThan(0);
   });
 
   it("groups live entries into a smaller set of primary workspaces", () => {

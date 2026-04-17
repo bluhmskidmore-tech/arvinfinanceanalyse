@@ -7,7 +7,7 @@ from tests.helpers import load_module
 from tests.test_cube_query_service import _seed_cube_tables
 
 
-def test_cube_query_returns_200(tmp_path, monkeypatch):
+def test_cube_query_route_fails_closed_while_surface_remains_reserved(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "cube.duckdb"
     _seed_cube_tables(duckdb_path)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
@@ -25,22 +25,14 @@ def test_cube_query_returns_200(tmp_path, monkeypatch):
         },
     )
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["fact_table"] == "bond_analytics"
-    assert payload["total_rows"] == 2
-    assert payload["rows"][0]["asset_class_std"] == "credit"
-    assert payload["result_meta"]["basis"] == "formal"
+    assert response.status_code == 503
+    assert "reserved" in response.json()["detail"].lower()
     get_settings.cache_clear()
 
 
-def test_list_dimensions_returns_allowed_dimensions():
+def test_cube_dimensions_route_fails_closed_while_surface_remains_reserved():
     client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get("/api/cube/dimensions/bond_analytics")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["fact_table"] == "bond_analytics"
-    assert "asset_class_std" in payload["dimensions"]
-    assert "rating" in payload["dimensions"]
-    assert payload["measures"] == ["sum", "avg", "count", "min", "max"]
+    assert response.status_code == 503
+    assert "reserved" in response.json()["detail"].lower()

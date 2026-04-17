@@ -48,9 +48,11 @@ describe("placeholderSnapshots", () => {
   const requiredKeys = [
     "dashboard",
     "operations-analysis",
+    "liability-analytics",
     "risk-overview",
     "team-performance",
     "bond-analysis",
+    "cube-query",
     "platform-config",
     "market-data",
   ] as const;

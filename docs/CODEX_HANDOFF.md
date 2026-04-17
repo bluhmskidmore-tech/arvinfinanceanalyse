@@ -186,6 +186,14 @@ repo/
 - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
 - cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
 
+当前代码状态下，这些排除面应按以下运行语义理解：
+
+- `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution`：显式 `503 fail-closed`
+- `/api/cube/query`、`/api/cube/dimensions/*`：显式 `503 reserved surface`
+- `/api/risk/buckets`、`/api/analysis/yield_metrics`、`/api/analysis/liabilities/counterparty`、`/api/liabilities/monthly`：显式 `503 reserved surface`
+- `/agent`：hidden placeholder route；`POST /api/agent/query`：`503 disabled stub`
+- 前端工作台中的 `/risk-overview`、`/liability-analytics`、`/cube-query`：placeholder / compat 入口，不得写成当前已晋升 live governed page
+
 若工作属于排除项，仍需新的明确授权或后续阶段定义。
 
 ## 9.1 Agent Phase 1 当前状态
@@ -204,6 +212,14 @@ repo/
 
 - closeout 完成后，暂停 Agent 实现工作
 - 只有当系统 `Phase 2` 正式计算层与 `Phase 3` 证据 / lineage 前置完成后，才允许恢复 Agent Phase 4A / 4B 实施
+
+## 9.2 Backend Canonical Gate
+
+对于当前 repo-wide `Phase 2` governed formal-compute release，backend canonical gate 为：
+
+- `python scripts/backend_release_suite.py`
+
+`python -m pytest -q` 仍可作为 broader diagnostic command 使用，但不作为当前 release cutoff 的 canonical backend gate。
 
 ## 10. 每轮必须交付
 

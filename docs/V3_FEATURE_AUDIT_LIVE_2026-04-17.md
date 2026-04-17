@@ -27,6 +27,8 @@ This audit is evidence-first:
 - `python -m pytest -q`
 - targeted smoke suite:
   `python -m pytest -q ..\tests\test_health_endpoints.py ..\tests\test_positions_api_contract.py ..\tests\test_pnl_api_contract.py ..\tests\test_risk_tensor_api.py ..\tests\test_balance_analysis_api.py ..\tests\test_executive_dashboard_endpoints.py ..\tests\test_bond_analytics_api.py`
+- follow-up excluded-surface verification (same audit date, route-contract level):
+  `python -m pytest -q ..\tests\test_cube_query_api.py ..\tests\test_liability_analytics_api.py ..\tests\test_liability_analytics_envelope_contract.py`
 
 ### Direct HTTP smoke
 
@@ -60,6 +62,8 @@ Non-blocking warnings observed:
   - result: `135 passed in 103.08s`
 - targeted smoke suite
   - result: `99 passed`
+- follow-up excluded-surface verification
+  - result: `38 passed`
 
 ## Direct HTTP Smoke
 
@@ -90,9 +94,9 @@ Date-driven detail smoke also succeeded from repo root:
 | `/api/pnl/overview` | `2026-02-28` | `200` |
 | `/api/risk/tensor` | `2026-02-28` | `200` |
 | `/ui/balance-analysis/overview` | `2026-02-28` | `200` |
+| `/ui/pnl/product-category` | `2026-02-28` | `200` |
 | `/api/bond-analytics/portfolio-headlines` | `2026-02-28` | `200` |
 | `/api/ledger-pnl/summary` | `2026-02-28` | `200` |
-| `/ui/pnl/product-category` | no available dates | `NO_DATES` |
 
 ### Backend-dir smoke
 
@@ -160,17 +164,17 @@ Impact:
 
 - Route behavior, tests, and cutover documents are aligned for the current executive boundary.
 
-### F4. Product-category PnL route exists, but the current live data plane is empty
+### F4. Product-category PnL formal read surface is now runnable in the current workspace
 
 Evidence:
 
 - `/ui/pnl/product-category/dates` returned `200`
-- payload contained `result.report_dates = []`
+- the route now exposes governed report dates through `2026-02-28`
+- `/ui/pnl/product-category?report_date=2026-02-28&view=monthly` returned `200`
 
 Impact:
 
-- The consumer route is implemented.
-- The current workspace data snapshot does not support a meaningful live detail-path verification for this surface.
+- The consumer route is implemented and currently backed by materialized formal read-model data.
 
 ### F5. Core formal read surfaces are runnable from the current workspace
 
@@ -180,6 +184,7 @@ Evidence:
   - `/api/pnl/overview`
   - `/api/risk/tensor`
   - `/ui/balance-analysis/overview`
+  - `/ui/pnl/product-category`
   - `/api/bond-analytics/portfolio-headlines`
   - `/api/ledger-pnl/summary`
 
@@ -198,6 +203,21 @@ Evidence:
 Impact:
 
 - Current delivery risk is concentrated more on backend runtime/test readiness than on frontend buildability.
+
+### F7. Reserved non-cutover query / compatibility routes now fail closed instead of looking accidentally promoted
+
+Evidence:
+
+- route-level verification for excluded surfaces succeeded:
+  - `38 passed`
+- `cube-query` public HTTP surface now returns reserved `503`
+- liability-analytics compatibility public HTTP surface now returns reserved `503`
+- frontend workbench no longer presents `/risk-overview`、`/liability-analytics`、`/cube-query` as live primary-navigation pages
+
+Impact:
+
+- current release docs, runtime behavior, and route-level tests are now more tightly aligned for excluded surfaces
+- these capabilities still exist as retained code assets, but are no longer presented as current governed rollout surfaces
 
 ## Audit Verdict
 
@@ -223,7 +243,6 @@ Impact:
 
 ### Confirmed yellow
 
-- product-category PnL consumer route exists but current data plane is empty
 - vendor-size chunk warnings remain on the frontend build
 - full backend suite still lacks a full-window green result in this audit window
 
@@ -233,6 +252,6 @@ Impact:
 
 ## Recommended Next Actions
 
-1. Decide whether `python scripts/backend_release_suite.py` should become the sole canonical backend gate in the authority docs, or remain one gate among several.
-2. Decide whether product-category PnL needs a seeded live snapshot for auditability, or whether empty-date behavior should remain an accepted gated state.
+1. Keep `python scripts/backend_release_suite.py` aligned across authority docs, CI, acceptance, and live audit outputs as the canonical backend cutoff gate.
+2. Keep product-category PnL materialization healthy in the current workspace so the formal read-model dates do not regress back to empty.
 3. Keep executive E1 / excluded-route status under route-level tests so future cutover changes are explicit rather than accidental.

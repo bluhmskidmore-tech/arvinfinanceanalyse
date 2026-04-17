@@ -26,6 +26,9 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_balance_analysis_api.py",
         "tests/test_bond_analytics_api.py",
         "tests/test_executive_dashboard_endpoints.py",
+        "tests/test_cube_query_api.py",
+        "tests/test_liability_analytics_api.py",
+        "tests/test_liability_analytics_envelope_contract.py",
         "tests/test_result_meta_on_all_ui_endpoints.py",
     ]
 
