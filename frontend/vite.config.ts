@@ -21,36 +21,62 @@ export default defineConfig({
     },
   },
   build: {
+    emptyOutDir: true,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (!id.includes("node_modules")) {
+          const normalizedId = id.split("\\").join("/");
+
+          if (!normalizedId.includes("node_modules")) {
             return undefined;
           }
 
           if (
-            id.includes("/react/") ||
-            id.includes("/react-dom/") ||
-            id.includes("/scheduler/") ||
-            id.includes("/react-router/") ||
-            id.includes("/react-router-dom/") ||
-            id.includes("/@remix-run/router/")
+            normalizedId.includes("/react/") ||
+            normalizedId.includes("/react-dom/") ||
+            normalizedId.includes("/scheduler/") ||
+            normalizedId.includes("/react-router/") ||
+            normalizedId.includes("/react-router-dom/") ||
+            normalizedId.includes("/@remix-run/router/")
           ) {
             return "react-vendor";
           }
 
           if (
-            id.includes("/@tanstack/react-query/") ||
-            id.includes("/@tanstack/query-core/")
+            normalizedId.includes("/@tanstack/react-query/") ||
+            normalizedId.includes("/@tanstack/query-core/")
           ) {
             return "query-vendor";
           }
 
-          if (id.includes("/zrender/")) {
-            return "zrender-vendor";
+          if (
+            normalizedId.includes("/antd/") ||
+            normalizedId.includes("/@ant-design/") ||
+            normalizedId.includes("/@rc-component/") ||
+            normalizedId.includes("/rc-")
+          ) {
+            return "antd-vendor";
           }
 
-          return undefined;
+          if (normalizedId.includes("/echarts-for-react/")) {
+            return "echarts-vendor";
+          }
+
+          if (
+            normalizedId.includes("/echarts/") ||
+            normalizedId.includes("/zrender/")
+          ) {
+            return "echarts-vendor";
+          }
+
+          if (
+            normalizedId.includes("/ag-grid-community/") ||
+            normalizedId.includes("/ag-grid-react/")
+          ) {
+            return "ag-grid-vendor";
+          }
+
+          return "vendor-misc";
         },
       },
     },
