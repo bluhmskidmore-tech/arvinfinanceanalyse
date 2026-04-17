@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from backend.app.governance.locks import LockDefinition
 
 
-_FORMAL_FACT_PREFIX = "fact_formal_"
+_ALLOWED_GOVERNED_FACT_PREFIXES = ("fact_formal_", "fact_nonstd_")
 
 
 @dataclass(slots=True, frozen=True)
@@ -20,6 +20,8 @@ class FormalComputeModuleDescriptor:
     supports_custom_queries: bool = False
     lock_ttl_seconds: int = 900
     vendor_version: str = "vv_none"
+    cache_key_override: str | None = None
+    lock_key_override: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "input_sources", tuple(self.input_sources))
@@ -31,12 +33,29 @@ class FormalComputeModuleDescriptor:
             raise ValueError("formal compute module descriptors must use basis='formal'")
         if not self.fact_tables:
             raise ValueError("At least one fact table is required")
-        if any(not table.startswith(_FORMAL_FACT_PREFIX) for table in self.fact_tables):
-            raise ValueError("Each fact table must remain inside the formal fact namespace")
+        if any(
+            not table.startswith(_ALLOWED_GOVERNED_FACT_PREFIXES)
+            for table in self.fact_tables
+        ):
+            raise ValueError("Each fact table must remain inside the governed fact namespace")
         if not self.rule_version.strip():
             raise ValueError("rule_version is required")
         if not self.result_kind_family.strip():
             raise ValueError("result_kind_family is required")
+        if self.cache_key_override is not None:
+            cache_key_override = self.cache_key_override.strip()
+            if not cache_key_override:
+                raise ValueError("cache_key_override must be non-empty when provided")
+            if not cache_key_override.endswith(f":{self.basis}"):
+                raise ValueError("cache_key_override must remain basis-scoped")
+            object.__setattr__(self, "cache_key_override", cache_key_override)
+        if self.lock_key_override is not None:
+            lock_key_override = self.lock_key_override.strip()
+            if not lock_key_override:
+                raise ValueError("lock_key_override must be non-empty when provided")
+            if f":{self.basis}:" not in lock_key_override:
+                raise ValueError("lock_key_override must remain basis-scoped")
+            object.__setattr__(self, "lock_key_override", lock_key_override)
 
     @property
     def module_slug(self) -> str:
@@ -44,10 +63,14 @@ class FormalComputeModuleDescriptor:
 
     @property
     def cache_key(self) -> str:
+        if self.cache_key_override is not None:
+            return self.cache_key_override
         return f"{self.module_name}:materialize:{self.basis}"
 
     @property
     def lock_key(self) -> str:
+        if self.lock_key_override is not None:
+            return self.lock_key_override
         return f"lock:duckdb:formal:{self.module_slug}:materialize"
 
     @property

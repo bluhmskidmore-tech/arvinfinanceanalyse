@@ -11,6 +11,24 @@ from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
 
 
+def test_pnl_materialize_task_registers_shared_formal_module():
+    registry_module = load_module(
+        "backend.app.core_finance.module_registry",
+        "backend/app/core_finance/module_registry.py",
+    )
+    registry_module.clear_formal_modules()
+    task_module = load_module(
+        "backend.app.tasks.pnl_materialize",
+        "backend/app/tasks/pnl_materialize.py",
+    )
+
+    descriptor = registry_module.get_formal_module("pnl")
+
+    assert descriptor.cache_key == task_module.CACHE_KEY
+    assert descriptor.lock_key == task_module.PNL_MATERIALIZE_LOCK.key
+    assert descriptor.cache_version == task_module.PNL_RESULT_CACHE_VERSION
+
+
 def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
@@ -136,15 +154,18 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
         if line.strip()
     ]
 
-    assert build_runs[0]["status"] == "running"
-    assert build_runs[0]["started_at"]
+    assert [row["status"] for row in build_runs] == ["queued", "running", "completed"]
+    assert build_runs[0]["queued_at"]
+    assert build_runs[1]["started_at"]
     assert build_runs[-1]["status"] == "completed"
+    assert build_runs[-1]["finished_at"]
     assert build_runs[-1]["source_version"] == payload["source_version"]
     assert manifests[-1]["cache_key"] == payload["cache_key"]
     assert manifests[-1]["cache_version"] == task_module.PNL_RESULT_CACHE_VERSION
     assert manifests[-1]["basis"] == "formal"
     assert manifests[-1]["module_name"] == "pnl"
     assert manifests[-1]["fact_tables"] == ["fact_formal_pnl_fi", "fact_nonstd_pnl_bridge"]
+    assert manifests[-1]["result_kind_family"] == "pnl"
     assert manifests[-1]["source_version"] == payload["source_version"]
 
 
@@ -397,7 +418,7 @@ def test_pnl_materialize_task_rejects_formal_fi_rows_when_formal_emission_is_dis
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert [row["status"] for row in build_runs] == ["queued", "running", "failed"]
     assert build_runs[-1]["report_date"] == "2025-12-31"
     assert "Formal pnl emission is disabled" in build_runs[-1]["error_message"]
     get_settings.cache_clear()
@@ -444,7 +465,7 @@ def test_pnl_materialize_task_rejects_enabled_formal_fi_rows_without_scope(tmp_p
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert [row["status"] for row in build_runs] == ["queued", "running", "failed"]
     assert build_runs[-1]["report_date"] == "2025-12-31"
     assert "Formal pnl scope config is empty" in build_runs[-1]["error_message"]
 
@@ -495,7 +516,7 @@ def test_pnl_materialize_task_rejects_settings_enabled_formal_fi_rows_without_sc
         for line in (governance_dir / "cache_build_run.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert [row["status"] for row in build_runs] == ["running", "failed"]
+    assert [row["status"] for row in build_runs] == ["queued", "running", "failed"]
     assert build_runs[-1]["report_date"] == "2025-12-31"
     assert "Formal pnl scope config is empty" in build_runs[-1]["error_message"]
     get_settings.cache_clear()
