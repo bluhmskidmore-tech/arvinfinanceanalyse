@@ -14,10 +14,14 @@ import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
 import {
-  primaryWorkbenchNavigation,
+  findWorkbenchSectionByPath,
+  pathMatchesWorkbenchSection,
+  primaryWorkbenchNavigationGroups,
+  resolveWorkbenchGroupKey,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
+import { shellTokens } from "../theme/tokens";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -36,9 +40,9 @@ const iconMap: Record<string, ReactNode> = {
 function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
   if (kind === "live") {
     return {
-      background: "#e8f6ee",
-      color: "#2f8f63",
-      border: "1px solid #c8e8d5",
+      background: shellTokens.colorBgSuccessSoft,
+      color: shellTokens.colorSuccess,
+      border: `1px solid ${shellTokens.colorBorderSoft}`,
     } as const;
   }
 
@@ -57,18 +61,48 @@ function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
   } as const;
 }
 
-function pathMatchesSection(sectionPath: string, pathname: string) {
-  if (sectionPath === "/") {
-    return pathname === "/" || pathname === "/dashboard";
-  }
-  return sectionPath === pathname;
+function groupButtonStyle(active: boolean) {
+  return {
+    display: "grid",
+    gap: 8,
+    padding: "14px 16px",
+    borderRadius: 18,
+    background: active ? shellTokens.colorAccentSoft : "#ffffff",
+    color: active ? shellTokens.colorAccent : shellTokens.colorTextPrimary,
+    border: active
+      ? `1px solid ${shellTokens.colorBorderStrong}`
+      : `1px solid ${shellTokens.colorBorderSoft}`,
+    boxShadow: active ? shellTokens.shadowPanel : "none",
+    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
+  } as const;
+}
+
+function groupSectionPillStyle(active: boolean) {
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 14px",
+    borderRadius: 999,
+    background: active ? shellTokens.colorAccent : "#ffffff",
+    color: active ? "#ffffff" : shellTokens.colorTextSecondary,
+    border: active
+      ? `1px solid ${shellTokens.colorAccent}`
+      : `1px solid ${shellTokens.colorBorderSoft}`,
+    fontSize: 13,
+    fontWeight: 600,
+    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
+  } as const;
 }
 
 export function WorkbenchShell() {
   const location = useLocation();
-  const currentSection =
-    workbenchNavigation.find((item) => pathMatchesSection(item.path, location.pathname)) ??
-    workbenchNavigation[0];
+  const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
+  const currentGroup =
+    primaryWorkbenchNavigationGroups.find(
+      (group) => group.key === resolveWorkbenchGroupKey(currentSection),
+    ) ?? primaryWorkbenchNavigationGroups[0];
+  const currentGroupSections = currentGroup.sections;
   const dataSourceRaw = import.meta.env.VITE_DATA_SOURCE;
   const isMockDataSource =
     typeof dataSourceRaw !== "string" || dataSourceRaw.trim().toLowerCase() !== "real";
@@ -78,18 +112,22 @@ export function WorkbenchShell() {
       style={{
         minHeight: "100vh",
         display: "grid",
-        gridTemplateColumns: "300px minmax(0, 1fr)",
-        gap: 18,
-        padding: 18,
+        gridTemplateColumns: "280px minmax(0, 1fr)",
+        gap: 20,
+        padding: 20,
+        background: shellTokens.colorBgApp,
       }}
     >
       <aside
         style={{
-          border: "1px solid #d7dfea",
+          display: "grid",
+          alignContent: "start",
+          gap: 18,
+          padding: 18,
+          border: `1px solid ${shellTokens.colorBorder}`,
           borderRadius: 28,
-          overflow: "hidden",
-          boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-          background: "#fbfcfe",
+          boxShadow: shellTokens.shadowPanel,
+          background: shellTokens.colorBgSurface,
         }}
       >
         <div
@@ -97,8 +135,8 @@ export function WorkbenchShell() {
             display: "flex",
             alignItems: "center",
             gap: 12,
-            padding: "24px 24px 18px",
-            borderBottom: "1px solid #e3e9f2",
+            paddingBottom: 18,
+            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
           <div
@@ -108,8 +146,8 @@ export function WorkbenchShell() {
               width: 34,
               height: 34,
               borderRadius: 12,
-              background: "#162033",
-              color: "#fbfcfe",
+              background: shellTokens.colorTextPrimary,
+              color: shellTokens.colorBgSurface,
               fontWeight: 700,
             }}
           >
@@ -119,32 +157,26 @@ export function WorkbenchShell() {
             <span
               style={{
                 display: "block",
-                color: "#162033",
-                fontWeight: 600,
+                color: shellTokens.colorTextPrimary,
+                fontWeight: 700,
                 fontSize: 18,
                 letterSpacing: "-0.02em",
               }}
             >
               MOSS
             </span>
-            <span
-              style={{
-                color: "#8090a8",
-                fontSize: 12,
-              }}
-            >
+            <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
               Phase 1 workbench shell
             </span>
           </div>
         </div>
 
-        <div
+        <section
           style={{
-            padding: 16,
-            borderBottom: "1px solid #e3e9f2",
-            background: "#f7f9fc",
             display: "grid",
             gap: 8,
+            paddingBottom: 18,
+            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
           <span
@@ -152,157 +184,158 @@ export function WorkbenchShell() {
               fontSize: 11,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
-              color: "#8090a8",
+              color: shellTokens.colorTextMuted,
             }}
           >
             Current Scope
           </span>
-          <div style={{ color: "#162033", fontSize: 13, lineHeight: 1.6 }}>
-            当前主导航只突出已接真实读链路的模块。其余页面保留入口，但明确标注为占位或未就绪。
+          <div
+            style={{
+              color: shellTokens.colorTextPrimary,
+              fontSize: 13,
+              lineHeight: 1.7,
+            }}
+          >
+            当前左侧只保留工作台分组。具体分析页收进当前分组的子导航，减少首页扫描负担。
           </div>
-        </div>
+        </section>
 
         <nav
-          aria-label="主导航"
+          aria-label="Primary workspaces"
+          data-testid="workbench-group-nav"
+          style={{ display: "grid", gap: 10 }}
+        >
+          {primaryWorkbenchNavigationGroups.map((group) => {
+            const active = group.key === currentGroup.key;
+
+            return (
+              <NavLink key={group.key} to={group.defaultPath} style={groupButtonStyle(active)}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>{iconMap[group.icon]}</span>
+                  <span style={{ flex: 1, fontWeight: 700 }}>{group.label}</span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 28,
+                      height: 28,
+                      paddingInline: 8,
+                      borderRadius: 999,
+                      background: active ? "rgba(255,255,255,0.2)" : shellTokens.colorBgMuted,
+                      color: active ? "#ffffff" : shellTokens.colorTextSecondary,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {group.sections.length}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    color: active ? "#dbe6ff" : shellTokens.colorTextMuted,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {group.description}
+                </div>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <section
           style={{
             display: "grid",
-            gap: 6,
-            padding: 16,
+            gap: 10,
+            paddingTop: 4,
+            borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
-          {primaryWorkbenchNavigation.map((item) => {
-            const active = pathMatchesSection(item.path, location.pathname);
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: shellTokens.colorTextMuted,
+            }}
+          >
+            Reserved Modules
+          </div>
+          {secondaryWorkbenchNavigation.map((item) => {
+            const active = pathMatchesWorkbenchSection(item.path, location.pathname);
 
             return (
               <NavLink
                 key={item.key}
                 to={item.path}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "14px 16px",
+                  display: "grid",
+                  gap: 6,
+                  padding: "12px 14px",
                   borderRadius: 16,
-                  background: active ? "#e7efff" : "transparent",
-                  color: active ? "#1f5eff" : "#485970",
-                  fontWeight: active ? 600 : 500,
-                  border: active ? "1px solid #cddcff" : "1px solid transparent",
-                  transition: "background-color 160ms ease, color 160ms ease",
+                  background: active ? "#f4f7fb" : "#ffffff",
+                  border: active
+                    ? `1px solid ${shellTokens.colorBorder}`
+                    : `1px solid ${shellTokens.colorBorderSoft}`,
+                  color: shellTokens.colorTextPrimary,
                 }}
               >
-                <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
-                <span style={{ flex: 1 }}>{item.label}</span>
-                <span
-                  style={{
-                    ...readinessBadgeStyle(item.readiness),
-                    borderRadius: 999,
-                    padding: "2px 8px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                  }}
-                >
-                  {item.readinessLabel}
-                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
+                  <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
+                  <span
+                    style={{
+                      ...readinessBadgeStyle(item.readiness),
+                      borderRadius: 999,
+                      padding: "2px 8px",
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.readinessLabel}
+                  </span>
+                </div>
+                <div style={{ color: shellTokens.colorTextMuted, fontSize: 12, lineHeight: 1.6 }}>
+                  {item.readinessNote}
+                </div>
               </NavLink>
             );
           })}
-        </nav>
-
-        <div
-          style={{
-            padding: "0 16px 16px",
-            display: "grid",
-            gap: 10,
-          }}
-        >
-          <div
-            style={{
-              paddingTop: 8,
-              borderTop: "1px solid #e3e9f2",
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: "#8090a8",
-            }}
-          >
-            Reserved Modules
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {secondaryWorkbenchNavigation.map((item) => {
-              const active = pathMatchesSection(item.path, location.pathname);
-
-              return (
-                <NavLink
-                  key={item.key}
-                  to={item.path}
-                  style={{
-                    display: "grid",
-                    gap: 6,
-                    padding: "12px 14px",
-                    borderRadius: 16,
-                    background: active ? "#f4f7fb" : "#ffffff",
-                    border: active ? "1px solid #d7dfea" : "1px solid #e8edf5",
-                    color: "#485970",
-                    textDecoration: "none",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                    }}
-                  >
-                    <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
-                    <span style={{ flex: 1, fontWeight: 600 }}>{item.label}</span>
-                    <span
-                      style={{
-                        ...readinessBadgeStyle(item.readiness),
-                        borderRadius: 999,
-                        padding: "2px 8px",
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {item.readinessLabel}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 12, lineHeight: 1.5, color: "#708197" }}>
-                    {item.readinessNote}
-                  </div>
-                </NavLink>
-              );
-            })}
-          </div>
-        </div>
+        </section>
       </aside>
 
       <div
         style={{
           display: "grid",
-          gridTemplateRows: "96px minmax(0, 1fr)",
-          gap: 18,
+          gridTemplateRows: "auto minmax(0, 1fr)",
+          gap: 20,
         }}
       >
         <header
           style={{
             display: "flex",
-            alignItems: "center",
+            alignItems: "flex-start",
             justifyContent: "space-between",
-            padding: "0 24px",
-            minHeight: 96,
-            border: "1px solid #d7dfea",
+            gap: 18,
+            padding: "20px 24px",
+            border: `1px solid ${shellTokens.colorBorder}`,
             borderRadius: 28,
-            boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-            background: "#fbfcfe",
-            gap: 16,
+            boxShadow: shellTokens.shadowPanel,
+            background: shellTokens.colorBgSurface,
           }}
         >
-          <div>
+          <div style={{ display: "grid", gap: 8 }}>
             <span
               style={{
-                display: "block",
-                color: "#8090a8",
+                color: shellTokens.colorTextMuted,
                 fontSize: 12,
                 textTransform: "uppercase",
                 letterSpacing: "0.08em",
@@ -312,37 +345,34 @@ export function WorkbenchShell() {
             </span>
             <div
               style={{
-                margin: "6px 0 0",
                 fontSize: 22,
-                fontWeight: 600,
-                color: "#162033",
+                fontWeight: 700,
+                color: shellTokens.colorTextPrimary,
               }}
             >
               当前只突出可验证的真实读链路
             </div>
+            <div style={{ color: shellTokens.colorTextSecondary, fontSize: 14, lineHeight: 1.7 }}>
+              当前工作台：{currentGroup.label}。页面切换收进组内导航，避免在壳层堆满入口。
+            </div>
           </div>
-          <div
-            style={{
-              display: "grid",
-              justifyItems: "end",
-              gap: 8,
-            }}
-          >
+
+          <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
             <span
               style={{
                 ...readinessBadgeStyle(currentSection.readiness),
                 borderRadius: 999,
                 padding: "6px 12px",
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
               }}
             >
               {currentSection.label} · {currentSection.readinessLabel}
             </span>
             <span
               style={{
-                maxWidth: 460,
-                color: "#5c6b82",
+                maxWidth: 420,
+                color: shellTokens.colorTextSecondary,
                 fontSize: 13,
                 lineHeight: 1.6,
                 textAlign: "right",
@@ -355,23 +385,75 @@ export function WorkbenchShell() {
 
         <main
           style={{
-            padding: 28,
-            border: "1px solid #d7dfea",
+            padding: 24,
+            border: `1px solid ${shellTokens.colorBorder}`,
             borderRadius: 28,
-            boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-            background: "#fbfcfe",
+            boxShadow: shellTokens.shadowPanel,
+            background: shellTokens.colorBgSurface,
             display: "grid",
+            alignContent: "start",
             gap: 18,
           }}
         >
+          <section
+            data-testid="workbench-section-subnav"
+            style={{
+              display: "grid",
+              gap: 12,
+              paddingBottom: 18,
+              borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+            }}
+          >
+            <div style={{ display: "grid", gap: 4 }}>
+              <span
+                style={{
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                In This Workspace
+              </span>
+              <div
+                style={{
+                  color: shellTokens.colorTextPrimary,
+                  fontSize: 18,
+                  fontWeight: 700,
+                }}
+              >
+                {currentGroup.label}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {currentGroupSections.map((section) => {
+                const active = pathMatchesWorkbenchSection(section.path, location.pathname);
+
+                return (
+                  <NavLink
+                    key={section.key}
+                    to={section.path}
+                    style={groupSectionPillStyle(active)}
+                  >
+                    <span style={{ fontSize: 14 }}>{iconMap[section.icon]}</span>
+                    <span>{section.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          </section>
+
           {currentSection.readiness !== "live" ? (
             <section
               data-testid="workbench-readiness-banner"
               style={{
                 borderRadius: 18,
-                border: "1px solid #e4ebf5",
-                background: currentSection.readiness === "placeholder" ? "#faf7ff" : "#fff8f1",
-                color: "#31425b",
+                border: `1px solid ${shellTokens.colorBorderSoft}`,
+                background:
+                  currentSection.readiness === "placeholder" ? "#faf7ff" : "#fff8f1",
+                color: shellTokens.colorTextPrimary,
                 padding: 18,
                 display: "grid",
                 gap: 8,
@@ -382,11 +464,9 @@ export function WorkbenchShell() {
                   ? "当前页面仍是占位壳层"
                   : "当前页面尚未物化真实数据链路"}
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6 }}>
-                {currentSection.readinessNote}
-              </div>
-              <div style={{ fontSize: 13, color: "#708197" }}>
-                若需要先看可跑出数据的模块，请优先使用主导航中的 Live 页面。
+              <div style={{ fontSize: 14, lineHeight: 1.6 }}>{currentSection.readinessNote}</div>
+              <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
+                如需先查看可验证的数据页面，请优先使用当前工作台中的 live 子页面。
               </div>
             </section>
           ) : null}
@@ -405,10 +485,10 @@ export function WorkbenchShell() {
             zIndex: 1000,
             padding: "6px 12px",
             borderRadius: 999,
-            background: "#162033",
-            color: "#fbfcfe",
+            background: shellTokens.colorTextPrimary,
+            color: shellTokens.colorBgSurface,
             fontSize: 12,
-            fontWeight: 600,
+            fontWeight: 700,
             boxShadow: "0 8px 24px rgba(19, 37, 70, 0.2)",
             pointerEvents: "none",
           }}
