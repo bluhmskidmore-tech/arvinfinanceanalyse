@@ -1,3 +1,19 @@
+"""Balance analysis workbook builder - monolithic implementation.
+
+REFACTORING NOTE (2026-04-17):
+This 1576-line file contains 29 _build_* table functions with no clear separation.
+Planned refactoring: split into modular structure under balance_workbook/ package:
+  - _utils.py: shared utilities (group_rows, weighted_average, etc.) [DONE]
+  - _cards.py: _build_cards
+  - _bond_tables.py: bond_business_type, maturity_gap, issuer_concentration, etc.
+  - _ifrs9_tables.py: ifrs9_classification, ifrs9_position_scope, ifrs9_source_family
+  - _risk_tables.py: regulatory_limits, overdue_credit_quality, risk_alerts
+  - _analysis_tables.py: campisi, cross_analysis, decision_items, event_calendar
+  - builder.py: main entry point [DONE]
+
+For now, this file remains intact to avoid breaking existing imports.
+New code should import from balance_workbook package instead.
+"""
 from __future__ import annotations
 
 from datetime import date
