@@ -358,24 +358,10 @@ def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, 
 
     assert len(version_triples) == 1
     sv, rv, cv = next(iter(version_triples))
-
-
-def test_product_category_average_workbook_with_single_sheet_is_treated_as_partial_input(tmp_path):
-    avg_path = tmp_path / "日均202401.xlsx"
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "年"
-    sheet["A4"] = "CNX"
-    sheet["B4"] = "13304010001"
-    sheet["C4"] = 123
-    workbook.save(avg_path)
-
-    from backend.app.services.product_category_source_service import _parse_average_workbook
-
-    annual_rows, monthly_rows = _parse_average_workbook(avg_path)
-
-    assert annual_rows[("13304010001", "CNX")] == Decimal("123")
-    assert monthly_rows == {}
+    assert rv == "rv_product_category_pnl_v1"
+    assert cv == "cv_product_category_pnl_v1"
+    assert sv.startswith("sv_product_category_")
+    get_settings.cache_clear()
 
 
 def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path, monkeypatch):

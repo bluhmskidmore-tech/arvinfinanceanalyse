@@ -17,7 +17,6 @@ def _default_probe_result(module, url: str):
         "http://api/api/risk/tensor/dates",
         "http://api/ui/balance-analysis/dates",
         "http://api/api/pnl/dates",
-        "http://api/ui/pnl/product-category/dates",
     }
     status = 503 if url in reserved_urls else 200
     return module.ProbeResult(

@@ -246,31 +246,6 @@ def build_preflight_report(*, api_base: str, frontend_base: str) -> dict[str, An
             )
         )
 
-    product_category_dates = _named_probe(
-        "product_category_dates",
-        f"{api_base}/ui/pnl/product-category/dates",
-    )
-    probes.append(product_category_dates)
-    product_category_report_dates = product_category_dates.report_dates or []
-    if product_category_report_dates:
-        probes.append(
-            _named_probe(
-                "product_category_monthly",
-                (
-                    f"{api_base}/ui/pnl/product-category"
-                    f"?report_date={product_category_report_dates[0]}&view=monthly"
-                ),
-            )
-        )
-    else:
-        probes.append(
-            _skipped_probe(
-                "product_category_monthly",
-                f"{api_base}/ui/pnl/product-category",
-                "Skipped because product-category dates are unavailable.",
-            )
-        )
-
     probes.append(_named_probe("executive_overview", f"{api_base}/ui/home/overview"))
     probes.append(_named_probe("executive_summary", f"{api_base}/ui/home/summary"))
 
