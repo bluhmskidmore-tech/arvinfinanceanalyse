@@ -86,6 +86,7 @@ import type {
   PageResponse,
   OverviewPayload,
   PnlBridgePayload,
+  PnlBasis,
   PnlDataPayload,
   PnlDatesPayload,
   PnlOverviewPayload,

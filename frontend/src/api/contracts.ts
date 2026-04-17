@@ -1,5 +1,6 @@
 /** Shared API surface: envelope, health, and cross-cutting enums. */
 export type ApiBasis = "formal" | "scenario" | "analytical" | "mock";
+export type PnlBasis = "formal" | "analytical";
 export type ApiQuality = "ok" | "warning" | "error" | "stale";
 
 export type ResultNextDrill = string | Record<string, unknown>;
