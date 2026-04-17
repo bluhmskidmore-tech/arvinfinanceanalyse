@@ -13,8 +13,6 @@ import {
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
 
-const FALLBACK_REPORT_DATE = "2025-12-31";
-
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
   { key: "duration" as const, name: "久期", max: 10 },
@@ -127,8 +125,15 @@ export default function RiskTensorPage() {
     if (explicitReportDate) {
       return explicitReportDate;
     }
-    return datesQuery.data?.result.report_dates[0] ?? FALLBACK_REPORT_DATE;
+    return datesQuery.data?.result.report_dates[0] ?? "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate]);
+
+  const datesBlockingError = datesQuery.isError && !reportDate;
+  const datesEmpty =
+    !explicitReportDate &&
+    !datesQuery.isLoading &&
+    !datesBlockingError &&
+    (datesQuery.data?.result.report_dates.length ?? 0) === 0;
 
   const tensorQuery = useQuery({
     queryKey: ["risk-tensor", reportDate],
@@ -323,18 +328,26 @@ export default function RiskTensorPage() {
             fontSize: 14,
           }}
         >
-          报告日：<strong>{reportDate}</strong>
-          <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
-            （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 覆盖）
-          </span>
+          {datesEmpty ? (
+            <span>后端未返回可用风险报告日。</span>
+          ) : datesBlockingError ? (
+            <span>风险报告日载入失败。</span>
+          ) : (
+            <>
+              报告日：<strong>{reportDate}</strong>
+              <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
+                （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 覆盖）
+              </span>
+            </>
+          )}
         </div>
       </div>
 
       <AsyncSection
         title="组合风险张量"
         isLoading={datesQuery.isLoading || tensorQuery.isLoading}
-        isError={datesQuery.isError || tensorQuery.isError}
-        isEmpty={isEmpty}
+        isError={datesBlockingError || tensorQuery.isError}
+        isEmpty={datesEmpty || isEmpty}
         onRetry={() => {
           void datesQuery.refetch();
           void tensorQuery.refetch();
