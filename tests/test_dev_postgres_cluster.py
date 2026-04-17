@@ -274,6 +274,47 @@ def test_run_checked_retry_does_not_swallow_non_retryable_exit_code(monkeypatch)
         module._run_checked_retry(["psql.exe", "-c", "select 1"], capture_output=True)
 
 
+def test_initdb_with_locale_fallback_retries_with_no_locale(monkeypatch, tmp_path):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=repo_root / "tmp-governance" / "pgdev" / "data",
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+
+    calls: list[list[str]] = []
+
+    def fake_run_checked(args, *, capture_output=False):
+        calls.append(args)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1,
+                args,
+                stderr='initdb: could not find suitable text search configuration for locale "Chinese (Simplified)_China.936"',
+            )
+        return ""
+
+    monkeypatch.setattr(module, "_run_checked", fake_run_checked)
+
+    module._initdb_with_locale_fallback(config)
+
+    assert len(calls) == 2
+    assert calls[0][-1] == "--no-instructions"
+    assert calls[1][-2:] == ["--no-locale", "--encoding=UTF8"]
+
+
 def test_wait_for_postgres_ready_retries_until_probe_succeeds(monkeypatch):
     module = load_module(
         "scripts.dev_postgres_cluster",
