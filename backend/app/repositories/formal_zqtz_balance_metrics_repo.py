@@ -15,6 +15,26 @@ class FormalZqtzBalanceMetricsRepository:
 
     path: str
 
+    def list_report_dates(self, *, currency_basis: str = "CNY") -> list[str]:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            try:
+                rows = conn.execute(
+                    """
+                    select distinct cast(report_date as varchar)
+                    from fact_formal_zqtz_balance_daily
+                    where position_scope = 'asset'
+                      and currency_basis = ?
+                    order by cast(report_date as varchar) desc
+                    """,
+                    [currency_basis],
+                ).fetchall()
+            finally:
+                conn.close()
+        except duckdb.Error as exc:
+            raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
+        return [str(row[0]) for row in rows]
+
     def fetch_zqtz_asset_market_value(
         self,
         *,

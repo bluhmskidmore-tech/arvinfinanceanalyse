@@ -67,6 +67,40 @@ class LiabilityAnalyticsRepository:
         finally:
             conn.close()
 
+    def list_report_dates(self) -> list[str]:
+        conn = self._connect()
+        if conn is None:
+            return []
+        try:
+            dates: set[str] = set()
+            if self._table_exists(conn, "zqtz_bond_daily_snapshot"):
+                dates.update(
+                    str(row[0])
+                    for row in conn.execute(
+                        """
+                        select distinct cast(report_date as varchar)
+                        from zqtz_bond_daily_snapshot
+                        order by cast(report_date as varchar) desc
+                        """
+                    ).fetchall()
+                    if row[0]
+                )
+            if self._table_exists(conn, "tyw_interbank_daily_snapshot"):
+                dates.update(
+                    str(row[0])
+                    for row in conn.execute(
+                        """
+                        select distinct cast(report_date as varchar)
+                        from tyw_interbank_daily_snapshot
+                        order by cast(report_date as varchar) desc
+                        """
+                    ).fetchall()
+                    if row[0]
+                )
+            return sorted(dates, reverse=True)
+        finally:
+            conn.close()
+
     def fetch_zqtz_rows(self, report_date: str) -> list[dict[str, Any]]:
         conn = self._connect()
         if conn is None:

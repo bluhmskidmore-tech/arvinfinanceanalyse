@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
@@ -34,7 +36,6 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes():
         "summary",
         "pnl_attribution",
         "risk_overview",
-        "contribution",
         "alerts",
     ):
         payload = getattr(module, name)()
@@ -42,20 +43,23 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes():
         assert "result" in payload
         assert payload["result_meta"]["result_kind"].startswith("executive.")
 
+    with pytest.raises(HTTPException) as exc_info:
+        module.contribution()
+    assert exc_info.value.status_code == 503
 
-def test_executive_dashboard_http_routes_return_200_with_result_envelope():
+
+def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200():
     main = load_module("backend.app.main", "backend/app/main.py")
     client = TestClient(main.app)
-    paths = [
+    ok_paths = [
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
         "/ui/risk/overview",
-        "/ui/home/contribution",
         "/ui/home/alerts",
     ]
     kinds: list[str] = []
-    for path in paths:
+    for path in ok_paths:
         response = client.get(path)
         assert response.status_code == 200, path
         body = response.json()
@@ -69,8 +73,44 @@ def test_executive_dashboard_http_routes_return_200_with_result_envelope():
     assert "executive.summary" in kinds
     assert "executive.pnl-attribution" in kinds
     assert "executive.risk-overview" in kinds
-    assert "executive.contribution" in kinds
     assert "executive.alerts" in kinds
+
+    response = client.get("/ui/home/contribution")
+    assert response.status_code == 503
+
+
+def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailable(monkeypatch):
+    module = _load_executive_routes_module()
+
+    def _vendor_unavailable_payload(result_kind: str) -> dict[str, object]:
+        return {
+            "result_meta": {
+                "result_kind": result_kind,
+                "vendor_status": "vendor_unavailable",
+            },
+            "result": {},
+        }
+
+    monkeypatch.setattr(
+        module,
+        "executive_risk_overview",
+        lambda report_date=None: _vendor_unavailable_payload("executive.risk-overview"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_contribution",
+        lambda report_date=None: _vendor_unavailable_payload("executive.contribution"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_alerts",
+        lambda report_date=None: _vendor_unavailable_payload("executive.alerts"),
+    )
+
+    for name in ("risk_overview", "contribution", "alerts"):
+        with pytest.raises(HTTPException) as exc_info:
+            getattr(module, name)()
+        assert exc_info.value.status_code == 503
 
 
 def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):

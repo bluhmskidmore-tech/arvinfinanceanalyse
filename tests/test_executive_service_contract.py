@@ -6,8 +6,11 @@ import datetime as dt
 import uuid
 from types import SimpleNamespace
 
+import duckdb
 import pytest
 
+from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
+from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from tests.helpers import load_module
 
 
@@ -87,6 +90,17 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
         def fetch_latest_zqtz_asset_market_value(self, **_k):
             return {"total_market_value_amount": 1023.47e8}
 
+        def list_report_dates(self):
+            return ["2030-03-15", "2030-02-28"]
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            assert currency_basis == "CNY"
+            values = {
+                "2030-03-15": 1023.47e8,
+                "2030-02-28": 1000.00e8,
+            }
+            return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+
     class OkPnl:
         def __init__(self, *_a, **_k):
             pass
@@ -95,22 +109,120 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
             assert year == 2030
             return 12.63e8
 
+        def list_union_report_dates(self):
+            return ["2030-03-15", "2030-02-28"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            values = {
+                "2030-03-15": 12.63e8,
+                "2030-02-28": 11.62e8,
+            }
+            return values[report_date]
+
+    class OkLiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2030-03-15"
+
+        def list_report_dates(self):
+            return ["2030-03-15", "2030-02-28"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            assert report_date in {"2030-03-15", "2030-02-28"}
+            return [{"source_version": "sv-liab-z", "rule_version": "rv-liab"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            assert report_date in {"2030-03-15", "2030-02-28"}
+            return [{"source_version": "sv-liab-t", "rule_version": "rv-liab"}]
+
+    class OkBondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def fetch_latest_risk_overview_snapshot(self):
+            return {
+                "report_date": "2030-03-15",
+                "portfolio_dv01": 1234567.8,
+            }
+
+        def list_report_dates(self):
+            return ["2030-03-15", "2030-02-28"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            values = {
+                "2030-03-15": 1234567.8,
+                "2030-02-28": 1000000.0,
+            }
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": values[report_date],
+            }
+
     class FixedDate:
         today = staticmethod(lambda: dt.date(2030, 3, 15))
         fromisoformat = staticmethod(dt.date.fromisoformat)
 
     monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", OkFormal)
     monkeypatch.setattr(exec_mod, "PnlRepository", OkPnl)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", OkLiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", OkBondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {
+                "asset_yield": 2.45,
+                "liability_cost": 2.07,
+                "market_liability_cost": 2.07,
+                "nim": 0.38 if report_date == "2030-03-15" else 0.33,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_executive_kpi_metrics",
+        lambda **_kwargs: [
+            {
+                "id": "goal",
+                "label": "目标完成率",
+                "value": "92.20%",
+                "delta": "governed",
+                "tone": "positive",
+                "detail": "来自 KPI 年度汇总读面。",
+            },
+            {
+                "id": "risk-budget",
+                "label": "风险预算使用率",
+                "value": "88.00%",
+                "delta": "governed",
+                "tone": "warning",
+                "detail": "来自 KPI 年度汇总读面。",
+            },
+        ],
+    )
     monkeypatch.setattr(exec_mod, "date", FixedDate)
 
     out = exec_mod.executive_overview()
     assert out["result_meta"]["result_kind"] == "executive.overview"
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert set(metrics) == {"aum", "yield"}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
     assert metrics["aum"]["value"] == "1,023.47 亿"
     assert metrics["yield"]["value"] == "+12.63 亿"
+    assert metrics["nim"]["value"] == "+0.38%"
+    assert metrics["dv01"]["value"] == "1,234,568"
+    assert metrics["aum"]["delta"] == "+2.35%"
+    assert metrics["yield"]["delta"] == "+8.69%"
+    assert metrics["nim"]["delta"] == "+0.05pp"
+    assert metrics["dv01"]["delta"] == "+23.46%"
+    assert metrics["goal"]["value"] == "92.20%"
+    assert metrics["risk-budget"]["value"] == "88.00%"
     assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
-    assert "fact_formal_pnl_fi 当年" in metrics["yield"]["detail"]
+    assert "截至 2030-03-15" in metrics["yield"]["detail"]
+    assert "nim" in metrics["nim"]["detail"].lower()
+    assert "DV01" in metrics["dv01"]["detail"]
 
 
 def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
@@ -120,28 +232,279 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
         def __init__(self, *_a, **_k):
             pass
 
+        def list_report_dates(self):
+            return ["2025-11-20", "2025-10-31"]
+
         def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
             calls.append(("aum", report_date))
             assert currency_basis == "CNY"
+            values = {
+                "2025-11-20": 321.0e8,
+                "2025-10-31": 300.0e8,
+            }
+            return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_union_report_dates(self):
+            return ["2025-11-20", "2025-10-31"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("pnl", report_date))
+            values = {
+                "2025-11-20": 6.5e8,
+                "2025-10-31": 5.0e8,
+            }
+            return values[report_date]
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-11-20", "2025-10-31"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            calls.append(("liab-z", report_date))
+            return [{"source_version": "sv-liab-z", "rule_version": "rv-liab"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            calls.append(("liab-t", report_date))
+            return [{"source_version": "sv-liab-t", "rule_version": "rv-liab"}]
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-11-20", "2025-10-31"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            calls.append(("risk", report_date))
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 456789.0 if report_date == "2025-11-20" else 400000.0,
+            }
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", FormalRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {
+                "nim": 0.25 if report_date == "2025-11-20" else 0.20,
+            },
+        },
+    )
+
+    out = exec_mod.executive_overview(report_date="2025-11-20")
+
+    assert calls == [
+        ("aum", "2025-11-20"),
+        ("aum", "2025-10-31"),
+        ("pnl", "2025-11-20"),
+        ("pnl", "2025-10-31"),
+        ("liab-z", "2025-11-20"),
+        ("liab-t", "2025-11-20"),
+        ("liab-z", "2025-10-31"),
+        ("liab-t", "2025-10-31"),
+        ("risk", "2025-11-20"),
+        ("risk", "2025-10-31"),
+    ]
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert "2025-11-20" in metrics["aum"]["detail"]
+    assert "截至 2025-11-20" in metrics["yield"]["detail"]
+    assert "2025-11-20" in metrics["nim"]["detail"]
+    assert "2025-11-20" in metrics["dv01"]["detail"]
+    assert metrics["aum"]["delta"] == "+7.00%"
+    assert metrics["yield"]["delta"] == "+30.00%"
+    assert metrics["nim"]["delta"] == "+0.05pp"
+    assert metrics["dv01"]["delta"] == "+14.20%"
+
+
+def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_date(monkeypatch, exec_mod):
+    calls: list[tuple[str, str]] = []
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31"]
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            calls.append(("aum", report_date))
             return {"report_date": report_date, "total_market_value_amount": 321.0e8}
 
     class PnlRepo:
         def __init__(self, *_a, **_k):
             pass
 
+        def list_union_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def sum_formal_total_pnl_for_year(self, year: int):
+            raise AssertionError("wall-clock year path should not be used when latest governed report date exists")
+
         def sum_formal_total_pnl_through_report_date(self, report_date: str):
             calls.append(("pnl", report_date))
-            return 6.5e8
+            values = {
+                "2025-12-31": 6.5e8,
+                "2025-11-30": 5.0e8,
+            }
+            return values[report_date]
 
-    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", FormalRepo)
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def resolve_latest_report_date(self):
+            return "2025-12-31"
+
+        def fetch_zqtz_rows(self, report_date: str):
+            calls.append(("liab-z", report_date))
+            return [{"source_version": "sv-liab-z", "rule_version": "rv-liab"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            calls.append(("liab-t", report_date))
+            return [{"source_version": "sv-liab-t", "rule_version": "rv-liab"}]
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def fetch_latest_risk_overview_snapshot(self):
+            calls.append(("risk", "2025-12-31"))
+            return {
+                "report_date": "2025-12-31",
+                "portfolio_dv01": 456789.0,
+            }
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            calls.append(("risk", report_date))
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 456789.0 if report_date == "2025-12-31" else 400000.0,
+            }
+
+    class FixedDate:
+        today = staticmethod(lambda: dt.date(2030, 3, 15))
+        fromisoformat = staticmethod(dt.date.fromisoformat)
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
     monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {
+                "nim": 0.25 if report_date == "2025-12-31" else 0.20,
+            },
+        },
+    )
+    monkeypatch.setattr(exec_mod, "date", FixedDate)
 
-    out = exec_mod.executive_overview(report_date="2025-11-20")
+    out = exec_mod.executive_overview()
 
-    assert calls == [("aum", "2025-11-20"), ("pnl", "2025-11-20")]
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert "2025-11-20" in metrics["aum"]["detail"]
-    assert "截至 2025-11-20" in metrics["yield"]["detail"]
+    assert metrics["yield"]["value"] == "+6.50 亿"
+    assert "2025-12-31" in metrics["yield"]["detail"]
+    assert calls.count(("pnl", "2025-12-31")) == 1
+    assert calls.count(("pnl", "2025-11-30")) == 1
+
+
+def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(monkeypatch, exec_mod):
+    calls: list[tuple[str, str]] = []
+
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self, currency_basis: str = "CNY"):
+            return ["2025-12-31"]
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            return {"report_date": report_date, "total_market_value_amount": 321.0e8}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_union_report_dates(self):
+            return ["2026-01-31", "2025-12-31", "2025-11-30"]
+
+        def list_formal_fi_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def sum_formal_total_pnl_for_year(self, year: int):
+            raise AssertionError("wall-clock year path should not be used")
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("pnl", report_date))
+            values = {
+                "2025-12-31": 6.5e8,
+                "2025-11-30": 5.0e8,
+            }
+            return values[report_date]
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def resolve_latest_report_date(self):
+            return "2025-12-31"
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return [{"source_version": "sv-liab-z", "rule_version": "rv-liab"}]
+
+        def fetch_tyw_rows(self, report_date: str):
+            return [{"source_version": "sv-liab-t", "rule_version": "rv-liab"}]
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2025-12-31", "2025-11-30"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {"report_date": report_date, "portfolio_dv01": 456789.0}
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.25}},
+    )
+
+    out = exec_mod.executive_overview()
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert metrics["yield"]["value"] == "+6.50 亿"
+    assert "2025-12-31" in metrics["yield"]["detail"]
+    assert "2026-01-31" not in metrics["yield"]["detail"]
+    assert calls == [("pnl", "2025-12-31"), ("pnl", "2025-11-30")]
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
@@ -588,3 +951,207 @@ def test_executive_alerts_uses_requested_report_date(monkeypatch, exec_mod):
 
     assert calls == ["2025-11-20"]
     assert out["result"]["items"][0]["detail"] == "as of 2025-11-20"
+
+
+def test_executive_overview_latest_governed_ytd_uses_latest_report_date(monkeypatch, exec_mod):
+    calls: list[tuple[str, object]] = []
+
+    class FormalRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2024-12-31", "2024-11-30"]
+
+        def fetch_latest_zqtz_asset_market_value(self, **_k):
+            calls.append(("aum-latest", None))
+            return {"report_date": "2024-12-31", "total_market_value_amount": 500.0e8}
+
+        def fetch_zqtz_asset_market_value(self, *, report_date: str, currency_basis: str = "CNY"):
+            calls.append(("aum", report_date))
+            values = {
+                "2024-12-31": 500.0e8,
+                "2024-11-30": 480.0e8,
+            }
+            return {"report_date": report_date, "total_market_value_amount": values[report_date]}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_union_report_dates(self):
+            return ["2024-12-31", "2024-11-30"]
+
+        def sum_formal_total_pnl_for_year(self, year: int):
+            raise AssertionError(f"wall-clock year path should not be used: {year}")
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            calls.append(("pnl", report_date))
+            values = {
+                "2024-12-31": 9.0e8,
+                "2024-11-30": 8.0e8,
+            }
+            return values[report_date]
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2024-12-31"
+
+        def list_report_dates(self):
+            return ["2024-12-31", "2024-11-30"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            calls.append(("liab-z", report_date))
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            calls.append(("liab-t", report_date))
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2024-12-31", "2024-11-30"]
+
+        def fetch_latest_risk_overview_snapshot(self):
+            calls.append(("risk-latest", None))
+            return {
+                "report_date": "2024-12-31",
+                "portfolio_dv01": 2000.0,
+            }
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            calls.append(("risk", report_date))
+            values = {
+                "2024-12-31": 2000.0,
+                "2024-11-30": 1800.0,
+            }
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": values[report_date],
+            }
+
+    class FixedDate:
+        today = staticmethod(lambda: dt.date(2035, 1, 1))
+        fromisoformat = staticmethod(dt.date.fromisoformat)
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", FormalRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {"nim": 0.42 if report_date == "2024-12-31" else 0.40},
+        },
+    )
+    monkeypatch.setattr(exec_mod, "date", FixedDate)
+
+    out = exec_mod.executive_overview()
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert metrics["yield"]["value"] == "+9.00 亿"
+    assert metrics["yield"]["delta"] == "+12.50%"
+    assert "2024-12-31" in metrics["yield"]["detail"]
+    assert ("pnl", "2024-12-31") in calls
+    assert ("pnl", "2024-11-30") in calls
+
+
+def test_formal_balance_metrics_repo_lists_report_dates(tmp_path):
+    db_path = tmp_path / "formal_balance.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+                report_date date,
+                position_scope varchar,
+                currency_basis varchar,
+                market_value_amount double
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+                ('2024-12-31', 'asset', 'CNY', 100.0),
+                ('2024-11-30', 'asset', 'CNY', 90.0),
+                ('2024-12-31', 'liability', 'CNY', 10.0)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = FormalZqtzBalanceMetricsRepository(str(db_path))
+
+    assert repo.list_report_dates() == ["2024-12-31", "2024-11-30"]
+
+
+def test_liability_analytics_repo_lists_union_report_dates(tmp_path):
+    db_path = tmp_path / "liability.duckdb"
+    conn = duckdb.connect(str(db_path))
+    try:
+        conn.execute(
+            """
+            create table zqtz_bond_daily_snapshot (
+                report_date date,
+                instrument_code varchar,
+                instrument_name varchar,
+                asset_class varchar,
+                bond_type varchar,
+                is_issuance_like boolean,
+                face_value_native double,
+                market_value_native double,
+                amortized_cost_native double,
+                coupon_rate double,
+                ytm_value double,
+                maturity_date date,
+                source_version varchar,
+                rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table tyw_interbank_daily_snapshot (
+                report_date date,
+                position_id varchar,
+                product_type varchar,
+                position_side varchar,
+                counterparty_name varchar,
+                core_customer_type varchar,
+                principal_native double,
+                funding_cost_rate double,
+                maturity_date date,
+                source_version varchar,
+                rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+                ('2024-12-31', 'B1', 'Bond 1', 'bond', 'gov', false, 1, 1, 1, 2.0, 2.1, '2025-12-31', 'sv', 'rv'),
+                ('2024-11-30', 'B2', 'Bond 2', 'bond', 'corp', false, 1, 1, 1, 2.0, 2.1, '2025-12-31', 'sv', 'rv')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+                ('2024-12-15', 'P1', 'repo', 'liability', 'CP', 'core', 1, 1.5, '2025-01-01', 'sv', 'rv'),
+                ('2024-10-31', 'P2', 'repo', 'asset', 'CP', 'core', 1, 1.5, '2025-01-01', 'sv', 'rv')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = LiabilityAnalyticsRepository(str(db_path))
+
+    assert repo.list_report_dates() == ["2024-12-31", "2024-12-15", "2024-11-30", "2024-10-31"]

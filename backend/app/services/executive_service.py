@@ -4,10 +4,12 @@ from datetime import date, datetime
 from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
+from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
+from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.executive_dashboard import (
@@ -25,6 +27,7 @@ from backend.app.schemas.executive_dashboard import (
     SummaryPoint,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.services.kpi_service import resolve_executive_kpi_metrics
 
 
 def _normalize_report_date(report_date: str | None) -> str | None:
@@ -71,6 +74,39 @@ def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> str:
 def _fmt_signed_segment_yi(yi: float) -> str:
     sign = "+" if yi >= 0 else ""
     return f"{sign}{yi:.2f} 亿"
+
+
+def _fmt_signed_percent(value: float | None) -> str:
+    if value is None:
+        return "—"
+    sign = "+" if float(value) >= 0 else ""
+    return f"{sign}{float(value):.2f}%"
+
+
+def _previous_report_date(dates: list[str], current_report_date: str | None) -> str | None:
+    if not current_report_date or not dates:
+        return None
+    if current_report_date in dates:
+        idx = dates.index(current_report_date)
+        if idx + 1 < len(dates):
+            return dates[idx + 1]
+    return None
+
+
+def _format_percent_change(current: float | None, previous: float | None) -> str:
+    if current is None or previous in (None, 0):
+        return "无环比"
+    change = ((float(current) - float(previous)) / float(previous)) * 100
+    sign = "+" if change >= 0 else ""
+    return f"{sign}{change:.2f}%"
+
+
+def _format_point_change(current: float | None, previous: float | None) -> str:
+    if current is None or previous is None:
+        return "无环比"
+    change = float(current) - float(previous)
+    sign = "+" if change >= 0 else ""
+    return f"{sign}{change:.2f}pp"
 
 
 def _unavailable_metric(
@@ -312,31 +348,128 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     normalized_report_date = _normalize_report_date(report_date)
     aum_raw: float | None = None
     ytd_raw: float | None = None
+    nim_raw: float | None = None
+    dv01_raw: float | None = None
+    aum_delta = "无环比"
+    ytd_delta = "无环比"
+    nim_delta = "无环比"
+    dv01_delta = "无环比"
 
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
+        balance_report_dates = list(getattr(balance_repo, "list_report_dates", lambda: [])())
+        current_balance_report_date = normalized_report_date or (balance_report_dates[0] if balance_report_dates else None)
         row = (
             balance_repo.fetch_zqtz_asset_market_value(
-                report_date=normalized_report_date,
+                report_date=current_balance_report_date,
                 currency_basis="CNY",
             )
-            if normalized_report_date is not None
-            else balance_repo.fetch_latest_zqtz_asset_market_value(currency_basis="CNY")
+            if current_balance_report_date is not None
+            else None
         )
         if row is not None:
             aum_raw = float(row["total_market_value_amount"])
+            previous_balance_report_date = _previous_report_date(
+                balance_report_dates,
+                current_balance_report_date,
+            )
+            if previous_balance_report_date is not None:
+                previous_row = balance_repo.fetch_zqtz_asset_market_value(
+                    report_date=previous_balance_report_date,
+                    currency_basis="CNY",
+                )
+                if previous_row is not None:
+                    aum_delta = _format_percent_change(
+                        aum_raw,
+                        float(previous_row["total_market_value_amount"]),
+                    )
     except (RuntimeError, OSError, TypeError, ValueError):
         aum_raw = None
 
     try:
         pnl_repo = PnlRepository(str(settings.duckdb_path))
-        ytd_raw = float(
-            pnl_repo.sum_formal_total_pnl_through_report_date(normalized_report_date)
-            if normalized_report_date is not None
-            else pnl_repo.sum_formal_total_pnl_for_year(date.today().year)
+        pnl_report_dates = list(
+            getattr(
+                pnl_repo,
+                "list_formal_fi_report_dates",
+                getattr(pnl_repo, "list_union_report_dates", lambda: []),
+            )()
         )
+        current_pnl_report_date = normalized_report_date or (pnl_report_dates[0] if pnl_report_dates else None)
+        if current_pnl_report_date is not None:
+            ytd_raw = float(
+                pnl_repo.sum_formal_total_pnl_through_report_date(current_pnl_report_date)
+            )
+        previous_pnl_report_date = _previous_report_date(
+            pnl_report_dates,
+            current_pnl_report_date,
+        )
+        if previous_pnl_report_date is not None:
+            ytd_delta = _format_percent_change(
+                ytd_raw,
+                float(pnl_repo.sum_formal_total_pnl_through_report_date(previous_pnl_report_date)),
+            )
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
+
+    try:
+        liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
+        liability_report_date = normalized_report_date or liability_repo.resolve_latest_report_date()
+        liability_report_dates = list(getattr(liability_repo, "list_report_dates", lambda: [])())
+        if liability_report_date:
+            zqtz_rows = liability_repo.fetch_zqtz_rows(liability_report_date)
+            tyw_rows = liability_repo.fetch_tyw_rows(liability_report_date)
+            payload = compute_liability_yield_metrics(
+                liability_report_date,
+                zqtz_rows,
+                tyw_rows,
+            )
+            nim_value = payload.get("kpi", {}).get("nim")
+            if nim_value is not None:
+                nim_raw = float(nim_value)
+                previous_liability_report_date = _previous_report_date(
+                    liability_report_dates,
+                    liability_report_date,
+                )
+                if previous_liability_report_date is not None:
+                    previous_payload = compute_liability_yield_metrics(
+                        previous_liability_report_date,
+                        liability_repo.fetch_zqtz_rows(previous_liability_report_date),
+                        liability_repo.fetch_tyw_rows(previous_liability_report_date),
+                    )
+                    nim_delta = _format_point_change(
+                        nim_raw,
+                        previous_payload.get("kpi", {}).get("nim"),
+                    )
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        nim_raw = None
+
+    try:
+        bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
+        bond_report_dates = list(getattr(bond_repo, "list_report_dates", lambda: [])())
+        current_bond_report_date = normalized_report_date or (bond_report_dates[0] if bond_report_dates else None)
+        snapshot = (
+            bond_repo.fetch_risk_overview_snapshot(report_date=current_bond_report_date)
+            if current_bond_report_date is not None
+            else None
+        )
+        if snapshot is not None and snapshot.get("portfolio_dv01") is not None:
+            dv01_raw = float(snapshot["portfolio_dv01"])
+            previous_bond_report_date = _previous_report_date(
+                bond_report_dates,
+                current_bond_report_date,
+            )
+            if previous_bond_report_date is not None:
+                previous_snapshot = bond_repo.fetch_risk_overview_snapshot(
+                    report_date=previous_bond_report_date,
+                )
+                if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
+                    dv01_delta = _format_percent_change(
+                        dv01_raw,
+                        float(previous_snapshot["portfolio_dv01"]),
+                    )
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        dv01_raw = None
 
     metrics: list[ExecutiveMetric] = []
     if aum_raw is not None:
@@ -345,12 +478,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 id="aum",
                 label="资产规模",
                 value=_fmt_yi_amount(aum_raw, signed=False),
-                delta="+2.35%",
+                delta=aum_delta,
                 tone="positive",
                 detail=(
                     f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
                     if normalized_report_date is not None
-                    else "来自 fact_formal_zqtz_balance_daily 最新日期的 CNY 资产口径市值合计。"
+                    else f"来自 fact_formal_zqtz_balance_daily 在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
                 ),
             )
         )
@@ -360,18 +493,66 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 id="yield",
                 label="年内收益",
                 value=_fmt_yi_amount(ytd_raw, signed=True),
-                delta="+8.72%",
+                delta=ytd_delta,
                 tone="positive",
                 detail=(
                     f"来自 fact_formal_pnl_fi 截至 {normalized_report_date} 的年内 total_pnl 合计。"
                     if normalized_report_date is not None
-                    else f"来自 fact_formal_pnl_fi 当年（{date.today().year}）total_pnl 合计。"
+                    else f"来自 fact_formal_pnl_fi 截至 {current_pnl_report_date} 的年内 total_pnl 合计。"
                 ),
             )
         )
+    if nim_raw is not None:
+        metrics.append(
+            ExecutiveMetric(
+                id="nim",
+                label="净息差",
+                value=_fmt_signed_percent(nim_raw),
+                delta=nim_delta,
+                tone="positive" if nim_raw >= 0 else "negative",
+                detail=(
+                    f"来自受治理负债分析收益指标，在 {normalized_report_date} 的 NIM 读面。"
+                    if normalized_report_date is not None
+                    else f"来自受治理负债分析收益指标，在 {liability_report_date} 的 NIM 读面。"
+                ),
+            )
+        )
+    if dv01_raw is not None:
+        metrics.append(
+            ExecutiveMetric(
+                id="dv01",
+                label="组合DV01",
+                value=f"{dv01_raw:,.0f}",
+                delta=dv01_delta,
+                tone="warning",
+                detail=(
+                    f"来自 bond analytics 风险快照，在 {normalized_report_date} 的组合 DV01。"
+                    if normalized_report_date is not None
+                    else f"来自 bond analytics 风险快照，在 {current_bond_report_date} 的组合 DV01。"
+                ),
+            )
+        )
+    try:
+        metrics.extend(
+            ExecutiveMetric.model_validate(item)
+            for item in resolve_executive_kpi_metrics(
+                dsn=str(
+                    getattr(settings, "governance_sql_dsn", "")
+                    or getattr(settings, "postgres_dsn", "")
+                ),
+                report_date=current_pnl_report_date or normalized_report_date,
+            )
+        )
+    except (RuntimeError, ValueError, TypeError, KeyError):
+        pass
 
     payload = OverviewPayload(title="经营总览", metrics=metrics)
-    has_missing_governed_metrics = aum_raw is None or ytd_raw is None
+    has_missing_governed_metrics = (
+        aum_raw is None
+        or ytd_raw is None
+        or nim_raw is None
+        or dv01_raw is None
+    )
     return _envelope(
         "executive.overview",
         payload,
