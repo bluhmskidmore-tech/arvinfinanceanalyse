@@ -8,6 +8,7 @@ from backend.app.models.governance import (
     SourceVersionRegistry,
 )
 from backend.app.models.job_state import JobRunState
+from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
 
 __all__ = [
     "Base",
@@ -16,4 +17,7 @@ __all__ = [
     "CacheManifest",
     "SourceVersionRegistry",
     "RuleVersionRegistry",
+    "KpiOwner",
+    "KpiMetric",
+    "KpiMetricValue",
 ]

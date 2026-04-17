@@ -22,6 +22,7 @@ from backend.app.models.governance import (  # noqa: F401
     UserRoleScope,
 )
 from backend.app.models.job_state import JobRunState  # noqa: F401
+from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner  # noqa: F401
 
 config = context.config
 

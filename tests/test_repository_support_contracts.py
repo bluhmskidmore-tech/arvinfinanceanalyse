@@ -290,3 +290,70 @@ def test_duckdb_healthcheck_ignores_read_only_false_field():
     repo = duck_module.DuckDBRepository("/tmp/x.duckdb", read_only=False)
     assert repo.read_only is False
     assert repo.healthcheck() == {"ok": True, "mode": "read_only", "path": "/tmp/x.duckdb"}
+
+
+def test_formal_zqtz_balance_metrics_repository_lists_report_dates(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.formal_zqtz_balance_metrics_repo_contract",
+        "backend/app/repositories/formal_zqtz_balance_metrics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2025-12-31', 'asset', 'CNY', 1),
+            ('2025-12-31', 'asset', 'native', 1),
+            ('2025-11-30', 'asset', 'CNY', 1)
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.FormalZqtzBalanceMetricsRepository(str(db_path))
+    assert repo.list_report_dates() == ["2025-12-31", "2025-11-30"]
+    assert repo.list_report_dates(currency_basis="native") == ["2025-12-31"]
+
+
+def test_liability_analytics_repository_lists_union_report_dates(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.liability_analytics_repo_contract",
+        "backend/app/repositories/liability_analytics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute("create table zqtz_bond_daily_snapshot (report_date date)")
+        conn.execute("create table tyw_interbank_daily_snapshot (report_date date)")
+        conn.execute(
+            """
+            insert into zqtz_bond_daily_snapshot values
+            ('2025-12-31'), ('2025-11-30')
+            """
+        )
+        conn.execute(
+            """
+            insert into tyw_interbank_daily_snapshot values
+            ('2025-12-31'), ('2025-10-31')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
+    assert repo.list_report_dates() == ["2025-12-31", "2025-11-30", "2025-10-31"]

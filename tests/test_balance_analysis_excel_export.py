@@ -125,3 +125,23 @@ def test_export_header_row_matches_columns(tmp_path, monkeypatch):
         assert actual_headers == expected_headers
 
     get_settings.cache_clear()
+
+
+def test_export_table_sheets_preserve_workbook_row_counts(tmp_path, monkeypatch):
+    duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    payload = _load_workbook_payload(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    _filename, content = _export_workbook_bytes(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+    workbook = load_workbook(BytesIO(content))
+
+    for sheet_name, key_candidates in TABLE_KEY_CANDIDATES.items():
+        table = _pick_table(payload, *key_candidates)
+        expected_row_count = len(table["rows"])
+        assert workbook[sheet_name].max_row == expected_row_count + 1
+
+    get_settings.cache_clear()

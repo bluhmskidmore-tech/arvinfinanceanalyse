@@ -497,6 +497,37 @@ def test_balance_analysis_decision_status_update_overlays_latest_state(tmp_path,
     get_settings.cache_clear()
 
 
+def test_balance_analysis_decision_status_update_returns_404_for_unknown_decision_key(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _seed_balance_decision_scope(tmp_path, monkeypatch, user_id="balance-owner")
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.post(
+        "/ui/balance-analysis/decision-items/status",
+        headers={"X-User-Id": "balance-owner"},
+        json={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+            "decision_key": "missing-rule::missing-section::missing-title",
+            "status": "confirmed",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == (
+        "Unknown balance-analysis decision_key for the requested report_date and filters."
+    )
+
+    get_settings.cache_clear()
+
+
 def test_balance_analysis_decision_status_update_returns_403_without_scope(tmp_path, monkeypatch):
     _duckdb_path, _governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
     sqlite_path = tmp_path / "auth-scope.db"

@@ -80,10 +80,7 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
     [
         ("/ui/home/overview", {}),
         ("/ui/home/summary", {}),
-        ("/ui/home/contribution", {}),
-        ("/ui/home/alerts", {}),
         ("/ui/pnl/attribution", {}),
-        ("/ui/risk/overview", {}),
         ("/ui/preview/macro-foundation", {}),
         ("/ui/macro/choice-series/latest", {}),
         ("/ui/market-data/fx/formal-status", {}),
@@ -133,13 +130,42 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
-        "/ui/risk/overview",
     ):
         meta = _assert_json_envelope(client.get(path).json(), path=path)
         assert meta["basis"] == "analytical"
         assert meta["formal_use_allowed"] is False
         assert meta["scenario_flag"] is False
         assert str(meta["result_kind"]).startswith("executive.")
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/ui/home/contribution",
+        "/ui/home/alerts",
+        "/ui/risk/overview",
+    ),
+)
+def test_executive_governed_exclusion_surfaces_fail_closed_with_explicit_503(
+    path, tmp_path, monkeypatch
+):
+    """These executive routes are currently outside the repo-wide Phase 2 cutover.
+
+    They should fail closed with an explicit 503 instead of pretending to be landed
+    governed surfaces when no governed backing data exists.
+    """
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+    sys.modules.pop("backend.app.main", None)
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    response = client.get(path)
+    assert response.status_code == 503, path
+    body = response.json()
+    assert "result_meta" not in body, path
+    assert "not backed by governed data yet" in str(body.get("detail", "")).lower(), path
     get_settings.cache_clear()
 
 

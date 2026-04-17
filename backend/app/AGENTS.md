@@ -1,53 +1,50 @@
 # AGENTS.md
 
-## Macro Boundary Override
+## Default Backend Boundary
 
-For the current macro-data workstream only, execution is explicitly allowed beyond the repo's original `Phase 1` stop line.
+The default backend execution boundary is now `repo-wide Phase 2` for the governed formal-compute mainline.
 
-This scoped override applies to all files under `backend/app/`.
+This default applies to files under `backend/app/` only for these formal-compute chains:
 
-Allowed scope in this override:
-- real Choice-first macro thin slice
-- live Choice HTTP fetch path
-- raw vendor archival
-- vendor lineage governance
-- DuckDB normalization into `choice_market_snapshot`
-- thin `fact_choice_macro_daily`
-- one DuckDB-backed query surface
+- formal balance
+- formal PnL
+- formal FX
+- formal yield curve
+- PnL bridge
+- risk tensor
+- core bond-analytics formal read surfaces
 
-Still out of scope:
-- AkShare parity with Choice
-- unrelated formal finance formula changes
-- frontend-side formal metric computation
-- broad multi-consumer rollout before the first query surface is stable
+For these chains, backend work no longer needs to rely on historical per-stream scoped overrides as its main authorization basis.
 
-## ZQTZ / TYW Snapshot Materialization Override
+## Explicit Exclusions
 
-For the current `zqtz / tyw` snapshot-materialization workstream only, execution is explicitly allowed beyond the repo's original `Phase 1` stop line.
+The following backend surfaces are still outside the current repo-wide `Phase 2` cutover:
 
-This scoped override applies to all files under `backend/app/`.
+- `backend/app/api/routes/executive.py` except the E1 surfaces:
+  - `/ui/home/overview`
+  - `/ui/home/summary`
+  - `/ui/pnl/attribution`
+- `backend/app/services/executive_service.py` except:
+  - `executive_overview`
+  - `executive_summary`
+  - `executive_pnl_attribution`
+- `backend/app/api/routes/agent.py`
+- Agent MVP / real agent query enablement
+- `source_preview`
+- `macro-data`
+- `choice-news`
+- market-data preview / vendor / analytical surfaces
+- `qdb_gl_monthly_analysis`
+- `liability_analytics_compat`
+- cube-query and other `Phase 3 / Phase 4` style expansion items
 
-Allowed scope in this override:
-- manifest-selected source binding for `zqtz` / `tyw`
-- archive reopen/read helper(s) for governed archived inputs
-- DuckDB materialization into:
-  - `zqtz_bond_daily_snapshot`
-  - `tyw_interbank_daily_snapshot`
-- snapshot-specific governance records:
-  - `snapshot_build_run`
-  - `snapshot_manifest`
-- task/worker-only write path
-- internal-only verification seam
-- snapshot-specific tests and rerun semantics
+Historical scoped overrides remain useful only for excluded or legacy streams. They should not be reinterpreted as limiting the formal-compute mainline back to `Phase 1`.
 
-Still out of scope:
-- formal finance formulas
-- monthly average
-- FX conversion
-- issuance exclusion
-- H/A/T derivation
-- public snapshot read API
-- workbench or `executive.*` consumption
+## Snapshot And Preview Semantics
+
+- `zqtz_bond_daily_snapshot` and `tyw_interbank_daily_snapshot` remain standardized inputs, not outward formal source-of-truth results.
+- Preview tables remain explanatory surfaces and must not become formal inputs.
+- Formal-facing services and workbench consumers must continue reading governed formal facts rather than snapshot / preview shortcuts.
 
 ## Non-negotiable constraints
 

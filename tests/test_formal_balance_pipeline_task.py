@@ -482,3 +482,27 @@ def test_formal_balance_pipeline_prefers_new_runtime_payload_shape(tmp_path, mon
     assert balance_runtime["run"]["run_id"] == "new-run-id"
     assert balance_runtime["lineage"]["source_version"] == "sv-balance-new"
     assert balance_runtime["result"] == {"zqtz_rows": 9, "tyw_rows": 3}
+
+
+def test_formal_balance_pipeline_main_emits_single_json_to_stdout(monkeypatch, capsys):
+    pipeline_mod = _load_pipeline_module()
+
+    monkeypatch.setattr(
+        pipeline_mod.run_formal_balance_pipeline,
+        "fn",
+        lambda **_kwargs: {"status": "completed", "report_date": "2025-12-31"},
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["formal_balance_pipeline.py", "--report-date", "2025-12-31"],
+    )
+
+    pipeline_mod.main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {
+        "status": "completed",
+        "report_date": "2025-12-31",
+    }
+    assert captured.err == ""

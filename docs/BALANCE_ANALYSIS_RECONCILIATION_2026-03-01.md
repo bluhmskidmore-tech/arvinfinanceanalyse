@@ -1,4 +1,4 @@
-# Balance Analysis Reconciliation (2026-03-01)
+﻿# Balance Analysis Reconciliation (2026-03-01)
 
 ## Boundary note（与阶段授权对齐）
 
@@ -155,3 +155,11 @@ Current balance-analysis reconciliation status for `2026-03-01`:
 ## Next Step
 
 Closeout: re-run the verification block in this doc after any future workbook-side formula change; if a new residual appears, isolate with the same cohort-level day-count sweep before touching amounts or scope filters.
+> 2026-04-17 status update:
+> This reconciliation note remains valid as a historical compare slice, but its old boundary wording is superseded.
+> The active repository interpretation is now `repo-wide Phase 2 (通用正式计算)` for the governed formal-compute mainline, with explicit exclusions for `executive.*`, Agent, and preview/vendor/analytical-only surfaces.
+> Use `AGENTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`, and `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the current source of truth for boundary interpretation.
+> 2026-04-17 status update:
+> This reconciliation note remains valid as a historical compare slice, but its old boundary wording is superseded.
+> The active repository interpretation is now `repo-wide Phase 2 (通用正式计算)` for the governed formal-compute mainline, with explicit exclusions for `executive.*`, Agent, and preview/vendor/analytical-only surfaces.
+> Use `AGENTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`, and `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the current source of truth for boundary interpretation.

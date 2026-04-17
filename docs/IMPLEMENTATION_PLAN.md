@@ -97,23 +97,41 @@
 
 ## 当前执行要求
 
-当前默认只执行 `Phase 1`。
+当前默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
 
 执行口径解释如下：
 
-- `Phase 1 closeout` 仍按 `Phase 1` 处理，只用于完成已打开的骨架、预览、占位、验证与治理收口。
+- 本次 repo-wide `Phase 2` cutover 只覆盖 formal-compute 主链：
+  - formal balance
+  - formal PnL
+  - formal FX
+  - formal yield curve
+  - PnL bridge
+  - risk tensor
+  - 核心 bond analytics formal read surfaces
+- `Phase 1 closeout` 仍保留为历史收口概念，只用于尚未纳入本次 cutover 的骨架、预览、占位、验证与治理收口工作。
 - `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 文档是计划材料，不是自动执行授权。
-- 只有 dated execution update 才能对被点名工作流临时 lifted stop line；该 lifted stop line 也只作用于该工作流。
-- 当前有效 scoped overrides 包括：
-  - `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md` 定义的 macro-data stream
-  - `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md` 定义的 `zqtz / tyw` formal-balance-compute stream
-- 上述 overrides 都不放开通用 `Phase 2` 正式计算，不放开 Agent MVP，不放开无关工作流的 next slice，也不放开 broad frontend rollout。
-- 若未被 dated execution update 点名，`zqtz / tyw` 之外的相关工作仍按原 `Phase 1` / `Phase 1 closeout` 解释。
-- `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md` 只放开 `zqtz / tyw` formal-balance-compute stream，不构成仓库整体 `Phase 2` cutover。
+- dated execution update 仍可用于被排除范围或未来新工作流的 scoped override，但不再是上述 formal-compute 主链的主要授权来源。
+- 历史 scoped overrides（macro-data、`zqtz / tyw` snapshot-materialization、`zqtz / tyw` formal-balance-compute、yield-curve / curve-effects）继续作为历史边界记录保留，但不应再被误读为 repo-wide formal-compute 主线的唯一授权依据。
+- 本次 cutover 明确不放开以下范围：
+  - `executive.*` 中除 `executive-consumer cutover v1` 以外的其余路由
+  - `executive-consumer cutover v1` 当前仅包含：
+    - `/ui/home/overview`
+    - `/ui/home/summary`
+    - `/ui/pnl/attribution`
+  - `executive-consumer cutover v1` 仍不包含：
+    - `/ui/risk/overview`
+    - `/ui/home/alerts`
+    - `/ui/home/contribution`
+  - Agent MVP / `/api/agent/query` / `/agent`
+  - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+  - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+  - 无关工作流的 next slice
+  - broad frontend rollout
 
 Agent 补充约束：
 
-- 当前仅允许保留 Agent skeleton 预留
+- Agent 仍不在本次 repo-wide `Phase 2` cutover 范围内，仅允许保留 Agent skeleton 预留
 - `POST /api/agent/query` 可作为 disabled stub 存在，但不得开放真实查询能力
 - `/agent` 可作为 hidden placeholder route 存在，但不得包装为已上线 Agent 工作台
 - Agent closeout 完成后暂停，等待系统 `Phase 2` + `Phase 3` 前置能力完成，再进入真实 Agent Phase 4A / 4B
