@@ -10,13 +10,14 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
+import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
 import { formatWan } from "../bond-analytics/utils/formatters";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { pnlSurfaceQualityToTone, toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
-import { PnlDebugPanel, PnlRefreshStatus } from "./PnlRuntimePanels";
+import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import {
   pnlActionButtonStyle,
   resolvePnlSectionState,
@@ -100,6 +101,17 @@ const controlStyle = {
   border: "1px solid #d7dfea",
   background: "#ffffff",
   color: "#162033",
+} as const;
+
+const formalOnlyNoteStyle = {
+  marginBottom: 18,
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: "1px solid #d7dfea",
+  background: "#f7f9fc",
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.65,
 } as const;
 
 const BRIDGE_CATEGORIES = [
@@ -418,34 +430,6 @@ export default function PnlBridgePage() {
   const reportDateSelectDisabled = datesQuery.isLoading || datesQuery.isError || reportDates.length === 0;
   const refreshDisabled = !selectedReportDate || isRefreshing;
 
-  const debugSnapshot = {
-    client_mode: client.mode,
-    selected_report_date: selectedReportDate || null,
-    available_report_dates: reportDates,
-    summary_state: summaryState,
-    detail_state: detailState,
-    dates: {
-      result_meta: datesQuery.data?.result_meta ?? null,
-      error: datesQuery.error instanceof Error ? datesQuery.error.message : null,
-      report_dates: reportDates,
-    },
-    bridge: {
-      result_meta: bridgeQuery.data?.result_meta ?? null,
-      error: bridgeQuery.error instanceof Error ? bridgeQuery.error.message : null,
-      payload: selectedReportDate
-        ? {
-            report_date: selectedReportDate,
-            row_count: rows.length,
-            summary_row_count: summary?.row_count ?? null,
-          }
-        : null,
-    },
-    refresh: {
-      status: refreshStatus,
-      error: refreshError,
-    },
-  };
-
   async function handleRefresh() {
     if (!selectedReportDate) {
       return;
@@ -541,6 +525,10 @@ export default function PnlBridgePage() {
       </FilterBar>
 
       <PnlRefreshStatus testId="pnl-bridge-refresh-status" status={refreshStatus} error={refreshError} />
+
+      <div data-testid="pnl-bridge-formal-only-note" style={formalOnlyNoteStyle}>
+        本页当前只提供 formal-only 的桥接读模型；analytical 口径不在此页展开。
+      </div>
 
       <div data-testid="pnl-bridge-summary-section" data-state={summaryState} style={{ marginBottom: 24 }}>
         <SectionLead
@@ -672,7 +660,13 @@ export default function PnlBridgePage() {
         </AsyncSection>
       </div>
 
-      <PnlDebugPanel testId="pnl-bridge-result-meta-panel" snapshot={debugSnapshot} />
+      <FormalResultMetaPanel
+        testId="pnl-bridge-result-meta-panel"
+        sections={[
+          { key: "dates", title: "报告日列表", meta: datesQuery.data?.result_meta },
+          { key: "bridge", title: "正式桥接读模型", meta: bridgeQuery.data?.result_meta },
+        ]}
+      />
     </section>
   );
 }

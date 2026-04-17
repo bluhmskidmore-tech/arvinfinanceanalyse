@@ -1,5 +1,13 @@
 export type WorkbenchReadiness = "live" | "placeholder" | "gated";
 
+export type WorkbenchGroupKey =
+  | "overview"
+  | "portfolio"
+  | "market"
+  | "risk"
+  | "performance"
+  | "governance";
+
 export type WorkbenchSection = {
   key: string;
   label: string;
@@ -10,6 +18,89 @@ export type WorkbenchSection = {
   readinessLabel: string;
   readinessNote: string;
   navigationVisibility?: "primary" | "hidden";
+};
+
+export type WorkbenchNavigationGroup = {
+  key: WorkbenchGroupKey;
+  label: string;
+  description: string;
+  icon: string;
+  defaultPath: string;
+  sections: WorkbenchSection[];
+};
+
+const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections">> = [
+  {
+    key: "overview",
+    label: "总览工作台",
+    description: "先看总览、经营判断和跨页待办。",
+    icon: "dashboard",
+    defaultPath: "/",
+  },
+  {
+    key: "portfolio",
+    label: "组合工作台",
+    description: "围绕持仓、资产负债、损益和专题分析展开。",
+    icon: "bond",
+    defaultPath: "/balance-analysis",
+  },
+  {
+    key: "market",
+    label: "市场工作台",
+    description: "承接市场观察、跨资产传导和新闻事件。",
+    icon: "market",
+    defaultPath: "/market-data",
+  },
+  {
+    key: "risk",
+    label: "风险工作台",
+    description: "聚焦风险张量、集中度和流动性压力。",
+    icon: "risk",
+    defaultPath: "/risk-overview",
+  },
+  {
+    key: "performance",
+    label: "绩效工作台",
+    description: "查看团队绩效与 KPI 归因结果。",
+    icon: "kpi",
+    defaultPath: "/kpi",
+  },
+  {
+    key: "governance",
+    label: "治理工作台",
+    description: "放置配置、报表和自由查询工具。",
+    icon: "settings",
+    defaultPath: "/platform-config",
+  },
+];
+
+const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
+  dashboard: "overview",
+  "operations-analysis": "overview",
+  "decision-items": "overview",
+  "bond-analysis": "portfolio",
+  "balance-analysis": "portfolio",
+  "liability-analytics": "portfolio",
+  "bond-dashboard": "portfolio",
+  positions: "portfolio",
+  "product-category-pnl": "portfolio",
+  pnl: "portfolio",
+  "pnl-bridge": "portfolio",
+  "pnl-attribution": "portfolio",
+  "average-balance": "portfolio",
+  "market-data": "market",
+  "cross-asset": "market",
+  "news-events": "market",
+  "risk-overview": "risk",
+  "risk-tensor": "risk",
+  "concentration-monitor": "risk",
+  "cashflow-projection": "risk",
+  "kpi-performance": "performance",
+  "team-performance": "performance",
+  "platform-config": "governance",
+  "reports-center": "governance",
+  "cube-query": "governance",
+  agent: "governance",
 };
 
 export const workbenchNavigation: WorkbenchSection[] = [
@@ -279,12 +370,54 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
 ];
 
-export const primaryWorkbenchNavigation = workbenchNavigation.filter(
-  (section) =>
-    section.navigationVisibility !== "hidden" && section.readiness === "live",
+export function pathMatchesWorkbenchSection(sectionPath: string, pathname: string) {
+  if (sectionPath === "/") {
+    return pathname === "/" || pathname === "/dashboard";
+  }
+  return sectionPath === pathname;
+}
+
+export function resolveWorkbenchGroupKey(section: WorkbenchSection): WorkbenchGroupKey {
+  return workbenchSectionGroups[section.key] ?? "overview";
+}
+
+export const visibleWorkbenchNavigation = workbenchNavigation.filter(
+  (section) => section.navigationVisibility !== "hidden",
 );
 
-export const secondaryWorkbenchNavigation = workbenchNavigation.filter(
-  (section) =>
-    section.navigationVisibility !== "hidden" && section.readiness !== "live",
+export const primaryWorkbenchNavigation = visibleWorkbenchNavigation.filter(
+  (section) => section.readiness === "live",
 );
+
+export const secondaryWorkbenchNavigation = visibleWorkbenchNavigation.filter(
+  (section) => section.readiness !== "live",
+);
+
+export const primaryWorkbenchNavigationGroups: WorkbenchNavigationGroup[] =
+  workbenchGroupDefinitions
+    .map((group) => ({
+      ...group,
+      sections: primaryWorkbenchNavigation.filter(
+        (section) => resolveWorkbenchGroupKey(section) === group.key,
+      ),
+    }))
+    .filter((group) => group.sections.length > 0);
+
+export function findWorkbenchSectionByPath(
+  pathname: string,
+  sections: WorkbenchSection[] = visibleWorkbenchNavigation,
+) {
+  return (
+    sections.find((section) => pathMatchesWorkbenchSection(section.path, pathname)) ??
+    sections[0]
+  );
+}
+
+export function findWorkbenchGroupByPath(pathname: string) {
+  const currentSection = findWorkbenchSectionByPath(pathname);
+  return (
+    primaryWorkbenchNavigationGroups.find(
+      (group) => resolveWorkbenchGroupKey(currentSection) === group.key,
+    ) ?? primaryWorkbenchNavigationGroups[0]
+  );
+}

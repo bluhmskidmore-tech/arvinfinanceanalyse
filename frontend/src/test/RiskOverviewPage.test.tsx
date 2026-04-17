@@ -232,7 +232,10 @@ describe("RiskOverviewPage", () => {
           portfolio_modified_duration: "3.1",
           portfolio_dv01: "100",
           portfolio_convexity: "0.5",
-          krd_buckets: [],
+          krd_buckets: [
+            { tenor: "1Y", krd: "10", dv01: "1.1", market_value_weight: "0.12" },
+            { tenor: "5Y", krd: "25", dv01: "2.5", market_value_weight: "0.28" },
+          ],
           scenarios: [],
           by_asset_class: [],
           warnings: [],
@@ -251,6 +254,15 @@ describe("RiskOverviewPage", () => {
           weighted_avg_spread_duration: "4",
           spread_scenarios: [],
           migration_scenarios: [],
+          concentration_by_issuer: {
+            dimension: "issuer",
+            hhi: "0.22",
+            top5_concentration: "0.51",
+            top_items: [
+              { name: "城投集团A", weight: "0.18", market_value: "320000000" },
+              { name: "产业集团B", weight: "0.12", market_value: "210000000" },
+            ],
+          },
           oci_credit_exposure: "0",
           oci_spread_dv01: "0",
           oci_sensitivity_25bp: "0",
@@ -268,5 +280,8 @@ describe("RiskOverviewPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("risk-overview-bond-krd-kpi-grid")).toBeInTheDocument();
     });
+    expect(screen.getByTestId("risk-overview-tenor-drill")).toHaveTextContent("5Y");
+    expect(screen.getByTestId("risk-overview-issuer-drill")).toHaveTextContent("城投集团A");
+    expect(screen.getByTestId("risk-overview-issuer-drill")).toHaveTextContent("0.18");
   });
 });

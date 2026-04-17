@@ -1,18 +1,24 @@
 # AGENTS.md
 
-## Macro Boundary Override For Tests
+## Default Test Boundary
 
-For the current macro-data workstream only, tests under `tests/` are allowed to validate a scoped Choice-first real-delivery thin slice.
+Tests under `tests/` may validate the current repo-wide `Phase 2` formal-compute mainline.
 
-Allowed test scope:
-- live Choice fetch path behavior
-- raw archive behavior
-- vendor lineage metadata
-- DuckDB normalization into `choice_market_snapshot`
-- thin `fact_choice_macro_daily`
-- one DuckDB-backed query surface
+Allowed default test scope:
+- formal balance
+- formal PnL
+- formal FX
+- formal yield curve
+- PnL bridge
+- risk tensor
+- core bond-analytics formal read surfaces
+- outward `result_meta` / `basis` / lineage semantics for the above
 
-Still out of scope:
-- AkShare parity
-- unrelated formal finance logic expansion
-- frontend-side formal metric computation
+Explicitly excluded from the current default test boundary:
+- `executive.*` governed rollout beyond the currently landed stable surfaces
+- Agent MVP / real `/api/agent/query` enablement
+- `source_preview` / `macro-data` / `choice-news` / `market-data` preview/vendor/analytical expansion
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块的范围扩张
+- broad frontend rollout
+
+Historical scoped overrides remain relevant for legacy or excluded streams, but should not be used to reinterpret the formal-compute mainline back to a `Phase 1`-only test boundary.

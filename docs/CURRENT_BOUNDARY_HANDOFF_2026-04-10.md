@@ -1,16 +1,39 @@
 # Current Boundary Handoff (2026-04-10)
 
+> Status update (2026-04-17): this handoff now reflects the adopted default interpretation for repo-wide `Phase 2` formal-compute cutover, with explicit exclusions for non-cutover consumers and surfaces.
+
 ## 目的
 
 用一页文档对齐“当前代码状态”和“当前阶段边界”，避免把已落地薄切片、Phase 1 closeout、next-slice 计划、dated override 混为一谈。
 
 ## 当前边界结论
 
-- 仓库默认边界仍是 `Phase 1`。
-- `Phase 1 closeout` 仍算 `Phase 1`。
+- 仓库默认边界已切换为 `repo-wide Phase 2（通用正式计算）`。
+- 本次 cutover 只覆盖 formal-compute 主链：
+  - formal balance
+  - formal PnL
+  - formal FX
+  - formal yield curve
+  - PnL bridge
+  - risk tensor
+  - 核心 bond analytics formal read surfaces
+- `Phase 1 closeout` 仍作为历史收口解释保留，但只适用于未纳入本次 cutover 的骨架、预览、占位与治理收口面。
 - `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 文档是计划，不是自动执行授权。
-- 当前唯一明确有效的 scoped override 是 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`。
-- 该 override 仅适用于 macro-data stream，不代表仓库整体进入 `Phase 2`。
+- 历史 dated execution update 仍是命名工作流的 scoped override 记录，但不再否定 repo-wide formal-compute 主链的默认授权。
+- 本次 cutover 明确不包含：
+  - `executive.*` 中除 `executive-consumer cutover v1` 以外的其余路由
+  - `executive-consumer cutover v1` 当前已纳入：
+    - `/ui/home/overview`
+    - `/ui/home/summary`
+    - `/ui/pnl/attribution`
+  - `executive-consumer cutover v1` 当前仍排除：
+    - `/ui/risk/overview`
+    - `/ui/home/alerts`
+    - `/ui/home/contribution`
+  - Agent MVP / `/api/agent/query` / `/agent`
+  - `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+  - `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+  - cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
 
 ## 当前代码状态
 
@@ -40,6 +63,8 @@
 
 - 仍按 `Phase 1 shell + preview + closeout` 解释
 - 不自动等于 `Phase 4` 已开始
+- `executive-consumer cutover v1` 现已纳入当前边界
+- 其余 `executive.*` 路由仍不属于本次 repo-wide `Phase 2` cutover 范围
 
 ### 3. Source Preview / Preview Closeout
 
@@ -53,10 +78,9 @@
 当前判断：
 
 - 属于 `Phase 1 preview closeout`
-- 即使 `.omx/plans/phase1-preview-*` 存在，也只说明这是已计划 / 已执行的 closeout 面，不等于进入 `Phase 2`
-- **Contract sync（2026-04-12）：** `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md` §13 与 `tests/test_balance_analysis_workbook_contract.py` 已列出 **governed balance-analysis workbook** 当前宣称已支持的 section keys（`zqtz / tyw` formal 物化 + core_finance workbook + API + workbench 消费链）。这 **不** 推翻上文「仓库默认仍是 Phase 1」的结论，也 **不** 等于 repo-wide Phase 2 cutover；仅说明在该 scoped lane 内存在可验证的正式读模型与契约测试，避免代理把已落地 section 误读为「仅 docs-only、尚未实现」。
-- 后续若存在 `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`，其授权仅适用于 `zqtz / tyw` snapshot materialization，不代表仓库整体进入 `Phase 2`。
-- 截至 `2026-04-11`，formal balance compute 的最新边界以后续 dated override `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md` 为准；本节保留的是 `2026-04-10` 时点判断。
+- 即使 `.omx/plans/phase1-preview-*` 存在，也只说明这是已计划 / 已执行的 closeout 面，不等于 preview surfaces 自动进入 repo-wide `Phase 2`
+- **Contract sync（2026-04-12）：** `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md` §13 与 `tests/test_balance_analysis_workbook_contract.py` 已列出 **governed balance-analysis workbook** 当前宣称已支持的 section keys（`zqtz / tyw` formal 物化 + core_finance workbook + API + workbench 消费链）。在当前边界解释下，这些内容已属于 repo-wide `Phase 2` formal balance 主链，而不是仅 docs-only 状态。
+- `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md` 与 `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md` 作为历史 scoped lane 记录保留，但不再代表 formal balance compute 仍需逐条单独授权。
 
 ### 4. Product Category PnL
 
@@ -71,8 +95,8 @@
 当前判断：
 
 - 这是已落地的业务薄切片 / start pack
-- 不自动代表 formal finance 全域已进入 `Phase 2`
-- 必须按“局部已落地、全仓未切换阶段”解释
+- formal read path 可按 repo-wide `Phase 2` 主链解释
+- scenario overlay、audit 扩张、以及更广义 workbench rollout 不因此自动进入 cutover
 
 ### 5. PnL API 与 core_finance start pack
 
@@ -85,14 +109,14 @@
 
 仍未放开：
 
-- 通用正式计算全量交付
-- 全域 `Phase 2` cutover
+- 更广义的 `Phase 3 / Phase 4` 扩张项
 - 以此为依据继续扩其它无关 formal finance 工作流
+- 不在 cutover 范围内的 analytical / consumer surface
 
 当前判断：
 
-- 属于 `Phase 2 start pack already present in codebase`
-- 不是“阶段授权已经切换”的证据
+- 现有 `/api/pnl/*` 与 `backend/app/core_finance/pnl.py` 属于 repo-wide `Phase 2` formal PnL 主链
+- “start pack” 语义仍只约束已落地能力范围，不再作为“全仓未切换阶段”的证据
 
 ### 6. Macro-data stream
 
@@ -103,8 +127,8 @@
 
 当前判断：
 
-- 这是唯一被 dated execution update 明确 lifted stop line 的工作流
-- 只能按 scoped override 解释
+- macro-data 仍是历史 scoped override 工作流
+- 它不属于本次 repo-wide `Phase 2` formal-compute cutover
 
 ### 7. Agent
 
@@ -121,39 +145,42 @@
 
 当前判断：
 
-- 仍按 `Phase 1 Agent skeleton` 解释
+- Agent 仍按 `Phase 1 Agent skeleton` 解释
+- Agent 明确不在本次 repo-wide `Phase 2` cutover 范围内
 
 ## 当前验证状态
 
 截至本次 handoff：
 
-- 后端：`pytest tests -q` 通过
+- 后端：`pytest tests -q` 当前结果为 `1253 passed, 3 skipped, 4 failed`
 - 前端：`npm run typecheck` 通过
 - 前端：`npm test` 通过
 
 说明：
 
-- 通过不代表仓库整体进入 `Phase 2`
-- 只代表当前已落地代码与当前测试基线一致
+- frontend 通过不自动代表所有 consumer 已进入 cutover
+- executive 当前边界应理解为“overview / summary / pnl-attribution 纳入，risk / alerts / contribution 继续排除”
 
 ## 执行判断规则
 
 后续看到任一计划文件时，按以下顺序判断能否执行：
 
-1. 是否仍在 `Phase 1` 或 `Phase 1 closeout` 边界内？
-2. 如果不在，是否存在 dated execution update 明确授权该工作流？
-3. 如果仍不满足，停止，不得仅凭 `.omx/plans/*next-slice*` 名称继续推进。
+1. 该任务是否属于 repo-wide `Phase 2` 已纳入的 formal-compute 主链？
+2. 如果不属于，是否属于本次 cutover 明确排除项？
+3. 如果属于排除项，是否存在新的明确授权或后续阶段定义？
+4. 如果仍不满足，停止，不得仅凭 `.omx/plans/*next-slice*` 名称继续推进。
 
 ## 建议后续动作
 
 ### 可直接继续
 
-- `Phase 1 closeout` 范围内的文档、验证、收口工作
-- macro-data stream 范围内、且符合 `2026-04-09` override 的工作
+- repo-wide `Phase 2` 已纳入 formal-compute 主链内的文档、实现、验证、收口工作
+- 未纳入 cutover 的历史 `Phase 1 closeout` 文档、验证、收口工作
 
 ### 不得自动继续
 
-- 通用 `Phase 2` 正式金融扩张
+- 未纳入 `executive-consumer cutover v1` 的其余 `executive.*` governed rollout
 - Agent MVP / Phase 4A / 4B
+- preview/vendor/analytical-only surface 的无授权扩张
 - 无关工作流的 next slice
 - broad frontend rollout

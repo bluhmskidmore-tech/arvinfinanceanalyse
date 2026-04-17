@@ -27,36 +27,53 @@
 
 ## 阶段边界规则
 
-- 仓库默认执行边界仍是 `Phase 1`。
-- `Phase 1 closeout` 仍属于 `Phase 1`，用于收口已经打开的骨架、预览、占位、验证与治理欠账。
+- 仓库默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
+- 本次 repo-wide `Phase 2` cutover 只覆盖 formal-compute 主链：
+  - formal balance
+  - formal PnL
+  - formal FX
+  - formal yield curve
+  - PnL bridge
+  - risk tensor
+  - 核心 bond analytics formal read surfaces
+- `Phase 1 closeout` 仍保留为历史收口概念，但只适用于未纳入本次 cutover 的骨架、预览、占位、验证与治理欠账。
 - `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan`、`prd-*`、`test-spec-*` 文档属于计划与候选执行面，不单独构成执行授权。
-- 只有以下两类材料可以放开默认 stop line：
+- 只有以下两类材料可以放开未纳入 cutover 的默认 stop line：
   - 更高优先级的人类指令；
   - dated execution update。
 - dated execution update 默认按 **scoped override** 解释：
   - 只对被点名工作流生效；
-  - 不代表仓库整体进入下一阶段；
+  - 不自动扩张 repo-wide `Phase 2` 已排除的模块；
   - 不得被拿来为无关工作流背书。
 
 ## 当前有效 scoped override
 
 - `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`
+- `docs/CURRENT_EXECUTION_UPDATE_2026-04-10.md`
+- `docs/CURRENT_EXECUTION_UPDATE_2026-04-11.md`
+- `docs/CURRENT_EXECUTION_UPDATE_2026-04-12.md`
 - 最新的“当前代码状态 vs 当前阶段边界”摘要见 `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
 
-其作用范围仅限：
+其作用范围用于：
 
-- macro-data stream
-- `Choice-first` 薄切片
-- live fetch path
-- raw archival
-- vendor lineage
-- DuckDB normalization
-- 一个 DuckDB-backed query surface
+- 记录历史 scoped lane 的授权范围
+- 为 repo-wide `Phase 2` 明确排除的工作流提供额外局部授权
+- 为未来未纳入 cutover 的新工作流提供命名授权模板
 
-其不放开的范围包括：
+repo-wide `Phase 2` 当前明确不放开的范围包括：
 
-- 通用 `Phase 2` 正式金融计算
 - Agent MVP / Phase 4A / 4B
+- `executive.*` 中除 `executive-consumer cutover v1` 以外的其余路由
+- `executive-consumer cutover v1` 当前已纳入：
+  - `/ui/home/overview`
+  - `/ui/home/summary`
+  - `/ui/pnl/attribution`
+- `executive-consumer cutover v1` 当前仍排除：
+  - `/ui/risk/overview`
+  - `/ui/home/alerts`
+  - `/ui/home/contribution`
+- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
 - 无关工作流的 `next slice`
 - broad frontend rollout
 

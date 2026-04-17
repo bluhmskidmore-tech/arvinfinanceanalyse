@@ -86,6 +86,7 @@ import type {
   PageResponse,
   OverviewPayload,
   PnlBridgePayload,
+  PnlBasis,
   PnlDataPayload,
   PnlDatesPayload,
   PnlOverviewPayload,
@@ -163,9 +164,12 @@ export type ApiClient = {
   getHealth: () => Promise<HealthResponse>;
   getOverview: () => Promise<ApiEnvelope<OverviewPayload>>;
   getSummary: () => Promise<ApiEnvelope<SummaryPayload>>;
-  getFormalPnlDates: () => Promise<ApiEnvelope<PnlDatesPayload>>;
-  getFormalPnlData: (date: string) => Promise<ApiEnvelope<PnlDataPayload>>;
-  getFormalPnlOverview: (reportDate: string) => Promise<ApiEnvelope<PnlOverviewPayload>>;
+  getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
+  getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
+  getFormalPnlOverview: (
+    reportDate: string,
+    basis?: PnlBasis,
+  ) => Promise<ApiEnvelope<PnlOverviewPayload>>;
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
@@ -634,6 +638,10 @@ const buildMockApiEnvelope = <T>(
   result_meta: { ...buildMockMeta(resultKind), ...metaOverrides },
   result,
 });
+
+function buildPnlBasisQuerySegment(basis?: PnlBasis) {
+  return basis && basis !== "formal" ? `&basis=${encodeURIComponent(basis)}` : "";
+}
 
 /** Inline mock for `getSourceFoundation` in mock mode only (mirrors backend preview shape). */
 const MOCK_SOURCE_FOUNDATION_SUMMARIES: SourcePreviewSummary[] = [
@@ -2991,7 +2999,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockApiEnvelope("executive.summary", summaryPayload);
     },
-    async getFormalPnlDates() {
+    async getFormalPnlDates(basis = "formal") {
       await delay();
       return buildMockApiEnvelope(
         "pnl.dates",
@@ -3000,10 +3008,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           formal_fi_report_dates: [],
           nonstd_bridge_report_dates: [],
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis, formal_use_allowed: basis === "formal" },
       );
     },
-    async getFormalPnlData(date: string) {
+    async getFormalPnlData(date: string, basis = "formal") {
       await delay();
       return buildMockApiEnvelope(
         "pnl.data",
@@ -3012,10 +3020,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           formal_fi_rows: [],
           nonstd_bridge_rows: [],
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis, formal_use_allowed: basis === "formal" },
       );
     },
-    async getFormalPnlOverview(reportDate: string) {
+    async getFormalPnlOverview(reportDate: string, basis = "formal") {
       await delay();
       return buildMockApiEnvelope(
         "pnl.overview",
@@ -3029,7 +3037,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           manual_adjustment: "0.00",
           total_pnl: "0.00",
         },
-        { basis: "formal", formal_use_allowed: true },
+        { basis, formal_use_allowed: basis === "formal" },
       );
     },
     async getPnlBridge(reportDate: string) {
@@ -5090,19 +5098,23 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       requestJson<OverviewPayload>(fetchImpl, baseUrl, "/ui/home/overview"),
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
-    getFormalPnlDates: () =>
-      requestJson<PnlDatesPayload>(fetchImpl, baseUrl, "/api/pnl/dates"),
-    getFormalPnlData: (date: string) =>
+    getFormalPnlDates: (basis = "formal") =>
+      requestJson<PnlDatesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/pnl/dates${basis !== "formal" ? `?basis=${encodeURIComponent(basis)}` : ""}`,
+      ),
+    getFormalPnlData: (date: string, basis = "formal") =>
       requestJson<PnlDataPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl/data?date=${encodeURIComponent(date)}`,
+        `/api/pnl/data?date=${encodeURIComponent(date)}${buildPnlBasisQuerySegment(basis)}`,
       ),
-    getFormalPnlOverview: (reportDate: string) =>
+    getFormalPnlOverview: (reportDate: string, basis = "formal") =>
       requestJson<PnlOverviewPayload>(
         fetchImpl,
         baseUrl,
-        `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}`,
+        `/api/pnl/overview?report_date=${encodeURIComponent(reportDate)}${buildPnlBasisQuerySegment(basis)}`,
       ),
     getPnlBridge: (reportDate: string) =>
       requestJson<PnlBridgePayload>(
@@ -6389,5 +6401,3 @@ export function useApiClient(): ApiClient {
 
   return client;
 }
-
-

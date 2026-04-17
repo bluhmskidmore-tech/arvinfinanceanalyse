@@ -702,24 +702,31 @@ Choice / AkShare 断连导致热路径页面整体雪崩。
 - 不得让多个写者并发写 DuckDB
 - 不得删功能，只允许补齐、修正、重构
 
-## 17. 首轮实施边界
+## 17. 当前执行边界
 
-如果进入真正编码阶段，默认第一轮只做 `Phase 1`。
+当前默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
 
 边界解释如下：
 
-- `Phase 1 closeout` 仍属于 `Phase 1`；它只用于收口已经打开的骨架、预览、占位、验证和治理欠账，不自动视为 `Phase 2`。
+- 本次 repo-wide `Phase 2` cutover 只覆盖 formal-compute 主链：
+  - formal balance
+  - formal PnL
+  - formal FX
+  - formal yield curve
+  - PnL bridge
+  - risk tensor
+  - 核心 bond analytics formal read surfaces
+- `Phase 1 closeout` 仍属于历史收口概念；它只用于未纳入本次 cutover 的骨架、预览、占位、验证和治理欠账。
 - `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 等文档属于计划与候选执行面，不是权限来源。
-- 上述计划文档只有在以下两种情况下才可执行：
-  - 明确仍在 `Phase 1 closeout` 边界内；
-  - 被 dated execution update 明确授权为 scoped override。
-- scoped override 只对被点名的工作流生效，不代表仓库整体进入下一阶段。
+- dated execution update 仍可用于 repo-wide `Phase 2` 已排除模块或未来新工作流的 scoped override；它们不再是 formal-compute 主链的主要授权来源。
 
-当前有效 scoped override（2026-04-09）如下：
+本次 cutover 明确不包含：
 
-- 见 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md`
-- 该 override 仅放开 macro-data stream 的 `Choice-first` 薄切片、live fetch、raw archival / vendor lineage / DuckDB normalization，以及一个 DuckDB-backed query surface
-- 该 override 不放开通用 `Phase 2` 正式计算，不放开 Agent MVP / Phase 4A / 4B，不放开无关工作流的 next slice，也不放开 broad frontend rollout
+- `executive.*`
+- Agent MVP / `/api/agent/query` / `/agent`
+- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+- cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
 
 默认输出要求如下：
 

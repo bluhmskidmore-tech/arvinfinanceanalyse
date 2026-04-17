@@ -8,6 +8,13 @@ import { useApiClient } from "../../../api/client";
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
+import {
+  PageFilterTray,
+  pageInsetCardStyle,
+  PageHeader,
+  PageSectionLead,
+  PageSurfacePanel,
+} from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
@@ -49,16 +56,6 @@ const pairGridStyle = {
   marginTop: 18,
 } as const;
 
-const cardStyle = {
-  padding: 24,
-  borderRadius: 20,
-  background: "#fbfcfe",
-  border: "1px solid #e4ebf5",
-  boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
-  display: "grid",
-  gap: 12,
-} as const;
-
 const controlStyle = {
   minWidth: 172,
   padding: "10px 12px",
@@ -79,35 +76,6 @@ const balanceOverviewGridStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   gap: 16,
   marginTop: 16,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
 } as const;
 
 function formatOverviewNumber(raw: string | number | null | undefined): string {
@@ -171,20 +139,6 @@ function buildPnlRefreshStatusText(payload: {
   ]
     .filter(Boolean)
     .join(" / ");
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 export default function OperationsAnalysisPage() {
@@ -349,92 +303,50 @@ export default function OperationsAnalysisPage() {
 
   return (
     <section>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "flex-start",
-          justifyContent: "space-between",
-          gap: 16,
-          marginBottom: 24,
-        }}
+      <PageHeader
+        title="经营分析"
+        eyebrow="Overview"
+        description="当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和 PnL 刷新入口。所有正式数值均以后端契约为准。"
+        badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+        badgeTone={client.mode === "real" ? "positive" : "accent"}
       >
-        <div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 32,
-              fontWeight: 600,
-              letterSpacing: "-0.03em",
-            }}
-          >
-            经营分析
-          </h1>
-          <p
-            style={{
-              marginTop: 10,
-              marginBottom: 0,
-              maxWidth: 860,
-              color: "#5c6b82",
-              fontSize: 15,
-              lineHeight: 1.75,
-            }}
-          >
-            当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和
-            PnL 刷新入口。所有正式数值均以后端契约为准。
-          </p>
-        </div>
-        <span
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
-          }}
-        >
-          {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
-        </span>
-      </div>
-
-      <FilterBar style={{ marginBottom: 20 }}>
-        <label>
-          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
-            范围
-          </span>
-          <select style={controlStyle} disabled>
-            <option>金融市场条线</option>
-          </select>
-        </label>
-        <label>
-          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
-            口径
-          </span>
-          <select style={controlStyle} disabled>
-            <option>静态经营</option>
-          </select>
-        </label>
-        <label>
-          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
-            币种
-          </span>
-          <select style={controlStyle} disabled>
-            <option>全部</option>
-          </select>
-        </label>
-        <label>
-          <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
-            周期
-          </span>
-          <select style={controlStyle} disabled>
-            <option>单日截面</option>
-          </select>
-        </label>
-      </FilterBar>
+        <PageFilterTray>
+          <FilterBar>
+            <label>
+              <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+                范围
+              </span>
+              <select style={controlStyle} disabled>
+                <option>金融市场条线</option>
+              </select>
+            </label>
+            <label>
+              <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+                口径
+              </span>
+              <select style={controlStyle} disabled>
+                <option>静态经营</option>
+              </select>
+            </label>
+            <label>
+              <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+                币种
+              </span>
+              <select style={controlStyle} disabled>
+                <option>全部</option>
+              </select>
+            </label>
+            <label>
+              <span style={{ display: "block", marginBottom: 4, color: "#64748b", fontSize: 12 }}>
+                周期
+              </span>
+              <select style={controlStyle} disabled>
+                <option>单日截面</option>
+              </select>
+            </label>
+          </FilterBar>
+        </PageFilterTray>
+      </PageHeader>
 
       <div data-testid="operations-business-kpis" style={summaryGridStyle}>
         <KpiCard
@@ -483,7 +395,7 @@ export default function OperationsAnalysisPage() {
         />
       </div>
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="核心视图"
         title="结论、桥接与质量观察"
         description="先看管理层结论，再看收益成本桥和质量观察，确认当前经营判断、利差来源和压力点是否一致。"
@@ -494,7 +406,7 @@ export default function OperationsAnalysisPage() {
         <QualityObservation />
       </div>
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="经营贡献"
         title="经营贡献与重点事项"
         description="这一组把余额贡献、重点事项和经营日历放在同一层，方便从结论直接过渡到行动与跟踪。"
@@ -515,7 +427,7 @@ export default function OperationsAnalysisPage() {
         </SectionCard>
       </div>
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="结构解读"
         title="期限结构与管理输出"
         description="将期限缺口、集中度和管理输出并排，形成经营判断之后的结构解释层。"
@@ -525,7 +437,7 @@ export default function OperationsAnalysisPage() {
         <ManagementOutput />
       </div>
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="专题入口"
         title="专题入口"
         description="经营分析页只保留专题速览和跳转，正式工作簿与细项下钻仍在对应主题页中查看。"
@@ -720,10 +632,8 @@ export default function OperationsAnalysisPage() {
                           style={{
                             display: "grid",
                             gap: 6,
+                            ...pageInsetCardStyle,
                             padding: 14,
-                            borderRadius: 16,
-                            border: "1px solid #e4ebf5",
-                            background: "#ffffff",
                           }}
                         >
                           <strong>{summary.source_family.toUpperCase()}</strong>
@@ -767,10 +677,8 @@ export default function OperationsAnalysisPage() {
                           style={{
                             display: "grid",
                             gap: 6,
+                            ...pageInsetCardStyle,
                             padding: 14,
-                            borderRadius: 16,
-                            border: "1px solid #e4ebf5",
-                            background: "#ffffff",
                           }}
                         >
                           <strong>{point.series_name}</strong>
@@ -804,10 +712,8 @@ export default function OperationsAnalysisPage() {
                           style={{
                             display: "grid",
                             gap: 6,
+                            ...pageInsetCardStyle,
                             padding: 14,
-                            borderRadius: 16,
-                            border: "1px solid #e4ebf5",
-                            background: "#ffffff",
                           }}
                         >
                           <strong>{event.topic_code}</strong>
@@ -831,7 +737,11 @@ export default function OperationsAnalysisPage() {
                     }
                     onRetry={() => void fxFormalStatusQuery.refetch()}
                   >
-                    <div data-testid="operations-entry-formal-fx-status" style={cardStyle}>
+                    <PageSurfacePanel
+                      testId="operations-entry-formal-fx-status"
+                      as="div"
+                      style={{ display: "grid", gap: 12 }}
+                    >
                       <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
                         正式 FX 中间价状态直接来自后端正式读模型，并与分析口径的市场观察分开展示。
                       </div>
@@ -850,10 +760,8 @@ export default function OperationsAnalysisPage() {
                             style={{
                               display: "grid",
                               gap: 6,
+                              ...pageInsetCardStyle,
                               padding: 14,
-                              borderRadius: 16,
-                              border: "1px solid #e4ebf5",
-                              background: "#ffffff",
                             }}
                           >
                             <strong>{row.pair_label}</strong>
@@ -874,10 +782,10 @@ export default function OperationsAnalysisPage() {
                           缺失的正式 FX 货币对：{missingFxRows.map((row) => row.pair_label).join(", ")}
                         </div>
                       ) : null}
-                    </div>
+                    </PageSurfacePanel>
                   </AsyncSection>
 
-                  <section style={cardStyle}>
+                  <PageSurfacePanel as="section" style={{ display: "grid", gap: 12 }}>
                     <div
                       style={{
                         display: "flex",
@@ -941,7 +849,7 @@ export default function OperationsAnalysisPage() {
                         {isPnlRefreshing ? "刷新中..." : "刷新 PnL 表"}
                       </button>
                     </div>
-                  </section>
+                  </PageSurfacePanel>
                 </div>
               </div>
             ),

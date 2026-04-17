@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import json
+import sys
 from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
@@ -110,3 +111,35 @@ def test_fx_mid_backfill_is_idempotent_for_same_range(tmp_path, monkeypatch):
 
     assert total_rows == 2
     assert keyed_rows == [(date(2026, 2, 27), 1), (date(2026, 2, 28), 1)]
+
+
+def test_fx_mid_backfill_main_emits_single_json_to_stdout(monkeypatch, capsys):
+    module = load_module(
+        "backend.app.tasks.fx_mid_backfill",
+        "backend/app/tasks/fx_mid_backfill.py",
+    )
+
+    monkeypatch.setattr(
+        module.backfill_fx_mid_history,
+        "fn",
+        lambda **_kwargs: {
+            "status": "completed",
+            "start_date": "2026-02-27",
+            "end_date": "2026-02-28",
+        },
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["fx_mid_backfill.py", "--start-date", "2026-02-27", "--end-date", "2026-02-28"],
+    )
+
+    module.main()
+
+    captured = capsys.readouterr()
+    assert json.loads(captured.out) == {
+        "status": "completed",
+        "start_date": "2026-02-27",
+        "end_date": "2026-02-28",
+    }
+    assert captured.err == ""

@@ -100,6 +100,8 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("集中度")).toBeInTheDocument();
     expect(screen.getByText("流动性缺口（市值）")).toBeInTheDocument();
     expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
 
     await waitFor(() => {
       expect(getRiskTensorDates).toHaveBeenCalled();
@@ -128,5 +130,26 @@ describe("RiskTensorPage", () => {
     await waitFor(() => {
       expect(getRiskTensor).toHaveBeenCalledWith("2026-03-15");
     });
+  });
+
+  it("does not fall back to a hardcoded report date when backend dates are empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_empty"),
+      result: { report_dates: [] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    expect(await screen.findByText("后端未返回可用风险报告日。")).toBeInTheDocument();
+    expect(getRiskTensor).not.toHaveBeenCalled();
   });
 });

@@ -111,7 +111,33 @@
 8. `docs/CACHE_SPEC.md`
 9. `docs/acceptance_tests.md`
 
-当前轮次只允许执行 `Phase 1`。
+当前默认执行边界为 `repo-wide Phase 2（通用正式计算）`，但只对以下正式主链生效：
+
+- formal balance 主链
+- formal PnL 主链
+- formal FX 主链
+- formal yield curve 主链
+- PnL bridge 主链
+- risk tensor 主链
+- 核心 bond analytics formal read surfaces
+
+本次 cutover 明确不包含以下范围：
+
+- `executive.*` 中 **除** `executive-consumer cutover v1` 以外的管理驾驶舱消费层
+- `executive-consumer cutover v1` 当前仅包含：
+  - `/ui/home/overview`
+  - `/ui/home/summary`
+  - `/ui/pnl/attribution`
+- `executive-consumer cutover v1` 仍明确不包含：
+  - `/ui/risk/overview`
+  - `/ui/home/alerts`
+  - `/ui/home/contribution`
+- Agent MVP / `/api/agent/query` / `/agent`
+- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+- cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
+
+若任务属于上述排除项，仍需后续阶段定义或新的明确授权，不得把本次 repo-wide `Phase 2` cutover 误读为“全仓全模块全部放开”。
 
 ## 每轮输出格式
 

@@ -25,6 +25,13 @@ import type {
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import {
+  PageFilterTray,
+  pageInsetCardStyle,
+  PageHeader,
+  PageSectionLead,
+} from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../workbench/components/KpiCard";
@@ -53,63 +60,6 @@ const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
   gap: 16,
-} as const;
-
-const pageHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 16,
-  marginBottom: 24,
-} as const;
-
-const pageSubtitleStyle = {
-  marginTop: 8,
-  marginBottom: 0,
-  maxWidth: 960,
-  color: "#5c6b82",
-  fontSize: 14,
-  lineHeight: 1.7,
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 920,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
 } as const;
 
 const controlBarStyle = {
@@ -146,28 +96,6 @@ const tableShellStyle = {
   borderRadius: 16,
   border: "1px solid #e4ebf5",
   background: "#ffffff",
-} as const;
-
-const resultMetaGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 16,
-  marginTop: 20,
-} as const;
-
-const resultMetaCardStyle = {
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#f7f9fc",
-} as const;
-
-const resultMetaListStyle = {
-  margin: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(110px, 140px) minmax(0, 1fr)",
-  gap: "8px 12px",
-  fontSize: 13,
 } as const;
 
 const workbookPrimaryGridStyle = {
@@ -280,6 +208,7 @@ const decisionActionButtonStyle = {
 
 const currentUserCardStyle = {
   marginBottom: 12,
+  ...pageInsetCardStyle,
   borderRadius: 12,
   border: "1px solid #d7dfea",
   background: "#f7f9fc",
@@ -389,20 +318,6 @@ function workbookCellFormatter(params: ValueFormatterParams): string {
     return String(v);
   }
   return n.toLocaleString("zh-CN");
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -1641,104 +1556,92 @@ export default function BalanceAnalysisPage() {
   );
   const currentPage = Math.floor(summaryOffset / (summaryTable?.limit ?? PAGE_SIZE)) + 1;
 
-   return (
+  return (
     <section data-testid="balance-analysis-page">
-      <div style={pageHeaderStyle}>
-        <div>
-          <h1
-            data-testid="balance-analysis-page-title"
-            style={{ margin: 0, fontSize: 24, fontWeight: 600 }}
-          >
-            资产负债分析
-          </h1>
-          <p data-testid="balance-analysis-page-subtitle" style={pageSubtitleStyle}>
-            以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。
-            保留现有 API 合约、result_meta 和 formal / analytical 边界，不在前端补算正式指标。
-          </p>
-        </div>
-        <span
-          style={{
-            ...modeBadgeStyle,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-          }}
-        >
-          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
-        </span>
-      </div>
+      <PageHeader
+        title="资产负债分析"
+        titleTestId="balance-analysis-page-title"
+        description="以报告日、头寸范围和币种口径为统一页首筛选，先读正式汇总驾驶舱，再进入工作簿主栏与治理右侧栏。保留现有 API 合约、result_meta 和 formal / analytical 边界，不在前端补算正式指标。"
+        descriptionTestId="balance-analysis-page-subtitle"
+        eyebrow="Overview"
+        badgeLabel={client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+        badgeTone={client.mode === "real" ? "positive" : "accent"}
+      >
+        <PageFilterTray>
+          <FilterBar style={controlBarStyle}>
+            <label>
+              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+              <select
+                aria-label="balance-report-date"
+                value={selectedReportDate}
+                onChange={(event) => setSelectedReportDate(event.target.value)}
+                style={controlStyle}
+              >
+                {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
+                  <option key={reportDate} value={reportDate}>
+                    {reportDate}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-      <FilterBar style={controlBarStyle}>
-        <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
-          <select
-            aria-label="balance-report-date"
-            value={selectedReportDate}
-            onChange={(event) => setSelectedReportDate(event.target.value)}
-            style={controlStyle}
-          >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
-              <option key={reportDate} value={reportDate}>
-                {reportDate}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label>
+              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>头寸范围</span>
+              <select
+                aria-label="balance-position-scope"
+                value={positionScope}
+                onChange={(event) => setPositionScope(event.target.value as BalancePositionScope)}
+                style={controlStyle}
+              >
+                <option value="all">all</option>
+                <option value="asset">asset</option>
+                <option value="liability">liability</option>
+              </select>
+            </label>
 
-        <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>头寸范围</span>
-          <select
-            aria-label="balance-position-scope"
-            value={positionScope}
-            onChange={(event) => setPositionScope(event.target.value as BalancePositionScope)}
-            style={controlStyle}
-          >
-            <option value="all">all</option>
-            <option value="asset">asset</option>
-            <option value="liability">liability</option>
-          </select>
-        </label>
+            <label>
+              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>币种口径</span>
+              <select
+                aria-label="balance-currency-basis"
+                value={currencyBasis}
+                onChange={(event) => setCurrencyBasis(event.target.value as BalanceCurrencyBasis)}
+                style={controlStyle}
+              >
+                <option value="CNY">CNY</option>
+                <option value="native">native</option>
+              </select>
+            </label>
 
-        <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>币种口径</span>
-          <select
-            aria-label="balance-currency-basis"
-            value={currencyBasis}
-            onChange={(event) => setCurrencyBasis(event.target.value as BalanceCurrencyBasis)}
-            style={controlStyle}
-          >
-            <option value="CNY">CNY</option>
-            <option value="native">native</option>
-          </select>
-        </label>
-
-        <button
-          data-testid="balance-analysis-refresh-button"
-          type="button"
-          onClick={() => void handleRefresh()}
-          disabled={!selectedReportDate || isRefreshing}
-          style={actionButtonStyle}
-        >
-          {isRefreshing ? "刷新中..." : "刷新正式结果"}
-        </button>
-        <button
-          data-testid="balance-analysis-export-button"
-          type="button"
-          onClick={() => void handleExport()}
-          disabled={!selectedReportDate || isExportingCsv}
-          style={actionButtonStyle}
-        >
-          {isExportingCsv ? "导出中..." : "导出 CSV"}
-        </button>
-        <button
-          data-testid="balance-analysis-workbook-export-button"
-          type="button"
-          onClick={() => void handleWorkbookExport()}
-          disabled={!selectedReportDate || isExportingWorkbook}
-          style={actionButtonStyle}
-        >
-          {isExportingWorkbook ? "导出中..." : "导出 Excel"}
-        </button>
-      </FilterBar>
+            <button
+              data-testid="balance-analysis-refresh-button"
+              type="button"
+              onClick={() => void handleRefresh()}
+              disabled={!selectedReportDate || isRefreshing}
+              style={actionButtonStyle}
+            >
+              {isRefreshing ? "刷新中..." : "刷新正式结果"}
+            </button>
+            <button
+              data-testid="balance-analysis-export-button"
+              type="button"
+              onClick={() => void handleExport()}
+              disabled={!selectedReportDate || isExportingCsv}
+              style={actionButtonStyle}
+            >
+              {isExportingCsv ? "导出中..." : "导出 CSV"}
+            </button>
+            <button
+              data-testid="balance-analysis-workbook-export-button"
+              type="button"
+              onClick={() => void handleWorkbookExport()}
+              disabled={!selectedReportDate || isExportingWorkbook}
+              style={actionButtonStyle}
+            >
+              {isExportingWorkbook ? "导出中..." : "导出 Excel"}
+            </button>
+          </FilterBar>
+        </PageFilterTray>
+      </PageHeader>
 
       {(refreshStatus || refreshError) && (
         <div
@@ -1755,7 +1658,7 @@ export default function BalanceAnalysisPage() {
         </div>
       )}
 
-      <SectionLead
+      <PageSectionLead
         eyebrow="Overview"
         title="页首概览"
         description="顶部卡片只重排现有正式读模型和既有业务摘要，用于先判断资产负债规模、静态利差、缺口和预警，再决定是否下钻。"
@@ -1807,7 +1710,7 @@ export default function BalanceAnalysisPage() {
         data-testid="balance-analysis-supplemental-panels"
         style={{ marginTop: 20, display: "grid", gap: 16 }}
       >
-        <SectionLead
+        <PageSectionLead
           eyebrow="Analytical"
           title="补充分析与口径辅助"
           description="ADB 预览、会计口径拆解和高阶归因继续作为支持性分析区，保持现有只读查询和正式口径边界。"
@@ -1883,7 +1786,7 @@ export default function BalanceAnalysisPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <SectionLead
+        <PageSectionLead
           eyebrow="Summary"
           title="正式汇总驾驶舱"
           description="先阅读分页汇总表，再进入下方 detail summary 和明细下钻，保持 summary / detail 查询分层不变。"
@@ -2009,7 +1912,7 @@ export default function BalanceAnalysisPage() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <SectionLead
+        <PageSectionLead
           eyebrow="Workbench"
           title="工作簿与治理侧栏"
           description="工作簿主栏承载正式 workbook 面板，右侧栏承载治理事项、事件日历、风险预警和详情下钻，保持现有契约和阅读顺序。"
@@ -2389,47 +2292,10 @@ export default function BalanceAnalysisPage() {
               label: "开发调试: Result Meta",
               forceRender: true,
               children: (
-                <section data-testid="balance-analysis-result-meta" style={resultMetaGridStyle}>
-                  {resultMetaSections.map((section) => (
-                    <article
-                      key={section.key}
-                      data-testid={`balance-analysis-result-meta-${section.key}`}
-                      style={resultMetaCardStyle}
-                    >
-                      <h2
-                        style={{
-                          margin: 0,
-                          fontSize: 16,
-                          fontWeight: 600,
-                          color: "#162033",
-                        }}
-                      >
-                        {section.title}
-                      </h2>
-                      <p style={{ marginTop: 8, marginBottom: 14, color: "#5c6b82", fontSize: 13 }}>
-                        Inspect the governed formal provenance returned by the active query.
-                      </p>
-                      <dl style={resultMetaListStyle}>
-                        <dt style={{ color: "#5c6b82" }}>basis</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.basis}</dd>
-                        <dt style={{ color: "#5c6b82" }}>result_kind</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.result_kind}</dd>
-                        <dt style={{ color: "#5c6b82" }}>source_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.source_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>rule_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.rule_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>cache_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.cache_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>quality_flag</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.quality_flag}</dd>
-                        <dt style={{ color: "#5c6b82" }}>generated_at</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.generated_at}</dd>
-                        <dt style={{ color: "#5c6b82" }}>trace_id</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.trace_id}</dd>
-                      </dl>
-                    </article>
-                  ))}
-                </section>
+                <FormalResultMetaPanel
+                  testId="balance-analysis-result-meta"
+                  sections={resultMetaSections}
+                />
               ),
             },
           ]}

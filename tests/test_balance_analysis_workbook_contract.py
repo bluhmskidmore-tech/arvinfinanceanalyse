@@ -780,6 +780,58 @@ def test_balance_analysis_workbook_api_returns_governed_sections(tmp_path, monke
     get_settings.cache_clear()
 
 
+def test_balance_analysis_workbook_contract_keeps_generated_decision_items_in_operational_sections(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+    _seed_workbook_snapshot_and_fx_tables(str(duckdb_path))
+
+    task_mod = load_module(
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend/app/tasks/balance_analysis_materialize.py",
+    )
+    task_mod.materialize_balance_analysis_facts.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={"report_date": "2025-12-31", "position_scope": "all", "currency_basis": "CNY"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()["result"]
+    table_keys = {table["key"] for table in payload["tables"]}
+    operational_map = {
+        section["key"]: section for section in payload["operational_sections"]
+    }
+
+    assert "decision_items" not in table_keys
+    assert "decision_items" in operational_map
+    assert operational_map["decision_items"]["section_kind"] == "decision_items"
+    assert operational_map["decision_items"]["columns"]
+    assert operational_map["decision_items"]["rows"]
+    assert {
+        "title",
+        "action_label",
+        "severity",
+        "reason",
+        "source_section",
+        "rule_id",
+        "rule_version",
+    } <= set(operational_map["decision_items"]["rows"][0])
+
+    get_settings.cache_clear()
+
+
 def test_governed_workbook_inventory_matches_spec_contract():
     """Supported vs placeholder keys: see docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md §13."""
     assert NOT_GOVERNED_OR_NOT_SUPPORTED_KEYS.isdisjoint(GOVERNED_WORKBOOK_SUPPORTED_TABLE_KEYS)

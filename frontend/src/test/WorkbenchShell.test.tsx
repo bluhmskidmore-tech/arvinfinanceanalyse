@@ -3,6 +3,7 @@ import { screen, within } from "@testing-library/react";
 import { WorkbenchShell } from "../layouts/WorkbenchShell";
 import {
   primaryWorkbenchNavigation,
+  primaryWorkbenchNavigationGroups,
   secondaryWorkbenchNavigation,
 } from "../mocks/navigation";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
@@ -26,19 +27,22 @@ function renderShellAt(path: string) {
 }
 
 describe("WorkbenchShell", () => {
-  it("renders shell chrome and primary navigation", async () => {
+  it("renders shell chrome and grouped workspace navigation", async () => {
     renderShellAt("/");
 
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(screen.getByRole("navigation")).toBeInTheDocument();
+    expect(screen.getByTestId("workbench-group-nav")).toBeInTheDocument();
     expect(screen.getByText("shell body")).toBeInTheDocument();
   });
 
-  it("keeps the primary navigation aligned with the visible navigation baseline", async () => {
+  it("renders a smaller set of grouped workspaces than live route entries", async () => {
     renderShellAt("/");
 
-    const navigation = await screen.findByRole("navigation");
+    const navigation = await screen.findByTestId("workbench-group-nav");
     expect(within(navigation).getAllByRole("link")).toHaveLength(
+      primaryWorkbenchNavigationGroups.length,
+    );
+    expect(primaryWorkbenchNavigationGroups.length).toBeLessThan(
       primaryWorkbenchNavigation.length,
     );
     expect(
@@ -46,7 +50,19 @@ describe("WorkbenchShell", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders the reserved modules section outside the primary navigation", async () => {
+  it("shows current-group section links separately from the workspace groups", async () => {
+    renderShellAt("/platform-config");
+
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toEqual(
+      expect.arrayContaining(["/platform-config", "/reports", "/cube-query"]),
+    );
+  });
+
+  it("renders the reserved modules section outside the grouped workspace nav", async () => {
     renderShellAt("/");
 
     expect(await screen.findByText("Reserved Modules")).toBeInTheDocument();
@@ -68,12 +84,15 @@ describe("WorkbenchShell", () => {
     expect(screen.getByText("agent body")).toBeInTheDocument();
   });
 
-  it("treats /dashboard as the dashboard section for nav highlighting", async () => {
+  it("treats /dashboard as the dashboard section inside the current group subnav", async () => {
     renderShellAt("/dashboard");
 
     expect(await screen.findByText("dashboard alias body")).toBeInTheDocument();
-    const navigation = screen.getByRole("navigation");
-    const dashLink = within(navigation).getByRole("link", { name: /驾驶舱/ });
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const dashLink = within(subnav)
+      .getAllByRole("link")
+      .find((candidate) => candidate.getAttribute("href") === "/");
+    expect(dashLink).toBeDefined();
     expect(dashLink).toHaveAttribute("href", "/");
   });
 });

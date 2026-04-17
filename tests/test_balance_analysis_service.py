@@ -418,6 +418,296 @@ def test_build_balance_workbook_payload_uses_shared_completed_build_lineage_help
     assert build_lineage["source_version"] == "sv_balance_analysis_test"
 
 
+def test_balance_analysis_decision_items_envelope_reads_generated_rows_from_workbook_helper(
+    monkeypatch,
+):
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "_build_balance_workbook_payload",
+        lambda **_kwargs: (
+            {
+                "report_date": "2025-12-31",
+                "position_scope": "all",
+                "currency_basis": "CNY",
+                "cards": [],
+                "tables": [
+                    {
+                        "key": "decision_items",
+                        "title": "Decision Items",
+                        "section_kind": "decision_items",
+                        "columns": [
+                            {"key": "title", "label": "Title"},
+                            {"key": "action_label", "label": "Action"},
+                            {"key": "severity", "label": "Severity"},
+                            {"key": "reason", "label": "Reason"},
+                            {"key": "source_section", "label": "Source Section"},
+                            {"key": "rule_id", "label": "Rule Id"},
+                            {"key": "rule_version", "label": "Rule Version"},
+                        ],
+                        "rows": [
+                            {
+                                "title": "Tighten duration gap",
+                                "action_label": "Review",
+                                "severity": "high",
+                                "reason": "Gap widened",
+                                "source_section": "maturity_gap",
+                                "rule_id": "bal_gap_rule",
+                                "rule_version": "rv-test",
+                            }
+                        ],
+                    }
+                ],
+            },
+            {
+                "cache_key": service_mod.CACHE_KEY,
+                "cache_version": "cv_balance_analysis_test",
+                "source_version": "sv_balance_analysis_test",
+                "vendor_version": "vv_none",
+                "rule_version": "rv_balance_analysis_test",
+                "report_date": "2025-12-31",
+            },
+        ),
+    )
+
+    class FakeDecisionRepo:
+        def __init__(self, governance_dir: str) -> None:
+            self.governance_dir = governance_dir
+
+        def list_latest_statuses(self, **_kwargs):
+            return {}
+
+    monkeypatch.setattr(service_mod, "BalanceAnalysisDecisionRepository", FakeDecisionRepo)
+
+    payload = service_mod.balance_analysis_decision_items_envelope(
+        duckdb_path="ignored.duckdb",
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert payload["result_meta"]["result_kind"] == "balance-analysis.decision-items"
+    assert payload["result"]["columns"] == [
+        {"key": "title", "label": "Title"},
+        {"key": "action_label", "label": "Action"},
+        {"key": "severity", "label": "Severity"},
+        {"key": "reason", "label": "Reason"},
+        {"key": "source_section", "label": "Source Section"},
+        {"key": "rule_id", "label": "Rule Id"},
+        {"key": "rule_version", "label": "Rule Version"},
+    ]
+    assert payload["result"]["rows"] == [
+        {
+            "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+            "title": "Tighten duration gap",
+            "action_label": "Review",
+            "severity": "high",
+            "reason": "Gap widened",
+            "source_section": "maturity_gap",
+            "rule_id": "bal_gap_rule",
+            "rule_version": "rv-test",
+            "latest_status": {
+                "decision_key": "bal_gap_rule::maturity_gap::Tighten duration gap",
+                "status": "pending",
+                "updated_at": None,
+                "updated_by": None,
+                "comment": None,
+            },
+        }
+    ]
+
+
+def test_update_balance_analysis_decision_status_rejects_unknown_generated_decision_key(
+    monkeypatch,
+):
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+    schema_mod = load_module(
+        "backend.app.schemas.balance_analysis",
+        "backend/app/schemas/balance_analysis.py",
+    )
+
+    monkeypatch.setattr(
+        service_mod,
+        "_build_balance_workbook_payload",
+        lambda **_kwargs: (
+            {
+                "report_date": "2025-12-31",
+                "position_scope": "all",
+                "currency_basis": "CNY",
+                "cards": [],
+                "tables": [
+                    {
+                        "key": "decision_items",
+                        "title": "Decision Items",
+                        "section_kind": "decision_items",
+                        "columns": [],
+                        "rows": [
+                            {
+                                "title": "Tighten duration gap",
+                                "action_label": "Review",
+                                "severity": "high",
+                                "reason": "Gap widened",
+                                "source_section": "maturity_gap",
+                                "rule_id": "bal_gap_rule",
+                                "rule_version": "rv-test",
+                            }
+                        ],
+                    }
+                ],
+            },
+            None,
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Unknown balance-analysis decision_key for the requested report_date and filters\\.",
+    ):
+        service_mod.update_balance_analysis_decision_status(
+            duckdb_path="ignored.duckdb",
+            governance_dir="ignored-governance",
+            update=schema_mod.BalanceAnalysisDecisionStatusUpdateRequest(
+                report_date="2025-12-31",
+                position_scope="all",
+                currency_basis="CNY",
+                decision_key="missing-rule::missing-section::missing-title",
+                status="confirmed",
+                comment=None,
+            ),
+            updated_by="balance-owner",
+        )
+
+
+def test_export_balance_analysis_workbook_xlsx_uses_workbook_envelope_result(
+    monkeypatch,
+):
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+
+    workbook_payload = {
+        "report_date": "2025-12-31",
+        "position_scope": "all",
+        "currency_basis": "CNY",
+        "cards": [{"key": "net_position", "label": "Net", "value": "1"}],
+        "tables": [],
+        "operational_sections": [],
+    }
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(
+        service_mod,
+        "balance_analysis_workbook_envelope",
+        lambda **kwargs: calls.append(kwargs) or {"result": workbook_payload},
+    )
+    monkeypatch.setattr(
+        service_mod,
+        "_build_balance_analysis_workbook_xlsx_bytes",
+        lambda payload: b"excel-bytes" if payload is workbook_payload else b"wrong-payload",
+    )
+
+    filename, content = service_mod.export_balance_analysis_workbook_xlsx(
+        duckdb_path="ignored.duckdb",
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="all",
+        currency_basis="CNY",
+    )
+
+    assert calls == [
+        {
+            "duckdb_path": "ignored.duckdb",
+            "governance_dir": "ignored-governance",
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        }
+    ]
+    assert filename == "资产负债分析_2025-12-31.xlsx"
+    assert content == b"excel-bytes"
+
+
+def test_export_balance_analysis_summary_csv_uses_summary_rows_and_lineage(
+    monkeypatch,
+):
+    service_mod = load_module(
+        "backend.app.services.balance_analysis_service",
+        "backend/app/services/balance_analysis_service.py",
+    )
+
+    class FakeRepo:
+        def __init__(self, duckdb_path: str) -> None:
+            self.duckdb_path = duckdb_path
+
+        def list_report_dates(self):
+            return ["2025-12-31"]
+
+        def fetch_formal_summary_table(self, **kwargs):
+            assert kwargs == {
+                "report_date": "2025-12-31",
+                "position_scope": "asset",
+                "currency_basis": "CNY",
+                "limit": None,
+                "offset": 0,
+            }
+            return {
+                "rows": [
+                    {
+                        "row_key": "zqtz:240001.IB:组合A:CC100:CNY:asset:A:FVOCI",
+                        "source_family": "zqtz",
+                        "display_name": "240001.IB",
+                        "owner_name": "组合A",
+                        "category_name": "CC100",
+                        "position_scope": "asset",
+                        "currency_basis": "CNY",
+                        "invest_type_std": "A",
+                        "accounting_basis": "FVOCI",
+                        "detail_row_count": 1,
+                        "market_value_amount": "720.00000000",
+                        "amortized_cost_amount": "648.00000000",
+                        "accrued_interest_amount": "36.00000000",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(service_mod, "BalanceAnalysisRepository", FakeRepo)
+    monkeypatch.setattr(
+        service_mod,
+        "resolve_completed_formal_build_lineage",
+        lambda **kwargs: {
+            "cache_key": kwargs["cache_key"],
+            "cache_version": "cv_balance_analysis_test",
+            "source_version": "sv_balance_analysis_test",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_balance_analysis_test",
+            "report_date": kwargs["report_date"],
+        },
+    )
+
+    filename, content = service_mod.export_balance_analysis_summary_csv(
+        duckdb_path="ignored.duckdb",
+        governance_dir="ignored-governance",
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+
+    assert filename == "balance-analysis-summary-2025-12-31-asset-CNY.csv"
+    assert "row_key,source_family,display_name,owner_name" in content
+    assert "zqtz:240001.IB:组合A:CC100:CNY:asset:A:FVOCI" in content
+    assert "sv_balance_analysis_test" in content
+    assert "rv_balance_analysis_test" in content
+
+
 def test_balance_analysis_service_uses_persisted_cache_version_from_governance(
     tmp_path,
     monkeypatch,

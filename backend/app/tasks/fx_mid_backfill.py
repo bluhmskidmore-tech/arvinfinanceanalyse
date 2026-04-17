@@ -2,7 +2,7 @@
 
 import argparse
 import json
-import logging
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -17,12 +17,14 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 from backend.app.tasks.fx_mid_materialize import materialize_fx_mid_for_report_date
 
-logger = logging.getLogger(__name__)
-
 CACHE_KEY = "fx:formal_mid:backfill"
 CACHE_VERSION = "cv_fx_formal_mid_backfill_v1"
 RULE_VERSION = "rv_fx_formal_mid_backfill_v1"
 LOCK_KEY = "lock:duckdb:formal:fx-mid:backfill"
+
+def _emit_json_payload(payload: dict[str, object]) -> None:
+    rendered = json.dumps(payload, ensure_ascii=False, indent=2)
+    print(rendered, file=sys.stdout)
 
 
 def _normalize_iso_date(value: str, *, field_name: str) -> date:
@@ -213,7 +215,7 @@ def main() -> None:
         duckdb_path=args.duckdb_path,
         governance_dir=args.governance_dir,
     )
-    logger.info(json.dumps(payload, ensure_ascii=False, indent=2))
+    _emit_json_payload(payload)
 
 
 if __name__ == "__main__":

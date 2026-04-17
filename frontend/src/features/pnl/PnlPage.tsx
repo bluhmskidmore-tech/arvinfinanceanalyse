@@ -6,14 +6,15 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../api/client";
-import type { PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
+import type { PnlBasis, PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
+import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
-import { PnlDebugPanel, PnlRefreshStatus } from "./PnlRuntimePanels";
+import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import {
   pnlActionButtonStyle,
   resolvePnlSectionState,
@@ -97,6 +98,17 @@ const controlStyle = {
   border: "1px solid #d7dfea",
   background: "#ffffff",
   color: "#162033",
+} as const;
+
+const basisNoteStyle = {
+  marginBottom: 18,
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: "1px solid #d7dfea",
+  background: "#f7f9fc",
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.65,
 } as const;
 
 const tabBarStyle = {
@@ -191,6 +203,7 @@ type DataTab = "fi" | "nonstd";
 
 export default function PnlPage() {
   const client = useApiClient();
+  const [basis, setBasis] = useState<PnlBasis>("formal");
   const [selectedReportDate, setSelectedReportDate] = useState("");
   const [dataTab, setDataTab] = useState<DataTab>("fi");
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -220,8 +233,8 @@ export default function PnlPage() {
   );
 
   const datesQuery = useQuery({
-    queryKey: ["pnl", "dates", client.mode],
-    queryFn: () => client.getFormalPnlDates(),
+    queryKey: ["pnl", "dates", client.mode, basis],
+    queryFn: () => client.getFormalPnlDates(basis),
     retry: false,
   });
 
@@ -241,16 +254,16 @@ export default function PnlPage() {
   }, [reportDates, selectedReportDate]);
 
   const overviewQuery = useQuery({
-    queryKey: ["pnl", "overview", client.mode, selectedReportDate],
+    queryKey: ["pnl", "overview", client.mode, basis, selectedReportDate],
     enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlOverview(selectedReportDate),
+    queryFn: () => client.getFormalPnlOverview(selectedReportDate, basis),
     retry: false,
   });
 
   const dataQuery = useQuery({
-    queryKey: ["pnl", "data", client.mode, selectedReportDate],
+    queryKey: ["pnl", "data", client.mode, basis, selectedReportDate],
     enabled: Boolean(selectedReportDate),
-    queryFn: () => client.getFormalPnlData(selectedReportDate),
+    queryFn: () => client.getFormalPnlData(selectedReportDate, basis),
     retry: false,
   });
 
@@ -294,7 +307,7 @@ export default function PnlPage() {
       ? "报告日加载失败"
       : "暂无可选报告日";
   const reportDateSelectDisabled = datesQuery.isLoading || datesQuery.isError || reportDates.length === 0;
-  const refreshDisabled = !selectedReportDate || isRefreshing;
+  const refreshDisabled = !selectedReportDate || isRefreshing || basis !== "formal";
 
   const dataTabExtra = (
     <div style={tabBarStyle}>
@@ -310,39 +323,6 @@ export default function PnlPage() {
       </button>
     </div>
   );
-
-  const debugSnapshot = {
-    client_mode: client.mode,
-    selected_report_date: selectedReportDate || null,
-    available_report_dates: reportDates,
-    overview_state: overviewState,
-    data_state: dataState,
-    dates: {
-      result_meta: datesQuery.data?.result_meta ?? null,
-      error: datesQuery.error instanceof Error ? datesQuery.error.message : null,
-      report_dates: reportDates,
-    },
-    overview: {
-      result_meta: overviewQuery.data?.result_meta ?? null,
-      error: overviewQuery.error instanceof Error ? overviewQuery.error.message : null,
-      payload: overview ?? null,
-    },
-    data: {
-      result_meta: dataQuery.data?.result_meta ?? null,
-      error: dataQuery.error instanceof Error ? dataQuery.error.message : null,
-      payload: selectedReportDate
-        ? {
-            report_date: selectedReportDate,
-            formal_fi_row_count: formalRows.length,
-            nonstd_bridge_row_count: nonstdRows.length,
-          }
-        : null,
-    },
-    refresh: {
-      status: refreshStatus,
-      error: refreshError,
-    },
-  };
 
   async function handleRefresh() {
     if (!selectedReportDate) {
@@ -412,6 +392,25 @@ export default function PnlPage() {
       </div>
 
       <FilterBar style={controlBarStyle}>
+        <div>
+          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>口径</span>
+          <div style={tabBarStyle}>
+            <button
+              type="button"
+              style={tabButtonStyle(basis === "formal")}
+              onClick={() => setBasis("formal")}
+            >
+              Formal
+            </button>
+            <button
+              type="button"
+              style={tabButtonStyle(basis === "analytical")}
+              onClick={() => setBasis("analytical")}
+            >
+              Analytical
+            </button>
+          </div>
+        </div>
         <label>
           <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
           <select
@@ -444,6 +443,12 @@ export default function PnlPage() {
       </FilterBar>
 
       <PnlRefreshStatus testId="pnl-refresh-status" status={refreshStatus} error={refreshError} />
+
+      {basis === "analytical" ? (
+        <div data-testid="pnl-basis-note" style={basisNoteStyle}>
+          当前为 analytical 只读口径。刷新按钮仅适用于 formal 重算，`PnL Bridge` 仍保持 formal-only。
+        </div>
+      ) : null}
 
       <div data-testid="pnl-overview-section" data-state={overviewState} style={{ marginBottom: 24 }}>
         <SectionLead
@@ -549,7 +554,14 @@ export default function PnlPage() {
         </AsyncSection>
       </div>
 
-      <PnlDebugPanel testId="pnl-result-meta-panel" snapshot={debugSnapshot} />
+      <FormalResultMetaPanel
+        testId="pnl-result-meta-panel"
+        sections={[
+          { key: "dates", title: "报告日列表", meta: datesQuery.data?.result_meta },
+          { key: "overview", title: "正式损益汇总", meta: overviewQuery.data?.result_meta },
+          { key: "data", title: "正式明细与桥接", meta: dataQuery.data?.result_meta },
+        ]}
+      />
     </section>
   );
 }

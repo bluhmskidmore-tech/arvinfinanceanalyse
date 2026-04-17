@@ -16,6 +16,8 @@ BALANCE_ANALYSIS_REPO_MODULE = "backend.app.repositories.balance_analysis_repo"
 _SERVICES_ALLOWED_TO_IMPORT_BALANCE_ANALYSIS_REPO = frozenset(
     {
         "balance_analysis_service.py",
+        "balance_analysis_summary_export_service.py",
+        "balance_analysis_workbook_service.py",
         "pnl_bridge_service.py",
     }
 )

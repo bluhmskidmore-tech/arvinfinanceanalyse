@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useSearchParams } from "react-router-dom";
@@ -76,6 +76,34 @@ const drillDownIntroStyle = {
   lineHeight: 1.65,
 } as const;
 
+const drillCardStyle = {
+  marginTop: 18,
+  padding: 16,
+  borderRadius: 16,
+  border: "1px solid #e4ebf5",
+  background: "#ffffff",
+} as const;
+
+const drillChipRowStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: 8,
+  marginTop: 12,
+} as const;
+
+function drillChipStyle(active: boolean) {
+  return {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: active ? "1px solid #1f5eff" : "1px solid #d7dfea",
+    background: active ? "#edf3ff" : "#ffffff",
+    color: active ? "#1f5eff" : "#162033",
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  } as const;
+}
+
 function cellText(value: string | number | null | undefined) {
   if (value === null || value === undefined) {
     return "—";
@@ -100,6 +128,8 @@ export default function RiskOverviewPage() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+  const [selectedTenor, setSelectedTenor] = useState<string>("");
+  const [selectedIssuer, setSelectedIssuer] = useState<string>("");
 
   const datesQuery = useQuery({
     queryKey: ["risk-overview", "risk-tensor-dates", client.mode],
@@ -197,6 +227,36 @@ export default function RiskOverviewPage() {
       ],
     };
   }, [tensorResult]);
+
+  const tenorRows = krd?.krd_buckets ?? [];
+  const issuerRows = credit?.concentration_by_issuer?.top_items ?? [];
+
+  useEffect(() => {
+    if (tenorRows.length === 0) {
+      setSelectedTenor("");
+      return;
+    }
+    const strongest = [...tenorRows].sort(
+      (left, right) => chartMagnitude(right.krd) - chartMagnitude(left.krd),
+    )[0]?.tenor;
+    if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
+      setSelectedTenor(strongest ?? tenorRows[0]!.tenor);
+    }
+  }, [selectedTenor, tenorRows]);
+
+  useEffect(() => {
+    if (issuerRows.length === 0) {
+      setSelectedIssuer("");
+      return;
+    }
+    if (!selectedIssuer || !issuerRows.some((row) => row.name === selectedIssuer)) {
+      setSelectedIssuer(issuerRows[0]!.name);
+    }
+  }, [issuerRows, selectedIssuer]);
+
+  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? tenorRows[0];
+  const selectedIssuerRow =
+    issuerRows.find((row) => row.name === selectedIssuer) ?? issuerRows[0];
 
   return (
     <section>
@@ -492,6 +552,34 @@ export default function RiskOverviewPage() {
             </div>
           )}
 
+          {selectedTenorRow ? (
+            <div data-testid="risk-overview-tenor-drill" style={drillCardStyle}>
+              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
+              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
+                使用 Bond Analytics 的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
+              </div>
+              <div style={drillChipRowStyle}>
+                {tenorRows.map((row) => (
+                  <button
+                    key={row.tenor}
+                    type="button"
+                    style={drillChipStyle(row.tenor === selectedTenor)}
+                    onClick={() => setSelectedTenor(row.tenor)}
+                  >
+                    {row.tenor}
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+                当前桶：<strong>{selectedTenorRow.tenor}</strong>
+              </div>
+              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
+                KRD：{selectedTenorRow.krd} · DV01：{selectedTenorRow.dv01} · 市值权重：
+                {selectedTenorRow.market_value_weight}
+              </div>
+            </div>
+          ) : null}
+
           <h2 style={blockTitleStyle}>KRD 分桶</h2>
           <div style={tableShellStyle}>
             <table style={tableStyle}>
@@ -626,6 +714,33 @@ export default function RiskOverviewPage() {
               ))}
             </div>
           )}
+
+          {selectedIssuerRow ? (
+            <div data-testid="risk-overview-issuer-drill" style={drillCardStyle}>
+              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
+              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
+                使用信用利差迁移读面的 `concentration_by_issuer.top_items` 作为 issuer drill。
+              </div>
+              <div style={drillChipRowStyle}>
+                {issuerRows.map((row) => (
+                  <button
+                    key={row.name}
+                    type="button"
+                    style={drillChipStyle(row.name === selectedIssuer)}
+                    onClick={() => setSelectedIssuer(row.name)}
+                  >
+                    {row.name}
+                  </button>
+                ))}
+              </div>
+              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+                当前发行人：<strong>{selectedIssuerRow.name}</strong>
+              </div>
+              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
+                权重：{selectedIssuerRow.weight} · 市值：{selectedIssuerRow.market_value}
+              </div>
+            </div>
+          ) : null}
 
           <h2 style={blockTitleStyle}>利差情景</h2>
           <div style={tableShellStyle}>

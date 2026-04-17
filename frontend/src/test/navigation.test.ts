@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  primaryWorkbenchNavigationGroups,
   primaryWorkbenchNavigation,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
@@ -146,5 +147,30 @@ describe("workbench navigation mocks", () => {
       workbenchNavigation.filter((s) => s.navigationVisibility !== "hidden").length,
     );
     expect(secondaryWorkbenchNavigation.length).toBe(1);
+  });
+
+  it("groups live entries into a smaller set of primary workspaces", () => {
+    expect(primaryWorkbenchNavigationGroups.length).toBeLessThan(
+      primaryWorkbenchNavigation.length,
+    );
+    expect(
+      primaryWorkbenchNavigationGroups.every((group) => group.sections.length > 0),
+    ).toBe(true);
+
+    const groupedSectionKeys = primaryWorkbenchNavigationGroups.flatMap((group) =>
+      group.sections.map((section) => section.key),
+    );
+    expect(new Set(groupedSectionKeys).size).toBe(primaryWorkbenchNavigation.length);
+    expect(groupedSectionKeys.sort()).toEqual(
+      primaryWorkbenchNavigation.map((section) => section.key).sort(),
+    );
+  });
+
+  it("keeps every workspace default path inside its own grouped sections", () => {
+    for (const group of primaryWorkbenchNavigationGroups) {
+      expect(group.sections.some((section) => section.path === group.defaultPath)).toBe(
+        true,
+      );
+    }
   });
 });

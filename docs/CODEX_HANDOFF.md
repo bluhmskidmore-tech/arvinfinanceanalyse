@@ -152,27 +152,41 @@ repo/
 
 ## 9. 当前执行边界
 
-默认只允许执行 `Phase 1`：
-
-- repo 骨架
-- FastAPI 可启动
-- React 前端可启动
-- PostgreSQL / DuckDB / Redis / MinIO 连接
-- demo 数据导入
-- 基础 `result_meta` 契约
-- 基础 `tasks/worker` 框架
-- smoke tests
+当前默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
 
 默认边界解释如下：
 
-- `Phase 1 closeout` 仍属于 `Phase 1`，只用于收口已经打开的骨架、预览、占位、验证和治理欠账。
+- 本次 repo-wide `Phase 2` cutover 只覆盖 formal-compute 主链：
+  - formal balance
+  - formal PnL
+  - formal FX
+  - formal yield curve
+  - PnL bridge
+  - risk tensor
+  - 核心 bond analytics formal read surfaces
+- `Phase 1 closeout` 仍属于历史收口概念，只用于未纳入 cutover 的骨架、预览、占位、验证和治理欠账。
 - `.omx/plans/` 中的 `next-slice`、`closeout`、`execution-plan` 文档是计划，不是执行权限来源。
-- 只有 dated execution update 才能对被点名工作流临时 lifted stop line；该 lifted stop line 不代表仓库整体进入 `Phase 2`。
-- 当前有效 scoped override（2026-04-09）仅限 `docs/CURRENT_EXECUTION_UPDATE_2026-04-09.md` 所定义的 macro-data stream。
-- 当前代码库中已经落下的 thin slice / start pack 仍按各自边界解释；它们不自动构成“全仓进入 Phase 2”的证据。
+- dated execution update 仍可用于 repo-wide `Phase 2` 已排除模块或未来新工作流的 scoped override；它们不再是 formal-compute 主链的主要授权来源。
+- 当前代码库中已经落下的 thin slice / start pack 需要按“已纳入 cutover 的正式主链”与“仍被排除的消费层/分析层”分别解释。
 - 最新的“当前代码状态 vs 当前阶段边界”摘要见 `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`。
 
-完成默认边界内工作后停止，不得把默认边界误读成已放开通用 `Phase 2`。
+本次 cutover 明确排除：
+
+- `executive.*` 中除 `executive-consumer cutover v1` 以外的其余路由
+- 当前已纳入 `executive-consumer cutover v1` 的范围：
+  - `/ui/home/overview`
+  - `/ui/home/summary`
+  - `/ui/pnl/attribution`
+- 当前仍排除：
+  - `/ui/risk/overview`
+  - `/ui/home/alerts`
+  - `/ui/home/contribution`
+- Agent MVP / `/api/agent/query` / `/agent`
+- `source_preview` / `macro-data` / `choice-news` / `market-data` 的 preview/vendor/analytical surface
+- `qdb_gl_monthly_analysis`、`liability_analytics_compat` 等 analytical-only / compatibility 模块
+- cube-query、broad frontend rollout、以及其他 `Phase 3 / Phase 4` 风格扩张项
+
+若工作属于排除项，仍需新的明确授权或后续阶段定义。
 
 ## 9.1 Agent Phase 1 当前状态
 
