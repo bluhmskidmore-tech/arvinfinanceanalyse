@@ -9,6 +9,23 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _purge_backend_main_import_chain() -> None:
+    prefixes = (
+        "backend.app.main",
+        "backend.app.api",
+        "backend.app.governance.settings",
+    )
+    for loaded_name in list(sys.modules):
+        if loaded_name == "backend.app.main":
+            sys.modules.pop(loaded_name, None)
+            continue
+        if loaded_name == "backend.app.governance.settings":
+            sys.modules.pop(loaded_name, None)
+            continue
+        if loaded_name == "backend.app.api" or loaded_name.startswith("backend.app.api."):
+            sys.modules.pop(loaded_name, None)
+
+
 def load_module(module_name: str, relative_path: str):
     path = ROOT / relative_path
     if not path.exists():
@@ -20,6 +37,9 @@ def load_module(module_name: str, relative_path: str):
     spec = importlib.util.spec_from_file_location(module_name, path)
     if spec is None or spec.loader is None:
         pytest.fail(f"Failed to create import spec for {path}")
+
+    if module_name == "backend.app.main":
+        _purge_backend_main_import_chain()
 
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
