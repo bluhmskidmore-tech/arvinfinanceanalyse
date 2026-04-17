@@ -2,6 +2,8 @@
 export type ApiBasis = "formal" | "scenario" | "analytical" | "mock";
 export type ApiQuality = "ok" | "warning" | "error" | "stale";
 
+export type ResultNextDrill = string | Record<string, unknown>;
+
 export type HealthCheckStatus = {
   ok: boolean;
   detail: string;
@@ -26,6 +28,10 @@ export type ResultMeta = {
   fallback_mode: "none" | "latest_snapshot";
   scenario_flag: boolean;
   generated_at: string;
+  tables_used?: string[];
+  filters_applied?: Record<string, unknown>;
+  evidence_rows?: number;
+  next_drill?: ResultNextDrill[];
 };
 
 export type ApiEnvelope<T> = {

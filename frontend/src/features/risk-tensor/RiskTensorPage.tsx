@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
@@ -63,6 +63,34 @@ const controlBarStyle = {
   marginBottom: 20,
 } as const;
 
+const drillPanelStyle = {
+  marginTop: 24,
+  padding: 16,
+  borderRadius: 16,
+  border: `1px solid ${t.colorBorderSoft}`,
+  background: t.colorBgCanvas,
+} as const;
+
+const chipRowStyle = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: 8,
+  marginTop: 12,
+} as const;
+
+function chipButtonStyle(active: boolean) {
+  return {
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: active ? "1px solid #1f5eff" : `1px solid ${t.colorBorderSoft}`,
+    background: active ? "#edf3ff" : "#ffffff",
+    color: active ? "#1f5eff" : t.colorTextPrimary,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: "pointer",
+  } as const;
+}
+
 function displayStr(value: string | undefined) {
   if (value === undefined || value === "") {
     return "-";
@@ -87,6 +115,7 @@ export default function RiskTensorPage() {
   const client = useApiClient();
   const [searchParams] = useSearchParams();
   const explicitReportDate = searchParams.get("report_date")?.trim() || "";
+  const [selectedTenor, setSelectedTenor] = useState<string>("");
 
   const datesQuery = useQuery({
     queryKey: ["risk-tensor", "dates", client.mode],
@@ -155,6 +184,35 @@ export default function RiskTensorPage() {
       ],
     };
   }, [result]);
+
+  const tenorRows = useMemo(() => {
+    if (!result) {
+      return [];
+    }
+    return [
+      { tenor: "1Y", value: result.krd_1y },
+      { tenor: "3Y", value: result.krd_3y },
+      { tenor: "5Y", value: result.krd_5y },
+      { tenor: "7Y", value: result.krd_7y },
+      { tenor: "10Y", value: result.krd_10y },
+      { tenor: "30Y", value: result.krd_30y },
+    ];
+  }, [result]);
+
+  useEffect(() => {
+    if (tenorRows.length === 0) {
+      setSelectedTenor("");
+      return;
+    }
+    const strongest = [...tenorRows].sort(
+      (left, right) => chartMagnitude(right.value) - chartMagnitude(left.value),
+    )[0]?.tenor;
+    if (!selectedTenor || !tenorRows.some((row) => row.tenor === selectedTenor)) {
+      setSelectedTenor(strongest ?? tenorRows[0]!.tenor);
+    }
+  }, [selectedTenor, tenorRows]);
+
+  const selectedTenorRow = tenorRows.find((row) => row.tenor === selectedTenor) ?? tenorRows[0];
 
   const radarChartOption = useMemo((): EChartsOption | null => {
     if (!result) {
@@ -356,11 +414,40 @@ export default function RiskTensorPage() {
                 >
                   KRD 分档（DV01）
                 </h2>
-                {krdChartOption ? (
-                  <ReactECharts option={krdChartOption} style={{ height: 320, width: "100%" }} />
-                ) : null}
-              </div>
+              {krdChartOption ? (
+                <ReactECharts option={krdChartOption} style={{ height: 320, width: "100%" }} />
+              ) : null}
+
+              {selectedTenorRow ? (
+                <div data-testid="risk-tensor-tenor-drill" style={drillPanelStyle}>
+                  <div style={{ color: t.colorTextPrimary, fontSize: 15, fontWeight: 600 }}>
+                    期限桶下钻
+                  </div>
+                  <div style={{ color: t.colorTextSecondary, fontSize: 13, marginTop: 6 }}>
+                    先用现有风险张量 payload 选择 KRD 最强的期限桶，再查看该桶的敏感度读数。
+                  </div>
+                  <div style={chipRowStyle}>
+                    {tenorRows.map((row) => (
+                      <button
+                        key={row.tenor}
+                        type="button"
+                        style={chipButtonStyle(row.tenor === selectedTenor)}
+                        onClick={() => setSelectedTenor(row.tenor)}
+                      >
+                        {row.tenor}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop: 14, color: t.colorTextPrimary, fontSize: 14 }}>
+                    当前桶：<strong>{selectedTenorRow.tenor}</strong>
+                  </div>
+                  <div style={{ marginTop: 8, color: t.colorTextSecondary, fontSize: 13 }}>
+                    KRD：{selectedTenorRow.value}
+                  </div>
+                </div>
+              ) : null}
             </div>
+          </div>
 
             <h2
               style={{

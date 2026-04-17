@@ -140,6 +140,7 @@ describe("PnlBridgePage", () => {
     const dateSelect = await screen.findByLabelText("pnl-bridge-report-date");
     expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("损益桥接");
     expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("不在浏览器端做金融重算");
+    expect(screen.getByTestId("pnl-bridge-formal-only-note")).toHaveTextContent("formal-only");
     expect(screen.getByRole("heading", { name: "正式桥接汇总" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "桥接明细与归因瀑布" })).toBeInTheDocument();
 
@@ -162,9 +163,10 @@ describe("PnlBridgePage", () => {
     expect(detail).toHaveTextContent("Bridge Desk");
     expect(detail).toHaveTextContent("手工调整");
 
-    const debugPanel = await screen.findByTestId("pnl-bridge-result-meta-panel");
-    expect(debugPanel).toHaveTextContent('"client_mode": "real"');
-    expect(debugPanel).toHaveTextContent('"trace_id": "tr_bridge_payload"');
+    const metaPanel = await screen.findByTestId("pnl-bridge-result-meta-panel");
+    expect(metaPanel).toHaveTextContent("正式桥接读模型");
+    expect(metaPanel).toHaveTextContent("tr_bridge_payload");
+    expect(metaPanel).toHaveTextContent("sv_bridge_test");
 
     await waitFor(() => {
       expect(getPnlBridge).toHaveBeenCalledWith("2025-12-31");
@@ -214,9 +216,9 @@ describe("PnlBridgePage", () => {
     const detail = await screen.findByTestId("pnl-bridge-detail-table");
     expect(detail).toHaveTextContent("IC-2");
 
-    const debugPanel = await screen.findByTestId("pnl-bridge-result-meta-panel");
-    expect(debugPanel).toHaveTextContent('"trace_id": "tr_bridge_2025-11-30"');
-    expect(debugPanel).toHaveTextContent('"selected_report_date": "2025-11-30"');
+    const metaPanel = await screen.findByTestId("pnl-bridge-result-meta-panel");
+    expect(metaPanel).toHaveTextContent("tr_bridge_2025-11-30");
+    expect(metaPanel).toHaveTextContent("rv_bridge_test");
   });
 
   it("surfaces loading then empty state when bridge dates are unavailable", async () => {
@@ -391,9 +393,8 @@ describe("PnlBridgePage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("pnl-bridge-refresh-status")).toHaveTextContent("任务轮询超时");
-      expect(screen.getByTestId("pnl-bridge-result-meta-panel")).toHaveTextContent(
-        '"status": "running · pnl_materialize:bridge-timeout · 2025-12-31"',
-      );
+      expect(screen.getByTestId("pnl-bridge-result-meta-panel")).toHaveTextContent("正式桥接读模型");
+      expect(screen.getByTestId("pnl-bridge-result-meta-panel")).toHaveTextContent("tr_bridge_error");
     });
 
     pollingSpy.mockRestore();

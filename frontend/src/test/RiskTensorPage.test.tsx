@@ -100,6 +100,8 @@ describe("RiskTensorPage", () => {
     expect(screen.getByText("集中度")).toBeInTheDocument();
     expect(screen.getByText("流动性缺口（市值）")).toBeInTheDocument();
     expect(screen.getByText("Issuer concentration above desk threshold")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("5Y");
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3");
 
     await waitFor(() => {
       expect(getRiskTensorDates).toHaveBeenCalled();

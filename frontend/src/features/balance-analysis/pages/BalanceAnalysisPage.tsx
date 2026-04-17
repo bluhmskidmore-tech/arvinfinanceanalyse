@@ -25,6 +25,7 @@ import type {
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import {
   PageFilterTray,
   pageInsetCardStyle,
@@ -95,26 +96,6 @@ const tableShellStyle = {
   borderRadius: 16,
   border: "1px solid #e4ebf5",
   background: "#ffffff",
-} as const;
-
-const resultMetaGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 16,
-  marginTop: 20,
-} as const;
-
-const resultMetaCardStyle = {
-  ...pageInsetCardStyle,
-  background: "#f7f9fc",
-} as const;
-
-const resultMetaListStyle = {
-  margin: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(110px, 140px) minmax(0, 1fr)",
-  gap: "8px 12px",
-  fontSize: 13,
 } as const;
 
 const workbookPrimaryGridStyle = {
@@ -2311,47 +2292,10 @@ export default function BalanceAnalysisPage() {
               label: "开发调试: Result Meta",
               forceRender: true,
               children: (
-                <section data-testid="balance-analysis-result-meta" style={resultMetaGridStyle}>
-                  {resultMetaSections.map((section) => (
-                    <article
-                      key={section.key}
-                      data-testid={`balance-analysis-result-meta-${section.key}`}
-                      style={resultMetaCardStyle}
-                    >
-                      <h2
-                        style={{
-                          margin: 0,
-                          fontSize: 16,
-                          fontWeight: 600,
-                          color: "#162033",
-                        }}
-                      >
-                        {section.title}
-                      </h2>
-                      <p style={{ marginTop: 8, marginBottom: 14, color: "#5c6b82", fontSize: 13 }}>
-                        Inspect the governed formal provenance returned by the active query.
-                      </p>
-                      <dl style={resultMetaListStyle}>
-                        <dt style={{ color: "#5c6b82" }}>basis</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.basis}</dd>
-                        <dt style={{ color: "#5c6b82" }}>result_kind</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.result_kind}</dd>
-                        <dt style={{ color: "#5c6b82" }}>source_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.source_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>rule_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.rule_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>cache_version</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.cache_version}</dd>
-                        <dt style={{ color: "#5c6b82" }}>quality_flag</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.quality_flag}</dd>
-                        <dt style={{ color: "#5c6b82" }}>generated_at</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.generated_at}</dd>
-                        <dt style={{ color: "#5c6b82" }}>trace_id</dt>
-                        <dd style={{ margin: 0, color: "#162033" }}>{section.meta.trace_id}</dd>
-                      </dl>
-                    </article>
-                  ))}
-                </section>
+                <FormalResultMetaPanel
+                  testId="balance-analysis-result-meta"
+                  sections={resultMetaSections}
+                />
               ),
             },
           ]}

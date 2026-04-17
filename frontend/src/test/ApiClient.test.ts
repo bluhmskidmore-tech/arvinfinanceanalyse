@@ -1385,6 +1385,72 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch analytical pnl envelopes when basis is analytical", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_pnl_analytical",
+          basis: "analytical",
+          result_kind: "pnl.data",
+          formal_use_allowed: false,
+          source_version: "sv_pnl_analytical",
+          vendor_version: "vv_none",
+          rule_version: "rv_pnl_analytical",
+          cache_version: "cv_pnl_analytical",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-11T03:00:00Z",
+        },
+        result: {
+          report_date: "2026-02-28",
+          formal_fi_rows: [],
+          nonstd_bridge_rows: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getFormalPnlDates("analytical");
+    await client.getFormalPnlData("2026-02-28", "analytical");
+    await client.getFormalPnlOverview("2026-02-28", "analytical");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/pnl/dates?basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/pnl/data?date=2026-02-28&basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/pnl/overview?report_date=2026-02-28&basis=analytical",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch formal pnl bridge envelope", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
@@ -2631,5 +2697,4 @@ describe("createApiClient", () => {
     expect(result.result_meta.result_kind).toBe("cube.query");
   });
 });
-
 
