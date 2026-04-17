@@ -4,9 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
-from pathlib import Path
 
 import duckdb
+
+from backend.app.repositories.duckdb_repo import DuckDBRepository
 
 Q8 = Decimal("0.00000001")
 ONE_HUNDRED = Decimal("100")
@@ -90,35 +91,8 @@ def _rating_sort_key(item: dict[str, object]) -> tuple[int, str]:
 
 
 @dataclass
-class PositionsRepository:
-    path: str
-
-    def _fetch_rows(self, query: str, params: list[object] | None = None) -> list[tuple]:
-        if not Path(self.path).exists():
-            return []
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
-            return conn.execute(query, params or []).fetchall()
-        finally:
-            conn.close()
-
-    def _table_exists(self, table_name: str) -> bool:
-        if not Path(self.path).exists():
-            return False
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
-            row = conn.execute(
-                """
-                select 1
-                from information_schema.tables
-                where table_name = ?
-                limit 1
-                """,
-                [table_name],
-            ).fetchone()
-            return row is not None
-        finally:
-            conn.close()
+class PositionsRepository(DuckDBRepository):
+    guard_path_exists: bool = True
 
     def resolve_latest_report_date(self) -> str | None:
         latest_dates: list[str] = []

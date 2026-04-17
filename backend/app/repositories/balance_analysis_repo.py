@@ -16,10 +16,66 @@ from backend.app.core_finance.balance_analysis import (
     ZqtzSnapshotRow,
 )
 from backend.app.repositories.currency_codes import normalize_currency_code
+from backend.app.repositories.duckdb_repo import DuckDBRepository
+
+
+def _zqtz_snapshot_row_from_tuple(row: tuple) -> ZqtzSnapshotRow:
+    return ZqtzSnapshotRow(
+        report_date=row[0],
+        instrument_code=row[1],
+        instrument_name=row[2] or "",
+        portfolio_name=row[3] or "",
+        cost_center=row[4] or "",
+        account_category=row[5] or "",
+        asset_class=row[6] or "",
+        bond_type=row[7] or "",
+        issuer_name=row[8] or "",
+        industry_name=row[9] or "",
+        rating=row[10] or "",
+        currency_code=normalize_currency_code(row[11] or ""),
+        face_value_native=row[12],
+        market_value_native=row[13],
+        amortized_cost_native=row[14],
+        accrued_interest_native=row[15],
+        coupon_rate=row[16],
+        ytm_value=row[17],
+        maturity_date=row[18],
+        overdue_days=row[20],
+        value_date=row[27],
+        customer_attribute=str(row[28] or ""),
+        is_issuance_like=bool(row[21]),
+        interest_mode=row[22] or "",
+        source_version=row[23] or "",
+        rule_version=row[24] or "",
+        ingest_batch_id=row[25] or "",
+        trace_id=row[26] or "",
+    )
+
+
+def _tyw_snapshot_row_from_tuple(row: tuple) -> TywSnapshotRow:
+    return TywSnapshotRow(
+        report_date=row[0],
+        position_id=row[1],
+        product_type=row[2] or "",
+        position_side=row[3] or "",
+        counterparty_name=row[4] or "",
+        account_type=row[5] or "",
+        special_account_type=row[6] or "",
+        core_customer_type=row[7] or "",
+        currency_code=normalize_currency_code(row[8] or ""),
+        principal_native=row[9],
+        accrued_interest_native=row[10],
+        funding_cost_rate=row[11],
+        maturity_date=row[12],
+        source_version=row[13] or "",
+        rule_version=row[14] or "",
+        ingest_batch_id=row[15] or "",
+        trace_id=row[16] or "",
+    )
 
 
 @dataclass
-class BalanceAnalysisRepository:
+class BalanceAnalysisRepository(DuckDBRepository):
     path: str
 
     def list_report_dates(self) -> list[str]:
@@ -54,39 +110,7 @@ class BalanceAnalysisRepository:
             """,
             params,
         )
-        return [
-            ZqtzSnapshotRow(
-                report_date=row[0],
-                instrument_code=row[1],
-                instrument_name=row[2] or "",
-                portfolio_name=row[3] or "",
-                cost_center=row[4] or "",
-                account_category=row[5] or "",
-                asset_class=row[6] or "",
-                bond_type=row[7] or "",
-                issuer_name=row[8] or "",
-                industry_name=row[9] or "",
-                rating=row[10] or "",
-                currency_code=normalize_currency_code(row[11] or ""),
-                face_value_native=row[12],
-                market_value_native=row[13],
-                amortized_cost_native=row[14],
-                accrued_interest_native=row[15],
-                coupon_rate=row[16],
-                ytm_value=row[17],
-                maturity_date=row[18],
-                overdue_days=row[20],
-                value_date=row[27],
-                customer_attribute=str(row[28] or ""),
-                is_issuance_like=bool(row[21]),
-                interest_mode=row[22] or "",
-                source_version=row[23] or "",
-                rule_version=row[24] or "",
-                ingest_batch_id=row[25] or "",
-                trace_id=row[26] or "",
-            )
-            for row in rows
-        ]
+        return [_zqtz_snapshot_row_from_tuple(row) for row in rows]
 
     def load_tyw_snapshot_rows(
         self,
@@ -111,28 +135,7 @@ class BalanceAnalysisRepository:
             """,
             params,
         )
-        return [
-            TywSnapshotRow(
-                report_date=row[0],
-                position_id=row[1],
-                product_type=row[2] or "",
-                position_side=row[3] or "",
-                counterparty_name=row[4] or "",
-                account_type=row[5] or "",
-                special_account_type=row[6] or "",
-                core_customer_type=row[7] or "",
-                currency_code=normalize_currency_code(row[8] or ""),
-                principal_native=row[9],
-                accrued_interest_native=row[10],
-                funding_cost_rate=row[11],
-                maturity_date=row[12],
-                source_version=row[13] or "",
-                rule_version=row[14] or "",
-                ingest_batch_id=row[15] or "",
-                trace_id=row[16] or "",
-            )
-            for row in rows
-        ]
+        return [_tyw_snapshot_row_from_tuple(row) for row in rows]
 
     def list_zqtz_snapshot_ingest_batch_ids(self, report_date: str) -> list[str]:
         rows = self._fetch_rows(
@@ -909,29 +912,6 @@ class BalanceAnalysisRepository:
         except duckdb.Error as exc:
             raise RuntimeError("Formal balance-analysis storage is unavailable.") from exc
         return [str(row[0]) for row in rows]
-
-    def _fetch_rows(self, query: str, params: list[object] | None = None) -> list[tuple]:
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
-            return conn.execute(query, params or []).fetchall()
-        finally:
-            conn.close()
-
-    def _table_exists(self, table_name: str) -> bool:
-        conn = duckdb.connect(self.path, read_only=True)
-        try:
-            row = conn.execute(
-                """
-                select 1
-                from information_schema.tables
-                where table_name = ?
-                limit 1
-                """,
-                [table_name],
-            ).fetchone()
-            return row is not None
-        finally:
-            conn.close()
 
 
 def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:

@@ -73,6 +73,13 @@ ENVIRONMENT_SCORE_METHOD = "robust_environment_score_v1"
 ENVIRONMENT_WINSORIZE_TAIL_FRACTION = 0.1
 ENVIRONMENT_DISPERSION_FLOOR = 0.05
 
+_DEFAULT_LOOKBACK_DAYS = 365
+_SHORT_LOOKBACK_DAYS = 90
+_WINDOW_3M_DAYS = 90
+_WINDOW_6M_DAYS = 180
+_WINDOW_1Y_DAYS = 365
+_MAX_LEAD_LAG_DAYS = 30
+
 
 def pearson_correlation(
     values_x: Sequence[float] | Sequence[int],
@@ -108,7 +115,7 @@ def compute_macro_bond_correlations(
     macro_series: dict[str, list[tuple[date, float]]],
     yield_series: dict[str, list[tuple[date, float]]],
     *,
-    lookback_days: int = 365,
+    lookback_days: int = _DEFAULT_LOOKBACK_DAYS,
     alignment_mode: str = "conservative",
     winsorize_tail_fraction: float | None = None,
 ) -> list[MacroBondCorrelation]:
@@ -117,7 +124,6 @@ def compute_macro_bond_correlations(
 
     纯 Python 实现，不依赖 numpy。
     """
-
     validated_tail_fraction = _validate_winsorize_tail_fraction(winsorize_tail_fraction)
 
     prepared_macro = {
@@ -144,71 +150,41 @@ def compute_macro_bond_correlations(
                 target_map,
                 alignment_mode=alignment_mode,
             )
-            correlation_3m = _window_correlation(
+            corr_3m, corr_6m, corr_1y = _compute_correlations(
                 macro_map,
                 target_map,
                 latest_date=latest_date,
-                window_days=90,
                 alignment_mode=alignment_mode,
                 winsorize_tail_fraction=validated_tail_fraction,
             )
-            correlation_6m = _window_correlation(
-                macro_map,
-                target_map,
-                latest_date=latest_date,
-                window_days=180,
-                alignment_mode=alignment_mode,
-                winsorize_tail_fraction=validated_tail_fraction,
-            )
-            correlation_1y = _window_correlation(
-                macro_map,
-                target_map,
-                latest_date=latest_date,
-                window_days=365,
-                alignment_mode=alignment_mode,
-                winsorize_tail_fraction=validated_tail_fraction,
-            )
-            lead_details = _best_lead_lag_details(
+            lead_lag_days, best_correlation, sample_size, lead_lag_confidence = _compute_lead_lag(
                 macro_map,
                 target_map,
                 alignment_mode=alignment_mode,
                 winsorize_tail_fraction=validated_tail_fraction,
             )
-            lead_lag_days = int(lead_details["lag_days"])
-            best_correlation = lead_details["correlation"]
-            raw_sample = lead_details["sample_size"]
-            sample_size = int(raw_sample) if raw_sample is not None and int(raw_sample) >= 2 else None
-            lc_val = lead_details["confidence"]
-            lead_lag_confidence = round(float(lc_val), 6) if lc_val is not None else None
-            winsorized = validated_tail_fraction is not None
-            zscore_applied = False
             effective_observation_span_days = _alignment_span_days(
                 macro_map,
                 target_map,
                 latest_date=latest_date,
-                window_days=365,
+                window_days=_WINDOW_1Y_DAYS,
                 alignment_mode=alignment_mode,
                 lag_days=lead_lag_days,
             )
-            direction = _direction_from_correlation(
-                correlation_1y,
-                correlation_6m,
-                correlation_3m,
-                best_correlation,
-            )
+            direction = _direction_from_correlation(corr_1y, corr_6m, corr_3m, best_correlation)
             results.append(
                 MacroBondCorrelation(
                     series_id=series_id,
                     series_name=series_name,
                     target_yield=target_name,
-                    correlation_3m=correlation_3m,
-                    correlation_6m=correlation_6m,
-                    correlation_1y=correlation_1y,
+                    correlation_3m=corr_3m,
+                    correlation_6m=corr_6m,
+                    correlation_1y=corr_1y,
                     lead_lag_days=lead_lag_days,
                     direction=direction,
                     sample_size=sample_size,
-                    winsorized=winsorized,
-                    zscore_applied=zscore_applied,
+                    winsorized=validated_tail_fraction is not None,
+                    zscore_applied=False,
                     lead_lag_confidence=lead_lag_confidence,
                     effective_observation_span_days=effective_observation_span_days,
                 )
@@ -216,11 +192,56 @@ def compute_macro_bond_correlations(
     return results
 
 
+def _compute_correlations(
+    macro_map: dict[date, float],
+    target_map: dict[date, float],
+    *,
+    latest_date: date,
+    alignment_mode: str,
+    winsorize_tail_fraction: float | None,
+) -> tuple[float | None, float | None, float | None]:
+    """Return (corr_3m, corr_6m, corr_1y) for a macro/yield pair."""
+    kwargs = dict(
+        macro_map=macro_map,
+        target_map=target_map,
+        latest_date=latest_date,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    corr_3m = _window_correlation(**kwargs, window_days=_WINDOW_3M_DAYS)
+    corr_6m = _window_correlation(**kwargs, window_days=_WINDOW_6M_DAYS)
+    corr_1y = _window_correlation(**kwargs, window_days=_WINDOW_1Y_DAYS)
+    return corr_3m, corr_6m, corr_1y
+
+
+def _compute_lead_lag(
+    macro_map: dict[date, float],
+    target_map: dict[date, float],
+    *,
+    alignment_mode: str,
+    winsorize_tail_fraction: float | None,
+) -> tuple[int, float | None, int | None, float | None]:
+    """Return (lead_lag_days, best_correlation, sample_size, lead_lag_confidence)."""
+    lead_details = _best_lead_lag_details(
+        macro_map,
+        target_map,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+    )
+    lead_lag_days = int(lead_details["lag_days"])
+    best_correlation = lead_details["correlation"]
+    raw_sample = lead_details["sample_size"]
+    sample_size = int(raw_sample) if raw_sample is not None and int(raw_sample) >= 2 else None
+    lc_val = lead_details["confidence"]
+    lead_lag_confidence = round(float(lc_val), 6) if lc_val is not None else None
+    return lead_lag_days, best_correlation, sample_size, lead_lag_confidence
+
+
 def compute_macro_environment_score(
     macro_latest: dict[str, tuple[date, float]],
     macro_history: dict[str, list[tuple[date, float]]],
     *,
-    lookback_days: int = 90,
+    lookback_days: int = _SHORT_LOOKBACK_DAYS,
 ) -> MacroEnvironmentScore:
     warnings: list[str] = []
     contributing_factors: list[dict[str, Any]] = []
