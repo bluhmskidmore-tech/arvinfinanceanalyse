@@ -4,14 +4,18 @@ from datetime import date, datetime
 from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
+from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
+from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
+    FormalZqtzBalanceMetricsRepository,
+)
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
 from backend.app.schemas.executive_dashboard import (
     AlertsPayload,
     AlertItem,
@@ -28,6 +32,9 @@ from backend.app.schemas.executive_dashboard import (
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.kpi_service import resolve_executive_kpi_metrics
+from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
+
+PNL_JOB_NAME = "pnl_materialize"
 
 
 def _normalize_report_date(report_date: str | None) -> str | None:
@@ -44,6 +51,7 @@ def _envelope(
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok",
     fallback_mode: Literal["none", "latest_snapshot"] = "none",
     source_version: str = "sv_exec_dashboard_v1",
+    rule_version: str = "rv_exec_dashboard_v1",
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
@@ -51,7 +59,7 @@ def _envelope(
         result_kind=result_kind,
         cache_version="cv_exec_dashboard_v1",
         source_version=source_version,
-        rule_version="rv_exec_dashboard_v1",
+        rule_version=rule_version,
         quality_flag=quality_flag,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
@@ -91,6 +99,48 @@ def _previous_report_date(dates: list[str], current_report_date: str | None) -> 
         if idx + 1 < len(dates):
             return dates[idx + 1]
     return None
+
+
+def _fetch_executive_aum_row(
+    balance_repo: object,
+    *,
+    report_date: str,
+    currency_basis: str = "CNY",
+) -> dict[str, object] | None:
+    fetch_formal_overview = getattr(balance_repo, "fetch_formal_overview", None)
+    if callable(fetch_formal_overview):
+        return fetch_formal_overview(
+            report_date=report_date,
+            position_scope="asset",
+            currency_basis=currency_basis,
+        )
+
+    return balance_repo.fetch_zqtz_asset_market_value(
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+
+
+def _lineage_tokens(*values: object) -> list[str]:
+    tokens: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        for token in text.split("__"):
+            for dirty_part in token.split(","):
+                normalized = dirty_part.strip()
+                if normalized:
+                    tokens.add(normalized)
+    return sorted(tokens)
+
+
+def _lineage_tokens_from_rows(rows: list[dict[str, object]], field_name: str) -> list[str]:
+    return _lineage_tokens(*(row.get(field_name) for row in rows))
+
+
+def _join_lineage_tokens(*values: object) -> str:
+    return "__".join(_lineage_tokens(*values))
 
 
 def _format_percent_change(current: float | None, previous: float | None) -> str:
@@ -184,7 +234,7 @@ def _aggregate_attribution_segments(rows: list[dict[str, object]]) -> dict[str, 
 def _build_pnl_attribution_from_repo(
     repo: ProductCategoryPnlRepository,
     report_date: str | None = None,
-) -> PnlAttributionPayload | None:
+) -> tuple[PnlAttributionPayload, list[dict[str, object]]] | None:
     packed = _level1_monthly_rows(repo, report_date)
     if packed is None:
         return None
@@ -208,10 +258,13 @@ def _build_pnl_attribution_from_repo(
         )
         for key, label, val in order
     ]
-    return PnlAttributionPayload(
-        title="收益归因",
-        total=_fmt_yi_amount(total_yi * 1e8, signed=True),
-        segments=segments,
+    return (
+        PnlAttributionPayload(
+            title="收益归因",
+            total=_fmt_yi_amount(total_yi * 1e8, signed=True),
+            segments=segments,
+        ),
+        rows,
     )
 
 
@@ -296,7 +349,7 @@ def _empty_alerts_payload() -> AlertsPayload:
 def _build_contribution_from_repo(
     repo: ProductCategoryPnlRepository,
     report_date: str | None = None,
-) -> ContributionPayload | None:
+) -> tuple[ContributionPayload, list[dict[str, object]]] | None:
     packed = _level1_monthly_rows(repo, report_date)
     if packed is None:
         return None
@@ -337,19 +390,25 @@ def _build_contribution_from_repo(
         )
         for gid, gname, val in groups
     ]
-    return ContributionPayload(
-        title="团队 / 账户 / 策略贡献",
-        rows=contribution_rows,
+    return (
+        ContributionPayload(
+            title="团队 / 账户 / 策略贡献",
+            rows=contribution_rows,
+        ),
+        rows,
     )
 
 
 def executive_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     normalized_report_date = _normalize_report_date(report_date)
     aum_raw: float | None = None
     ytd_raw: float | None = None
     nim_raw: float | None = None
     dv01_raw: float | None = None
+    overview_source_versions: list[object] = ["sv_exec_dashboard_v1"]
+    overview_rule_versions: list[object] = ["rv_exec_dashboard_v1"]
     aum_delta = "无环比"
     ytd_delta = "无环比"
     nim_delta = "无环比"
@@ -360,7 +419,8 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         balance_report_dates = list(getattr(balance_repo, "list_report_dates", lambda: [])())
         current_balance_report_date = normalized_report_date or (balance_report_dates[0] if balance_report_dates else None)
         row = (
-            balance_repo.fetch_zqtz_asset_market_value(
+            _fetch_executive_aum_row(
+                balance_repo,
                 report_date=current_balance_report_date,
                 currency_basis="CNY",
             )
@@ -369,16 +429,21 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         )
         if row is not None:
             aum_raw = float(row["total_market_value_amount"])
+            overview_source_versions.append(row.get("source_version"))
+            overview_rule_versions.append(row.get("rule_version"))
             previous_balance_report_date = _previous_report_date(
                 balance_report_dates,
                 current_balance_report_date,
             )
             if previous_balance_report_date is not None:
-                previous_row = balance_repo.fetch_zqtz_asset_market_value(
+                previous_row = _fetch_executive_aum_row(
+                    balance_repo,
                     report_date=previous_balance_report_date,
                     currency_basis="CNY",
                 )
                 if previous_row is not None:
+                    overview_source_versions.append(previous_row.get("source_version"))
+                    overview_rule_versions.append(previous_row.get("rule_version"))
                     aum_delta = _format_percent_change(
                         aum_raw,
                         float(previous_row["total_market_value_amount"]),
@@ -400,11 +465,31 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             ytd_raw = float(
                 pnl_repo.sum_formal_total_pnl_through_report_date(current_pnl_report_date)
             )
+            if governance_dir:
+                current_pnl_lineage = resolve_completed_formal_build_lineage(
+                    governance_dir=governance_dir,
+                    cache_key=PNL_CACHE_KEY,
+                    job_name=PNL_JOB_NAME,
+                    report_date=current_pnl_report_date,
+                )
+                if current_pnl_lineage is not None:
+                    overview_source_versions.append(current_pnl_lineage.get("source_version"))
+                    overview_rule_versions.append(current_pnl_lineage.get("rule_version"))
         previous_pnl_report_date = _previous_report_date(
             pnl_report_dates,
             current_pnl_report_date,
         )
         if previous_pnl_report_date is not None:
+            if governance_dir:
+                previous_pnl_lineage = resolve_completed_formal_build_lineage(
+                    governance_dir=governance_dir,
+                    cache_key=PNL_CACHE_KEY,
+                    job_name=PNL_JOB_NAME,
+                    report_date=previous_pnl_report_date,
+                )
+                if previous_pnl_lineage is not None:
+                    overview_source_versions.append(previous_pnl_lineage.get("source_version"))
+                    overview_rule_versions.append(previous_pnl_lineage.get("rule_version"))
             ytd_delta = _format_percent_change(
                 ytd_raw,
                 float(pnl_repo.sum_formal_total_pnl_through_report_date(previous_pnl_report_date)),
@@ -419,6 +504,10 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         if liability_report_date:
             zqtz_rows = liability_repo.fetch_zqtz_rows(liability_report_date)
             tyw_rows = liability_repo.fetch_tyw_rows(liability_report_date)
+            overview_source_versions.extend(_lineage_tokens_from_rows(zqtz_rows, "source_version"))
+            overview_source_versions.extend(_lineage_tokens_from_rows(tyw_rows, "source_version"))
+            overview_rule_versions.extend(_lineage_tokens_from_rows(zqtz_rows, "rule_version"))
+            overview_rule_versions.extend(_lineage_tokens_from_rows(tyw_rows, "rule_version"))
             payload = compute_liability_yield_metrics(
                 liability_report_date,
                 zqtz_rows,
@@ -432,10 +521,16 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     liability_report_date,
                 )
                 if previous_liability_report_date is not None:
+                    previous_zqtz_rows = liability_repo.fetch_zqtz_rows(previous_liability_report_date)
+                    previous_tyw_rows = liability_repo.fetch_tyw_rows(previous_liability_report_date)
+                    overview_source_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "source_version"))
+                    overview_source_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "source_version"))
+                    overview_rule_versions.extend(_lineage_tokens_from_rows(previous_zqtz_rows, "rule_version"))
+                    overview_rule_versions.extend(_lineage_tokens_from_rows(previous_tyw_rows, "rule_version"))
                     previous_payload = compute_liability_yield_metrics(
                         previous_liability_report_date,
-                        liability_repo.fetch_zqtz_rows(previous_liability_report_date),
-                        liability_repo.fetch_tyw_rows(previous_liability_report_date),
+                        previous_zqtz_rows,
+                        previous_tyw_rows,
                     )
                     nim_delta = _format_point_change(
                         nim_raw,
@@ -455,6 +550,14 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         )
         if snapshot is not None and snapshot.get("portfolio_dv01") is not None:
             dv01_raw = float(snapshot["portfolio_dv01"])
+            if governance_dir:
+                current_bond_lineage = load_latest_bond_analytics_lineage(
+                    governance_dir=governance_dir,
+                    report_date=current_bond_report_date,
+                )
+                if current_bond_lineage is not None:
+                    overview_source_versions.append(current_bond_lineage.get("source_version"))
+                    overview_rule_versions.append(current_bond_lineage.get("rule_version"))
             previous_bond_report_date = _previous_report_date(
                 bond_report_dates,
                 current_bond_report_date,
@@ -464,6 +567,14 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     report_date=previous_bond_report_date,
                 )
                 if previous_snapshot is not None and previous_snapshot.get("portfolio_dv01") is not None:
+                    if governance_dir:
+                        previous_bond_lineage = load_latest_bond_analytics_lineage(
+                            governance_dir=governance_dir,
+                            report_date=previous_bond_report_date,
+                        )
+                        if previous_bond_lineage is not None:
+                            overview_source_versions.append(previous_bond_lineage.get("source_version"))
+                            overview_rule_versions.append(previous_bond_lineage.get("rule_version"))
                     dv01_delta = _format_percent_change(
                         dv01_raw,
                         float(previous_snapshot["portfolio_dv01"]),
@@ -481,9 +592,9 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 delta=aum_delta,
                 tone="positive",
                 detail=(
-                    f"来自 fact_formal_zqtz_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
+                    f"来自 fact_formal_zqtz_balance_daily + fact_formal_tyw_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
                     if normalized_report_date is not None
-                    else f"来自 fact_formal_zqtz_balance_daily 在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
+                    else f"来自 fact_formal_zqtz_balance_daily + fact_formal_tyw_balance_daily 在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
                 ),
             )
         )
@@ -558,7 +669,16 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         payload,
         quality_flag="warning" if has_missing_governed_metrics else "ok",
         vendor_status="vendor_unavailable" if has_missing_governed_metrics else "ok",
-        source_version="sv_exec_dashboard_explicit_miss_v1" if has_missing_governed_metrics else "sv_exec_dashboard_v1",
+        source_version=(
+            "sv_exec_dashboard_explicit_miss_v1"
+            if has_missing_governed_metrics
+            else _join_lineage_tokens(*overview_source_versions)
+        ),
+        rule_version=(
+            "rv_exec_dashboard_v1"
+            if has_missing_governed_metrics
+            else _join_lineage_tokens(*overview_rule_versions)
+        ),
     )
 
 
@@ -590,7 +710,19 @@ def executive_summary() -> dict[str, object]:
             ),
         ],
     )
-    return _envelope("executive.summary", payload)
+    overview_payload = executive_overview()
+    overview_meta = overview_payload.get("result_meta") if isinstance(overview_payload, dict) else None
+    source_version = "sv_exec_dashboard_explicit_miss_v1"
+    rule_version = "rv_exec_dashboard_v1"
+    if isinstance(overview_meta, dict) and overview_meta.get("vendor_status") == "ok":
+        source_version = str(overview_meta.get("source_version") or "").strip() or source_version
+        rule_version = str(overview_meta.get("rule_version") or "").strip() or rule_version
+    return _envelope(
+        "executive.summary",
+        payload,
+        source_version=source_version,
+        rule_version=rule_version,
+    )
 
 
 def executive_pnl_attribution(report_date: str | None = None) -> dict[str, object]:
@@ -611,9 +743,21 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
         repo = None
 
     built: PnlAttributionPayload | None = None
+    attribution_source_version = "sv_exec_dashboard_v1"
+    attribution_rule_version = "rv_exec_dashboard_v1"
     if repo is not None:
         try:
-            built = _build_pnl_attribution_from_repo(repo, report_date)
+            built_payload = _build_pnl_attribution_from_repo(repo, report_date)
+            if built_payload is not None:
+                built, built_rows = built_payload
+                attribution_source_version = _join_lineage_tokens(
+                    attribution_source_version,
+                    *_lineage_tokens_from_rows(built_rows, "source_version"),
+                )
+                attribution_rule_version = _join_lineage_tokens(
+                    attribution_rule_version,
+                    *_lineage_tokens_from_rows(built_rows, "rule_version"),
+                )
         except (RuntimeError, OSError, TypeError, ValueError, KeyError):
             if normalized is not None:
                 return _envelope(
@@ -625,7 +769,12 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             built = None
 
     if built is not None:
-        return _envelope("executive.pnl-attribution", built)
+        return _envelope(
+            "executive.pnl-attribution",
+            built,
+            source_version=attribution_source_version,
+            rule_version=attribution_rule_version,
+        )
 
     if normalized is not None:
         return _envelope(
@@ -647,6 +796,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
 
 def executive_risk_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     normalized_report_date = _normalize_report_date(report_date)
     try:
         repo = BondAnalyticsRepository(str(settings.duckdb_path))
@@ -714,7 +864,28 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                         ),
                     ],
                 )
-                return _envelope("executive.risk-overview", payload)
+                risk_source_version = "sv_exec_dashboard_v1"
+                risk_rule_version = "rv_exec_dashboard_v1"
+                if governance_dir:
+                    lineage = load_latest_bond_analytics_lineage(
+                        governance_dir=governance_dir,
+                        report_date=asof_date,
+                    )
+                    if lineage is not None:
+                        risk_source_version = _join_lineage_tokens(
+                            risk_source_version,
+                            lineage.get("source_version"),
+                        )
+                        risk_rule_version = _join_lineage_tokens(
+                            risk_rule_version,
+                            lineage.get("rule_version"),
+                        )
+                return _envelope(
+                    "executive.risk-overview",
+                    payload,
+                    source_version=risk_source_version,
+                    rule_version=risk_rule_version,
+                )
         return _envelope(
             "executive.risk-overview",
             _empty_risk_overview_payload(),
@@ -752,9 +923,21 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
         repo = None
 
     built: ContributionPayload | None = None
+    contribution_source_version = "sv_exec_dashboard_v1"
+    contribution_rule_version = "rv_exec_dashboard_v1"
     if repo is not None:
         try:
-            built = _build_contribution_from_repo(repo, report_date)
+            built_payload = _build_contribution_from_repo(repo, report_date)
+            if built_payload is not None:
+                built, built_rows = built_payload
+                contribution_source_version = _join_lineage_tokens(
+                    contribution_source_version,
+                    *_lineage_tokens_from_rows(built_rows, "source_version"),
+                )
+                contribution_rule_version = _join_lineage_tokens(
+                    contribution_rule_version,
+                    *_lineage_tokens_from_rows(built_rows, "rule_version"),
+                )
         except (RuntimeError, OSError, TypeError, ValueError, KeyError):
             if normalized is not None:
                 return _envelope(
@@ -767,7 +950,12 @@ def executive_contribution(report_date: str | None = None) -> dict[str, object]:
             built = None
 
     if built is not None:
-        return _envelope("executive.contribution", built)
+        return _envelope(
+            "executive.contribution",
+            built,
+            source_version=contribution_source_version,
+            rule_version=contribution_rule_version,
+        )
 
     if normalized is not None:
         return _envelope(
@@ -799,6 +987,7 @@ def _fallback_executive_alerts() -> dict[str, object]:
 
 def executive_alerts(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
+    governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     explicit_requested = _normalize_report_date(report_date)
     try:
         repo = BondAnalyticsRepository(str(settings.duckdb_path))
@@ -832,7 +1021,28 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
             for entry in raw
         ]
         payload = AlertsPayload(title="预警与事件", items=items)
-        return _envelope("executive.alerts", payload)
+        alerts_source_version = "sv_exec_dashboard_v1"
+        alerts_rule_version = "rv_exec_dashboard_v1"
+        if governance_dir:
+            lineage = load_latest_bond_analytics_lineage(
+                governance_dir=governance_dir,
+                report_date=normalized_report_date,
+            )
+            if lineage is not None:
+                alerts_source_version = _join_lineage_tokens(
+                    alerts_source_version,
+                    lineage.get("source_version"),
+                )
+                alerts_rule_version = _join_lineage_tokens(
+                    alerts_rule_version,
+                    lineage.get("rule_version"),
+                )
+        return _envelope(
+            "executive.alerts",
+            payload,
+            source_version=alerts_source_version,
+            rule_version=alerts_rule_version,
+        )
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError, KeyError):
         if explicit_requested is not None:
             return _envelope(

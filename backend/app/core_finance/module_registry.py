@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+
 from backend.app.core_finance.module_contracts import FormalComputeModuleDescriptor
 
 
@@ -12,6 +14,7 @@ def clear_formal_modules() -> None:
     _FORMAL_MODULES.clear()
     _FORMAL_FACT_TABLE_TO_MODULE.clear()
     _FORMAL_RESULT_KIND_FAMILY_TO_MODULE.clear()
+    _purge_loaded_formal_module_dependents()
 
 
 def register_formal_module(
@@ -109,3 +112,21 @@ def _bind_module_indexes(
     _FORMAL_RESULT_KIND_FAMILY_TO_MODULE[descriptor.result_kind_family] = descriptor.module_name
     for fact_table in descriptor.fact_tables:
         _FORMAL_FACT_TABLE_TO_MODULE[fact_table] = descriptor.module_name
+
+
+def _purge_loaded_formal_module_dependents() -> None:
+    module_prefixes = (
+        "backend.app.tasks.balance_analysis_materialize",
+        "backend.app.tasks.bond_analytics_materialize",
+        "backend.app.tasks.pnl_materialize",
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend.app.tasks.yield_curve_materialize",
+        "backend.app.services.balance_analysis_service",
+        "backend.app.services.bond_analytics_service",
+        "backend.app.services.pnl_bridge_service",
+        "backend.app.services.pnl_service",
+        "backend.app.services.risk_tensor_service",
+    )
+    for loaded_name in list(sys.modules):
+        if loaded_name in module_prefixes:
+            sys.modules.pop(loaded_name, None)
