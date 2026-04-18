@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import logging
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -21,6 +22,7 @@ CACHE_KEY = "fx:formal_mid:backfill"
 CACHE_VERSION = "cv_fx_formal_mid_backfill_v1"
 RULE_VERSION = "rv_fx_formal_mid_backfill_v1"
 LOCK_KEY = "lock:duckdb:formal:fx-mid:backfill"
+logger = logging.getLogger(__name__)
 
 def _emit_json_payload(payload: dict[str, object]) -> None:
     rendered = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -71,6 +73,7 @@ def _backfill_fx_mid_history(
         cache_key=CACHE_KEY,
     )
     active_run_id = run_id or f"fx_mid_backfill:{run.created_at}"
+    logger.info("starting fx_mid_backfill", extra={"run_id": active_run_id, "start_date": start_date, "end_date": end_date})
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
         {
@@ -112,6 +115,7 @@ def _backfill_fx_mid_history(
             if vendor_version:
                 vendor_versions.add(vendor_version)
     except Exception as exc:
+        logger.error("task failed: %s", exc, exc_info=True)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -178,10 +182,8 @@ def _backfill_fx_mid_history(
         ]
     )
 
+    logger.info("completed fx_mid_backfill", extra={"run_id": active_run_id, "start_date": start_date, "end_date": end_date, "date_count": len(report_dates)})
     return {
-        "status": "completed",
-        "run_id": active_run_id,
-        "cache_key": CACHE_KEY,
         "cache_version": CACHE_VERSION,
         "rule_version": RULE_VERSION,
         "start_date": start_date,

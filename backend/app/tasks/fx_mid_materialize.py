@@ -3,6 +3,8 @@
 import csv
 import hashlib
 import json
+import logging
+import time
 from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -28,6 +30,7 @@ CHOICE_SOURCE_NAME = "CFETS"
 AKSHARE_SOURCE_NAME = "AKSHARE"
 CHOICE_REQUEST_TIMEOUT_SECONDS = 5
 CHOICE_FX_LOOKBACK_DAYS = 7
+logger = logging.getLogger(__name__)
 
 
 def resolve_fx_mid_csv_path(
@@ -107,6 +110,7 @@ def _replace_fx_mid_rows(
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         _ensure_fx_mid_table(conn)
+        # atomic: delete+insert inside transaction — safe on retry, no data loss window
         conn.execute("begin transaction")
         if rows:
             delete_keys = [(row[0], row[1], row[2]) for row in rows]
@@ -292,51 +296,83 @@ def _materialize_fx_mid_rows(
     csv_path: str,
     duckdb_path: str,
 ) -> dict[str, object]:
+    started_at = time.perf_counter()
     csv_file = Path(csv_path)
     if not csv_file.exists():
         raise FileNotFoundError(f"FX mid CSV not found: {csv_file}")
+    logger.info(
+        "FX mid CSV materialize running",
+        extra={
+            "job_name": "materialize_fx_mid_rows",
+            "status": "running",
+            "source_kind": "csv_override",
+            "csv_path": str(csv_file),
+        },
+    )
+    try:
+        source_version = _build_source_version(csv_file)
+        vendor_version = f"vv_fx_csv_{source_version.removeprefix('sv_')}"
+        with csv_file.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            _validate_required_headers(reader.fieldnames)
+            latest_by_key: dict[tuple[str, str, str], tuple[object, ...]] = {}
+            for row in reader:
+                trade_date = str(row["trade_date"]).strip()
+                base_currency = normalize_currency_code(str(row["base_currency"]))
+                quote_currency = normalize_currency_code(str(row["quote_currency"]))
+                try:
+                    mid_rate = Decimal(str(row["mid_rate"]).strip())
+                except InvalidOperation as exc:
+                    raise ValueError(f"Invalid mid_rate value in FX CSV: {row['mid_rate']!r}") from exc
+                source_name = str(row.get("source_name") or csv_file.stem).strip()
+                normalized_row = (
+                    trade_date,
+                    base_currency,
+                    quote_currency,
+                    mid_rate,
+                    source_name,
+                    _parse_bool(str(row.get("is_business_day") or "")),
+                    _parse_bool(str(row.get("is_carry_forward") or "")),
+                    source_version,
+                    "csv",
+                    vendor_version,
+                    str(row.get("vendor_series_code") or "").strip(),
+                    str(row.get("observed_trade_date") or trade_date).strip(),
+                )
+                latest_by_key[(trade_date, base_currency, quote_currency)] = normalized_row
+            rows = list(latest_by_key.values())
 
-    source_version = _build_source_version(csv_file)
-    vendor_version = f"vv_fx_csv_{source_version.removeprefix('sv_')}"
-    with csv_file.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        _validate_required_headers(reader.fieldnames)
-        latest_by_key: dict[tuple[str, str, str], tuple[object, ...]] = {}
-        for row in reader:
-            trade_date = str(row["trade_date"]).strip()
-            base_currency = normalize_currency_code(str(row["base_currency"]))
-            quote_currency = normalize_currency_code(str(row["quote_currency"]))
-            try:
-                mid_rate = Decimal(str(row["mid_rate"]).strip())
-            except InvalidOperation as exc:
-                raise ValueError(f"Invalid mid_rate value in FX CSV: {row['mid_rate']!r}") from exc
-            source_name = str(row.get("source_name") or csv_file.stem).strip()
-            normalized_row = (
-                trade_date,
-                base_currency,
-                quote_currency,
-                mid_rate,
-                source_name,
-                _parse_bool(str(row.get("is_business_day") or "")),
-                _parse_bool(str(row.get("is_carry_forward") or "")),
-                source_version,
-                "csv",
-                vendor_version,
-                str(row.get("vendor_series_code") or "").strip(),
-                str(row.get("observed_trade_date") or trade_date).strip(),
-            )
-            latest_by_key[(trade_date, base_currency, quote_currency)] = normalized_row
-        rows = list(latest_by_key.values())
-
-    _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=rows)
-
-    return {
-        "status": "completed",
-        "row_count": len(rows),
-        "source_version": source_version,
-        "vendor_version": vendor_version,
-        "csv_path": str(csv_file),
-    }
+        _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=rows)
+        logger.info(
+            "FX mid CSV materialize completed",
+            extra={
+                "job_name": "materialize_fx_mid_rows",
+                "status": "completed",
+                "source_kind": "csv_override",
+                "csv_path": str(csv_file),
+                "row_count": len(rows),
+                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+            },
+        )
+        return {
+            "status": "completed",
+            "row_count": len(rows),
+            "source_version": source_version,
+            "vendor_version": vendor_version,
+            "csv_path": str(csv_file),
+        }
+    except Exception:
+        logger.exception(
+            "FX mid CSV materialize failed",
+            extra={
+                "job_name": "materialize_fx_mid_rows",
+                "status": "failed",
+                "source_kind": "csv_override",
+                "csv_path": str(csv_file),
+                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+            },
+        )
+        raise
 
 
 def _build_formal_candidate_payload(candidates: list[FormalFxCandidate]) -> list[dict[str, object]]:
@@ -411,80 +447,145 @@ def _materialize_fx_mid_for_report_date(
     official_csv_path: str = "",
     explicit_csv_path: str = "",
 ) -> dict[str, object]:
-    csv_path = resolve_fx_mid_csv_path(
-        official_csv_path=official_csv_path,
-        explicit_csv_path=explicit_csv_path,
-        data_input_root=Path(data_input_root),
+    started_at = time.perf_counter()
+    source_kind = "auto"
+    logger.info(
+        "FX mid materialize for report date running",
+        extra={
+            "job_name": "materialize_fx_mid_for_report_date",
+            "status": "running",
+            "report_date": report_date,
+            "source_kind": source_kind,
+        },
     )
-
-    if csv_path is not None:
-        payload = _materialize_fx_mid_rows(
-            csv_path=str(csv_path),
-            duckdb_path=duckdb_path,
-        )
-        return {
-            **payload,
-            "source_kind": "csv_override",
-            "report_date": report_date,
-        }
-
-    candidates = _load_formal_fx_candidates()
-
-    choice_error: Exception | None = None
     try:
-        choice_rows = _fetch_choice_fx_mid_rows_for_report_date(
-            report_date,
-            candidates=candidates,
+        csv_path = resolve_fx_mid_csv_path(
+            official_csv_path=official_csv_path,
+            explicit_csv_path=explicit_csv_path,
+            data_input_root=Path(data_input_root),
         )
-    except Exception as exc:
-        choice_error = exc
-        choice_rows = []
 
-    if choice_rows:
-        _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
-        return {
-            "status": "completed",
-            "row_count": len(choice_rows),
-            "source_version": str(choice_rows[0][7]),
-            "vendor_version": str(choice_rows[0][9]),
-            "source_kind": "choice",
-            "report_date": report_date,
-            "candidate_count": len(candidates),
-        }
+        if csv_path is not None:
+            source_kind = "csv_override"
+            payload = _materialize_fx_mid_rows(
+                csv_path=str(csv_path),
+                duckdb_path=duckdb_path,
+            )
+            result = {
+                **payload,
+                "source_kind": source_kind,
+                "report_date": report_date,
+            }
+            logger.info(
+                "FX mid materialize for report date completed",
+                extra={
+                    "job_name": "materialize_fx_mid_for_report_date",
+                    "status": "completed",
+                    "report_date": report_date,
+                    "source_kind": source_kind,
+                    "row_count": result["row_count"],
+                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
+            return result
 
-    akshare_error: Exception | None = None
-    try:
-        akshare_rows = _fetch_akshare_fx_mid_rows_for_report_date(
-            report_date,
-            candidates=candidates,
+        candidates = _load_formal_fx_candidates()
+
+        choice_error: Exception | None = None
+        try:
+            choice_rows = _fetch_choice_fx_mid_rows_for_report_date(
+                report_date,
+                candidates=candidates,
+            )
+        except Exception as exc:
+            choice_error = exc
+            choice_rows = []
+
+        if choice_rows:
+            source_kind = "choice"
+            _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
+            result = {
+                "status": "completed",
+                "row_count": len(choice_rows),
+                "source_version": str(choice_rows[0][7]),
+                "vendor_version": str(choice_rows[0][9]),
+                "source_kind": source_kind,
+                "report_date": report_date,
+                "candidate_count": len(candidates),
+            }
+            logger.info(
+                "FX mid materialize for report date completed",
+                extra={
+                    "job_name": "materialize_fx_mid_for_report_date",
+                    "status": "completed",
+                    "report_date": report_date,
+                    "source_kind": source_kind,
+                    "candidate_count": len(candidates),
+                    "row_count": len(choice_rows),
+                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
+            return result
+
+        akshare_error: Exception | None = None
+        try:
+            akshare_rows = _fetch_akshare_fx_mid_rows_for_report_date(
+                report_date,
+                candidates=candidates,
+            )
+        except Exception as exc:
+            akshare_error = exc
+            akshare_rows = []
+
+        if akshare_rows:
+            source_kind = "akshare"
+            _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
+            result = {
+                "status": "completed",
+                "row_count": len(akshare_rows),
+                "source_version": str(akshare_rows[0][7]),
+                "vendor_version": str(akshare_rows[0][9]),
+                "source_kind": source_kind,
+                "report_date": report_date,
+                "candidate_count": len(candidates),
+                "choice_error": str(choice_error) if choice_error is not None else "",
+            }
+            logger.info(
+                "FX mid materialize for report date completed",
+                extra={
+                    "job_name": "materialize_fx_mid_for_report_date",
+                    "status": "completed",
+                    "report_date": report_date,
+                    "source_kind": source_kind,
+                    "candidate_count": len(candidates),
+                    "row_count": len(akshare_rows),
+                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
+            return result
+
+        error_details = []
+        if choice_error is not None:
+            error_details.append(f"Choice failed: {choice_error}")
+        else:
+            error_details.append("Choice returned no complete middle-rate candidate set.")
+        if akshare_error is not None:
+            error_details.append(f"AkShare failed: {akshare_error}")
+        else:
+            error_details.append("AkShare returned no complete middle-rate candidate set.")
+        raise ValueError(" ".join(error_details))
+    except Exception:
+        logger.exception(
+            "FX mid materialize for report date failed",
+            extra={
+                "job_name": "materialize_fx_mid_for_report_date",
+                "status": "failed",
+                "report_date": report_date,
+                "source_kind": source_kind,
+                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+            },
         )
-    except Exception as exc:
-        akshare_error = exc
-        akshare_rows = []
-
-    if akshare_rows:
-        _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
-        return {
-            "status": "completed",
-            "row_count": len(akshare_rows),
-            "source_version": str(akshare_rows[0][7]),
-            "vendor_version": str(akshare_rows[0][9]),
-            "source_kind": "akshare",
-            "report_date": report_date,
-            "candidate_count": len(candidates),
-            "choice_error": str(choice_error) if choice_error is not None else "",
-        }
-
-    error_details = []
-    if choice_error is not None:
-        error_details.append(f"Choice failed: {choice_error}")
-    else:
-        error_details.append("Choice returned no complete middle-rate candidate set.")
-    if akshare_error is not None:
-        error_details.append(f"AkShare failed: {akshare_error}")
-    else:
-        error_details.append("AkShare returned no complete middle-rate candidate set.")
-    raise ValueError(" ".join(error_details))
+        raise
 
 
 materialize_fx_mid_rows = register_actor_once(

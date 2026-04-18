@@ -2,6 +2,7 @@
 
 import csv
 import json
+import logging
 import sys
 from datetime import date
 from decimal import Decimal
@@ -22,6 +23,48 @@ def _load_fx_task_module():
             "backend/app/tasks/fx_mid_materialize.py",
         )
     return fx_mod
+
+
+def _write_fx_csv(path: Path, *, mid_rate: str) -> None:
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=[
+                "trade_date",
+                "base_currency",
+                "quote_currency",
+                "mid_rate",
+                "source_name",
+                "is_business_day",
+                "is_carry_forward",
+            ],
+        )
+        writer.writeheader()
+        writer.writerow(
+            {
+                "trade_date": "2026-02-27",
+                "base_currency": "美元",
+                "quote_currency": "人民币",
+                "mid_rate": mid_rate,
+                "source_name": "CFETS",
+                "is_business_day": "true",
+                "is_carry_forward": "false",
+            }
+        )
+
+
+def _read_fx_snapshot(duckdb_path: Path) -> list[tuple[object, ...]]:
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        return conn.execute(
+            """
+            select trade_date, base_currency, quote_currency, mid_rate, source_version, vendor_version
+            from fx_daily_mid
+            order by trade_date, base_currency, quote_currency
+            """
+        ).fetchall()
+    finally:
+        conn.close()
 
 
 def _write_choice_fx_catalog(path: Path) -> None:
@@ -387,4 +430,231 @@ def test_materialize_fx_mid_for_report_date_fails_closed_without_silent_csv_fall
             duckdb_path=str(tmp_path / "moss.duckdb"),
             data_input_root=str(tmp_path / "data_input"),
         )
+    get_settings.cache_clear()
+
+
+def test_fx_mid_rows_failure_after_delete_preserves_last_committed_snapshot(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    baseline_csv = tmp_path / "fx-baseline.csv"
+    _write_fx_csv(baseline_csv, mid_rate="7.24")
+    duckdb_path = tmp_path / "moss.duckdb"
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(baseline_csv),
+        duckdb_path=str(duckdb_path),
+    )
+    baseline = _read_fx_snapshot(duckdb_path)
+
+    updated_csv = tmp_path / "fx-updated.csv"
+    _write_fx_csv(updated_csv, mid_rate="7.30")
+    expected_source_version = fx_mod._build_source_version(updated_csv)
+    expected_vendor_version = f"vv_fx_csv_{expected_source_version.removeprefix('sv_')}"
+    real_connect = fx_mod.duckdb.connect
+
+    class _FailAfterDeleteConnection:
+        def __init__(self, inner):
+            self._inner = inner
+            self._delete_seen = False
+
+        def execute(self, query, params=None):
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def executemany(self, query, params):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized.startswith("delete from fx_daily_mid"):
+                self._delete_seen = True
+            if self._delete_seen and "insert into fx_daily_mid" in normalized:
+                raise RuntimeError("fail after delete")
+            return self._inner.executemany(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            fx_mod.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailAfterDeleteConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail after delete"):
+            fx_mod.materialize_fx_mid_rows.fn(
+                csv_path=str(updated_csv),
+                duckdb_path=str(duckdb_path),
+            )
+
+    assert _read_fx_snapshot(duckdb_path) == baseline
+
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(updated_csv),
+        duckdb_path=str(duckdb_path),
+    )
+    assert _read_fx_snapshot(duckdb_path) == [
+        (
+            date(2026, 2, 27),
+            "USD",
+            "CNY",
+            Decimal("7.30000000"),
+            expected_source_version,
+            expected_vendor_version,
+        )
+    ]
+
+
+def test_fx_mid_rows_failure_before_commit_preserves_last_committed_snapshot(tmp_path, monkeypatch):
+    fx_mod = _load_fx_task_module()
+
+    baseline_csv = tmp_path / "fx-baseline.csv"
+    _write_fx_csv(baseline_csv, mid_rate="7.24")
+    duckdb_path = tmp_path / "moss.duckdb"
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(baseline_csv),
+        duckdb_path=str(duckdb_path),
+    )
+    baseline = _read_fx_snapshot(duckdb_path)
+
+    updated_csv = tmp_path / "fx-updated.csv"
+    _write_fx_csv(updated_csv, mid_rate="7.30")
+    expected_source_version = fx_mod._build_source_version(updated_csv)
+    expected_vendor_version = f"vv_fx_csv_{expected_source_version.removeprefix('sv_')}"
+    real_connect = fx_mod.duckdb.connect
+
+    class _FailBeforeCommitConnection:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def execute(self, query, params=None):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized == "commit":
+                raise RuntimeError("fail before commit")
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def executemany(self, query, params):
+            return self._inner.executemany(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            fx_mod.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailBeforeCommitConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail before commit"):
+            fx_mod.materialize_fx_mid_rows.fn(
+                csv_path=str(updated_csv),
+                duckdb_path=str(duckdb_path),
+            )
+
+    assert _read_fx_snapshot(duckdb_path) == baseline
+
+    fx_mod.materialize_fx_mid_rows.fn(
+        csv_path=str(updated_csv),
+        duckdb_path=str(duckdb_path),
+    )
+    assert _read_fx_snapshot(duckdb_path) == [
+        (
+            date(2026, 2, 27),
+            "USD",
+            "CNY",
+            Decimal("7.30000000"),
+            expected_source_version,
+            expected_vendor_version,
+        )
+    ]
+
+
+def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_success(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    fx_mod = _load_fx_task_module()
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    _write_choice_fx_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    get_settings.cache_clear()
+
+    class _FakeChoiceClient:
+        def edb(self, codes, options=""):
+            return _ChoiceMultiResult()
+
+    class _UnexpectedAkShareVendor:
+        def fetch_fx_mid_snapshot(self, **_kwargs):
+            raise AssertionError("AkShare should not be called when Choice returns a complete middle-rate set.")
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
+    monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _UnexpectedAkShareVendor())
+    caplog.set_level(logging.INFO, logger=fx_mod.__name__)
+
+    fx_mod.materialize_fx_mid_for_report_date.fn(
+        report_date="2026-02-27",
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        data_input_root=str(tmp_path / "data_input"),
+    )
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "job_name", None) == "materialize_fx_mid_for_report_date"
+    ]
+    assert [record.status for record in records] == ["running", "completed"]
+    assert {record.report_date for record in records} == {"2026-02-27"}
+    assert records[-1].source_kind == "choice"
+    assert records[-1].candidate_count == 5
+    get_settings.cache_clear()
+
+
+def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_failure(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    fx_mod = _load_fx_task_module()
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    _write_choice_fx_catalog(catalog_path)
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    get_settings.cache_clear()
+
+    class _FailingChoiceClient:
+        def edb(self, codes, options=""):
+            raise RuntimeError("choice unavailable")
+
+    class _FailingAkShareVendor:
+        def fetch_fx_mid_snapshot(self, **_kwargs):
+            raise RuntimeError("akshare unavailable")
+
+    monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
+    monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
+    caplog.set_level(logging.INFO, logger=fx_mod.__name__)
+
+    with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
+        fx_mod.materialize_fx_mid_for_report_date.fn(
+            report_date="2026-02-27",
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            data_input_root=str(tmp_path / "data_input"),
+        )
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "job_name", None) == "materialize_fx_mid_for_report_date"
+    ]
+    assert [record.status for record in records] == ["running", "failed"]
+    assert {record.report_date for record in records} == {"2026-02-27"}
+    assert records[-1].source_kind == "auto"
     get_settings.cache_clear()
