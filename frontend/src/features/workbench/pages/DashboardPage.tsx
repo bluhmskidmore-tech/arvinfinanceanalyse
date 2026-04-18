@@ -285,9 +285,7 @@ export default function DashboardPage() {
           />
           <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
             <PnlAttributionSection
-              data={pnlQuery.data?.result}
-              isLoading={pnlQuery.isLoading}
-              isError={pnlQuery.isError}
+              attribution={adapterOutput.attribution}
               onRetry={() => void pnlQuery.refetch()}
             />
           </Suspense>

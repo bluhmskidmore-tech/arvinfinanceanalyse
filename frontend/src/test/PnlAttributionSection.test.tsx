@@ -7,47 +7,59 @@ vi.mock("../lib/echarts", () => ({
   },
 }));
 
-import type { PnlAttributionPayload } from "../api/contracts";
+import type { Numeric } from "../api/contracts";
+import type { DashboardAdapterOutput } from "../features/executive-dashboard/adapters/executiveDashboardAdapter";
 import PnlAttributionSection from "../features/executive-dashboard/components/PnlAttributionSection";
 
-function pnlFixture(): PnlAttributionPayload {
+function numeric(raw: number | null, display: string): Numeric {
   return {
-    title: "归因",
-    total: "合计 +12.3M",
-    segments: [
-      {
-        id: "s1",
-        label: "利率",
-        amount: 8e6,
-        display_amount: "+8.0M",
-        tone: "positive",
-      },
-      {
-        id: "s2",
-        label: "信用",
-        amount: 4.3e6,
-        display_amount: "+4.3M",
-        tone: "neutral",
-      },
-    ],
+    raw,
+    unit: "yuan",
+    display,
+    precision: 2,
+    sign_aware: true,
+  };
+}
+
+function attributionWithSegments(): DashboardAdapterOutput["attribution"] {
+  return {
+    vm: {
+      title: "经营贡献拆解",
+      total: numeric(12.3e6, "合计 +12.3M"),
+      segments: [
+        {
+          id: "s1",
+          label: "利率",
+          amount: numeric(8e6, "+8.0M"),
+          tone: "positive",
+        },
+        {
+          id: "s2",
+          label: "信用",
+          amount: numeric(4.3e6, "+4.3M"),
+          tone: "neutral",
+        },
+      ],
+    },
+    state: { kind: "ok" },
+    meta: null,
   };
 }
 
 describe("PnlAttributionSection", () => {
   it("renders total, segment labels and display amounts, and chart placeholder when segments exist", () => {
-    const data = pnlFixture();
+    const attribution = attributionWithSegments();
 
     render(
       <PnlAttributionSection
-        data={data}
-        isLoading={false}
-        isError={false}
+        attribution={attribution}
         onRetry={() => undefined}
       />,
     );
 
     const totalNodes = screen.getAllByText("合计 +12.3M");
     expect(totalNodes.length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("经营贡献拆解")).toBeInTheDocument();
 
     expect(screen.getByText("利率")).toBeInTheDocument();
     expect(screen.getByText("+8.0M")).toBeInTheDocument();
@@ -58,17 +70,19 @@ describe("PnlAttributionSection", () => {
   });
 
   it("renders empty state when segments is empty", () => {
-    const data: PnlAttributionPayload = {
-      title: "归因",
-      total: "合计 0",
-      segments: [],
+    const attribution: DashboardAdapterOutput["attribution"] = {
+      vm: {
+        title: "归因",
+        total: numeric(0, "合计 0"),
+        segments: [],
+      },
+      state: { kind: "empty" },
+      meta: null,
     };
 
     render(
       <PnlAttributionSection
-        data={data}
-        isLoading={false}
-        isError={false}
+        attribution={attribution}
         onRetry={() => undefined}
       />,
     );

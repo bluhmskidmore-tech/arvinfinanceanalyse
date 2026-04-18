@@ -1,148 +1,174 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
+
 import ReactECharts from "../../../lib/echarts";
-import type { PnlAttributionPayload } from "../../../api/contracts";
-import { AsyncSection } from "./AsyncSection";
+import { DataSection } from "../../../components/DataSection";
+import { TONE_COLOR } from "../../../utils/tone";
+import type { DashboardAdapterOutput } from "../adapters/executiveDashboardAdapter";
+import {
+  selectPnlMaxAbsAmount,
+  selectPnlSegmentsForChart,
+  selectPnlSegmentsForList,
+  selectPnlTotal,
+} from "../selectors/executiveDashboardSelectors";
 
 type PnlAttributionSectionProps = {
-  data?: PnlAttributionPayload;
-  isLoading: boolean;
-  isError: boolean;
+  attribution: DashboardAdapterOutput["attribution"];
   onRetry: () => void;
 };
 
-const accentMap = {
-  positive: "#2f8f63",
-  neutral: "#6d7f99",
-  negative: "#c1554b",
+const SECTION_EXTRA_STYLE = { color: "#5c6b82" } as const;
+
+const CONTENT_ROW_STYLE = {
+  display: "flex",
+  gap: 20,
+  alignItems: "flex-start",
+  width: "100%",
 } as const;
 
-/** 环形图专用配色（与列表条 accentMap 独立） */
-const chartToneColor = {
-  positive: "#cf1322",
-  negative: "#3f8600",
-  neutral: "#8c8c8c",
+const CHART_CONTAINER_STYLE = { width: 240, height: 220, flexShrink: 0 } as const;
+
+const LIST_COLUMN_STYLE = { display: "grid", gap: 14, flex: 1, minWidth: 0 } as const;
+
+const ROW_HEADER_STYLE = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: 6,
+  gap: 12,
 } as const;
+
+const BAR_TRACK_STYLE = {
+  position: "relative" as const,
+  height: 12,
+  borderRadius: 999,
+  background: "#ecf1f6",
+  overflow: "hidden",
+};
+
+const BAR_CENTER_LINE_STYLE = {
+  position: "absolute" as const,
+  left: "50%",
+  top: 0,
+  bottom: 0,
+  width: 1,
+  background: "#c4cedc",
+};
 
 export default function PnlAttributionSection({
-  data,
-  isLoading,
-  isError,
+  attribution,
   onRetry,
 }: PnlAttributionSectionProps) {
-  const maxAbsAmount = Math.max(
-    ...(data?.segments.map((item) => Math.abs(item.amount)) ?? [1]),
-  );
+  const total = selectPnlTotal(attribution.vm);
+  const chartSegments = selectPnlSegmentsForChart(attribution.vm);
+  const listSegments = selectPnlSegmentsForList(attribution.vm);
+  const maxAbs = selectPnlMaxAbsAmount(attribution.vm);
 
   const chartOption = useMemo(() => {
-    if (!data || data.segments.length === 0) {
-      return null;
-    }
+    if (chartSegments.length === 0) return null;
+    // Labels in reverse so the first segment in data order renders at the top
+    const reversed = [...chartSegments].reverse();
     return {
       tooltip: {
-        trigger: "item" as const,
-        formatter: (params: {
-          name: string;
-          data?: { display_amount?: string };
-        }) => {
-          const display = params.data?.display_amount ?? "";
-          return `${params.name}<br/>${display}`;
+        trigger: "axis" as const,
+        axisPointer: { type: "shadow" as const },
+        formatter: (params: unknown) => {
+          const entries = params as Array<{
+            axisValue: string;
+            data: { display?: string };
+          }>;
+          if (!entries || entries.length === 0) return "";
+          const head = entries[0];
+          return `${head?.axisValue ?? ""}<br/>${head?.data?.display ?? ""}`;
         },
       },
-      title: {
-        text: data.total,
-        left: "center",
-        top: "center",
-        textAlign: "center" as const,
-        textStyle: {
-          fontSize: 14,
-          fontWeight: 600,
-          color: "#1f2937",
-        },
+      grid: { left: 80, right: 16, top: 10, bottom: 10, containLabel: true },
+      xAxis: {
+        type: "value" as const,
+        axisLine: { show: true, lineStyle: { color: "#c4cedc" } },
+        splitLine: { lineStyle: { type: "dashed" as const, color: "#e4ebf5" } },
+      },
+      yAxis: {
+        type: "category" as const,
+        data: reversed.map((s) => s.label),
+        axisTick: { show: false },
+        axisLine: { show: false },
       },
       series: [
         {
-          type: "pie" as const,
-          radius: ["48%", "78%"],
-          avoidLabelOverlap: false,
-          label: { show: false },
-          labelLine: { show: false },
-          data: data.segments.map((s) => ({
-            name: s.label,
-            value: Math.abs(s.amount),
-            display_amount: s.display_amount,
-            itemStyle: { color: chartToneColor[s.tone] },
+          type: "bar" as const,
+          data: reversed.map((s) => ({
+            value: s.amount.raw ?? 0,
+            display: s.amount.display,
+            itemStyle: { color: TONE_COLOR[s.tone] },
           })),
+          barWidth: 14,
+          label: { show: false },
         },
       ],
     };
-  }, [data]);
+  }, [chartSegments]);
+
+  const extra = total ? <span style={SECTION_EXTRA_STYLE}>{total.display}</span> : null;
 
   return (
-    <AsyncSection
-      title="收益归因"
-      extra={
-        <span style={{ color: "#5c6b82" }}>
-          {data?.total}
-        </span>
-      }
-      isLoading={isLoading}
-      isError={isError}
-      isEmpty={!data || data.segments.length === 0}
+    <DataSection
+      title={attribution.vm?.title ?? "收益归因"}
+      extra={extra}
+      state={attribution.state}
       onRetry={onRetry}
     >
-      <div
-        style={{
-          display: "flex",
-          gap: 20,
-          alignItems: "flex-start",
-          width: "100%",
-        }}
-      >
+      <div style={CONTENT_ROW_STYLE}>
         {chartOption ? (
-          <ReactECharts
-            option={chartOption}
-            style={{ width: 200, height: 200, flexShrink: 0 }}
-          />
+          <ReactECharts option={chartOption} style={CHART_CONTAINER_STYLE} />
         ) : null}
-        <div style={{ display: "grid", gap: 14, flex: 1, minWidth: 0 }}>
-          {data?.segments.map((segment) => (
+        <div style={LIST_COLUMN_STYLE}>
+          {listSegments.map((segment) => (
             <div key={segment.id}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: 6,
-                  gap: 12,
-                }}
-              >
+              <div style={ROW_HEADER_STYLE}>
                 <span>{segment.label}</span>
-                <span
-                  style={{ color: accentMap[segment.tone], fontWeight: 600 }}
-                >
-                  {segment.display_amount}
+                <span style={{ color: TONE_COLOR[segment.tone], fontWeight: 600 }}>
+                  {segment.amount.display}
                 </span>
               </div>
-              <div
-                style={{
-                  height: 10,
-                  borderRadius: 999,
-                  background: "#ecf1f6",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${Math.round((Math.abs(segment.amount) / maxAbsAmount) * 100)}%`,
-                    borderRadius: 999,
-                    background: accentMap[segment.tone],
-                  }}
-                />
+              <div style={BAR_TRACK_STYLE}>
+                <div style={BAR_CENTER_LINE_STYLE} />
+                {renderBipolarFill({
+                  raw: segment.amount.raw,
+                  maxAbs,
+                  color: TONE_COLOR[segment.tone],
+                })}
               </div>
             </div>
           ))}
         </div>
       </div>
-    </AsyncSection>
+    </DataSection>
   );
+}
+
+function renderBipolarFill(opts: {
+  raw: number | null;
+  maxAbs: number;
+  color: string;
+}) {
+  const { raw, maxAbs, color } = opts;
+  if (raw === null || maxAbs === 0) return null;
+
+  const widthPct = Math.min(100, Math.round((Math.abs(raw) / maxAbs) * 50));
+  // raw > 0: bar grows from center to the right
+  // raw < 0: bar grows from center to the left
+  const style: CSSProperties = {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    background: color,
+    borderRadius: 999,
+  };
+  if (raw >= 0) {
+    style.left = "50%";
+    style.width = `${widthPct}%`;
+  } else {
+    style.right = "50%";
+    style.width = `${widthPct}%`;
+  }
+  return <div style={style} />;
 }
