@@ -8,6 +8,7 @@ import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimit
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
+import { DashboardMacroSpotSection } from "../../executive-dashboard/components/DashboardMacroSpotSection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import { OverviewSection } from "../../executive-dashboard/components/OverviewSection";
 
@@ -319,6 +320,8 @@ export default function DashboardPage() {
         />
 
         <DashboardNewsDigestSection />
+
+        <DashboardMacroSpotSection />
 
         <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
 
