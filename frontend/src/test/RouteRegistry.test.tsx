@@ -1,10 +1,34 @@
-import { screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+
+import "@testing-library/jest-dom/vitest";
+
+import { cleanup, screen, within } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
 import { workbenchSections } from "../router/routes";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+afterEach(() => {
+  cleanup();
+});
+
+beforeAll(() => {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+});
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => ({
   BondAnalyticsDetailSection: ({ activeTab }: { activeTab: string }) => (
@@ -318,11 +342,18 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "团队绩效" })).toBeInTheDocument();
   });
 
-  it("renders the kpi route", async () => {
+  it("renders the kpi route as a placeholder surface", async () => {
     renderWorkbenchApp(["/kpi"], { client: mockClient });
 
-    expect(await screen.findByTestId("kpi-performance-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "绩效考核" })).toBeInTheDocument();
+    expect(
+      (
+        await screen.findAllByText(
+          /当前仅保留 owners 与 values\/summary 读面；指标维护、批量写入、抓取重算与报表端点仍为 reserved surface/i,
+        )
+      ).length,
+    ).toBeGreaterThan(0);
   });
 
   it("renders the platform-config route", async () => {

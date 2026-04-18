@@ -12,7 +12,24 @@ def _load_kpi_service_module():
     )
 
 
-def test_resolve_executive_kpi_metrics_returns_empty_when_repository_bootstrap_fails(monkeypatch):
+def test_load_executive_kpi_metrics_marks_repository_bootstrap_failure(monkeypatch):
+    module = _load_kpi_service_module()
+
+    def _raise_on_init(*_args, **_kwargs):
+        raise ModuleNotFoundError("psycopg2")
+
+    monkeypatch.setattr(module, "KpiRepository", _raise_on_init)
+
+    resolution = module.load_executive_kpi_metrics(
+        dsn="postgresql://example.invalid/moss",
+        report_date="2026-03-31",
+    )
+
+    assert resolution.metrics == []
+    assert resolution.dependency_failed is True
+
+
+def test_resolve_executive_kpi_metrics_keeps_legacy_empty_result_when_bootstrap_fails(monkeypatch):
     module = _load_kpi_service_module()
 
     def _raise_on_init(*_args, **_kwargs):
@@ -24,6 +41,29 @@ def test_resolve_executive_kpi_metrics_returns_empty_when_repository_bootstrap_f
         dsn="postgresql://example.invalid/moss",
         report_date="2026-03-31",
     ) == []
+
+
+def test_load_executive_kpi_metrics_preserves_no_data_as_non_failure(monkeypatch):
+    module = _load_kpi_service_module()
+
+    class EmptyRepo:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_owners(self, *, year=None, is_active=None):
+            assert year == 2026
+            assert is_active is True
+            return []
+
+    monkeypatch.setattr(module, "KpiRepository", EmptyRepo)
+
+    resolution = module.load_executive_kpi_metrics(
+        dsn="sqlite:///tmp/kpi.db",
+        report_date="2026-03-31",
+    )
+
+    assert resolution.metrics == []
+    assert resolution.dependency_failed is False
 
 
 def test_resolve_executive_kpi_metrics_aggregates_active_owners_within_target_year(monkeypatch):

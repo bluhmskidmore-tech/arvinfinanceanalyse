@@ -8,7 +8,7 @@ import {
   TeamOutlined,
   UploadOutlined,
 } from "@ant-design/icons";
-import { Button, Card, Col, Row, Select, Space, Typography, message } from "antd";
+import { Alert, Button, Card, Col, Row, Select, Space, Typography, message } from "antd";
 
 import type {
   KpiFetchAndRecalcResponse,
@@ -27,6 +27,11 @@ const { Title, Text } = Typography;
 
 type PeriodType = "DAILY" | "MONTH" | "QUARTER" | "YEAR";
 
+const KPI_WRITE_ACTIONS_AVAILABLE = false;
+const KPI_READ_ONLY_NOTICE =
+  "Only KPI owners and summary views are live right now. Daily values, metric writes, imports, fetch/recalc, and report export remain reserved.";
+const KPI_RESERVED_ACTION_REASON = "Reserved until KPI write/report endpoints are promoted.";
+
 function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
 }
@@ -43,7 +48,7 @@ export default function KpiPerformancePage() {
   const [selectedOwner, setSelectedOwner] = React.useState<KpiOwner | null>(null);
   const [metrics, setMetrics] = React.useState<KpiMetricWithValue[]>([]);
 
-  const [periodType, setPeriodType] = React.useState<PeriodType>("DAILY");
+  const [periodType, setPeriodType] = React.useState<PeriodType>("MONTH");
   const [periodValue, setPeriodValue] = React.useState<number>(() => new Date().getMonth() + 1);
   const [periodSummary, setPeriodSummary] = React.useState<KpiPeriodSummaryResponse | null>(null);
 
@@ -108,58 +113,53 @@ export default function KpiPerformancePage() {
       setPeriodSummary(null);
       return;
     }
+    if (periodType === "DAILY") {
+      setMetrics([]);
+      setPeriodSummary(null);
+      return;
+    }
     setLoadingMetrics(true);
     try {
-      if (periodType === "DAILY") {
-        const response = await client.getKpiValues({
-          owner_id: selectedOwner.owner_id,
-          as_of_date: formatDate(asOfDate),
-          include_trace: true,
-        });
-        setMetrics(response.metrics);
-        setPeriodSummary(null);
-      } else {
-        const response = await client.getKpiValuesSummary({
-          owner_id: selectedOwner.owner_id,
-          year,
-          period_type: periodType,
-          period_value: periodType !== "YEAR" ? periodValue : undefined,
-        });
-        setPeriodSummary(response);
-        const converted: KpiMetricWithValue[] = response.metrics.map((m) => ({
-          metric_id: m.metric_id,
-          metric_code: m.metric_code,
-          metric_name: m.metric_name,
-          owner_id: selectedOwner.owner_id,
-          year,
-          major_category: m.major_category,
-          indicator_category: m.indicator_category,
-          target_value: m.target_value ?? null,
-          target_text: undefined,
-          score_weight: m.score_weight,
-          unit: m.unit,
-          scoring_text: undefined,
-          scoring_rule_type: "LINEAR_RATIO",
-          scoring_rule_params: undefined,
-          data_source_type: "MANUAL",
-          data_source_params: undefined,
-          progress_plan: undefined,
-          remarks: undefined,
-          is_active: true,
-          value_id: undefined,
-          as_of_date: m.data_date,
-          actual_value: m.period_actual_value,
-          actual_text: undefined,
-          completion_ratio: m.period_completion_ratio,
-          progress_pct: m.period_progress_pct,
-          score_value: m.period_score_value,
-          fetch_status: undefined,
-          fetch_trace: undefined,
-          score_calc_trace: undefined,
-          source: undefined,
-        }));
-        setMetrics(converted);
-      }
+      const response = await client.getKpiValuesSummary({
+        owner_id: selectedOwner.owner_id,
+        year,
+        period_type: periodType,
+        period_value: periodType !== "YEAR" ? periodValue : undefined,
+      });
+      setPeriodSummary(response);
+      const converted: KpiMetricWithValue[] = response.metrics.map((m) => ({
+        metric_id: m.metric_id,
+        metric_code: m.metric_code,
+        metric_name: m.metric_name,
+        owner_id: selectedOwner.owner_id,
+        year,
+        major_category: m.major_category,
+        indicator_category: m.indicator_category,
+        target_value: m.target_value ?? null,
+        target_text: undefined,
+        score_weight: m.score_weight,
+        unit: m.unit,
+        scoring_text: undefined,
+        scoring_rule_type: "LINEAR_RATIO",
+        scoring_rule_params: undefined,
+        data_source_type: "MANUAL",
+        data_source_params: undefined,
+        progress_plan: undefined,
+        remarks: undefined,
+        is_active: true,
+        value_id: undefined,
+        as_of_date: m.data_date,
+        actual_value: m.period_actual_value,
+        actual_text: undefined,
+        completion_ratio: m.period_completion_ratio,
+        progress_pct: m.period_progress_pct,
+        score_value: m.period_score_value,
+        fetch_status: undefined,
+        fetch_trace: undefined,
+        score_calc_trace: undefined,
+        source: undefined,
+      }));
+      setMetrics(converted);
     } catch (e) {
       console.error(e);
       message.error("加载指标失败");
@@ -168,7 +168,7 @@ export default function KpiPerformancePage() {
     } finally {
       setLoadingMetrics(false);
     }
-  }, [client, selectedOwner, asOfDate, periodType, periodValue, year]);
+  }, [client, selectedOwner, periodType, periodValue, year]);
 
   React.useEffect(() => {
     void loadOwners();
@@ -179,7 +179,7 @@ export default function KpiPerformancePage() {
   }, [loadMetrics]);
 
   const handleFetchAndRecalc = React.useCallback(async () => {
-    if (!selectedOwner) return;
+    if (!selectedOwner || !KPI_WRITE_ACTIONS_AVAILABLE) return;
     setFetchLoading(true);
     setLastFetchResult(null);
     try {
@@ -196,6 +196,7 @@ export default function KpiPerformancePage() {
   }, [client, selectedOwner, asOfDate, loadMetrics]);
 
   const handleExportCSV = React.useCallback(async () => {
+    if (!KPI_WRITE_ACTIONS_AVAILABLE) return;
     setExportLoading(true);
     try {
       await client.downloadKpiReportCSV({
@@ -212,6 +213,7 @@ export default function KpiPerformancePage() {
   }, [client, year, selectedOwner, asOfDate]);
 
   const handleOpenEditModal = React.useCallback((metric: KpiMetricWithValue) => {
+    if (!KPI_WRITE_ACTIONS_AVAILABLE) return;
     setEditingMetric(metric);
     setEditModalOpen(true);
   }, []);
@@ -222,12 +224,14 @@ export default function KpiPerformancePage() {
   }, []);
 
   const handleAddMetric = React.useCallback(() => {
+    if (!KPI_WRITE_ACTIONS_AVAILABLE) return;
     setMetricManageMode("create");
     setManagingMetric(null);
     setMetricManageOpen(true);
   }, []);
 
   const handleEditMetricDef = React.useCallback((metric: KpiMetricWithValue) => {
+    if (!KPI_WRITE_ACTIONS_AVAILABLE) return;
     setMetricManageMode("edit");
     setManagingMetric(metric);
     setMetricManageOpen(true);
@@ -265,6 +269,14 @@ export default function KpiPerformancePage() {
       </div>
 
       <Card>
+        <Alert
+          type="info"
+          showIcon
+          message="KPI is currently summary-only."
+          description={KPI_READ_ONLY_NOTICE}
+          style={{ marginBottom: 16 }}
+          data-testid="kpi-readonly-notice"
+        />
         <Row gutter={[16, 16]} align="middle" justify="space-between">
           <Col flex="auto">
             <Space wrap size="middle">
@@ -283,7 +295,6 @@ export default function KpiPerformancePage() {
                   style={{ width: 120 }}
                   value={periodType}
                   options={[
-                    { label: "按日期", value: "DAILY" },
                     { label: "月度", value: "MONTH" },
                     { label: "季度", value: "QUARTER" },
                     { label: "年度", value: "YEAR" },
@@ -344,17 +355,31 @@ export default function KpiPerformancePage() {
           </Col>
           <Col>
             <Space wrap>
-              <Button icon={<PlusOutlined />} disabled={!selectedOwner} onClick={handleAddMetric}>
+              <Button
+                icon={<PlusOutlined />}
+                disabled={!selectedOwner || !KPI_WRITE_ACTIONS_AVAILABLE}
+                title={KPI_RESERVED_ACTION_REASON}
+                data-testid="kpi-add-metric-button"
+                onClick={handleAddMetric}
+              >
                 新增指标
               </Button>
-              <Button icon={<UploadOutlined />} disabled={!selectedOwner} onClick={() => setBatchPasteOpen(true)}>
+              <Button
+                icon={<UploadOutlined />}
+                disabled={!selectedOwner || !KPI_WRITE_ACTIONS_AVAILABLE}
+                title={KPI_RESERVED_ACTION_REASON}
+                data-testid="kpi-batch-import-button"
+                onClick={() => setBatchPasteOpen(true)}
+              >
                 批量导入
               </Button>
               <Button
                 type="primary"
                 icon={<SyncOutlined />}
                 loading={fetchLoading}
-                disabled={!selectedOwner}
+                disabled={!selectedOwner || !KPI_WRITE_ACTIONS_AVAILABLE}
+                title={KPI_RESERVED_ACTION_REASON}
+                data-testid="kpi-fetch-button"
                 onClick={() => void handleFetchAndRecalc()}
               >
                 抓取并重算
@@ -362,6 +387,9 @@ export default function KpiPerformancePage() {
               <Button
                 icon={<CloudDownloadOutlined />}
                 loading={exportLoading}
+                disabled={!selectedOwner || !KPI_WRITE_ACTIONS_AVAILABLE}
+                title={KPI_RESERVED_ACTION_REASON}
+                data-testid="kpi-export-button"
                 onClick={() => void handleExportCSV()}
               >
                 导出 CSV
@@ -445,21 +473,32 @@ export default function KpiPerformancePage() {
                         </Text>
                       </div>
                     ) : null}
-                    <Button icon={<SettingOutlined />} onClick={handleAddMetric}>
+                    <Button
+                      icon={<SettingOutlined />}
+                      disabled={!KPI_WRITE_ACTIONS_AVAILABLE}
+                      title={KPI_RESERVED_ACTION_REASON}
+                      data-testid="kpi-manage-button"
+                      onClick={handleAddMetric}
+                    >
                       管理指标
                     </Button>
                   </Space>
                 </div>
               </Card>
-              <MetricTable
-                metrics={metrics}
-                loading={loadingMetrics}
-                onRefresh={() => void loadMetrics()}
-                onAddMetric={handleAddMetric}
-                onEditMetricDef={handleEditMetricDef}
-                valueAsOfDate={formatDate(asOfDate)}
-                onFullEdit={handleOpenEditModal}
-              />
+              <div data-testid="kpi-readonly-table">
+                <MetricTable
+                  metrics={metrics}
+                  loading={loadingMetrics}
+                  onRefresh={() => void loadMetrics()}
+                  onAddMetric={KPI_WRITE_ACTIONS_AVAILABLE ? handleAddMetric : undefined}
+                  onEditMetricDef={KPI_WRITE_ACTIONS_AVAILABLE ? handleEditMetricDef : undefined}
+                  valueAsOfDate={formatDate(asOfDate)}
+                  onFullEdit={KPI_WRITE_ACTIONS_AVAILABLE ? handleOpenEditModal : undefined}
+                />
+                <Text type="secondary" style={{ display: "block", marginTop: 12 }}>
+                  Read-only summary view. KPI write and daily-value actions remain reserved.
+                </Text>
+              </div>
             </Space>
           ) : (
             <Card style={{ minHeight: 420, display: "grid", placeItems: "center" }}>
@@ -490,6 +529,8 @@ export default function KpiPerformancePage() {
         metric={managingMetric}
         owner={selectedOwner}
         onSuccess={handleMetricManageSuccess}
+        writeEnabled={false}
+        disabledReason={KPI_READ_ONLY_NOTICE}
       />
 
       <BatchPasteModal
@@ -499,6 +540,8 @@ export default function KpiPerformancePage() {
         asOfDate={formatDate(asOfDate)}
         metrics={metrics}
         onSuccess={handleBatchPasteSuccess}
+        writeEnabled={false}
+        disabledReason={KPI_READ_ONLY_NOTICE}
       />
     </div>
   );

@@ -264,8 +264,9 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     )
     monkeypatch.setattr(
         exec_mod,
-        "resolve_executive_kpi_metrics",
-        lambda **_kwargs: [
+        "load_executive_kpi_metrics",
+        lambda **_kwargs: exec_mod.ExecutiveKpiMetricsResolution(
+            metrics=[
             {
                 "id": "goal",
                 "label": "目标完成率",
@@ -282,7 +283,8 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
                 "tone": "warning",
                 "detail": "来自 KPI 年度汇总读面。",
             },
-        ],
+            ]
+        ),
     )
     monkeypatch.setattr(exec_mod, "date", FixedDate)
 
@@ -1280,7 +1282,11 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
             "kpi": {"nim": 0.01},
         },
     )
-    monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        exec_mod,
+        "load_executive_kpi_metrics",
+        lambda **_kwargs: exec_mod.ExecutiveKpiMetricsResolution(metrics=[]),
+    )
 
     out = exec_mod.executive_overview(report_date="2026-02-28")
 
@@ -1306,6 +1312,80 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
             "currency_basis": "CNY",
         },
     ) in calls
+
+
+def test_executive_overview_marks_result_meta_warning_when_kpi_dependency_fails(monkeypatch, exec_mod):
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_formal_overview(self, **_kwargs):
+            return {"total_market_value_amount": 100.0e8}
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 5.0e8 if report_date == "2026-02-28" else 4.8e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-02-28"
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 3210.0 if report_date == "2026-02-28" else 3000.0,
+            }
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {"report_date": report_date, "kpi": {"nim": 0.05}},
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "load_executive_kpi_metrics",
+        lambda **_kwargs: exec_mod.ExecutiveKpiMetricsResolution(metrics=[], dependency_failed=True),
+    )
+
+    out = exec_mod.executive_overview(report_date="2026-02-28")
+
+    metrics = {item["id"]: item for item in out["result"]["metrics"]}
+    assert set(metrics) == {"aum", "yield", "nim", "dv01"}
+    assert out["result_meta"]["quality_flag"] == "warning"
+    assert out["result_meta"]["vendor_status"] == "vendor_unavailable"
+    assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
 
 
 def test_formal_balance_metrics_repo_lists_report_dates(tmp_path):

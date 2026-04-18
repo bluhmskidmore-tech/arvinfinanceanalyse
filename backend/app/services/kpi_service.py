@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
+from typing import NamedTuple
 
 from backend.app.repositories.kpi_repo import KpiRepository
 from backend.app.schemas.kpi import KpiOwnerListPayload, KpiOwnerPayload, KpiPeriodMetricSummaryPayload, KpiPeriodSummaryPayload
+
+
+class ExecutiveKpiMetricsResolution(NamedTuple):
+    metrics: list[dict[str, object]]
+    dependency_failed: bool = False
 
 
 def kpi_owners_payload(
@@ -55,25 +61,25 @@ def kpi_period_summary_payload(
     ).model_dump(mode="json")
 
 
-def resolve_executive_kpi_metrics(
+def load_executive_kpi_metrics(
     *,
     dsn: str,
     report_date: str | None,
-) -> list[dict[str, object]]:
+) -> ExecutiveKpiMetricsResolution:
     if not str(dsn or "").strip():
-        return []
+        return ExecutiveKpiMetricsResolution(metrics=[])
     try:
         repo = KpiRepository(dsn)
         target_year = date.fromisoformat(report_date).year if report_date else None
         if target_year is not None:
             owners = repo.list_owners(year=target_year, is_active=True)
             if not owners:
-                return []
+                return ExecutiveKpiMetricsResolution(metrics=[])
             selected_year = target_year
         else:
             owners = repo.list_owners(is_active=True)
             if not owners:
-                return []
+                return ExecutiveKpiMetricsResolution(metrics=[])
             selected_year = max(int(owner["year"]) for owner in owners)
             owners = [
                 owner
@@ -81,7 +87,7 @@ def resolve_executive_kpi_metrics(
                 if int(owner["year"]) == selected_year
             ]
     except Exception:
-        return []
+        return ExecutiveKpiMetricsResolution(metrics=[], dependency_failed=True)
     total_weight = Decimal("0")
     total_score = Decimal("0")
     owner_count = len(owners)
@@ -97,7 +103,7 @@ def resolve_executive_kpi_metrics(
             total_weight += Decimal(str(summary["total_weight"] or "0"))
             total_score += Decimal(str(summary["total_score"] or "0"))
     except Exception:
-        return []
+        return ExecutiveKpiMetricsResolution(metrics=[], dependency_failed=True)
     goal_completion = None
     if total_weight > 0:
         goal_completion = (total_score / total_weight) * Decimal("100")
@@ -155,4 +161,15 @@ def resolve_executive_kpi_metrics(
                 ),
             }
         )
-    return result
+    return ExecutiveKpiMetricsResolution(metrics=result)
+
+
+def resolve_executive_kpi_metrics(
+    *,
+    dsn: str,
+    report_date: str | None,
+) -> list[dict[str, object]]:
+    return load_executive_kpi_metrics(
+        dsn=dsn,
+        report_date=report_date,
+    ).metrics

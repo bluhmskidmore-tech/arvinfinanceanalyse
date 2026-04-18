@@ -63,7 +63,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
     label: "绩效工作台",
     description: "查看团队绩效与 KPI 归因结果。",
     icon: "kpi",
-    defaultPath: "/kpi",
+    defaultPath: "/team-performance",
   },
   {
     key: "governance",
@@ -305,9 +305,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/kpi",
     icon: "kpi",
     description: "KPI 指标、批量导入、抓取计分与溯源",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "已接 /api/kpi 读写链路，与 V1 行为对齐。",
+    readiness: "placeholder",
+    readinessLabel: "Partial",
+    readinessNote:
+      "当前仅保留 owners 与 values/summary 读面；指标维护、批量写入、抓取重算与报表端点仍为 reserved surface。",
   },
   {
     key: "news-events",

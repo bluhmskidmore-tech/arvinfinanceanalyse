@@ -26,6 +26,8 @@ export type MetricManageModalProps = {
   metric?: KpiMetric | null;
   owner: KpiOwner | null;
   onSuccess: () => void;
+  writeEnabled?: boolean;
+  disabledReason?: string;
 };
 
 type FormData = {
@@ -48,6 +50,8 @@ export function MetricManageModal({
   metric,
   owner,
   onSuccess,
+  writeEnabled = true,
+  disabledReason,
 }: MetricManageModalProps) {
   const client = useApiClient();
   const [form, setForm] = React.useState<FormData>({
@@ -108,6 +112,7 @@ export function MetricManageModal({
   };
 
   const handleSave = React.useCallback(async () => {
+    if (!writeEnabled) return;
     if (!owner) return;
     if (!form.metric_name.trim()) {
       setError("请输入指标名称");
@@ -147,9 +152,10 @@ export function MetricManageModal({
     } finally {
       setSaving(false);
     }
-  }, [client, form, owner, mode, metric, onSuccess]);
+  }, [client, form, owner, mode, metric, onSuccess, writeEnabled]);
 
   const handleDelete = React.useCallback(async () => {
+    if (!writeEnabled) return;
     if (!metric) return;
     setDeleting(true);
     setError(null);
@@ -162,7 +168,7 @@ export function MetricManageModal({
       setDeleting(false);
       setShowDelete(false);
     }
-  }, [client, metric, onSuccess]);
+  }, [client, metric, onSuccess, writeEnabled]);
 
   if (!owner) return null;
 
@@ -175,21 +181,23 @@ export function MetricManageModal({
       footer={
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            {mode === "edit" && !showDelete ? (
-              <Button danger icon={<DeleteOutlined />} onClick={() => setShowDelete(true)}>
+            {writeEnabled && mode === "edit" && !showDelete ? (
+              <Button danger icon={<DeleteOutlined />} onClick={() => setShowDelete(true)} data-testid="kpi-manage-delete-button">
                 删除指标
               </Button>
             ) : null}
           </div>
           <Space>
-            <Button onClick={onClose} disabled={saving}>
+            <Button onClick={onClose} disabled={saving || deleting}>
               取消
             </Button>
             <Button
               type="primary"
               loading={saving}
               icon={mode === "create" ? <PlusOutlined /> : <SaveOutlined />}
+              disabled={!writeEnabled}
               onClick={() => void handleSave()}
+              data-testid="kpi-manage-save-button"
             >
               {mode === "create" ? "新增" : "保存"}
             </Button>
@@ -200,6 +208,16 @@ export function MetricManageModal({
       <Text type="secondary">
         {owner.owner_name} · {owner.year} 年度
       </Text>
+      {!writeEnabled ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginTop: 16 }}
+          message="Metric management is reserved."
+          description={disabledReason ?? "KPI metric definition routes are not live yet."}
+          data-testid="kpi-manage-reserved-alert"
+        />
+      ) : null}
       {showDelete ? (
         <Alert
           type="error"

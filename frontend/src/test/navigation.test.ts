@@ -89,12 +89,12 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cashflow-projection")).toBe(false);
   });
 
-  it("promotes kpi-performance into the live primary navigation", () => {
+  it("keeps kpi-performance outside the live primary navigation", () => {
     const kpi = workbenchNavigation.find((s) => s.key === "kpi-performance");
     expect(kpi?.path).toBe("/kpi");
-    expect(kpi?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(false);
+    expect(kpi?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "kpi-performance")).toBe(true);
   });
 
   it("promotes team-performance into the live primary navigation", () => {

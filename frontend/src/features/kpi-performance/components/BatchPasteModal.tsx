@@ -14,6 +14,8 @@ export type BatchPasteModalProps = {
   asOfDate: string;
   metrics: KpiMetricWithValue[];
   onSuccess: () => void;
+  writeEnabled?: boolean;
+  disabledReason?: string;
 };
 
 type ParsedRow = {
@@ -33,6 +35,8 @@ export function BatchPasteModal({
   asOfDate,
   metrics,
   onSuccess,
+  writeEnabled = true,
+  disabledReason,
 }: BatchPasteModalProps) {
   const client = useApiClient();
   const [pasteText, setPasteText] = React.useState("");
@@ -53,6 +57,7 @@ export function BatchPasteModal({
   }, [metrics]);
 
   const handleParse = React.useCallback(() => {
+    if (!writeEnabled) return;
     if (!pasteText.trim()) {
       setParsedRows([]);
       return;
@@ -124,9 +129,10 @@ export function BatchPasteModal({
     });
     setParsedRows(rows);
     setImportResult(null);
-  }, [pasteText, metricCodeMap]);
+  }, [pasteText, metricCodeMap, writeEnabled]);
 
   const handleImport = React.useCallback(async () => {
+    if (!writeEnabled) return;
     const validRows = parsedRows.filter((r) => r.status === "valid" && r.metric);
     if (validRows.length === 0) return;
     setImporting(true);
@@ -156,7 +162,7 @@ export function BatchPasteModal({
     } finally {
       setImporting(false);
     }
-  }, [client, parsedRows, asOfDate, onSuccess]);
+  }, [client, parsedRows, asOfDate, onSuccess, writeEnabled]);
 
   const handleClear = React.useCallback(() => {
     setPasteText("");
@@ -192,8 +198,9 @@ export function BatchPasteModal({
           type="primary"
           loading={importing}
           icon={<UploadOutlined />}
-          disabled={stats.valid === 0}
+          disabled={!writeEnabled || stats.valid === 0}
           onClick={() => void handleImport()}
+          data-testid="kpi-batch-import-submit-button"
         >
           导入（{stats.valid} 条）
         </Button>,
@@ -202,6 +209,16 @@ export function BatchPasteModal({
       <Paragraph type="secondary" style={{ marginBottom: 16 }}>
         {owner.owner_name} · {asOfDate}
       </Paragraph>
+      {!writeEnabled ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Batch import is reserved."
+          description={disabledReason ?? "KPI batch value import routes are not live yet."}
+          data-testid="kpi-batch-import-reserved-alert"
+        />
+      ) : null}
       <Alert
         type="info"
         showIcon
@@ -223,6 +240,7 @@ export function BatchPasteModal({
       <Input.TextArea
         value={pasteText}
         onChange={(e) => setPasteText(e.target.value)}
+        disabled={!writeEnabled}
         placeholder="从 Excel 粘贴…"
         rows={6}
         style={{ fontFamily: "monospace", marginBottom: 8 }}
@@ -230,8 +248,10 @@ export function BatchPasteModal({
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
         <Text type="secondary">当前共 {metrics.length} 个指标</Text>
         <div style={{ display: "flex", gap: 8 }}>
-          <Button onClick={handleClear}>清空</Button>
-          <Button type="primary" onClick={handleParse}>
+          <Button onClick={handleClear} disabled={!writeEnabled}>
+            清空
+          </Button>
+          <Button type="primary" onClick={handleParse} disabled={!writeEnabled} data-testid="kpi-batch-import-parse-button">
             解析
           </Button>
         </div>

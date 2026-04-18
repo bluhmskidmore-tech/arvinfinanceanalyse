@@ -31,7 +31,7 @@ from backend.app.schemas.executive_dashboard import (
     SummaryPoint,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.kpi_service import resolve_executive_kpi_metrics
+from backend.app.services.kpi_service import ExecutiveKpiMetricsResolution, load_executive_kpi_metrics
 from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
@@ -715,19 +715,20 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 ),
             )
         )
+    kpi_resolution: ExecutiveKpiMetricsResolution = load_executive_kpi_metrics(
+        dsn=str(
+            getattr(settings, "governance_sql_dsn", "")
+            or getattr(settings, "postgres_dsn", "")
+        ),
+        report_date=current_pnl_report_date or normalized_report_date,
+    )
     try:
         metrics.extend(
             ExecutiveMetric.model_validate(item)
-            for item in resolve_executive_kpi_metrics(
-                dsn=str(
-                    getattr(settings, "governance_sql_dsn", "")
-                    or getattr(settings, "postgres_dsn", "")
-                ),
-                report_date=current_pnl_report_date or normalized_report_date,
-            )
+            for item in kpi_resolution.metrics
         )
     except (RuntimeError, ValueError, TypeError, KeyError):
-        pass
+        kpi_resolution = kpi_resolution._replace(dependency_failed=True)
 
     payload = OverviewPayload(title="经营总览", metrics=metrics)
     has_missing_governed_metrics = (
@@ -735,6 +736,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         or ytd_raw is None
         or nim_raw is None
         or dv01_raw is None
+        or kpi_resolution.dependency_failed
     )
     return _envelope(
         "executive.overview",
