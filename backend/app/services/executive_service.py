@@ -38,6 +38,11 @@ from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
 
+_MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
+_DEFAULT_SOURCE = "sv_exec_dashboard_v1"
+_DEFAULT_RULE = "rv_exec_dashboard_v1"
+_CACHE_VERSION = "cv_exec_dashboard_v1"
+
 
 def _normalize_report_date(report_date: str | None) -> str | None:
     if report_date is None:
@@ -52,15 +57,15 @@ def _envelope(
     quality_flag: Literal["ok", "warning", "error", "stale"] = "ok",
     vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = "ok",
     fallback_mode: Literal["none", "latest_snapshot"] = "none",
-    source_version: str = "sv_exec_dashboard_v1",
-    rule_version: str = "rv_exec_dashboard_v1",
+    source_version: str = _DEFAULT_SOURCE,
+    rule_version: str = _DEFAULT_RULE,
     filters_applied: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
         trace_id=f"tr_{result_kind.replace('.', '_')}",
         result_kind=result_kind,
-        cache_version="cv_exec_dashboard_v1",
+        cache_version=_CACHE_VERSION,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -327,52 +332,38 @@ def _build_pnl_attribution_from_repo(
     )
 
 
-def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPayload:
-    zero = [
-        ("carry", "Carry", 0.0),
-        ("roll", "Roll-down", 0.0),
-        ("credit", "信用利差", 0.0),
-        ("trading", "交易损益", 0.0),
-        ("other", "其他", 0.0),
-    ]
+_ZERO_ATTRIBUTION_SEGMENTS = [
+    ("carry", "Carry"),
+    ("roll", "Roll-down"),
+    ("credit", "信用利差"),
+    ("trading", "交易损益"),
+    ("other", "其他"),
+]
+
+
+def _zero_pnl_attribution_payload(title: str) -> PnlAttributionPayload:
     segments = [
         AttributionSegment(
             id=key,
             label=label,
-            amount=_fmt_signed_segment_yi(val),
-            tone=_tone_for_signed(val),
+            amount=_fmt_signed_segment_yi(0.0),
+            tone=_tone_for_signed(0.0),
         )
-        for key, label, val in zero
+        for key, label in _ZERO_ATTRIBUTION_SEGMENTS
     ]
     return PnlAttributionPayload(
-        title=f"经营贡献拆解（{report_date} 无受控产品分类月度数据）",
+        title=title,
         total=Numeric(raw=0.0, unit="yuan", display="0 亿", precision=0, sign_aware=False),
         segments=segments,
     )
+
+
+def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPayload:
+    return _zero_pnl_attribution_payload(f"经营贡献拆解（{report_date} 无受控产品分类月度数据）")
 
 
 def _pnl_attribution_unavailable_payload() -> PnlAttributionPayload:
-    zero = [
-        ("carry", "Carry", 0.0),
-        ("roll", "Roll-down", 0.0),
-        ("credit", "信用利差", 0.0),
-        ("trading", "交易损益", 0.0),
-        ("other", "其他", 0.0),
-    ]
-    segments = [
-        AttributionSegment(
-            id=key,
-            label=label,
-            amount=_fmt_signed_segment_yi(val),
-            tone=_tone_for_signed(val),
-        )
-        for key, label, val in zero
-    ]
-    return PnlAttributionPayload(
-        title="经营贡献拆解（当前无受控产品分类月度数据）",
-        total=Numeric(raw=0.0, unit="yuan", display="0 亿", precision=0, sign_aware=False),
-        segments=segments,
-    )
+    return _zero_pnl_attribution_payload("经营贡献拆解（当前无受控产品分类月度数据）")
 
 
 def _contribution_explicit_miss_payload(report_date: str) -> ContributionPayload:
@@ -400,6 +391,92 @@ def _empty_alerts_payload() -> AlertsPayload:
     return AlertsPayload(
         title="预警与事件",
         items=[],
+    )
+
+
+def _build_repo_payload_envelope(
+    result_kind: str,
+    repo_factory,
+    build_fn,
+    miss_payload_fn,
+    unavailable_payload_fn,
+    report_date: str | None,
+    normalized: str | None,
+) -> dict[str, object]:
+    """共用模式：构建 ProductCategoryPnlRepository 类端点的 envelope。
+
+    消除 executive_pnl_attribution / executive_contribution 的重复结构。
+    """
+    repo = None
+    try:
+        repo = repo_factory()
+    except (RuntimeError, OSError, TypeError, ValueError):
+        if normalized is not None:
+            return _envelope(
+                result_kind,
+                miss_payload_fn(normalized),
+                quality_flag="warning",
+                vendor_status="vendor_unavailable",
+                source_version=_MISS_SOURCE,
+                filters_applied={"report_date": normalized},
+            )
+
+    built = None
+    src = _DEFAULT_SOURCE
+    rule = _DEFAULT_RULE
+    if repo is not None:
+        try:
+            result = build_fn(repo, report_date)
+            if result is not None:
+                built, rows = result
+                src = _join_lineage_tokens(src, *_lineage_tokens_from_rows(rows, "source_version"))
+                rule = _join_lineage_tokens(rule, *_lineage_tokens_from_rows(rows, "rule_version"))
+        except (RuntimeError, OSError, TypeError, ValueError, KeyError):
+            if normalized is not None:
+                return _envelope(
+                    result_kind,
+                    miss_payload_fn(normalized),
+                    quality_flag="warning",
+                    source_version=_MISS_SOURCE,
+                    filters_applied={"report_date": normalized},
+                )
+
+    if built is not None:
+        return _envelope(
+            result_kind,
+            built,
+            source_version=src,
+            rule_version=rule,
+            filters_applied={
+                "report_date": normalized
+                or next(
+                    (
+                        str(row.get("report_date") or "").strip()
+                        for row in rows
+                        if str(row.get("report_date") or "").strip()
+                    ),
+                    None,
+                ),
+            },
+        )
+
+    if normalized is not None:
+        return _envelope(
+            result_kind,
+            miss_payload_fn(normalized),
+            quality_flag="warning",
+            vendor_status="vendor_unavailable",
+            source_version=_MISS_SOURCE,
+            filters_applied={"report_date": normalized},
+        )
+
+    return _envelope(
+        result_kind,
+        unavailable_payload_fn(),
+        quality_flag="warning",
+        vendor_status="vendor_unavailable",
+        source_version=_MISS_SOURCE,
+        filters_applied={"report_date": None},
     )
 
 
@@ -468,8 +545,8 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     ytd_raw: float | None = None
     nim_raw: float | None = None
     dv01_raw: float | None = None
-    overview_source_versions: list[object] = ["sv_exec_dashboard_v1"]
-    overview_rule_versions: list[object] = ["rv_exec_dashboard_v1"]
+    overview_source_versions: list[object] = [_DEFAULT_SOURCE]
+    overview_rule_versions: list[object] = [_DEFAULT_RULE]
     aum_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
     ytd_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
     nim_delta: Numeric = Numeric(raw=None, unit="bp", display="无环比", precision=2, sign_aware=True)
@@ -748,12 +825,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
         quality_flag="warning" if has_missing_governed_metrics else "ok",
         vendor_status="vendor_unavailable" if has_missing_governed_metrics else "ok",
         source_version=(
-            "sv_exec_dashboard_explicit_miss_v1"
+            _MISS_SOURCE
             if has_missing_governed_metrics
             else _join_lineage_tokens(*overview_source_versions)
         ),
         rule_version=(
-            "rv_exec_dashboard_v1"
+            _DEFAULT_RULE
             if has_missing_governed_metrics
             else _join_lineage_tokens(*overview_rule_versions)
         ),
@@ -800,8 +877,8 @@ def executive_summary(report_date: str | None = None) -> dict[str, object]:
     )
     overview_payload = executive_overview(report_date=report_date)
     overview_meta = overview_payload.get("result_meta") if isinstance(overview_payload, dict) else None
-    source_version = "sv_exec_dashboard_explicit_miss_v1"
-    rule_version = "rv_exec_dashboard_v1"
+    source_version = _MISS_SOURCE
+    rule_version = _DEFAULT_RULE
     if isinstance(overview_meta, dict) and overview_meta.get("vendor_status") == "ok":
         source_version = str(overview_meta.get("source_version") or "").strip() or source_version
         rule_version = str(overview_meta.get("rule_version") or "").strip() or rule_version
@@ -816,84 +893,14 @@ def executive_summary(report_date: str | None = None) -> dict[str, object]:
 def executive_pnl_attribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     normalized = _normalize_report_date(report_date)
-    repo: ProductCategoryPnlRepository | None = None
-    try:
-        repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-    except (RuntimeError, OSError, TypeError, ValueError):
-        if normalized is not None:
-            return _envelope(
-                "executive.pnl-attribution",
-                _pnl_attribution_explicit_miss_payload(normalized),
-                quality_flag="warning",
-                vendor_status="vendor_unavailable",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
-                filters_applied={"report_date": normalized},
-            )
-        repo = None
-
-    built: PnlAttributionPayload | None = None
-    attribution_source_version = "sv_exec_dashboard_v1"
-    attribution_rule_version = "rv_exec_dashboard_v1"
-    if repo is not None:
-        try:
-            built_payload = _build_pnl_attribution_from_repo(repo, report_date)
-            if built_payload is not None:
-                built, built_rows = built_payload
-                attribution_source_version = _join_lineage_tokens(
-                    attribution_source_version,
-                    *_lineage_tokens_from_rows(built_rows, "source_version"),
-                )
-                attribution_rule_version = _join_lineage_tokens(
-                    attribution_rule_version,
-                    *_lineage_tokens_from_rows(built_rows, "rule_version"),
-                )
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError):
-            if normalized is not None:
-                return _envelope(
-                    "executive.pnl-attribution",
-                    _pnl_attribution_explicit_miss_payload(normalized),
-                    quality_flag="warning",
-                    source_version="sv_exec_dashboard_explicit_miss_v1",
-                    filters_applied={"report_date": normalized},
-                )
-            built = None
-
-    if built is not None:
-        return _envelope(
-            "executive.pnl-attribution",
-            built,
-            source_version=attribution_source_version,
-            rule_version=attribution_rule_version,
-            filters_applied={
-                "report_date": normalized
-                or next(
-                    (
-                        str(row.get("report_date") or "").strip()
-                        for row in built_rows
-                        if str(row.get("report_date") or "").strip()
-                    ),
-                    None,
-                ),
-            },
-        )
-
-    if normalized is not None:
-        return _envelope(
-            "executive.pnl-attribution",
-            _pnl_attribution_explicit_miss_payload(normalized),
-            quality_flag="warning",
-            vendor_status="vendor_unavailable",
-            source_version="sv_exec_dashboard_explicit_miss_v1",
-            filters_applied={"report_date": normalized},
-        )
-
-    return _envelope(
-        "executive.pnl-attribution",
-        _pnl_attribution_unavailable_payload(),
-        quality_flag="warning",
-        vendor_status="vendor_unavailable",
-        source_version="sv_exec_dashboard_explicit_miss_v1",
-        filters_applied={"report_date": None},
+    return _build_repo_payload_envelope(
+        result_kind="executive.pnl-attribution",
+        repo_factory=lambda: ProductCategoryPnlRepository(str(settings.duckdb_path)),
+        build_fn=_build_pnl_attribution_from_repo,
+        miss_payload_fn=_pnl_attribution_explicit_miss_payload,
+        unavailable_payload_fn=_pnl_attribution_unavailable_payload,
+        report_date=report_date,
+        normalized=normalized,
     )
 
 
@@ -911,7 +918,7 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                     _empty_risk_overview_payload(),
                     quality_flag="warning",
                     vendor_status="vendor_unavailable",
-                    source_version="sv_exec_dashboard_explicit_miss_v1",
+                    source_version=_MISS_SOURCE,
                 )
         snapshot = (
             repo.fetch_risk_overview_snapshot(report_date=normalized_report_date)
@@ -967,8 +974,8 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                         ),
                     ],
                 )
-                risk_source_version = "sv_exec_dashboard_v1"
-                risk_rule_version = "rv_exec_dashboard_v1"
+                risk_source_version = _DEFAULT_SOURCE
+                risk_rule_version = _DEFAULT_RULE
                 if governance_dir:
                     lineage = load_latest_bond_analytics_lineage(
                         governance_dir=governance_dir,
@@ -994,7 +1001,7 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
             _empty_risk_overview_payload(),
             quality_flag="warning",
             vendor_status="vendor_unavailable",
-            source_version="sv_exec_dashboard_explicit_miss_v1",
+            source_version=_MISS_SOURCE,
         )
     except (RuntimeError, OSError, TypeError, ValueError):
         pass
@@ -1004,77 +1011,21 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
         _empty_risk_overview_payload(),
         quality_flag="warning",
         vendor_status="vendor_unavailable",
-        source_version="sv_exec_dashboard_explicit_miss_v1",
+        source_version=_MISS_SOURCE,
     )
 
 
 def executive_contribution(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     normalized = _normalize_report_date(report_date)
-    repo: ProductCategoryPnlRepository | None = None
-    try:
-        repo = ProductCategoryPnlRepository(str(settings.duckdb_path))
-    except (RuntimeError, OSError, TypeError, ValueError):
-        if normalized is not None:
-            return _envelope(
-                "executive.contribution",
-                _contribution_explicit_miss_payload(normalized),
-                quality_flag="warning",
-                vendor_status="vendor_unavailable",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
-            )
-        repo = None
-
-    built: ContributionPayload | None = None
-    contribution_source_version = "sv_exec_dashboard_v1"
-    contribution_rule_version = "rv_exec_dashboard_v1"
-    if repo is not None:
-        try:
-            built_payload = _build_contribution_from_repo(repo, report_date)
-            if built_payload is not None:
-                built, built_rows = built_payload
-                contribution_source_version = _join_lineage_tokens(
-                    contribution_source_version,
-                    *_lineage_tokens_from_rows(built_rows, "source_version"),
-                )
-                contribution_rule_version = _join_lineage_tokens(
-                    contribution_rule_version,
-                    *_lineage_tokens_from_rows(built_rows, "rule_version"),
-                )
-        except (RuntimeError, OSError, TypeError, ValueError, KeyError):
-            if normalized is not None:
-                return _envelope(
-                    "executive.contribution",
-                    _contribution_explicit_miss_payload(normalized),
-                    quality_flag="warning",
-                    vendor_status="vendor_unavailable",
-                    source_version="sv_exec_dashboard_explicit_miss_v1",
-                )
-            built = None
-
-    if built is not None:
-        return _envelope(
-            "executive.contribution",
-            built,
-            source_version=contribution_source_version,
-            rule_version=contribution_rule_version,
-        )
-
-    if normalized is not None:
-        return _envelope(
-            "executive.contribution",
-            _contribution_explicit_miss_payload(normalized),
-            quality_flag="warning",
-            vendor_status="vendor_unavailable",
-            source_version="sv_exec_dashboard_explicit_miss_v1",
-        )
-
-    return _envelope(
-        "executive.contribution",
-        _contribution_unavailable_payload(),
-        quality_flag="warning",
-        vendor_status="vendor_unavailable",
-        source_version="sv_exec_dashboard_explicit_miss_v1",
+    return _build_repo_payload_envelope(
+        result_kind="executive.contribution",
+        repo_factory=lambda: ProductCategoryPnlRepository(str(settings.duckdb_path)),
+        build_fn=_build_contribution_from_repo,
+        miss_payload_fn=_contribution_explicit_miss_payload,
+        unavailable_payload_fn=_contribution_unavailable_payload,
+        report_date=report_date,
+        normalized=normalized,
     )
 
 
@@ -1084,7 +1035,7 @@ def _fallback_executive_alerts() -> dict[str, object]:
         _empty_alerts_payload(),
         quality_flag="warning",
         vendor_status="vendor_unavailable",
-        source_version="sv_exec_dashboard_explicit_miss_v1",
+        source_version=_MISS_SOURCE,
     )
 
 
@@ -1106,7 +1057,7 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
                 _empty_alerts_payload(),
                 quality_flag="warning",
                 vendor_status="vendor_unavailable",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
+                source_version=_MISS_SOURCE,
             )
         report_date_value = date.fromisoformat(normalized_report_date)
         rows = repo.fetch_bond_analytics_rows(report_date=report_date_value.isoformat())
@@ -1124,8 +1075,8 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
             for entry in raw
         ]
         payload = AlertsPayload(title="预警与事件", items=items)
-        alerts_source_version = "sv_exec_dashboard_v1"
-        alerts_rule_version = "rv_exec_dashboard_v1"
+        alerts_source_version = _DEFAULT_SOURCE
+        alerts_rule_version = _DEFAULT_RULE
         if governance_dir:
             lineage = load_latest_bond_analytics_lineage(
                 governance_dir=governance_dir,
@@ -1153,7 +1104,7 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
                 _empty_alerts_payload(),
                 quality_flag="warning",
                 vendor_status="vendor_unavailable",
-                source_version="sv_exec_dashboard_explicit_miss_v1",
+                source_version=_MISS_SOURCE,
             )
         return _fallback_executive_alerts()
 
