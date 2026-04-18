@@ -18,6 +18,7 @@ import {
   pathMatchesWorkbenchSection,
   primaryWorkbenchNavigationGroups,
   resolveWorkbenchGroupKey,
+  resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
@@ -97,6 +98,7 @@ function groupSectionPillStyle(active: boolean) {
 
 export function WorkbenchShell() {
   const location = useLocation();
+  const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
   const currentGroup =
     primaryWorkbenchNavigationGroups.find(
@@ -270,7 +272,7 @@ export function WorkbenchShell() {
             Reserved Modules
           </div>
           {secondaryWorkbenchNavigation.map((item) => {
-            const active = pathMatchesWorkbenchSection(item.path, location.pathname);
+            const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
 
             return (
               <NavLink
@@ -429,7 +431,7 @@ export function WorkbenchShell() {
 
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
               {currentGroupSections.map((section) => {
-                const active = pathMatchesWorkbenchSection(section.path, location.pathname);
+                const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
                 return (
                   <NavLink

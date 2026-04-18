@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  findWorkbenchSectionByPath,
   primaryWorkbenchNavigationGroups,
   primaryWorkbenchNavigation,
   resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
+  workbenchPathAliases,
 } from "../mocks/navigation";
 
 describe("workbench navigation mocks", () => {
@@ -199,6 +201,32 @@ describe("workbench navigation mocks", () => {
       expect(group.sections.some((section) => section.path === group.defaultPath)).toBe(
         true,
       );
+    }
+  });
+
+  it("resolves MOSS-V1-style paths to the canonical V3 workbench routes", () => {
+    expect(resolveWorkbenchPathAlias("/adb")).toBe("/average-balance");
+    expect(resolveWorkbenchPathAlias("/macro-analysis")).toBe("/market-data");
+    expect(resolveWorkbenchPathAlias("/pnl-by-business")).toBe("/ledger-pnl");
+    expect(resolveWorkbenchPathAlias("/liabilities")).toBe("/liability-analytics");
+    expect(resolveWorkbenchPathAlias("/bonds")).toBe("/bond-dashboard");
+    expect(resolveWorkbenchPathAlias("/bond-analytics-advanced")).toBe("/bond-analysis");
+    expect(resolveWorkbenchPathAlias("/average-balance")).toBe("/average-balance");
+  });
+
+  it("maps aliased paths to the same section as their canonical target", () => {
+    const adb = workbenchNavigation.find((s) => s.key === "average-balance");
+    expect(adb).toBeDefined();
+    expect(findWorkbenchSectionByPath("/adb", workbenchNavigation).key).toBe("average-balance");
+    expect(findWorkbenchSectionByPath("/average-balance", workbenchNavigation).key).toBe(
+      "average-balance",
+    );
+  });
+
+  it("keeps every workbenchPathAliases value as a real navigation path", () => {
+    const paths = new Set(workbenchNavigation.map((s) => s.path));
+    for (const target of Object.values(workbenchPathAliases)) {
+      expect(paths.has(target)).toBe(true);
     }
   });
 });
