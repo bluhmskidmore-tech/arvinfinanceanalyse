@@ -7,6 +7,7 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { DashboardBondHeadlineSection } from "../../executive-dashboard/components/DashboardBondHeadlineSection";
 import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
 import { DashboardMacroSpotSection } from "../../executive-dashboard/components/DashboardMacroSpotSection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
@@ -322,6 +323,8 @@ export default function DashboardPage() {
         <DashboardNewsDigestSection />
 
         <DashboardMacroSpotSection />
+
+        <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
 
         <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
 
