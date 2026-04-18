@@ -6,7 +6,8 @@ import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 
 import { useApiClient } from "../../api/client";
-import type { PnlBasis, PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
+import type { LiabilityYieldKpi, Numeric, PnlBasis, PnlFormalFiRow, PnlNonStdBridgeRow } from "../../api/contracts";
+import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
@@ -199,7 +200,26 @@ function withNumericFormatters<T>(defs: ColDef<T>[]): ColDef<T>[] {
   );
 }
 
-type DataTab = "fi" | "nonstd";
+type DataTab = "fi" | "nonstd" | "yield";
+
+function formatYieldNumeric(value: Numeric | null | undefined) {
+  if (value == null) {
+    return "—";
+  }
+  return formatNumeric(value);
+}
+
+function isYieldKpiAllNull(kpi: LiabilityYieldKpi | null | undefined) {
+  if (!kpi) {
+    return true;
+  }
+  return (
+    kpi.asset_yield == null &&
+    kpi.liability_cost == null &&
+    kpi.market_liability_cost == null &&
+    kpi.nim == null
+  );
+}
 
 export default function PnlPage() {
   const client = useApiClient();
@@ -267,6 +287,13 @@ export default function PnlPage() {
     retry: false,
   });
 
+  const yieldQuery = useQuery({
+    queryKey: ["pnl", "yield-metrics", client.mode, selectedReportDate],
+    enabled: Boolean(selectedReportDate) && dataTab === "yield",
+    queryFn: () => client.getLiabilityYieldMetrics(selectedReportDate),
+    retry: false,
+  });
+
   const overview = overviewQuery.data?.result;
   const formalRows = dataQuery.data?.result.formal_fi_rows ?? [];
   const nonstdRows = dataQuery.data?.result.nonstd_bridge_rows ?? [];
@@ -290,15 +317,28 @@ export default function PnlPage() {
     !dataQuery.isError &&
     (!selectedReportDate || (formalRows.length === 0 && nonstdRows.length === 0));
 
+  const yieldKpi = yieldQuery.data?.kpi ?? null;
+  const yieldLoading = Boolean(selectedReportDate) && dataTab === "yield" && yieldQuery.isLoading;
+  const yieldError = dataTab === "yield" && yieldQuery.isError;
+  const yieldEmpty =
+    dataTab === "yield" &&
+    !yieldQuery.isLoading &&
+    !yieldQuery.isError &&
+    isYieldKpiAllNull(yieldKpi);
+
+  const detailLoading = dataTab === "yield" ? yieldLoading : dataLoading;
+  const detailError = dataTab === "yield" ? yieldError : dataError;
+  const detailEmpty = dataTab === "yield" ? yieldEmpty : dataEmpty;
+
   const overviewState = resolvePnlSectionState({
     isLoading: overviewLoading,
     isError: overviewError,
     isEmpty: overviewEmpty,
   });
   const dataState = resolvePnlSectionState({
-    isLoading: dataLoading,
-    isError: dataError,
-    isEmpty: dataEmpty,
+    isLoading: detailLoading,
+    isError: detailError,
+    isEmpty: detailEmpty,
   });
 
   const reportDatePlaceholder = datesQuery.isLoading
@@ -323,6 +363,9 @@ export default function PnlPage() {
         onClick={() => setDataTab("nonstd")}
       >
         非标桥接
+      </button>
+      <button type="button" style={tabButtonStyle(dataTab === "yield")} onClick={() => setDataTab("yield")}>
+        收益与息差
       </button>
     </div>
   );
@@ -532,17 +575,25 @@ export default function PnlPage() {
       <div data-testid="pnl-data-section" data-state={dataState} style={{ marginTop: 24 }}>
         <SectionLead
           eyebrow="Details"
-          title="正式明细与非标桥接"
-          description="FI 明细和非标桥接共用当前报告日，保留原有 tab、AG Grid 和分页行为，不改变正式 PnL 契约。"
+          title={dataTab === "yield" ? "收益与息差（分析口径）" : "正式明细与非标桥接"}
+          description={
+            dataTab === "yield"
+              ? "与 V1 收益管理同源接口 `/api/analysis/yield_metrics`（经 `getLiabilityYieldMetrics`），仅展示后端返回的 KPI Numeric；不含 V1 历史曲线/散点等未暴露端点。"
+              : "FI 明细和非标桥接共用当前报告日，保留原有 tab、AG Grid 和分页行为，不改变正式 PnL 契约。"
+          }
         />
         <AsyncSection
           title="明细数据"
           extra={dataTabExtra}
-          isLoading={dataLoading}
-          isError={dataError}
-          isEmpty={dataEmpty}
+          isLoading={detailLoading}
+          isError={detailError}
+          isEmpty={detailEmpty}
           onRetry={() => {
-            void Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
+            if (dataTab === "yield") {
+              void yieldQuery.refetch();
+            } else {
+              void Promise.all([datesQuery.refetch(), dataQuery.refetch()]);
+            }
           }}
         >
           {dataTab === "fi" ? (
@@ -559,7 +610,7 @@ export default function PnlPage() {
                 }
               />
             </div>
-          ) : (
+          ) : dataTab === "nonstd" ? (
             <div className="ag-theme-alpine" data-testid="pnl-nonstd-bridge-table" style={agGridShellStyle}>
               <AgGridReact<PnlNonStdBridgeRow>
                 rowData={nonstdRows}
@@ -571,6 +622,33 @@ export default function PnlPage() {
                 getRowId={(params) =>
                   `${String(params.data.trace_id)}-${String(params.data.bond_code)}-${String(params.data.report_date)}`
                 }
+              />
+            </div>
+          ) : (
+            <div data-testid="pnl-yield-kpi-grid" style={summaryGridStyle}>
+              <KpiCard
+                title="资产收益率"
+                value={formatYieldNumeric(yieldKpi?.asset_yield ?? null)}
+                detail="后端 `kpi.asset_yield`（Numeric.display）。"
+                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.asset_yield ?? null))}
+              />
+              <KpiCard
+                title="负债成本"
+                value={formatYieldNumeric(yieldKpi?.liability_cost ?? null)}
+                detail="后端 `kpi.liability_cost`。"
+                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.liability_cost ?? null))}
+              />
+              <KpiCard
+                title="市场负债成本"
+                value={formatYieldNumeric(yieldKpi?.market_liability_cost ?? null)}
+                detail="后端 `kpi.market_liability_cost`。"
+                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.market_liability_cost ?? null))}
+              />
+              <KpiCard
+                title="净息差 (NIM)"
+                value={formatYieldNumeric(yieldKpi?.nim ?? null)}
+                detail="后端 `kpi.nim`。"
+                tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.nim ?? null))}
               />
             </div>
           )}
