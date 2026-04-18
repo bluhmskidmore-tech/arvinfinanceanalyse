@@ -53,6 +53,7 @@ def _meta_ok(result_kind: str):
         cache_version=CACHE_VERSION,
         source_version=SOURCE_VERSION,
         rule_version=RULE_VERSION,
+        source_surface="formal_attribution",
     )
 
 
@@ -64,6 +65,7 @@ def _meta_warn(result_kind: str):
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="warning",
+        source_surface="formal_attribution",
     )
 
 

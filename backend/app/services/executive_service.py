@@ -73,6 +73,7 @@ def _envelope(
         fallback_mode=fallback_mode,
         filters_applied=filters_applied,
         result_payload=result.model_dump(mode="json"),
+        source_surface="executive_analytical",
     )
 
 

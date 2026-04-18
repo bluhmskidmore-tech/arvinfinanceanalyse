@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Literal
 
-from backend.app.schemas.result_meta import ResultMeta
+from backend.app.schemas.result_meta import ResultMeta, SourceSurface
 
 ResultBasis = Literal["formal", "scenario", "analytical"]
 QualityFlag = Literal["ok", "warning", "error", "stale"]
@@ -41,6 +41,7 @@ def _build_result_meta(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
     return ResultMeta(
@@ -60,6 +61,7 @@ def _build_result_meta(
         tables_used=list(tables_used or []),
         evidence_rows=evidence_rows,
         next_drill=list(next_drill or []),
+        source_surface=source_surface,
     )
 
 
@@ -78,6 +80,7 @@ def build_analytical_result_meta(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="analytical",
@@ -94,6 +97,7 @@ def build_analytical_result_meta(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         next_drill=next_drill,
+        source_surface=source_surface,
     )
 
 
@@ -112,6 +116,7 @@ def build_scenario_result_meta(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="scenario",
@@ -128,6 +133,7 @@ def build_scenario_result_meta(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         next_drill=next_drill,
+        source_surface=source_surface,
     )
 
 
@@ -146,6 +152,7 @@ def build_formal_result_meta(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="formal",
@@ -162,6 +169,7 @@ def build_formal_result_meta(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         next_drill=next_drill,
+        source_surface=source_surface,
     )
 
 
@@ -180,6 +188,7 @@ def build_formal_result_meta_from_lineage(
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
     missing_field_message: LineageFieldMessageBuilder | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     return build_formal_result_meta(
         trace_id=trace_id,
@@ -220,6 +229,7 @@ def build_formal_result_meta_from_lineage(
         quality_flag=quality_flag,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        source_surface=source_surface,
     )
 
 
@@ -317,6 +327,7 @@ def build_result_envelope(
     tables_used: list[str] | None = None,
     evidence_rows: int | None = None,
     next_drill: list[str | dict[str, object]] | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> dict[str, object]:
     meta = _build_result_meta(
         basis=basis,
@@ -333,6 +344,7 @@ def build_result_envelope(
         tables_used=tables_used,
         evidence_rows=evidence_rows,
         next_drill=next_drill,
+        source_surface=source_surface,
     )
     return build_formal_result_envelope(
         result_meta=meta,

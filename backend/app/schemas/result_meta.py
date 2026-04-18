@@ -1,8 +1,18 @@
 from datetime import datetime, timezone
-from typing import Any
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+SourceSurface = Literal[
+    "executive_analytical",
+    "formal_attribution",
+    "formal_pnl",
+    "formal_balance",
+    "formal_liability",
+    "bond_analytics",
+    "risk_tensor",
+]
 
 
 class ResultMeta(BaseModel):
@@ -23,3 +33,4 @@ class ResultMeta(BaseModel):
     tables_used: list[str] = Field(default_factory=list)
     evidence_rows: int | None = None
     next_drill: list[str | dict[str, Any]] = Field(default_factory=list)
+    source_surface: SourceSurface | None = None
