@@ -8,6 +8,7 @@ import type { LiabilityYieldKpi } from "../../../api/contracts";
 import { adaptLiabilityCounterparty } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";
+import { LiabilityMonthlySnapshotCards } from "../components/LiabilityMonthlySnapshotCards";
 import { LiabilityNimStressMonthlyPanel } from "../components/LiabilityNimStressMonthlyPanel";
 import { LiabilityNimStressPanel } from "../components/LiabilityNimStressPanel";
 import { LiabilityStructureGrids } from "../components/LiabilityStructureGrids";
@@ -158,6 +159,25 @@ export default function LiabilityAnalyticsPage() {
       value: numericYuanRaw(x.avg_value ?? null),
     }));
   }, [selectedMonthData?.by_institution_type]);
+
+  /** 与 V1 一致：柱状图优先使用后端给出的 `counterparty_top10` 顺序与集合。 */
+  const monthlyCpBarRows = useMemo((): LiabilityCpRow[] | undefined => {
+    const top10 = selectedMonthData?.counterparty_top10;
+    if (!top10?.length || !selectedMonthData) {
+      return undefined;
+    }
+    const total = mCpTotal;
+    return top10.map((it) => {
+      const valueYuan = numericYuanRaw(it.avg_value ?? null);
+      return {
+        name: it.name ?? "",
+        valueYuan,
+        pct: total > 0 ? (valueYuan / total) * 100 : 0,
+        type: it.type ?? "",
+        weightedCost: numericPctRaw(it.weighted_cost ?? null),
+      };
+    });
+  }, [mCpTotal, selectedMonthData]);
 
   const dailyStructure = useMemo(() => {
     const raw = riskQuery.data?.liabilities_structure ?? [];
@@ -431,12 +451,18 @@ export default function LiabilityAnalyticsPage() {
                   description={(adbMonthlyQuery.error as Error)?.message ?? "请求失败"}
                 />
               ) : null}
+              <LiabilityMonthlySnapshotCards
+                month={selectedMonthData}
+                ytdAvgTotalLiabilities={monthlyQuery.data?.ytd_avg_total_liabilities ?? null}
+                ytdAvgLiabilityCost={monthlyQuery.data?.ytd_avg_liability_cost ?? null}
+              />
               <LiabilityNimStressMonthlyPanel adbMonth={selectedAdbMonthData} />
               <LiabilityCounterpartyBlock
                 title="资金来源依赖度（Top 10 对手方）"
                 subtitle="口径：月度日均（TYWL 负债端）。"
                 totalValueYuan={mCpTotal}
                 counterpartyRows={monthlyCpRowsAll}
+                barRankingRows={monthlyCpBarRows}
                 byType={monthlyByInstitution}
                 loading={false}
                 errorText={null}
@@ -448,6 +474,7 @@ export default function LiabilityAnalyticsPage() {
                 interbankTerm={mIbTerm}
                 issuedStructure={mIssuedStructure}
                 issuedTerm={mIssuedTerm}
+                structurePieCaption="同业负债业务结构（按产品类型）与发行负债业务结构（按业务种类）在总视图中的合并展示。"
               />
               <LiabilityCustomerTable
                 rows={monthlyCpRowsAll}
