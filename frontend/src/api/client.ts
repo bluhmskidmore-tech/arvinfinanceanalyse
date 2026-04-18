@@ -168,7 +168,7 @@ export type DataSourceMode = "mock" | "real";
 export type ApiClient = {
   mode: DataSourceMode;
   getHealth: () => Promise<HealthResponse>;
-  getOverview: () => Promise<ApiEnvelope<OverviewPayload>>;
+  getOverview: (reportDate?: string) => Promise<ApiEnvelope<OverviewPayload>>;
   getSummary: () => Promise<ApiEnvelope<SummaryPayload>>;
   getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
@@ -188,7 +188,7 @@ export type ApiClient = {
   getPnlBridge: (reportDate: string) => Promise<ApiEnvelope<PnlBridgePayload>>;
   refreshFormalPnl: (reportDate?: string) => Promise<FormalPnlRefreshPayload>;
   getFormalPnlImportStatus: (runId?: string) => Promise<FormalPnlRefreshPayload>;
-  getPnlAttribution: () => Promise<ApiEnvelope<PnlAttributionPayload>>;
+  getPnlAttribution: (reportDate?: string) => Promise<ApiEnvelope<PnlAttributionPayload>>;
   getVolumeRateAttribution: (options?: {
     reportDate?: string;
     compareType?: "mom" | "yoy";
@@ -2298,7 +2298,27 @@ const normalizeBaseUrl = (value?: string) =>
 const parseEnvMode = (): DataSourceMode => {
   const raw = import.meta.env.VITE_DATA_SOURCE;
   const envValue = typeof raw === "string" ? raw.trim().toLowerCase() : "";
-  return envValue === "real" ? "real" : "mock";
+
+  if (envValue === "real") return "real";
+  if (envValue === "mock") return "mock";
+
+  // Not explicitly set (or invalid value)
+  const isProd = import.meta.env.PROD === true;
+  if (isProd) {
+    throw new Error(
+      "VITE_DATA_SOURCE must be explicitly set to 'real' or 'mock' in production build. " +
+        "Refusing to silently fall back to mock. " +
+        "See docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 9.1.",
+    );
+  }
+
+  // dev / test: default to mock with warning
+  console.warn(
+    "[client] VITE_DATA_SOURCE not set (raw=%o). Defaulting to 'mock' in dev mode. " +
+      "Production build will fail fast; always declare explicitly in production.",
+    raw,
+  );
+  return "mock";
 };
 
 const parseBaseUrl = () => {
@@ -3224,7 +3244,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return { status: "ok" };
     },
-    async getOverview() {
+    async getOverview(_reportDate?: string) {
       await delay();
       return buildMockApiEnvelope("executive.overview", overviewPayload);
     },
@@ -3363,7 +3383,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         source_version: "sv_mock_dashboard_v2",
       };
     },
-    async getPnlAttribution() {
+    async getPnlAttribution(_reportDate?: string) {
       await delay();
       return buildMockApiEnvelope("executive.pnl-attribution", pnlAttributionPayload);
     },
@@ -5383,8 +5403,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
       return (await response.json()) as HealthResponse;
     },
-    getOverview: () =>
-      requestJson<OverviewPayload>(fetchImpl, baseUrl, "/ui/home/overview"),
+    getOverview: (reportDate?: string) =>
+      requestJson<OverviewPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/home/overview${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
+      ),
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: (basis = "formal") =>
@@ -5458,11 +5482,11 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           ? `/api/data/import_status/pnl?run_id=${encodeURIComponent(runId)}`
           : "/api/data/import_status/pnl",
       ),
-    getPnlAttribution: () =>
+    getPnlAttribution: (reportDate?: string) =>
       requestJson<PnlAttributionPayload>(
         fetchImpl,
         baseUrl,
-        "/ui/pnl/attribution",
+        `/ui/pnl/attribution${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
       ),
     getVolumeRateAttribution: (options) => {
       const params = new URLSearchParams();
