@@ -1,4 +1,19 @@
 /** Shared API surface: envelope, health, and cross-cutting enums. */
+/**
+ * Shared governed numeric primitive.
+ * Mirrors backend ``backend/app/schemas/common_numeric.py::Numeric``.
+ * See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 3.
+ */
+export type NumericUnit = "yuan" | "pct" | "bp" | "ratio" | "count" | "dv01" | "yi";
+
+export type Numeric = {
+  raw: number | null;
+  unit: NumericUnit;
+  display: string;
+  precision: number;
+  sign_aware: boolean;
+};
+
 export type ApiBasis = "formal" | "scenario" | "analytical" | "mock";
 export type PnlBasis = "formal" | "analytical";
 export type ApiQuality = "ok" | "warning" | "error" | "stale";
