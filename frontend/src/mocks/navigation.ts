@@ -241,7 +241,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "债券总览",
     path: "/bond-dashboard",
     icon: "bond",
-    description: "债券投资组合驾驶舱 — KPI、结构、风险一览",
+    description: "承接 V1「/bonds」书签；债券组合 KPI、结构、风险一览。",
     readiness: "live",
     readinessLabel: "Live",
     readinessNote: "已接 /api/bond-dashboard 聚合读链路。",
