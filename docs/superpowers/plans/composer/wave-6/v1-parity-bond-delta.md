@@ -14,7 +14,7 @@
 | 到期剩余期限分桶（市值） | `MaturityStructureChart` | `getBondDashboardMaturityStructure` | ✅ 已实现 | `frontend/src/features/bond-dashboard/components/MaturityStructureChart.tsx` |
 | 收益率/期限桶分布（柱状） | `YieldDistributionBar`（收益率 Tab + 期限 Tab） | `getBondDashboardYieldDistribution` + `getBondDashboardAssetStructure(..., tenor_bucket)` | ✅ 已实现 | `frontend/src/features/bond-dashboard/components/YieldDistributionBar.tsx` |
 | 现金流/久期/利率风险桶（亿元，`/api/risk/buckets`） | 无同款三柱图组合 | 无 `getRiskBuckets` 等封装 | ⏭️ 跳过 | — |
-| TopN 重仓表（可选 10–100） | `TopHoldingsView`（原默认 20，可扩展交互） | `getBondAnalyticsTopHoldings` | 🔁 增强 | `frontend/src/features/bond-analytics/components/TopHoldingsView.tsx` |
+| TopN 重仓表（可选 10–100） | `TopHoldingsView`（10/20/30/50/100 选择器） | `getBondAnalyticsTopHoldings` | ✅ 已实现 | `frontend/src/features/bond-analytics/components/TopHoldingsView.tsx` |
 | 业务种类加权利率与加权久期表 | `IndustryTable` 为行业分布，非业务种类 YTM/久期矩阵 | `getBondDashboardIndustryDistribution` | ⏭️ 跳过（缺 `business_type_metrics` 端点） | — |
 | 信用等级分布块 | `CreditRatingBlocks` | `getBondDashboardAssetStructure(..., rating)` | ✅ 已实现 | `frontend/src/features/bond-dashboard/components/CreditRatingBlocks.tsx` |
 | 组合对比、利差、风险指标列表 | `PortfolioTable` / `SpreadTable` / `RiskIndicatorsPanel` | `getBondDashboardPortfolioComparison` / `getBondDashboardSpreadAnalysis` / `getBondDashboardRiskIndicators` | ✅ 已实现 | 对应 `bond-dashboard/components/*.tsx` |
@@ -32,8 +32,8 @@
 ## 统计摘要
 
 - V1 可识别主模块：**20** 行（上表）
-- ✅ 已在 V3 落地：**11**
-- 🔁 需增强或形态差异：**4**
+- ✅ 已在 V3 落地：**12**
+- 🔁 需增强或形态差异：**3**
 - ⏭️ 缺端点或不在当前 client：**5**
 
 ## 本迭代实施边界
