@@ -10,7 +10,7 @@ vi.mock("../lib/echarts", () => ({
 
 import * as pollingModule from "../app/jobs/polling";
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
-import type { PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
+import type { Numeric, PnlBridgePayload, PnlDatesPayload, ResultMeta } from "../api/contracts";
 import PnlBridgePage from "../features/pnl/PnlBridgePage";
 
 function renderPnlBridgePage(client: ApiClient) {
@@ -38,6 +38,10 @@ function renderPnlBridgePage(client: ApiClient) {
   );
 }
 
+function bridgeYuan(raw: number, display: string, signAware = true): Numeric {
+  return { raw, unit: "yuan", display, precision: 2, sign_aware: signAware };
+}
+
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
     trace_id: traceId,
@@ -56,7 +60,7 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
   };
 }
 
-function buildBridgePayload(reportDate: string, instrumentCode: string, totalActualPnl: string): PnlBridgePayload {
+function buildBridgePayload(reportDate: string, instrumentCode: string, totalActualPnlDisplay: string): PnlBridgePayload {
   return {
     report_date: reportDate,
     warnings: ["Residual spike on instrument IC-1", "Curve shock coverage incomplete"],
@@ -65,19 +69,19 @@ function buildBridgePayload(reportDate: string, instrumentCode: string, totalAct
       ok_count: 2,
       warning_count: 1,
       error_count: 0,
-      total_beginning_dirty_mv: "100",
-      total_ending_dirty_mv: "110",
-      total_carry: "1.1",
-      total_roll_down: "2.2",
-      total_treasury_curve: "3.3",
-      total_credit_spread: "-0.5",
-      total_fx_translation: "0.25",
-      total_realized_trading: "4",
-      total_unrealized_fv: "5",
-      total_manual_adjustment: "0.1",
-      total_explained_pnl: "15.45",
-      total_actual_pnl: totalActualPnl,
-      total_residual: "0.05",
+      total_beginning_dirty_mv: bridgeYuan(100, "100", false),
+      total_ending_dirty_mv: bridgeYuan(110, "110", false),
+      total_carry: bridgeYuan(1.1, "1.1"),
+      total_roll_down: bridgeYuan(2.2, "2.2"),
+      total_treasury_curve: bridgeYuan(3.3, "3.3"),
+      total_credit_spread: bridgeYuan(-0.5, "-0.5"),
+      total_fx_translation: bridgeYuan(0.25, "0.25"),
+      total_realized_trading: bridgeYuan(4, "4"),
+      total_unrealized_fv: bridgeYuan(5, "5"),
+      total_manual_adjustment: bridgeYuan(0.1, "0.1"),
+      total_explained_pnl: bridgeYuan(15.45, "15.45"),
+      total_actual_pnl: bridgeYuan(Number(totalActualPnlDisplay), totalActualPnlDisplay),
+      total_residual: bridgeYuan(0.05, "0.05"),
       quality_flag: "warning",
     },
     rows: [
@@ -86,18 +90,18 @@ function buildBridgePayload(reportDate: string, instrumentCode: string, totalAct
         instrument_code: instrumentCode,
         portfolio_name: "Bridge Desk",
         accounting_basis: "FVOCI",
-        carry: "1",
-        roll_down: "0",
-        treasury_curve: "0",
-        credit_spread: "0",
-        fx_translation: "0",
-        realized_trading: "2",
-        unrealized_fv: "3",
-        manual_adjustment: "0",
-        explained_pnl: "6",
-        actual_pnl: "5.9",
-        residual: "0.1",
-        residual_ratio: "0.02",
+        carry: bridgeYuan(1, "1"),
+        roll_down: bridgeYuan(0, "0"),
+        treasury_curve: bridgeYuan(0, "0"),
+        credit_spread: bridgeYuan(0, "0"),
+        fx_translation: bridgeYuan(0, "0"),
+        realized_trading: bridgeYuan(2, "2"),
+        unrealized_fv: bridgeYuan(3, "3"),
+        manual_adjustment: bridgeYuan(0, "0"),
+        explained_pnl: bridgeYuan(6, "6"),
+        actual_pnl: bridgeYuan(5.9, "5.9"),
+        residual: bridgeYuan(0.1, "0.1"),
+        residual_ratio: { raw: 0.02, unit: "pct", display: "0.02%", precision: 2, sign_aware: true },
         quality_flag: "warning",
       },
     ],

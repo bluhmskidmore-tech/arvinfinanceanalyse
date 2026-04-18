@@ -7,6 +7,7 @@ vi.mock("../lib/echarts", () => ({
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type {
+  Numeric,
   PnlBridgePayload,
   PnlDataPayload,
   PnlDatesPayload,
@@ -14,6 +15,10 @@ import type {
   ResultMeta,
 } from "../api/contracts";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+function bridgeYuan(raw: number, display: string, signAware = true): Numeric {
+  return { raw, unit: "yuan", display, precision: 2, sign_aware: signAware };
+}
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
@@ -82,19 +87,19 @@ function buildPnlClient(): ApiClient {
       ok_count: 1,
       warning_count: 0,
       error_count: 0,
-      total_beginning_dirty_mv: "100.00",
-      total_ending_dirty_mv: "110.00",
-      total_carry: "1.00",
-      total_roll_down: "0.00",
-      total_treasury_curve: "0.00",
-      total_credit_spread: "0.00",
-      total_fx_translation: "0.00",
-      total_realized_trading: "2.00",
-      total_unrealized_fv: "3.00",
-      total_manual_adjustment: "0.00",
-      total_explained_pnl: "6.00",
-      total_actual_pnl: "6.00",
-      total_residual: "0.00",
+      total_beginning_dirty_mv: bridgeYuan(100, "100.00", false),
+      total_ending_dirty_mv: bridgeYuan(110, "110.00", false),
+      total_carry: bridgeYuan(1, "1.00"),
+      total_roll_down: bridgeYuan(0, "0.00"),
+      total_treasury_curve: bridgeYuan(0, "0.00"),
+      total_credit_spread: bridgeYuan(0, "0.00"),
+      total_fx_translation: bridgeYuan(0, "0.00"),
+      total_realized_trading: bridgeYuan(2, "2.00"),
+      total_unrealized_fv: bridgeYuan(3, "3.00"),
+      total_manual_adjustment: bridgeYuan(0, "0.00"),
+      total_explained_pnl: bridgeYuan(6, "6.00"),
+      total_actual_pnl: bridgeYuan(6, "6.00"),
+      total_residual: bridgeYuan(0, "0.00"),
       quality_flag: "ok",
     },
     rows: [
@@ -103,18 +108,18 @@ function buildPnlClient(): ApiClient {
         instrument_code: "240001.IB",
         portfolio_name: "Route Bridge",
         accounting_basis: "FVTPL",
-        carry: "1.00",
-        roll_down: "0.00",
-        treasury_curve: "0.00",
-        credit_spread: "0.00",
-        fx_translation: "0.00",
-        realized_trading: "2.00",
-        unrealized_fv: "3.00",
-        manual_adjustment: "0.00",
-        explained_pnl: "6.00",
-        actual_pnl: "6.00",
-        residual: "0.00",
-        residual_ratio: "0.00",
+        carry: bridgeYuan(1, "1.00"),
+        roll_down: bridgeYuan(0, "0.00"),
+        treasury_curve: bridgeYuan(0, "0.00"),
+        credit_spread: bridgeYuan(0, "0.00"),
+        fx_translation: bridgeYuan(0, "0.00"),
+        realized_trading: bridgeYuan(2, "2.00"),
+        unrealized_fv: bridgeYuan(3, "3.00"),
+        manual_adjustment: bridgeYuan(0, "0.00"),
+        explained_pnl: bridgeYuan(6, "6.00"),
+        actual_pnl: bridgeYuan(6, "6.00"),
+        residual: bridgeYuan(0, "0.00"),
+        residual_ratio: { raw: 0, unit: "pct", display: "0.00%", precision: 2, sign_aware: true },
         quality_flag: "ok",
       },
     ],

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card } from "antd";
 import { AgGridReact } from "ag-grid-react";
-import type { CellClassParams, ColDef, ValueFormatterParams } from "ag-grid-community";
+import type { CellClassParams, ColDef } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
@@ -11,13 +11,14 @@ import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
-import type { PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
-import { formatWan } from "../bond-analytics/utils/formatters";
+import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
 import { shellTokens } from "../../theme/tokens";
+import { toneFromNumeric } from "../../utils/tone";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
-import { pnlSurfaceQualityToTone, toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
+import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
+import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
 import {
   pnlActionButtonStyle,
   resolvePnlSectionState,
@@ -133,34 +134,29 @@ const TRANSPARENT_BAR = {
   borderWidth: 0,
 } as const;
 
-function chartAxisNumber(value: string): number {
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : 0;
-}
-
 function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   const displayStrings = [
-    summary.total_carry,
-    summary.total_roll_down,
-    summary.total_treasury_curve,
-    summary.total_credit_spread,
-    summary.total_fx_translation,
-    summary.total_realized_trading,
-    summary.total_unrealized_fv,
-    summary.total_manual_adjustment,
-    summary.total_explained_pnl,
-    summary.total_actual_pnl,
+    summary.total_carry.display,
+    summary.total_roll_down.display,
+    summary.total_treasury_curve.display,
+    summary.total_credit_spread.display,
+    summary.total_fx_translation.display,
+    summary.total_realized_trading.display,
+    summary.total_unrealized_fv.display,
+    summary.total_manual_adjustment.display,
+    summary.total_explained_pnl.display,
+    summary.total_actual_pnl.display,
   ];
 
   const stepValues = [
-    chartAxisNumber(summary.total_carry),
-    chartAxisNumber(summary.total_roll_down),
-    chartAxisNumber(summary.total_treasury_curve),
-    chartAxisNumber(summary.total_credit_spread),
-    chartAxisNumber(summary.total_fx_translation),
-    chartAxisNumber(summary.total_realized_trading),
-    chartAxisNumber(summary.total_unrealized_fv),
-    chartAxisNumber(summary.total_manual_adjustment),
+    summary.total_carry.raw ?? 0,
+    summary.total_roll_down.raw ?? 0,
+    summary.total_treasury_curve.raw ?? 0,
+    summary.total_credit_spread.raw ?? 0,
+    summary.total_fx_translation.raw ?? 0,
+    summary.total_realized_trading.raw ?? 0,
+    summary.total_unrealized_fv.raw ?? 0,
+    summary.total_manual_adjustment.raw ?? 0,
   ];
 
   const helperRaw: number[] = [];
@@ -183,11 +179,11 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
   }
 
   helperRaw.push(0);
-  valueRaw.push(chartAxisNumber(summary.total_explained_pnl));
+  valueRaw.push(summary.total_explained_pnl.raw ?? 0);
   barColors.push("#1f5eff");
 
   helperRaw.push(0);
-  valueRaw.push(chartAxisNumber(summary.total_actual_pnl));
+  valueRaw.push(summary.total_actual_pnl.raw ?? 0);
   barColors.push("#1f5eff");
 
   return {
@@ -199,7 +195,7 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
         const bar = list.find((item: { seriesName?: string }) => item.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = BRIDGE_CATEGORIES[idx] ?? "";
-        return `${label}<br/>${formatWan(String(displayStrings[idx] ?? "0"))}`;
+        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 44, containLabel: true },
@@ -257,24 +253,21 @@ function SectionLead(props: {
   );
 }
 
-function thousandsValueFormatter(params: ValueFormatterParams) {
-  const value = params.value;
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  const numeric = Number(String(value).replace(/,/g, ""));
-  if (!Number.isFinite(numeric)) {
-    return String(value);
-  }
-  return numeric.toLocaleString("zh-CN");
-}
-
-function fxTranslationValueFormatter(params: ValueFormatterParams) {
-  const value = params.value;
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  return formatWan(String(value).replace(/,/g, ""));
+function numericNumericCol(
+  field: keyof PnlBridgeRow,
+  headerName: string,
+  width: number,
+  extra?: Partial<ColDef<PnlBridgeRow>>,
+): ColDef<PnlBridgeRow> {
+  return {
+    field,
+    headerName,
+    width,
+    type: "numericColumn",
+    valueGetter: (params) => (params.data?.[field] as Numeric | undefined)?.raw ?? null,
+    valueFormatter: (params) => (params.data?.[field] as Numeric | undefined)?.display ?? "—",
+    ...extra,
+  };
 }
 
 const bridgeGridDefaultColDef: ColDef = {
@@ -287,25 +280,19 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
   { field: "portfolio_name", headerName: "组合", width: 120 },
   { field: "accounting_basis", headerName: "会计分类", width: 100 },
-  { field: "beginning_dirty_mv", headerName: "期初脏价市值", width: 140, type: "numericColumn" },
-  { field: "ending_dirty_mv", headerName: "期末脏价市值", width: 140, type: "numericColumn" },
-  { field: "carry", headerName: "Carry", width: 110, type: "numericColumn" },
-  { field: "roll_down", headerName: "Roll-down", width: 110, type: "numericColumn" },
-  { field: "treasury_curve", headerName: "国债曲线", width: 110, type: "numericColumn" },
-  { field: "credit_spread", headerName: "信用利差", width: 110, type: "numericColumn" },
-  {
-    field: "fx_translation",
-    headerName: "汇兑效应",
-    width: 110,
-    type: "numericColumn",
-    valueFormatter: fxTranslationValueFormatter,
-  },
-  { field: "realized_trading", headerName: "已实现交易", width: 120, type: "numericColumn" },
-  { field: "unrealized_fv", headerName: "未实现公允", width: 120, type: "numericColumn" },
-  { field: "manual_adjustment", headerName: "手工调整", width: 120, type: "numericColumn" },
-  { field: "explained_pnl", headerName: "可解释损益", width: 130, type: "numericColumn" },
-  { field: "actual_pnl", headerName: "实际损益", width: 120, type: "numericColumn" },
-  { field: "residual", headerName: "残差", width: 100, type: "numericColumn" },
+  numericNumericCol("beginning_dirty_mv", "期初脏价市值", 140),
+  numericNumericCol("ending_dirty_mv", "期末脏价市值", 140),
+  numericNumericCol("carry", "Carry", 110),
+  numericNumericCol("roll_down", "Roll-down", 110),
+  numericNumericCol("treasury_curve", "国债曲线", 110),
+  numericNumericCol("credit_spread", "信用利差", 110),
+  numericNumericCol("fx_translation", "汇兑效应", 110),
+  numericNumericCol("realized_trading", "已实现交易", 120),
+  numericNumericCol("unrealized_fv", "未实现公允", 120),
+  numericNumericCol("manual_adjustment", "手工调整", 120),
+  numericNumericCol("explained_pnl", "可解释损益", 130),
+  numericNumericCol("actual_pnl", "实际损益", 120),
+  numericNumericCol("residual", "残差", 100),
   {
     field: "quality_flag",
     headerName: "质量",
@@ -357,22 +344,17 @@ export default function PnlBridgePage() {
     retry: false,
   });
 
-  const summary = bridgeQuery.data?.result.summary;
-  const rows = bridgeQuery.data?.result.rows ?? [];
-  const warnings = bridgeQuery.data?.result.warnings ?? [];
+  const adapterOutput = useMemo(
+    () => adaptPnlBridge({ envelope: bridgeQuery.data, isLoading: bridgeQuery.isLoading, isError: bridgeQuery.isError }),
+    [bridgeQuery.data, bridgeQuery.isLoading, bridgeQuery.isError],
+  );
+
+  const vm = adapterOutput.vm;
+  const summary = vm?.summary;
+  const rows = vm?.rows ?? [];
+  const warnings = vm?.warnings ?? [];
 
   const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
-
-  const bridgeColDefs = useMemo<ColDef<PnlBridgeRow>[]>(
-    () =>
-      bridgeColumnDefsBase.map((def) => {
-        if (def.type !== "numericColumn" || def.valueFormatter) {
-          return def;
-        }
-        return { ...def, valueFormatter: thousandsValueFormatter };
-      }),
-    [],
-  );
 
   const agGridShellStyle = useMemo(
     () =>
@@ -559,21 +541,21 @@ export default function PnlBridgePage() {
                 <KpiCard title="质量 error" value={cellText(summary.error_count)} detail="summary.error_count" tone="error" />
                 <KpiCard
                   title="合计 explained PnL"
-                  value={summary.total_explained_pnl}
+                  value={summary.total_explained_pnl.display}
                   detail="summary.total_explained_pnl"
-                  tone={toneFromSignedDisplayString(summary.total_explained_pnl)}
+                  tone={toneFromNumeric(summary.total_explained_pnl)}
                 />
                 <KpiCard
                   title="合计 actual PnL"
-                  value={summary.total_actual_pnl}
+                  value={summary.total_actual_pnl.display}
                   detail="summary.total_actual_pnl"
-                  tone={toneFromSignedDisplayString(summary.total_actual_pnl)}
+                  tone={toneFromNumeric(summary.total_actual_pnl)}
                 />
                 <KpiCard
                   title="合计 residual"
-                  value={summary.total_residual}
+                  value={summary.total_residual.display}
                   detail="summary.total_residual"
-                  tone={toneFromSignedDisplayString(summary.total_residual)}
+                  tone={toneFromNumeric(summary.total_residual)}
                 />
                 <KpiCard
                   title="质量 quality_flag"
@@ -647,7 +629,7 @@ export default function PnlBridgePage() {
           <div className="ag-theme-alpine" data-testid="pnl-bridge-detail-table" style={agGridShellStyle}>
             <AgGridReact<PnlBridgeRow>
               rowData={rows}
-              columnDefs={bridgeColDefs}
+              columnDefs={bridgeColumnDefsBase}
               defaultColDef={bridgeGridDefaultColDef}
               animateRows
               pagination
