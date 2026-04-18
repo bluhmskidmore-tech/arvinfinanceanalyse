@@ -28,6 +28,7 @@ export function LiabilityCustomerTable({
         size="small"
         loading={loading}
         pagination={false}
+        locale={{ emptyText: "暂无数据" }}
         scroll={{ x: 900, y: 460 }}
         dataSource={rows.map((r, idx) => ({ ...r, key: `${r.name}-${idx}` }))}
         columns={[

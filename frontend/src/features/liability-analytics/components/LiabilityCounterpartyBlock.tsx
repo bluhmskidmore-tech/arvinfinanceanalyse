@@ -38,6 +38,11 @@ export function LiabilityCounterpartyBlock({
   totalValueYuan,
   /** 全量对手方行（与明细表一致）；集中度 HHI / Top10 依赖度由此计算。 */
   counterpartyRows,
+  /**
+   * 若提供（如月度 `counterparty_top10`），柱状图序列与该顺序一致；
+   * 集中度仍基于 `counterpartyRows` 全量。
+   */
+  barRankingRows,
   byType,
   loading,
   errorText,
@@ -46,6 +51,7 @@ export function LiabilityCounterpartyBlock({
   subtitle?: string;
   totalValueYuan: number;
   counterpartyRows: LiabilityCpRow[];
+  barRankingRows?: LiabilityCpRow[];
   byType: { name: string; value: number }[];
   loading: boolean;
   errorText: string | null;
@@ -54,7 +60,12 @@ export function LiabilityCounterpartyBlock({
     () => [...counterpartyRows].sort((a, b) => b.valueYuan - a.valueYuan),
     [counterpartyRows],
   );
-  const cpTop10 = useMemo(() => ranked.slice(0, 10), [ranked]);
+  const cpTop10 = useMemo(() => {
+    if (barRankingRows && barRankingRows.length > 0) {
+      return barRankingRows.slice(0, 10);
+    }
+    return ranked.slice(0, 10);
+  }, [barRankingRows, ranked]);
 
   const { top10Share, hhiTimes10000 } = useMemo(() => {
     const weights = counterpartyRows.map((r) => r.valueYuan);
