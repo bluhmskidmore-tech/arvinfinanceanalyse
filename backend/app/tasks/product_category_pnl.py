@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -36,6 +38,7 @@ PRODUCT_CATEGORY_PNL_LOCK = LockDefinition(
     ttl_seconds=900,
 )
 PRODUCT_CATEGORY_ADJUSTMENT_STREAM = "product_category_pnl_adjustments"
+logger = logging.getLogger(__name__)
 
 
 def _materialize_product_category_pnl(
@@ -44,6 +47,7 @@ def _materialize_product_category_pnl(
     governance_dir: str | None = None,
     run_id: str | None = None,
 ) -> dict[str, object]:
+    started_at = time.perf_counter()
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
@@ -53,6 +57,15 @@ def _materialize_product_category_pnl(
     repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(job_name="product_category_pnl", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
+    logger.info(
+        "Product-category PnL materialize running",
+        extra={
+            "job_name": run.job_name,
+            "run_id": run_id,
+            "status": "running",
+            "month_count": len(pairs),
+        },
+    )
 
     with acquire_lock(PRODUCT_CATEGORY_PNL_LOCK, base_dir=governance_path):
         repo.append(
@@ -72,6 +85,7 @@ def _materialize_product_category_pnl(
         )
         conn = duckdb.connect(str(duckdb_file), read_only=False)
         try:
+            # atomic: delete+insert inside transaction — safe on retry, no data loss window
             conn.execute("begin transaction")
             _ensure_tables(conn)
 
@@ -121,6 +135,16 @@ def _materialize_product_category_pnl(
 
             conn.execute("commit")
         except Exception as exc:
+            logger.exception(
+                "Product-category PnL materialize failed",
+                extra={
+                    "job_name": run.job_name,
+                    "run_id": run_id,
+                    "status": "failed",
+                    "month_count": len(pairs),
+                    "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+                },
+            )
             conn.execute("rollback")
             failed_run = CacheBuildRunRecord(
                 run_id=run_id,
@@ -164,6 +188,17 @@ def _materialize_product_category_pnl(
             source_version=joined_source_version,
             vendor_version="vv_none",
         ).model_dump(),
+    )
+    logger.info(
+        "Product-category PnL materialize completed",
+        extra={
+            "job_name": run.job_name,
+            "run_id": run_id,
+            "status": "completed",
+            "month_count": len(pairs),
+            "source_version": joined_source_version,
+            "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+        },
     )
     return {
         "status": "completed",

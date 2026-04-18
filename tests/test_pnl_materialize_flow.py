@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from decimal import Decimal
 
@@ -9,6 +10,109 @@ import pytest
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module
+
+
+def _materialize_pnl_snapshot(
+    task_module,
+    *,
+    duckdb_path,
+    governance_dir,
+    report_date: str = "2025-12-31",
+    source_version: str = "src-v1",
+    interest_income_514: str = "12.50",
+    fair_value_change_516: str = "-3.25",
+    capital_gain_517: str = "1.75",
+    manual_adjustment: str = "0.50",
+    bridge_amounts: tuple[str, str] = ("40.00", "60.00"),
+) -> dict[str, object]:
+    return task_module.materialize_pnl_facts.fn(
+        report_date=report_date,
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": report_date,
+                "instrument_code": "240001.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "T",
+                "interest_income_514": interest_income_514,
+                "fair_value_change_516": fair_value_change_516,
+                "capital_gain_517": capital_gain_517,
+                "manual_adjustment": manual_adjustment,
+                "currency_basis": "CNY",
+                "source_version": source_version,
+                "rule_version": "rule-v1",
+                "ingest_batch_id": "batch-fi",
+                "trace_id": "trace-fi",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={
+            "516": [
+                {
+                    "voucher_date": "2025-12-30",
+                    "account_code": "51601010004",
+                    "asset_code": "BOND-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "credit",
+                    "event_type": "mtm",
+                    "raw_amount": bridge_amounts[0],
+                    "source_file": "nonstd-516.xlsx",
+                    "source_version": source_version,
+                    "rule_version": "rule-v1",
+                    "ingest_batch_id": "batch-bridge",
+                    "trace_id": "trace-001",
+                },
+                {
+                    "voucher_date": "2025-12-31",
+                    "account_code": "51601010004",
+                    "asset_code": "BOND-001",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "credit",
+                    "event_type": "mtm",
+                    "raw_amount": bridge_amounts[1],
+                    "source_file": "nonstd-516.xlsx",
+                    "source_version": source_version,
+                    "rule_version": "rule-v1",
+                    "ingest_batch_id": "batch-bridge",
+                    "trace_id": "trace-002",
+                },
+            ]
+        },
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+
+def _read_pnl_snapshot(duckdb_path) -> dict[str, list[tuple[object, ...]]]:
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        formal_rows = conn.execute(
+            """
+            select report_date, instrument_code, total_pnl, source_version
+            from fact_formal_pnl_fi
+            order by report_date, instrument_code
+            """
+        ).fetchall()
+        bridge_rows = conn.execute(
+            """
+            select report_date, bond_code, total_pnl, source_version, trace_id
+            from fact_nonstd_pnl_bridge
+            order by report_date, bond_code
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+    return {
+        "formal_rows": formal_rows,
+        "bridge_rows": bridge_rows,
+    }
 
 
 def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path):
@@ -227,6 +331,235 @@ def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(t
         conn.close()
 
     assert rows == [("240001.IB", Decimal("19.00"), "src-v2")]
+
+
+def test_pnl_materialize_failure_after_delete_preserves_last_committed_snapshot(tmp_path, monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _materialize_pnl_snapshot(
+        task_module,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        source_version="src-v1",
+    )
+    baseline = _read_pnl_snapshot(duckdb_path)
+    real_connect = task_module.duckdb.connect
+
+    class _FailAfterDeleteConnection:
+        def __init__(self, inner):
+            self._inner = inner
+            self._delete_seen = False
+
+        def execute(self, query, params=None):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized.startswith("delete from fact_nonstd_pnl_bridge"):
+                self._delete_seen = True
+            if self._delete_seen and "insert into fact_formal_pnl_fi" in normalized:
+                raise RuntimeError("fail after delete")
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            task_module.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailAfterDeleteConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail after delete"):
+            _materialize_pnl_snapshot(
+                task_module,
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                source_version="src-v2",
+                interest_income_514="20.00",
+                fair_value_change_516="-2.00",
+                capital_gain_517="1.00",
+                manual_adjustment="0.00",
+                bridge_amounts=("50.00", "70.00"),
+            )
+
+    assert _read_pnl_snapshot(duckdb_path) == baseline
+
+    _materialize_pnl_snapshot(
+        task_module,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        source_version="src-v2",
+        interest_income_514="20.00",
+        fair_value_change_516="-2.00",
+        capital_gain_517="1.00",
+        manual_adjustment="0.00",
+        bridge_amounts=("50.00", "70.00"),
+    )
+
+    assert _read_pnl_snapshot(duckdb_path) == {
+        "formal_rows": [("2025-12-31", "240001.IB", Decimal("19.00"), "src-v2")],
+        "bridge_rows": [
+            ("2025-12-31", "BOND-001", Decimal("120.00"), "src-v2", "trace-001,trace-002")
+        ],
+    }
+
+
+def test_pnl_materialize_failure_before_commit_preserves_last_committed_snapshot(tmp_path, monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    _materialize_pnl_snapshot(
+        task_module,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        source_version="src-v1",
+    )
+    baseline = _read_pnl_snapshot(duckdb_path)
+    real_connect = task_module.duckdb.connect
+
+    class _FailBeforeCommitConnection:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def execute(self, query, params=None):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized == "commit":
+                raise RuntimeError("fail before commit")
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            task_module.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailBeforeCommitConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail before commit"):
+            _materialize_pnl_snapshot(
+                task_module,
+                duckdb_path=duckdb_path,
+                governance_dir=governance_dir,
+                source_version="src-v2",
+                interest_income_514="20.00",
+                fair_value_change_516="-2.00",
+                capital_gain_517="1.00",
+                manual_adjustment="0.00",
+                bridge_amounts=("50.00", "70.00"),
+            )
+
+    assert _read_pnl_snapshot(duckdb_path) == baseline
+
+    _materialize_pnl_snapshot(
+        task_module,
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        source_version="src-v2",
+        interest_income_514="20.00",
+        fair_value_change_516="-2.00",
+        capital_gain_517="1.00",
+        manual_adjustment="0.00",
+        bridge_amounts=("50.00", "70.00"),
+    )
+
+    assert _read_pnl_snapshot(duckdb_path) == {
+        "formal_rows": [("2025-12-31", "240001.IB", Decimal("19.00"), "src-v2")],
+        "bridge_rows": [
+            ("2025-12-31", "BOND-001", Decimal("120.00"), "src-v2", "trace-001,trace-002")
+        ],
+    }
+
+
+def test_pnl_materialize_emits_structured_logs_for_success(tmp_path, caplog):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    _materialize_pnl_snapshot(
+        task_module,
+        duckdb_path=tmp_path / "moss.duckdb",
+        governance_dir=tmp_path / "governance",
+    )
+
+    records = [
+        record for record in caplog.records if getattr(record, "job_name", None) == "pnl_materialize"
+    ]
+    assert [record.status for record in records] == ["running", "completed"]
+    assert {record.report_date for record in records} == {"2025-12-31"}
+    assert all(getattr(record, "run_id", "") for record in records)
+
+
+def test_pnl_materialize_emits_structured_logs_for_failure(tmp_path, caplog):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    with pytest.raises(RuntimeError, match="Formal pnl emission is disabled"):
+        task_module.materialize_pnl_facts.fn(
+            report_date="2025-12-31",
+            is_month_end=True,
+            fi_rows=[
+                {
+                    "report_date": "2025-12-31",
+                    "instrument_code": "240001.IB",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                        "invest_type_raw": "T",
+                    "interest_income_514": "12.50",
+                    "fair_value_change_516": "-3.25",
+                    "capital_gain_517": "1.75",
+                    "manual_adjustment": "0.50",
+                    "currency_basis": "CNY",
+                    "source_version": "src-v1",
+                }
+            ],
+            nonstd_rows_by_type={},
+            duckdb_path=str(tmp_path / "moss.duckdb"),
+            governance_dir=str(tmp_path / "governance"),
+            formal_pnl_enabled=False,
+            formal_pnl_scope_json='["*"]',
+        )
+
+    records = [
+        record for record in caplog.records if getattr(record, "job_name", None) == "pnl_materialize"
+    ]
+    assert [record.status for record in records] == ["running", "failed"]
+    assert {record.report_date for record in records} == {"2025-12-31"}
+    assert all(getattr(record, "run_id", "") for record in records)
 
 
 def test_pnl_materialize_task_writes_recognized_formal_totals_not_standardized_totals(tmp_path):

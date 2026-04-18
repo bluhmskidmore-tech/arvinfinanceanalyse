@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from datetime import date
 from pathlib import Path
 
@@ -35,6 +37,7 @@ PNL_MATERIALIZE_LOCK = LockDefinition(
 RULE_VERSION = "rv_pnl_phase2_materialize_v1"
 # API result_meta.cache_version: formal basis + materialize rule bundle (distinct from scenario/analytical).
 PNL_RESULT_CACHE_VERSION = f"cv_pnl_formal__{RULE_VERSION}"
+logger = logging.getLogger(__name__)
 
 
 def _materialize_pnl_facts(
@@ -49,6 +52,7 @@ def _materialize_pnl_facts(
     formal_pnl_enabled: bool | None = None,
     formal_pnl_scope_json: str | None = None,
 ) -> dict[str, object]:
+    started_at = time.perf_counter()
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
@@ -56,6 +60,15 @@ def _materialize_pnl_facts(
     repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(job_name="pnl_materialize", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
+    logger.info(
+        "PnL materialize running",
+        extra={
+            "job_name": run.job_name,
+            "run_id": run_id,
+            "report_date": report_date,
+            "status": "running",
+        },
+    )
     repo.append(
         CACHE_BUILD_RUN_STREAM,
         {
@@ -117,6 +130,7 @@ def _materialize_pnl_facts(
         with acquire_lock(PNL_MATERIALIZE_LOCK, base_dir=duckdb_file.parent):
             conn = duckdb.connect(str(duckdb_file), read_only=False)
             try:
+                # atomic: delete+insert inside transaction — safe on retry, no data loss window
                 conn.execute("begin transaction")
                 _ensure_tables(conn)
                 conn.execute(
@@ -182,6 +196,17 @@ def _materialize_pnl_facts(
             finally:
                 conn.close()
     except Exception as exc:
+        logger.exception(
+            "PnL materialize failed",
+            extra={
+                "job_name": run.job_name,
+                "run_id": run_id,
+                "report_date": report_date,
+                "status": "failed",
+                "source_version": source_version,
+                "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+            },
+        )
         failed_record = CacheBuildRunRecord(
             run_id=run_id,
             job_name=run.job_name,
@@ -231,6 +256,19 @@ def _materialize_pnl_facts(
                 completed_run,
             ),
         ]
+    )
+    logger.info(
+        "PnL materialize completed",
+        extra={
+            "job_name": run.job_name,
+            "run_id": run_id,
+            "report_date": report_date,
+            "status": "completed",
+            "source_version": source_version,
+            "formal_fi_rows": len(formal_fi_rows),
+            "nonstd_bridge_rows": len(bridge_rows),
+            "elapsed_ms": int((time.perf_counter() - started_at) * 1000),
+        },
     )
 
     return {

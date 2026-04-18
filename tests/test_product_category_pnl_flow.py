@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import csv
 import importlib
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -28,6 +29,35 @@ from tests.helpers import load_module
 
 LEDGER_PREFIX = "\u603b\u8d26\u5bf9\u8d26"
 AVG_PREFIX = "\u65e5\u5747"
+
+
+def _read_product_category_snapshot(duckdb_path: Path) -> dict[str, object]:
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        facts = conn.execute(
+            """
+            select report_date, account_code, currency, monthly_pnl, source_version
+            from product_category_pnl_canonical_fact
+            order by report_date, account_code, currency
+            """
+        ).fetchall()
+        formal = conn.execute(
+            """
+            select report_date, view, sort_order, category_id, business_net_income, source_version
+            from product_category_pnl_formal_read_model
+            order by report_date, view, sort_order, category_id
+            """
+        ).fetchall()
+        scenario_count = conn.execute(
+            "select count(*) from product_category_pnl_scenario_read_model"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    return {
+        "facts": facts,
+        "formal": formal,
+        "scenario_count": scenario_count,
+    }
 
 
 def _pnl_row_payload(
@@ -1991,3 +2021,237 @@ def _pnl_row(account_code: str, account_name: str, currency: str, monthly_pnl: f
     if monthly_pnl >= 0:
         return [int(account_code), account_name, currency, 0, 0, monthly_pnl, -monthly_pnl]
     return [int(account_code), account_name, currency, 0, abs(monthly_pnl), 0, abs(monthly_pnl)]
+
+
+def test_product_category_failure_after_delete_preserves_last_committed_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+    baseline = _read_product_category_snapshot(duckdb_path)
+    real_connect = task_module.duckdb.connect
+
+    class _FailAfterDeleteConnection:
+        def __init__(self, inner):
+            self._inner = inner
+            self._delete_seen = False
+
+        def execute(self, query, params=None):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized.startswith("delete from product_category_pnl_scenario_read_model"):
+                self._delete_seen = True
+            if self._delete_seen and "insert into product_category_pnl_canonical_fact" in normalized:
+                raise RuntimeError("fail after delete")
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            task_module.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailAfterDeleteConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail after delete"):
+            task_module.materialize_product_category_pnl.fn(
+                duckdb_path=str(duckdb_path),
+                source_dir=str(source_dir),
+                governance_dir=str(governance_dir),
+            )
+
+    assert _read_product_category_snapshot(duckdb_path) == baseline
+
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+    assert _read_product_category_snapshot(duckdb_path) == baseline
+    get_settings.cache_clear()
+
+
+def test_product_category_failure_before_commit_preserves_last_committed_snapshot(
+    tmp_path,
+    monkeypatch,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+    baseline = _read_product_category_snapshot(duckdb_path)
+    real_connect = task_module.duckdb.connect
+
+    class _FailBeforeCommitConnection:
+        def __init__(self, inner):
+            self._inner = inner
+
+        def execute(self, query, params=None):
+            normalized = " ".join(str(query).split()).lower()
+            if normalized == "commit":
+                raise RuntimeError("fail before commit")
+            if params is None:
+                return self._inner.execute(query)
+            return self._inner.execute(query, params)
+
+        def close(self):
+            return self._inner.close()
+
+        def __getattr__(self, name):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            task_module.duckdb,
+            "connect",
+            lambda path, read_only=False: _FailBeforeCommitConnection(
+                real_connect(path, read_only=read_only)
+            ),
+        )
+        with pytest.raises(RuntimeError, match="fail before commit"):
+            task_module.materialize_product_category_pnl.fn(
+                duckdb_path=str(duckdb_path),
+                source_dir=str(source_dir),
+                governance_dir=str(governance_dir),
+            )
+
+    assert _read_product_category_snapshot(duckdb_path) == baseline
+
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+    assert _read_product_category_snapshot(duckdb_path) == baseline
+    get_settings.cache_clear()
+
+
+def test_product_category_materialize_emits_structured_logs_for_success(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    caplog.set_level(logging.INFO, logger=task_module.__name__)
+
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "job_name", None) == "product_category_pnl"
+    ]
+    assert [record.status for record in records] == ["running", "completed"]
+    assert all(getattr(record, "run_id", "") for record in records)
+    assert {record.month_count for record in records} == {1}
+    get_settings.cache_clear()
+
+
+def test_product_category_materialize_emits_structured_logs_for_failure(
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    monkeypatch.setattr(
+        task_module,
+        "calculate_read_model",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("materialize boom")),
+    )
+    caplog.set_level(logging.INFO, logger=task_module.__name__)
+
+    with pytest.raises(RuntimeError, match="materialize boom"):
+        task_module.materialize_product_category_pnl.fn(
+            duckdb_path=str(duckdb_path),
+            source_dir=str(source_dir),
+            governance_dir=str(governance_dir),
+            run_id="pcat-log-fail",
+        )
+
+    records = [
+        record
+        for record in caplog.records
+        if getattr(record, "job_name", None) == "product_category_pnl"
+    ]
+    assert [record.status for record in records] == ["running", "failed"]
+    assert {record.run_id for record in records} == {"pcat-log-fail"}
+    assert {record.month_count for record in records} == {1}
+    get_settings.cache_clear()
