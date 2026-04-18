@@ -34,6 +34,7 @@ export function MaturityStructureChart({
 
   return (
     <Card
+      data-testid="bond-dashboard-maturity-structure-chart"
       loading={loading}
       title="期限结构"
       extra={<Button type="link">更多</Button>}
