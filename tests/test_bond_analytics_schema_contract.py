@@ -25,6 +25,7 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
+from backend.app.schemas.common_numeric import Numeric
 from tests.helpers import load_module
 
 
@@ -45,11 +46,13 @@ def test_asset_class_breakdown_defaults():
         "backend/app/schemas/bond_analytics.py",
     )
     row = schema_module.AssetClassBreakdown(asset_class="rate")
-    assert row.carry == "0"
-    assert row.roll_down == "0"
-    assert row.convexity_effect == "0"
+    assert isinstance(row.carry, Numeric)
+    assert row.carry.raw == 0.0
+    assert row.roll_down.unit == "yuan"
+    assert row.convexity_effect.sign_aware is True
     assert row.bond_count == 0
-    assert row.market_value == "0"
+    assert row.market_value.raw == 0.0
+    assert row.market_value.sign_aware is False
 
 
 def test_bond_level_decomposition_defaults_and_optional():
@@ -59,8 +62,9 @@ def test_bond_level_decomposition_defaults_and_optional():
         accounting_class="AC",
         market_value="100",
     )
-    assert row.carry == "0"
-    assert row.convexity_effect == "0"
+    assert row.carry.raw == 0.0
+    assert row.convexity_effect.unit == "yuan"
+    assert row.market_value.raw == 100.0
     assert row.bond_name is None
 
 
@@ -81,8 +85,9 @@ def test_return_decomposition_response_nested_defaults():
         recon_error="0",
         recon_error_pct="0",
     )
-    assert resp.fx_effect == "0"
-    assert resp.convexity_effect == "0"
+    assert resp.fx_effect.raw == 0.0
+    assert resp.fx_effect.unit == "yuan"
+    assert resp.convexity_effect.raw == 0.0
     assert resp.by_asset_class == []
     assert resp.bond_details == []
     assert resp.warnings == []
@@ -106,7 +111,8 @@ def test_benchmark_excess_response_defaults_and_nested():
         benchmark_duration="3",
         duration_diff="0",
     )
-    assert resp.duration_effect == "0"
+    assert resp.duration_effect.raw == 0.0
+    assert resp.duration_effect.unit == "bp"
     assert resp.excess_sources == []
     assert resp.warnings == []
 
@@ -181,8 +187,9 @@ def test_credit_spread_migration_defaults_and_nested():
         migration_scenarios=[mig],
         concentration_by_issuer=conc,
     )
-    assert resp.oci_credit_exposure == "0"
-    assert resp.rating_aa_and_below_weight == "0"
+    assert resp.oci_credit_exposure.raw == 0.0
+    assert resp.oci_credit_exposure.unit == "yuan"
+    assert resp.rating_aa_and_below_weight.raw == 0.0
     assert resp.concentration_by_industry is None
     assert resp.warnings == []
 
@@ -246,7 +253,8 @@ def test_accounting_class_audit_defaults():
     )
     resp = AccountingClassAuditResponse(report_date=d0, rows=[item])
     assert resp.total_positions == 0
-    assert resp.total_market_value == "0"
+    assert resp.total_market_value.raw == 0.0
+    assert resp.total_market_value.unit == "yuan"
     assert item.is_divergent is False
     assert resp.warnings == []
 
