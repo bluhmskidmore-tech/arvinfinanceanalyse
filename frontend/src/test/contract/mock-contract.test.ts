@@ -169,9 +169,70 @@ describe("mockClient.getPnlAttribution · W2.7 contract", () => {
 });
 
 // ------------------------------------------------------------------
-// Wave 2 will add:  describe("mockClient.getOverview", () => { ... })
-// Wave 2 will add:  describe("mockClient.getPnlAttribution", () => { ... })
-// Wave 3 will add:  describe("mockClient.getVolumeRateAttribution", () => { ... })
-// Wave 3 will add:  describe("mockClient.getPnlCompositionBreakdown", () => { ... })
-// Wave 5 will add:  describe("mockClient.<bond-analytics methods>", ...)
+// Wave 3.6 · mockClient.getVolumeRateAttribution / getTplMarketCorrelation /
+//           getPnlCompositionBreakdown / getPnlCarryRollDown / ... 对拍
 // ------------------------------------------------------------------
+
+describe("mockClient.getVolumeRateAttribution · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getVolumeRateAttribution({ compareType: "mom" });
+    assertAllNumerics(envelope.result, "getVolumeRateAttribution.result");
+  });
+});
+
+describe("mockClient.getTplMarketCorrelation · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getTplMarketCorrelation({ months: 12 });
+    assertAllNumerics(envelope.result, "getTplMarketCorrelation.result");
+  });
+});
+
+describe("mockClient.getPnlCompositionBreakdown · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlCompositionBreakdown({ includeTrend: true, trendMonths: 6 });
+    assertAllNumerics(envelope.result, "getPnlCompositionBreakdown.result");
+  });
+});
+
+describe("mockClient.getPnlCarryRollDown · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlCarryRollDown();
+    assertAllNumerics(envelope.result, "getPnlCarryRollDown.result");
+  });
+});
+
+describe("mockClient.getPnlSpreadAttribution · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlSpreadAttribution({ lookbackDays: 30 });
+    assertAllNumerics(envelope.result, "getPnlSpreadAttribution.result");
+  });
+});
+
+describe("mockClient.getPnlKrdAttribution · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlKrdAttribution({ lookbackDays: 30 });
+    assertAllNumerics(envelope.result, "getPnlKrdAttribution.result");
+  });
+});
+
+describe("mockClient.getPnlAdvancedAttributionSummary · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlAdvancedAttributionSummary();
+    assertAllNumerics(envelope.result, "getPnlAdvancedAttributionSummary.result");
+  });
+});
+
+describe("mockClient.getPnlCampisiAttribution · W3.6 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric (CampisiAttributionPayload branch)", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlCampisiAttribution({ lookbackDays: 30 });
+    assertAllNumerics(envelope.result, "getPnlCampisiAttribution.result");
+  });
+});
