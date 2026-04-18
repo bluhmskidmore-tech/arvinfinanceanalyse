@@ -7,6 +7,7 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import { OverviewSection } from "../../executive-dashboard/components/OverviewSection";
 
@@ -149,6 +150,12 @@ export default function DashboardPage() {
   ].filter((item): item is string => Boolean(item));
 
   const snapshotResult = snapshotQuery.data?.result;
+  const effectiveReportDate = useMemo(() => {
+    const manual = reportDate.trim();
+    const snap = snapshotResult?.report_date?.trim();
+    return manual || snap || "";
+  }, [reportDate, snapshotResult?.report_date]);
+
   const snapshotPartialNote = useMemo(() => {
     if (!snapshotResult) return null;
     if (snapshotResult.mode === "partial" || snapshotResult.domains_missing.length > 0) {
@@ -312,6 +319,8 @@ export default function DashboardPage() {
         />
 
         <DashboardNewsDigestSection />
+
+        <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
 
         <section data-testid="dashboard-governed-surface" style={{ display: "grid", gap: 16 }}>
           <PageSectionLead
