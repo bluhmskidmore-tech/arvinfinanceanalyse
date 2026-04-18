@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/pnl/overview",
+  "params": {
+    "report_date": "2025-12-31"
+  },
+  "basis": "formal"
+}

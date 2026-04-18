@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/api/risk/tensor",
+  "params": {
+    "report_date": "2026-03-31"
+  },
+  "basis": "formal"
+}

@@ -1,0 +1,27 @@
+{
+  "result_meta": {
+    "trace_id": "tr_pnl_overview_2025-12-31",
+    "basis": "formal",
+    "result_kind": "pnl.overview",
+    "formal_use_allowed": true,
+    "source_version": "fi-shared-v1__nonstd-shared-v1",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_pnl_phase2_materialize_v1",
+    "cache_version": "cv_pnl_formal__rv_pnl_phase2_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T05:57:55.496785Z"
+  },
+  "result": {
+    "report_date": "2025-12-31",
+    "formal_fi_row_count": 1,
+    "nonstd_bridge_row_count": 1,
+    "interest_income_514": "12.50",
+    "fair_value_change_516": "96.75",
+    "capital_gain_517": "1.75",
+    "manual_adjustment": "0.50",
+    "total_pnl": "111.50"
+  }
+}

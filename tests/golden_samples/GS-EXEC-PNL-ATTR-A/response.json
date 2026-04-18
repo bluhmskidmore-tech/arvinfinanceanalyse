@@ -1,0 +1,58 @@
+{
+  "result_meta": {
+    "trace_id": "tr_executive_pnl-attribution",
+    "basis": "analytical",
+    "result_kind": "executive.pnl-attribution",
+    "formal_use_allowed": false,
+    "source_version": "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c",
+    "cache_version": "cv_exec_dashboard_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T06:24:01.218882Z"
+  },
+  "result": {
+    "title": "经营贡献拆解",
+    "total": "+1.75 亿",
+    "segments": [
+      {
+        "id": "carry",
+        "label": "Carry",
+        "amount": 3.0,
+        "display_amount": "+3.00 亿",
+        "tone": "positive"
+      },
+      {
+        "id": "roll",
+        "label": "Roll-down",
+        "amount": -3.0,
+        "display_amount": "-3.00 亿",
+        "tone": "negative"
+      },
+      {
+        "id": "credit",
+        "label": "信用利差",
+        "amount": 0.5,
+        "display_amount": "+0.50 亿",
+        "tone": "positive"
+      },
+      {
+        "id": "trading",
+        "label": "交易损益",
+        "amount": 1.0,
+        "display_amount": "+1.00 亿",
+        "tone": "positive"
+      },
+      {
+        "id": "other",
+        "label": "其他",
+        "amount": 0.25,
+        "display_amount": "+0.25 亿",
+        "tone": "positive"
+      }
+    ]
+  }
+}

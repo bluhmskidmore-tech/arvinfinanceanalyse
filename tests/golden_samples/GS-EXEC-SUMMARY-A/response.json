@@ -1,0 +1,42 @@
+{
+  "result_meta": {
+    "trace_id": "tr_executive_summary",
+    "basis": "analytical",
+    "result_kind": "executive.summary",
+    "formal_use_allowed": false,
+    "source_version": "sv_summary_requested",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_summary_requested",
+    "cache_version": "cv_exec_dashboard_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T06:28:36.401732Z"
+  },
+  "result": {
+    "title": "本周管理摘要",
+    "report_date": "2026-02-28",
+    "narrative": "本周组合收益延续修复，收益主要来自久期与票息贡献。风险端仍需关注信用集中度与流动性预留，当前页面仅展示受控摘要，不生成正式分析口径。",
+    "points": [
+      {
+        "id": "income",
+        "label": "收益",
+        "tone": "positive",
+        "text": "利率下行仍是收益主驱动，票息表现稳定。"
+      },
+      {
+        "id": "risk",
+        "label": "风险",
+        "tone": "warning",
+        "text": "信用集中度上行，需持续关注暴露边界。"
+      },
+      {
+        "id": "action",
+        "label": "建议",
+        "tone": "neutral",
+        "text": "保持流动性缓冲，避免在高波动窗口放大仓位。"
+      }
+    ]
+  }
+}

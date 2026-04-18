@@ -1,0 +1,8 @@
+{
+  "method": "GET",
+  "path": "/ui/home/overview",
+  "params": {
+    "report_date": "2026-02-28"
+  },
+  "basis": "analytical"
+}

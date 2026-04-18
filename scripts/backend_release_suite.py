@@ -28,6 +28,8 @@ RELEASE_SUITE_TESTS = [
     "tests/test_liability_analytics_api.py",
     "tests/test_liability_analytics_envelope_contract.py",
     "tests/test_result_meta_on_all_ui_endpoints.py",
+    "tests/test_governance_doc_contract.py",
+    "tests/test_golden_samples_capture_ready.py",
 ]
 
 

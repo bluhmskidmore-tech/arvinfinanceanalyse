@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "path": "/ui/balance-analysis/workbook",
+  "params": {
+    "report_date": "2025-12-31",
+    "position_scope": "all",
+    "currency_basis": "CNY"
+  },
+  "basis": "formal"
+}

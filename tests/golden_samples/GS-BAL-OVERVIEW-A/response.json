@@ -1,0 +1,27 @@
+{
+  "result_meta": {
+    "trace_id": "tr_balance_analysis_overview_2025-12-31_all_CNY",
+    "basis": "formal",
+    "result_kind": "balance-analysis.overview",
+    "formal_use_allowed": true,
+    "source_version": "sv-fx-1__sv-t-1__sv-z-1",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_balance_analysis_formal_materialize_v1",
+    "cache_version": "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T05:57:54.629092Z"
+  },
+  "result": {
+    "report_date": "2025-12-31",
+    "position_scope": "all",
+    "currency_basis": "CNY",
+    "detail_row_count": 2,
+    "summary_row_count": 2,
+    "total_market_value_amount": "792.00000000",
+    "total_amortized_cost_amount": "720.00000000",
+    "total_accrued_interest_amount": "50.40000000"
+  }
+}

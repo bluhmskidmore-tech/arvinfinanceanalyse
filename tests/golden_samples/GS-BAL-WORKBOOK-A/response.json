@@ -1,0 +1,1707 @@
+{
+  "result_meta": {
+    "trace_id": "tr_balance_analysis_workbook_2025-12-31_all_CNY",
+    "basis": "formal",
+    "result_kind": "balance-analysis.workbook",
+    "formal_use_allowed": true,
+    "source_version": "sv-fx-1__sv-t-1__sv-z-1",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_balance_analysis_formal_materialize_v1",
+    "cache_version": "cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T05:57:54.749262Z"
+  },
+  "result": {
+    "report_date": "2025-12-31",
+    "position_scope": "all",
+    "currency_basis": "CNY",
+    "cards": [
+      {
+        "key": "bond_assets_excluding_issue",
+        "label": "债券资产(剔除发行类)",
+        "value": "0.01000000",
+        "note": "ZQTZ 资产端剔除发行类后余额(万元)"
+      },
+      {
+        "key": "interbank_assets",
+        "label": "同业资产",
+        "value": "0",
+        "note": "TYW 资产端余额(万元)"
+      },
+      {
+        "key": "interbank_liabilities",
+        "label": "同业负债",
+        "value": "0.00100000",
+        "note": "TYW 负债端余额(万元)"
+      },
+      {
+        "key": "issuance_liabilities",
+        "label": "发行类负债",
+        "value": "0",
+        "note": "ZQTZ 发行类单独展示(万元)"
+      },
+      {
+        "key": "net_position",
+        "label": "净头寸",
+        "value": "0.00900000",
+        "note": "资产端合计 - 同业负债(万元)"
+      }
+    ],
+    "tables": [
+      {
+        "key": "bond_business_types",
+        "title": "债券业务种类",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bond_type",
+            "label": "业务种类"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          },
+          {
+            "key": "amortized_cost_amount",
+            "label": "摊余成本"
+          },
+          {
+            "key": "market_value_amount",
+            "label": "公允价值"
+          },
+          {
+            "key": "floating_pnl_amount",
+            "label": "浮盈浮亏"
+          }
+        ],
+        "rows": [
+          {
+            "bond_type": "国债",
+            "count": 1,
+            "balance_amount": "0.01000000",
+            "share": "1",
+            "weighted_rate_pct": "0.02500000",
+            "weighted_term_years": "1.998631074606433949349760438",
+            "amortized_cost_amount": "0.00900000",
+            "market_value_amount": "0.01000000",
+            "floating_pnl_amount": "0.00100000"
+          }
+        ]
+      },
+      {
+        "key": "maturity_gap",
+        "title": "期限缺口分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bucket",
+            "label": "期限分类"
+          },
+          {
+            "key": "bond_assets_amount",
+            "label": "债券资产"
+          },
+          {
+            "key": "interbank_assets_amount",
+            "label": "同业资产"
+          },
+          {
+            "key": "asset_total_amount",
+            "label": "资产合计"
+          },
+          {
+            "key": "issuance_amount",
+            "label": "发行类"
+          },
+          {
+            "key": "interbank_liabilities_amount",
+            "label": "同业负债"
+          },
+          {
+            "key": "full_scope_liability_amount",
+            "label": "全口径负债"
+          },
+          {
+            "key": "gap_amount",
+            "label": "缺口"
+          },
+          {
+            "key": "full_scope_gap_amount",
+            "label": "全口径缺口"
+          },
+          {
+            "key": "cumulative_gap_amount",
+            "label": "累计缺口"
+          },
+          {
+            "key": "asset_share",
+            "label": "资产占比"
+          },
+          {
+            "key": "liability_share",
+            "label": "负债占比"
+          },
+          {
+            "key": "asset_weighted_rate_pct",
+            "label": "资产加权利率(%)"
+          },
+          {
+            "key": "liability_weighted_rate_pct",
+            "label": "负债加权利率(%)"
+          },
+          {
+            "key": "spread_bp",
+            "label": "利差(bp)"
+          }
+        ],
+        "rows": [
+          {
+            "bucket": "已到期/逾期",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "3个月以内",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "3-6个月",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0.00100000",
+            "full_scope_liability_amount": "0.00100000",
+            "gap_amount": "-0.00100000",
+            "full_scope_gap_amount": "-0.00100000",
+            "cumulative_gap_amount": "-0.00100000",
+            "asset_share": "0E+8",
+            "liability_share": "1",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": "0.01500000",
+            "spread_bp": null
+          },
+          {
+            "bucket": "6-12个月",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "-0.00100000",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "1-2年",
+            "bond_assets_amount": "0.01000000",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0.01000000",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0.01000000",
+            "full_scope_gap_amount": "0.01000000",
+            "cumulative_gap_amount": "0.00900000",
+            "asset_share": "1",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": "0.02500000",
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "2-3年",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0.00900000",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "3-5年",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0.00900000",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "5-10年",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0.00900000",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          },
+          {
+            "bucket": "10年以上",
+            "bond_assets_amount": "0",
+            "interbank_assets_amount": "0",
+            "asset_total_amount": "0",
+            "issuance_amount": "0",
+            "interbank_liabilities_amount": "0",
+            "full_scope_liability_amount": "0",
+            "gap_amount": "0",
+            "full_scope_gap_amount": "0",
+            "cumulative_gap_amount": "0.00900000",
+            "asset_share": "0E+8",
+            "liability_share": "0E+8",
+            "asset_weighted_rate_pct": null,
+            "liability_weighted_rate_pct": null,
+            "spread_bp": null
+          }
+        ]
+      },
+      {
+        "key": "cashflow_calendar",
+        "title": "Cashflow Calendar",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "month",
+            "label": "Month"
+          },
+          {
+            "key": "bond_maturity_amount",
+            "label": "Bond Maturity Amount"
+          },
+          {
+            "key": "bond_maturity_count",
+            "label": "Bond Maturity Count"
+          },
+          {
+            "key": "interbank_asset_maturity_amount",
+            "label": "Interbank Asset Maturity Amount"
+          },
+          {
+            "key": "interbank_asset_maturity_count",
+            "label": "Interbank Asset Maturity Count"
+          },
+          {
+            "key": "interbank_liability_maturity_amount",
+            "label": "Interbank Liability Maturity Amount"
+          },
+          {
+            "key": "interbank_liability_maturity_count",
+            "label": "Interbank Liability Maturity Count"
+          },
+          {
+            "key": "issuance_maturity_amount",
+            "label": "Issuance Maturity Amount"
+          },
+          {
+            "key": "issuance_maturity_count",
+            "label": "Issuance Maturity Count"
+          },
+          {
+            "key": "net_cashflow_amount",
+            "label": "Net Cashflow Amount"
+          },
+          {
+            "key": "cumulative_net_cashflow_amount",
+            "label": "Cumulative Net Cashflow Amount"
+          }
+        ],
+        "rows": [
+          {
+            "month": "2025-12",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-01",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-02",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-03",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-04",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-05",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "0"
+          },
+          {
+            "month": "2026-06",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0.00100000",
+            "interbank_liability_maturity_count": 1,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "-0.00100000",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          },
+          {
+            "month": "2026-07",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          },
+          {
+            "month": "2026-08",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          },
+          {
+            "month": "2026-09",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          },
+          {
+            "month": "2026-10",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          },
+          {
+            "month": "2026-11",
+            "bond_maturity_amount": "0",
+            "bond_maturity_count": 0,
+            "interbank_asset_maturity_amount": "0",
+            "interbank_asset_maturity_count": 0,
+            "interbank_liability_maturity_amount": "0",
+            "interbank_liability_maturity_count": 0,
+            "issuance_maturity_amount": "0",
+            "issuance_maturity_count": 0,
+            "net_cashflow_amount": "0",
+            "cumulative_net_cashflow_amount": "-0.00100000"
+          }
+        ]
+      },
+      {
+        "key": "issuer_concentration",
+        "title": "发行人集中度",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "issuer_name",
+            "label": "发行人"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share_of_bond_assets",
+            "label": "占债券资产比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          }
+        ],
+        "rows": [
+          {
+            "issuer_name": "发行人A",
+            "count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_bond_assets": "1",
+            "weighted_rate_pct": "0.02500000"
+          }
+        ]
+      },
+      {
+        "key": "liquidity_layers",
+        "title": "流动性分层(HQLA)",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "liquidity_layer",
+            "label": "分层"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share_of_bond_assets",
+            "label": "占债券资产比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "hqla_haircut",
+            "label": "HQLA折扣"
+          },
+          {
+            "key": "hqla_amount",
+            "label": "HQLA金额"
+          }
+        ],
+        "rows": [
+          {
+            "liquidity_layer": "Level 1",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_bond_assets": "1",
+            "weighted_rate_pct": "0.02500000",
+            "hqla_haircut": "1.00",
+            "hqla_amount": "0.0100000000"
+          },
+          {
+            "liquidity_layer": "Level 2A",
+            "row_count": 0,
+            "balance_amount": "0",
+            "share_of_bond_assets": "0E+8",
+            "weighted_rate_pct": null,
+            "hqla_haircut": "0.85",
+            "hqla_amount": "0.00"
+          },
+          {
+            "liquidity_layer": "Level 2B",
+            "row_count": 0,
+            "balance_amount": "0",
+            "share_of_bond_assets": "0E+8",
+            "weighted_rate_pct": null,
+            "hqla_haircut": "0.75",
+            "hqla_amount": "0.00"
+          },
+          {
+            "liquidity_layer": "其他",
+            "row_count": 0,
+            "balance_amount": "0",
+            "share_of_bond_assets": "0E+8",
+            "weighted_rate_pct": null,
+            "hqla_haircut": "0",
+            "hqla_amount": "0"
+          }
+        ]
+      },
+      {
+        "key": "regulatory_limits",
+        "title": "监管参考阈值(初版)",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "metric_key",
+            "label": "指标键"
+          },
+          {
+            "key": "metric_name",
+            "label": "指标名称"
+          },
+          {
+            "key": "current_value",
+            "label": "当前值"
+          },
+          {
+            "key": "threshold_value",
+            "label": "参考阈值"
+          },
+          {
+            "key": "status",
+            "label": "状态"
+          },
+          {
+            "key": "calculation_note",
+            "label": "口径说明"
+          }
+        ],
+        "rows": [
+          {
+            "metric_key": "top1_concentration",
+            "metric_name": "最大单一发行人占比(债券资产)",
+            "current_value": "1",
+            "threshold_value": "0.15",
+            "status": "review",
+            "calculation_note": "来自正式 fact 资产端按 issuer_name 分组后的最大 face_value 占比。"
+          },
+          {
+            "metric_key": "interbank_liability_ratio",
+            "metric_name": "同业负债 / (债券资产+同业资产)",
+            "current_value": "0.1",
+            "threshold_value": "0.25",
+            "status": "pass",
+            "calculation_note": "TYW 负债本金合计除以 ZQTZ 资产+TYW 资产面值合计；参考阈值表，非完整监管引擎。"
+          },
+          {
+            "metric_key": "usd_exposure_ratio",
+            "metric_name": "美元债券资产占比",
+            "current_value": "1",
+            "threshold_value": "0.05",
+            "status": "review",
+            "calculation_note": "ZQTZ 资产端 USD 口径 face_value 合计 / 债券资产合计。"
+          },
+          {
+            "metric_key": "portfolio_modified_duration",
+            "metric_name": "组合剩余期限 proxy(年)",
+            "current_value": "2",
+            "threshold_value": "5.0",
+            "status": "pass",
+            "calculation_note": "以剩余年限加权的 proxy，不等同风险张量修正久期；无曲线与期权调整。"
+          }
+        ]
+      },
+      {
+        "key": "overdue_credit_quality",
+        "title": "逾期与信用质量(明细)",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "instrument_code",
+            "label": "代码"
+          },
+          {
+            "key": "instrument_name",
+            "label": "名称"
+          },
+          {
+            "key": "bond_type",
+            "label": "业务种类"
+          },
+          {
+            "key": "rating",
+            "label": "评级"
+          },
+          {
+            "key": "overdue_principal_days",
+            "label": "本金逾期天数"
+          },
+          {
+            "key": "overdue_interest_days",
+            "label": "利息逾期天数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          }
+        ],
+        "rows": []
+      },
+      {
+        "key": "overdue_credit_quality_ratings",
+        "title": "逾期持仓评级汇总",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "rating",
+            "label": "评级"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          }
+        ],
+        "rows": []
+      },
+      {
+        "key": "vintage_analysis",
+        "title": "起息年分桶(Vintage)",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "start_year",
+            "label": "起息年"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          }
+        ],
+        "rows": []
+      },
+      {
+        "key": "customer_attribute_analysis",
+        "title": "客户属性分布",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "customer_attribute",
+            "label": "客户属性"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          }
+        ],
+        "rows": [
+          {
+            "customer_attribute": "未标注",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "weighted_rate_pct": "0.02500000",
+            "weighted_term_years": "1.998631074606433949349760438"
+          }
+        ]
+      },
+      {
+        "key": "portfolio_comparison",
+        "title": "组合对比",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "portfolio_name",
+            "label": "组合"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          },
+          {
+            "key": "floating_pnl_amount",
+            "label": "浮盈浮亏"
+          }
+        ],
+        "rows": [
+          {
+            "portfolio_name": "组合A",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "weighted_rate_pct": "0.02500000",
+            "weighted_term_years": "1.998631074606433949349760438",
+            "floating_pnl_amount": "0.00100000"
+          }
+        ]
+      },
+      {
+        "key": "account_category_comparison",
+        "title": "账户类别对比",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "account_category",
+            "label": "账户类别"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share_of_bond_assets",
+            "label": "占债券资产比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          }
+        ],
+        "rows": [
+          {
+            "account_category": "可供出售债券",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_bond_assets": "1",
+            "weighted_rate_pct": "0.02500000"
+          }
+        ]
+      },
+      {
+        "key": "ifrs9_classification",
+        "title": "IFRS9 分类",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "source_family",
+            "label": "来源"
+          },
+          {
+            "key": "position_scope",
+            "label": "范围"
+          },
+          {
+            "key": "invest_type_std",
+            "label": "投资分类"
+          },
+          {
+            "key": "accounting_basis",
+            "label": "会计计量"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/金额"
+          },
+          {
+            "key": "share_of_total",
+            "label": "占合计比"
+          }
+        ],
+        "rows": [
+          {
+            "source_family": "tyw",
+            "position_scope": "liability",
+            "invest_type_std": "H",
+            "accounting_basis": "AC",
+            "row_count": 1,
+            "balance_amount": "0.00100000",
+            "share_of_total": "0.09090909090909090909090909091"
+          },
+          {
+            "source_family": "zqtz",
+            "position_scope": "asset",
+            "invest_type_std": "A",
+            "accounting_basis": "FVOCI",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_total": "0.9090909090909090909090909091"
+          }
+        ]
+      },
+      {
+        "key": "ifrs9_position_scope",
+        "title": "IFRS9 资产负债分层",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "position_scope",
+            "label": "范围"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/金额"
+          },
+          {
+            "key": "share_of_total",
+            "label": "占合计比"
+          }
+        ],
+        "rows": [
+          {
+            "position_scope": "asset",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_total": "0.9090909090909090909090909091"
+          },
+          {
+            "position_scope": "liability",
+            "row_count": 1,
+            "balance_amount": "0.00100000",
+            "share_of_total": "0.09090909090909090909090909091"
+          }
+        ]
+      },
+      {
+        "key": "ifrs9_source_family",
+        "title": "IFRS9 来源分层",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "source_family",
+            "label": "来源"
+          },
+          {
+            "key": "row_count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/金额"
+          },
+          {
+            "key": "share_of_total",
+            "label": "占合计比"
+          }
+        ],
+        "rows": [
+          {
+            "source_family": "zqtz",
+            "row_count": 1,
+            "balance_amount": "0.01000000",
+            "share_of_total": "0.9090909090909090909090909091"
+          },
+          {
+            "source_family": "tyw",
+            "row_count": 1,
+            "balance_amount": "0.00100000",
+            "share_of_total": "0.09090909090909090909090909091"
+          }
+        ]
+      },
+      {
+        "key": "rule_reference",
+        "title": "规则引用",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "rule_id",
+            "label": "Rule ID"
+          },
+          {
+            "key": "rule_name",
+            "label": "规则名称"
+          },
+          {
+            "key": "summary",
+            "label": "规则摘要"
+          },
+          {
+            "key": "source_doc",
+            "label": "来源文档"
+          },
+          {
+            "key": "source_section",
+            "label": "来源章节"
+          }
+        ],
+        "rows": [
+          {
+            "rule_id": "bal_scope_issuance_exclusion",
+            "rule_name": "发行类剔除",
+            "summary": "资产端默认剔除发行类，负债端单独保留发行类语义行。",
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "12.2 zqtz formal fact 规则"
+          },
+          {
+            "rule_id": "bal_formal_fact_boundary",
+            "rule_name": "正式事实输入边界",
+            "summary": "workbook 只消费 formal fact，不直读 snapshot 或 preview。",
+            "source_doc": "docs/data_contracts.md",
+            "source_section": "4.3 fact_formal_zqtz_balance_daily / 4.4 fact_formal_tyw_balance_daily"
+          },
+          {
+            "rule_id": "bal_fx_projection_order",
+            "rule_name": "汇率换算顺序",
+            "summary": "CNY 口径必须先逐日 FX，再进入逐日 formal amount。",
+            "source_doc": "docs/calc_rules.md",
+            "source_section": "12.4 月均与汇率顺序"
+          },
+          {
+            "rule_id": "bal_workbook_supported_sections",
+            "rule_name": "已支持 workbook section 边界",
+            "summary": "只有当前 governed workbook 已支持的 section 可以宣称已落地。",
+            "source_doc": "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md",
+            "source_section": "13 当前 governed workbook 已支持的 section keys"
+          }
+        ]
+      },
+      {
+        "key": "issuance_business_types",
+        "title": "发行类分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bond_type",
+            "label": "业务种类"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "金额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          },
+          {
+            "key": "interest_mode_fixed_count",
+            "label": "固定计息"
+          },
+          {
+            "key": "interest_mode_floating_count",
+            "label": "浮动计息"
+          }
+        ],
+        "rows": []
+      },
+      {
+        "key": "currency_split",
+        "title": "币种拆分分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "currency_code",
+            "label": "币种"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "折算余额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          },
+          {
+            "key": "amortized_cost_amount",
+            "label": "摊余成本"
+          },
+          {
+            "key": "market_value_amount",
+            "label": "公允价值"
+          },
+          {
+            "key": "floating_pnl_amount",
+            "label": "浮盈浮亏"
+          },
+          {
+            "key": "fx_sensitivity_per_0_01",
+            "label": "汇率敏感性"
+          }
+        ],
+        "rows": [
+          {
+            "currency_code": "USD",
+            "count": 1,
+            "balance_amount": "0.07200000",
+            "share": "1",
+            "weighted_rate_pct": "0.02500000",
+            "weighted_term_years": "1.998631074606433949349760438",
+            "amortized_cost_amount": "0.06480000",
+            "market_value_amount": "0.07200000",
+            "floating_pnl_amount": "0.00720000",
+            "fx_sensitivity_per_0_01": "0.0007200000"
+          }
+        ]
+      },
+      {
+        "key": "rating_analysis",
+        "title": "信用评级分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "rating",
+            "label": "评级"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "weighted_term_years",
+            "label": "加权期限(年)"
+          }
+        ],
+        "rows": [
+          {
+            "rating": "AAA",
+            "count": 1,
+            "balance_amount": "0.01000000",
+            "share": "1",
+            "weighted_rate_pct": "0.02500000",
+            "weighted_term_years": "1.998631074606433949349760438"
+          }
+        ]
+      },
+      {
+        "key": "rate_distribution",
+        "title": "利率分布分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bucket",
+            "label": "利率区间"
+          },
+          {
+            "key": "bond_count",
+            "label": "债券笔数"
+          },
+          {
+            "key": "bond_amount",
+            "label": "债券面值"
+          },
+          {
+            "key": "interbank_asset_count",
+            "label": "同业资产笔数"
+          },
+          {
+            "key": "interbank_asset_amount",
+            "label": "同业资产金额"
+          },
+          {
+            "key": "interbank_liability_count",
+            "label": "同业负债笔数"
+          },
+          {
+            "key": "interbank_liability_amount",
+            "label": "同业负债金额"
+          }
+        ],
+        "rows": [
+          {
+            "bucket": "零息/无息",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "1.5%以下",
+            "bond_count": 1,
+            "bond_amount": "0.01000000",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 1,
+            "interbank_liability_amount": "0.00100000"
+          },
+          {
+            "bucket": "1.5%-2.0%",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "2.0%-2.5%",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "2.5%-3.0%",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "3.0%-3.5%",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "3.5%-4.0%",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          },
+          {
+            "bucket": "4.0%以上",
+            "bond_count": 0,
+            "bond_amount": "0",
+            "interbank_asset_count": 0,
+            "interbank_asset_amount": "0",
+            "interbank_liability_count": 0,
+            "interbank_liability_amount": "0"
+          }
+        ]
+      },
+      {
+        "key": "industry_distribution",
+        "title": "行业分布",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "industry_name",
+            "label": "行业"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          }
+        ],
+        "rows": [
+          {
+            "industry_name": "主权",
+            "count": 1,
+            "balance_amount": "0.01000000",
+            "share": "1",
+            "weighted_rate_pct": "0.02500000"
+          }
+        ]
+      },
+      {
+        "key": "counterparty_types",
+        "title": "对手方类型",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "counterparty_type",
+            "label": "对手方类型"
+          },
+          {
+            "key": "asset_count",
+            "label": "资产笔数"
+          },
+          {
+            "key": "asset_amount",
+            "label": "资产金额"
+          },
+          {
+            "key": "asset_weighted_rate_pct",
+            "label": "资产加权利率(%)"
+          },
+          {
+            "key": "liability_count",
+            "label": "负债笔数"
+          },
+          {
+            "key": "liability_amount",
+            "label": "负债金额"
+          },
+          {
+            "key": "liability_weighted_rate_pct",
+            "label": "负债加权利率(%)"
+          },
+          {
+            "key": "net_position_amount",
+            "label": "净头寸"
+          }
+        ],
+        "rows": [
+          {
+            "counterparty_type": "股份制银行",
+            "asset_count": 0,
+            "asset_amount": "0",
+            "asset_weighted_rate_pct": null,
+            "liability_count": 1,
+            "liability_amount": "0.00100000",
+            "liability_weighted_rate_pct": "0.01500000",
+            "net_position_amount": "-0.00100000"
+          }
+        ]
+      },
+      {
+        "key": "campisi_breakdown",
+        "title": "Campisi归因分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bond_type",
+            "label": "分析维度"
+          },
+          {
+            "key": "balance_amount",
+            "label": "余额"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          },
+          {
+            "key": "coupon_income_amount",
+            "label": "票息收入贡献"
+          },
+          {
+            "key": "duration_years",
+            "label": "久期贡献(年)"
+          },
+          {
+            "key": "spread_bp",
+            "label": "利差(bp)"
+          },
+          {
+            "key": "spread_income_amount",
+            "label": "利差收入贡献"
+          },
+          {
+            "key": "share_of_income",
+            "label": "占总收入比重"
+          },
+          {
+            "key": "price_return_amount",
+            "label": "浮盈浮亏"
+          }
+        ],
+        "rows": [
+          {
+            "bond_type": "国债",
+            "balance_amount": "0.01000000",
+            "weighted_rate_pct": "0.02500000",
+            "coupon_income_amount": "0.0000025000000000",
+            "duration_years": "1.998631074606433949349760438",
+            "spread_bp": "2.50000000",
+            "spread_income_amount": "0.0000025000000000",
+            "share_of_income": "1",
+            "price_return_amount": "0.00100000"
+          }
+        ]
+      },
+      {
+        "key": "cross_analysis",
+        "title": "交叉分析",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "bond_type",
+            "label": "业务种类"
+          }
+        ],
+        "rows": [
+          {
+            "bond_type": "国债",
+            "债券类": "0.01000000",
+            "All": "0.01000000"
+          }
+        ]
+      },
+      {
+        "key": "interest_modes",
+        "title": "计息方式",
+        "section_kind": "table",
+        "columns": [
+          {
+            "key": "interest_mode",
+            "label": "计息方式"
+          },
+          {
+            "key": "count",
+            "label": "笔数"
+          },
+          {
+            "key": "balance_amount",
+            "label": "面值/余额"
+          },
+          {
+            "key": "share",
+            "label": "占比"
+          },
+          {
+            "key": "weighted_rate_pct",
+            "label": "加权利率(%)"
+          }
+        ],
+        "rows": [
+          {
+            "interest_mode": "固定",
+            "count": 1,
+            "balance_amount": "0.01000000",
+            "share": "1",
+            "weighted_rate_pct": "0.02500000"
+          }
+        ]
+      }
+    ],
+    "operational_sections": [
+      {
+        "key": "decision_items",
+        "title": "决策事项",
+        "section_kind": "decision_items",
+        "columns": [
+          {
+            "key": "title",
+            "label": "Title"
+          },
+          {
+            "key": "action_label",
+            "label": "Action"
+          },
+          {
+            "key": "severity",
+            "label": "Severity"
+          },
+          {
+            "key": "reason",
+            "label": "Reason"
+          },
+          {
+            "key": "source_section",
+            "label": "Source Section"
+          },
+          {
+            "key": "rule_id",
+            "label": "Rule Id"
+          },
+          {
+            "key": "rule_version",
+            "label": "Rule Version"
+          }
+        ],
+        "rows": [
+          {
+            "title": "Review 1-2年 gap positioning",
+            "action_label": "Review gap",
+            "severity": "low",
+            "reason": "Bucket gap is 0.01000000 wan yuan.",
+            "source_section": "maturity_gap",
+            "rule_id": "bal_wb_decision_gap_001",
+            "rule_version": "v1"
+          },
+          {
+            "title": "Check concentration in AAA",
+            "action_label": "Review concentration",
+            "severity": "high",
+            "reason": "Top rating bucket share reached 1.0000.",
+            "source_section": "rating_analysis",
+            "rule_id": "bal_wb_decision_rating_001",
+            "rule_version": "v1"
+          }
+        ]
+      },
+      {
+        "key": "event_calendar",
+        "title": "事件日历",
+        "section_kind": "event_calendar",
+        "columns": [
+          {
+            "key": "event_date",
+            "label": "Event Date"
+          },
+          {
+            "key": "event_type",
+            "label": "Event Type"
+          },
+          {
+            "key": "title",
+            "label": "Title"
+          },
+          {
+            "key": "source",
+            "label": "Source"
+          },
+          {
+            "key": "impact_hint",
+            "label": "Impact Hint"
+          },
+          {
+            "key": "source_section",
+            "label": "Source Section"
+          }
+        ],
+        "rows": [
+          {
+            "event_date": "2026-06-30",
+            "event_type": "funding_rollover",
+            "title": "pos-1 maturity",
+            "source": "internal_governed_schedule",
+            "impact_hint": "liability book / 持有至到期同业存单",
+            "source_section": "maturity_gap"
+          },
+          {
+            "event_date": "2027-12-31",
+            "event_type": "bond_maturity",
+            "title": "240001.IB maturity",
+            "source": "internal_governed_schedule",
+            "impact_hint": "asset book / 国债",
+            "source_section": "maturity_gap"
+          }
+        ]
+      },
+      {
+        "key": "risk_alerts",
+        "title": "风险预警",
+        "section_kind": "risk_alerts",
+        "columns": [
+          {
+            "key": "title",
+            "label": "Title"
+          },
+          {
+            "key": "severity",
+            "label": "Severity"
+          },
+          {
+            "key": "reason",
+            "label": "Reason"
+          },
+          {
+            "key": "source_section",
+            "label": "Source Section"
+          },
+          {
+            "key": "rule_id",
+            "label": "Rule Id"
+          },
+          {
+            "key": "rule_version",
+            "label": "Rule Version"
+          }
+        ],
+        "rows": [
+          {
+            "title": "Negative gap in 3-6个月",
+            "severity": "high",
+            "reason": "Gap dropped to -0.00100000 wan yuan.",
+            "source_section": "maturity_gap",
+            "rule_id": "bal_wb_risk_gap_001",
+            "rule_version": "v1"
+          },
+          {
+            "title": "AAA concentration watch",
+            "severity": "high",
+            "reason": "Top rating bucket share reached 1.0000.",
+            "source_section": "rating_analysis",
+            "rule_id": "bal_wb_risk_rating_001",
+            "rule_version": "v1"
+          }
+        ]
+      }
+    ]
+  }
+}

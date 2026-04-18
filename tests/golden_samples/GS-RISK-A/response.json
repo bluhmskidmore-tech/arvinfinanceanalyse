@@ -1,0 +1,43 @@
+{
+  "result_meta": {
+    "trace_id": "tr_4d90c7ede176",
+    "basis": "formal",
+    "result_kind": "risk.tensor",
+    "formal_use_allowed": true,
+    "source_version": "sv_risk_tensor__sv_bond_snap_1",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_risk_tensor_formal_materialize_v1",
+    "cache_version": "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T05:57:57.270363Z"
+  },
+  "result": {
+    "report_date": "2026-03-31",
+    "portfolio_dv01": "0.20904876",
+    "krd_1y": "0.00972495",
+    "krd_3y": "0.00000000",
+    "krd_5y": "0.08681798",
+    "krd_7y": "0.00000000",
+    "krd_10y": "0.11250583",
+    "krd_30y": "0.00000000",
+    "cs01": "0.19932381",
+    "portfolio_convexity": "36.65108294",
+    "portfolio_modified_duration": "4.87293147",
+    "issuer_concentration_hhi": "0.35590439",
+    "issuer_top5_weight": "1.00000000",
+    "asset_cashflow_30d": "14.00000000",
+    "asset_cashflow_90d": "14.00000000",
+    "liability_cashflow_30d": "0.00000000",
+    "liability_cashflow_90d": "0.00000000",
+    "liquidity_gap_30d": "14.00000000",
+    "liquidity_gap_90d": "14.00000000",
+    "liquidity_gap_30d_ratio": "0.03263403",
+    "total_market_value": "429.00000000",
+    "bond_count": 3,
+    "quality_flag": "ok",
+    "warnings": []
+  }
+}

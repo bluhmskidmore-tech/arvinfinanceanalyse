@@ -1,0 +1,75 @@
+{
+  "result_meta": {
+    "trace_id": "tr_pnl_bridge_2025-12-31",
+    "basis": "formal",
+    "result_kind": "pnl.bridge",
+    "formal_use_allowed": true,
+    "source_version": "fi-shared-v1__nonstd-shared-v1",
+    "vendor_version": "vv_none",
+    "rule_version": "rv_pnl_phase2_materialize_v1",
+    "cache_version": "cv_pnl_bridge_formal_v1__cv_pnl_formal__rv_pnl_phase2_materialize_v1__cv_balance_analysis_formal__rv_balance_analysis_formal_materialize_v1__cv_yield_curve_formal__rv_yield_curve_formal_materialize_v1",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "scenario_flag": false,
+    "generated_at": "2026-04-18T05:57:55.952044Z"
+  },
+  "result": {
+    "report_date": "2025-12-31",
+    "rows": [
+      {
+        "report_date": "2025-12-31",
+        "instrument_code": "240001.IB",
+        "portfolio_name": "FI Desk",
+        "cost_center": "CC100",
+        "accounting_basis": "FVTPL",
+        "beginning_dirty_mv": "0",
+        "ending_dirty_mv": "0",
+        "carry": "12.50000000",
+        "roll_down": "0",
+        "treasury_curve": "0",
+        "credit_spread": "0",
+        "fx_translation": "0",
+        "realized_trading": "1.75000000",
+        "unrealized_fv": "-3.25000000",
+        "manual_adjustment": "0.50000000",
+        "explained_pnl": "11.50000000",
+        "actual_pnl": "11.50000000",
+        "residual": "0.00000000",
+        "residual_ratio": "0",
+        "quality_flag": "ok",
+        "current_balance_found": false,
+        "prior_balance_found": false,
+        "balance_diagnostics": [
+          "Missing current balance row; ending_dirty_mv defaults to 0.",
+          "Missing prior balance row; beginning_dirty_mv defaults to 0."
+        ]
+      }
+    ],
+    "summary": {
+      "row_count": 1,
+      "ok_count": 1,
+      "warning_count": 0,
+      "error_count": 0,
+      "total_beginning_dirty_mv": "0",
+      "total_ending_dirty_mv": "0",
+      "total_carry": "12.50000000",
+      "total_roll_down": "0",
+      "total_treasury_curve": "0",
+      "total_credit_spread": "0",
+      "total_fx_translation": "0",
+      "total_realized_trading": "1.75000000",
+      "total_unrealized_fv": "-3.25000000",
+      "total_manual_adjustment": "0.50000000",
+      "total_explained_pnl": "11.50000000",
+      "total_actual_pnl": "11.50000000",
+      "total_residual": "0.00000000",
+      "quality_flag": "ok"
+    },
+    "warnings": [
+      "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available.",
+      "Current balance rows unavailable; ending_dirty_mv defaults to 0 where balance data is missing.",
+      "No prior balance report date found; beginning_dirty_mv defaults to 0 where prior balance data is missing."
+    ]
+  }
+}
