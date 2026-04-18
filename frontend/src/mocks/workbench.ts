@@ -1,6 +1,7 @@
 import type {
   AlertsPayload,
   ContributionPayload,
+  HomeSnapshotPayload,
   OverviewPayload,
   PlaceholderSnapshot,
   PnlAttributionPayload,
@@ -244,5 +245,20 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
     title: "多维查询",
     summary: "Cube query 入口保留，但当前不把自由聚合查询页宣称为 repo-wide Phase 2 已晋升消费面。",
     highlights: ["保留后续扩展入口", "当前以边界说明替代 live 宣称", "避免把实验/保留面误写成正式主链"],
+  },
+};
+
+export const mockHomeSnapshot: HomeSnapshotPayload = {
+  report_date: "2026-04-18",
+  mode: "strict",
+  source_surface: "executive_analytical",
+  overview: overviewPayload,
+  attribution: pnlAttributionPayload,
+  domains_missing: [],
+  domains_effective_date: {
+    balance: "2026-04-18",
+    pnl: "2026-04-18",
+    liability: "2026-04-18",
+    bond: "2026-04-18",
   },
 };

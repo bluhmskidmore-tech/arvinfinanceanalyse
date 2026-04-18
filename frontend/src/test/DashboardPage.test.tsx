@@ -44,16 +44,16 @@ function renderDashboard(client?: ApiClient) {
 }
 
 describe("DashboardPage", () => {
-  it("renders the governed dashboard shell while overview query is unresolved", async () => {
+  it("renders the governed dashboard shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
-    let releaseOverview: (() => void) | undefined;
+    let releaseSnapshot: (() => void) | undefined;
     const slowClient: ApiClient = {
       ...base,
-      getOverview: async () => {
+      getHomeSnapshot: async () => {
         await new Promise<void>((resolve) => {
-          releaseOverview = resolve;
+          releaseSnapshot = resolve;
         });
-        return base.getOverview();
+        return base.getHomeSnapshot();
       },
     };
 
@@ -65,20 +65,22 @@ describe("DashboardPage", () => {
     expect(screen.queryByTestId("dashboard-structure-teaser")).not.toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-tasks-calendar")).not.toBeInTheDocument();
     await waitFor(() => {
-      expect(releaseOverview).toBeDefined();
+      expect(releaseSnapshot).toBeDefined();
     });
-    releaseOverview?.();
+    releaseSnapshot?.();
     expect(await screen.findByTestId("dashboard-governed-meta")).toBeInTheDocument();
   });
 
   it("does not request excluded executive surfaces from the dashboard page", async () => {
     const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
     let riskCalls = 0;
     let contributionCalls = 0;
     let alertsCalls = 0;
 
     const guardedClient: ApiClient = {
       ...base,
+      getHomeSnapshot: (...args) => mockSnapshotSource.getHomeSnapshot(...args),
       getRiskOverview: async () => {
         riskCalls += 1;
         throw new Error("risk-overview should not be requested");
@@ -123,19 +125,15 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent(/mock/i);
   });
 
-  it("uses one selected report date for both governed dashboard queries", async () => {
+  it("uses one selected report date for the home snapshot query", async () => {
     const base = createApiClient({ mode: "real" });
-    const overviewDates: Array<string | undefined> = [];
-    const attributionDates: Array<string | undefined> = [];
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const snapshotOpts: Array<{ reportDate?: string; allowPartial?: boolean } | undefined> = [];
     const datedClient: ApiClient = {
       ...base,
-      getOverview: async (reportDate?: string) => {
-        overviewDates.push(reportDate);
-        return base.getOverview(reportDate);
-      },
-      getPnlAttribution: async (reportDate?: string) => {
-        attributionDates.push(reportDate);
-        return base.getPnlAttribution(reportDate);
+      getHomeSnapshot: async (options) => {
+        snapshotOpts.push(options);
+        return mockSnapshotSource.getHomeSnapshot(options);
       },
     };
 
@@ -147,25 +145,30 @@ describe("DashboardPage", () => {
     fireEvent.change(reportDateInput, { target: { value: "2026-03-31" } });
 
     await waitFor(() => {
-      expect(overviewDates).toContain("2026-03-31");
-      expect(attributionDates).toContain("2026-03-31");
+      expect(snapshotOpts.some((o) => o?.reportDate === "2026-03-31")).toBe(true);
     });
 
     const statusStrip = await screen.findByTestId("dashboard-data-status-strip");
-    expect(within(statusStrip).getAllByText(/requested_date: 2026-03-31/i)).toHaveLength(2);
+    await waitFor(() => {
+      expect(within(statusStrip).getAllByText(/as_of_date: 2026-04-18/i)).toHaveLength(2);
+    });
   });
 
-  it("prefers backend-returned report dates over the local requested date label", async () => {
+  it("prefers backend-returned snapshot report_date over the local requested date label", async () => {
     const base = createApiClient({ mode: "mock" });
     const governedClient: ApiClient = {
       ...base,
       mode: "real",
-      getOverview: async (reportDate?: string) => {
-        const payload = await base.getOverview(reportDate);
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
         return {
-          ...payload,
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-02-28",
+          },
           result_meta: {
-            ...payload.result_meta,
+            ...envelope.result_meta,
             filters_applied: {
               requested_report_date: "2026-02-28",
               effective_report_dates: {
@@ -174,18 +177,6 @@ describe("DashboardPage", () => {
                 liability: "2026-02-28",
                 risk: "2026-02-28",
               },
-            },
-          },
-        };
-      },
-      getPnlAttribution: async (reportDate?: string) => {
-        const payload = await base.getPnlAttribution(reportDate);
-        return {
-          ...payload,
-          result_meta: {
-            ...payload.result_meta,
-            filters_applied: {
-              report_date: "2026-02-28",
             },
           },
         };

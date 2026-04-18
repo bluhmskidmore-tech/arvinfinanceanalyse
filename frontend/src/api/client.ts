@@ -67,7 +67,9 @@ import type {
   FxAnalyticalPayload,
   FxFormalStatusPayload,
   FormalPnlRefreshPayload,
+  GetHomeSnapshotOptions,
   HealthResponse,
+  HomeSnapshotPayload,
   IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
@@ -157,6 +159,7 @@ import {
 import {
   alertsPayload,
   contributionPayload,
+  mockHomeSnapshot,
   overviewPayload,
   placeholderSnapshots,
   pnlAttributionPayload,
@@ -169,6 +172,9 @@ export type ApiClient = {
   mode: DataSourceMode;
   getHealth: () => Promise<HealthResponse>;
   getOverview: (reportDate?: string) => Promise<ApiEnvelope<OverviewPayload>>;
+  getHomeSnapshot: (
+    options?: GetHomeSnapshotOptions,
+  ) => Promise<ApiEnvelope<HomeSnapshotPayload>>;
   getSummary: () => Promise<ApiEnvelope<SummaryPayload>>;
   getFormalPnlDates: (basis?: PnlBasis) => Promise<ApiEnvelope<PnlDatesPayload>>;
   getFormalPnlData: (date: string, basis?: PnlBasis) => Promise<ApiEnvelope<PnlDataPayload>>;
@@ -3248,6 +3254,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockApiEnvelope("executive.overview", overviewPayload);
     },
+    async getHomeSnapshot(_options?: GetHomeSnapshotOptions) {
+      await delay();
+      return buildMockApiEnvelope("home.snapshot", mockHomeSnapshot);
+    },
     async getSummary() {
       await delay();
       return buildMockApiEnvelope("executive.summary", summaryPayload);
@@ -5409,6 +5419,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/ui/home/overview${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
       ),
+    getHomeSnapshot: async (options?: GetHomeSnapshotOptions) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate) params.set("report_date", options.reportDate);
+      if (options?.allowPartial) params.set("allow_partial", "true");
+      const qs = params.toString();
+      const response = await fetchImpl(
+        `${baseUrl}/ui/home/snapshot${qs ? `?${qs}` : ""}`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!response.ok) {
+        throw new Error(`Request failed: /ui/home/snapshot (${response.status})`);
+      }
+      return (await response.json()) as ApiEnvelope<HomeSnapshotPayload>;
+    },
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: (basis = "formal") =>

@@ -81,25 +81,6 @@ function resolveReturnedDateLabel(
     };
   }
 
-  const effectiveReportDates = meta?.filters_applied?.effective_report_dates;
-  if (
-    effectiveReportDates &&
-    typeof effectiveReportDates === "object" &&
-    !Array.isArray(effectiveReportDates)
-  ) {
-    const values = Object.values(effectiveReportDates)
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .filter((value) => value.length > 0);
-
-    if (values.length > 0) {
-      const uniqueValues = Array.from(new Set(values));
-      return {
-        label: "as_of_date",
-        value: uniqueValues.length === 1 ? uniqueValues[0] : "mixed",
-      };
-    }
-  }
-
   return {
     label: "requested_date",
     value: requestedDateLabel,
@@ -118,42 +99,45 @@ const reportDateInputStyle = {
 export default function DashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState("");
+  const [allowPartial, setAllowPartial] = useState(false);
   const requestedDateLabel = reportDate || "latest";
 
-  const queryKeyBase = useMemo(
-    () => ["executive-dashboard", client.mode, requestedDateLabel],
-    [client.mode, requestedDateLabel],
-  );
+  const snapshotQuery = useQuery({
+    queryKey: ["home-snapshot", client.mode, requestedDateLabel, allowPartial],
+    queryFn: () =>
+      client.getHomeSnapshot({
+        reportDate: reportDate || undefined,
+        allowPartial,
+      }),
+    retry: false,
+  });
 
-  const overviewQuery = useQuery({
-    queryKey: [...queryKeyBase, "overview"],
-    queryFn: () => client.getOverview(reportDate || undefined),
-    retry: false,
-  });
-  const pnlQuery = useQuery({
-    queryKey: [...queryKeyBase, "pnl-attribution"],
-    queryFn: () => client.getPnlAttribution(reportDate || undefined),
-    retry: false,
-  });
+  const { overviewEnv, attributionEnv } = useMemo(() => {
+    const env = snapshotQuery.data;
+    if (!env) return { overviewEnv: undefined, attributionEnv: undefined };
+    return {
+      overviewEnv: {
+        result_meta: env.result_meta,
+        result: env.result.overview,
+      },
+      attributionEnv: {
+        result_meta: env.result_meta,
+        result: env.result.attribution,
+      },
+    };
+  }, [snapshotQuery.data]);
 
   const adapterOutput = useMemo(
     () =>
       adaptDashboard({
-        overviewEnv: overviewQuery.data,
-        attributionEnv: pnlQuery.data,
-        overviewLoading: overviewQuery.isLoading,
-        overviewError: overviewQuery.isError,
-        attributionLoading: pnlQuery.isLoading,
-        attributionError: pnlQuery.isError,
+        overviewEnv,
+        attributionEnv,
+        overviewLoading: snapshotQuery.isLoading,
+        overviewError: snapshotQuery.isError,
+        attributionLoading: snapshotQuery.isLoading,
+        attributionError: snapshotQuery.isError,
       }),
-    [
-      overviewQuery.data,
-      overviewQuery.isLoading,
-      overviewQuery.isError,
-      pnlQuery.data,
-      pnlQuery.isLoading,
-      pnlQuery.isError,
-    ],
+    [overviewEnv, attributionEnv, snapshotQuery.isLoading, snapshotQuery.isError],
   );
 
   const overviewMeta = adapterOutput.overview.meta;
@@ -162,10 +146,37 @@ export default function DashboardPage() {
     describeAttention(overviewMeta, "Overview"),
     describeAttention(attributionMeta, "Attribution"),
   ].filter((item): item is string => Boolean(item));
+
+  const snapshotResult = snapshotQuery.data?.result;
+  const snapshotPartialNote = useMemo(() => {
+    if (!snapshotResult) return null;
+    if (snapshotResult.mode === "partial" || snapshotResult.domains_missing.length > 0) {
+      const missing = snapshotResult.domains_missing.length
+        ? snapshotResult.domains_missing.join(", ")
+        : "";
+      return `该日部分业务域不可用${missing ? `: ${missing}` : ""}`;
+    }
+    return null;
+  }, [snapshotResult]);
+
+  const overviewDateLabel = useMemo(() => {
+    const snapDate = snapshotResult?.report_date?.trim();
+    if (snapDate) {
+      return { label: "as_of_date" as const, value: snapDate };
+    }
+    return resolveReturnedDateLabel(overviewMeta, requestedDateLabel);
+  }, [snapshotResult?.report_date, overviewMeta, requestedDateLabel]);
+
+  const attributionDateLabel = useMemo(() => {
+    const snapDate = snapshotResult?.report_date?.trim();
+    if (snapDate) {
+      return { label: "as_of_date" as const, value: snapDate };
+    }
+    return resolveReturnedDateLabel(attributionMeta, requestedDateLabel);
+  }, [snapshotResult?.report_date, attributionMeta, requestedDateLabel]);
+
   const overviewStatus = describeMetaStatus(overviewMeta);
   const attributionStatus = describeMetaStatus(attributionMeta);
-  const overviewDateLabel = resolveReturnedDateLabel(overviewMeta, requestedDateLabel);
-  const attributionDateLabel = resolveReturnedDateLabel(attributionMeta, requestedDateLabel);
 
   return (
     <section data-testid="fixed-income-dashboard-page">
@@ -176,16 +187,36 @@ export default function DashboardPage() {
         badgeLabel={client.mode === "real" ? "真实 API" : "Mock Mode"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
         actions={
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ color: "#64748b", fontSize: 12 }}>报告日</span>
-            <input
-              aria-label="报告日"
-              type="date"
-              value={reportDate}
-              onChange={(event) => setReportDate(event.target.value)}
-              style={reportDateInputStyle}
-            />
-          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "end" }}>
+            <label style={{ display: "grid", gap: 6 }}>
+              <span style={{ color: "#64748b", fontSize: 12 }}>报告日</span>
+              <input
+                aria-label="报告日"
+                type="date"
+                value={reportDate}
+                onChange={(event) => setReportDate(event.target.value)}
+                style={reportDateInputStyle}
+              />
+            </label>
+            <label
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                color: "#162033",
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                aria-label="允许历史日（含缺域）"
+                type="checkbox"
+                checked={allowPartial}
+                onChange={(event) => setAllowPartial(event.target.checked)}
+              />
+              <span>允许历史日（含缺域）</span>
+            </label>
+          </div>
         }
       >
         <div style={{ display: "grid", gap: 14 }}>
@@ -196,7 +227,7 @@ export default function DashboardPage() {
         </div>
       </PageHeader>
 
-      {client.mode !== "real" || attentionItems.length > 0 ? (
+      {client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote ? (
         <section
           data-testid="dashboard-data-warning"
           style={{
@@ -220,6 +251,9 @@ export default function DashboardPage() {
             <div style={{ fontSize: 13, lineHeight: 1.6 }}>
               当前首页存在需要人工留意的数据状态： {attentionItems.join("；")}
             </div>
+          ) : null}
+          {snapshotPartialNote ? (
+            <div style={{ fontSize: 13, lineHeight: 1.6 }}>{snapshotPartialNote}</div>
           ) : null}
         </section>
       ) : null}
@@ -273,7 +307,7 @@ export default function DashboardPage() {
       >
         <OverviewSection
           overview={adapterOutput.overview}
-          onRetry={() => void overviewQuery.refetch()}
+          onRetry={() => void snapshotQuery.refetch()}
         />
 
         <section data-testid="dashboard-governed-surface" style={{ display: "grid", gap: 16 }}>
@@ -286,7 +320,7 @@ export default function DashboardPage() {
           <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
             <PnlAttributionSection
               attribution={adapterOutput.attribution}
-              onRetry={() => void pnlQuery.refetch()}
+              onRetry={() => void snapshotQuery.refetch()}
             />
           </Suspense>
         </section>

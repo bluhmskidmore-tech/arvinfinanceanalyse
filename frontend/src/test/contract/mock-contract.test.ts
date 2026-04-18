@@ -236,3 +236,21 @@ describe("mockClient.getPnlCampisiAttribution · W3.6 contract", () => {
     assertAllNumerics(envelope.result, "getPnlCampisiAttribution.result");
   });
 });
+
+describe("mockClient.getHomeSnapshot · W4.3 contract", () => {
+  it("returns envelope with all Numeric-shaped nodes passing isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getHomeSnapshot();
+    assertAllNumerics(envelope.result, "getHomeSnapshot.result");
+  });
+
+  it("payload has expected snapshot fields", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getHomeSnapshot();
+    expect(envelope.result.mode).toBe("strict");
+    expect(envelope.result.source_surface).toBe("executive_analytical");
+    expect(envelope.result.report_date).toBeTruthy();
+    expect(Array.isArray(envelope.result.domains_missing)).toBe(true);
+    expect(envelope.result.domains_effective_date).toBeTypeOf("object");
+  });
+});

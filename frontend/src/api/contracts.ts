@@ -96,6 +96,21 @@ export type PnlAttributionPayload = {
   segments: AttributionSegment[];
 };
 
+export type HomeSnapshotPayload = {
+  report_date: string;
+  mode: "strict" | "partial";
+  source_surface: "executive_analytical";
+  overview: OverviewPayload;
+  attribution: PnlAttributionPayload;
+  domains_missing: string[];
+  domains_effective_date: Record<string, string>;
+};
+
+export type GetHomeSnapshotOptions = {
+  reportDate?: string;
+  allowPartial?: boolean;
+};
+
 export type FormalPnlRefreshPayload = {
   status: string;
   run_id?: string;
