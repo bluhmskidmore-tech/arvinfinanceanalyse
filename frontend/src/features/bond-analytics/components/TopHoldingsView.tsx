@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Card, Spin, Statistic, Table } from "antd";
+import { Alert, Card, Select, Space, Spin, Statistic, Table } from "antd";
 import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
@@ -8,6 +8,8 @@ import { formatPct, formatWan } from "../utils/formatters";
 interface Props {
   reportDate: string;
 }
+
+const TOP_N_OPTIONS = [10, 20, 30, 50, 100] as const;
 
 const columns = [
   { title: "代码", dataIndex: "instrument_code", key: "instrument_code" },
@@ -39,6 +41,7 @@ const columns = [
 
 export function TopHoldingsView({ reportDate }: Props) {
   const client = useApiClient();
+  const [topN, setTopN] = useState<number>(20);
   const [data, setData] = useState<BondTopHoldingsPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +52,7 @@ export function TopHoldingsView({ reportDate }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const envelope = await client.getBondAnalyticsTopHoldings(reportDate, 20);
+        const envelope = await client.getBondAnalyticsTopHoldings(reportDate, topN);
         if (!cancelled) setData(envelope.result);
       } catch (e: unknown) {
         if (!cancelled) setError((e as Error).message);
@@ -61,7 +64,7 @@ export function TopHoldingsView({ reportDate }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [client, reportDate]);
+  }, [client, reportDate, topN]);
 
   const topWeightSum = useMemo(() => {
     if (!data?.items.length) return 0;
@@ -86,6 +89,17 @@ export function TopHoldingsView({ reportDate }: Props) {
 
   return (
     <div data-testid="top-holdings-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <Space align="center" wrap data-testid="bond-analytics-top-holdings-toolbar">
+        <span style={{ color: "rgba(0,0,0,0.55)" }}>展示条数</span>
+        <Select
+          aria-label="bond-analytics-top-holdings-topn"
+          data-testid="bond-analytics-top-holdings-topn"
+          value={topN}
+          options={TOP_N_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
+          onChange={(v) => setTopN(v)}
+          style={{ minWidth: 88 }}
+        />
+      </Space>
       {data.warnings.length > 0 ? (
         <Alert type="warning" showIcon message={data.warnings.join(" ")} />
       ) : null}
