@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import get_args
 
 import pytest
+from pydantic import ValidationError
 
 from backend.app.schemas.result_meta import ResultMeta, SourceSurface
 from backend.app.services import pnl_attribution_service as pa_svc
@@ -50,6 +51,16 @@ class TestResultMetaSourceSurface:
                 rule_version="rv_x",
                 cache_version="cv_x",
                 source_surface="not_a_surface",  # type: ignore[arg-type]
+            )
+
+    def test_governed_result_kind_requires_source_surface(self) -> None:
+        with pytest.raises(ValidationError):
+            ResultMeta(
+                trace_id="tr_x",
+                result_kind="cashflow_projection.overview",
+                source_version="sv_x",
+                rule_version="rv_x",
+                cache_version="cv_x",
             )
 
 

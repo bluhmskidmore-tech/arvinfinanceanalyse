@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 SourceSurface = Literal[
@@ -15,6 +15,18 @@ SourceSurface = Literal[
     "cashflow",
     "pnl_bridge",
 ]
+
+_GOVERNED_RESULT_KIND_PREFIXES = (
+    "executive.",
+    "pnl_attribution.",
+    "balance-analysis.",
+    "liability_analytics.",
+    "bond_analytics.",
+    "bond_dashboard.",
+    "risk.tensor",
+    "cashflow_projection.",
+    "pnl.bridge",
+)
 
 
 class ResultMeta(BaseModel):
@@ -36,3 +48,12 @@ class ResultMeta(BaseModel):
     evidence_rows: int | None = None
     next_drill: list[str | dict[str, Any]] = Field(default_factory=list)
     source_surface: SourceSurface | None = None
+
+    @model_validator(mode="after")
+    def _require_source_surface_for_governed_result_kinds(self) -> "ResultMeta":
+        if any(self.result_kind.startswith(prefix) for prefix in _GOVERNED_RESULT_KIND_PREFIXES):
+            if self.source_surface is None:
+                raise ValueError(
+                    f"source_surface is required for governed result_kind={self.result_kind!r}."
+                )
+        return self
