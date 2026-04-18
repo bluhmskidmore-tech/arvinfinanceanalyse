@@ -232,14 +232,12 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("positions-report-date")).toBeInTheDocument();
   });
 
-  it("renders the liability-analytics route as a placeholder surface", async () => {
+  it("renders the liability-analytics route as a live page", async () => {
     renderWorkbenchApp(["/liability-analytics"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "负债结构分析" })).toBeInTheDocument();
-    expect(
-      (await screen.findAllByText(/当前仅保留 compatibility 模块入口/i)).length,
-    ).toBeGreaterThan(0);
+    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the cashflow-projection route", async () => {
