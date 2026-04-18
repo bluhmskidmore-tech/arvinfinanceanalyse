@@ -6,6 +6,7 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.services.macro_vendor_service import (
+    MacroVendorReadError,
     choice_macro_latest_envelope,
     fx_analytical_envelope,
     fx_formal_status_envelope,
@@ -19,25 +20,45 @@ router = APIRouter()
 @router.get("/ui/preview/macro-foundation")
 def macro_foundation() -> dict[str, object]:
     settings = get_settings()
-    return macro_vendor_envelope(settings.duckdb_path)
+    try:
+        return macro_vendor_envelope(settings.duckdb_path)
+    except MacroVendorReadError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/ui/macro/choice-series/latest")
 def choice_series_latest() -> dict[str, object]:
     settings = get_settings()
-    return choice_macro_latest_envelope(settings.duckdb_path)
+    try:
+        return choice_macro_latest_envelope(settings.duckdb_path)
+    except MacroVendorReadError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/ui/market-data/fx/formal-status")
 def fx_formal_status() -> dict[str, object]:
     settings = get_settings()
-    return fx_formal_status_envelope(settings.duckdb_path)
+    try:
+        return fx_formal_status_envelope(settings.duckdb_path)
+    except MacroVendorReadError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/ui/market-data/fx/analytical")
 def fx_analytical() -> dict[str, object]:
     settings = get_settings()
-    return fx_analytical_envelope(settings.duckdb_path)
+    try:
+        return fx_analytical_envelope(settings.duckdb_path)
+    except MacroVendorReadError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/ui/macro/choice-series/refresh")

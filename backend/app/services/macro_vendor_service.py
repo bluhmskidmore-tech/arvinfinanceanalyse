@@ -32,6 +32,10 @@ LIVE_RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 LIVE_CACHE_VERSION = "cv_choice_macro_thin_slice_v1"
 
 
+class MacroVendorReadError(RuntimeError):
+    """Raised when macro/fx analytical data exists but cannot be read truthfully."""
+
+
 def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
@@ -39,8 +43,8 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -71,8 +75,8 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
             order by vendor_name, series_id
             """
         ).fetchall()
-    except duckdb.Error:
-        return MacroVendorPayload(series=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     finally:
         conn.close()
 
@@ -141,8 +145,8 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -160,8 +164,8 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
             """,
             series_ids,
         ).fetchall()
-    except duckdb.Error:
-        return "sv_macro_vendor_empty"
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     finally:
         conn.close()
 
@@ -178,8 +182,8 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -188,8 +192,8 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
 
         recent_rows = _load_choice_macro_recent_rows(conn, tables)
         catalog_by_series = _load_choice_macro_catalog_map(conn, tables)
-    except duckdb.Error:
-        return ChoiceMacroLatestPayload(series=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     finally:
         conn.close()
 
@@ -403,8 +407,8 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
 
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return FxAnalyticalPayload(groups=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
 
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
@@ -421,8 +425,8 @@ def load_fx_analytical_payload(duckdb_path: str) -> FxAnalyticalPayload:
                 """
             ).fetchall()
         }
-    except duckdb.Error:
-        return FxAnalyticalPayload(groups=[])
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     finally:
         conn.close()
 
@@ -591,8 +595,8 @@ def _load_latest_fx_mid_rows(
         return {}
     try:
         conn = duckdb.connect(str(duckdb_file), read_only=True)
-    except duckdb.Error:
-        return {}
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     try:
         tables = {row[0] for row in conn.execute("show tables").fetchall()}
         if "fx_daily_mid" not in tables:
@@ -638,8 +642,8 @@ def _load_latest_fx_mid_rows(
             """,
             [item.upper() for item in base_currencies],
         ).fetchall()
-    except duckdb.Error:
-        return {}
+    except duckdb.Error as exc:
+        raise MacroVendorReadError("Macro vendor read failed.") from exc
     finally:
         conn.close()
 

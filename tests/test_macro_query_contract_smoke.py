@@ -342,11 +342,23 @@ def test_macro_foundation_preview_degrades_to_empty_payload_for_corrupt_duckdb(t
     client = TestClient(main_module.app)
     response = client.get("/ui/preview/macro-foundation")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["result_meta"]["quality_flag"] == "warning"
-    assert payload["result"]["read_target"] == "duckdb"
-    assert payload["result"]["series"] == []
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Macro vendor read failed."
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_returns_503_for_corrupt_existing_duckdb(tmp_path, monkeypatch):
+    corrupt_duckdb = tmp_path / "corrupt-choice-latest.duckdb"
+    corrupt_duckdb.write_text("not-a-duckdb-file", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(corrupt_duckdb))
+    get_settings.cache_clear()
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+    response = client.get("/ui/macro/choice-series/latest")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Macro vendor read failed."
     get_settings.cache_clear()
 
 

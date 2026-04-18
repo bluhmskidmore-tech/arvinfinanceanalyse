@@ -43,3 +43,25 @@ def test_fx_api_exposes_formal_status_and_analytical_groups(tmp_path, monkeypatc
     ]
     assert analytical_payload["result"]["groups"][0]["series"][0]["series_id"] == "EMM00058124"
     get_settings.cache_clear()
+
+
+def test_fx_api_returns_503_for_corrupt_existing_duckdb(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "choice_macro_catalog.json"
+    _write_catalog(catalog_path)
+    corrupt_duckdb = tmp_path / "corrupt-market-data.duckdb"
+    corrupt_duckdb.write_text("not-a-duckdb-file", encoding="utf-8")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", str(catalog_path))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(corrupt_duckdb))
+    get_settings.cache_clear()
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    formal_response = client.get("/ui/market-data/fx/formal-status")
+    analytical_response = client.get("/ui/market-data/fx/analytical")
+
+    assert formal_response.status_code == 503
+    assert formal_response.json()["detail"] == "Macro vendor read failed."
+    assert analytical_response.status_code == 503
+    assert analytical_response.json()["detail"] == "Macro vendor read failed."
+    get_settings.cache_clear()
