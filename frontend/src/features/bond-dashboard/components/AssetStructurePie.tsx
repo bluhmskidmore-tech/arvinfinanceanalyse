@@ -68,6 +68,7 @@ export function AssetStructurePie({
 
   return (
     <Card
+      data-testid="bond-dashboard-asset-structure-pie"
       loading={loading}
       title="债券资产结构"
       extra={<Button type="link">更多</Button>}
