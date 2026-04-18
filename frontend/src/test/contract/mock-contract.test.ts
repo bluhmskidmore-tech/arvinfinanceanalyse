@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from "vitest";
 
+import { createApiClient } from "../../api/client";
 import type { Numeric } from "../../api/contracts";
 import { isNumeric } from "../../api/numeric";
 import { assertAllNumerics } from "./assertAllNumerics";
@@ -117,6 +118,53 @@ describe("assertAllNumerics · smoke", () => {
     };
     expect(isNumeric(n)).toBe(true);
     expect(() => assertAllNumerics(n)).not.toThrow();
+  });
+});
+
+// ------------------------------------------------------------------
+// Wave 2.7 · mockClient.getOverview / getPnlAttribution 对拍
+// ------------------------------------------------------------------
+
+describe("mockClient.getOverview · W2.7 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getOverview();
+    expect(envelope.result).toBeDefined();
+    assertAllNumerics(envelope.result, "getOverview.result");
+  });
+
+  it("each metric has Numeric value and delta", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getOverview();
+    for (const metric of envelope.result.metrics) {
+      expect(isNumeric(metric.value)).toBe(true);
+      expect(isNumeric(metric.delta)).toBe(true);
+    }
+  });
+});
+
+describe("mockClient.getPnlAttribution · W2.7 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlAttribution();
+    assertAllNumerics(envelope.result, "getPnlAttribution.result");
+  });
+
+  it("total and every segment.amount are Numeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlAttribution();
+    expect(isNumeric(envelope.result.total)).toBe(true);
+    for (const segment of envelope.result.segments) {
+      expect(isNumeric(segment.amount)).toBe(true);
+    }
+  });
+
+  it("segments no longer have display_amount field", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlAttribution();
+    for (const segment of envelope.result.segments) {
+      expect((segment as Record<string, unknown>).display_amount).toBeUndefined();
+    }
   });
 });
 
