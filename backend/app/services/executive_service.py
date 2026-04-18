@@ -16,6 +16,7 @@ from backend.app.repositories.liability_analytics_repo import LiabilityAnalytics
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.repositories.risk_tensor_repo import load_latest_bond_analytics_lineage
+from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertsPayload,
     AlertItem,
@@ -52,6 +53,7 @@ def _envelope(
     fallback_mode: Literal["none", "latest_snapshot"] = "none",
     source_version: str = "sv_exec_dashboard_v1",
     rule_version: str = "rv_exec_dashboard_v1",
+    filters_applied: dict[str, object] | None = None,
 ) -> dict[str, object]:
     return build_result_envelope(
         basis="analytical",
@@ -63,32 +65,65 @@ def _envelope(
         quality_flag=quality_flag,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
         result_payload=result.model_dump(mode="json"),
     )
 
 
-def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> str:
+def _fmt_yi_amount(value: float | None, *, signed: bool = False) -> Numeric:
+    """Format a yuan-denominated amount into a Numeric in yi display.
+
+    Retains the original signature to minimize churn at call sites (they just
+    receive a Numeric instead of str now; ExecutiveMetric etc. accept both
+    thanks to W2.1 coercion, but callers building Numerics directly bypass
+    the coerce path).
+    """
     if value is None:
-        v = 0.0
-    else:
-        v = float(value)
+        return Numeric(
+            raw=None,
+            unit="yuan",
+            display="—" if signed else "0.00 亿",
+            precision=2,
+            sign_aware=signed,
+        )
+    v = float(value)
     yi = v / 1e8
     if signed:
         sign = "+" if yi >= 0 else ""
-        return f"{sign}{yi:,.2f} 亿"
-    return f"{yi:,.2f} 亿"
+        display = f"{sign}{yi:,.2f} 亿"
+    else:
+        display = f"{yi:,.2f} 亿"
+    return Numeric(
+        raw=v,
+        unit="yuan",
+        display=display,
+        precision=2,
+        sign_aware=signed,
+    )
 
 
-def _fmt_signed_segment_yi(yi: float) -> str:
+def _fmt_signed_segment_yi(yi: float) -> Numeric:
     sign = "+" if yi >= 0 else ""
-    return f"{sign}{yi:.2f} 亿"
+    return Numeric(
+        raw=float(yi) * 1e8,
+        unit="yuan",
+        display=f"{sign}{yi:.2f} 亿",
+        precision=2,
+        sign_aware=True,
+    )
 
 
-def _fmt_signed_percent(value: float | None) -> str:
+def _fmt_signed_percent(value: float | None) -> Numeric:
     if value is None:
-        return "—"
+        return Numeric(raw=None, unit="pct", display="—", precision=2, sign_aware=True)
     sign = "+" if float(value) >= 0 else ""
-    return f"{sign}{float(value):.2f}%"
+    return Numeric(
+        raw=float(value) / 100.0,  # raw 是 decimal ratio
+        unit="pct",
+        display=f"{sign}{float(value):.2f}%",
+        precision=2,
+        sign_aware=True,
+    )
 
 
 def _previous_report_date(dates: list[str], current_report_date: str | None) -> str | None:
@@ -109,16 +144,28 @@ def _fetch_executive_aum_row(
 ) -> dict[str, object] | None:
     fetch_formal_overview = getattr(balance_repo, "fetch_formal_overview", None)
     if callable(fetch_formal_overview):
-        return fetch_formal_overview(
+        row = fetch_formal_overview(
             report_date=report_date,
             position_scope="asset",
             currency_basis=currency_basis,
         )
+        if row is None:
+            return None
+        return {
+            **row,
+            "_metric_scope": "combined_formal_balance",
+        }
 
-    return balance_repo.fetch_zqtz_asset_market_value(
+    row = balance_repo.fetch_zqtz_asset_market_value(
         report_date=report_date,
         currency_basis=currency_basis,
     )
+    if row is None:
+        return None
+    return {
+        **row,
+        "_metric_scope": "zqtz_only",
+    }
 
 
 def _lineage_tokens(*values: object) -> list[str]:
@@ -143,20 +190,32 @@ def _join_lineage_tokens(*values: object) -> str:
     return "__".join(_lineage_tokens(*values))
 
 
-def _format_percent_change(current: float | None, previous: float | None) -> str:
+def _format_percent_change(current: float | None, previous: float | None) -> Numeric:
     if current is None or previous in (None, 0):
-        return "无环比"
+        return Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
     change = ((float(current) - float(previous)) / float(previous)) * 100
     sign = "+" if change >= 0 else ""
-    return f"{sign}{change:.2f}%"
+    return Numeric(
+        raw=change / 100.0,
+        unit="pct",
+        display=f"{sign}{change:.2f}%",
+        precision=2,
+        sign_aware=True,
+    )
 
 
-def _format_point_change(current: float | None, previous: float | None) -> str:
+def _format_point_change(current: float | None, previous: float | None) -> Numeric:
     if current is None or previous is None:
-        return "无环比"
+        return Numeric(raw=None, unit="bp", display="无环比", precision=2, sign_aware=True)
     change = float(current) - float(previous)
     sign = "+" if change >= 0 else ""
-    return f"{sign}{change:.2f}pp"
+    return Numeric(
+        raw=change * 100.0,  # bp = percent point * 100
+        unit="bp",
+        display=f"{sign}{change:.2f}pp",
+        precision=2,
+        sign_aware=True,
+    )
 
 
 def _unavailable_metric(
@@ -170,8 +229,8 @@ def _unavailable_metric(
     return ExecutiveMetric(
         id=metric_id,
         label=label,
-        value="—",
-        delta=delta,
+        value=Numeric(raw=None, unit="yuan", display="—", precision=2, sign_aware=False),
+        delta=Numeric(raw=None, unit="pct", display=delta, precision=2, sign_aware=True),
         tone=tone,
         detail=detail,
     )
@@ -252,15 +311,14 @@ def _build_pnl_attribution_from_repo(
         AttributionSegment(
             id=key,
             label=label,
-            amount=round(val, 4),
-            display_amount=_fmt_signed_segment_yi(val),
+            amount=_fmt_signed_segment_yi(val),
             tone=_tone_for_signed(val),
         )
         for key, label, val in order
     ]
     return (
         PnlAttributionPayload(
-            title="收益归因",
+            title="经营贡献拆解",
             total=_fmt_yi_amount(total_yi * 1e8, signed=True),
             segments=segments,
         ),
@@ -280,15 +338,14 @@ def _pnl_attribution_explicit_miss_payload(report_date: str) -> PnlAttributionPa
         AttributionSegment(
             id=key,
             label=label,
-            amount=0.0,
-            display_amount=_fmt_signed_segment_yi(val),
+            amount=_fmt_signed_segment_yi(val),
             tone=_tone_for_signed(val),
         )
         for key, label, val in zero
     ]
     return PnlAttributionPayload(
-        title=f"收益归因（{report_date} 无受控产品分类月度数据）",
-        total="0 亿",
+        title=f"经营贡献拆解（{report_date} 无受控产品分类月度数据）",
+        total=Numeric(raw=0.0, unit="yuan", display="0 亿", precision=0, sign_aware=False),
         segments=segments,
     )
 
@@ -305,15 +362,14 @@ def _pnl_attribution_unavailable_payload() -> PnlAttributionPayload:
         AttributionSegment(
             id=key,
             label=label,
-            amount=0.0,
-            display_amount=_fmt_signed_segment_yi(val),
+            amount=_fmt_signed_segment_yi(val),
             tone=_tone_for_signed(val),
         )
         for key, label, val in zero
     ]
     return PnlAttributionPayload(
-        title="收益归因（当前无受控产品分类月度数据）",
-        total="0 亿",
+        title="经营贡献拆解（当前无受控产品分类月度数据）",
+        total=Numeric(raw=0.0, unit="yuan", display="0 亿", precision=0, sign_aware=False),
         segments=segments,
     )
 
@@ -403,16 +459,20 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
     normalized_report_date = _normalize_report_date(report_date)
+    current_balance_report_date: str | None = None
+    current_pnl_report_date: str | None = None
+    liability_report_date: str | None = None
+    current_bond_report_date: str | None = None
     aum_raw: float | None = None
     ytd_raw: float | None = None
     nim_raw: float | None = None
     dv01_raw: float | None = None
     overview_source_versions: list[object] = ["sv_exec_dashboard_v1"]
     overview_rule_versions: list[object] = ["rv_exec_dashboard_v1"]
-    aum_delta = "无环比"
-    ytd_delta = "无环比"
-    nim_delta = "无环比"
-    dv01_delta = "无环比"
+    aum_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
+    ytd_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
+    nim_delta: Numeric = Numeric(raw=None, unit="bp", display="无环比", precision=2, sign_aware=True)
+    dv01_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
 
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
@@ -584,18 +644,29 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
 
     metrics: list[ExecutiveMetric] = []
     if aum_raw is not None:
+        aum_scope = str(row.get("_metric_scope") or "") if row is not None else ""
+        aum_label = "资产规模" if aum_scope == "combined_formal_balance" else "债券资产规模（zqtz）"
+        aum_detail = (
+            (
+                f"来自 governed formal balance overview，在 {normalized_report_date} 的 CNY 资产口径市值合计。"
+                if normalized_report_date is not None
+                else f"来自 governed formal balance overview，在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
+            )
+            if aum_scope == "combined_formal_balance"
+            else (
+                f"来自 fact_formal_zqtz_balance_daily，在 {normalized_report_date} 的 CNY 资产口径市值合计。"
+                if normalized_report_date is not None
+                else f"来自 fact_formal_zqtz_balance_daily，在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
+            )
+        )
         metrics.append(
             ExecutiveMetric(
                 id="aum",
-                label="资产规模",
+                label=aum_label,
                 value=_fmt_yi_amount(aum_raw, signed=False),
                 delta=aum_delta,
                 tone="positive",
-                detail=(
-                    f"来自 fact_formal_zqtz_balance_daily + fact_formal_tyw_balance_daily 在 {normalized_report_date} 的 CNY 资产口径市值合计。"
-                    if normalized_report_date is not None
-                    else f"来自 fact_formal_zqtz_balance_daily + fact_formal_tyw_balance_daily 在 {current_balance_report_date} 的 CNY 资产口径市值合计。"
-                ),
+                detail=aum_detail,
             )
         )
     if ytd_raw is not None:
@@ -633,7 +704,13 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             ExecutiveMetric(
                 id="dv01",
                 label="组合DV01",
-                value=f"{dv01_raw:,.0f}",
+                value=Numeric(
+                    raw=dv01_raw,
+                    unit="dv01",
+                    display=f"{dv01_raw:,.0f}",
+                    precision=0,
+                    sign_aware=False,
+                ),
                 delta=dv01_delta,
                 tone="warning",
                 detail=(
@@ -679,12 +756,22 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             if has_missing_governed_metrics
             else _join_lineage_tokens(*overview_rule_versions)
         ),
+        filters_applied={
+            "requested_report_date": normalized_report_date,
+            "effective_report_dates": {
+                "balance": current_balance_report_date,
+                "pnl": current_pnl_report_date,
+                "liability": liability_report_date,
+                "risk": current_bond_report_date,
+            },
+        },
     )
 
 
-def executive_summary() -> dict[str, object]:
+def executive_summary(report_date: str | None = None) -> dict[str, object]:
     payload = SummaryPayload(
         title="本周管理摘要",
+        report_date=report_date,
         narrative=(
             "本周组合收益延续修复，收益主要来自久期与票息贡献。"
             "风险端仍需关注信用集中度与流动性预留，当前页面仅展示受控摘要，不生成正式分析口径。"
@@ -710,7 +797,7 @@ def executive_summary() -> dict[str, object]:
             ),
         ],
     )
-    overview_payload = executive_overview()
+    overview_payload = executive_overview(report_date=report_date)
     overview_meta = overview_payload.get("result_meta") if isinstance(overview_payload, dict) else None
     source_version = "sv_exec_dashboard_explicit_miss_v1"
     rule_version = "rv_exec_dashboard_v1"
@@ -739,6 +826,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
                 quality_flag="warning",
                 vendor_status="vendor_unavailable",
                 source_version="sv_exec_dashboard_explicit_miss_v1",
+                filters_applied={"report_date": normalized},
             )
         repo = None
 
@@ -765,6 +853,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
                     _pnl_attribution_explicit_miss_payload(normalized),
                     quality_flag="warning",
                     source_version="sv_exec_dashboard_explicit_miss_v1",
+                    filters_applied={"report_date": normalized},
                 )
             built = None
 
@@ -774,6 +863,17 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             built,
             source_version=attribution_source_version,
             rule_version=attribution_rule_version,
+            filters_applied={
+                "report_date": normalized
+                or next(
+                    (
+                        str(row.get("report_date") or "").strip()
+                        for row in built_rows
+                        if str(row.get("report_date") or "").strip()
+                    ),
+                    None,
+                ),
+            },
         )
 
     if normalized is not None:
@@ -783,6 +883,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
             quality_flag="warning",
             vendor_status="vendor_unavailable",
             source_version="sv_exec_dashboard_explicit_miss_v1",
+            filters_applied={"report_date": normalized},
         )
 
     return _envelope(
@@ -791,6 +892,7 @@ def executive_pnl_attribution(report_date: str | None = None) -> dict[str, objec
         quality_flag="warning",
         vendor_status="vendor_unavailable",
         source_version="sv_exec_dashboard_explicit_miss_v1",
+        filters_applied={"report_date": None},
     )
 
 
@@ -837,28 +939,28 @@ def executive_risk_overview(report_date: str | None = None) -> dict[str, object]
                         RiskSignal(
                             id="duration",
                             label="久期风险",
-                            value=f"{wdur_f:.2f} 年",
+                            value=Numeric(raw=wdur_f, unit="ratio", display=f"{wdur_f:.2f} 年", precision=2, sign_aware=False),
                             status="stable",
                             detail=f"{asof_label}，组合市值加权修正久期（modified_duration）。",
                         ),
                         RiskSignal(
                             id="leverage",
                             label="杠杆风险",
-                            value=f"{dv01_f:,.0f}",
+                            value=Numeric(raw=dv01_f, unit="dv01", display=f"{dv01_f:,.0f}", precision=0, sign_aware=False),
                             status="watch",
                             detail=f"{asof_label}，DV01 合计（元口径聚合）。",
                         ),
                         RiskSignal(
                             id="credit",
                             label="信用集中度",
-                            value=f"{cred_f:.1f}%",
+                            value=Numeric(raw=cred_f, unit="pct", display=f"{cred_f:.1f}%", precision=1, sign_aware=False),
                             status="warning",
                             detail=f"{asof_label}，信用类债券市值占组合市值比重。",
                         ),
                         RiskSignal(
                             id="liquidity",
                             label="流动性风险",
-                            value=f"{ytm_f:.2f} 年",
+                            value=Numeric(raw=ytm_f, unit="ratio", display=f"{ytm_f:.2f} 年", precision=2, sign_aware=False),
                             status="stable",
                             detail=f"{asof_label}，市值加权平均剩余期限（years_to_maturity）。",
                         ),

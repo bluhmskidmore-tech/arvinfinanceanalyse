@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+# Windows / Py3.14: SQLAlchemy's import path calls ``platform.machine()`` which may block
+# on WMI; executive_service pulls models that import SQLAlchemy. Stub before backend imports.
+import platform as _platform
+
+_platform.machine = lambda: "AMD64"  # type: ignore[method-assign, assignment]
+
 import datetime as dt
 import uuid
 from pathlib import Path
@@ -13,6 +19,13 @@ import pytest
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import FormalZqtzBalanceMetricsRepository
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from tests.helpers import load_module
+
+
+def _assert_numeric_json_shape(x: object) -> dict[str, object]:
+    assert isinstance(x, dict)
+    assert set(x.keys()) == {"raw", "unit", "display", "precision", "sign_aware"}
+    assert isinstance(x["display"], str) and x["display"]
+    return x
 
 
 def _exec_service_module():
@@ -67,6 +80,7 @@ def test_executive_summary_static_contract(exec_mod):
     assert meta["result_kind"] == "executive.summary"
     res = out["result"]
     assert res["title"] == "本周管理摘要"
+    assert res["report_date"] is None
     assert "受控摘要" in res["narrative"]
     assert len(res["points"]) == 3
     labels = {p["label"] for p in res["points"]}
@@ -90,10 +104,35 @@ def test_executive_summary_uses_overview_lineage_when_available(monkeypatch, exe
         },
     )
 
-    out = exec_mod.executive_summary()
+    out = exec_mod.executive_summary(report_date="2026-02-28")
 
     assert out["result_meta"]["source_version"] == "sv_summary_dep_a__sv_summary_dep_b"
     assert out["result_meta"]["rule_version"] == "rv_summary_dep_a__rv_summary_dep_b"
+    assert out["result"]["report_date"] == "2026-02-28"
+
+
+def test_executive_summary_uses_requested_report_date(monkeypatch, exec_mod):
+    calls: list[str | None] = []
+
+    def _overview(report_date=None):
+        calls.append(report_date)
+        return {
+            "result_meta": {
+                "source_version": "sv_summary_requested",
+                "rule_version": "rv_summary_requested",
+                "vendor_status": "ok",
+            },
+            "result": {"metrics": []},
+        }
+
+    monkeypatch.setattr(exec_mod, "executive_overview", _overview)
+
+    out = exec_mod.executive_summary(report_date="2026-02-28")
+
+    assert calls == ["2026-02-28"]
+    assert out["result"]["report_date"] == "2026-02-28"
+    assert out["result_meta"]["source_version"] == "sv_summary_requested"
+    assert out["result_meta"]["rule_version"] == "rv_summary_requested"
 
 
 def test_executive_overview_fallback_when_repos_fail(monkeypatch, exec_mod):
@@ -296,17 +335,29 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     )
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
-    assert metrics["aum"]["value"] == "1,023.47 亿"
-    assert metrics["yield"]["value"] == "+12.63 亿"
-    assert metrics["nim"]["value"] == "+0.38%"
-    assert metrics["dv01"]["value"] == "1,234,568"
-    assert metrics["aum"]["delta"] == "+2.35%"
-    assert metrics["yield"]["delta"] == "+8.69%"
-    assert metrics["nim"]["delta"] == "+0.05pp"
-    assert metrics["dv01"]["delta"] == "+23.46%"
-    assert metrics["goal"]["value"] == "92.20%"
-    assert metrics["risk-budget"]["value"] == "88.00%"
-    assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
+    assert metrics["aum"]["label"] == "资产规模"
+    _assert_numeric_json_shape(metrics["aum"]["value"])
+    assert metrics["aum"]["value"]["display"] == "1,023.47 亿"
+    assert metrics["aum"]["value"]["raw"] == pytest.approx(1023.47e8)
+    _assert_numeric_json_shape(metrics["yield"]["value"])
+    assert metrics["yield"]["value"]["display"] == "+12.63 亿"
+    _assert_numeric_json_shape(metrics["nim"]["value"])
+    assert metrics["nim"]["value"]["display"] == "+0.38%"
+    _assert_numeric_json_shape(metrics["dv01"]["value"])
+    assert metrics["dv01"]["value"]["display"] == "1,234,568"
+    _assert_numeric_json_shape(metrics["aum"]["delta"])
+    assert metrics["aum"]["delta"]["display"] == "+2.35%"
+    _assert_numeric_json_shape(metrics["yield"]["delta"])
+    assert metrics["yield"]["delta"]["display"] == "+8.69%"
+    _assert_numeric_json_shape(metrics["nim"]["delta"])
+    assert metrics["nim"]["delta"]["display"] == "+0.05pp"
+    _assert_numeric_json_shape(metrics["dv01"]["delta"])
+    assert metrics["dv01"]["delta"]["display"] == "+23.46%"
+    _assert_numeric_json_shape(metrics["goal"]["value"])
+    assert metrics["goal"]["value"]["display"] == "92.20%"
+    _assert_numeric_json_shape(metrics["risk-budget"]["value"])
+    assert metrics["risk-budget"]["value"]["display"] == "88.00%"
+    assert "governed formal balance overview" in metrics["aum"]["detail"]
     assert "截至 2030-03-15" in metrics["yield"]["detail"]
     assert "nim" in metrics["nim"]["detail"].lower()
     assert "DV01" in metrics["dv01"]["detail"]
@@ -405,14 +456,26 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
         ("risk", "2025-10-31"),
     ]
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    assert metrics["aum"]["label"] == "债券资产规模（zqtz）"
     assert "2025-11-20" in metrics["aum"]["detail"]
     assert "截至 2025-11-20" in metrics["yield"]["detail"]
     assert "2025-11-20" in metrics["nim"]["detail"]
     assert "2025-11-20" in metrics["dv01"]["detail"]
-    assert metrics["aum"]["delta"] == "+7.00%"
-    assert metrics["yield"]["delta"] == "+30.00%"
-    assert metrics["nim"]["delta"] == "+0.05pp"
-    assert metrics["dv01"]["delta"] == "+14.20%"
+    _assert_numeric_json_shape(metrics["aum"]["delta"])
+    assert metrics["aum"]["delta"]["display"] == "+7.00%"
+    _assert_numeric_json_shape(metrics["yield"]["delta"])
+    assert metrics["yield"]["delta"]["display"] == "+30.00%"
+    _assert_numeric_json_shape(metrics["nim"]["delta"])
+    assert metrics["nim"]["delta"]["display"] == "+0.05pp"
+    _assert_numeric_json_shape(metrics["dv01"]["delta"])
+    assert metrics["dv01"]["delta"]["display"] == "+14.20%"
+    assert out["result_meta"]["filters_applied"]["requested_report_date"] == "2025-11-20"
+    assert out["result_meta"]["filters_applied"]["effective_report_dates"] == {
+        "balance": "2025-11-20",
+        "pnl": "2025-11-20",
+        "liability": "2025-11-20",
+        "risk": "2025-11-20",
+    }
 
 
 def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_date(monkeypatch, exec_mod):
@@ -509,7 +572,8 @@ def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_
     out = exec_mod.executive_overview()
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["yield"]["value"] == "+6.50 亿"
+    _assert_numeric_json_shape(metrics["yield"]["value"])
+    assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
     assert calls.count(("pnl", "2025-12-31")) == 1
     assert calls.count(("pnl", "2025-11-30")) == 1
@@ -588,7 +652,8 @@ def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(
     out = exec_mod.executive_overview()
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["yield"]["value"] == "+6.50 亿"
+    _assert_numeric_json_shape(metrics["yield"]["value"])
+    assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
     assert "2026-01-31" not in metrics["yield"]["detail"]
     assert calls == [("pnl", "2025-12-31"), ("pnl", "2025-11-30")]
@@ -608,8 +673,11 @@ def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
     assert out["result_meta"]["result_kind"] == "executive.pnl-attribution"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
     r = out["result"]
+    assert "经营贡献拆解" in r["title"]
     assert "无受控" in r["title"]
-    assert r["total"] == "0 亿"
+    tot = _assert_numeric_json_shape(r["total"])
+    assert tot["display"] == "0 亿"
+    assert tot["display"].endswith("亿")
     assert len(r["segments"]) == 5
     labels = [s["label"] for s in r["segments"]]
     assert labels == ["Carry", "Roll-down", "信用利差", "交易损益", "其他"]
@@ -624,7 +692,8 @@ def test_executive_pnl_attribution_fallback_when_repo_unusable(monkeypatch, exec
     out = exec_mod.executive_pnl_attribution()
     assert out["result_meta"]["result_kind"] == "executive.pnl-attribution"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_explicit_miss_v1"
-    assert out["result"]["total"] == "0 亿"
+    tot = _assert_numeric_json_shape(out["result"]["total"])
+    assert tot["display"] == "0 亿"
     assert len(out["result"]["segments"]) == 5
 
 
@@ -700,16 +769,24 @@ def test_executive_pnl_attribution_repo_aggregation_contract(monkeypatch, exec_m
     assert out["result_meta"]["result_kind"] == "executive.pnl-attribution"
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_pc_a__sv_pc_b__sv_pc_c"
     assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_pc_a__rv_pc_b__rv_pc_c"
+    assert out["result"]["title"] == "经营贡献拆解"
     segs = {s["id"]: s for s in out["result"]["segments"]}
-    assert segs["carry"]["amount"] == pytest.approx(3.0)
-    assert segs["carry"]["display_amount"] == "+3.00 亿"
-    assert segs["roll"]["amount"] == pytest.approx(-3.0)
+    _assert_numeric_json_shape(segs["carry"]["amount"])
+    assert segs["carry"]["amount"]["raw"] == pytest.approx(3.0 * 1e8)
+    assert segs["carry"]["amount"]["display"] == "+3.00 亿"
+    _assert_numeric_json_shape(segs["roll"]["amount"])
+    assert segs["roll"]["amount"]["raw"] == pytest.approx(-3.0 * 1e8)
     assert segs["roll"]["tone"] == "negative"
-    assert segs["roll"]["display_amount"] == "-3.00 亿"
-    assert segs["credit"]["amount"] == pytest.approx(0.5)
-    assert segs["trading"]["amount"] == pytest.approx(1.0)
-    assert segs["other"]["amount"] == pytest.approx(0.25)
-    assert out["result"]["total"] == "+1.75 亿"
+    assert segs["roll"]["amount"]["display"] == "-3.00 亿"
+    for _k in ("credit", "trading", "other"):
+        _assert_numeric_json_shape(segs[_k]["amount"])
+    assert segs["credit"]["amount"]["raw"] == pytest.approx(0.5 * 1e8)
+    assert segs["trading"]["amount"]["raw"] == pytest.approx(1.0 * 1e8)
+    assert segs["other"]["amount"]["raw"] == pytest.approx(0.25 * 1e8)
+    total = _assert_numeric_json_shape(out["result"]["total"])
+    assert total["display"] == "+1.75 亿"
+    assert total["display"].endswith("亿")
+    assert total["raw"] == pytest.approx(1.75e8)
 
 
 def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_mod):
@@ -739,9 +816,12 @@ def test_executive_pnl_attribution_uses_requested_report_date(monkeypatch, exec_
     out = exec_mod.executive_pnl_attribution(report_date="2025-11-20")
 
     assert calls == [("2025-11-20", "monthly")]
-    assert out["result"]["total"] == "+2.00 亿"
+    total = _assert_numeric_json_shape(out["result"]["total"])
+    assert total["display"] == "+2.00 亿"
+    assert total["raw"] == pytest.approx(2.0e8)
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_pc_req"
     assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_pc_req"
+    assert out["result_meta"]["filters_applied"]["report_date"] == "2025-11-20"
 
 
 def test_executive_contribution_fallback(monkeypatch, exec_mod):
@@ -820,8 +900,10 @@ def test_executive_contribution_uses_requested_report_date(monkeypatch, exec_mod
     assert out["result_meta"]["source_version"] == "sv_contrib_req__sv_exec_dashboard_v1"
     assert out["result_meta"]["rule_version"] == "rv_contrib_req__rv_exec_dashboard_v1"
     rows = {row["id"]: row for row in out["result"]["rows"]}
-    assert rows["rates"]["contribution"] == "+3.00 亿"
-    assert rows["trading"]["contribution"] == "+1.00 亿"
+    _assert_numeric_json_shape(rows["rates"]["contribution"])
+    assert rows["rates"]["contribution"]["display"] == "+3.00 亿"
+    _assert_numeric_json_shape(rows["trading"]["contribution"])
+    assert rows["trading"]["contribution"]["display"] == "+1.00 亿"
 
 
 def test_executive_risk_overview_fallback(monkeypatch, exec_mod):
@@ -874,10 +956,14 @@ def test_executive_risk_overview_repo_backed(monkeypatch, exec_mod):
     assert out["result_meta"]["source_version"] == "sv_exec_dashboard_v1__sv_risk_lineage"
     assert out["result_meta"]["rule_version"] == "rv_exec_dashboard_v1__rv_risk_lineage"
     by_label = {s["label"]: s for s in out["result"]["signals"]}
-    assert "4.57" in by_label["久期风险"]["value"]
-    assert "1,234,568" in by_label["杠杆风险"]["value"] or "1234568" in by_label["杠杆风险"]["value"]
-    assert "12.3" in by_label["信用集中度"]["value"]
-    assert "3.21" in by_label["流动性风险"]["value"]
+    dur = _assert_numeric_json_shape(by_label["久期风险"]["value"])
+    assert "4.57" in dur["display"]
+    lev = _assert_numeric_json_shape(by_label["杠杆风险"]["value"])
+    assert "1,234,568" in lev["display"] or "1234568" in lev["display"]
+    cred = _assert_numeric_json_shape(by_label["信用集中度"]["value"])
+    assert "12.3" in cred["display"]
+    liq = _assert_numeric_json_shape(by_label["流动性风险"]["value"])
+    assert "3.21" in liq["display"]
     for sig in out["result"]["signals"]:
         assert "最新日期" in sig["detail"]
 
@@ -1192,8 +1278,10 @@ def test_executive_overview_latest_governed_ytd_uses_latest_report_date(monkeypa
     out = exec_mod.executive_overview()
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["yield"]["value"] == "+9.00 亿"
-    assert metrics["yield"]["delta"] == "+12.50%"
+    _assert_numeric_json_shape(metrics["yield"]["value"])
+    assert metrics["yield"]["value"]["display"] == "+9.00 亿"
+    _assert_numeric_json_shape(metrics["yield"]["delta"])
+    assert metrics["yield"]["delta"]["display"] == "+12.50%"
     assert "2024-12-31" in metrics["yield"]["detail"]
     assert ("pnl", "2024-12-31") in calls
     assert ("pnl", "2024-11-30") in calls
@@ -1285,10 +1373,12 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
     out = exec_mod.executive_overview(report_date="2026-02-28")
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["aum"]["value"].startswith("3,572.76")
-    assert metrics["aum"]["delta"] == "-3.76%"
-    assert "fact_formal_zqtz_balance_daily" in metrics["aum"]["detail"]
-    assert "fact_formal_tyw_balance_daily" in metrics["aum"]["detail"]
+    assert metrics["aum"]["label"] == "资产规模"
+    aum_val = _assert_numeric_json_shape(metrics["aum"]["value"])
+    assert aum_val["display"].startswith("3,572.76")
+    aum_delta = _assert_numeric_json_shape(metrics["aum"]["delta"])
+    assert aum_delta["display"] == "-3.76%"
+    assert "governed formal balance overview" in metrics["aum"]["detail"]
     assert ("balance-dates", None) in calls
     assert (
         "balance-overview",

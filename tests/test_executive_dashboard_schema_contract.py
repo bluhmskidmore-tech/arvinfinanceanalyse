@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
+from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.executive_dashboard import (
     AlertItem,
     AlertsPayload,
@@ -21,25 +22,44 @@ from backend.app.schemas.executive_dashboard import (
 )
 
 
+def _assert_numeric_json_shape(x: object) -> None:
+    assert isinstance(x, dict)
+    assert set(x.keys()) == {"raw", "unit", "display", "precision", "sign_aware"}
+    assert isinstance(x["display"], str) and x["display"]
+
+
 def test_overview_payload_round_trip() -> None:
     payload = OverviewPayload(
         title="t",
-        metrics=[ExecutiveMetric(id="m1", label="L", value="1", delta="+", tone="n", detail="d")],
+        metrics=[
+            ExecutiveMetric(
+                id="m1",
+                label="L",
+                value=Numeric(raw=1.0, unit="yuan", display="1", precision=0, sign_aware=False),
+                delta=Numeric(raw=None, unit="pct", display="+", precision=0, sign_aware=True),
+                tone="n",
+                detail="d",
+            )
+        ],
     )
-    d = payload.model_dump()
+    d = payload.model_dump(mode="json")
     assert d["title"] == "t"
     assert len(d["metrics"]) == 1
     assert d["metrics"][0]["id"] == "m1"
-    assert d["metrics"][0]["value"] == "1"
+    v = d["metrics"][0]["value"]
+    _assert_numeric_json_shape(v)
+    assert v["display"] == "1"
 
 
 def test_summary_payload_round_trip() -> None:
     payload = SummaryPayload(
         title="s",
+        report_date="2026-02-28",
         narrative="n",
         points=[SummaryPoint(id="p1", label="x", tone="t", text="body")],
     )
     d = payload.model_dump()
+    assert d["report_date"] == "2026-02-28"
     assert d["narrative"] == "n"
     assert d["points"][0]["text"] == "body"
 
@@ -47,21 +67,29 @@ def test_summary_payload_round_trip() -> None:
 def test_pnl_attribution_payload_round_trip() -> None:
     payload = PnlAttributionPayload(
         title="a",
-        total="100",
+        total=Numeric(raw=100.0, unit="yuan", display="100", precision=0, sign_aware=True),
         segments=[
             AttributionSegment(
                 id="seg",
                 label="L",
-                amount=12.5,
-                display_amount="12.50",
+                amount=Numeric(
+                    raw=12.5 * 1e8,
+                    unit="yuan",
+                    display="12.50",
+                    precision=2,
+                    sign_aware=True,
+                ),
                 tone="ok",
             )
         ],
     )
-    d = payload.model_dump()
-    assert d["total"] == "100"
-    assert d["segments"][0]["amount"] == 12.5
-    assert isinstance(d["segments"][0]["amount"], float)
+    d = payload.model_dump(mode="json")
+    _assert_numeric_json_shape(d["total"])
+    assert d["total"]["display"] == "100"
+    amt = d["segments"][0]["amount"]
+    _assert_numeric_json_shape(amt)
+    assert isinstance(amt["raw"], float)
+    assert amt["raw"] == pytest.approx(12.5 * 1e8)
 
 
 def test_risk_overview_payload_round_trip() -> None:
@@ -69,8 +97,11 @@ def test_risk_overview_payload_round_trip() -> None:
         title="r",
         signals=[RiskSignal(id="r1", label="R", value="v", status="ok", detail="d")],
     )
-    d = payload.model_dump()
+    d = payload.model_dump(mode="json")
     assert d["signals"][0]["status"] == "ok"
+    val = d["signals"][0]["value"]
+    _assert_numeric_json_shape(val)
+    assert val["display"] == "v"
 
 
 def test_contribution_payload_round_trip() -> None:
@@ -81,15 +112,24 @@ def test_contribution_payload_round_trip() -> None:
                 id="row1",
                 name="N",
                 owner="O",
-                contribution="10%",
+                contribution=Numeric(
+                    raw=None,
+                    unit="yuan",
+                    display="10%",
+                    precision=0,
+                    sign_aware=True,
+                ),
                 completion=50,
                 status="open",
             )
         ],
     )
-    d = payload.model_dump()
+    d = payload.model_dump(mode="json")
     assert d["rows"][0]["completion"] == 50
     assert isinstance(d["rows"][0]["completion"], int)
+    c = d["rows"][0]["contribution"]
+    _assert_numeric_json_shape(c)
+    assert c["display"] == "10%"
 
 
 def test_alerts_payload_round_trip() -> None:
@@ -118,11 +158,11 @@ def test_alerts_payload_round_trip() -> None:
         (SummaryPayload, {"narrative": "n", "points": []}),
         (AttributionSegment, {"id": "i", "label": "l", "display_amount": "0", "tone": "t"}),
         (PnlAttributionPayload, {"total": "0", "segments": []}),
-            (RiskSignal, {"id": "i", "label": "l", "status": "s", "detail": "d"}),
+        (RiskSignal, {"id": "i", "label": "l", "status": "s", "detail": "d"}),
         (RiskOverviewPayload, {"signals": []}),
         (ContributionRow, {"id": "i", "name": "n", "owner": "o", "contribution": "c", "status": "s"}),
         (ContributionPayload, {"rows": []}),
-            (AlertItem, {"id": "i", "severity": "s", "occurred_at": "o", "detail": "d"}),
+        (AlertItem, {"id": "i", "severity": "s", "occurred_at": "o", "detail": "d"}),
         (AlertsPayload, {"items": []}),
     ],
 )
