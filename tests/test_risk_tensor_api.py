@@ -33,16 +33,16 @@ def test_risk_tensor_api_returns_formal_envelope(tmp_path, monkeypatch):
     assert payload["result_meta"]["quality_flag"] == "ok"
     assert payload["result"]["report_date"] == REPORT_DATE
     assert payload["result"]["bond_count"] == 3
-    assert isinstance(payload["result"]["portfolio_dv01"], str)
-    assert isinstance(payload["result"]["cs01"], str)
-    assert isinstance(payload["result"]["portfolio_convexity"], str)
-    assert len(payload["result"]["portfolio_dv01"].split(".")[1]) == 8
-    assert payload["result"]["asset_cashflow_30d"] == "14.00000000"
-    assert payload["result"]["liability_cashflow_30d"] == "0.00000000"
+    assert isinstance(payload["result"]["portfolio_dv01"], dict)
+    assert isinstance(payload["result"]["cs01"], dict)
+    assert isinstance(payload["result"]["portfolio_convexity"], dict)
+    assert payload["result"]["portfolio_dv01"]["unit"] == "dv01"
+    assert payload["result"]["asset_cashflow_30d"]["raw"] == 14.0
+    assert payload["result"]["liability_cashflow_30d"]["raw"] == 0.0
     assert (
-        Decimal(payload["result"]["liquidity_gap_30d"])
-        == Decimal(payload["result"]["asset_cashflow_30d"])
-        - Decimal(payload["result"]["liability_cashflow_30d"])
+        Decimal(str(payload["result"]["liquidity_gap_30d"]["raw"]))
+        == Decimal(str(payload["result"]["asset_cashflow_30d"]["raw"]))
+        - Decimal(str(payload["result"]["liability_cashflow_30d"]["raw"]))
     )
 
     get_settings.cache_clear()

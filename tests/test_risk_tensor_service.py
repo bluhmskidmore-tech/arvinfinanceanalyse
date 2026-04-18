@@ -176,32 +176,32 @@ def test_risk_tensor_service_returns_formal_envelope_with_lineage(tmp_path, monk
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "ok"
     assert result["warnings"] == []
-    assert result["total_market_value"] == "429.00000000"
-    assert result["asset_cashflow_30d"] == "14.00000000"
-    assert result["asset_cashflow_90d"] == "14.00000000"
-    assert result["liability_cashflow_30d"] == "0.00000000"
-    assert result["liability_cashflow_90d"] == "0.00000000"
-    assert result["liquidity_gap_30d"] == "14.00000000"
-    assert result["liquidity_gap_90d"] == "14.00000000"
+    assert result["total_market_value"]["raw"] == 429.0
+    assert result["asset_cashflow_30d"]["raw"] == 14.0
+    assert result["asset_cashflow_90d"]["raw"] == 14.0
+    assert result["liability_cashflow_30d"]["raw"] == 0.0
+    assert result["liability_cashflow_90d"]["raw"] == 0.0
+    assert result["liquidity_gap_30d"]["raw"] == 14.0
+    assert result["liquidity_gap_90d"]["raw"] == 14.0
     assert (
-        Decimal(result["liquidity_gap_30d"])
-        == Decimal(result["asset_cashflow_30d"]) - Decimal(result["liability_cashflow_30d"])
+        Decimal(str(result["liquidity_gap_30d"]["raw"]))
+        == Decimal(str(result["asset_cashflow_30d"]["raw"])) - Decimal(str(result["liability_cashflow_30d"]["raw"]))
     )
-    assert result["issuer_top5_weight"] == "1.00000000"
-    assert isinstance(result["portfolio_dv01"], str)
-    assert isinstance(result["portfolio_convexity"], str)
-    assert result["portfolio_dv01"].count(".") == 1
-    assert len(result["portfolio_dv01"].split(".")[1]) == 8
+    assert result["issuer_top5_weight"]["raw"] == 1.0
+    assert isinstance(result["portfolio_dv01"], dict)
+    assert isinstance(result["portfolio_convexity"], dict)
+    assert result["portfolio_dv01"]["unit"] == "dv01"
+    assert result["portfolio_convexity"]["unit"] == "ratio"
     assert (
-        Decimal(result["krd_1y"])
-        + Decimal(result["krd_3y"])
-        + Decimal(result["krd_5y"])
-        + Decimal(result["krd_7y"])
-        + Decimal(result["krd_10y"])
-        + Decimal(result["krd_30y"])
-    ) == Decimal(result["portfolio_dv01"])
-    assert Decimal(result["cs01"]) > Decimal("0")
-    assert Decimal(result["portfolio_convexity"]) > Decimal("0")
+        Decimal(str(result["krd_1y"]["raw"]))
+        + Decimal(str(result["krd_3y"]["raw"]))
+        + Decimal(str(result["krd_5y"]["raw"]))
+        + Decimal(str(result["krd_7y"]["raw"]))
+        + Decimal(str(result["krd_10y"]["raw"]))
+        + Decimal(str(result["krd_30y"]["raw"]))
+    ) == Decimal(str(result["portfolio_dv01"]["raw"]))
+    assert Decimal(str(result["cs01"]["raw"])) > Decimal("0")
+    assert Decimal(str(result["portfolio_convexity"]["raw"])) > Decimal("0")
 
     get_settings.cache_clear()
 
@@ -394,7 +394,7 @@ def test_risk_tensor_service_returns_non_empty_degraded_tensor_when_materialized
     result = payload["result"]
     assert result["bond_count"] == 3
     assert result["quality_flag"] == "warning"
-    assert Decimal(result["portfolio_dv01"]) > Decimal("0")
+    assert Decimal(str(result["portfolio_dv01"]["raw"])) > Decimal("0")
     assert any("Unsupported tenor buckets" in warning for warning in result["warnings"])
     assert any("without maturity_date" in warning for warning in result["warnings"])
 
