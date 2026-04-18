@@ -9,20 +9,18 @@ import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 
 import { useApiClient } from "../../api/client";
 import { runPollingTask } from "../../app/jobs/polling";
+import { DataSection } from "../../components/DataSection";
+import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
-import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
-import {
-  pnlActionButtonStyle,
-  resolvePnlSectionState,
-} from "./PnlRuntimeSupport";
+import { pnlActionButtonStyle } from "./PnlRuntimeSupport";
 
 const summaryGridStyle = {
   display: "grid",
@@ -375,34 +373,19 @@ export default function PnlBridgePage() {
     [],
   );
 
-  const summaryLoading = datesQuery.isLoading || (Boolean(selectedReportDate) && bridgeQuery.isLoading);
-  const summaryError = datesQuery.isError || bridgeQuery.isError;
-  const summaryEmpty =
-    !datesQuery.isLoading &&
-    !bridgeQuery.isLoading &&
-    !datesQuery.isError &&
-    !bridgeQuery.isError &&
-    (!selectedReportDate || (summary !== undefined && summary.row_count === 0 && rows.length === 0));
+  const summaryState = useMemo<DataSectionState>(() => {
+    if (datesQuery.isLoading) return { kind: "loading" };
+    if (datesQuery.isError) return { kind: "error" };
+    if (!selectedReportDate && reportDates.length === 0) return { kind: "empty" };
+    return adapterOutput.state;
+  }, [adapterOutput.state, datesQuery.isError, datesQuery.isLoading, reportDates.length, selectedReportDate]);
 
-  const detailLoading = summaryLoading;
-  const detailError = summaryError;
-  const detailEmpty =
-    !datesQuery.isLoading &&
-    !bridgeQuery.isLoading &&
-    !datesQuery.isError &&
-    !bridgeQuery.isError &&
-    (!selectedReportDate || rows.length === 0);
-
-  const summaryState = resolvePnlSectionState({
-    isLoading: summaryLoading,
-    isError: summaryError,
-    isEmpty: summaryEmpty,
-  });
-  const detailState = resolvePnlSectionState({
-    isLoading: detailLoading,
-    isError: detailError,
-    isEmpty: detailEmpty,
-  });
+  const detailState = useMemo<DataSectionState>(() => {
+    if (summaryState.kind === "ok" || summaryState.kind === "stale" || summaryState.kind === "fallback") {
+      return rows.length === 0 ? { kind: "empty" } : summaryState;
+    }
+    return summaryState;
+  }, [rows.length, summaryState]);
 
   const reportDatePlaceholder = datesQuery.isLoading
     ? "正在载入报告日"
@@ -512,17 +495,15 @@ export default function PnlBridgePage() {
         本页当前只提供 formal-only 的桥接读模型；analytical 口径不在此页展开。
       </div>
 
-      <div data-testid="pnl-bridge-summary-section" data-state={summaryState} style={{ marginBottom: 24 }}>
+      <div data-testid="pnl-bridge-summary-section" data-state={summaryState.kind} style={{ marginBottom: 24 }}>
         <SectionLead
           eyebrow="Overview"
           title="正式桥接汇总"
           description="先确认报告日与刷新状态，再阅读 explained PnL、actual PnL、residual 和质量标识；所有数值均来自后端 bridge read model。"
         />
-        <AsyncSection
+        <DataSection
           title="汇总"
-          isLoading={summaryLoading}
-          isError={summaryError}
-          isEmpty={summaryEmpty}
+          state={summaryState}
           onRetry={() => {
             void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
           }}
@@ -608,20 +589,18 @@ export default function PnlBridgePage() {
               ) : null}
             </>
           ) : null}
-        </AsyncSection>
+        </DataSection>
       </div>
 
-      <div data-testid="pnl-bridge-detail-section" data-state={detailState}>
+      <div data-testid="pnl-bridge-detail-section" data-state={detailState.kind}>
         <SectionLead
           eyebrow="Details"
           title="桥接明细与归因瀑布"
           description="瀑布图和明细表共用当前报告日，保留原有图表、AG Grid、分页和 result_meta 调试链路，不改变正式桥接契约。"
         />
-        <AsyncSection
+        <DataSection
           title="桥接明细"
-          isLoading={detailLoading}
-          isError={detailError}
-          isEmpty={detailEmpty}
+          state={detailState}
           onRetry={() => {
             void Promise.all([datesQuery.refetch(), bridgeQuery.refetch()]);
           }}
@@ -639,7 +618,7 @@ export default function PnlBridgePage() {
               }
             />
           </div>
-        </AsyncSection>
+        </DataSection>
       </div>
 
       <FormalResultMetaPanel

@@ -103,7 +103,7 @@ describe("adaptPnlBridge", () => {
             explained_pnl: num({ raw: 0 }),
             actual_pnl: num({ raw: 0 }),
             residual: num({ raw: 0 }),
-            residual_ratio: num({ raw: 0.02, unit: "pct", display: "0.02%", sign_aware: true }),
+            residual_ratio: num({ raw: 0.02, unit: "ratio", display: "0.02", sign_aware: true }),
             quality_flag: "ok",
           },
         ],

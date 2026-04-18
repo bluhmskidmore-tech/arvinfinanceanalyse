@@ -119,7 +119,7 @@ function buildPnlClient(): ApiClient {
         explained_pnl: bridgeYuan(6, "6.00"),
         actual_pnl: bridgeYuan(6, "6.00"),
         residual: bridgeYuan(0, "0.00"),
-        residual_ratio: { raw: 0, unit: "pct", display: "0.00%", precision: 2, sign_aware: true },
+        residual_ratio: { raw: 0, unit: "ratio", display: "0.00", precision: 2, sign_aware: true },
         quality_flag: "ok",
       },
     ],

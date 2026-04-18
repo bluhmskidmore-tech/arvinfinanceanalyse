@@ -101,7 +101,7 @@ function buildBridgePayload(reportDate: string, instrumentCode: string, totalAct
         explained_pnl: bridgeYuan(6, "6"),
         actual_pnl: bridgeYuan(5.9, "5.9"),
         residual: bridgeYuan(0.1, "0.1"),
-        residual_ratio: { raw: 0.02, unit: "pct", display: "0.02%", precision: 2, sign_aware: true },
+        residual_ratio: { raw: 0.02, unit: "ratio", display: "0.02", precision: 2, sign_aware: true },
         quality_flag: "warning",
       },
     ],
@@ -257,6 +257,36 @@ describe("PnlBridgePage", () => {
     });
 
     expect(screen.getByLabelText("pnl-bridge-report-date")).toBeDisabled();
+  });
+
+  it("preserves adapter fallback state and still renders summary content", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderPnlBridgePage({
+      ...base,
+      getFormalPnlDates: vi.fn(async () => ({
+        result_meta: buildMeta("pnl.dates", "tr_bridge_dates_fallback"),
+        result: {
+          report_dates: ["2025-12-31"],
+          formal_fi_report_dates: ["2025-12-31"],
+          nonstd_bridge_report_dates: [],
+        } satisfies PnlDatesPayload,
+      })),
+      getPnlBridge: vi.fn(async () => ({
+        result_meta: {
+          ...buildMeta("pnl.bridge", "tr_bridge_fallback"),
+          fallback_mode: "latest_snapshot",
+          filters_applied: { report_date: "2025-12-30" },
+        },
+        result: buildBridgePayload("2025-12-31", "IC-1", "15.40"),
+      })),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("pnl-bridge-summary-section")).toHaveAttribute("data-state", "fallback");
+    });
+    expect(screen.getAllByTestId("data-section-fallback-banner")).toHaveLength(2);
+    expect(screen.getByTestId("pnl-bridge-summary-cards")).toHaveTextContent("15.40");
   });
 
   it("refreshes bridge data for the selected report date and shows polling status", async () => {
