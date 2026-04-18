@@ -89,5 +89,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Surface naming lint
+        working-directory: .
+        run: node scripts/check_surface_naming.mjs
+
       - name: ESLint
         run: npx eslint .

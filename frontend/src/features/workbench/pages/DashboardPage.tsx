@@ -314,7 +314,7 @@ export default function DashboardPage() {
           <PageSectionLead
             eyebrow="Governed"
             title="经营贡献拆解"
-            description="这里保留首页级经营贡献拆解，用于快速判断是否需要进入专门归因工作台继续分析。页面会同时展示来源元数据，避免把缺数、回退或 mock 情况误判为正式结果。"
+            description="这里保留首页级经营贡献拆解，用于快速判断是否需要进入专门损益拆解工作台继续分析。页面会同时展示来源元数据，避免把缺数、回退或 mock 情况误判为正式结果。"
             style={{ marginTop: 0 }}
           />
           <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>

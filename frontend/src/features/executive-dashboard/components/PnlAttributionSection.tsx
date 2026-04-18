@@ -111,7 +111,7 @@ export default function PnlAttributionSection({
 
   return (
     <DataSection
-      title={attribution.vm?.title ?? "收益归因"}
+      title={attribution.vm?.title ?? "收益贡献拆解"}
       extra={extra}
       state={attribution.state}
       onRetry={onRetry}
