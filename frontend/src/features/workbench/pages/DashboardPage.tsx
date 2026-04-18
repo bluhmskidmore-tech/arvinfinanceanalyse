@@ -7,6 +7,11 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { DashboardBondCounterpartySection } from "../../executive-dashboard/components/DashboardBondCounterpartySection";
+import { DashboardBondHeadlineSection } from "../../executive-dashboard/components/DashboardBondHeadlineSection";
+import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
+import { DashboardMacroSpotSection } from "../../executive-dashboard/components/DashboardMacroSpotSection";
+import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import { OverviewSection } from "../../executive-dashboard/components/OverviewSection";
 
 const PnlAttributionSection = lazy(
@@ -148,6 +153,12 @@ export default function DashboardPage() {
   ].filter((item): item is string => Boolean(item));
 
   const snapshotResult = snapshotQuery.data?.result;
+  const effectiveReportDate = useMemo(() => {
+    const manual = reportDate.trim();
+    const snap = snapshotResult?.report_date?.trim();
+    return manual || snap || "";
+  }, [reportDate, snapshotResult?.report_date]);
+
   const snapshotPartialNote = useMemo(() => {
     if (!snapshotResult) return null;
     if (snapshotResult.mode === "partial" || snapshotResult.domains_missing.length > 0) {
@@ -309,6 +320,16 @@ export default function DashboardPage() {
           overview={adapterOutput.overview}
           onRetry={() => void snapshotQuery.refetch()}
         />
+
+        <DashboardNewsDigestSection />
+
+        <DashboardMacroSpotSection />
+
+        <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+
+        <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
+
+        <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
 
         <section data-testid="dashboard-governed-surface" style={{ display: "grid", gap: 16 }}>
           <PageSectionLead
