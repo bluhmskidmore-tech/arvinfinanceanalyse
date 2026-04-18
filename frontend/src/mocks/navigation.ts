@@ -213,9 +213,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/reports",
     icon: "reports",
     description: "报表与导出清单（占位路由）。",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "占位入口：正式报表仍由各业务页导出；后续统一收录。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote: "保留导航入口；正式导出仍在各业务页，后续统一收录。",
   },
   {
     key: "bond-dashboard",
