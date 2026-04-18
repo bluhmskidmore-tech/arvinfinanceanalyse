@@ -31,6 +31,7 @@ export function IndustryTable({
 
   return (
     <Card
+      data-testid="bond-dashboard-industry-table"
       loading={loading}
       title="行业分布"
       extra={<Button type="link">更多</Button>}
