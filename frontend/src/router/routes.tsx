@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import type { ReactNode } from "react";
-import type { RouteObject } from "react-router-dom";
+import { Navigate, type RouteObject } from "react-router-dom";
 
 import { WorkbenchShell } from "../layouts/WorkbenchShell";
 import {
@@ -295,6 +295,38 @@ export const workbenchRoutes: RouteObject[] = [
     path: "/",
     element: <WorkbenchShell />,
     children: [
+      {
+        path: "macro-analysis",
+        element: <Navigate to="/market-data" replace />,
+      },
+      {
+        path: "adb",
+        element: <Navigate to="/average-balance" replace />,
+      },
+      {
+        path: "pnl-by-business",
+        element: <Navigate to="/ledger-pnl" replace />,
+      },
+      {
+        path: "liabilities",
+        element: <Navigate to="/liability-analytics" replace />,
+      },
+      {
+        path: "bonds",
+        element: <Navigate to="/bond-dashboard" replace />,
+      },
+      {
+        path: "bond-analytics-advanced",
+        element: <Navigate to="/bond-analysis" replace />,
+      },
+      {
+        path: "market",
+        element: <Navigate to="/market-data" replace />,
+      },
+      {
+        path: "assets",
+        element: <Navigate to="/bond-dashboard" replace />,
+      },
       ...buildWorkbenchChildRoutes(),
       {
         path: "dashboard",

@@ -104,6 +104,25 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   agent: "governance",
 };
 
+/**
+ * V1 书签/外部链接常用路径 → V3 工作台规范路径。
+ * 与 `router/routes.tsx` 中 `<Navigate replace />` 保持一致。
+ */
+export const workbenchPathAliases: Record<string, string> = {
+  "/macro-analysis": "/market-data",
+  "/market": "/market-data",
+  "/adb": "/average-balance",
+  "/assets": "/bond-dashboard",
+  "/pnl-by-business": "/ledger-pnl",
+  "/liabilities": "/liability-analytics",
+  "/bonds": "/bond-dashboard",
+  "/bond-analytics-advanced": "/bond-analysis",
+};
+
+export function resolveWorkbenchPathAlias(pathname: string): string {
+  return workbenchPathAliases[pathname] ?? pathname;
+}
+
 export const workbenchNavigation: WorkbenchSection[] = [
   {
     key: "dashboard",
@@ -420,8 +439,9 @@ export function findWorkbenchSectionByPath(
   pathname: string,
   sections: WorkbenchSection[] = visibleWorkbenchNavigation,
 ) {
+  const resolved = resolveWorkbenchPathAlias(pathname);
   return (
-    sections.find((section) => pathMatchesWorkbenchSection(section.path, pathname)) ??
+    sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ??
     sections[0]
   );
 }
