@@ -8,6 +8,11 @@ import type {
   PeriodType,
   ReturnDecompositionResponse,
 } from "../types";
+import {
+  bondNumericRaw,
+  returnDecompositionWaterfallDisplayStrings,
+  returnDecompositionWaterfallRawSteps,
+} from "../adapters/bondAnalyticsAdapter";
 import { formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
@@ -29,18 +34,9 @@ const TRANSPARENT_BAR = {
 } as const;
 
 function buildWaterfallOption(d: ReturnDecompositionResponse) {
-  const carry = parseFloat(d.carry);
-  const rollDown = parseFloat(d.roll_down);
-  const rateEffect = parseFloat(d.rate_effect);
-  const spreadEffect = parseFloat(d.spread_effect);
-  const trading = parseFloat(d.trading);
-  const fxEffect = parseFloat(d.fx_effect);
-  const convexityEffect = parseFloat(d.convexity_effect);
-  const explained = parseFloat(d.explained_pnl);
-
-  const stepValues = [carry, rollDown, rateEffect, spreadEffect, fxEffect, convexityEffect, trading].map((v) =>
-    Number.isFinite(v) ? v : 0,
-  );
+  const rawSteps = returnDecompositionWaterfallRawSteps(d);
+  const stepValues = rawSteps.slice(0, -1);
+  const explained = rawSteps[rawSteps.length - 1] ?? 0;
 
   const helperRaw: number[] = [];
   const valueRaw: number[] = [];
@@ -65,16 +61,7 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
   valueRaw.push(Number.isFinite(explained) ? explained : 0);
   barColors.push("#1f5eff");
 
-  const displayStrings = [
-    d.carry,
-    d.roll_down,
-    d.rate_effect,
-    d.spread_effect,
-    d.fx_effect,
-    d.convexity_effect,
-    d.trading,
-    d.explained_pnl,
-  ];
+  const displayStrings = returnDecompositionWaterfallDisplayStrings(d);
 
   return {
     tooltip: {
@@ -85,7 +72,7 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
         const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = WATERFALL_CATEGORIES[idx];
-        return `${label}<br/>${formatWan(displayStrings[idx] ?? "0")}`;
+        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
@@ -131,8 +118,13 @@ const effectColumns = [
   { title: "Roll-down（骑乘）", dataIndex: "roll_down", key: "roll_down", render: formatWan },
   { title: "利率效应", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
   { title: "利差效应", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
-  { title: "FX效应", dataIndex: "fx_effect", key: "fx_effect", render: formatWan },
-  { title: "凸性效应", dataIndex: "convexity_effect", key: "convexity_effect", render: formatWan },
+  {
+    title: "凸性效应",
+    dataIndex: "convexity_effect",
+    key: "convexity_effect",
+    render: (v: ReturnDecompositionResponse["by_asset_class"][number]["convexity_effect"]) =>
+      v ? formatWan(v) : "—",
+  },
   { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
   { title: "合计", dataIndex: "total", key: "total", render: formatWan },
   { title: "债券数", dataIndex: "bond_count", key: "bond_count" },
@@ -205,17 +197,17 @@ export function ReturnDecompositionView({
       <Row gutter={16}>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="经济口径合计" value={formatWan(data.explained_pnl_economic || data.explained_pnl)} />
+            <Statistic title="经济口径合计" value={formatWan(data.explained_pnl_economic ?? data.explained_pnl)} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="OCI 未入表影响" value={formatWan(data.oci_reserve_impact || "0")} />
+            <Statistic title="OCI 未入表影响" value={formatWan(data.oci_reserve_impact)} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="会计口径（损益表）" value={formatWan(data.explained_pnl_accounting || data.explained_pnl)} />
+            <Statistic title="会计口径（损益表）" value={formatWan(data.explained_pnl_accounting ?? data.explained_pnl)} />
           </Card>
         </Col>
       </Row>
@@ -229,7 +221,7 @@ export function ReturnDecompositionView({
       <Card title="收益效应分解" size="small">
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {effects.map((e) => {
-            const num = parseFloat(e.value);
+            const num = bondNumericRaw(e.value);
             const color = num >= 0 ? "#cf1322" : "#3f8600";
             return (
               <div key={e.label} style={{ textAlign: "center", minWidth: 100 }}>
@@ -282,7 +274,7 @@ export function ReturnDecompositionView({
             <Statistic
               title="对账残差"
               value={formatWan(data.recon_error)}
-              suffix={data.recon_error_pct ? `(${parseFloat(data.recon_error_pct).toFixed(2)}%)` : ""}
+              suffix={data.recon_error_pct ? `(${data.recon_error_pct.display})` : ""}
             />
           </Col>
         </Row>

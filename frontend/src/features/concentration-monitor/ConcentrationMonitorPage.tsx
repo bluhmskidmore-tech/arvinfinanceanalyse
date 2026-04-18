@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
+import type { Numeric } from "../../api/contracts";
 import { useApiClient } from "../../api/client";
 import type { CreditSpreadMigrationResponse } from "../bond-analytics/types";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
@@ -93,17 +94,24 @@ const panelTitleStyle = {
   color: "#162033",
 } as const;
 
-function displayStr(value: string | undefined) {
+function displayStr(value: string | Numeric | undefined) {
   if (value === undefined || value === "") {
     return "—";
   }
-  return value;
+  if (typeof value === "object" && value !== null && "display" in value) {
+    return value.display || "—";
+  }
+  return String(value);
 }
 
 /** 仅用于与展示限额比较，不参与组合指标重算。 */
-function parseRatio(value: string | undefined): number | null {
+function parseRatio(value: string | Numeric | undefined): number | null {
   if (value === undefined || value === "") {
     return null;
+  }
+  if (typeof value === "object" && value !== null && "raw" in value) {
+    const r = value.raw;
+    return r !== null && Number.isFinite(r) ? r : null;
   }
   const n = Number.parseFloat(value);
   return Number.isFinite(n) ? n : null;
@@ -268,7 +276,7 @@ export default function ConcentrationMonitorPage() {
       {
         label: "评级 AA 及以下占比",
         currentDisplay:
-          credit?.rating_aa_and_below_weight !== undefined && credit.rating_aa_and_below_weight !== ""
+          credit?.rating_aa_and_below_weight !== undefined && credit.rating_aa_and_below_weight != null
             ? displayStr(credit.rating_aa_and_below_weight)
             : "—",
         currentNum: belowAa,

@@ -1,4 +1,5 @@
 import type { ResultMeta } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { ActionAttributionResponse } from "../types";
 
 export type BondAnalyticsModuleTier = "summary" | "status" | "blocked";
@@ -59,7 +60,7 @@ function hasRealActionAttributionContent(
 ): boolean {
   return (
     actionAttribution.total_actions > 0 ||
-    Number.parseFloat(actionAttribution.total_pnl_from_actions) !== 0 ||
+    bondNumericRaw(actionAttribution.total_pnl_from_actions) !== 0 ||
     actionAttribution.by_action_type.length > 0 ||
     actionAttribution.action_details.length > 0
   );
@@ -163,7 +164,7 @@ export function deriveActionAttributionReadiness(
         primaryLabel: "Action count",
         primaryValue: String(input.actionAttribution.total_actions),
         secondaryLabel: "Action PnL",
-        secondaryValue: input.actionAttribution.total_pnl_from_actions,
+        secondaryValue: input.actionAttribution.total_pnl_from_actions.display,
       },
     };
   }

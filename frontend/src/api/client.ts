@@ -4642,6 +4642,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ) {
       await delay();
       void _options;
+      const zy = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware });
+      const zp = (sign_aware: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware });
       return buildMockApiEnvelope(
         "bond_analytics.return_decomposition",
         {
@@ -4649,25 +4651,25 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           period_type: periodType,
           period_start: reportDate,
           period_end: reportDate,
-          carry: "0",
-          roll_down: "0",
-          rate_effect: "0",
-          spread_effect: "0",
-          trading: "0",
-          fx_effect: "0",
-          convexity_effect: "0",
-          explained_pnl: "0",
-          explained_pnl_accounting: "0",
-          explained_pnl_economic: "0",
-          oci_reserve_impact: "0",
-          actual_pnl: "0",
-          recon_error: "0",
-          recon_error_pct: "0",
+          carry: zy(true),
+          roll_down: zy(true),
+          rate_effect: zy(true),
+          spread_effect: zy(true),
+          trading: zy(true),
+          fx_effect: zy(true),
+          convexity_effect: zy(true),
+          explained_pnl: zy(true),
+          explained_pnl_accounting: zy(true),
+          explained_pnl_economic: zy(true),
+          oci_reserve_impact: zy(true),
+          actual_pnl: zy(true),
+          recon_error: zy(true),
+          recon_error_pct: zp(true),
           by_asset_class: [],
           by_accounting_class: [],
           bond_details: [],
           bond_count: 0,
-          total_market_value: "0",
+          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -4680,6 +4682,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       benchmarkId: string,
     ) {
       await delay();
+      const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
+      const zBp = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "bp", sign_aware: s });
+      const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
       return buildMockApiEnvelope(
         "bond_analytics.benchmark_excess",
         {
@@ -4687,21 +4692,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           period_type: periodType,
           period_start: reportDate,
           period_end: reportDate,
-          portfolio_return: "0",
-          benchmark_return: "0",
-          excess_return: "0",
+          portfolio_return: zPct(true),
+          benchmark_return: zPct(true),
+          excess_return: zBp(true),
           tracking_error: null,
           information_ratio: null,
-          duration_effect: "0",
-          curve_effect: "0",
-          spread_effect: "0",
-          selection_effect: "0",
-          allocation_effect: "0",
-          explained_excess: "0",
-          recon_error: "0",
-          portfolio_duration: "0",
-          benchmark_duration: "0",
-          duration_diff: "0",
+          duration_effect: zBp(true),
+          curve_effect: zBp(true),
+          spread_effect: zBp(true),
+          selection_effect: zBp(true),
+          allocation_effect: zBp(true),
+          explained_excess: zBp(true),
+          recon_error: zBp(true),
+          portfolio_duration: zRatio(false),
+          benchmark_duration: zRatio(false),
+          duration_diff: zRatio(true),
           excess_sources: [],
           benchmark_id: benchmarkId,
           benchmark_name: benchmarkId,
@@ -4721,10 +4726,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         "bond_analytics.krd_curve_risk",
         {
           report_date: reportDate,
-          portfolio_duration: "3.8",
-          portfolio_modified_duration: "3.6",
-          portfolio_dv01: "120",
-          portfolio_convexity: "0.8",
+          portfolio_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
+          portfolio_modified_duration: formatRawAsNumeric({ raw: 3.6, unit: "ratio", sign_aware: false }),
+          portfolio_dv01: formatRawAsNumeric({ raw: 120, unit: "dv01", sign_aware: false }),
+          portfolio_convexity: formatRawAsNumeric({ raw: 0.8, unit: "ratio", sign_aware: false }),
           krd_buckets: [],
           scenarios: [],
           by_asset_class: [],
@@ -4736,6 +4741,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondAnalyticsActionAttribution(reportDate: string, periodType: string) {
       await delay();
+      const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
+      const zr = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
+      const zd = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: s });
       return buildMockApiEnvelope(
         "bond_analytics.action_attribution",
         {
@@ -4744,14 +4752,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           period_start: reportDate,
           period_end: reportDate,
           total_actions: 0,
-          total_pnl_from_actions: "0",
+          total_pnl_from_actions: zy(true),
           by_action_type: [],
           action_details: [],
-          period_start_duration: "0",
-          period_end_duration: "0",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
+          period_start_duration: zr(false),
+          period_end_duration: zr(false),
+          duration_change_from_actions: zr(true),
+          period_start_dv01: zd(false),
+          period_end_dv01: zd(false),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -4760,19 +4768,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondAnalyticsAccountingClassAudit(reportDate: string) {
       await delay();
+      const zm = () => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_analytics.accounting_class_audit",
         {
           report_date: reportDate,
           total_positions: 0,
-          total_market_value: "0",
+          total_market_value: zm(),
           distinct_asset_classes: 0,
           divergent_asset_classes: 0,
           divergent_position_count: 0,
-          divergent_market_value: "0",
+          divergent_market_value: zm(),
           map_unclassified_asset_classes: 0,
           map_unclassified_position_count: 0,
-          map_unclassified_market_value: "0",
+          map_unclassified_market_value: zm(),
           rows: [],
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
@@ -4791,16 +4800,16 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         {
           report_date: reportDate,
           credit_bond_count: 12,
-          credit_market_value: "1500000000",
-          credit_weight: "0.25",
-          spread_dv01: "25000",
-          weighted_avg_spread: "80",
-          weighted_avg_spread_duration: "4.2",
+          credit_market_value: formatRawAsNumeric({ raw: 1_500_000_000, unit: "yuan", sign_aware: false }),
+          credit_weight: formatRawAsNumeric({ raw: 0.25, unit: "ratio", sign_aware: false }),
+          spread_dv01: formatRawAsNumeric({ raw: 25_000, unit: "dv01", sign_aware: false }),
+          weighted_avg_spread: formatRawAsNumeric({ raw: 80, unit: "bp", sign_aware: false }),
+          weighted_avg_spread_duration: formatRawAsNumeric({ raw: 4.2, unit: "ratio", sign_aware: false }),
           spread_scenarios: [],
           migration_scenarios: [],
-          oci_credit_exposure: "800000000",
-          oci_spread_dv01: "12000",
-          oci_sensitivity_25bp: "-300000",
+          oci_credit_exposure: formatRawAsNumeric({ raw: 800_000_000, unit: "yuan", sign_aware: false }),
+          oci_spread_dv01: formatRawAsNumeric({ raw: 12_000, unit: "dv01", sign_aware: false }),
+          oci_sensitivity_25bp: formatRawAsNumeric({ raw: -300_000, unit: "yuan", sign_aware: true }),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },
@@ -4809,19 +4818,23 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondAnalyticsPortfolioHeadlines(reportDate: string) {
       await delay();
+      const zy = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: s });
+      const zPct = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "pct", sign_aware: s });
+      const zRatio = (s: boolean) => formatRawAsNumeric({ raw: 0, unit: "ratio", sign_aware: s });
+      const zDv = () => formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_analytics.portfolio_headlines",
         {
           report_date: reportDate,
-          total_market_value: "0",
-          weighted_ytm: "0",
-          weighted_duration: "0",
-          weighted_coupon: "0",
-          total_dv01: "0",
+          total_market_value: zy(false),
+          weighted_ytm: zPct(true),
+          weighted_duration: zRatio(false),
+          weighted_coupon: zPct(true),
+          total_dv01: zDv(),
           bond_count: 0,
-          credit_weight: "0",
-          issuer_hhi: "0",
-          issuer_top5_weight: "0",
+          credit_weight: zRatio(false),
+          issuer_hhi: zRatio(false),
+          issuer_top5_weight: zRatio(false),
           by_asset_class: [],
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
@@ -4837,7 +4850,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           report_date: reportDate,
           top_n: topN,
           items: [],
-          total_market_value: "0",
+          total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
           warnings: [],
           computed_at: "2026-04-13T00:00:00Z",
         },

@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
 import type { AccountingClassAuditResponse } from "../types";
-import { formatWan } from "../utils/formatters";
+import { formatPct, formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 interface Props {
@@ -13,8 +14,13 @@ const auditColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class", width: 200 },
   { title: "持仓数", dataIndex: "position_count", key: "position_count", width: 80 },
   { title: "市值", dataIndex: "market_value", key: "market_value", width: 120, render: formatWan },
-  { title: "权重", dataIndex: "market_value_weight", key: "market_value_weight", width: 80,
-    render: (v: string) => `${(parseFloat(v) * 100).toFixed(1)}%` },
+  {
+    title: "权重",
+    dataIndex: "market_value_weight",
+    key: "market_value_weight",
+    width: 80,
+    render: (v: Numeric) => formatPct(v),
+  },
   { title: "推断分类", dataIndex: "infer_accounting_class", key: "infer_accounting_class", width: 90 },
   { title: "映射分类", dataIndex: "map_accounting_class", key: "map_accounting_class", width: 90 },
   { title: "推断规则", dataIndex: "infer_rule_id", key: "infer_rule_id", width: 80 },

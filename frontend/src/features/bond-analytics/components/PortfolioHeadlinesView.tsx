@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Alert, Card, Col, Row, Spin, Statistic, Table } from "antd";
-import type { BondPortfolioHeadlinesPayload } from "../../../api/contracts";
+import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { formatPct, formatWan } from "../utils/formatters";
 
@@ -11,13 +11,28 @@ interface Props {
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
   { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
-  { title: "久期", dataIndex: "duration", key: "duration" },
-  { title: "DV01", dataIndex: "dv01", key: "dv01", render: formatWan },
-  { title: "权重", dataIndex: "weight", key: "weight" },
+  {
+    title: "久期",
+    dataIndex: "duration",
+    key: "duration",
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "DV01",
+    dataIndex: "dv01",
+    key: "dv01",
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "权重",
+    dataIndex: "weight",
+    key: "weight",
+    render: (v: Numeric) => v.display,
+  },
 ];
 
-function formatHhi(value: string): string {
-  const n = parseFloat(value);
+function formatHhi(value: import("../../../api/contracts").Numeric | string): string {
+  const n = typeof value === "string" ? Number.parseFloat(value) : (value.raw ?? Number.NaN);
   if (Number.isNaN(n)) return "-";
   return n.toFixed(4);
 }
@@ -77,22 +92,22 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="加权收益率（%）" value={data.weighted_ytm} />
+            <Statistic title="加权收益率（%）" value={data.weighted_ytm.display} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="加权修正久期（年）" value={data.weighted_duration} />
+            <Statistic title="加权修正久期（年）" value={data.weighted_duration.display} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="组合 DV01" value={formatWan(data.total_dv01)} />
+            <Statistic title="组合 DV01" value={data.total_dv01.display} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="加权票息（%）" value={data.weighted_coupon} />
+            <Statistic title="加权票息（%）" value={data.weighted_coupon.display} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>

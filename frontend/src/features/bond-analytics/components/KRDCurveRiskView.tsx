@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
@@ -21,9 +23,24 @@ const scenarioColumns = [
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
   { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
-  { title: "久期", dataIndex: "duration", key: "duration" },
-  { title: "DV01", dataIndex: "dv01", key: "dv01", render: formatWan },
-  { title: "权重", dataIndex: "weight", key: "weight" },
+  {
+    title: "久期",
+    dataIndex: "duration",
+    key: "duration",
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "DV01",
+    dataIndex: "dv01",
+    key: "dv01",
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "权重",
+    dataIndex: "weight",
+    key: "weight",
+    render: (v: Numeric) => v.display,
+  },
 ];
 
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
@@ -42,7 +59,7 @@ function sliceColorForAssetClass(assetClass: string): string {
 function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
   const pieData = rows.map((row) => ({
     name: row.asset_class,
-    value: parseFloat(row.market_value),
+    value: bondNumericRaw(row.market_value),
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: { color: sliceColorForAssetClass(row.asset_class) },
@@ -51,10 +68,12 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
   return {
     tooltip: {
       trigger: "item" as const,
-      formatter: (params: { data?: { name: string; marketValueRaw: string; weight: string } }) => {
+      formatter: (params: {
+        data?: { name: string; marketValueRaw: Numeric; weight: Numeric };
+      }) => {
         const d = params.data;
         if (!d) return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight}`;
+        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {
@@ -131,14 +150,14 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           const p = arr[0];
           if (!p || typeof p.dataIndex !== "number") return "";
           const b = buckets[p.dataIndex];
-          const krd = parseFloat(b.krd);
-          const dv01 = parseFloat(b.dv01);
-          const w = parseFloat(b.market_value_weight);
+          const krd = bondNumericRaw(b.krd);
+          const dv01 = bondNumericRaw(b.dv01);
+          const w = bondNumericRaw(b.market_value_weight);
           return [
             `<div style="font-weight:600;margin-bottom:4px">${b.tenor}</div>`,
-            `KRD：${Number.isFinite(krd) ? krd.toFixed(3) : b.krd}`,
-            `DV01：${Number.isFinite(dv01) ? dv01.toFixed(6) : b.dv01}`,
-            `market_value_weight：${Number.isFinite(w) ? w.toFixed(6) : b.market_value_weight}`,
+            `KRD：${Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display}`,
+            `DV01：${Number.isFinite(dv01) ? dv01.toFixed(6) : b.dv01.display}`,
+            `market_value_weight：${Number.isFinite(w) ? w.toFixed(6) : b.market_value_weight.display}`,
           ].join("<br/>");
         },
       },
@@ -162,7 +181,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           type: "bar",
           barMaxWidth: 48,
           data: buckets.map((b) => {
-            const krd = parseFloat(b.krd);
+            const krd = bondNumericRaw(b.krd);
             const color = krd >= 0 ? "#1f5eff" : "#ff4d4f";
             return {
               value: krd,
@@ -170,7 +189,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
               label: {
                 show: true,
                 position: krd >= 0 ? "top" : "bottom",
-                formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd,
+                formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display,
                 color: "#333",
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
@@ -202,22 +221,22 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="组合久期" value={parseFloat(data.portfolio_duration).toFixed(2)} />
+            <Statistic title="组合久期" value={data.portfolio_duration.display} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="修正久期" value={parseFloat(data.portfolio_modified_duration).toFixed(2)} />
+            <Statistic title="修正久期" value={data.portfolio_modified_duration.display} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="DV01 (万元/bp)" value={formatWan(data.portfolio_dv01)} />
+            <Statistic title="DV01 (万元/bp)" value={data.portfolio_dv01.display} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="凸性" value={parseFloat(data.portfolio_convexity).toFixed(2)} />
+            <Statistic title="凸性" value={data.portfolio_convexity.display} />
           </Card>
         </Col>
       </Row>

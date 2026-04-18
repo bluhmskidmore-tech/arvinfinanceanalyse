@@ -4,7 +4,8 @@ import { Alert, Card, Col, Row, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { useApiClient } from "../../../api/client";
-import type { BondTopHoldingItem } from "../../../api/contracts";
+import type { BondTopHoldingItem, Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import ReactECharts from "../../../lib/echarts";
 import { formatPct, formatWan } from "../utils/formatters";
 import { BondKpiRow } from "./BondKpiRow";
@@ -155,8 +156,13 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
   const topHoldingsColumns: ColumnsType<BondTopHoldingItem> = [
     { title: "债券简称", dataIndex: "instrument_name", key: "instrument_name", ellipsis: true },
     { title: "面额", dataIndex: "face_value", key: "face_value", render: formatWan },
-    { title: "收益率", dataIndex: "ytm", key: "ytm", render: (v: string) => formatPct(v) },
-    { title: "久期", dataIndex: "modified_duration", key: "modified_duration" },
+    { title: "收益率", dataIndex: "ytm", key: "ytm", render: (v: Numeric) => formatPct(v) },
+    {
+      title: "久期",
+      dataIndex: "modified_duration",
+      key: "modified_duration",
+      render: (v: Numeric) => v.display,
+    },
     { title: "评级", dataIndex: "rating", key: "rating" },
     { title: "浮盈", key: "upl", render: () => "—" },
     { title: "浮盈/亏", key: "upl_pct", render: () => "—" },
@@ -172,7 +178,7 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
   const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "驾驶舱数据加载失败") : null;
 
   const dur = headline ? parseFloat(headline.kpis.weighted_duration) : NaN;
-  const cw = portfolioHl ? parseFloat(portfolioHl.credit_weight) : NaN;
+  const cw = portfolioHl ? bondNumericRaw(portfolioHl.credit_weight) : NaN;
 
   return (
     <section

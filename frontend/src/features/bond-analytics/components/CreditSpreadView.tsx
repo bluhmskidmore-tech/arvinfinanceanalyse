@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadAnalysisResponse,
   CreditSpreadDetailBondRow,
@@ -20,7 +22,12 @@ interface Props {
 
 const spreadColumns = [
   { title: "情景", dataIndex: "scenario_name", key: "scenario_name" },
-  { title: "利差变动 (bp)", dataIndex: "spread_change_bp", key: "spread_change_bp" },
+  {
+    title: "利差变动 (bp)",
+    dataIndex: "spread_change_bp",
+    key: "spread_change_bp",
+    render: (v: Numeric) => v.display,
+  },
   { title: "总影响", dataIndex: "pnl_impact", key: "pnl_impact", render: formatWan },
   { title: "OCI影响", dataIndex: "oci_impact", key: "oci_impact", render: formatWan },
   { title: "TPL影响", dataIndex: "tpl_impact", key: "tpl_impact", render: formatWan },
@@ -131,9 +138,9 @@ function mapRatingToBucket(raw: string | undefined): string | null {
 /** 将 bond 明细按评级×期限累加市值，再按信用债总市值换算占比（仅展示层聚合） */
 function buildRatingTenorHeatmapData(
   bondDetails: CreditSpreadBondDetailRow[],
-  creditMarketValueStr: string,
+  creditMarketValueField: Numeric | string,
 ): { seriesData: [number, number, number][]; maxPct: number } | null {
-  const denom = parseFloat(creditMarketValueStr);
+  const denom = bondNumericRaw(creditMarketValueField);
   if (!Number.isFinite(denom) || denom <= 0) return null;
 
   const sums = new Map<string, number>();
@@ -142,7 +149,7 @@ function buildRatingTenorHeatmapData(
     const yKey = mapRatingToBucket(row.rating);
     const xi = mapTenorBucketToXIndex(row.tenor_bucket);
     if (yKey == null || xi == null) continue;
-    const mv = parseFloat(row.market_value);
+    const mv = bondNumericRaw(row.market_value);
     if (!Number.isFinite(mv) || mv <= 0) continue;
     anyMapped = true;
     const key = `${yKey}|${xi}`;
@@ -235,7 +242,7 @@ function concentrationBarOption(
   if (!items?.length) return null;
   const names = items.map((it) => it.name);
   const pcts = items.map((it) => {
-    const w = parseFloat(it.weight);
+    const w = bondNumericRaw(it.weight);
     return Number.isFinite(w) ? Number((w * 100).toFixed(4)) : 0;
   });
   return {
@@ -344,7 +351,7 @@ const ISSUER_SLICE_COLORS = ["#1f5eff", "#ff7a45", "#2f8f63", "#cc7a1a", "#8c8c8
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   return {
     title: {
-      text: `${metrics.dimension}  HHI ${metrics.hhi}  Top5 ${metrics.top5_concentration}`,
+      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  Top5 ${metrics.top5_concentration.display}`,
       left: "center",
       top: 4,
       textStyle: { fontSize: 11 },
@@ -353,7 +360,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
       trigger: "item",
       formatter: (p) => {
         const item = p as { name: string; value: number; percent: number };
-        return `${item.name}: ${formatWan(String(item.value))} (${item.percent}%)`;
+        return `${item.name}: ${formatWan(item.value)} (${item.percent}%)`;
       },
     },
     series: [
@@ -363,7 +370,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
         center: ["50%", "56%"],
         data: metrics.top_items.map((it) => ({
           name: it.name,
-          value: parseFloat(it.market_value) || 0,
+          value: bondNumericRaw(it.market_value) || 0,
         })),
       },
     ],
@@ -373,7 +380,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
 function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   const pieData = metrics.top_items.map((it, idx) => ({
     name: it.name,
-    value: parseFloat(it.market_value) || 0,
+    value: bondNumericRaw(it.market_value) || 0,
     marketValueRaw: it.market_value,
     weight: it.weight,
     itemStyle: { color: ISSUER_SLICE_COLORS[idx % ISSUER_SLICE_COLORS.length] },
@@ -384,10 +391,10 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
       trigger: "item" as const,
       formatter: (params: unknown) => {
         const d = (params as { data?: unknown }).data as
-          | { name: string; marketValueRaw: string; weight: string }
+          | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight}`;
+        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {
@@ -522,7 +529,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             typeof raw === "object" && raw !== null && "value" in raw
               ? (raw as { value: number }).value
               : Number(raw);
-          return `${name}<br/>损益影响：${formatWan(String(num))}`;
+          return `${name}<br/>损益影响：${formatWan(num)}`;
         },
       },
       xAxis: {
@@ -541,7 +548,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           name: "损益影响",
           barMaxWidth: 48,
           data: scenarios.map((s) => {
-            const v = parseFloat(s.pnl_impact);
+            const v = bondNumericRaw(s.pnl_impact);
             return {
               value: Number.isFinite(v) ? v : 0,
               itemStyle: { color: v >= 0 ? "#cf1322" : "#3f8600" },
@@ -619,13 +626,13 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Statistic
               title="信用债市值"
               value={formatWan(displayCreditMarketValue)}
-              suffix={`(${(parseFloat(data.credit_weight) * 100).toFixed(1)}%)`}
+              suffix={`(${(bondNumericRaw(data.credit_weight) * 100).toFixed(1)}%)`}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Spread DV01 (万元/bp)" value={formatWan(data.spread_dv01)} />
+            <Statistic title="Spread DV01 (万元/bp)" value={data.spread_dv01.display} />
           </Card>
         </Col>
         <Col span={6}>
@@ -641,7 +648,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Statistic title="OCI信用债敞口" value={formatWan(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
-            <Statistic title="OCI Spread DV01" value={formatWan(data.oci_spread_dv01)} />
+            <Statistic title="OCI Spread DV01" value={data.oci_spread_dv01.display} />
           </Col>
           <Col span={8}>
             <Statistic title="利差走阔25bp影响" value={formatWan(data.oci_sensitivity_25bp)} />

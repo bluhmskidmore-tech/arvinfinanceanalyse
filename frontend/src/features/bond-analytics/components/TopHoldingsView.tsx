@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Spin, Statistic, Table } from "antd";
-import type { BondTopHoldingsPayload } from "../../../api/contracts";
+import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { formatPct, formatWan } from "../utils/formatters";
 
 interface Props {
@@ -20,14 +21,19 @@ const columns = [
     title: "YTM",
     dataIndex: "ytm",
     key: "ytm",
-    render: (v: string) => formatPct(v),
+    render: (v: Numeric) => formatPct(v),
   },
-  { title: "修正久期", dataIndex: "modified_duration", key: "modified_duration" },
+  {
+    title: "修正久期",
+    dataIndex: "modified_duration",
+    key: "modified_duration",
+    render: (v: Numeric) => v.display,
+  },
   {
     title: "权重",
     dataIndex: "weight",
     key: "weight",
-    render: (v: string) => formatPct(v),
+    render: (v: Numeric) => formatPct(v),
   },
 ];
 
@@ -59,7 +65,7 @@ export function TopHoldingsView({ reportDate }: Props) {
 
   const topWeightSum = useMemo(() => {
     if (!data?.items.length) return 0;
-    return data.items.reduce((acc, row) => acc + parseFloat(row.weight || "0"), 0);
+    return data.items.reduce((acc, row) => acc + bondNumericRaw(row.weight), 0);
   }, [data]);
 
   if (loading && !data) {
@@ -86,7 +92,13 @@ export function TopHoldingsView({ reportDate }: Props) {
       <Card size="small">
         <Statistic
           title={`Top ${data.top_n} 合计市值占比（相对组合总市值）`}
-          value={formatPct(String(topWeightSum))}
+          value={formatPct({
+            raw: topWeightSum,
+            unit: "ratio",
+            display: "",
+            precision: 4,
+            sign_aware: false,
+          })}
         />
       </Card>
       <Card size="small" title="持仓明细">

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
 import { formatWan } from "../utils/formatters";
@@ -41,8 +43,8 @@ const detailColumns = [
     dataIndex: "pnl_economic",
     key: "pnl_economic",
     width: 120,
-    render: (v: string) => {
-      const num = parseFloat(v);
+    render: (v: Numeric) => {
+      const num = bondNumericRaw(v);
       const color = num >= 0 ? "#cf1322" : "#3f8600";
       return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
     },
@@ -52,7 +54,7 @@ const detailColumns = [
     dataIndex: "delta_duration",
     key: "delta_duration",
     width: 80,
-    render: (v: string) => parseFloat(v).toFixed(4),
+    render: (v: Numeric) => v.display,
   },
 ];
 
@@ -109,8 +111,8 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
           <Card size="small">
             <Statistic
               title="久期变化"
-              value={`${parseFloat(data.period_start_duration).toFixed(2)} → ${parseFloat(data.period_end_duration).toFixed(2)}`}
-              suffix={`Δ ${parseFloat(data.duration_change_from_actions).toFixed(2)}`}
+              value={`${data.period_start_duration.display} → ${data.period_end_duration.display}`}
+              suffix={`Δ ${data.duration_change_from_actions.display}`}
             />
           </Card>
         </Col>
@@ -134,8 +136,8 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         <Card title="按动作类型汇总" size="small">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {data.by_action_type.map((item) => {
-              const pnl = parseFloat(item.total_pnl_economic);
-              const totalPnl = parseFloat(data.total_pnl_from_actions);
+              const pnl = bondNumericRaw(item.total_pnl_economic);
+              const totalPnl = bondNumericRaw(data.total_pnl_from_actions);
               const pct = totalPnl !== 0 ? (pnl / totalPnl) * 100 : 0;
               return (
                 <div key={item.action_type} style={{ display: "flex", alignItems: "center", gap: 12 }}>

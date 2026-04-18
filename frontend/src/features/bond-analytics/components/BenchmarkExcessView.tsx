@@ -3,8 +3,10 @@ import { Card, Statistic, Row, Col, Alert, Spin, Select, Space } from "antd";
 import ReactECharts from "../../../lib/echarts";
 import { FilterBar } from "../../../components/FilterBar";
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
-import { formatBp } from "../utils/formatters";
+import { formatBp, formatPct } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 interface Props {
@@ -35,23 +37,21 @@ const TRANSPARENT_BAR = {
   borderWidth: 0,
 } as const;
 
-function formatDurationDisplay(value: string): string {
-  const num = parseFloat(value);
-  if (Number.isNaN(num)) return value || "-";
-  return num.toFixed(2);
+function formatDurationDisplay(value: Numeric): string {
+  return value.display;
 }
 
-function hasDisplayMetric(value: string | null | undefined): value is string {
-  return value != null && value !== "";
+function hasDisplayMetric(value: Numeric | null | undefined): value is Numeric {
+  return value != null && value.display !== "";
 }
 
 function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
-  const durationEffect = parseFloat(d.duration_effect);
-  const curveEffect = parseFloat(d.curve_effect);
-  const spreadEffect = parseFloat(d.spread_effect);
-  const selectionEffect = parseFloat(d.selection_effect);
-  const allocationEffect = parseFloat(d.allocation_effect);
-  const excessReturn = parseFloat(d.excess_return);
+  const durationEffect = bondNumericRaw(d.duration_effect);
+  const curveEffect = bondNumericRaw(d.curve_effect);
+  const spreadEffect = bondNumericRaw(d.spread_effect);
+  const selectionEffect = bondNumericRaw(d.selection_effect);
+  const allocationEffect = bondNumericRaw(d.allocation_effect);
+  const excessReturn = bondNumericRaw(d.excess_return);
 
   const stepValues = [
     durationEffect,
@@ -85,12 +85,12 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
   barColors.push("#1f5eff");
 
   const displayStrings = [
-    d.duration_effect,
-    d.curve_effect,
-    d.spread_effect,
-    d.selection_effect,
-    d.allocation_effect,
-    d.excess_return,
+    d.duration_effect.display,
+    d.curve_effect.display,
+    d.spread_effect.display,
+    d.selection_effect.display,
+    d.allocation_effect.display,
+    d.excess_return.display,
   ];
 
   return {
@@ -104,7 +104,7 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
         const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = WATERFALL_CATEGORIES[idx];
-        return `${label}<br/>${formatBp(displayStrings[idx] ?? "0")}`;
+        return `${label}<br/>${displayStrings[idx] ?? "—"}`;
       },
     },
     grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
@@ -180,7 +180,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
-  const excessNum = parseFloat(data.excess_return);
+  const excessNum = bondNumericRaw(data.excess_return);
   const excessColor = excessNum >= 0 ? "#cf1322" : "#3f8600";
 
   const decomp = [
@@ -233,12 +233,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       <Row gutter={16}>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="组合收益" value={formatBp(data.portfolio_return)} />
+            <Statistic title="组合收益" value={formatPct(data.portfolio_return)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="基准收益" value={formatBp(data.benchmark_return)} />
+            <Statistic title="基准收益" value={formatPct(data.benchmark_return)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>
@@ -272,14 +272,14 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
           {hasDisplayMetric(data.tracking_error) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
-                <Statistic title="跟踪误差" value={formatBp(data.tracking_error)} />
+                <Statistic title="跟踪误差" value={formatPct(data.tracking_error)} />
               </Card>
             </Col>
           )}
           {hasDisplayMetric(data.information_ratio) && (
             <Col xs={24} sm={12} md={8}>
               <Card size="small">
-                <Statistic title="信息比率" value={data.information_ratio} />
+                <Statistic title="信息比率" value={data.information_ratio.display} />
               </Card>
             </Col>
           )}
@@ -295,7 +295,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       <Card title="超额收益分解" size="small">
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           {decomp.map((d) => {
-            const num = parseFloat(d.value);
+            const num = bondNumericRaw(d.value);
             const color = num >= 0 ? "#cf1322" : "#3f8600";
             return (
               <div key={d.label} style={{ textAlign: "center", minWidth: 100 }}>

@@ -1,4 +1,6 @@
 import type { EChartsOption } from "echarts";
+import type { Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, KRDBucket } from "../types";
 import { formatWan } from "./formatters";
 
@@ -30,7 +32,7 @@ function dv01GradientColor(dv01: number, min: number, max: number): string {
 export function buildKrdDv01BarOption(buckets: KRDBucket[]): EChartsOption | null {
   if (!buckets.length) return null;
   const dv01Values = buckets.map((b) => {
-    const n = Number.parseFloat(b.dv01);
+    const n = bondNumericRaw(b.dv01);
     return Number.isFinite(n) ? n : 0;
   });
   const min = Math.min(...dv01Values);
@@ -85,7 +87,7 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
   if (!rows.length) return null;
   const data = rows.map((row) => ({
     name: row.asset_class,
-    value: Number.parseFloat(row.market_value) || 0,
+    value: bondNumericRaw(row.market_value) || 0,
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: {
@@ -99,10 +101,10 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
       trigger: "item",
       formatter: (p: unknown) => {
         const d = (p as { data?: unknown }).data as
-          | { name: string; marketValueRaw: string; weight: string }
+          | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight}`;
+        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     series: [

@@ -144,16 +144,15 @@ export type BondAnalyticsDatesPayload = {
 
 export type AssetClassBreakdown = {
   asset_class: string;
-  carry: string;
-  roll_down: string;
-  rate_effect: string;
-  spread_effect: string;
-  fx_effect?: string;
-  convexity_effect?: string;
-  trading: string;
-  total: string;
+  carry: Numeric;
+  roll_down: Numeric;
+  rate_effect: Numeric;
+  spread_effect: Numeric;
+  convexity_effect?: Numeric;
+  trading: Numeric;
+  total: Numeric;
   bond_count: number;
-  market_value: string;
+  market_value: Numeric;
 };
 
 export type BondLevelDecomposition = {
@@ -161,16 +160,16 @@ export type BondLevelDecomposition = {
   bond_name: string | null;
   asset_class: string;
   accounting_class: string;
-  market_value: string;
-  carry: string;
-  roll_down: string;
-  rate_effect: string;
-  spread_effect: string;
-  convexity_effect: string;
-  trading: string;
-  total: string;
-  explained_for_recon: string;
-  economic_only_effects: string;
+  market_value: Numeric;
+  carry: Numeric;
+  roll_down: Numeric;
+  rate_effect: Numeric;
+  spread_effect: Numeric;
+  convexity_effect: Numeric;
+  trading: Numeric;
+  total: Numeric;
+  explained_for_recon: Numeric;
+  economic_only_effects: Numeric;
 };
 
 export type ReturnDecompositionPayload = {
@@ -178,32 +177,32 @@ export type ReturnDecompositionPayload = {
   period_type: string;
   period_start: string;
   period_end: string;
-  carry: string;
-  roll_down: string;
-  rate_effect: string;
-  spread_effect: string;
-  trading: string;
-  fx_effect: string;
-  convexity_effect: string;
-  explained_pnl: string;
-  explained_pnl_accounting: string;
-  explained_pnl_economic: string;
-  oci_reserve_impact: string;
-  actual_pnl: string;
-  recon_error: string;
-  recon_error_pct: string;
+  carry: Numeric;
+  roll_down: Numeric;
+  rate_effect: Numeric;
+  spread_effect: Numeric;
+  trading: Numeric;
+  fx_effect: Numeric;
+  convexity_effect: Numeric;
+  explained_pnl: Numeric;
+  explained_pnl_accounting: Numeric;
+  explained_pnl_economic: Numeric;
+  oci_reserve_impact: Numeric;
+  actual_pnl: Numeric;
+  recon_error: Numeric;
+  recon_error_pct: Numeric;
   by_asset_class: AssetClassBreakdown[];
   by_accounting_class: AssetClassBreakdown[];
   bond_details: BondLevelDecomposition[];
   bond_count: number;
-  total_market_value: string;
+  total_market_value: Numeric;
   warnings: string[];
   computed_at: string;
 };
 
 export type ExcessSourceBreakdown = {
   source: string;
-  contribution: string;
+  contribution: Numeric;
   description: string;
 };
 
@@ -212,21 +211,21 @@ export type BenchmarkExcessPayload = {
   period_type: string;
   period_start: string;
   period_end: string;
-  portfolio_return: string;
-  benchmark_return: string;
-  excess_return: string;
-  tracking_error: string | null;
-  information_ratio: string | null;
-  duration_effect: string;
-  curve_effect: string;
-  spread_effect: string;
-  selection_effect: string;
-  allocation_effect: string;
-  explained_excess: string;
-  recon_error: string;
-  portfolio_duration: string;
-  benchmark_duration: string;
-  duration_diff: string;
+  portfolio_return: Numeric;
+  benchmark_return: Numeric;
+  excess_return: Numeric;
+  tracking_error: Numeric | null;
+  information_ratio: Numeric | null;
+  duration_effect: Numeric;
+  curve_effect: Numeric;
+  spread_effect: Numeric;
+  selection_effect: Numeric;
+  allocation_effect: Numeric;
+  explained_excess: Numeric;
+  recon_error: Numeric;
+  portfolio_duration: Numeric;
+  benchmark_duration: Numeric;
+  duration_diff: Numeric;
   excess_sources: ExcessSourceBreakdown[];
   benchmark_id: string;
   benchmark_name: string;
@@ -236,37 +235,37 @@ export type BenchmarkExcessPayload = {
 
 export type KRDBucket = {
   tenor: string;
-  krd: string;
-  dv01: string;
-  market_value_weight: string;
+  krd: Numeric;
+  dv01: Numeric;
+  market_value_weight: Numeric;
 };
 
 export type KRDScenarioResult = {
   scenario_name: string;
   scenario_description: string;
   shocks: Record<string, number>;
-  pnl_economic: string;
-  pnl_oci: string;
-  pnl_tpl: string;
-  rate_contribution: string;
-  convexity_contribution: string;
-  by_asset_class: Record<string, Record<string, string>>;
+  pnl_economic: Numeric;
+  pnl_oci: Numeric;
+  pnl_tpl: Numeric;
+  rate_contribution: Numeric;
+  convexity_contribution: Numeric;
+  by_asset_class: Record<string, Record<string, Numeric>>;
 };
 
 export type AssetClassRiskSummary = {
   asset_class: string;
-  market_value: string;
-  duration: string;
-  dv01: string;
-  weight: string;
+  market_value: Numeric;
+  duration: Numeric;
+  dv01: Numeric;
+  weight: Numeric;
 };
 
 export type KRDCurveRiskPayload = {
   report_date: string;
-  portfolio_duration: string;
-  portfolio_modified_duration: string;
-  portfolio_dv01: string;
-  portfolio_convexity: string;
+  portfolio_duration: Numeric;
+  portfolio_modified_duration: Numeric;
+  portfolio_dv01: Numeric;
+  portfolio_convexity: Numeric;
   krd_buckets: KRDBucket[];
   scenarios: KRDScenarioResult[];
   by_asset_class: AssetClassRiskSummary[];
@@ -277,15 +276,15 @@ export type KRDCurveRiskPayload = {
 /** `/api/bond-analytics/portfolio-headlines` */
 export type BondPortfolioHeadlinesPayload = {
   report_date: string;
-  total_market_value: string;
-  weighted_ytm: string;
-  weighted_duration: string;
-  weighted_coupon: string;
-  total_dv01: string;
+  total_market_value: Numeric;
+  weighted_ytm: Numeric;
+  weighted_duration: Numeric;
+  weighted_coupon: Numeric;
+  total_dv01: Numeric;
   bond_count: number;
-  credit_weight: string;
-  issuer_hhi: string;
-  issuer_top5_weight: string;
+  credit_weight: Numeric;
+  issuer_hhi: Numeric;
+  issuer_top5_weight: Numeric;
   by_asset_class: AssetClassRiskSummary[];
   warnings: string[];
   computed_at: string;
@@ -297,11 +296,11 @@ export type BondTopHoldingItem = {
   issuer_name: string | null;
   rating: string | null;
   asset_class: string;
-  market_value: string;
-  face_value: string;
-  ytm: string;
-  modified_duration: string;
-  weight: string;
+  market_value: Numeric;
+  face_value: Numeric;
+  ytm: Numeric;
+  modified_duration: Numeric;
+  weight: Numeric;
 };
 
 /** `/api/bond-analytics/top-holdings` */
@@ -309,17 +308,17 @@ export type BondTopHoldingsPayload = {
   report_date: string;
   top_n: number;
   items: BondTopHoldingItem[];
-  total_market_value: string;
+  total_market_value: Numeric;
   warnings: string[];
   computed_at: string;
 };
 
 export type SpreadScenarioResult = {
   scenario_name: string;
-  spread_change_bp: number;
-  pnl_impact: string;
-  oci_impact: string;
-  tpl_impact: string;
+  spread_change_bp: Numeric;
+  pnl_impact: Numeric;
+  oci_impact: Numeric;
+  tpl_impact: Numeric;
 };
 
 export type MigrationScenarioResult = {
@@ -327,26 +326,26 @@ export type MigrationScenarioResult = {
   from_rating: string;
   to_rating: string;
   affected_bonds: number;
-  affected_market_value: string;
-  pnl_impact: string;
-  oci_impact?: string;
+  affected_market_value: Numeric;
+  pnl_impact: Numeric;
+  oci_impact?: Numeric;
 };
 
 export type ConcentrationItem = {
   name: string;
-  weight: string;
-  market_value: string;
+  weight: Numeric;
+  market_value: Numeric;
 };
 
 export type ConcentrationMetrics = {
   dimension: string;
-  hhi: string;
-  top5_concentration: string;
+  hhi: Numeric;
+  top5_concentration: Numeric;
   top_items: ConcentrationItem[];
 };
 
 export type CreditSpreadBondDetailRow = {
-  market_value: string;
+  market_value: Numeric;
   rating?: string;
   tenor_bucket?: string;
 };
@@ -354,12 +353,12 @@ export type CreditSpreadBondDetailRow = {
 export type CreditSpreadMigrationPayload = {
   report_date: string;
   credit_bond_count: number;
-  credit_market_value: string;
-  credit_weight: string;
-  rating_aa_and_below_weight?: string;
-  spread_dv01: string;
-  weighted_avg_spread: string;
-  weighted_avg_spread_duration: string;
+  credit_market_value: Numeric;
+  credit_weight: Numeric;
+  rating_aa_and_below_weight?: Numeric;
+  spread_dv01: Numeric;
+  weighted_avg_spread: Numeric;
+  weighted_avg_spread_duration: Numeric;
   spread_scenarios: SpreadScenarioResult[];
   migration_scenarios: MigrationScenarioResult[];
   concentration_by_issuer?: ConcentrationMetrics;
@@ -367,9 +366,9 @@ export type CreditSpreadMigrationPayload = {
   concentration_by_rating?: ConcentrationMetrics;
   concentration_by_tenor?: ConcentrationMetrics;
   bond_details?: CreditSpreadBondDetailRow[];
-  oci_credit_exposure: string;
-  oci_spread_dv01: string;
-  oci_sensitivity_25bp: string;
+  oci_credit_exposure: Numeric;
+  oci_spread_dv01: Numeric;
+  oci_sensitivity_25bp: Numeric;
   warnings: string[];
   computed_at: string;
 };
@@ -424,9 +423,9 @@ export type ActionTypeSummary = {
   action_type: string;
   action_type_name: string;
   action_count: number;
-  total_pnl_economic: string;
-  total_pnl_accounting: string;
-  avg_pnl_per_action: string;
+  total_pnl_economic: Numeric;
+  total_pnl_accounting: Numeric;
+  avg_pnl_per_action: Numeric;
 };
 
 export type ActionDetail = {
@@ -435,12 +434,12 @@ export type ActionDetail = {
   action_date: string;
   bonds_involved: string[];
   description: string;
-  pnl_economic: string;
-  pnl_accounting: string;
-  delta_duration: string;
-  delta_dv01: string;
-  delta_spread_dv01: string;
-  opportunity_cost?: string;
+  pnl_economic: Numeric;
+  pnl_accounting: Numeric;
+  delta_duration: Numeric;
+  delta_dv01: Numeric;
+  delta_spread_dv01: Numeric;
+  opportunity_cost?: Numeric;
   opportunity_cost_method?: string;
 };
 
@@ -450,14 +449,14 @@ export type ActionAttributionPayload = {
   period_start: string;
   period_end: string;
   total_actions: number;
-  total_pnl_from_actions: string;
+  total_pnl_from_actions: Numeric;
   by_action_type: ActionTypeSummary[];
   action_details: ActionDetail[];
-  period_start_duration: string;
-  period_end_duration: string;
-  duration_change_from_actions: string;
-  period_start_dv01: string;
-  period_end_dv01: string;
+  period_start_duration: Numeric;
+  period_end_duration: Numeric;
+  duration_change_from_actions: Numeric;
+  period_start_dv01: Numeric;
+  period_end_dv01: Numeric;
   status?: string;
   available_components?: string[];
   missing_inputs?: string[];
@@ -469,8 +468,8 @@ export type ActionAttributionPayload = {
 export type AccountingClassAuditItem = {
   asset_class: string;
   position_count: number;
-  market_value: string;
-  market_value_weight: string;
+  market_value: Numeric;
+  market_value_weight: Numeric;
   infer_accounting_class: string;
   map_accounting_class: string;
   infer_rule_id: string;
@@ -484,14 +483,14 @@ export type AccountingClassAuditItem = {
 export type AccountingClassAuditPayload = {
   report_date: string;
   total_positions: number;
-  total_market_value: string;
+  total_market_value: Numeric;
   distinct_asset_classes: number;
   divergent_asset_classes: number;
   divergent_position_count: number;
-  divergent_market_value: string;
+  divergent_market_value: Numeric;
   map_unclassified_asset_classes: number;
   map_unclassified_position_count: number;
-  map_unclassified_market_value: string;
+  map_unclassified_market_value: Numeric;
   rows: AccountingClassAuditItem[];
   warnings: string[];
   computed_at: string;

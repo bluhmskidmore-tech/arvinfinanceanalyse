@@ -10,6 +10,7 @@ vi.mock("../lib/echarts", () => ({
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import type { ApiEnvelope, RiskTensorPayload, ResultMeta } from "../api/contracts";
 import RiskOverviewPage from "../features/risk-overview/RiskOverviewPage";
+import { formatRawAsNumeric } from "../utils/format";
 import { routerFuture } from "../router/routerFuture";
 
 const meta: ResultMeta = {
@@ -230,13 +231,23 @@ describe("RiskOverviewPage", () => {
         result_meta: { ...meta, result_kind: "bond_analytics.krd_curve_risk" },
         result: {
           report_date: "2025-12-31",
-          portfolio_duration: "3",
-          portfolio_modified_duration: "3.1",
-          portfolio_dv01: "100",
-          portfolio_convexity: "0.5",
+          portfolio_duration: formatRawAsNumeric({ raw: 3, unit: "ratio", sign_aware: false }),
+          portfolio_modified_duration: formatRawAsNumeric({ raw: 3.1, unit: "ratio", sign_aware: false }),
+          portfolio_dv01: formatRawAsNumeric({ raw: 100, unit: "dv01", sign_aware: false }),
+          portfolio_convexity: formatRawAsNumeric({ raw: 0.5, unit: "ratio", sign_aware: false }),
           krd_buckets: [
-            { tenor: "1Y", krd: "10", dv01: "1.1", market_value_weight: "0.12" },
-            { tenor: "5Y", krd: "25", dv01: "2.5", market_value_weight: "0.28" },
+            {
+              tenor: "1Y",
+              krd: formatRawAsNumeric({ raw: 10, unit: "ratio", sign_aware: true }),
+              dv01: formatRawAsNumeric({ raw: 1.1, unit: "dv01", sign_aware: false }),
+              market_value_weight: formatRawAsNumeric({ raw: 0.12, unit: "ratio", sign_aware: false }),
+            },
+            {
+              tenor: "5Y",
+              krd: formatRawAsNumeric({ raw: 25, unit: "ratio", sign_aware: true }),
+              dv01: formatRawAsNumeric({ raw: 2.5, unit: "dv01", sign_aware: false }),
+              market_value_weight: formatRawAsNumeric({ raw: 0.28, unit: "ratio", sign_aware: false }),
+            },
           ],
           scenarios: [],
           by_asset_class: [],
@@ -249,25 +260,33 @@ describe("RiskOverviewPage", () => {
         result: {
           report_date: "2025-12-31",
           credit_bond_count: 10,
-          credit_market_value: "1",
-          credit_weight: "0.1",
-          spread_dv01: "2",
-          weighted_avg_spread: "100",
-          weighted_avg_spread_duration: "4",
+          credit_market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+          credit_weight: formatRawAsNumeric({ raw: 0.1, unit: "ratio", sign_aware: false }),
+          spread_dv01: formatRawAsNumeric({ raw: 2, unit: "dv01", sign_aware: false }),
+          weighted_avg_spread: formatRawAsNumeric({ raw: 100, unit: "bp", sign_aware: false }),
+          weighted_avg_spread_duration: formatRawAsNumeric({ raw: 4, unit: "ratio", sign_aware: false }),
           spread_scenarios: [],
           migration_scenarios: [],
           concentration_by_issuer: {
             dimension: "issuer",
-            hhi: "0.22",
-            top5_concentration: "0.51",
+            hhi: formatRawAsNumeric({ raw: 0.22, unit: "ratio", sign_aware: false }),
+            top5_concentration: formatRawAsNumeric({ raw: 0.51, unit: "ratio", sign_aware: false }),
             top_items: [
-              { name: "城投集团A", weight: "0.18", market_value: "320000000" },
-              { name: "产业集团B", weight: "0.12", market_value: "210000000" },
+              {
+                name: "城投集团A",
+                weight: { raw: 0.18, unit: "ratio", display: "0.18", precision: 2, sign_aware: false },
+                market_value: formatRawAsNumeric({ raw: 320_000_000, unit: "yuan", sign_aware: false }),
+              },
+              {
+                name: "产业集团B",
+                weight: formatRawAsNumeric({ raw: 0.12, unit: "ratio", sign_aware: false }),
+                market_value: formatRawAsNumeric({ raw: 210_000_000, unit: "yuan", sign_aware: false }),
+              },
             ],
           },
-          oci_credit_exposure: "0",
-          oci_spread_dv01: "0",
-          oci_sensitivity_25bp: "0",
+          oci_credit_exposure: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          oci_spread_dv01: formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false }),
+          oci_sensitivity_25bp: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: true }),
           warnings: [],
           computed_at: "2026-04-12T00:00:00Z",
         },

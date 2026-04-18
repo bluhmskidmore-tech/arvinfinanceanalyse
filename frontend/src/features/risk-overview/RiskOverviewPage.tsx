@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { bondChartMagnitude, bondNumericDisplay } from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
@@ -105,9 +106,12 @@ function drillChipStyle(active: boolean) {
   } as const;
 }
 
-function cellText(value: string | number | null | undefined) {
+function cellText(value: unknown) {
   if (value === null || value === undefined) {
     return "—";
+  }
+  if (typeof value === "object" && value !== null && "display" in value) {
+    return bondNumericDisplay(value as Parameters<typeof bondNumericDisplay>[0]);
   }
   return String(value);
 }
@@ -120,9 +124,8 @@ function displayStr(value: string | undefined) {
 }
 
 /** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
-function chartMagnitude(value: string) {
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
+function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
+  return bondChartMagnitude(value);
 }
 
 export default function RiskOverviewPage() {
@@ -569,8 +572,8 @@ export default function RiskOverviewPage() {
                 当前桶：<strong>{selectedTenorRow.tenor}</strong>
               </div>
               <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
-                KRD：{selectedTenorRow.krd} · DV01：{selectedTenorRow.dv01} · 市值权重：
-                {selectedTenorRow.market_value_weight}
+                KRD：{selectedTenorRow.krd.display} · DV01：{selectedTenorRow.dv01.display} · 市值权重：
+                {selectedTenorRow.market_value_weight.display}
               </div>
             </div>
           ) : null}
@@ -591,9 +594,9 @@ export default function RiskOverviewPage() {
                 {(krd?.krd_buckets ?? []).map((row) => (
                   <tr key={row.tenor}>
                     <td style={tdStyle}>{row.tenor}</td>
-                    <td style={tdStyle}>{row.krd}</td>
-                    <td style={tdStyle}>{row.dv01}</td>
-                    <td style={tdStyle}>{row.market_value_weight}</td>
+                    <td style={tdStyle}>{row.krd.display}</td>
+                    <td style={tdStyle}>{row.dv01.display}</td>
+                    <td style={tdStyle}>{row.market_value_weight.display}</td>
                   </tr>
                 ))}
               </tbody>
@@ -617,9 +620,9 @@ export default function RiskOverviewPage() {
                   <tr key={row.scenario_name}>
                     <td style={tdStyle}>{row.scenario_name}</td>
                     <td style={tdStyle}>{row.scenario_description}</td>
-                    <td style={tdStyle}>{row.pnl_economic}</td>
-                    <td style={tdStyle}>{row.pnl_oci}</td>
-                    <td style={tdStyle}>{row.pnl_tpl}</td>
+                    <td style={tdStyle}>{row.pnl_economic.display}</td>
+                    <td style={tdStyle}>{row.pnl_oci.display}</td>
+                    <td style={tdStyle}>{row.pnl_tpl.display}</td>
                   </tr>
                 ))}
               </tbody>
@@ -642,10 +645,10 @@ export default function RiskOverviewPage() {
                 {(krd?.by_asset_class ?? []).map((row) => (
                   <tr key={row.asset_class}>
                     <td style={tdStyle}>{row.asset_class}</td>
-                    <td style={tdStyle}>{row.market_value}</td>
-                    <td style={tdStyle}>{row.duration}</td>
-                    <td style={tdStyle}>{row.dv01}</td>
-                    <td style={tdStyle}>{row.weight}</td>
+                    <td style={tdStyle}>{row.market_value.display}</td>
+                    <td style={tdStyle}>{row.duration.display}</td>
+                    <td style={tdStyle}>{row.dv01.display}</td>
+                    <td style={tdStyle}>{row.weight.display}</td>
                   </tr>
                 ))}
               </tbody>
@@ -732,7 +735,7 @@ export default function RiskOverviewPage() {
                 当前发行人：<strong>{selectedIssuerRow.name}</strong>
               </div>
               <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
-                权重：{selectedIssuerRow.weight} · 市值：{selectedIssuerRow.market_value}
+                权重：{selectedIssuerRow.weight.display} · 市值：{selectedIssuerRow.market_value.display}
               </div>
             </div>
           ) : null}
@@ -754,9 +757,9 @@ export default function RiskOverviewPage() {
                   <tr key={row.scenario_name}>
                     <td style={tdStyle}>{row.scenario_name}</td>
                     <td style={tdStyle}>{cellText(row.spread_change_bp)}</td>
-                    <td style={tdStyle}>{row.pnl_impact}</td>
-                    <td style={tdStyle}>{row.oci_impact}</td>
-                    <td style={tdStyle}>{row.tpl_impact}</td>
+                    <td style={tdStyle}>{row.pnl_impact.display}</td>
+                    <td style={tdStyle}>{row.oci_impact.display}</td>
+                    <td style={tdStyle}>{row.tpl_impact.display}</td>
                   </tr>
                 ))}
               </tbody>
