@@ -166,6 +166,7 @@ import {
   riskOverviewPayload,
   summaryPayload,
 } from "../mocks/workbench";
+import { formatRawAsNumeric } from "../utils/format";
 export type DataSourceMode = "mock" | "real";
 
 export type ApiClient = {
@@ -5045,12 +5046,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         "cashflow_projection.overview",
         {
           report_date: reportDate,
-          duration_gap: "1.25000000",
-          asset_duration: "3.80000000",
-          liability_duration: "2.55000000",
-          equity_duration: "5.20000000",
-          rate_sensitivity_1bp: "125000.00000000",
-          reinvestment_risk_12m: "0.18500000",
+          duration_gap: formatRawAsNumeric({ raw: 1.25, unit: "ratio", sign_aware: true }),
+          asset_duration: formatRawAsNumeric({ raw: 3.8, unit: "ratio", sign_aware: false }),
+          liability_duration: formatRawAsNumeric({ raw: 2.55, unit: "ratio", sign_aware: false }),
+          equity_duration: formatRawAsNumeric({ raw: 5.2, unit: "ratio", sign_aware: true }),
+          rate_sensitivity_1bp: formatRawAsNumeric({ raw: 125_000, unit: "yuan", sign_aware: true }),
+          reinvestment_risk_12m: formatRawAsNumeric({ raw: 0.185, unit: "pct", sign_aware: false }),
           monthly_buckets: [],
           top_maturing_assets_12m: [],
           warnings: [],

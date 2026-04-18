@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import CashflowProjectionPage from "../features/cashflow-projection/pages/CashflowProjectionPage";
+import { formatRawAsNumeric } from "../utils/format";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="cashflow-echarts-stub" />,
@@ -56,10 +57,10 @@ describe("CashflowProjectionPage", () => {
           monthly_buckets: [
             {
               year_month: "2026-04",
-              asset_inflow: "100.00000000",
-              liability_outflow: "40.00000000",
-              net_cashflow: "60.00000000",
-              cumulative_net: "60.00000000",
+              asset_inflow: formatRawAsNumeric({ raw: 100, unit: "yuan", sign_aware: false }),
+              liability_outflow: formatRawAsNumeric({ raw: 40, unit: "yuan", sign_aware: false }),
+              net_cashflow: formatRawAsNumeric({ raw: 60, unit: "yuan", sign_aware: true }),
+              cumulative_net: formatRawAsNumeric({ raw: 60, unit: "yuan", sign_aware: true }),
             },
           ],
         },

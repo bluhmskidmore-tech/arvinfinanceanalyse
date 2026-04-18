@@ -2282,29 +2282,29 @@ export type CampisiMaturityBucketsPayload = {
 // --- 现金流预测 / 久期缺口 (`/api/cashflow-projection`) ---
 export type CashflowMonthlyBucket = {
   year_month: string;
-  asset_inflow: string;
-  liability_outflow: string;
-  net_cashflow: string;
-  cumulative_net: string;
+  asset_inflow: Numeric;
+  liability_outflow: Numeric;
+  net_cashflow: Numeric;
+  cumulative_net: Numeric;
 };
 
 export type CashflowMaturingAsset = {
   instrument_code: string;
   instrument_name: string;
   maturity_date: string;
-  face_value: string;
-  market_value: string;
+  face_value: Numeric;
+  market_value: Numeric;
   currency_code: string;
 };
 
 export type CashflowProjectionPayload = {
   report_date: string;
-  duration_gap: string;
-  asset_duration: string;
-  liability_duration: string;
-  equity_duration: string;
-  rate_sensitivity_1bp: string;
-  reinvestment_risk_12m: string;
+  duration_gap: Numeric;
+  asset_duration: Numeric;
+  liability_duration: Numeric;
+  equity_duration: Numeric;
+  rate_sensitivity_1bp: Numeric;
+  reinvestment_risk_12m: Numeric;
   monthly_buckets: CashflowMonthlyBucket[];
   top_maturing_assets_12m: CashflowMaturingAsset[];
   warnings: string[];

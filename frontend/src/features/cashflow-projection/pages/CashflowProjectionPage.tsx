@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Alert, Card, Col, Row, Select, Space, Spin, Table, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
-import type { CashflowMonthlyBucket } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { KpiCard } from "../../workbench/components/KpiCard";
 import { shellTokens as t } from "../../../theme/tokens";
+import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
 
 const pageStyle = { maxWidth: 1280, margin: "0 auto" } as const;
 const summaryGridStyle = {
@@ -79,18 +80,26 @@ export default function CashflowProjectionPage() {
     retry: false,
   });
 
-  const env = projectionQuery.data;
-  const result = env?.result;
+  const adapted = useMemo(
+    () =>
+      adaptCashflowProjection({
+        envelope: projectionQuery.data,
+        isLoading: projectionQuery.isLoading,
+        isError: projectionQuery.isError,
+      }),
+    [projectionQuery.data, projectionQuery.isLoading, projectionQuery.isError],
+  );
+  const vm = adapted.vm;
 
   const chartOption = useMemo((): EChartsOption | null => {
-    const buckets: CashflowMonthlyBucket[] = result?.monthly_buckets ?? [];
+    const buckets = vm?.monthlyBuckets ?? [];
     if (!buckets.length) {
       return null;
     }
-    const cats = buckets.map((b) => b.year_month);
-    const asset = buckets.map((b) => parseFloat(b.asset_inflow));
-    const liab = buckets.map((b) => parseFloat(b.liability_outflow));
-    const cum = buckets.map((b) => parseFloat(b.cumulative_net));
+    const cats = buckets.map((b) => b.yearMonth);
+    const asset = buckets.map((b) => b.assetInflow.raw ?? 0);
+    const liab = buckets.map((b) => b.liabilityOutflow.raw ?? 0);
+    const cum = buckets.map((b) => b.cumulativeNet.raw ?? 0);
     return {
       grid: { left: 56, right: 24, top: 32, bottom: 40 },
       tooltip: { trigger: "axis" },
@@ -124,7 +133,7 @@ export default function CashflowProjectionPage() {
         },
       ],
     };
-  }, [result?.monthly_buckets]);
+  }, [vm?.monthlyBuckets]);
 
   return (
     <section data-testid="cashflow-projection-page" style={pageStyle}>
@@ -191,7 +200,7 @@ export default function CashflowProjectionPage() {
         </div>
       ) : projectionQuery.isError ? (
         <Alert type="error" message="加载现金流预测失败，请稍后重试。" showIcon />
-      ) : result ? (
+      ) : vm ? (
         <>
           <SectionLead
             eyebrow="Overview"
@@ -200,22 +209,42 @@ export default function CashflowProjectionPage() {
           />
           <div style={summaryGridStyle}>
             <div data-testid="cashflow-kpi-duration-gap">
-              <KpiCard title="久期缺口（年）" value={result.duration_gap} detail="资产久期 - 负债久期" valueVariant="text" />
+              <KpiCard
+                title="久期缺口（年）"
+                value={vm.kpis.durationGap.display}
+                detail="资产久期 - 负债久期"
+                valueVariant="text"
+              />
             </div>
             <div data-testid="cashflow-kpi-asset-dur">
-              <KpiCard title="资产久期（年）" value={result.asset_duration} detail="资产侧久期" valueVariant="text" />
+              <KpiCard title="资产久期（年）" value={vm.kpis.assetDuration.display} detail="资产侧久期" valueVariant="text" />
             </div>
             <div data-testid="cashflow-kpi-liability-dur">
-              <KpiCard title="负债久期（年）" value={result.liability_duration} detail="负债侧久期" valueVariant="text" />
+              <KpiCard
+                title="负债久期（年）"
+                value={vm.kpis.liabilityDuration.display}
+                detail="负债侧久期"
+                valueVariant="text"
+              />
             </div>
             <div data-testid="cashflow-kpi-dv01">
-              <KpiCard title="1bp 敏感度" value={result.rate_sensitivity_1bp} detail="利率敏感度" valueVariant="text" />
+              <KpiCard
+                title="1bp 敏感度"
+                value={vm.kpis.rateSensitivity1bp.display}
+                detail="利率敏感度"
+                valueVariant="text"
+              />
             </div>
             <div data-testid="cashflow-kpi-equity-dur">
-              <KpiCard title="权益久期（年）" value={result.equity_duration} detail="权益侧久期" valueVariant="text" />
+              <KpiCard title="权益久期（年）" value={vm.kpis.equityDuration.display} detail="权益侧久期" valueVariant="text" />
             </div>
             <div data-testid="cashflow-kpi-reinvest">
-              <KpiCard title="再投资风险（12M）" value={result.reinvestment_risk_12m} detail="12 个月再投资风险" valueVariant="text" />
+              <KpiCard
+                title="再投资风险（12M）"
+                value={vm.kpis.reinvestmentRisk12m.display}
+                detail="12 个月再投资风险"
+                valueVariant="text"
+              />
             </div>
           </div>
 
@@ -247,12 +276,12 @@ export default function CashflowProjectionPage() {
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
                 <Card size="small" title="权益久期（年）">
                   <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                    {result.equity_duration}
+                    {vm.kpis.equityDuration.display}
                   </Typography.Text>
                 </Card>
                 <Card size="small" title="再投资风险（12M）">
                   <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                    {result.reinvestment_risk_12m}
+                    {vm.kpis.reinvestmentRisk12m.display}
                   </Typography.Text>
                 </Card>
               </Space>
@@ -273,26 +302,36 @@ export default function CashflowProjectionPage() {
               data-testid="cashflow-top-assets-table"
               size="small"
               pagination={false}
-              rowKey={(r) => r.instrument_code}
-              dataSource={result.top_maturing_assets_12m}
+              rowKey={(r) => r.instrumentCode}
+              dataSource={vm.topMaturingAssets}
               columns={[
-                { title: "代码", dataIndex: "instrument_code" },
-                { title: "名称", dataIndex: "instrument_name" },
-                { title: "到期日", dataIndex: "maturity_date" },
-                { title: "面值", dataIndex: "face_value", align: "right" as const },
-                { title: "市值", dataIndex: "market_value", align: "right" as const },
+                { title: "代码", dataIndex: "instrumentCode" },
+                { title: "名称", dataIndex: "instrumentName" },
+                { title: "到期日", dataIndex: "maturityDate" },
+                {
+                  title: "面值",
+                  dataIndex: "faceValue",
+                  align: "right" as const,
+                  render: (v: Numeric) => v.display,
+                },
+                {
+                  title: "市值",
+                  dataIndex: "marketValue",
+                  align: "right" as const,
+                  render: (v: Numeric) => v.display,
+                },
               ]}
             />
           </Card>
 
-          {result.warnings?.length ? (
+          {vm.warnings?.length ? (
             <Alert
               type="warning"
               showIcon
               message="提示"
               description={
                 <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {result.warnings.map((w) => (
+                  {vm.warnings.map((w) => (
                     <li key={w}>{w}</li>
                   ))}
                 </ul>
