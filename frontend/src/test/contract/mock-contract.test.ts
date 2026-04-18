@@ -254,3 +254,107 @@ describe("mockClient.getHomeSnapshot · W4.3 contract", () => {
     expect(envelope.result.domains_effective_date).toBeTypeOf("object");
   });
 });
+
+// ------------------------------------------------------------------
+// Wave 5.8 · cashflow / pnl-bridge / bond-analytics / liability mock 对拍
+// ------------------------------------------------------------------
+
+const W58_REPORT_DATE = "2026-03-31";
+
+describe("mockClient.getCashflowProjection · W5.2 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getCashflowProjection(W58_REPORT_DATE);
+    expect(envelope.result).toBeDefined();
+    assertAllNumerics(envelope.result, "getCashflowProjection.result");
+  });
+});
+
+describe("mockClient.getPnlBridge · W5.4 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlBridge(W58_REPORT_DATE);
+    expect(envelope.result).toBeDefined();
+    assertAllNumerics(envelope.result, "getPnlBridge.result");
+  });
+
+  it("summary governed totals are Numeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getPnlBridge(W58_REPORT_DATE);
+    const s = envelope.result.summary;
+    expect(isNumeric(s.total_beginning_dirty_mv)).toBe(true);
+    expect(isNumeric(s.total_residual)).toBe(true);
+  });
+});
+
+describe("mockClient.getBondAnalyticsPortfolioHeadlines · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsPortfolioHeadlines(W58_REPORT_DATE);
+    assertAllNumerics(envelope.result, "getBondAnalyticsPortfolioHeadlines.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsReturnDecomposition · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsReturnDecomposition(W58_REPORT_DATE, "mtd");
+    assertAllNumerics(envelope.result, "getBondAnalyticsReturnDecomposition.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsBenchmarkExcess · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsBenchmarkExcess(
+      W58_REPORT_DATE,
+      "mtd",
+      "MOCK_BENCH",
+    );
+    assertAllNumerics(envelope.result, "getBondAnalyticsBenchmarkExcess.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsKrdCurveRisk · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsKrdCurveRisk(W58_REPORT_DATE);
+    assertAllNumerics(envelope.result, "getBondAnalyticsKrdCurveRisk.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsActionAttribution · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsActionAttribution(W58_REPORT_DATE, "mtd");
+    assertAllNumerics(envelope.result, "getBondAnalyticsActionAttribution.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsAccountingClassAudit · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsAccountingClassAudit(W58_REPORT_DATE);
+    assertAllNumerics(envelope.result, "getBondAnalyticsAccountingClassAudit.result");
+  });
+});
+
+describe("mockClient.getBondAnalyticsCreditSpreadMigration · W5.1 contract", () => {
+  it("returns envelope where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getBondAnalyticsCreditSpreadMigration(W58_REPORT_DATE);
+    assertAllNumerics(envelope.result, "getBondAnalyticsCreditSpreadMigration.result");
+  });
+});
+
+describe("mockClient.getLiabilityCounterparty · W5.5 contract", () => {
+  it("returns payload where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const payload = await client.getLiabilityCounterparty({
+      reportDate: W58_REPORT_DATE,
+      topN: 10,
+    });
+    assertAllNumerics(payload, "getLiabilityCounterparty");
+    expect(isNumeric(payload.total_value)).toBe(true);
+  });
+});
