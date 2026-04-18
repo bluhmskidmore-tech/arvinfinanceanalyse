@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   primaryWorkbenchNavigationGroups,
   primaryWorkbenchNavigation,
+  resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
@@ -111,6 +112,26 @@ describe("workbench navigation mocks", () => {
     expect(cube?.readiness).toBe("placeholder");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+  });
+
+  it("keeps decision-items outside the live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "decision-items");
+    expect(section?.readiness).toBe("placeholder");
+    expect(section?.readinessLabel).toBe("Reserved");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(true);
+  });
+
+  it("keeps reports-center outside the live primary navigation", () => {
+    const section = workbenchNavigation.find((s) => s.key === "reports-center");
+    expect(section?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "reports-center")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "reports-center")).toBe(true);
+  });
+
+  it("resolves V1 bookmark path aliases for nav grouping", () => {
+    expect(resolveWorkbenchPathAlias("/market")).toBe("/market-data");
+    expect(resolveWorkbenchPathAlias("/assets")).toBe("/bond-dashboard");
   });
 
   it("promotes pnl-attribution into the live primary navigation", () => {
