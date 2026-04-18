@@ -1,3 +1,4 @@
+import logging
 import os
 
 from pathlib import Path
@@ -8,6 +9,8 @@ from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.source_manifest_repo import SourceManifestRepository
 from backend.app.services.ingest_service import IngestService
 from backend.app.tasks.broker import register_actor_once
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_data_input_root() -> Path:
@@ -43,13 +46,17 @@ def _ingest_demo_manifest(
     service.source_family_allowlist = set(
         source_family_allowlist or {"zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"}
     )
-    summary = service.run()
+    logger.info("starting ingest_demo_manifest")
+    try:
+        summary = service.run()
+    except Exception as exc:
+        logger.error("task failed: %s", exc, exc_info=True)
+        raise
+    logger.info("completed ingest_demo_manifest")
     return summary.model_dump(mode="json")
 
 
 ingest_demo_manifest = register_actor_once(
     "ingest_demo_manifest",
     _ingest_demo_manifest,
-    max_retries=3,
-    time_limit_ms=300_000,
 )

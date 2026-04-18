@@ -53,8 +53,8 @@ def get_broker() -> StubBroker | RedisBroker:
 def register_actor_once(
     actor_name: str,
     fn,
-    max_retries: int = 3,
-    time_limit_ms: int = 3_600_000,
+    max_retries: int = DEFAULT_MAX_RETRIES,
+    time_limit_ms: int = DEFAULT_TIME_LIMIT_MS,
 ):
     active_broker = get_broker()
     options = {

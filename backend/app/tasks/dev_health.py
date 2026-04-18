@@ -23,6 +23,4 @@ def _write_dev_worker_heartbeat(*, heartbeat_path: str, token: str) -> dict[str,
 write_dev_worker_heartbeat = register_actor_once(
     "write_dev_worker_heartbeat",
     _write_dev_worker_heartbeat,
-    max_retries=3,
-    time_limit_ms=300_000,
 )

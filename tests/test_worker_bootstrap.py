@@ -1,5 +1,6 @@
 import ast
 from pathlib import Path
+import sys
 
 import dramatiq
 import pytest
@@ -26,6 +27,13 @@ def _read_canonical_task_modules() -> tuple[str, ...]:
     raise AssertionError("worker_bootstrap.py must define CANONICAL_TASK_MODULES")
 
 
+def _clear_worker_bootstrap_runtime_modules() -> None:
+    sys.modules.pop("backend.app.tasks.worker_bootstrap", None)
+    sys.modules.pop("backend.app.tasks.broker", None)
+    for module_name in _read_canonical_task_modules():
+        sys.modules.pop(module_name, None)
+
+
 def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
     assert _read_canonical_task_modules() == (
         "backend.app.tasks.dev_health",
@@ -39,6 +47,9 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.product_category_pnl",
         "backend.app.tasks.snapshot_materialize",
         "backend.app.tasks.fx_mid_materialize",
+        "backend.app.tasks.fx_mid_backfill",
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend.app.tasks.yield_curve_materialize",
         "backend.app.tasks.choice_macro",
         "backend.app.tasks.choice_news",
     )
@@ -104,3 +115,68 @@ def test_broker_rejects_global_stub_broker_in_production(monkeypatch):
             broker_module.get_broker()
     finally:
         dramatiq.set_broker(original_dramatiq_broker)
+
+
+def test_worker_bootstrap_registers_all_canonical_actor_surfaces():
+    _clear_worker_bootstrap_runtime_modules()
+
+    worker_bootstrap = load_module(
+        "backend.app.tasks.worker_bootstrap",
+        "backend/app/tasks/worker_bootstrap.py",
+    )
+    broker_module = sys.modules["backend.app.tasks.broker"]
+    active_broker = broker_module.get_broker()
+
+    assert worker_bootstrap.LOADED_TASK_MODULES
+    assert "backfill_fx_mid_history" in active_broker.actors
+    assert "materialize_risk_tensor_facts" in active_broker.actors
+    assert "materialize_yield_curve" in active_broker.actors
+
+
+def test_worker_bootstrap_actors_set_explicit_retry_and_time_limit_defaults():
+    _clear_worker_bootstrap_runtime_modules()
+
+    load_module(
+        "backend.app.tasks.worker_bootstrap",
+        "backend/app/tasks/worker_bootstrap.py",
+    )
+    broker_module = sys.modules["backend.app.tasks.broker"]
+    active_broker = broker_module.get_broker()
+
+    for actor_name, actor in active_broker.actors.items():
+        assert actor.options.get("max_retries") == 20, actor_name
+        assert actor.options.get("min_backoff") == 15000, actor_name
+        assert actor.options.get("time_limit") == 600000, actor_name
+
+
+def test_register_actor_once_refreshes_existing_actor_defaults(monkeypatch):
+    broker_module = load_module(
+        "backend.app.tasks.broker",
+        "backend/app/tasks/broker.py",
+    )
+    original_dramatiq_broker = dramatiq.get_broker()
+    monkeypatch.setattr(broker_module, "broker", None)
+    monkeypatch.delenv("MOSS_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("MOSS_REDIS_DSN", raising=False)
+
+    def first_impl():
+        return "first"
+
+    def replacement_impl():
+        return "replacement"
+
+    try:
+        actor = broker_module.register_actor_once("test_refresh_existing_actor", first_impl)
+        actor.options["max_retries"] = 1
+        actor.options["min_backoff"] = 2
+        actor.options["time_limit"] = 3
+
+        refreshed = broker_module.register_actor_once("test_refresh_existing_actor", replacement_impl)
+    finally:
+        dramatiq.set_broker(original_dramatiq_broker)
+
+    assert refreshed is actor
+    assert refreshed.fn is replacement_impl
+    assert refreshed.options["max_retries"] == 20
+    assert refreshed.options["min_backoff"] == 15000
+    assert refreshed.options["time_limit"] == 600000
