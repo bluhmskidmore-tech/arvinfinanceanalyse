@@ -135,6 +135,28 @@ class TestBenchmarkExcessNumericMigration:
         restored = BenchmarkExcessResponse.model_validate(dumped)
         assert restored.portfolio_duration.unit == "ratio"
 
+    def test_optional_metrics_treat_blank_strings_as_missing(self) -> None:
+        resp = BenchmarkExcessResponse(
+            report_date=date(2026, 3, 31),
+            period_type="MoM",
+            period_start=date(2026, 3, 1),
+            period_end=date(2026, 3, 31),
+            benchmark_id="bm1",
+            benchmark_name="BM",
+            portfolio_return="0.034",
+            benchmark_return="0.029",
+            excess_return="5.00",
+            tracking_error="",
+            information_ratio=" ",
+            explained_excess="5.00",
+            recon_error="0.00",
+            portfolio_duration="3.20",
+            benchmark_duration="3.00",
+            duration_diff="0.20",
+        )
+        assert resp.tracking_error is None
+        assert resp.information_ratio is None
+
 
 class TestKRDNumericMigration:
     def test_bucket_accepts_legacy_str(self) -> None:
@@ -234,6 +256,37 @@ class TestCreditSpreadNumericMigration:
         restored = CreditSpreadMigrationResponse.model_validate(dumped)
         assert restored.spread_dv01.unit == "dv01"
 
+    def test_optional_oci_impact_treats_blank_string_as_missing(self) -> None:
+        row = SpreadScenarioResult(
+            scenario_name="+25bp",
+            spread_change_bp=25.0,
+            pnl_impact="-12.50",
+            oci_impact="-2.50",
+            tpl_impact="-10.00",
+        )
+        migration = CreditSpreadMigrationResponse(
+            report_date=date(2026, 3, 31),
+            credit_bond_count=10,
+            credit_market_value="200.00",
+            credit_weight="0.40",
+            spread_dv01="15.20",
+            weighted_avg_spread="120.00",
+            weighted_avg_spread_duration="3.50",
+            spread_scenarios=[row],
+            migration_scenarios=[
+                {
+                    "scenario_name": "downgrade",
+                    "from_rating": "AA",
+                    "to_rating": "A",
+                    "affected_bonds": 2,
+                    "affected_market_value": "100.00",
+                    "pnl_impact": "-5.00",
+                    "oci_impact": "",
+                }
+            ],
+        )
+        assert migration.migration_scenarios[0].oci_impact is None
+
 
 class TestActionAuditAndHeadlinesNumericMigration:
     def test_action_detail_accepts_legacy_str(self) -> None:
@@ -253,6 +306,22 @@ class TestActionAuditAndHeadlinesNumericMigration:
         assert isinstance(detail.pnl_economic, Numeric)
         assert detail.delta_dv01.unit == "dv01"
         assert detail.opportunity_cost is not None
+
+    def test_action_detail_treats_blank_optional_cost_as_missing(self) -> None:
+        detail = ActionDetail(
+            action_id="a1",
+            action_type="SWITCH",
+            action_date="2026-03-15",
+            bonds_involved=["B1"],
+            description="rebalance",
+            pnl_economic="12.50",
+            pnl_accounting="11.00",
+            delta_duration="-0.20",
+            delta_dv01="-2.50",
+            delta_spread_dv01="-1.20",
+            opportunity_cost="",
+        )
+        assert detail.opportunity_cost is None
 
     def test_action_response_roundtrip(self) -> None:
         resp = ActionAttributionResponse(

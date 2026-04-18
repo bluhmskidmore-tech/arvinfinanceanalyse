@@ -31,6 +31,10 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
+def _numeric_raw(value: dict[str, object]) -> Decimal:
+    return Decimal(str(value["raw"]))
+
+
 def test_bond_analytics_service_returns_empty_warning_without_fact_data(tmp_path, monkeypatch):
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -226,14 +230,14 @@ def test_benchmark_excess_with_curve_data(tmp_path, monkeypatch):
     payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "TREASURY_INDEX")
     result = payload["result"]
 
-    assert Decimal(result["portfolio_duration"]) > Decimal("0")
-    assert Decimal(result["benchmark_duration"]) > Decimal("0")
-    assert Decimal(result["portfolio_return"]) != Decimal("0")
-    assert Decimal(result["benchmark_return"]) != Decimal("0")
-    assert Decimal(result["excess_return"]) != Decimal("0")
-    assert Decimal(result["explained_excess"]) != Decimal("0")
+    assert _numeric_raw(result["portfolio_duration"]) > Decimal("0")
+    assert _numeric_raw(result["benchmark_duration"]) > Decimal("0")
+    assert _numeric_raw(result["portfolio_return"]) != Decimal("0")
+    assert _numeric_raw(result["benchmark_return"]) != Decimal("0")
+    assert _numeric_raw(result["excess_return"]) != Decimal("0")
+    assert _numeric_raw(result["explained_excess"]) != Decimal("0")
     assert any(
-        Decimal(result[field]) != Decimal("0")
+        _numeric_raw(result[field]) != Decimal("0")
         for field in ("duration_effect", "curve_effect", "selection_effect")
     )
     assert result["warnings"] == []
@@ -251,9 +255,9 @@ def test_benchmark_excess_with_cdb_curve_data(tmp_path, monkeypatch):
     payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "CDB_INDEX")
     result = payload["result"]
 
-    assert Decimal(result["benchmark_duration"]) > Decimal("0")
-    assert Decimal(result["benchmark_return"]) != Decimal("0")
-    assert Decimal(result["excess_return"]) != Decimal("0")
+    assert _numeric_raw(result["benchmark_duration"]) > Decimal("0")
+    assert _numeric_raw(result["benchmark_return"]) != Decimal("0")
+    assert _numeric_raw(result["excess_return"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_cdb_current" in payload["result_meta"]["source_version"]
     assert result["warnings"] == []
@@ -271,9 +275,9 @@ def test_benchmark_excess_with_aaa_curve_data(tmp_path, monkeypatch):
     payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "AAA_CREDIT_INDEX")
     result = payload["result"]
 
-    assert Decimal(result["benchmark_duration"]) > Decimal("0")
-    assert Decimal(result["benchmark_return"]) != Decimal("0")
-    assert Decimal(result["spread_effect"]) != Decimal("0")
+    assert _numeric_raw(result["benchmark_duration"]) > Decimal("0")
+    assert _numeric_raw(result["benchmark_return"]) != Decimal("0")
+    assert _numeric_raw(result["spread_effect"]) != Decimal("0")
     assert payload["result_meta"].get("vendor_status", "ok") == "ok"
     assert "sv_aaa_current" in payload["result_meta"]["source_version"]
     assert result["warnings"] == []
@@ -307,11 +311,11 @@ def test_benchmark_excess_without_curve_data_returns_zero_with_warning(tmp_path,
     payload = service_mod.get_benchmark_excess(date(2026, 3, 31), "MoM", "TREASURY_INDEX")
     result = payload["result"]
 
-    assert Decimal(result["portfolio_duration"]) > Decimal("0")
-    assert result["benchmark_duration"] == "0.00000000"
-    assert result["portfolio_return"] == "0.00000000"
-    assert result["benchmark_return"] == "0.00000000"
-    assert result["excess_return"] == "0.00000000"
+    assert _numeric_raw(result["portfolio_duration"]) > Decimal("0")
+    assert _numeric_raw(result["benchmark_duration"]) == Decimal("0")
+    assert _numeric_raw(result["portfolio_return"]) == Decimal("0")
+    assert _numeric_raw(result["benchmark_return"]) == Decimal("0")
+    assert _numeric_raw(result["excess_return"]) == Decimal("0")
     assert any("Benchmark" in warning or "curve" in warning for warning in result["warnings"])
     get_settings.cache_clear()
 
@@ -347,13 +351,13 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
     result = payload["result"]
 
     assert result["credit_bond_count"] == 2
-    assert result["credit_market_value"] == "330.00000000"
-    assert result["credit_weight"] == "0.76923077"
-    assert result["rating_aa_and_below_weight"] == "0.00000000"
-    assert Decimal(result["spread_dv01"]) > Decimal("0")
-    assert result["weighted_avg_spread"] == "0.00000000"
+    assert _numeric_raw(result["credit_market_value"]) == Decimal("330")
+    assert _numeric_raw(result["credit_weight"]) == Decimal("0.76923077")
+    assert _numeric_raw(result["rating_aa_and_below_weight"]) == Decimal("0")
+    assert _numeric_raw(result["spread_dv01"]) > Decimal("0")
+    assert _numeric_raw(result["weighted_avg_spread"]) == Decimal("0")
     assert len(result["spread_scenarios"]) == 4
-    assert result["oci_credit_exposure"] == "190.00000000"
+    assert _numeric_raw(result["oci_credit_exposure"]) == Decimal("190")
     assert result["concentration_by_issuer"]["dimension"] == "issuer"
     assert any("No aaa_credit curve available" in warning or "No treasury curve available" in warning for warning in result["warnings"])
     assert any("Spread level input unavailable" in warning for warning in result["warnings"])

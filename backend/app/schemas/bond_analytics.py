@@ -29,7 +29,7 @@ def _coerce_value_to_numeric(value: Any, unit: NumericUnit, sign_aware: bool) ->
     if isinstance(value, str):
         normalized = value.strip().replace(",", "")
         if not normalized:
-            return value
+            return None
         try:
             raw = float(Decimal(normalized))
         except InvalidOperation:
