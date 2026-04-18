@@ -1,4 +1,5 @@
 import importlib
+import os
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -232,6 +233,21 @@ def test_ingest_service_archives_only_changed_files_in_incremental_mode(tmp_path
     assert len(manifest_repo.load_all()) == 3
 
 
+def test_build_source_version_changes_when_same_size_content_changes(tmp_path):
+    ingest_module = load_module("backend.app.services.ingest_service", "backend/app/services/ingest_service.py")
+
+    path = tmp_path / "same-size.csv"
+    path.write_text("v1-a", encoding="utf-8")
+    first_stat = path.stat()
+    first_version = ingest_module._build_source_version(path)
+
+    path.write_text("v2-a", encoding="utf-8")
+    os.utime(path, ns=(first_stat.st_atime_ns, first_stat.st_mtime_ns))
+    second_version = ingest_module._build_source_version(path)
+
+    assert second_version != first_version
+
+
 def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path):
     ingest_task_module = sys.modules.get("backend.app.tasks.ingest")
     if ingest_task_module is None:
@@ -246,6 +262,7 @@ def test_ingest_task_returns_manifest_summary(monkeypatch, tmp_path):
             minio_secret_key="minioadmin",
             minio_bucket="moss-artifacts",
             object_store_mode="local",
+            governance_path=tmp_path / "governance",
             local_archive_path=tmp_path / "archive",
         ),
     )

@@ -37,6 +37,10 @@ def _build_result_meta(
     vendor_version: str,
     vendor_status: VendorStatus,
     fallback_mode: FallbackMode,
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
     return ResultMeta(
@@ -52,6 +56,10 @@ def _build_result_meta(
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
         scenario_flag=scenario_flag,
+        filters_applied=dict(filters_applied or {}),
+        tables_used=list(tables_used or []),
+        evidence_rows=evidence_rows,
+        next_drill=list(next_drill or []),
     )
 
 
@@ -66,6 +74,10 @@ def build_analytical_result_meta(
     vendor_version: str = "vv_none",
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="analytical",
@@ -78,6 +90,10 @@ def build_analytical_result_meta(
         vendor_version=vendor_version,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
     )
 
 
@@ -92,6 +108,10 @@ def build_scenario_result_meta(
     vendor_version: str = "vv_none",
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="scenario",
@@ -104,6 +124,10 @@ def build_scenario_result_meta(
         vendor_version=vendor_version,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
     )
 
 
@@ -118,6 +142,10 @@ def build_formal_result_meta(
     vendor_version: str = "vv_none",
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
 ) -> ResultMeta:
     return _build_result_meta(
         basis="formal",
@@ -130,6 +158,10 @@ def build_formal_result_meta(
         vendor_version=vendor_version,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
     )
 
 
@@ -281,6 +313,10 @@ def build_result_envelope(
     vendor_version: str = "vv_none",
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
+    filters_applied: Mapping[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
+    next_drill: list[str | dict[str, object]] | None = None,
 ) -> dict[str, object]:
     meta = _build_result_meta(
         basis=basis,
@@ -293,6 +329,10 @@ def build_result_envelope(
         vendor_version=vendor_version,
         vendor_status=vendor_status,
         fallback_mode=fallback_mode,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
+        next_drill=next_drill,
     )
     return build_formal_result_envelope(
         result_meta=meta,

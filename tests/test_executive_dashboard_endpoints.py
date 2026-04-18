@@ -159,12 +159,14 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
         return _inner
 
     monkeypatch.setattr(module, "executive_overview", _stub("overview"))
+    monkeypatch.setattr(module, "executive_summary", _stub("summary"))
     monkeypatch.setattr(module, "executive_pnl_attribution", _stub("pnl-attribution"))
     monkeypatch.setattr(module, "executive_risk_overview", _stub("risk-overview"))
     monkeypatch.setattr(module, "executive_contribution", _stub("contribution"))
     monkeypatch.setattr(module, "executive_alerts", _stub("alerts"))
 
     assert module.overview(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.overview"
+    assert module.summary(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.summary"
     assert module.pnl_attribution(report_date="2025-11-20")["result_meta"]["result_kind"] == "executive.pnl-attribution"
 
     for name in ("risk_overview", "contribution", "alerts"):
@@ -174,6 +176,7 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
 
     assert calls == [
         ("overview", "2025-11-20"),
+        ("summary", "2025-11-20"),
         ("pnl-attribution", "2025-11-20"),
         ("risk-overview", "2025-11-20"),
         ("contribution", "2025-11-20"),
@@ -186,6 +189,7 @@ def test_executive_dashboard_http_routes_reject_invalid_report_date():
     client = TestClient(main.app)
     for path in (
         "/ui/home/overview",
+        "/ui/home/summary",
         "/ui/pnl/attribution",
         "/ui/risk/overview",
         "/ui/home/contribution",

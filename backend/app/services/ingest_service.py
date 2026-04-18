@@ -97,6 +97,5 @@ class IngestService:
 
 
 def _build_source_version(path: Path) -> str:
-    stat = path.stat()
-    seed = f"{path.name}:{stat.st_size}:{stat.st_mtime_ns}"
-    return f"sv_{hashlib.sha256(seed.encode('utf-8')).hexdigest()[:12]}"
+    payload = path.read_bytes()
+    return f"sv_{hashlib.sha256(payload).hexdigest()[:12]}"

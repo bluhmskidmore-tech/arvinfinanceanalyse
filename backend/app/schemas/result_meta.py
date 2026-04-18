@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -18,3 +19,7 @@ class ResultMeta(BaseModel):
     fallback_mode: Literal["none", "latest_snapshot"] = "none"
     scenario_flag: bool = False
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    filters_applied: dict[str, Any] = Field(default_factory=dict)
+    tables_used: list[str] = Field(default_factory=list)
+    evidence_rows: int | None = None
+    next_drill: list[str | dict[str, Any]] = Field(default_factory=list)

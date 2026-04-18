@@ -186,10 +186,10 @@ def build_volume_rate_attribution(
                 "level": 0,
                 "current_scale": Qc,
                 "current_pnl": Pc,
-                "current_yield": yc,
+                "current_yield_pct": (yc * 100.0) if yc is not None else None,
                 "previous_scale": Qp,
                 "previous_pnl": Pp,
-                "previous_yield": yp,
+                "previous_yield_pct": (yp * 100.0) if yp is not None else None,
                 "pnl_change": pnl_change,
                 "pnl_change_pct": pnl_change_pct,
                 "volume_effect": vol_eff,
@@ -253,7 +253,7 @@ def build_tpl_market_correlation(
     avg_dt = sum(t_changes) / len(t_changes) if t_changes else None
     t0 = t_levels[0] if t_levels else None
     t1 = t_levels[-1] if t_levels else None
-    ttot = (t1 - t0) if t0 is not None and t1 is not None else None
+    ttot = ((t1 - t0) * 100.0) if t0 is not None and t1 is not None else None
     summary = (
         "样本期内数据不足，无法生成解读。"
         if not monthly_points
@@ -267,7 +267,7 @@ def build_tpl_market_correlation(
         "correlation_interpretation": interpretation,
         "total_tpl_fv_change": total_tpl,
         "avg_treasury_10y_change": avg_dt,
-        "treasury_10y_total_change": ttot,
+        "treasury_10y_total_change_bp": ttot,
         "data_points": monthly_points,
         "analysis_summary": summary,
     }

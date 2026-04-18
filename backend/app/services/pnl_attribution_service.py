@@ -311,6 +311,7 @@ def pnl_composition_envelope(
             ti = sum(float(r.get("interest_income_514") or 0) for r in pr)
             tf = sum(float(r.get("fair_value_change_516") or 0) for r in pr)
             tc = sum(float(r.get("capital_gain_517") or 0) for r in pr)
+            to = sum(float(r.get("manual_adjustment") or 0) for r in pr)
             tt = sum(float(r.get("total_pnl") or 0) for r in pr)
             trend.append(
                 {
@@ -319,6 +320,7 @@ def pnl_composition_envelope(
                     "interest_income": ti,
                     "fair_value_change": tf,
                     "capital_gain": tc,
+                    "other_income": to,
                     "total_pnl": tt,
                 }
             )
