@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Query
 
 from backend.app.governance.settings import get_settings
-from backend.app.services.choice_news_service import choice_news_latest_envelope
+from backend.app.services.choice_news_service import (
+    ChoiceNewsReadError,
+    choice_news_latest_envelope,
+)
 
 router = APIRouter(prefix="/ui/news")
 
@@ -17,13 +20,18 @@ def choice_events_latest(
     received_to: str | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
-    return choice_news_latest_envelope(
-        settings.duckdb_path,
-        limit=limit,
-        offset=offset,
-        group_id=group_id,
-        topic_code=topic_code,
-        error_only=error_only,
-        received_from=received_from,
-        received_to=received_to,
-    )
+    try:
+        return choice_news_latest_envelope(
+            settings.duckdb_path,
+            limit=limit,
+            offset=offset,
+            group_id=group_id,
+            topic_code=topic_code,
+            error_only=error_only,
+            received_from=received_from,
+            received_to=received_to,
+        )
+    except ChoiceNewsReadError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

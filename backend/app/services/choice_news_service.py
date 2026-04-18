@@ -10,6 +10,10 @@ RULE_VERSION = "rv_choice_news_v1"
 CACHE_VERSION = "cv_choice_news_v1"
 
 
+class ChoiceNewsReadError(RuntimeError):
+    """Raised when choice-news data exists but cannot be read truthfully."""
+
+
 def choice_news_latest_envelope(
     duckdb_path: str,
     limit: int = 100,
@@ -25,7 +29,10 @@ def choice_news_latest_envelope(
         total_rows = 0
         rows = []
     else:
-        conn = duckdb.connect(str(duckdb_file), read_only=True)
+        try:
+            conn = duckdb.connect(str(duckdb_file), read_only=True)
+        except duckdb.Error as exc:
+            raise ChoiceNewsReadError("Choice news read failed.") from exc
         try:
             tables = {row[0] for row in conn.execute("show tables").fetchall()}
             if "choice_news_event" not in tables:
@@ -55,9 +62,8 @@ def choice_news_latest_envelope(
                     """,
                     [*params, limit, offset],
                 ).fetchall()
-        except duckdb.Error:
-            total_rows = 0
-            rows = []
+        except duckdb.Error as exc:
+            raise ChoiceNewsReadError("Choice news read failed.") from exc
         finally:
             conn.close()
 

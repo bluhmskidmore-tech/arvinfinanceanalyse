@@ -294,3 +294,19 @@ def test_choice_news_latest_api_supports_topic_time_and_error_filters(tmp_path, 
     assert error_payload["result"]["events"][0]["error_code"] == 10003013
     assert error_payload["result"]["events"][0]["topic_code"] == "__callback__"
     get_settings.cache_clear()
+
+
+def test_choice_news_latest_api_returns_503_for_corrupt_existing_duckdb(tmp_path, monkeypatch):
+    corrupt_duckdb = tmp_path / "corrupt-choice-news.duckdb"
+    corrupt_duckdb.write_text("not-a-duckdb-file", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(corrupt_duckdb))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+    response = client.get("/ui/news/choice-events/latest")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Choice news read failed."
+    get_settings.cache_clear()
