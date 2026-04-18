@@ -384,9 +384,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "对事实表进行自由维度聚合、筛选、钻取",
     readiness: "placeholder",
-    readinessLabel: "Deferred",
-    readinessNote:
-      "cube-query 仍按保留入口处理，不作为当前 repo-wide Phase 2 cutover 的已晋升消费面宣称。",
+    readinessLabel: "暂缓",
+    readinessNote: "入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升。",
   },
   {
     key: "agent",

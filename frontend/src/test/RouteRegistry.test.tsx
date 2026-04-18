@@ -338,7 +338,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
     expect(
-      await screen.findByText(/cube query 入口保留，但当前不把自由聚合查询页宣称为 repo-wide phase 2 已晋升消费面/i),
+      await screen.findByText(/入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升/i),
     ).toBeInTheDocument();
   });
 });
