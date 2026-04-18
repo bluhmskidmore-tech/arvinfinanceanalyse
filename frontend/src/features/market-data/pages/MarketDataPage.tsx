@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Collapse, Select } from "antd";
+import { Collapse, Select, Tabs } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -23,7 +23,7 @@ import type {
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../workbench/components/KpiCard";
-import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
+import { toneFromSignedDisplayString, toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
@@ -607,6 +607,7 @@ export default function MarketDataPage() {
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
   const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
+  const [macroDepthTab, setMacroDepthTab] = useState<"curve" | "spreads" | "linkage">("curve");
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -833,53 +834,133 @@ export default function MarketDataPage() {
 
       <PageSectionLead
         eyebrow="Core Watch"
-        title="利率、资金与成交观察"
-        description="市场主观察区优先展示利率行情、曲线、资金面和成交窗口，阅读顺序与标准市场数据页保持一致。"
+        title="利率、资金、宏观深度与成交观察"
+        description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
       />
       <div style={terminalRowGridStyle}>
         <RateQuoteTable />
-        <div
-          data-testid="market-data-macro-charts"
-          style={{ ...macroChartShellStyle, marginTop: 0 }}
-        >
-          <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>利率走势图</h2>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
-            国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
-            SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
-          </p>
-          {latestQuery.isLoading ? (
-            <div
-              style={{
-                marginTop: 16,
-                padding: 24,
-                color: "#5c6b82",
-                fontSize: 14,
-              }}
-            >
-              加载宏观序列中…
-            </div>
-          ) : rateTrendChartOption ? (
-            <div data-testid="market-data-rate-trend-chart" style={{ marginTop: 16 }}>
-              <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
-            </div>
-          ) : (
-            <div
-              data-testid="market-data-rate-trend-empty"
-              style={{
-                marginTop: 16,
-                padding: 20,
-                borderRadius: 16,
-                border: "1px solid #e4ebf5",
-                background: "#ffffff",
-                color: "#8090a8",
-                fontSize: 14,
-              }}
-            >
-              当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
-            </div>
-          )}
+        <div data-testid="market-data-macro-depth-wrap" style={{ ...macroChartShellStyle, marginTop: 0 }}>
+          <Tabs
+            data-testid="market-data-macro-depth-tabs"
+            activeKey={macroDepthTab}
+            onChange={(key) => setMacroDepthTab(key as "curve" | "spreads" | "linkage")}
+            items={[
+              {
+                key: "curve",
+                label: "曲线（M8）",
+                children: (
+                  <div data-testid="market-data-macro-tab-curve">
+                    <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>利率走势图</h2>
+                    <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
+                      国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
+                      SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
+                    </p>
+                    {latestQuery.isLoading ? (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          padding: 24,
+                          color: "#5c6b82",
+                          fontSize: 14,
+                        }}
+                      >
+                        加载宏观序列中…
+                      </div>
+                    ) : rateTrendChartOption ? (
+                      <div data-testid="market-data-rate-trend-chart" style={{ marginTop: 16 }}>
+                        <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
+                      </div>
+                    ) : (
+                      <div
+                        data-testid="market-data-rate-trend-empty"
+                        style={{
+                          marginTop: 16,
+                          padding: 20,
+                          borderRadius: 16,
+                          border: "1px solid #e4ebf5",
+                          background: "#ffffff",
+                          color: "#8090a8",
+                          fontSize: 14,
+                        }}
+                      >
+                        当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
+                      </div>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: "spreads",
+                label: "信用利差（M9）",
+                children: (
+                  <div data-testid="market-data-macro-tab-spreads" style={{ marginTop: 8 }}>
+                    <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
+                  </div>
+                ),
+              },
+              {
+                key: "linkage",
+                label: "压力与情景（M11/M15）",
+                children: (
+                  <div data-testid="market-data-macro-tab-linkage" style={{ marginTop: 8 }}>
+                    <p style={{ margin: "0 0 12px", color: "#5c6b82", fontSize: 13, lineHeight: 1.65 }}>
+                      摘要来自 <code>getMacroBondLinkageAnalysis</code> 的 <code>environment_score</code> 与{" "}
+                      <code>portfolio_impact</code>；完整相关性矩阵仍在下文「宏观-债市联动」折叠区。
+                    </p>
+                    <div style={summaryGridStyle}>
+                      <KpiCard
+                        title="环境综合分"
+                        value={
+                          macroBondLinkage.environment_score?.composite_score != null
+                            ? String(macroBondLinkage.environment_score.composite_score.toFixed(2))
+                            : "—"
+                        }
+                        detail={macroBondLinkage.environment_score?.signal_description ?? "缺少环境评分。"}
+                        tone={
+                          macroBondLinkage.environment_score?.composite_score != null
+                            ? toneFromSignedNumber(macroBondLinkage.environment_score.composite_score)
+                            : "default"
+                        }
+                      />
+                      <KpiCard
+                        title="流动性分项"
+                        value={
+                          macroBondLinkage.environment_score?.liquidity_score != null
+                            ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
+                            : "—"
+                        }
+                        detail="对应联动 payload 的 liquidity_score（非 V1 压力测试原样复刻）。"
+                        tone={
+                          macroBondLinkage.environment_score?.liquidity_score != null
+                            ? toneFromSignedNumber(macroBondLinkage.environment_score.liquidity_score)
+                            : "default"
+                        }
+                      />
+                      <KpiCard
+                        title="利率方向"
+                        value={macroBondLinkage.environment_score?.rate_direction ?? "—"}
+                        detail={
+                          macroBondLinkage.environment_score?.rate_direction_score != null
+                            ? `direction score ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`
+                            : "缺少方向评分。"
+                        }
+                        valueVariant="text"
+                      />
+                      <KpiCard
+                        title="组合影响合计"
+                        value={formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
+                        detail="结构化情景下的总影响估计（展示字段，不在前端重算）。"
+                        tone={toneFromSignedDisplayString(
+                          formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact),
+                        )}
+                      />
+                    </div>
+                  </div>
+                ),
+              },
+            ]}
+          />
         </div>
-        <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
       </div>
 
       <div style={observationGridStyle}>
