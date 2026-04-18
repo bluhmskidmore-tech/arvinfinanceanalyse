@@ -198,6 +198,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         source_version=str(lineage["source_version"]),
         rule_version=str(lineage["rule_version"]),
         vendor_version=str(lineage["vendor_version"]),
+        source_surface="pnl_bridge",
     ).model_copy(
         update={
             "quality_flag": summary.quality_flag,

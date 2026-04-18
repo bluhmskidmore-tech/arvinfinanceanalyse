@@ -181,6 +181,7 @@ def balance_analysis_dates_envelope(*, duckdb_path: str, governance_dir: str) ->
         result_kind="balance-analysis.dates",
         lineage=lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="formal_balance",
         result_payload=payload.model_dump(mode="json"),
     )
 
@@ -218,6 +219,7 @@ def balance_analysis_overview_envelope(
         lineage=build_lineage,
         default_cache_version=CACHE_VERSION,
         rule_version=overview.get("rule_version"),
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,
@@ -271,6 +273,7 @@ def balance_analysis_summary_envelope(
         result_kind="balance-analysis.summary",
         lineage=build_lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,
@@ -322,6 +325,7 @@ def balance_analysis_basis_breakdown_envelope(
         result_kind="balance-analysis.basis-breakdown",
         lineage=build_lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,
@@ -419,6 +423,7 @@ def balance_analysis_detail_envelope(
         default_cache_version=CACHE_VERSION,
         source_version=_combine_lineage_values([*zqtz_rows, *tyw_rows], "source_version"),
         rule_version=_combine_lineage_values([*zqtz_rows, *tyw_rows], "rule_version") or RULE_VERSION,
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,
@@ -457,6 +462,7 @@ def balance_analysis_workbook_envelope(
         result_kind="balance-analysis.workbook",
         lineage=build_lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,
@@ -549,6 +555,7 @@ def balance_analysis_decision_items_envelope(
         result_kind="balance-analysis.decision-items",
         lineage=build_lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="formal_balance",
         missing_field_message=lambda field_name: _balance_lineage_missing_message(
             field_name=field_name,
             report_date=report_date,

@@ -66,6 +66,7 @@ def _envelope(
         rule_version=rule_version,
         quality_flag=quality_flag,
         vendor_version="vv_none",
+        source_surface="formal_liability",
         result_payload=result_payload,
     )
 

@@ -185,6 +185,7 @@ def _meta(result_kind: str, report_date: date, rows: list[dict[str, object]]):
         result_kind=result_kind,
         lineage=lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
     )
 
 
@@ -200,6 +201,7 @@ def _build_fact_envelope(
         result_kind=result_kind,
         lineage=_lineage(report_date.isoformat(), rows),
         default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
         result_payload=result_payload,
     )
 
@@ -223,6 +225,7 @@ def bond_analytics_dates_envelope() -> dict[str, object]:
         result_kind="bond_analytics.dates",
         lineage=lineage,
         default_cache_version=CACHE_VERSION,
+        source_surface="bond_analytics",
         result_payload={"report_dates": report_dates},
     )
 
@@ -1449,7 +1452,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         warnings=warnings,
     )
     return build_formal_result_envelope(
-        result_meta=analysis_envelope.result_meta,
+        result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
         result_payload=response.model_dump(mode="json"),
     )
 

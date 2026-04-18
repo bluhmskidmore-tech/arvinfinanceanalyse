@@ -54,6 +54,7 @@ def risk_tensor_dates_envelope(
         source_version=source_version_value,
         rule_version=rule_version_value,
         vendor_version=vendor_version_value,
+        source_surface="risk_tensor",
         result_payload={"report_dates": report_dates},
     )
 
@@ -146,6 +147,7 @@ def risk_tensor_envelope(
         rule_version=str(row.get("rule_version") or RULE_VERSION),
         vendor_version="vv_none",
         quality_flag=payload.quality_flag,
+        source_surface="risk_tensor",
         result_payload=payload.model_dump(mode="json"),
     )
 

@@ -54,6 +54,7 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
             [*_collect_values(bond_rows, "rule_version"), *_collect_values(tyw_rows, "rule_version")],
             empty_value=RULE_VERSION,
         ),
+        source_surface="cashflow",
     )
 
     response = CashflowProjectionResponse(

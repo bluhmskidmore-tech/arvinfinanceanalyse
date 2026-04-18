@@ -12,6 +12,8 @@ SourceSurface = Literal[
     "formal_liability",
     "bond_analytics",
     "risk_tensor",
+    "cashflow",
+    "pnl_bridge",
 ]
 
 

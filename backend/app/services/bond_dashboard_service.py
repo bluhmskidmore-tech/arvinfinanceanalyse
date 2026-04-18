@@ -76,6 +76,7 @@ def _meta(*, result_kind: str, report_date: str) -> object:
         result_kind=result_kind,
         lineage=lineage,
         default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+        source_surface="bond_analytics",
     )
 
 
@@ -122,6 +123,7 @@ def get_bond_dashboard_dates() -> dict[str, object]:
         result_kind="bond_dashboard.dates",
         lineage=_dates_lineage(),
         default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+        source_surface="bond_analytics",
         result_payload={"report_dates": report_dates},
     )
 

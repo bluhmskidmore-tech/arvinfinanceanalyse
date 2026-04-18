@@ -260,6 +260,7 @@ def build_formal_result_envelope_from_lineage(
     vendor_status: VendorStatus = "ok",
     fallback_mode: FallbackMode = "none",
     missing_field_message: LineageFieldMessageBuilder | None = None,
+    source_surface: SourceSurface | None = None,
 ) -> dict[str, object]:
     return build_formal_result_envelope(
         result_meta=build_formal_result_meta_from_lineage(
@@ -276,6 +277,7 @@ def build_formal_result_envelope_from_lineage(
             vendor_status=vendor_status,
             fallback_mode=fallback_mode,
             missing_field_message=missing_field_message,
+            source_surface=source_surface,
         ),
         result_payload=result_payload,
     )
