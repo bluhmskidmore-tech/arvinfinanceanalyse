@@ -358,3 +358,35 @@ describe("mockClient.getLiabilityCounterparty · W5.5 contract", () => {
     expect(isNumeric(payload.total_value)).toBe(true);
   });
 });
+
+describe("mockClient.getLiabilityRiskBuckets · W5.5 contract", () => {
+  it("returns payload where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const payload = await client.getLiabilityRiskBuckets(W58_REPORT_DATE);
+    assertAllNumerics(payload, "getLiabilityRiskBuckets");
+    expect(Array.isArray(payload.liabilities_structure)).toBe(true);
+    expect(Array.isArray(payload.issued_liabilities_term_buckets)).toBe(true);
+  });
+});
+
+describe("mockClient.getLiabilityYieldMetrics · W5.5 contract", () => {
+  it("returns payload where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const payload = await client.getLiabilityYieldMetrics(W58_REPORT_DATE);
+    assertAllNumerics(payload, "getLiabilityYieldMetrics");
+    expect(payload.kpi).toBeDefined();
+    expect(payload.kpi.asset_yield).toBeNull();
+    expect(payload.kpi.nim).toBeNull();
+  });
+});
+
+describe("mockClient.getLiabilitiesMonthly · W5.5 contract", () => {
+  it("returns payload where every Numeric-shaped node passes isNumeric", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const payload = await client.getLiabilitiesMonthly(2026);
+    assertAllNumerics(payload, "getLiabilitiesMonthly");
+    expect(Array.isArray(payload.months)).toBe(true);
+    expect(payload.ytd_avg_total_liabilities).toBeNull();
+    expect(payload.ytd_avg_liability_cost).toBeNull();
+  });
+});
