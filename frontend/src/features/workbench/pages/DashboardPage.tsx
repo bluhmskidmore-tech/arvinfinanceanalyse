@@ -7,6 +7,7 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import { OverviewSection } from "../../executive-dashboard/components/OverviewSection";
 
 const PnlAttributionSection = lazy(
@@ -309,6 +310,8 @@ export default function DashboardPage() {
           overview={adapterOutput.overview}
           onRetry={() => void snapshotQuery.refetch()}
         />
+
+        <DashboardNewsDigestSection />
 
         <section data-testid="dashboard-governed-surface" style={{ display: "grid", gap: 16 }}>
           <PageSectionLead
