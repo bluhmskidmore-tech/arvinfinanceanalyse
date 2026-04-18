@@ -220,7 +220,7 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/dashboard"], { client: mockClient });
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-governed-surface")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "驾驶舱" })).toBeInTheDocument();
   });
 
@@ -261,6 +261,18 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(await screen.findByRole("navigation")).toBeInTheDocument();
+  });
+
+  it("redirects V1 bookmark /market to market-data", async () => {
+    renderWorkbenchApp(["/market"], { client: mockClient });
+
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+  });
+
+  it("redirects V1 bookmark /assets to bond-dashboard", async () => {
+    renderWorkbenchApp(["/assets"], { client: mockClient });
+
+    expect(await screen.findByTestId("bond-dashboard-route-shell")).toBeInTheDocument();
   });
 
   it("renders the balance-analysis route", async () => {
@@ -337,8 +349,9 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
+    const banner = screen.getByTestId("workbench-readiness-banner");
     expect(
-      await screen.findByText(/入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升/i),
+      within(banner).getByText(/入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升/),
     ).toBeInTheDocument();
   });
 });
