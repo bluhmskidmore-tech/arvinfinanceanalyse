@@ -40,3 +40,31 @@ where = ["."]
 
 [tool.pytest.ini_options]
 testpaths = ["../tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+    "B008",  # do not perform function calls in default arguments (FastAPI pattern)
+    "B904",  # raise from within except (too noisy for existing code)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B", "F841"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = false
+warn_unused_ignores = true

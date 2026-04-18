@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from backend.app.models.base import Base
 from sqlalchemy import Boolean, DateTime, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
-
-from backend.app.models.base import Base
 
 
 class CacheBuildRun(Base):
@@ -15,7 +14,7 @@ class CacheBuildRun(Base):
     run_id: Mapped[str] = mapped_column(Text, nullable=False)
     job_name: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
-    cache_key: Mapped[str] = mapped_column(Text, nullable=False)
+    cache_key: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     cache_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     lock: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_version: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -36,7 +35,7 @@ class CacheManifest(Base):
     __tablename__ = "cache_manifest"
 
     row_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    cache_key: Mapped[str] = mapped_column(Text, nullable=False)
+    cache_key: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     cache_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     source_version: Mapped[str | None] = mapped_column(Text, nullable=True)
     vendor_version: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -69,7 +68,7 @@ class UserRoleScope(Base):
     __tablename__ = "user_role_scope"
 
     row_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
     role: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)

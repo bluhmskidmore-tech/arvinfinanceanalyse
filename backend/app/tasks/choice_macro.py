@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-import dramatiq
-import duckdb
 import hashlib
 import inspect
 import json
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+import dramatiq
+import duckdb
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_adapter import VendorAdapter
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -30,6 +31,8 @@ from backend.app.schemas.macro_vendor import (
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.build_runs import BuildRunRecord
 
+logger = logging.getLogger(__name__)
+
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
@@ -43,6 +46,7 @@ def refresh_choice_macro_snapshot(
     governance_dir: str | None = None,
     backfill_days: int = 0,
 ) -> dict[str, object]:
+    logger.info("starting refresh_choice_macro_snapshot, backfill_days=%s", backfill_days)
     _init_runtime()
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)

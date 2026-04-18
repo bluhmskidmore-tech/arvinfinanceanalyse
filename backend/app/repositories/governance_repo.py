@@ -1,26 +1,25 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import (
     DEFAULT_POSTGRES_DSN,
     resolve_governance_sql_dsn,
     resolve_postgres_dsn,
 )
-from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.models.base import Base
 from backend.app.models.governance import CacheBuildRun, CacheManifest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import Table
-
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
 CACHE_MANIFEST_STREAM = "cache_manifest"
@@ -338,7 +337,7 @@ def _coerce_created_at(value: object) -> datetime:
         return value
     text = str(value or "").strip()
     if not text:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     return datetime.fromisoformat(text)
 
 

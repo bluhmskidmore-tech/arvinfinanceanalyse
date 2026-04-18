@@ -1,6 +1,5 @@
 import json
 import time
-from pathlib import Path
 
 import pytest
 
@@ -419,6 +418,42 @@ def test_read_latest_manifest_returns_latest_cache_key_row(tmp_path):
     )
 
     latest = repo.read_latest_manifest("demo:key")
+    assert latest is not None
+    assert latest["source_version"] == "sv_new"
+    assert latest["vendor_version"] == "vv_new"
+    assert latest["rule_version"] == "rv_new"
+
+
+def test_sql_governance_repository_allows_multiple_manifest_rows_for_same_cache_key(tmp_path):
+    module = load_module("backend.app.repositories.governance_repo", "backend/app/repositories/governance_repo.py")
+    sql_path = tmp_path / "governance.db"
+    repo = module.GovernanceRepository(
+        base_dir=tmp_path,
+        sql_dsn=f"sqlite:///{sql_path.as_posix()}",
+        backend_mode="sql-authority",
+    )
+
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "source_version": "sv_old",
+            "vendor_version": "vv_old",
+            "rule_version": "rv_old",
+        },
+    )
+    repo.append(
+        module.CACHE_MANIFEST_STREAM,
+        {
+            "cache_key": "demo:key",
+            "source_version": "sv_new",
+            "vendor_version": "vv_new",
+            "rule_version": "rv_new",
+        },
+    )
+
+    latest = repo.read_latest_manifest("demo:key")
+
     assert latest is not None
     assert latest["source_version"] == "sv_new"
     assert latest["vendor_version"] == "vv_new"

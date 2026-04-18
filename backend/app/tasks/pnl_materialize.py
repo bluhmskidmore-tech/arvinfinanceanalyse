@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.core_finance.pnl import (
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
@@ -15,6 +14,7 @@ from backend.app.core_finance.pnl import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -23,6 +23,8 @@ from backend.app.repositories.governance_repo import (
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
+
+logger = logging.getLogger(__name__)
 
 
 # Basis-scoped PnL materialize identity (CACHE_SPEC §3: basis must participate in cache_key / locks).
@@ -49,6 +51,7 @@ def _materialize_pnl_facts(
     formal_pnl_enabled: bool | None = None,
     formal_pnl_scope_json: str | None = None,
 ) -> dict[str, object]:
+    logger.info("starting pnl_materialize for %s", report_date)
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
@@ -182,6 +185,7 @@ def _materialize_pnl_facts(
             finally:
                 conn.close()
     except Exception as exc:
+        logger.error("pnl_materialize failed: %s", exc, exc_info=True)
         failed_record = CacheBuildRunRecord(
             run_id=run_id,
             job_name=run.job_name,
@@ -233,6 +237,7 @@ def _materialize_pnl_facts(
         ]
     )
 
+    logger.info("completed pnl_materialize")
     return {
         "status": "completed",
         "cache_key": CACHE_KEY,
