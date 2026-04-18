@@ -1,32 +1,49 @@
-import type { OverviewPayload } from "../../../api/contracts";
-import { AsyncSection } from "./AsyncSection";
+import { DataSection } from "../../../components/DataSection";
+import { TONE_COLOR } from "../../../utils/tone";
+import type { DashboardAdapterOutput } from "../adapters/executiveDashboardAdapter";
+import { selectOverviewCards } from "../selectors/executiveDashboardSelectors";
 
 type OverviewSectionProps = {
-  data?: OverviewPayload;
-  isLoading: boolean;
-  isError: boolean;
+  overview: DashboardAdapterOutput["overview"];
   onRetry: () => void;
 };
 
-const toneColor = {
-  positive: "#2f8f63",
-  neutral: "#5c6b82",
-  warning: "#cc7a1a",
-  negative: "#b74c45",
+const CARD_STYLE = {
+  display: "grid",
+  gap: 10,
+  padding: 18,
+  borderRadius: 20,
+  background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(246,249,253,0.98) 100%)",
+  border: "1px solid #e4ebf5",
 } as const;
 
-export function OverviewSection({
-  data,
-  isLoading,
-  isError,
-  onRetry,
-}: OverviewSectionProps) {
+const LABEL_STYLE = { color: "#8090a8", fontSize: 12, letterSpacing: "0.04em" } as const;
+
+const DELTA_BADGE_STYLE = {
+  width: "fit-content",
+  padding: "4px 10px",
+  borderRadius: 999,
+  background: "#eef3fb",
+  fontSize: 12,
+  fontWeight: 600,
+} as const;
+
+const VALUE_STYLE = { margin: 0, fontSize: 28, fontWeight: 600 } as const;
+
+const DETAIL_STYLE = {
+  margin: 0,
+  color: "#5c6b82",
+  fontSize: 13,
+  lineHeight: 1.6,
+} as const;
+
+export function OverviewSection({ overview, onRetry }: OverviewSectionProps) {
+  const cards = selectOverviewCards(overview.vm);
+
   return (
-    <AsyncSection
+    <DataSection
       title="经营总览"
-      isLoading={isLoading}
-      isError={isError}
-      isEmpty={!data || data.metrics.length === 0}
+      state={overview.state}
       onRetry={onRetry}
       extra={
         <span
@@ -38,7 +55,7 @@ export function OverviewSection({
             fontSize: 12,
           }}
         >
-          {data?.metrics.length ?? 0} 项
+          {cards.length} 项
         </span>
       }
     >
@@ -49,49 +66,22 @@ export function OverviewSection({
           gap: 16,
         }}
       >
-        {data?.metrics.map((metric) => (
-          <div
-            key={metric.id}
-            style={{
-              display: "grid",
-              gap: 10,
-              padding: 18,
-              borderRadius: 20,
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(246,249,253,0.98) 100%)",
-              border: "1px solid #e4ebf5",
-            }}
-          >
-            <span style={{ color: "#8090a8", fontSize: 12, letterSpacing: "0.04em" }}>
-              {metric.label}
-            </span>
+        {cards.map((metric) => (
+          <div key={metric.id} style={CARD_STYLE}>
+            <span style={LABEL_STYLE}>{metric.label}</span>
             <span
               style={{
-                width: "fit-content",
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: "#eef3fb",
-                color: toneColor[metric.tone],
-                fontSize: 12,
-                fontWeight: 600,
+                ...DELTA_BADGE_STYLE,
+                color: TONE_COLOR[metric.tone],
               }}
             >
-              {metric.delta}
+              {metric.delta.display}
             </span>
-            <div style={{ margin: 0, fontSize: 28, fontWeight: 600 }}>{metric.value}</div>
-            <p
-              style={{
-                margin: 0,
-                color: "#5c6b82",
-                fontSize: 13,
-                lineHeight: 1.6,
-              }}
-            >
-              {metric.detail}
-            </p>
+            <div style={VALUE_STYLE}>{metric.value.display}</div>
+            <p style={DETAIL_STYLE}>{metric.detail}</p>
           </div>
         ))}
       </div>
-    </AsyncSection>
+    </DataSection>
   );
 }
