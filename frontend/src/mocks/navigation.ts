@@ -201,10 +201,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/liability-analytics",
     icon: "analysis",
     description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
-    readiness: "placeholder",
-    readinessLabel: "Compat",
+    readiness: "live",
+    readinessLabel: "Live",
     readinessNote:
-      "当前仅保留 compatibility 模块入口；正式 Phase 2 主链未纳入 liability_analytics_compat 消费面。",
+      "已接负债风险桶、收益率/NIM、对手方与月度序列读链路；月度概览与 Top10 柱序列与 V1 对齐。",
   },
   {
     key: "market-data",
