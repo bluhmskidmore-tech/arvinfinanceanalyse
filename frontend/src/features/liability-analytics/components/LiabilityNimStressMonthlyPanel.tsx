@@ -12,7 +12,8 @@ export function LiabilityNimStressMonthlyPanel({
   const nim = adbMonth?.net_interest_margin;
   const projected =
     nim !== null && nim !== undefined && Number.isFinite(nim) ? nim - 0.5 : null;
-  const isCritical = projected !== null && Number.isFinite(projected) && projected < 0.5;
+  /** 与 V1 月度卡一致：压力后 NIM（百分点）跌破 0 标红，并以 Tag 提示。 */
+  const isCritical = projected !== null && Number.isFinite(projected) && projected < 0;
 
   return (
     <Card
