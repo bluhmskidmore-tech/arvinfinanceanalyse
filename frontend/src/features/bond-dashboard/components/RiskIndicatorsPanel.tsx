@@ -26,6 +26,7 @@ export function RiskIndicatorsPanel({
 }) {
   return (
     <Card
+      data-testid="bond-dashboard-risk-indicators-panel"
       loading={loading}
       title="风险指标"
       extra={<Button type="link">更多</Button>}
@@ -35,6 +36,7 @@ export function RiskIndicatorsPanel({
         {ROWS.map((r) => (
           <div
             key={r.key}
+            data-testid={`bond-dashboard-risk-row-${String(r.key)}`}
             style={{
               display: "flex",
               justifyContent: "space-between",
