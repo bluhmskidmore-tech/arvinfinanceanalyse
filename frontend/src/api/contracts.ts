@@ -59,8 +59,8 @@ export type ApiEnvelope<T> = {
 export type ExecutiveMetric = {
   id: string;
   label: string;
-  value: string;
-  delta: string;
+  value: Numeric;
+  delta: Numeric;
   tone: "positive" | "neutral" | "warning" | "negative";
   detail: string;
 };
@@ -86,14 +86,13 @@ export type SummaryPayload = {
 export type AttributionSegment = {
   id: string;
   label: string;
-  amount: number;
-  display_amount: string;
+  amount: Numeric;
   tone: "positive" | "neutral" | "negative";
 };
 
 export type PnlAttributionPayload = {
   title: string;
-  total: string;
+  total: Numeric;
   segments: AttributionSegment[];
 };
 
@@ -486,7 +485,7 @@ export type AccountingClassAuditPayload = {
 export type RiskSignal = {
   id: string;
   label: string;
-  value: string;
+  value: Numeric;
   status: "stable" | "watch" | "warning";
   detail: string;
 };
@@ -500,7 +499,7 @@ export type ContributionRow = {
   id: string;
   name: string;
   owner: string;
-  contribution: string;
+  contribution: Numeric;
   completion: number;
   status: string;
 };
