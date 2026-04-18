@@ -366,6 +366,14 @@ export function PnlAttributionView({ reportDate }: Props) {
     isEmpty: !tplMarketData || (tplMarketData.data_points?.length ?? 0) === 0,
   });
 
+  const compositionState: DataSectionState = derivePnlDataSectionState({
+    meta: compositionMeta,
+    isLoading: loading && activeTab === "composition",
+    isError: error !== null && activeTab === "composition",
+    errorMessage: error,
+    isEmpty: !compositionData,
+  });
+
   const advancedCarryState: DataSectionState = derivePnlDataSectionState({
     meta: carryMeta,
     isLoading: loading && activeTab === "advanced",
@@ -635,8 +643,12 @@ export function PnlAttributionView({ reportDate }: Props) {
         />
       ) : null}
 
-      {!loading && !error && activeTab === "composition" ? (
-        <PnLCompositionChart data={compositionData} />
+      {activeTab === "composition" ? (
+        <PnLCompositionChart
+          data={compositionData}
+          state={compositionState}
+          onRetry={() => void loadData()}
+        />
       ) : null}
 
       {activeTab === "advanced" ? (
