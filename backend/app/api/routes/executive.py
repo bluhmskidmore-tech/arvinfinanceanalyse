@@ -9,6 +9,7 @@ from backend.app.services.executive_service import (
     executive_pnl_attribution,
     executive_risk_overview,
     executive_summary,
+    home_snapshot_envelope,
 )
 
 router = APIRouter(prefix="/ui")
@@ -50,8 +51,8 @@ def overview(report_date: str | None = None) -> dict[str, object]:
 
 
 @router.get("/home/summary")
-def summary() -> dict[str, object]:
-    return executive_summary()
+def summary(report_date: str | None = None) -> dict[str, object]:
+    return executive_summary(report_date=_normalize_report_date(report_date))
 
 
 @router.get("/pnl/attribution")
@@ -83,4 +84,15 @@ def alerts(report_date: str | None = None) -> dict[str, object]:
         executive_alerts(report_date=_normalize_report_date(report_date)),
         route_name="alerts",
         promoted=False,
+    )
+
+
+@router.get("/home/snapshot")
+def home_snapshot(
+    report_date: str | None = None,
+    allow_partial: bool = False,
+) -> dict[str, object]:
+    return home_snapshot_envelope(
+        report_date=_normalize_report_date(report_date),
+        allow_partial=allow_partial,
     )

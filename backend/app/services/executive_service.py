@@ -24,6 +24,7 @@ from backend.app.schemas.executive_dashboard import (
     ContributionPayload,
     ContributionRow,
     ExecutiveMetric,
+    HomeSnapshotPayload,
     OverviewPayload,
     PnlAttributionPayload,
     RiskOverviewPayload,
@@ -1155,3 +1156,180 @@ def executive_alerts(report_date: str | None = None) -> dict[str, object]:
                 source_version="sv_exec_dashboard_explicit_miss_v1",
             )
         return _fallback_executive_alerts()
+
+
+_HOME_SNAPSHOT_DOMAINS = ("balance", "pnl", "liability", "bond")
+
+
+def _list_domain_dates() -> dict[str, set[str]]:
+    """Return the set of available report_dates per domain."""
+    settings = get_settings()
+    dates: dict[str, set[str]] = {d: set() for d in _HOME_SNAPSHOT_DOMAINS}
+    try:
+        balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
+        dates["balance"] = set(balance_repo.list_report_dates(currency_basis="CNY"))
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+        dates["balance"] = set()
+
+    try:
+        pnl_repo = PnlRepository(str(settings.duckdb_path))
+        dates["pnl"] = set(pnl_repo.list_formal_fi_report_dates())
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+        dates["pnl"] = set()
+
+    try:
+        liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
+        dates["liability"] = set(liability_repo.list_report_dates())
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+        dates["liability"] = set()
+
+    try:
+        bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
+        dates["bond"] = set(bond_repo.list_report_dates())
+    except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+        dates["bond"] = set()
+
+    return dates
+
+
+def _compute_unified_report_date(
+    *,
+    requested: str | None,
+    allow_partial: bool,
+    domain_dates: dict[str, set[str]],
+) -> tuple[str | None, list[str], dict[str, str]]:
+    """Pick the authoritative report_date given inputs.
+
+    Returns ``(report_date, domains_missing, domains_effective_date)``.
+    - strict mode: returns the most recent date in the intersection; if
+      ``requested`` is set and in intersection, returns it; else (None, all_domains, {}).
+    - partial mode: returns ``requested`` (or max across union if not requested)
+      and labels domains that don't have that date as missing.
+    """
+    intersection: set[str] = (
+        set.intersection(*domain_dates.values()) if all(domain_dates.values()) else set()
+    )
+
+    if not allow_partial:
+        # strict: intersection-only
+        if requested:
+            if requested in intersection:
+                return (
+                    requested,
+                    [],
+                    {domain: requested for domain in _HOME_SNAPSHOT_DOMAINS},
+                )
+            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+        if not intersection:
+            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+        top_date = max(intersection)
+        return (
+            top_date,
+            [],
+            {domain: top_date for domain in _HOME_SNAPSHOT_DOMAINS},
+        )
+
+    # partial: accept any requested or fall back to union max
+    if requested:
+        target = requested
+    else:
+        union = set.union(*domain_dates.values()) if domain_dates.values() else set()
+        if not union:
+            return (None, list(_HOME_SNAPSHOT_DOMAINS), {})
+        target = max(union)
+
+    missing = [
+        domain for domain in _HOME_SNAPSHOT_DOMAINS if target not in domain_dates[domain]
+    ]
+    effective: dict[str, str] = {}
+    for domain in _HOME_SNAPSHOT_DOMAINS:
+        if target in domain_dates[domain]:
+            effective[domain] = target
+        elif domain_dates[domain]:
+            # approximate latest available for that domain
+            effective[domain] = max(domain_dates[domain])
+    return (target, missing, effective)
+
+
+def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
+    return HomeSnapshotPayload(
+        report_date="",
+        mode="strict",
+        source_surface="executive_analytical",
+        overview=OverviewPayload(title="经营总览", metrics=[]),
+        attribution=_pnl_attribution_unavailable_payload(),
+        domains_missing=list(_HOME_SNAPSHOT_DOMAINS),
+        domains_effective_date={},
+    )
+
+
+def home_snapshot_envelope(
+    *,
+    report_date: str | None = None,
+    allow_partial: bool = False,
+) -> dict[str, object]:
+    """Build the authoritative home snapshot envelope.
+
+    See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md`` § 4.
+    """
+    normalized = _normalize_report_date(report_date)
+    domain_dates = _list_domain_dates()
+
+    target_date, domains_missing, effective = _compute_unified_report_date(
+        requested=normalized,
+        allow_partial=allow_partial,
+        domain_dates=domain_dates,
+    )
+
+    if target_date is None:
+        return _envelope(
+            "home.snapshot",
+            _empty_home_snapshot_payload(),
+            quality_flag="error",
+            vendor_status="vendor_unavailable",
+            source_version="sv_home_snapshot_empty_v1",
+            filters_applied={
+                "requested_report_date": normalized,
+                "allow_partial": allow_partial,
+                "effective_report_dates": {},
+                "domains_missing": list(_HOME_SNAPSHOT_DOMAINS),
+            },
+        )
+
+    overview_env = executive_overview(report_date=target_date)
+    attribution_env = executive_pnl_attribution(report_date=target_date)
+    overview_result = OverviewPayload.model_validate(overview_env["result"])
+    attribution_result = PnlAttributionPayload.model_validate(attribution_env["result"])
+
+    payload = HomeSnapshotPayload(
+        report_date=target_date,
+        mode="partial" if allow_partial else "strict",
+        source_surface="executive_analytical",
+        overview=overview_result,
+        attribution=attribution_result,
+        domains_missing=domains_missing,
+        domains_effective_date=effective,
+    )
+
+    quality_flag: Literal["ok", "warning", "error", "stale"] = (
+        "ok" if not domains_missing else "warning"
+    )
+    vendor_status: Literal["ok", "vendor_stale", "vendor_unavailable"] = (
+        "ok" if not domains_missing else "vendor_stale"
+    )
+
+    return _envelope(
+        "home.snapshot",
+        payload,
+        quality_flag=quality_flag,
+        vendor_status=vendor_status,
+        source_version="sv_home_snapshot_v1",
+        rule_version="rv_home_snapshot_v1",
+        filters_applied={
+            "requested_report_date": normalized,
+            "allow_partial": allow_partial,
+            "report_date": target_date,
+            "effective_report_dates": effective,
+            "domains_missing": domains_missing,
+        },
+    )

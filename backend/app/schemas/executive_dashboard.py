@@ -11,7 +11,7 @@ See ``docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md``
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, model_validator
 
@@ -182,3 +182,27 @@ class AlertItem(BaseModel):
 class AlertsPayload(BaseModel):
     title: str
     items: list[AlertItem]
+
+
+class HomeSnapshotPayload(BaseModel):
+    """Authoritative unified home snapshot payload.
+
+    `mode="strict"`: `report_date` is the most recent day where **all four**
+    governed business domains (balance / pnl / liability / bond) are
+    available. `domains_missing=[]` and all four entries in
+    `domains_effective_date` equal `report_date`.
+
+    `mode="partial"`: user-requested or latest historical day; missing
+    business domains listed in `domains_missing`; per-domain effective_date
+    in `domains_effective_date` may diverge.
+
+    Design reference: docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 4.
+    """
+
+    report_date: str
+    mode: Literal["strict", "partial"]
+    source_surface: Literal["executive_analytical"]
+    overview: OverviewPayload
+    attribution: PnlAttributionPayload
+    domains_missing: list[str]
+    domains_effective_date: dict[str, str]
