@@ -67,6 +67,7 @@ def test_apply_vendor_meta_update_merges_lineage_and_status(tmp_path, monkeypatc
         source_version="sv_base",
         rule_version="rv_base",
         vendor_version="vv_base",
+        source_surface="bond_analytics",
     )
 
     updated = service_mod._apply_vendor_meta_update(
@@ -208,10 +209,10 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     assert payload["result_meta"]["source_version"] == "sv_bond_snap_1"
     assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
     assert result["bond_count"] == 3
-    assert result["total_market_value"] == "429.00000000"
-    assert Decimal(result["carry"]) == expected_carry.quantize(Decimal("0.00000001"))
-    assert result["actual_pnl"] == result["carry"]
-    assert result["explained_pnl"] == result["carry"]
+    assert _numeric_raw(result["total_market_value"]) == Decimal("429")
+    assert _numeric_raw(result["carry"]).quantize(Decimal("0.00000001")) == expected_carry.quantize(Decimal("0.00000001"))
+    assert result["actual_pnl"]["raw"] == result["carry"]["raw"]
+    assert result["explained_pnl"]["raw"] == result["carry"]["raw"]
     assert {row["asset_class"] for row in result["by_asset_class"]} == {"credit", "rate"}
     assert {row["asset_class"] for row in result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
     assert len(result["bond_details"]) == 3
@@ -330,9 +331,9 @@ def test_bond_analytics_krd_curve_risk_aggregates_dv01_and_scenarios(tmp_path, m
     payload = service_mod.get_krd_curve_risk(date(2026, 3, 31), "standard")
     result = payload["result"]
 
-    assert Decimal(result["portfolio_duration"]) > Decimal("0")
-    assert Decimal(result["portfolio_modified_duration"]) > Decimal("0")
-    assert Decimal(result["portfolio_dv01"]) > Decimal("0")
+    assert _numeric_raw(result["portfolio_duration"]) > Decimal("0")
+    assert _numeric_raw(result["portfolio_modified_duration"]) > Decimal("0")
+    assert _numeric_raw(result["portfolio_dv01"]) > Decimal("0")
     assert len(result["krd_buckets"]) == 3
     assert {row["tenor"] for row in result["krd_buckets"]} == {"1Y", "5Y", "10Y"}
     assert len(result["scenarios"]) == len(service_mod.STANDARD_SCENARIOS)
@@ -352,7 +353,7 @@ def test_bond_analytics_credit_spread_migration_uses_credit_subset_and_concentra
 
     assert result["credit_bond_count"] == 2
     assert _numeric_raw(result["credit_market_value"]) == Decimal("330")
-    assert _numeric_raw(result["credit_weight"]) == Decimal("0.76923077")
+    assert _numeric_raw(result["credit_weight"]).quantize(Decimal("0.00000001")) == Decimal("0.76923077")
     assert _numeric_raw(result["rating_aa_and_below_weight"]) == Decimal("0")
     assert _numeric_raw(result["spread_dv01"]) > Decimal("0")
     assert _numeric_raw(result["weighted_avg_spread"]) == Decimal("0")

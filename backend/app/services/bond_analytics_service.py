@@ -96,6 +96,7 @@ from backend.app.schemas.bond_analytics import (
     SpreadScenarioResult,
 )
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
+from backend.app.services.explicit_numeric import numeric_json, promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
@@ -349,22 +350,27 @@ def bond_analytics_refresh_status(settings: Settings, *, run_id: str) -> dict[st
 
 
 def _empty_return_response(meta, report_date: date, period_type: str, period_start: date, period_end: date) -> dict:
-    payload = ReturnDecompositionResponse(
-        report_date=report_date,
-        period_type=period_type,
-        period_start=period_start,
-        period_end=period_end,
-        carry=_text(ZERO),
-        roll_down=_text(ZERO),
-        rate_effect=_text(ZERO),
-        spread_effect=_text(ZERO),
-        trading=_text(ZERO),
-        explained_pnl=_text(ZERO),
-        actual_pnl=_text(ZERO),
-        recon_error=_text(ZERO),
-        recon_error_pct=_text(ZERO),
-        computed_at=meta.generated_at.isoformat(),
-        warnings=[EMPTY_WARNING],
+    payload = ReturnDecompositionResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "period_type": period_type,
+                "period_start": period_start,
+                "period_end": period_end,
+                "carry": ZERO,
+                "roll_down": ZERO,
+                "rate_effect": ZERO,
+                "spread_effect": ZERO,
+                "trading": ZERO,
+                "explained_pnl": ZERO,
+                "actual_pnl": ZERO,
+                "recon_error": ZERO,
+                "recon_error_pct": ZERO,
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": [EMPTY_WARNING],
+            },
+            ReturnDecompositionResponse,
+        )
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
@@ -462,42 +468,52 @@ def _fetch_all_curve_pairs(
 
 
 def _build_asset_class_breakdown(row: dict[str, object]) -> "AssetClassBreakdown":
-    return AssetClassBreakdown(
-        asset_class=row["key"],
-        carry=_text(row["carry"]),
-        roll_down=_text(row["roll_down"]),
-        rate_effect=_text(row["rate_effect"]),
-        spread_effect=_text(row["spread_effect"]),
-        convexity_effect=_text(row.get("convexity_effect", ZERO)),
-        trading=_text(ZERO),
-        total=_text(row["total"]),
-        bond_count=int(row["bond_count"]),
-        market_value=_text(row["market_value"]),
+    return AssetClassBreakdown.model_validate(
+        promote_flat_payload(
+            {
+                "asset_class": row["key"],
+                "carry": row["carry"],
+                "roll_down": row["roll_down"],
+                "rate_effect": row["rate_effect"],
+                "spread_effect": row["spread_effect"],
+                "convexity_effect": row.get("convexity_effect", ZERO),
+                "trading": ZERO,
+                "total": row["total"],
+                "bond_count": int(row["bond_count"]),
+                "market_value": row["market_value"],
+            },
+            AssetClassBreakdown,
+        )
     )
 
 
 def _build_bond_level_decomposition(row: dict[str, object]) -> "BondLevelDecomposition":
-    return BondLevelDecomposition(
-        bond_code=str(row["instrument_code"]),
-        bond_name=str(row.get("instrument_name") or ""),
-        asset_class=str(row["asset_class_std"]),
-        accounting_class=str(row["accounting_class"]),
-        market_value=_text(row["market_value"]),
-        carry=_text(row["carry"]),
-        roll_down=_text(row["roll_down"]),
-        rate_effect=_text(row["rate_effect"]),
-        spread_effect=_text(row["spread_effect"]),
-        convexity_effect=_text(row.get("convexity_effect", ZERO)),
-        trading=_text(ZERO),
-        total=_text(row["total"]),
-        explained_for_recon=_text(row["total"]),
-        economic_only_effects=_text(
-            row["roll_down"]
-            + row["rate_effect"]
-            + row["spread_effect"]
-            + row.get("convexity_effect", ZERO)
-            + row.get("fx_effect", ZERO)
-        ),
+    return BondLevelDecomposition.model_validate(
+        promote_flat_payload(
+            {
+                "bond_code": str(row["instrument_code"]),
+                "bond_name": str(row.get("instrument_name") or ""),
+                "asset_class": str(row["asset_class_std"]),
+                "accounting_class": str(row["accounting_class"]),
+                "market_value": row["market_value"],
+                "carry": row["carry"],
+                "roll_down": row["roll_down"],
+                "rate_effect": row["rate_effect"],
+                "spread_effect": row["spread_effect"],
+                "convexity_effect": row.get("convexity_effect", ZERO),
+                "trading": ZERO,
+                "total": row["total"],
+                "explained_for_recon": row["total"],
+                "economic_only_effects": (
+                    row["roll_down"]
+                    + row["rate_effect"]
+                    + row["spread_effect"]
+                    + row.get("convexity_effect", ZERO)
+                    + row.get("fx_effect", ZERO)
+                ),
+            },
+            BondLevelDecomposition,
+        )
     )
 
 
@@ -522,34 +538,39 @@ def _build_return_decomposition_payload(
         + summary["convexity_effect_total"]
         + summary.get("fx_effect_total", ZERO)
     )
-    return ReturnDecompositionResponse(
-        report_date=report_date,
-        period_type=period_type,
-        period_start=period_start,
-        period_end=period_end,
-        carry=_text(summary["carry_total"]),
-        roll_down=_text(summary["roll_down_total"]),
-        rate_effect=_text(summary["rate_effect_total"]),
-        spread_effect=_text(summary["spread_effect_total"]),
-        trading=_text(ZERO),
-        fx_effect=_text(summary.get("fx_effect_total", ZERO)),
-        convexity_effect=_text(summary.get("convexity_effect_total", ZERO)),
-        explained_pnl=_text(explained_total),
-        explained_pnl_accounting=_text(explained_total),
-        explained_pnl_economic=_text(explained_total),
-        oci_reserve_impact=_text(ZERO),
-        actual_pnl=_text(explained_total),
-        recon_error=_text(ZERO),
-        recon_error_pct=_text(ZERO),
-        by_asset_class=[_build_asset_class_breakdown(row) for row in summary["by_asset_class"]],
-        by_accounting_class=[_build_asset_class_breakdown(row) for row in summary["by_accounting_class"]],
-        bond_details=[_build_bond_level_decomposition(row) for row in summary["bond_details"]],
-        bond_count=int(summary["bond_count"]),
-        total_market_value=_text(summary["total_market_value"]),
-        computed_at=meta.generated_at.isoformat(),
-        warnings=_ordered_unique_warnings(
-            [RETURN_TRADING_GAP_WARNING, *relevant_curve_warnings, fx_current_warning, fx_prior_warning, *fx_missing_warnings]
-        ),
+    return ReturnDecompositionResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "period_type": period_type,
+                "period_start": period_start,
+                "period_end": period_end,
+                "carry": summary["carry_total"],
+                "roll_down": summary["roll_down_total"],
+                "rate_effect": summary["rate_effect_total"],
+                "spread_effect": summary["spread_effect_total"],
+                "trading": ZERO,
+                "fx_effect": summary.get("fx_effect_total", ZERO),
+                "convexity_effect": summary.get("convexity_effect_total", ZERO),
+                "explained_pnl": explained_total,
+                "explained_pnl_accounting": explained_total,
+                "explained_pnl_economic": explained_total,
+                "oci_reserve_impact": ZERO,
+                "actual_pnl": explained_total,
+                "recon_error": ZERO,
+                "recon_error_pct": ZERO,
+                "by_asset_class": [_build_asset_class_breakdown(row) for row in summary["by_asset_class"]],
+                "by_accounting_class": [_build_asset_class_breakdown(row) for row in summary["by_accounting_class"]],
+                "bond_details": [_build_bond_level_decomposition(row) for row in summary["bond_details"]],
+                "bond_count": int(summary["bond_count"]),
+                "total_market_value": summary["total_market_value"],
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": _ordered_unique_warnings(
+                    [RETURN_TRADING_GAP_WARNING, *relevant_curve_warnings, fx_current_warning, fx_prior_warning, *fx_missing_warnings]
+                ),
+            },
+            ReturnDecompositionResponse,
+        )
     )
 
 
@@ -948,32 +969,40 @@ def _build_benchmark_excess_payload(
     meta,
     warnings: list[str],
 ) -> "BenchmarkExcessResponse":
-    return BenchmarkExcessResponse(
-        report_date=report_date,
-        period_type=period_type,
-        period_start=period_start,
-        period_end=period_end,
-        benchmark_id=benchmark_id,
-        benchmark_name=BENCHMARK_NAMES.get(benchmark_id, benchmark_id),
-        portfolio_return=_text(summary["portfolio_return"]),
-        benchmark_return=_text(summary["benchmark_return"]),
-        excess_return=_text(summary["excess_return"]),
-        duration_effect=_text(summary["duration_effect"]),
-        curve_effect=_text(summary["curve_effect"]),
-        spread_effect=_text(summary["spread_effect"]),
-        selection_effect=_text(summary["selection_effect"]),
-        allocation_effect=_text(summary["allocation_effect"]),
-        explained_excess=_text(summary["explained_excess"]),
-        recon_error=_text(summary["recon_error"]),
-        portfolio_duration=_text(summary["portfolio_duration"]),
-        benchmark_duration=_text(summary["benchmark_duration"]),
-        duration_diff=_text(summary["duration_diff"]),
-        excess_sources=[
-            {**row, "contribution": _text(Decimal(str(row["contribution"])))}
-            for row in summary["excess_sources"]
-        ],
-        computed_at=meta.generated_at.isoformat(),
-        warnings=warnings,
+    return BenchmarkExcessResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "period_type": period_type,
+                "period_start": period_start,
+                "period_end": period_end,
+                "benchmark_id": benchmark_id,
+                "benchmark_name": BENCHMARK_NAMES.get(benchmark_id, benchmark_id),
+                "portfolio_return": summary["portfolio_return"],
+                "benchmark_return": summary["benchmark_return"],
+                "excess_return": summary["excess_return"],
+                "duration_effect": summary["duration_effect"],
+                "curve_effect": summary["curve_effect"],
+                "spread_effect": summary["spread_effect"],
+                "selection_effect": summary["selection_effect"],
+                "allocation_effect": summary["allocation_effect"],
+                "explained_excess": summary["explained_excess"],
+                "recon_error": summary["recon_error"],
+                "portfolio_duration": summary["portfolio_duration"],
+                "benchmark_duration": summary["benchmark_duration"],
+                "duration_diff": summary["duration_diff"],
+                "excess_sources": [
+                    {
+                        **row,
+                        "contribution": numeric_json(Decimal(str(row["contribution"])), "bp", True),
+                    }
+                    for row in summary["excess_sources"]
+                ],
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": warnings,
+            },
+            BenchmarkExcessResponse,
+        )
     )
 
 
@@ -1094,17 +1123,73 @@ def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dic
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     meta = _meta("bond_analytics.krd_curve_risk", report_date, rows)
     risk = summarize_portfolio_risk(rows)
-    payload = KRDCurveRiskResponse(
-        report_date=report_date,
-        portfolio_duration=_text(risk["portfolio_duration"]),
-        portfolio_modified_duration=_text(risk["portfolio_modified_duration"]),
-        portfolio_dv01=_text(risk["portfolio_dv01"]),
-        portfolio_convexity=_text(risk["portfolio_convexity"]),
-        krd_buckets=[KRDBucket(tenor=row["tenor_bucket"], krd=_text(row["krd"]), dv01=_text(row["dv01"]), market_value_weight=_text(row["market_value"] / risk["total_market_value"] if risk["total_market_value"] else ZERO)) for row in build_krd_distribution(rows)],
-        scenarios=[ScenarioResult(scenario_name=row["scenario_name"], scenario_description=row["scenario_description"], shocks=row["shocks"], pnl_economic=_text(row["pnl_economic"]), pnl_oci=_text(row["pnl_oci"]), pnl_tpl=_text(row["pnl_tpl"]), rate_contribution=_text(row["rate_contribution"]), convexity_contribution=_text(row["convexity_contribution"]), by_asset_class={key: {metric: _text(value) for metric, value in values.items()} for key, values in row["by_asset_class"].items()}) for row in build_curve_scenarios(rows)],
-        by_asset_class=[AssetClassRiskSummary(asset_class=row["asset_class"], market_value=_text(row["market_value"]), duration=_text(row["duration"]), dv01=_text(row["dv01"]), weight=_text(row["weight"])) for row in build_asset_class_risk_summary(rows)],
-        computed_at=meta.generated_at.isoformat(),
-        warnings=[EMPTY_WARNING] if not rows else [],
+    payload = KRDCurveRiskResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "portfolio_duration": risk["portfolio_duration"],
+                "portfolio_modified_duration": risk["portfolio_modified_duration"],
+                "portfolio_dv01": risk["portfolio_dv01"],
+                "portfolio_convexity": risk["portfolio_convexity"],
+                "krd_buckets": [
+                    KRDBucket.model_validate(
+                        promote_flat_payload(
+                            {
+                                "tenor": row["tenor_bucket"],
+                                "krd": row["krd"],
+                                "dv01": row["dv01"],
+                                "market_value_weight": row["market_value"] / risk["total_market_value"] if risk["total_market_value"] else ZERO,
+                            },
+                            KRDBucket,
+                        )
+                    )
+                    for row in build_krd_distribution(rows)
+                ],
+                "scenarios": [
+                    ScenarioResult.model_validate(
+                        promote_flat_payload(
+                            {
+                                "scenario_name": row["scenario_name"],
+                                "scenario_description": row["scenario_description"],
+                                "shocks": row["shocks"],
+                                "pnl_economic": row["pnl_economic"],
+                                "pnl_oci": row["pnl_oci"],
+                                "pnl_tpl": row["pnl_tpl"],
+                                "rate_contribution": row["rate_contribution"],
+                                "convexity_contribution": row["convexity_contribution"],
+                                "by_asset_class": {
+                                    key: {
+                                        metric: numeric_json(value, "yuan", True)
+                                        for metric, value in values.items()
+                                    }
+                                    for key, values in row["by_asset_class"].items()
+                                },
+                            },
+                            ScenarioResult,
+                        )
+                    )
+                    for row in build_curve_scenarios(rows)
+                ],
+                "by_asset_class": [
+                    AssetClassRiskSummary.model_validate(
+                        promote_flat_payload(
+                            {
+                                "asset_class": row["asset_class"],
+                                "market_value": row["market_value"],
+                                "duration": row["duration"],
+                                "dv01": row["dv01"],
+                                "weight": row["weight"],
+                            },
+                            AssetClassRiskSummary,
+                        )
+                    )
+                    for row in build_asset_class_risk_summary(rows)
+                ],
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": [EMPTY_WARNING] if not rows else [],
+            },
+            KRDCurveRiskResponse,
+        )
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
@@ -1151,41 +1236,49 @@ def _build_credit_spread_payload(
     meta,
     warnings: list[str],
 ) -> "CreditSpreadMigrationResponse":
-    return CreditSpreadMigrationResponse(
-        report_date=report_date,
-        credit_bond_count=int(summary["credit_bond_count"]),
-        credit_market_value=_text(summary["credit_market_value"]),
-        credit_weight=_text(summary["credit_weight"]),
-        rating_aa_and_below_weight=_text(
-            rating_aa_and_below_portfolio_weight(
-                credit_rows,
-                total_portfolio_market_value=summary["total_market_value"],
-            )
-        ),
-        spread_dv01=_text(summary["spread_dv01"]),
-        weighted_avg_spread=_text(summary["weighted_avg_spread"]),
-        weighted_avg_spread_duration=_text(summary["weighted_avg_spread_duration"]),
-        spread_scenarios=[
-            SpreadScenarioResult(
-                scenario_name=f"利差{'走阔' if change_bp > 0 else '收窄'} {abs(change_bp)}bp",
-                spread_change_bp=float(change_bp),
-                pnl_impact=_text(-(summary["spread_dv01"] * Decimal(str(change_bp)))),
-                oci_impact=_text(-(summary["oci_spread_dv01"] * Decimal(str(change_bp)))),
-                tpl_impact=_text(-(summary["tpl_spread_dv01"] * Decimal(str(change_bp)))),
-            )
-            for bp in [int(v.strip()) for v in spread_scenarios.split(",") if v.strip()]
-            for change_bp in (bp, -bp)
-        ],
-        migration_scenarios=[],
-        concentration_by_issuer=_to_concentration_model(build_concentration(credit_rows, field_name="issuer_name", dimension="issuer")),
-        concentration_by_industry=_to_concentration_model(build_concentration(credit_rows, field_name="industry_name", dimension="industry")),
-        concentration_by_rating=_to_concentration_model(build_concentration(credit_rows, field_name="rating", dimension="rating")),
-        concentration_by_tenor=_to_concentration_model(build_concentration(credit_rows, field_name="tenor_bucket", dimension="tenor")),
-        oci_credit_exposure=_text(summary["oci_credit_exposure"]),
-        oci_spread_dv01=_text(summary["oci_spread_dv01"]),
-        oci_sensitivity_25bp=_text(-(summary["oci_spread_dv01"] * Decimal("25"))),
-        computed_at=meta.generated_at.isoformat(),
-        warnings=warnings,
+    return CreditSpreadMigrationResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "credit_bond_count": int(summary["credit_bond_count"]),
+                "credit_market_value": summary["credit_market_value"],
+                "credit_weight": summary["credit_weight"],
+                "rating_aa_and_below_weight": rating_aa_and_below_portfolio_weight(
+                    credit_rows,
+                    total_portfolio_market_value=summary["total_market_value"],
+                ),
+                "spread_dv01": summary["spread_dv01"],
+                "weighted_avg_spread": summary["weighted_avg_spread"],
+                "weighted_avg_spread_duration": summary["weighted_avg_spread_duration"],
+                "spread_scenarios": [
+                    SpreadScenarioResult.model_validate(
+                        promote_flat_payload(
+                            {
+                                "scenario_name": f"利差{'走阔' if change_bp > 0 else '收窄'} {abs(change_bp)}bp",
+                                "spread_change_bp": float(change_bp),
+                                "pnl_impact": -(summary["spread_dv01"] * Decimal(str(change_bp))),
+                                "oci_impact": -(summary["oci_spread_dv01"] * Decimal(str(change_bp))),
+                                "tpl_impact": -(summary["tpl_spread_dv01"] * Decimal(str(change_bp))),
+                            },
+                            SpreadScenarioResult,
+                        )
+                    )
+                    for bp in [int(v.strip()) for v in spread_scenarios.split(",") if v.strip()]
+                    for change_bp in (bp, -bp)
+                ],
+                "migration_scenarios": [],
+                "concentration_by_issuer": _to_concentration_model(build_concentration(credit_rows, field_name="issuer_name", dimension="issuer")),
+                "concentration_by_industry": _to_concentration_model(build_concentration(credit_rows, field_name="industry_name", dimension="industry")),
+                "concentration_by_rating": _to_concentration_model(build_concentration(credit_rows, field_name="rating", dimension="rating")),
+                "concentration_by_tenor": _to_concentration_model(build_concentration(credit_rows, field_name="tenor_bucket", dimension="tenor")),
+                "oci_credit_exposure": summary["oci_credit_exposure"],
+                "oci_spread_dv01": summary["oci_spread_dv01"],
+                "oci_sensitivity_25bp": -(summary["oci_spread_dv01"] * Decimal("25")),
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": warnings,
+            },
+            CreditSpreadMigrationResponse,
+        )
     )
 
 
@@ -1242,31 +1335,53 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
 def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationMetrics | None:
     if payload is None:
         return None
-    return ConcentrationMetrics(
-        dimension=str(payload["dimension"]),
-        hhi=_text(payload["hhi"]),
-        top5_concentration=_text(payload["top5_concentration"]),
-        top_items=[ConcentrationItem(name=str(row["name"]), weight=_text(row["weight"]), market_value=_text(row["market_value"])) for row in payload["top_items"]],
+    return ConcentrationMetrics.model_validate(
+        promote_flat_payload(
+            {
+                "dimension": str(payload["dimension"]),
+                "hhi": payload["hhi"],
+                "top5_concentration": payload["top5_concentration"],
+                "top_items": [
+                    ConcentrationItem.model_validate(
+                        promote_flat_payload(
+                            {
+                                "name": str(row["name"]),
+                                "weight": row["weight"],
+                                "market_value": row["market_value"],
+                            },
+                            ConcentrationItem,
+                        )
+                    )
+                    for row in payload["top_items"]
+                ],
+            },
+            ConcentrationMetrics,
+        )
     )
 
 
 def get_portfolio_headlines(report_date: date) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     if not rows:
-        payload = PortfolioHeadlinesResponse(
-            report_date=report_date,
-            total_market_value=_text(ZERO),
-            weighted_ytm=_text(ZERO),
-            weighted_duration=_text(ZERO),
-            weighted_coupon=_text(ZERO),
-            total_dv01=_text(ZERO),
-            bond_count=0,
-            credit_weight=_text(ZERO),
-            issuer_hhi=_text(ZERO),
-            issuer_top5_weight=_text(ZERO),
-            by_asset_class=[],
-            computed_at=datetime.now(timezone.utc).isoformat(),
-            warnings=[EMPTY_WARNING],
+        payload = PortfolioHeadlinesResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "total_market_value": ZERO,
+                    "weighted_ytm": ZERO,
+                    "weighted_duration": ZERO,
+                    "weighted_coupon": ZERO,
+                    "total_dv01": ZERO,
+                    "bond_count": 0,
+                    "credit_weight": ZERO,
+                    "issuer_hhi": ZERO,
+                    "issuer_top5_weight": ZERO,
+                    "by_asset_class": [],
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "warnings": [EMPTY_WARNING],
+                },
+                PortfolioHeadlinesResponse,
+            )
         )
         return _build_fact_envelope(
             result_kind="bond_analytics.portfolio_headlines",
@@ -1288,29 +1403,39 @@ def get_portfolio_headlines(report_date: date) -> dict:
     cpn_dec = weighted_average_by_market_value(rows, "coupon_rate")
     pct = Decimal("100")
     by_ac = build_asset_class_risk_summary(rows)
-    payload = PortfolioHeadlinesResponse(
-        report_date=report_date,
-        total_market_value=_text(risk["total_market_value"]),
-        weighted_ytm=_text(ytm_dec * pct),
-        weighted_duration=_text(risk["portfolio_modified_duration"]),
-        weighted_coupon=_text(cpn_dec * pct),
-        total_dv01=_text(risk["portfolio_dv01"]),
-        bond_count=int(risk["bond_count"]),
-        credit_weight=_text(credit_summary["credit_weight"]),
-        issuer_hhi=_text(conc["hhi"]) if conc else _text(ZERO),
-        issuer_top5_weight=_text(conc["top5_concentration"]) if conc else _text(ZERO),
-        by_asset_class=[
-            AssetClassRiskSummary(
-                asset_class=row["asset_class"],
-                market_value=_text(row["market_value"]),
-                duration=_text(row["duration"]),
-                dv01=_text(row["dv01"]),
-                weight=_text(row["weight"]),
-            )
-            for row in by_ac
-        ],
-        computed_at=datetime.now(timezone.utc).isoformat(),
-        warnings=[],
+    payload = PortfolioHeadlinesResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "total_market_value": risk["total_market_value"],
+                "weighted_ytm": ytm_dec * pct,
+                "weighted_duration": risk["portfolio_modified_duration"],
+                "weighted_coupon": cpn_dec * pct,
+                "total_dv01": risk["portfolio_dv01"],
+                "bond_count": int(risk["bond_count"]),
+                "credit_weight": credit_summary["credit_weight"],
+                "issuer_hhi": conc["hhi"] if conc else ZERO,
+                "issuer_top5_weight": conc["top5_concentration"] if conc else ZERO,
+                "by_asset_class": [
+                    AssetClassRiskSummary.model_validate(
+                        promote_flat_payload(
+                            {
+                                "asset_class": row["asset_class"],
+                                "market_value": row["market_value"],
+                                "duration": row["duration"],
+                                "dv01": row["dv01"],
+                                "weight": row["weight"],
+                            },
+                            AssetClassRiskSummary,
+                        )
+                    )
+                    for row in by_ac
+                ],
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": [],
+            },
+            PortfolioHeadlinesResponse,
+        )
     )
     return _build_fact_envelope(
         result_kind="bond_analytics.portfolio_headlines",
@@ -1323,13 +1448,18 @@ def get_portfolio_headlines(report_date: date) -> dict:
 def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     if not rows:
-        payload = BondTopHoldingsResponse(
-            report_date=report_date,
-            top_n=top_n,
-            items=[],
-            total_market_value=_text(ZERO),
-            computed_at=datetime.now(timezone.utc).isoformat(),
-            warnings=[EMPTY_WARNING],
+        payload = BondTopHoldingsResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "top_n": top_n,
+                    "items": [],
+                    "total_market_value": ZERO,
+                    "computed_at": datetime.now(timezone.utc).isoformat(),
+                    "warnings": [EMPTY_WARNING],
+                },
+                BondTopHoldingsResponse,
+            )
         )
         return _build_fact_envelope(
             result_kind="bond_analytics.top_holdings",
@@ -1342,31 +1472,37 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
     ordered = sorted(rows, key=lambda row: safe_decimal(row.get("market_value")), reverse=True)
     picked = ordered[:top_n]
     items = [
-        BondTopHoldingItem(
-            instrument_code=str(row.get("instrument_code") or ""),
-            instrument_name=(str(row["instrument_name"]).strip() or None) if row.get("instrument_name") else None,
-            issuer_name=(str(row["issuer_name"]).strip() or None) if row.get("issuer_name") else None,
-            rating=(str(row["rating"]).strip() or None) if row.get("rating") else None,
-            asset_class=str(row.get("asset_class_std") or ""),
-            market_value=_text(safe_decimal(row.get("market_value"))),
-            face_value=_text(safe_decimal(row.get("face_value"))),
-            ytm=_text(safe_decimal(row.get("ytm"))),
-            modified_duration=_text(safe_decimal(row.get("modified_duration"))),
-            weight=_text(
-                ZERO
-                if total_mv_dec == ZERO
-                else safe_decimal(row.get("market_value")) / total_mv_dec
-            ),
+        BondTopHoldingItem.model_validate(
+            promote_flat_payload(
+                {
+                    "instrument_code": str(row.get("instrument_code") or ""),
+                    "instrument_name": (str(row["instrument_name"]).strip() or None) if row.get("instrument_name") else None,
+                    "issuer_name": (str(row["issuer_name"]).strip() or None) if row.get("issuer_name") else None,
+                    "rating": (str(row["rating"]).strip() or None) if row.get("rating") else None,
+                    "asset_class": str(row.get("asset_class_std") or ""),
+                    "market_value": safe_decimal(row.get("market_value")),
+                    "face_value": safe_decimal(row.get("face_value")),
+                    "ytm": safe_decimal(row.get("ytm")),
+                    "modified_duration": safe_decimal(row.get("modified_duration")),
+                    "weight": ZERO if total_mv_dec == ZERO else safe_decimal(row.get("market_value")) / total_mv_dec,
+                },
+                BondTopHoldingItem,
+            )
         )
         for row in picked
     ]
-    payload = BondTopHoldingsResponse(
-        report_date=report_date,
-        top_n=top_n,
-        items=items,
-        total_market_value=_text(total_mv_dec),
-        computed_at=datetime.now(timezone.utc).isoformat(),
-        warnings=[],
+    payload = BondTopHoldingsResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "top_n": top_n,
+                "items": items,
+                "total_market_value": total_mv_dec,
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": [],
+            },
+            BondTopHoldingsResponse,
+        )
     )
     return _build_fact_envelope(
         result_kind="bond_analytics.top_holdings",
@@ -1379,36 +1515,46 @@ def get_top_holdings(report_date: date, top_n: int = 20) -> dict:
 def get_accounting_class_audit(report_date: date) -> dict:
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
     audit = summarize_accounting_audit(rows)
-    payload = AccountingClassAuditResponse(
-        report_date=report_date,
-        total_positions=int(audit["total_positions"]),
-        total_market_value=_text(audit["total_market_value"]),
-        distinct_asset_classes=int(audit["distinct_asset_classes"]),
-        divergent_asset_classes=int(audit["divergent_asset_classes"]),
-        divergent_position_count=int(audit["divergent_position_count"]),
-        divergent_market_value=_text(audit["divergent_market_value"]),
-        map_unclassified_asset_classes=int(audit["map_unclassified_asset_classes"]),
-        map_unclassified_position_count=int(audit["map_unclassified_position_count"]),
-        map_unclassified_market_value=_text(audit["map_unclassified_market_value"]),
-        rows=[
-            AccountingClassAuditItem(
-                asset_class=str(row["asset_class_raw"]),
-                position_count=int(row["position_count"]),
-                market_value=_text(row["market_value"]),
-                market_value_weight=_text(row["market_value_weight"]),
-                infer_accounting_class=str(row["infer_accounting_class"]),
-                map_accounting_class=str(row["map_accounting_class"]),
-                infer_rule_id=str(row["infer_rule_id"]),
-                infer_match=row["infer_match"],
-                map_rule_id=str(row["map_rule_id"]),
-                map_match=row["map_match"],
-                is_divergent=bool(row["is_divergent"]),
-                is_map_unclassified=bool(row["is_map_unclassified"]),
-            )
-            for row in audit["rows"]
-        ],
-        computed_at=datetime.now(timezone.utc).isoformat(),
-        warnings=[EMPTY_WARNING] if not rows else [],
+    payload = AccountingClassAuditResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "total_positions": int(audit["total_positions"]),
+                "total_market_value": audit["total_market_value"],
+                "distinct_asset_classes": int(audit["distinct_asset_classes"]),
+                "divergent_asset_classes": int(audit["divergent_asset_classes"]),
+                "divergent_position_count": int(audit["divergent_position_count"]),
+                "divergent_market_value": audit["divergent_market_value"],
+                "map_unclassified_asset_classes": int(audit["map_unclassified_asset_classes"]),
+                "map_unclassified_position_count": int(audit["map_unclassified_position_count"]),
+                "map_unclassified_market_value": audit["map_unclassified_market_value"],
+                "rows": [
+                    AccountingClassAuditItem.model_validate(
+                        promote_flat_payload(
+                            {
+                                "asset_class": str(row["asset_class_raw"]),
+                                "position_count": int(row["position_count"]),
+                                "market_value": row["market_value"],
+                                "market_value_weight": row["market_value_weight"],
+                                "infer_accounting_class": str(row["infer_accounting_class"]),
+                                "map_accounting_class": str(row["map_accounting_class"]),
+                                "infer_rule_id": str(row["infer_rule_id"]),
+                                "infer_match": row["infer_match"],
+                                "map_rule_id": str(row["map_rule_id"]),
+                                "map_match": row["map_match"],
+                                "is_divergent": bool(row["is_divergent"]),
+                                "is_map_unclassified": bool(row["is_map_unclassified"]),
+                            },
+                            AccountingClassAuditItem,
+                        )
+                    )
+                    for row in audit["rows"]
+                ],
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": [EMPTY_WARNING] if not rows else [],
+            },
+            AccountingClassAuditResponse,
+        )
     )
     return _build_fact_envelope(
         result_kind="bond_analytics.accounting_class_audit",
@@ -1430,26 +1576,37 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     )
     summary = analysis_envelope.result.summary
     warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
-    response = ActionAttributionResponse(
-        report_date=report_date,
-        period_type=str(summary["period_type"]),
-        period_start=date.fromisoformat(str(summary["period_start"])),
-        period_end=date.fromisoformat(str(summary["period_end"])),
-        total_actions=int(summary["total_actions"]),
-        total_pnl_from_actions=str(summary["total_pnl_from_actions"]),
-        by_action_type=[ActionTypeSummary.model_validate(item) for item in analysis_envelope.result.facets.get("by_action_type", [])],
-        action_details=[ActionDetail.model_validate(item) for item in analysis_envelope.result.facets.get("action_details", [])],
-        period_start_duration=str(summary["period_start_duration"]),
-        period_end_duration=str(summary["period_end_duration"]),
-        duration_change_from_actions=str(summary["duration_change_from_actions"]),
-        period_start_dv01=str(summary["period_start_dv01"]),
-        period_end_dv01=str(summary["period_end_dv01"]),
-        status=str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
-        available_components=[str(item) for item in list(summary.get("available_components") or [])],
-        missing_inputs=[str(item) for item in list(summary.get("missing_inputs") or [])],
-        blocked_components=[str(item) for item in list(summary.get("blocked_components") or [])],
-        computed_at=str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
-        warnings=warnings,
+    response = ActionAttributionResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "period_type": str(summary["period_type"]),
+                "period_start": date.fromisoformat(str(summary["period_start"])),
+                "period_end": date.fromisoformat(str(summary["period_end"])),
+                "total_actions": int(summary["total_actions"]),
+                "total_pnl_from_actions": summary["total_pnl_from_actions"],
+                "by_action_type": [
+                    ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
+                    for item in analysis_envelope.result.facets.get("by_action_type", [])
+                ],
+                "action_details": [
+                    ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
+                    for item in analysis_envelope.result.facets.get("action_details", [])
+                ],
+                "period_start_duration": summary["period_start_duration"],
+                "period_end_duration": summary["period_end_duration"],
+                "duration_change_from_actions": summary["duration_change_from_actions"],
+                "period_start_dv01": summary["period_start_dv01"],
+                "period_end_dv01": summary["period_end_dv01"],
+                "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
+                "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+                "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+                "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+                "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
+                "warnings": warnings,
+            },
+            ActionAttributionResponse,
+        )
     )
     return build_formal_result_envelope(
         result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),

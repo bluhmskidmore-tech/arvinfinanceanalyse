@@ -11,6 +11,7 @@ from backend.app.repositories.risk_tensor_repo import (
     load_latest_bond_analytics_lineage,
 )
 from backend.app.schemas.risk_tensor import RiskTensorPayload
+from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope_from_lineage,
 )
@@ -112,31 +113,36 @@ def risk_tensor_envelope(
             f"Risk tensor stale against TYW liability lineage for report_date={report_date_text}."
         )
 
-    payload = RiskTensorPayload(
-        report_date=report_date_value,
-        portfolio_dv01=row["portfolio_dv01"],
-        krd_1y=row["krd_1y"],
-        krd_3y=row["krd_3y"],
-        krd_5y=row["krd_5y"],
-        krd_7y=row["krd_7y"],
-        krd_10y=row["krd_10y"],
-        krd_30y=row["krd_30y"],
-        cs01=row["cs01"],
-        portfolio_convexity=row["portfolio_convexity"],
-        portfolio_modified_duration=row["portfolio_modified_duration"],
-        issuer_concentration_hhi=row["issuer_concentration_hhi"],
-        issuer_top5_weight=row["issuer_top5_weight"],
-        asset_cashflow_30d=row["asset_cashflow_30d"],
-        asset_cashflow_90d=row["asset_cashflow_90d"],
-        liability_cashflow_30d=row["liability_cashflow_30d"],
-        liability_cashflow_90d=row["liability_cashflow_90d"],
-        liquidity_gap_30d=row["liquidity_gap_30d"],
-        liquidity_gap_90d=row["liquidity_gap_90d"],
-        liquidity_gap_30d_ratio=row["liquidity_gap_30d_ratio"],
-        total_market_value=row["total_market_value"],
-        bond_count=int(row["bond_count"]),
-        quality_flag=str(row["quality_flag"]),
-        warnings=list(row["warnings"]),
+    payload = RiskTensorPayload.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date_value,
+                "portfolio_dv01": row["portfolio_dv01"],
+                "krd_1y": row["krd_1y"],
+                "krd_3y": row["krd_3y"],
+                "krd_5y": row["krd_5y"],
+                "krd_7y": row["krd_7y"],
+                "krd_10y": row["krd_10y"],
+                "krd_30y": row["krd_30y"],
+                "cs01": row["cs01"],
+                "portfolio_convexity": row["portfolio_convexity"],
+                "portfolio_modified_duration": row["portfolio_modified_duration"],
+                "issuer_concentration_hhi": row["issuer_concentration_hhi"],
+                "issuer_top5_weight": row["issuer_top5_weight"],
+                "asset_cashflow_30d": row["asset_cashflow_30d"],
+                "asset_cashflow_90d": row["asset_cashflow_90d"],
+                "liability_cashflow_30d": row["liability_cashflow_30d"],
+                "liability_cashflow_90d": row["liability_cashflow_90d"],
+                "liquidity_gap_30d": row["liquidity_gap_30d"],
+                "liquidity_gap_90d": row["liquidity_gap_90d"],
+                "liquidity_gap_30d_ratio": row["liquidity_gap_30d_ratio"],
+                "total_market_value": row["total_market_value"],
+                "bond_count": int(row["bond_count"]),
+                "quality_flag": str(row["quality_flag"]),
+                "warnings": list(row["warnings"]),
+            },
+            RiskTensorPayload,
+        )
     )
     return build_formal_result_envelope_from_lineage(
         trace_id=_trace_id(),

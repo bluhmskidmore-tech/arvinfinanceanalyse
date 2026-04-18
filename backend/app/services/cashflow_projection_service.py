@@ -9,6 +9,7 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.cashflow_projection_repo import CashflowProjectionRepository
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
+from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
@@ -59,12 +60,12 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
 
     response = CashflowProjectionResponse(
         report_date=report_date,
-        duration_gap=_text(result.duration_gap),
-        asset_duration=_text(result.asset_weighted_duration),
-        liability_duration=_text(result.liability_weighted_duration),
-        equity_duration=_text(result.equity_duration),
-        rate_sensitivity_1bp=_text(result.rate_sensitivity_1bp),
-        reinvestment_risk_12m=_text(result.reinvestment_risk_12m),
+        duration_gap=numeric_json(result.duration_gap, "ratio", True),
+        asset_duration=numeric_json(result.asset_weighted_duration, "ratio", False),
+        liability_duration=numeric_json(result.liability_weighted_duration, "ratio", False),
+        equity_duration=numeric_json(result.equity_duration, "ratio", True),
+        rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
+        reinvestment_risk_12m=numeric_json(result.reinvestment_risk_12m, "pct", False),
         monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
         top_maturing_assets_12m=_build_top_maturing_assets_12m(bond_rows, report_date),
         warnings=list(result.warnings),
@@ -76,20 +77,20 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
     )
 
 
-def _serialize_monthly_bucket(bucket: MonthlyBucket) -> dict[str, str]:
+def _serialize_monthly_bucket(bucket: MonthlyBucket) -> dict[str, object]:
     return {
         "year_month": bucket.year_month,
-        "asset_inflow": _text(bucket.asset_inflow),
-        "liability_outflow": _text(bucket.liability_outflow),
-        "net_cashflow": _text(bucket.net_cashflow),
-        "cumulative_net": _text(bucket.cumulative_net),
+        "asset_inflow": numeric_json(bucket.asset_inflow, "yuan", False),
+        "liability_outflow": numeric_json(bucket.liability_outflow, "yuan", False),
+        "net_cashflow": numeric_json(bucket.net_cashflow, "yuan", True),
+        "cumulative_net": numeric_json(bucket.cumulative_net, "yuan", True),
     }
 
 
 def _build_top_maturing_assets_12m(
     bond_rows: list[dict[str, object]],
     report_date: date,
-) -> list[dict[str, str]]:
+) -> list[dict[str, object]]:
     horizon_end = date(report_date.year + 1, report_date.month, report_date.day)
     candidates: list[dict[str, object]] = []
     for row in bond_rows:
@@ -125,8 +126,8 @@ def _build_top_maturing_assets_12m(
             "instrument_code": str(row["instrument_code"]),
             "instrument_name": str(row["instrument_name"]),
             "maturity_date": row["maturity_date"].isoformat(),
-            "face_value": _text(Decimal(str(row["face_value"]))),
-            "market_value": _text(Decimal(str(row["market_value"]))),
+            "face_value": numeric_json(Decimal(str(row["face_value"])), "yuan", False),
+            "market_value": numeric_json(Decimal(str(row["market_value"])), "yuan", False),
             "currency_code": str(row["currency_code"]),
         }
         for row in candidates[:10]

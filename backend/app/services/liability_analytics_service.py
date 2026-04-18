@@ -9,16 +9,35 @@ from backend.app.core_finance.liability_analytics_compat import (
 from backend.app.repositories.liability_analytics_repo import LiabilityAnalyticsRepository
 from backend.app.schemas.liability_analytics import (
     LiabilitiesMonthlyPayload,
+    LiabilityCounterpartyByTypeItem,
     LiabilityCounterpartyPayload,
+    LiabilityCounterpartyTopItem,
+    LiabilityMonthlyBreakdownRow,
+    LiabilityMonthlyItem,
+    LiabilityBucketAmountItem,
+    LiabilityNameAmountItem,
     LiabilityRiskBucketsPayload,
     LiabilityYieldKpi,
     LiabilityYieldMetricsPayload,
 )
+from backend.app.services.explicit_numeric import promote_payload_numerics
 from backend.app.services.formal_result_runtime import build_result_envelope
 
 LIABILITY_ANALYTICS_CACHE_VERSION = "cv_liability_analytics_v1"
 LIABILITY_ANALYTICS_RULE_VERSION = "rv_liability_analytics_compat_v1"
 LIABILITY_ANALYTICS_EMPTY_SOURCE_VERSION = "sv_liability_analytics_empty"
+
+_LIABILITY_MONTH_LIST_FIELDS = {
+    "counterparty_top10": LiabilityMonthlyBreakdownRow,
+    "by_institution_type": LiabilityMonthlyBreakdownRow,
+    "structure_overview": LiabilityMonthlyBreakdownRow,
+    "term_buckets": LiabilityMonthlyBreakdownRow,
+    "interbank_by_type": LiabilityMonthlyBreakdownRow,
+    "interbank_term_buckets": LiabilityMonthlyBreakdownRow,
+    "issued_by_type": LiabilityMonthlyBreakdownRow,
+    "issued_term_buckets": LiabilityMonthlyBreakdownRow,
+    "counterparty_details": LiabilityMonthlyBreakdownRow,
+}
 
 
 def _resolve_report_date(repo: LiabilityAnalyticsRepository, report_date: str | None) -> str:
@@ -71,6 +90,61 @@ def _envelope(
     )
 
 
+def _promote_liability_month(item: dict[str, object]) -> dict[str, object]:
+    promoted = promote_payload_numerics(
+        item,
+        LiabilityMonthlyItem,
+        list_fields=_LIABILITY_MONTH_LIST_FIELDS,
+    )
+    return promoted if isinstance(promoted, dict) else item
+
+
+def _promote_liability_payload(payload: dict[str, object], payload_cls: type) -> dict[str, object]:
+    if payload_cls is LiabilityRiskBucketsPayload:
+        promoted = promote_payload_numerics(
+            payload,
+            payload_cls,
+            list_fields={
+                "liabilities_structure": LiabilityNameAmountItem,
+                "liabilities_term_buckets": LiabilityBucketAmountItem,
+                "interbank_liabilities_structure": LiabilityNameAmountItem,
+                "interbank_liabilities_term_buckets": LiabilityBucketAmountItem,
+                "issued_liabilities_structure": LiabilityNameAmountItem,
+                "issued_liabilities_term_buckets": LiabilityBucketAmountItem,
+            },
+        )
+        return promoted if isinstance(promoted, dict) else payload
+    if payload_cls is LiabilityYieldMetricsPayload:
+        promoted = promote_payload_numerics(
+            payload,
+            payload_cls,
+            object_fields={"kpi": LiabilityYieldKpi},
+        )
+        return promoted if isinstance(promoted, dict) else payload
+    if payload_cls is LiabilityCounterpartyPayload:
+        promoted = promote_payload_numerics(
+            payload,
+            payload_cls,
+            list_fields={
+                "top_10": LiabilityCounterpartyTopItem,
+                "by_type": LiabilityCounterpartyByTypeItem,
+            },
+        )
+        return promoted if isinstance(promoted, dict) else payload
+    if payload_cls is LiabilitiesMonthlyPayload:
+        promoted = promote_payload_numerics(payload, payload_cls, list_fields={"months": LiabilityMonthlyItem})
+        if not isinstance(promoted, dict):
+            return payload
+        months = promoted.get("months")
+        if isinstance(months, list):
+            promoted["months"] = [
+                _promote_liability_month(item) if isinstance(item, dict) else item
+                for item in months
+            ]
+        return promoted
+    return payload
+
+
 def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None) -> dict[str, object]:
     repo = LiabilityAnalyticsRepository(duckdb_path)
     resolved_date = _resolve_report_date(repo, report_date)
@@ -99,7 +173,9 @@ def liability_risk_buckets_payload(*, duckdb_path: str, report_date: str | None)
     return _envelope(
         result_kind="liability_analytics.risk_buckets",
         source_rows=[*zqtz_rows, *tyw_rows],
-        result_payload=LiabilityRiskBucketsPayload.model_validate(payload).model_dump(mode="json"),
+        result_payload=LiabilityRiskBucketsPayload.model_validate(
+            _promote_liability_payload(payload, LiabilityRiskBucketsPayload)
+        ).model_dump(mode="json"),
     )
 
 
@@ -126,7 +202,9 @@ def liability_yield_metrics_payload(*, duckdb_path: str, report_date: str | None
     return _envelope(
         result_kind="liability_analytics.yield_metrics",
         source_rows=[*zqtz_rows, *tyw_rows],
-        result_payload=LiabilityYieldMetricsPayload.model_validate(payload).model_dump(mode="json"),
+        result_payload=LiabilityYieldMetricsPayload.model_validate(
+            _promote_liability_payload(payload, LiabilityYieldMetricsPayload)
+        ).model_dump(mode="json"),
     )
 
 
@@ -159,7 +237,9 @@ def liability_counterparty_payload(
     return _envelope(
         result_kind="liability_analytics.counterparty",
         source_rows=tyw_rows,
-        result_payload=LiabilityCounterpartyPayload.model_validate(payload).model_dump(mode="json"),
+        result_payload=LiabilityCounterpartyPayload.model_validate(
+            _promote_liability_payload(payload, LiabilityCounterpartyPayload)
+        ).model_dump(mode="json"),
     )
 
 
@@ -176,5 +256,7 @@ def liabilities_monthly_payload(*, duckdb_path: str, year: int) -> dict[str, obj
         result_kind="liability_analytics.monthly",
         source_rows=[*zqtz_rows, *tyw_rows],
         quality_flag="warning" if not payload.get("months") else "ok",
-        result_payload=LiabilitiesMonthlyPayload.model_validate(payload).model_dump(mode="json"),
+        result_payload=LiabilitiesMonthlyPayload.model_validate(
+            _promote_liability_payload(payload, LiabilitiesMonthlyPayload)
+        ).model_dump(mode="json"),
     )

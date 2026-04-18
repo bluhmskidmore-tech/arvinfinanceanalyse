@@ -52,6 +52,7 @@ from backend.app.schemas.pnl_bridge import (
     PnlBridgeRowSchema,
     PnlBridgeSummarySchema,
 )
+from backend.app.services.explicit_numeric import promote_flat_payload
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
@@ -179,8 +180,8 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     )
     payload = PnlBridgePayload(
         report_date=report_date,
-        rows=[PnlBridgeRowSchema.model_validate(row) for row in rows],
-        summary=summary,
+        rows=[PnlBridgeRowSchema.model_validate(promote_flat_payload(row, PnlBridgeRowSchema)) for row in rows],
+        summary=PnlBridgeSummarySchema.model_validate(promote_flat_payload(summary, PnlBridgeSummarySchema)),
         warnings=_bridge_warnings(
             balance_warnings=_build_warnings(
                 current_balance_rows=current_balance_rows,

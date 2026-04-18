@@ -42,6 +42,44 @@ def _apply_numeric_coercion(
             out[field_name] = _coerce_value_to_numeric(out[field_name], unit, sign_aware)
     return out
 
+class CashflowMonthlyBucketPayload(BaseModel):
+    year_month: str
+    asset_inflow: Numeric
+    liability_outflow: Numeric
+    net_cashflow: Numeric
+    cumulative_net: Numeric
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "asset_inflow": ("yuan", False),
+        "liability_outflow": ("yuan", False),
+        "net_cashflow": ("yuan", True),
+        "cumulative_net": ("yuan", True),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
+
+class CashflowMaturingAssetPayload(BaseModel):
+    instrument_code: str
+    instrument_name: str
+    maturity_date: str
+    face_value: Numeric
+    market_value: Numeric
+    currency_code: str
+
+    _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
+        "face_value": ("yuan", False),
+        "market_value": ("yuan", False),
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce(cls, data: Any) -> Any:
+        return _apply_numeric_coercion(cls._NUMERIC_FIELDS, data)
+
 
 class CashflowProjectionResponse(BaseModel):
     report_date: date
@@ -51,8 +89,8 @@ class CashflowProjectionResponse(BaseModel):
     equity_duration: Numeric
     rate_sensitivity_1bp: Numeric
     reinvestment_risk_12m: Numeric
-    monthly_buckets: list[dict]
-    top_maturing_assets_12m: list[dict]
+    monthly_buckets: list[CashflowMonthlyBucketPayload]
+    top_maturing_assets_12m: list[CashflowMaturingAssetPayload]
     warnings: list[str] = Field(default_factory=list)
     computed_at: str
 
@@ -62,7 +100,7 @@ class CashflowProjectionResponse(BaseModel):
         "liability_duration": ("ratio", False),
         "equity_duration": ("ratio", True),
         "rate_sensitivity_1bp": ("yuan", True),
-        "reinvestment_risk_12m": ("ratio", False),
+        "reinvestment_risk_12m": ("pct", False),
     }
 
     @model_validator(mode="before")
