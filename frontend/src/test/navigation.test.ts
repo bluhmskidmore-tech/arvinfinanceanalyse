@@ -76,12 +76,12 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(false);
   });
 
-  it("keeps liability-analytics outside the live primary navigation", () => {
+  it("promotes liability-analytics into the live primary navigation", () => {
     const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
     expect(liab?.path).toBe("/liability-analytics");
-    expect(liab?.readiness).toBe("placeholder");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
+    expect(liab?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
   });
 
   it("promotes cashflow-projection into the live primary navigation", () => {

@@ -79,6 +79,8 @@ export function LiabilityStructureGrids({
   interbankTerm,
   issuedStructure,
   issuedTerm,
+  /** 负债结构饼图下方补充说明（V1 月度口径文案对齐）。 */
+  structurePieCaption,
 }: {
   structure: NamedYi[];
   term: BucketYi[];
@@ -86,12 +88,18 @@ export function LiabilityStructureGrids({
   interbankTerm: BucketYi[];
   issuedStructure: NamedYi[];
   issuedTerm: BucketYi[];
+  structurePieCaption?: string;
 }) {
   return (
     <>
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={8}>
           <Card size="small" title="负债结构总览（单位：亿元）">
+            {structurePieCaption ? (
+              <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+                {structurePieCaption}
+              </Text>
+            ) : null}
             <div style={{ height: 300 }}>
               <ReactECharts option={pieOption(structure)} style={{ height: 300 }} notMerge lazyUpdate />
             </div>

@@ -1,4 +1,4 @@
-import { Card, Col, Row, Typography } from "antd";
+import { Card, Col, Row, Tag, Typography } from "antd";
 
 import type { AdbMonthlyDataItem } from "../../../api/contracts";
 
@@ -12,9 +12,21 @@ export function LiabilityNimStressMonthlyPanel({
   const nim = adbMonth?.net_interest_margin;
   const projected =
     nim !== null && nim !== undefined && Number.isFinite(nim) ? nim - 0.5 : null;
+  /** 与 V1 月度卡一致：压力后 NIM（百分点）跌破 0 标红，并以 Tag 提示。 */
+  const isCritical = projected !== null && Number.isFinite(projected) && projected < 0;
 
   return (
-    <Card size="small" title="压力测试：NIM 敏感性（+50bps）">
+    <Card
+      size="small"
+      title="压力测试：NIM 敏感性（+50bps）"
+      extra={
+        isCritical ? (
+          <Tag color="red" style={{ margin: 0 }}>
+            NIM 预警
+          </Tag>
+        ) : null
+      }
+    >
       <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
         口径：月度日均（ADB 月度收益率/付息率；若缺失则仅展示结构）。
       </Text>
@@ -70,8 +82,14 @@ export function LiabilityNimStressMonthlyPanel({
             >
               {projected === null ? "—" : `${projected.toFixed(2)}%`}
             </div>
-            <div style={{ marginTop: 8, fontWeight: 600, color: "#389e0d" }}>
-              {nim === null || nim === undefined ? "Δ —" : "−50 bp（NIM 下行）"}
+            <div
+              style={{
+                marginTop: 8,
+                fontWeight: 600,
+                color: nim === null || nim === undefined ? "rgba(0,0,0,0.45)" : "#cf1322",
+              }}
+            >
+              {nim === null || nim === undefined ? "Δ —" : "−50 bp（负债成本 +50bps，NIM 同幅下行）"}
             </div>
           </Card>
         </Col>
