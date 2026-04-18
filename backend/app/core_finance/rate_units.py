@@ -1,7 +1,8 @@
 """
-年利率口径归一（自 MOSS-V2 core_finance 迁入）。
+Annual rate unit normalization helpers migrated from MOSS-V2 core_finance.
 
-显式单位转换函数，消灭散落的 / 100、* 100、/ 10000 等魔法数字。
+These helpers make unit conversions explicit and avoid scattered magic
+constants such as `/ 100`, `* 100`, and `/ 10000`.
 """
 from __future__ import annotations
 
@@ -9,53 +10,51 @@ import math
 from typing import Any
 
 
-# ---------------------------------------------------------------------------
-# 显式单位转换（无歧义，调用方明确知道输入单位）
-# ---------------------------------------------------------------------------
+# Explicit unit conversions for callers that already know the input unit.
+
 
 def pct_to_decimal(value: float) -> float:
-    """百分数 → 小数。2.55 → 0.0255"""
+    """Percent to decimal. `2.55 -> 0.0255`."""
     return value / 100.0
 
 
 def decimal_to_pct(value: float) -> float:
-    """小数 → 百分数。0.0255 → 2.55"""
+    """Decimal to percent. `0.0255 -> 2.55`."""
     return value * 100.0
 
 
 def bp_to_decimal(value: float) -> float:
-    """基点(BP) → 小数。50 → 0.005"""
+    """Basis points to decimal. `50 -> 0.005`."""
     return value / 10000.0
 
 
 def decimal_to_bp(value: float) -> float:
-    """小数 → 基点(BP)。0.005 → 50"""
+    """Decimal to basis points. `0.005 -> 50`."""
     return value * 10000.0
 
 
 def pct_to_bp(value: float) -> float:
-    """百分数 → 基点(BP)。2.55 → 255"""
-    return value * 100.0
+    """Percent to basis points. `2.55 -> 255`."""
+    return round(value * 100.0, 10)
 
 
 def bp_to_pct(value: float) -> float:
-    """基点(BP) → 百分数。255 → 2.55"""
+    """Basis points to percent. `255 -> 2.55`."""
     return value / 100.0
 
 
-# ---------------------------------------------------------------------------
-# 启发式归一（输入单位不确定时使用，尽量少用）
-# ---------------------------------------------------------------------------
+# Heuristic normalization for ambiguous stored rate units. Use sparingly.
+
 
 def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
     """
-    将存储的年利率统一为「小数形式」（0.035 表示 3.5%）。
+    Normalize stored annual rates to decimal form, where `0.035` means 3.5%.
 
-    规则（与 import_v1_real_snapshot._normalize_rate 一致）：
-    - None / 负数 → None
-    - > 100 → None（视为脏数据）
-    - > 1 → 除以 100（百分数）
-    - 其余按已是小数处理
+    Rules align with `import_v1_real_snapshot._normalize_rate`:
+    - `None` or negative values -> `None`
+    - values above `100` -> `None`
+    - values above `1` -> divide by `100` as percent input
+    - otherwise treat the input as an existing decimal
     """
     if raw is None:
         return None
