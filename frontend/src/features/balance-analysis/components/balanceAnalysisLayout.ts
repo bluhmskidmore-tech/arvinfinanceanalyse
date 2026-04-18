@@ -2,14 +2,24 @@ import { useSyncExternalStore } from "react";
 
 const NARROW_QUERY = "(max-width: 1366px)";
 
+function getNarrowMediaQueryList() {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return null;
+  }
+  return window.matchMedia(NARROW_QUERY);
+}
+
 function subscribeNarrow(callback: () => void) {
-  const mq = window.matchMedia(NARROW_QUERY);
+  const mq = getNarrowMediaQueryList();
+  if (!mq) {
+    return () => undefined;
+  }
   mq.addEventListener("change", callback);
   return () => mq.removeEventListener("change", callback);
 }
 
 function getNarrowSnapshot() {
-  return window.matchMedia(NARROW_QUERY).matches;
+  return getNarrowMediaQueryList()?.matches ?? false;
 }
 
 function getNarrowServerSnapshot() {

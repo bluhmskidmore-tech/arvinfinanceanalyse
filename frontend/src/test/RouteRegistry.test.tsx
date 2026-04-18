@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup, screen, within } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { primaryWorkbenchNavigation } from "../mocks/navigation";
@@ -12,22 +12,6 @@ import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 afterEach(() => {
   cleanup();
-});
-
-beforeAll(() => {
-  Object.defineProperty(window, "matchMedia", {
-    writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
-  });
 });
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () => ({
