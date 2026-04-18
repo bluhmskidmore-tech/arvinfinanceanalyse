@@ -162,9 +162,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/decision-items",
     icon: "decision",
     description: "跨页决策与待办聚合（占位路由）。",
-    readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "占位入口：具体能力仍在各业务页内；后续可收敛到此路由。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote: "保留导航入口；能力仍在各业务页，后续再收敛到此路由。",
   },
   {
     key: "balance-analysis",
