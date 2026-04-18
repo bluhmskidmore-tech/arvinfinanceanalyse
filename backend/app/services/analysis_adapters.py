@@ -165,6 +165,7 @@ def build_bond_action_attribution_placeholder_envelope(query: AnalysisQuery) -> 
             rule_version="rv_bond_analytics_v1",
             cache_version="cv_none",
             quality_flag="warning",
+            source_surface="bond_analytics",
         ),
         result=AnalysisResultPayload(
             report_date=query.report_date,

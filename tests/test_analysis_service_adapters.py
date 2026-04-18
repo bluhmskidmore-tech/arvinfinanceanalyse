@@ -165,6 +165,7 @@ def test_bond_action_placeholder_envelope_shape():
     )
 
     assert result.result_meta.result_kind == "analysis.bond_action_attribution"
+    assert result.result_meta.source_surface == "bond_analytics"
     assert result.result_meta.quality_flag == "warning"
     assert result.result.summary["period_type"] == "MoM"
     assert result.result.summary["total_actions"] == 0
@@ -514,6 +515,7 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
                 cache_version="cv_analysis",
                 quality_flag="warning",
                 scenario_flag=False,
+                source_surface="bond_analytics",
             ),
             result=schema_module.AnalysisResultPayload(
                 report_date="2026-03-31",
@@ -591,6 +593,7 @@ def test_bond_action_service_uses_schema_default_status_when_summary_omits_it(mo
                 cache_version="cv_analysis",
                 quality_flag="warning",
                 scenario_flag=False,
+                source_surface="bond_analytics",
             ),
             result=schema_module.AnalysisResultPayload(
                 report_date="2026-03-31",
