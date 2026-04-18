@@ -425,9 +425,12 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert payload["result"]["report_date"] == "2025-12-31"
     assert len(payload["result"]["rows"]) == 1
     assert payload["result"]["rows"][0]["instrument_code"] == "240001.IB"
-    assert payload["result"]["rows"][0]["carry"] == "12.50000000"
-    assert payload["result"]["rows"][0]["beginning_dirty_mv"] == "0"
-    assert payload["result"]["rows"][0]["ending_dirty_mv"] == "0"
+    assert payload["result"]["rows"][0]["carry"]["raw"] == 12.5
+    assert payload["result"]["rows"][0]["carry"]["unit"] == "yuan"
+    assert payload["result"]["rows"][0]["beginning_dirty_mv"]["raw"] == 0.0
+    assert payload["result"]["rows"][0]["beginning_dirty_mv"]["sign_aware"] is False
+    assert payload["result"]["rows"][0]["ending_dirty_mv"]["raw"] == 0.0
+    assert payload["result"]["rows"][0]["ending_dirty_mv"]["sign_aware"] is False
     assert payload["result"]["rows"][0]["current_balance_found"] is False
     assert payload["result"]["rows"][0]["prior_balance_found"] is False
     assert payload["result"]["rows"][0]["balance_diagnostics"] == [
@@ -441,17 +444,17 @@ def test_pnl_bridge_returns_rows_and_phase3_warning_when_balance_rows_are_unavai
     assert "No prior balance report date found" in payload["result"]["warnings"][2]
     summary = payload["result"]["summary"]
     assert summary["row_count"] == 1
-    assert summary["total_carry"] == "12.50000000"
-    assert summary["total_roll_down"] == "0"
-    assert summary["total_treasury_curve"] == "0"
-    assert summary["total_credit_spread"] == "0"
-    assert summary["total_fx_translation"] == "0"
-    assert summary["total_realized_trading"] == "1.75000000"
-    assert summary["total_unrealized_fv"] == "-3.25000000"
-    assert summary["total_manual_adjustment"] == "0.50000000"
-    assert summary["total_explained_pnl"] == "11.50000000"
-    assert summary["total_actual_pnl"] == "11.50000000"
-    assert summary["total_residual"] == "0.00000000"
+    assert summary["total_carry"]["raw"] == 12.5
+    assert summary["total_roll_down"]["raw"] == 0.0
+    assert summary["total_treasury_curve"]["raw"] == 0.0
+    assert summary["total_credit_spread"]["raw"] == 0.0
+    assert summary["total_fx_translation"]["raw"] == 0.0
+    assert summary["total_realized_trading"]["raw"] == 1.75
+    assert summary["total_unrealized_fv"]["raw"] == -3.25
+    assert summary["total_manual_adjustment"]["raw"] == 0.5
+    assert summary["total_explained_pnl"]["raw"] == 11.5
+    assert summary["total_actual_pnl"]["raw"] == 11.5
+    assert summary["total_residual"]["raw"] == 0.0
     get_settings.cache_clear()
 
 
@@ -552,25 +555,25 @@ def test_pnl_bridge_uses_current_and_latest_available_bond_prior_balance_rows(tm
     )
     row = payload["result"]["rows"][0]
     assert row["instrument_code"] == "240001.IB"
-    assert row["beginning_dirty_mv"] == "91.00000000"
-    assert row["ending_dirty_mv"] == "102.00000000"
+    assert row["beginning_dirty_mv"]["raw"] == 91.0
+    assert row["ending_dirty_mv"]["raw"] == 102.0
     assert row["current_balance_found"] is True
     assert row["prior_balance_found"] is True
     assert row["balance_diagnostics"] == []
     summary = payload["result"]["summary"]
-    assert summary["total_beginning_dirty_mv"] == "91.00000000"
-    assert summary["total_ending_dirty_mv"] == "102.00000000"
-    assert summary["total_carry"] == "12.50000000"
-    assert summary["total_roll_down"] == "0"
-    assert summary["total_treasury_curve"] == "0"
-    assert summary["total_credit_spread"] == "0"
-    assert summary["total_fx_translation"] == "0"
-    assert summary["total_realized_trading"] == "1.75000000"
-    assert summary["total_unrealized_fv"] == "-3.25000000"
-    assert summary["total_manual_adjustment"] == "0.50000000"
-    assert summary["total_explained_pnl"] == "11.50000000"
-    assert summary["total_actual_pnl"] == "11.50000000"
-    assert summary["total_residual"] == "0.00000000"
+    assert summary["total_beginning_dirty_mv"]["raw"] == 91.0
+    assert summary["total_ending_dirty_mv"]["raw"] == 102.0
+    assert summary["total_carry"]["raw"] == 12.5
+    assert summary["total_roll_down"]["raw"] == 0.0
+    assert summary["total_treasury_curve"]["raw"] == 0.0
+    assert summary["total_credit_spread"]["raw"] == 0.0
+    assert summary["total_fx_translation"]["raw"] == 0.0
+    assert summary["total_realized_trading"]["raw"] == 1.75
+    assert summary["total_unrealized_fv"]["raw"] == -3.25
+    assert summary["total_manual_adjustment"]["raw"] == 0.5
+    assert summary["total_explained_pnl"]["raw"] == 11.5
+    assert summary["total_actual_pnl"]["raw"] == 11.5
+    assert summary["total_residual"]["raw"] == 0.0
     assert payload["result"]["warnings"][0] == (
         "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
     )
@@ -754,8 +757,8 @@ def test_pnl_bridge_reads_fx_rates_from_duckdb_and_populates_fx_translation(tmp_
     assert response.status_code == 200
     payload = response.json()
     row = payload["result"]["rows"][0]
-    assert row["fx_translation"] == "41.35000000"
-    assert payload["result"]["summary"]["total_fx_translation"] == "41.35000000"
+    assert row["fx_translation"]["raw"] == 41.35
+    assert payload["result"]["summary"]["total_fx_translation"]["raw"] == 41.35
     get_settings.cache_clear()
 
 
