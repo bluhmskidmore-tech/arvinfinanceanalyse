@@ -261,11 +261,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "ADB Analytical",
     path: "/average-balance",
     icon: "analysis",
-    description: "ADB analytical compatibility view; formal balance truth lives in balance-analysis.",
+    description: "同业与债券口径的 ADB analytical 视图；正式余额真源见「资产负债分析」。",
     readiness: "live",
     readinessLabel: "Live",
-    readinessNote:
-      "ADB analytical route is directly accessible while formal balance truth remains on the governed balance-analysis surface.",
+    readinessNote: "可直接打开本路由；正式 governed 余额仍以资产负债分析页为准。",
   },
   {
     key: "ledger-pnl",
