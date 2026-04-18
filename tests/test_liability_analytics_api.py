@@ -2,15 +2,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
 
 
+def _load_liability_route_module():
+    return load_module(
+        "tests._liability_routes.liability_analytics",
+        "backend/app/api/routes/liability_analytics.py",
+    )
+
+
 def _build_client(tmp_path: Path, monkeypatch) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "liability.duckdb"))
-    main_mod = load_module("backend.app.main", "backend/app/main.py")
-    return TestClient(main_mod.app)
+    module = _load_liability_route_module()
+    app = FastAPI()
+    app.include_router(module.router)
+    return TestClient(app)
 
 
 def test_liability_analytics_routes_fail_closed_while_surface_remains_reserved(
