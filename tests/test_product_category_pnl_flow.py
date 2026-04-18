@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import csv
 import importlib
-import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -2173,7 +2172,6 @@ def test_product_category_failure_before_commit_preserves_last_committed_snapsho
 def test_product_category_materialize_emits_structured_logs_for_success(
     tmp_path,
     monkeypatch,
-    caplog,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -2191,7 +2189,16 @@ def test_product_category_materialize_emits_structured_logs_for_success(
         "backend.app.tasks.product_category_pnl",
         "backend/app/tasks/product_category_pnl.py",
     )
-    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(task_module, "logger", _Logger())
 
     task_module.materialize_product_category_pnl.fn(
         duckdb_path=str(duckdb_path),
@@ -2199,21 +2206,22 @@ def test_product_category_materialize_emits_structured_logs_for_success(
         governance_dir=str(governance_dir),
     )
 
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "job_name", None) == "product_category_pnl"
-    ]
-    assert [record.status for record in records] == ["running", "completed"]
-    assert all(getattr(record, "run_id", "") for record in records)
-    assert {record.month_count for record in records} == {1}
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "product_category_pnl"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["run_id"]
+    assert events[0][1]["month_count"] == 1
+    assert events[-1][0] == "info"
+    assert events[-1][1]["job_name"] == "product_category_pnl"
+    assert events[-1][1]["status"] == "completed"
+    assert events[-1][1]["run_id"]
+    assert events[-1][1]["month_count"] == 1
     get_settings.cache_clear()
 
 
 def test_product_category_materialize_emits_structured_logs_for_failure(
     tmp_path,
     monkeypatch,
-    caplog,
 ):
     data_root = tmp_path / "data_input"
     source_dir = data_root / f"pnl_{LEDGER_PREFIX}-{AVG_PREFIX}"
@@ -2236,7 +2244,16 @@ def test_product_category_materialize_emits_structured_logs_for_failure(
         "calculate_read_model",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("materialize boom")),
     )
-    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(task_module, "logger", _Logger())
 
     with pytest.raises(RuntimeError, match="materialize boom"):
         task_module.materialize_product_category_pnl.fn(
@@ -2246,12 +2263,14 @@ def test_product_category_materialize_emits_structured_logs_for_failure(
             run_id="pcat-log-fail",
         )
 
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "job_name", None) == "product_category_pnl"
-    ]
-    assert [record.status for record in records] == ["running", "failed"]
-    assert {record.run_id for record in records} == {"pcat-log-fail"}
-    assert {record.month_count for record in records} == {1}
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "product_category_pnl"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["run_id"] == "pcat-log-fail"
+    assert events[0][1]["month_count"] == 1
+    assert events[-1][0] == "exception"
+    assert events[-1][1]["job_name"] == "product_category_pnl"
+    assert events[-1][1]["status"] == "failed"
+    assert events[-1][1]["run_id"] == "pcat-log-fail"
+    assert events[-1][1]["month_count"] == 1
     get_settings.cache_clear()

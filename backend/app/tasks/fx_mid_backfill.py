@@ -184,6 +184,7 @@ def _backfill_fx_mid_history(
 
     logger.info("completed fx_mid_backfill", extra={"run_id": active_run_id, "start_date": start_date, "end_date": end_date, "date_count": len(report_dates)})
     return {
+        "status": "completed",
         "cache_version": CACHE_VERSION,
         "rule_version": RULE_VERSION,
         "start_date": start_date,

@@ -2,7 +2,6 @@
 
 import csv
 import json
-import logging
 import sys
 from datetime import date
 from decimal import Decimal
@@ -581,7 +580,6 @@ def test_fx_mid_rows_failure_before_commit_preserves_last_committed_snapshot(tmp
 def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_success(
     tmp_path,
     monkeypatch,
-    caplog,
 ):
     fx_mod = _load_fx_task_module()
     catalog_path = tmp_path / "choice_macro_catalog.json"
@@ -599,7 +597,16 @@ def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_success(
 
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FakeChoiceClient())
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _UnexpectedAkShareVendor())
-    caplog.set_level(logging.INFO, logger=fx_mod.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(fx_mod, "logger", _Logger())
 
     fx_mod.materialize_fx_mid_for_report_date.fn(
         report_date="2026-02-27",
@@ -607,22 +614,22 @@ def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_success(
         data_input_root=str(tmp_path / "data_input"),
     )
 
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "job_name", None) == "materialize_fx_mid_for_report_date"
-    ]
-    assert [record.status for record in records] == ["running", "completed"]
-    assert {record.report_date for record in records} == {"2026-02-27"}
-    assert records[-1].source_kind == "choice"
-    assert records[-1].candidate_count == 5
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "materialize_fx_mid_for_report_date"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["report_date"] == "2026-02-27"
+    assert events[-1][0] == "info"
+    assert events[-1][1]["job_name"] == "materialize_fx_mid_for_report_date"
+    assert events[-1][1]["status"] == "completed"
+    assert events[-1][1]["report_date"] == "2026-02-27"
+    assert events[-1][1]["source_kind"] == "choice"
+    assert events[-1][1]["candidate_count"] == 5
     get_settings.cache_clear()
 
 
 def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_failure(
     tmp_path,
     monkeypatch,
-    caplog,
 ):
     fx_mod = _load_fx_task_module()
     catalog_path = tmp_path / "choice_macro_catalog.json"
@@ -640,7 +647,16 @@ def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_failure(
 
     monkeypatch.setattr(fx_mod, "ChoiceClient", lambda: _FailingChoiceClient())
     monkeypatch.setattr(fx_mod, "AkShareVendorAdapter", lambda: _FailingAkShareVendor())
-    caplog.set_level(logging.INFO, logger=fx_mod.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(fx_mod, "logger", _Logger())
 
     with pytest.raises(ValueError, match="Choice failed: choice unavailable"):
         fx_mod.materialize_fx_mid_for_report_date.fn(
@@ -649,12 +665,13 @@ def test_materialize_fx_mid_for_report_date_emits_structured_logs_for_failure(
             data_input_root=str(tmp_path / "data_input"),
         )
 
-    records = [
-        record
-        for record in caplog.records
-        if getattr(record, "job_name", None) == "materialize_fx_mid_for_report_date"
-    ]
-    assert [record.status for record in records] == ["running", "failed"]
-    assert {record.report_date for record in records} == {"2026-02-27"}
-    assert records[-1].source_kind == "auto"
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "materialize_fx_mid_for_report_date"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["report_date"] == "2026-02-27"
+    assert events[-1][0] == "exception"
+    assert events[-1][1]["job_name"] == "materialize_fx_mid_for_report_date"
+    assert events[-1][1]["status"] == "failed"
+    assert events[-1][1]["report_date"] == "2026-02-27"
+    assert events[-1][1]["source_kind"] == "auto"
     get_settings.cache_clear()

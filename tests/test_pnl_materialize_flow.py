@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import sys
 from decimal import Decimal
 
@@ -496,7 +495,7 @@ def test_pnl_materialize_failure_before_commit_preserves_last_committed_snapshot
     }
 
 
-def test_pnl_materialize_emits_structured_logs_for_success(tmp_path, caplog):
+def test_pnl_materialize_emits_structured_logs_for_success(tmp_path, monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -504,22 +503,35 @@ def test_pnl_materialize_emits_structured_logs_for_success(tmp_path, caplog):
             "backend/app/tasks/pnl_materialize.py",
         )
 
-    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(task_module, "logger", _Logger())
     _materialize_pnl_snapshot(
         task_module,
         duckdb_path=tmp_path / "moss.duckdb",
         governance_dir=tmp_path / "governance",
     )
 
-    records = [
-        record for record in caplog.records if getattr(record, "job_name", None) == "pnl_materialize"
-    ]
-    assert [record.status for record in records] == ["running", "completed"]
-    assert {record.report_date for record in records} == {"2025-12-31"}
-    assert all(getattr(record, "run_id", "") for record in records)
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "pnl_materialize"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["report_date"] == "2025-12-31"
+    assert events[0][1]["run_id"]
+    assert events[-1][0] == "info"
+    assert events[-1][1]["job_name"] == "pnl_materialize"
+    assert events[-1][1]["status"] == "completed"
+    assert events[-1][1]["report_date"] == "2025-12-31"
+    assert events[-1][1]["run_id"]
 
 
-def test_pnl_materialize_emits_structured_logs_for_failure(tmp_path, caplog):
+def test_pnl_materialize_emits_structured_logs_for_failure(tmp_path, monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:
         task_module = load_module(
@@ -527,7 +539,16 @@ def test_pnl_materialize_emits_structured_logs_for_failure(tmp_path, caplog):
             "backend/app/tasks/pnl_materialize.py",
         )
 
-    caplog.set_level(logging.INFO, logger=task_module.__name__)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class _Logger:
+        def info(self, _msg, *, extra):
+            events.append(("info", dict(extra)))
+
+        def exception(self, _msg, *, extra):
+            events.append(("exception", dict(extra)))
+
+    monkeypatch.setattr(task_module, "logger", _Logger())
     with pytest.raises(RuntimeError, match="Formal pnl emission is disabled"):
         task_module.materialize_pnl_facts.fn(
             report_date="2025-12-31",
@@ -554,12 +575,14 @@ def test_pnl_materialize_emits_structured_logs_for_failure(tmp_path, caplog):
             formal_pnl_scope_json='["*"]',
         )
 
-    records = [
-        record for record in caplog.records if getattr(record, "job_name", None) == "pnl_materialize"
-    ]
-    assert [record.status for record in records] == ["running", "failed"]
-    assert {record.report_date for record in records} == {"2025-12-31"}
-    assert all(getattr(record, "run_id", "") for record in records)
+    assert events[0][0] == "info"
+    assert events[0][1]["job_name"] == "pnl_materialize"
+    assert events[0][1]["status"] == "running"
+    assert events[0][1]["report_date"] == "2025-12-31"
+    assert events[-1][0] == "exception"
+    assert events[-1][1]["job_name"] == "pnl_materialize"
+    assert events[-1][1]["status"] == "failed"
+    assert events[-1][1]["report_date"] == "2025-12-31"
 
 
 def test_pnl_materialize_task_writes_recognized_formal_totals_not_standardized_totals(tmp_path):

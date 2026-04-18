@@ -15,6 +15,7 @@ class DuckDBRepository:
     """
 
     path: str
+    read_only: bool = True
     guard_path_exists: bool = field(default=False, repr=False)
 
     def _fetch_rows(self, query: str, params: list[object] | None = None) -> list[tuple]:
@@ -43,3 +44,10 @@ class DuckDBRepository:
             return row is not None
         finally:
             conn.close()
+
+    def healthcheck(self) -> dict[str, object]:
+        return {
+            "ok": True,
+            "mode": "read_only",
+            "path": self.path,
+        }
