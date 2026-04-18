@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,6 +23,8 @@ from backend.app.schemas.formal_compute_runtime import (
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.build_runs import BuildRunRecord
 
+logger = logging.getLogger(__name__)
+
 
 def run_formal_materialize(
     *,
@@ -43,6 +46,7 @@ def run_formal_materialize(
         cache_key=descriptor.cache_key,
     )
     active_run_id = run_id or f"{job_name}:{run.created_at}"
+    logger.info("starting %s", job_name, extra={"run_id": active_run_id, "report_date": report_date})
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
         {
@@ -82,6 +86,7 @@ def run_formal_materialize(
     except FormalComputeMaterializeFailure as exc:
         finished_at = datetime.now(timezone.utc).isoformat()
         failure_reason = _failure_reason(exc)
+        logger.error("task failed: %s", exc, exc_info=True)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -107,6 +112,7 @@ def run_formal_materialize(
     except Exception as exc:
         finished_at = datetime.now(timezone.utc).isoformat()
         failure_reason = _failure_reason(exc)
+        logger.error("task failed: %s", exc, exc_info=True)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -206,6 +212,7 @@ def run_formal_materialize(
         error=None,
         result=result.payload,
     ).model_dump()
+    logger.info("completed %s", job_name, extra={"run_id": active_run_id, "report_date": report_date})
     return {
         "status": "completed",
         "cache_key": descriptor.cache_key,

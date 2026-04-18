@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +23,7 @@ from backend.app.schemas.formal_compute_runtime import (
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
+logger = logging.getLogger(__name__)
 
 YIELD_CURVE_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(
@@ -139,6 +141,11 @@ def ensure_yield_curve_inputs_on_or_before(
                 )
             except Exception:
                 if repo.fetch_latest_trade_date_on_or_before(curve_type, anchor_date) is not None:
+                    logger.warning(
+                        "Fetch failed for %s on/before %s; using existing repo data as fallback.",
+                        curve_type,
+                        anchor_date,
+                    )
                     continue
                 raise
             repo.replace_curve_snapshots(
@@ -279,8 +286,12 @@ def _load_aaa_credit_curve_from_choice_snapshot(
     if fact_rows:
         try:
             return _build_aaa_credit_snapshot(rows=fact_rows, trade_date=trade_date)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(
+                "Failed to build aaa_credit snapshot from fact_rows for trade_date=%s: %s",
+                trade_date,
+                exc,
+            )
     if snapshot_error is not None:
         raise snapshot_error
     return None

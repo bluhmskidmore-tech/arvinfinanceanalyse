@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 MAX_CNQ_TOPIC_CODES = 4
 CHOICE_NEWS_EVENT_STREAM = "choice_news_event"
+logger = logging.getLogger(__name__)
 
 
 def _subscribe_choice_sectornews(
@@ -88,6 +90,7 @@ def _materialize_choice_news_events(
     run = BuildRunRecord(job_name="choice_news_materialize", status="running", cache_key="choice_news.latest")
     run_id = f"{run.job_name}:{run.created_at}"
     inserted_count = 0
+    logger.info("starting choice_news_materialize", extra={"run_id": run_id})
 
     conn = duckdb.connect(str(duckdb_file), read_only=False)
     try:
@@ -152,6 +155,7 @@ def _materialize_choice_news_events(
         ]
     )
 
+    logger.info("completed choice_news_materialize", extra={"run_id": run_id, "inserted_count": inserted_count, "total_rows": total_rows})
     return {
         "status": "completed",
         "event_count": total_rows,

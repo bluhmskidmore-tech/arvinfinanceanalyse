@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -40,6 +41,7 @@ SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v1"
 SNAPSHOT_SCHEMA_VERSION = "snapshot.schema.v1"
 CANONICAL_GRAIN_VERSION = "cgv_v1"
 SNAPSHOT_KEY = "snapshot.zqtz_tyw.standardized"
+logger = logging.getLogger(__name__)
 
 
 def resolve_snapshot_lock(duckdb_file: Path) -> LockDefinition:
@@ -77,6 +79,7 @@ def _materialize_standard_snapshots(
     run_id = f"{run.job_name}:{run.created_at}"
     snapshot_run_id = str(uuid.uuid4())
     lock = resolve_snapshot_lock(duckdb_file)
+    logger.info("starting snapshot_materialize", extra={"run_id": run_id, "report_date": report_date, "source_families": source_families})
 
     selected = manifest_repo.select_for_snapshot_materialization(
         source_families=source_families,
@@ -271,6 +274,7 @@ def _materialize_standard_snapshots(
         gov_repo.append_many_atomic(entries)
 
         batch_ids = sorted({str(r.get("ingest_batch_id")) for r in selected})
+        logger.info("completed snapshot_materialize", extra={"run_id": run_id, "zqtz_rows": zqtz_total, "tyw_rows": tyw_total})
         return {
             "status": "completed",
             "run_id": run_id,
@@ -291,6 +295,7 @@ def _materialize_standard_snapshots(
             vendor_version="vv_none",
         ).model_dump()
         failed["error_message"] = str(exc)
+        logger.error("task failed: %s", exc, exc_info=True)
         gov_repo.append(SNAPSHOT_BUILD_RUN_STREAM, failed)
         raise
 

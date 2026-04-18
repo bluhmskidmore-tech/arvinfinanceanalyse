@@ -9,6 +9,7 @@ All DuckDB writes happen inside invoked tasks (`ingest_demo_manifest` side effec
 
 import argparse
 import json
+import logging
 import sys
 from datetime import date
 from pathlib import Path
@@ -20,6 +21,9 @@ from backend.app.tasks.balance_analysis_materialize import materialize_balance_a
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import ingest_demo_manifest
 from backend.app.tasks.snapshot_materialize import materialize_standard_snapshots
+
+logger = logging.getLogger(__name__)
+
 
 def _emit_json_payload(payload: dict[str, object]) -> None:
     rendered = json.dumps(payload, ensure_ascii=False, indent=2)
@@ -170,6 +174,7 @@ def _run_formal_balance_pipeline(
     archive_dir: str | None = None,
     fx_source_path: str | None = None,
 ) -> dict[str, object]:
+    logger.info("starting run_formal_balance_pipeline")
     source_families = ["zqtz", "tyw"]
     ingest_payload = ingest_demo_manifest.fn(
         data_root=data_root,
@@ -230,6 +235,7 @@ def _run_formal_balance_pipeline(
         payload["steps"]["snapshot"] = per_report_date[0]["snapshot"]
         payload["steps"]["balance"] = per_report_date[0]["balance"]
         payload["steps"]["balance_runtime"] = per_report_date[0]["balance_runtime"]
+    logger.info("completed run_formal_balance_pipeline", extra={"report_dates": report_dates})
     return payload
 
 

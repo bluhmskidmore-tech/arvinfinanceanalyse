@@ -43,3 +43,11 @@ def test_worker_bootstrap_includes_fx_mid_materialize_module():
     path = ROOT / "backend" / "app" / "tasks" / "worker_bootstrap.py"
     src = path.read_text(encoding="utf-8")
     assert "backend.app.tasks.fx_mid_materialize" in src
+
+
+def test_worker_bootstrap_includes_yield_curve_and_risk_tensor_modules():
+    path = ROOT / "backend" / "app" / "tasks" / "worker_bootstrap.py"
+    src = path.read_text(encoding="utf-8")
+    assert "backend.app.tasks.fx_mid_backfill" in src
+    assert "backend.app.tasks.risk_tensor_materialize" in src
+    assert "backend.app.tasks.yield_curve_materialize" in src

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,8 +19,11 @@ from backend.app.models.base import Base
 from backend.app.models.governance import CacheBuildRun, CacheManifest
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import Table
+
+logger = logging.getLogger(__name__)
 
 
 CACHE_BUILD_RUN_STREAM = "cache_build_run"
@@ -115,11 +119,15 @@ class GovernanceRepository:
                     try:
                         return self._append_unlocked(stream, normalized_payload)
                     except Exception:
+                        # Broad catch is intentional: any failure writing JSONL after
+                        # the SQL commit must trigger a rollback regardless of error type.
                         self._rollback_jsonl_files(original_sizes)
                         raise
             try:
                 return self._append_unlocked(stream, normalized_payload)
             except Exception:
+                # Broad catch is intentional: any failure writing JSONL must trigger
+                # a rollback to keep the file consistent regardless of error type.
                 self._rollback_jsonl_files(original_sizes)
                 raise
 
@@ -153,6 +161,8 @@ class GovernanceRepository:
                     original_sizes=original_sizes,
                 )
             except Exception:
+                # Broad catch is intentional: any failure during atomic multi-stream
+                # JSONL write must trigger a rollback regardless of error type.
                 self._rollback_jsonl_files(original_sizes)
                 raise
 
@@ -217,7 +227,7 @@ class GovernanceRepository:
         try:
             with self._sql_engine.connect() as connection:
                 rows = connection.execute(_read_all_sql_statement(stream, table)).fetchall()
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
 
@@ -282,6 +292,8 @@ class GovernanceRepository:
                 if size == 0:
                     target.unlink(missing_ok=True)
             except Exception as exc:
+                # Broad catch is intentional: file truncation can fail with OSError,
+                # PermissionError, or other IO errors — collect all and report together.
                 rollback_errors.append(exc)
         if rollback_errors:
             raise RuntimeError(

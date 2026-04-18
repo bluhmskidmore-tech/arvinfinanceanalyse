@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import dramatiq
 import duckdb
 import hashlib
 import inspect
 import json
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -29,16 +29,17 @@ from backend.app.schemas.macro_vendor import (
 )
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
 from backend.app.tasks.build_runs import BuildRunRecord
+from backend.app.tasks.broker import register_actor_once
 
 
 CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=900)
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS = 7
 STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
+logger = logging.getLogger(__name__)
 
 
-@dramatiq.actor
-def refresh_choice_macro_snapshot(
+def _refresh_choice_macro_snapshot(
     duckdb_path: str | None = None,
     governance_dir: str | None = None,
     backfill_days: int = 0,
@@ -66,6 +67,7 @@ def refresh_choice_macro_snapshot(
     run_id = f"{run.job_name}:{run.created_at}"
     source_version = "sv_choice_macro_pending"
     vendor_version = "vv_none"
+    logger.info("starting choice_macro_refresh", extra={"run_id": run_id, "backfill_days": backfill_days})
 
     try:
         if backfill_days > 1:
@@ -128,6 +130,7 @@ def refresh_choice_macro_snapshot(
             conn = duckdb.connect(str(duckdb_file), read_only=False)
             try:
                 _ensure_tables(conn)
+                # atomic: delete+insert inside transaction — safe on retry, no data loss window
                 conn.execute("begin transaction")
                 if backfill_days > 1 and backfill_trade_dates:
                     placeholders = ", ".join(["?"] * len(backfill_trade_dates))
@@ -281,12 +284,14 @@ def refresh_choice_macro_snapshot(
             source_version=source_version,
             vendor_version=vendor_version,
         )
+        logger.error("task failed: %s", exc, exc_info=True)
         try:
             repo.append(CACHE_BUILD_RUN_STREAM, failed_run.model_dump())
         except Exception as append_error:
             raise RuntimeError("Failed to append failed choice_macro lineage") from append_error
         raise exc
 
+    logger.info("completed choice_macro_refresh", extra={"run_id": run_id, "series_count": len(snapshot.series)})
     return {
         "status": "completed",
         "run_id": run_id,
@@ -295,6 +300,12 @@ def refresh_choice_macro_snapshot(
         "source_version": source_version,
         "cache_key": run.cache_key,
     }
+
+
+refresh_choice_macro_snapshot = register_actor_once(
+    "refresh_choice_macro_snapshot",
+    _refresh_choice_macro_snapshot,
+)
 
 
 def _build_source_version(raw_payload: dict[str, object]) -> str:

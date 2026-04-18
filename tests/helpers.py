@@ -10,19 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _purge_backend_main_import_chain() -> None:
-    prefixes = (
-        "backend.app.main",
-        "backend.app.api",
-        "backend.app.governance.settings",
-    )
     for loaded_name in list(sys.modules):
         if loaded_name == "backend.app.main":
-            sys.modules.pop(loaded_name, None)
-            continue
-        if loaded_name == "backend.app.governance.settings":
-            sys.modules.pop(loaded_name, None)
-            continue
-        if loaded_name == "backend.app.api" or loaded_name.startswith("backend.app.api."):
             sys.modules.pop(loaded_name, None)
 
 

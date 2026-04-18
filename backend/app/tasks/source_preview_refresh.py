@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from backend.app.tasks.materialize import resolve_materialize_lock
 SOURCE_PREVIEW_REFRESH_JOB_NAME = "source_preview_refresh"
 SOURCE_PREVIEW_REFRESH_CACHE_KEY = "source_preview.foundation"
 SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES = ("zqtz", "tyw")
+logger = logging.getLogger(__name__)
 
 
 def build_source_preview_refresh_lock_key(duckdb_path: str | Path) -> str:
@@ -57,6 +59,7 @@ def _refresh_source_preview_cache(
     materialize_lock = resolve_materialize_lock(duckdb_file)
     started_at = datetime.now(timezone.utc).isoformat()
     run_id = run_id or f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{started_at}"
+    logger.info("starting source_preview_refresh", extra={"run_id": run_id})
 
     governance_repo.append(
         CACHE_BUILD_RUN_STREAM,
@@ -118,6 +121,7 @@ def _refresh_source_preview_cache(
                 except Exception:
                     pass
 
+        logger.error("task failed: %s", exc, exc_info=True)
         governance_repo.append(
             CACHE_BUILD_RUN_STREAM,
             {
@@ -195,6 +199,7 @@ def _refresh_source_preview_cache(
         finished_at=finished_at,
     )
 
+    logger.info("completed source_preview_refresh", extra={"run_id": run_id, "preview_sources": preview_sources})
     return {
         "status": "completed",
         "run_id": run_id,
