@@ -7,6 +7,7 @@ from backend.app.services.source_preview_refresh_service import (
     refresh_source_preview,
     source_preview_refresh_status,
 )
+from backend.app.services.source_preview_reads import SourcePreviewReadError
 from backend.app.services.source_preview_service import (
     source_preview_history_envelope,
     preview_rows_envelope,
@@ -28,7 +29,10 @@ def _validate_source_family(source_family: str) -> str:
 @router.get("/source-foundation")
 def source_foundation() -> dict[str, object]:
     settings = get_settings()
-    return source_preview_envelope(settings.duckdb_path)
+    try:
+        return source_preview_envelope(settings.duckdb_path)
+    except SourcePreviewReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/source-foundation/history")
@@ -41,12 +45,15 @@ def source_foundation_history(
     normalized_family = (
         _validate_source_family(source_family) if source_family is not None else None
     )
-    return source_preview_history_envelope(
-        duckdb_path=settings.duckdb_path,
-        limit=limit,
-        offset=offset,
-        source_family=normalized_family,
-    )
+    try:
+        return source_preview_history_envelope(
+            duckdb_path=settings.duckdb_path,
+            limit=limit,
+            offset=offset,
+            source_family=normalized_family,
+        )
+    except SourcePreviewReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/source-foundation/refresh")
@@ -78,13 +85,16 @@ def source_rows(
 ) -> dict[str, object]:
     settings = get_settings()
     normalized_family = _validate_source_family(source_family)
-    return preview_rows_envelope(
-        duckdb_path=settings.duckdb_path,
-        source_family=normalized_family,
-        limit=limit,
-        offset=offset,
-        ingest_batch_id=ingest_batch_id,
-    )
+    try:
+        return preview_rows_envelope(
+            duckdb_path=settings.duckdb_path,
+            source_family=normalized_family,
+            limit=limit,
+            offset=offset,
+            ingest_batch_id=ingest_batch_id,
+        )
+    except SourcePreviewReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/source-foundation/{source_family}/traces")
@@ -96,10 +106,13 @@ def source_traces(
 ) -> dict[str, object]:
     settings = get_settings()
     normalized_family = _validate_source_family(source_family)
-    return preview_traces_envelope(
-        duckdb_path=settings.duckdb_path,
-        source_family=normalized_family,
-        limit=limit,
-        offset=offset,
-        ingest_batch_id=ingest_batch_id,
-    )
+    try:
+        return preview_traces_envelope(
+            duckdb_path=settings.duckdb_path,
+            source_family=normalized_family,
+            limit=limit,
+            offset=offset,
+            ingest_batch_id=ingest_batch_id,
+        )
+    except SourcePreviewReadError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

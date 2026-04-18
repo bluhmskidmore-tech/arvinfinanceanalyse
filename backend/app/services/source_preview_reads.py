@@ -10,6 +10,7 @@ from backend.app.repositories.source_preview_repo import (
     source_preview_history_version,
     source_preview_payload_version,
 )
+from backend.app.repositories.source_preview_repo_reads import SourcePreviewReadError
 from backend.app.schemas.source_preview import SourcePreviewPayload
 from backend.app.services.formal_result_runtime import build_result_envelope
 

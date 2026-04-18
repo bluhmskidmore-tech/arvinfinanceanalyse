@@ -965,6 +965,42 @@ def test_source_preview_empty_duckdb_foundation_is_explicit_analytical_empty(tmp
     get_settings.cache_clear()
 
 
+def test_source_preview_foundation_returns_503_for_broken_duckdb_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "broken.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get("/ui/preview/source-foundation")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Source preview foundation read failed."
+    get_settings.cache_clear()
+
+
+def test_source_preview_history_returns_503_for_broken_duckdb_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "broken.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get("/ui/preview/source-foundation/history?limit=10&offset=0")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Source preview history read failed."
+    get_settings.cache_clear()
+
+
 def test_source_preview_refresh_sql_authority_status_reads_sql_governance_when_jsonl_shadow_is_missing(
     tmp_path,
     monkeypatch,
@@ -1252,6 +1288,24 @@ def test_preview_rows_api_empty_duckdb_returns_empty_page(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
+def test_preview_rows_api_returns_503_for_broken_duckdb_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "broken.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get("/ui/preview/source-foundation/zqtz/rows?limit=10&offset=0")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Source preview row read failed for zqtz."
+    get_settings.cache_clear()
+
+
 def test_preview_rows_api_returns_columns_for_dynamic_table(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
@@ -1374,6 +1428,24 @@ def test_preview_traces_api_empty_duckdb_returns_empty_page(tmp_path, monkeypatc
     assert body["result"]["rows"] == []
     assert body["result"]["limit"] == 25
     assert body["result"]["offset"] == 0
+    get_settings.cache_clear()
+
+
+def test_preview_traces_api_returns_503_for_broken_duckdb_reads(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "broken.duckdb"
+    duckdb_path.write_text("not a duckdb database", encoding="utf-8")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    client = TestClient(
+        load_module("backend.app.main", "backend/app/main.py").app,
+        raise_server_exceptions=False,
+    )
+    response = client.get("/ui/preview/source-foundation/tyw/traces?limit=25&offset=0")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Source preview trace read failed for tyw."
     get_settings.cache_clear()
 
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 
+import duckdb
+
 from tests.helpers import load_module
 
 
@@ -104,4 +106,25 @@ def test_source_preview_reads_module_reexports_split_helpers():
     assert reads_mod._build_trace_columns is columns_mod._build_trace_columns
     assert reads_mod._history_query_parts is summary_reads_mod._history_query_parts
     assert reads_mod._read_paged_table is row_reads_mod._read_paged_table
-    assert reads_mod.source_preview_batch_version is versions_mod.source_preview_batch_version
+    assert reads_mod._row_table_name is versions_mod._row_table_name
+    assert reads_mod._trace_table_name is versions_mod._trace_table_name
+
+
+def test_source_preview_repo_empty_existing_duckdb_without_preview_tables_is_truthful_empty(tmp_path):
+    preview_mod = load_module(
+        "backend.app.repositories.source_preview_repo",
+        "backend/app/repositories/source_preview_repo.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    conn.close()
+
+    payload = preview_mod.load_source_preview_payload(str(duckdb_path))
+    rows_page = preview_mod.load_preview_rows(str(duckdb_path), "tyw", limit=50, offset=0)
+    traces_page = preview_mod.load_rule_traces(str(duckdb_path), "tyw", limit=50, offset=0)
+
+    assert payload.sources == []
+    assert rows_page.total_rows == 0
+    assert rows_page.rows == []
+    assert traces_page.total_rows == 0
+    assert traces_page.rows == []
