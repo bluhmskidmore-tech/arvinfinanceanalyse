@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useApiClient } from "../../../api/client";
+import type { Numeric } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
+import type { DataSectionState } from "../../../components/DataSection.types";
 import type {
   AdvancedAttributionSummary,
   CampisiAttributionPayload,
@@ -12,10 +14,12 @@ import type {
   KRDAttributionPayload,
   PnlAttributionAnalysisSummary,
   PnlCompositionPayload,
+  ResultMeta,
   SpreadAttributionPayload,
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
+import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
 import { AdvancedAttributionChart } from "./AdvancedAttributionChart";
 import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
 import { CampisiAttributionPanel } from "./CampisiAttributionPanel";
@@ -85,6 +89,36 @@ const tabBarStyle = {
   alignItems: "center",
 };
 
+const metaStripStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  marginTop: 14,
+  padding: 14,
+  borderRadius: 12,
+  border: "1px solid #e4ebf5",
+  background: "#f7f9fc",
+} as const;
+
+const metaCellStyle = {
+  display: "grid",
+  gap: 4,
+} as const;
+
+const metaLabelStyle = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+  color: "#8090a8",
+} as const;
+
+const metaValueStyle = {
+  fontSize: 13,
+  color: "#162033",
+  lineHeight: 1.5,
+} as const;
+
 function tabStyle(active: boolean, variant: "default" | "advanced" = "default") {
   const base = {
     padding: "10px 16px",
@@ -110,12 +144,23 @@ function tabStyle(active: boolean, variant: "default" | "advanced" = "default") 
   };
 }
 
+function numericRaw(value: Numeric | null | undefined): number | null | undefined {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+  return value.raw ?? undefined;
+}
+
 function formatYi(value: number | null | undefined): string {
   if (value === null || value === undefined) {
     return "—";
   }
   const yi = value / 100_000_000;
   return `${yi >= 0 ? "+" : ""}${yi.toFixed(2)} 亿`;
+}
+
+function formatYiNumeric(value: Numeric | null | undefined): string {
+  return formatYi(numericRaw(value));
 }
 
 function SectionLead(props: {
@@ -131,6 +176,41 @@ function SectionLead(props: {
       <p style={sectionDescriptionStyle}>{props.description}</p>
     </div>
   );
+}
+
+function formatMetaDateLabel(
+  activeTab: Tab,
+  options: {
+    volumeRateData: VolumeRateAttributionPayload | null;
+    tplMarketData: TPLMarketCorrelationPayload | null;
+    compositionData: PnlCompositionPayload | null;
+    advancedSummary: AdvancedAttributionSummary | null;
+  },
+) {
+  if (activeTab === "volume-rate") {
+    return {
+      label: "当前期间",
+      value: options.volumeRateData?.current_period ?? "—",
+    };
+  }
+  if (activeTab === "tpl-market") {
+    const start = options.tplMarketData?.start_period;
+    const end = options.tplMarketData?.end_period;
+    return {
+      label: "观察区间",
+      value: start && end ? `${start} ~ ${end}` : "—",
+    };
+  }
+  if (activeTab === "composition") {
+    return {
+      label: "报告日期",
+      value: options.compositionData?.report_date ?? options.compositionData?.report_period ?? "—",
+    };
+  }
+  return {
+    label: "报告日期",
+    value: options.advancedSummary?.report_date ?? "—",
+  };
 }
 
 type Tab = "volume-rate" | "tpl-market" | "composition" | "advanced";
@@ -150,6 +230,10 @@ export function PnlAttributionView({ reportDate }: Props) {
   const [tplMarketData, setTplMarketData] = useState<TPLMarketCorrelationPayload | null>(null);
   const [compositionData, setCompositionData] = useState<PnlCompositionPayload | null>(null);
   const [summaryData, setSummaryData] = useState<PnlAttributionAnalysisSummary | null>(null);
+  const [volumeRateMeta, setVolumeRateMeta] = useState<ResultMeta | null>(null);
+  const [tplMarketMeta, setTplMarketMeta] = useState<ResultMeta | null>(null);
+  const [compositionMeta, setCompositionMeta] = useState<ResultMeta | null>(null);
+  const [advancedSummaryMeta, setAdvancedSummaryMeta] = useState<ResultMeta | null>(null);
 
   const [carryRollDownData, setCarryRollDownData] = useState<CarryRollDownPayload | null>(null);
   const [spreadData, setSpreadData] = useState<SpreadAttributionPayload | null>(null);
@@ -159,6 +243,12 @@ export function PnlAttributionView({ reportDate }: Props) {
   const [campisiFourEffects, setCampisiFourEffects] = useState<CampisiFourEffectsPayload | null>(null);
   const [campisiEnhanced, setCampisiEnhanced] = useState<CampisiEnhancedPayload | null>(null);
   const [campisiMaturityBuckets, setCampisiMaturityBuckets] = useState<CampisiMaturityBucketsPayload | null>(null);
+  const [carryMeta, setCarryMeta] = useState<ResultMeta | null>(null);
+  const [spreadMeta, setSpreadMeta] = useState<ResultMeta | null>(null);
+  const [krdMeta, setKrdMeta] = useState<ResultMeta | null>(null);
+  const [campisiFourMeta, setCampisiFourMeta] = useState<ResultMeta | null>(null);
+  const [campisiEnhancedMeta, setCampisiEnhancedMeta] = useState<ResultMeta | null>(null);
+  const [campisiMaturityMeta, setCampisiMaturityMeta] = useState<ResultMeta | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -170,10 +260,12 @@ export function PnlAttributionView({ reportDate }: Props) {
           client.getPnlAttributionAnalysisSummary(reportDate),
         ]);
         setVolumeRateData(data.result);
+        setVolumeRateMeta(data.result_meta);
         setSummaryData(summary.result);
       } else if (activeTab === "tpl-market") {
         const data = await client.getTplMarketCorrelation({ months: 12 });
         setTplMarketData(data.result);
+        setTplMarketMeta(data.result_meta);
       } else if (activeTab === "composition") {
         const data = await client.getPnlCompositionBreakdown({
           reportDate,
@@ -181,6 +273,7 @@ export function PnlAttributionView({ reportDate }: Props) {
           trendMonths: 6,
         });
         setCompositionData(data.result);
+        setCompositionMeta(data.result_meta);
       } else {
         const [carry, spread, krd, summary, campisi, campisiFour, campisiEnhancedData, campisiBuckets] = await Promise.all([
           client.getPnlCarryRollDown(reportDate),
@@ -193,13 +286,20 @@ export function PnlAttributionView({ reportDate }: Props) {
           client.getPnlCampisiMaturityBuckets({ endDate: reportDate, lookbackDays: 30 }),
         ]);
         setCarryRollDownData(carry.result);
+        setCarryMeta(carry.result_meta);
         setSpreadData(spread.result);
+        setSpreadMeta(spread.result_meta);
         setKrdData(krd.result);
+        setKrdMeta(krd.result_meta);
         setAdvancedSummary(summary.result);
+        setAdvancedSummaryMeta(summary.result_meta);
         setCampisiData(campisi.result);
         setCampisiFourEffects(campisiFour.result);
+        setCampisiFourMeta(campisiFour.result_meta);
         setCampisiEnhanced(campisiEnhancedData.result);
+        setCampisiEnhancedMeta(campisiEnhancedData.result_meta);
         setCampisiMaturityBuckets(campisiBuckets.result);
+        setCampisiMaturityMeta(campisiBuckets.result_meta);
       }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "加载失败";
@@ -215,6 +315,88 @@ export function PnlAttributionView({ reportDate }: Props) {
 
   const keyFindings =
     activeTab === "advanced" ? advancedSummary?.key_insights ?? [] : summaryData?.key_findings ?? [];
+  const currentViewMeta =
+    activeTab === "volume-rate"
+      ? volumeRateMeta
+      : activeTab === "tpl-market"
+        ? tplMarketMeta
+        : activeTab === "composition"
+          ? compositionMeta
+          : advancedSummaryMeta;
+  const currentViewDate = formatMetaDateLabel(activeTab, {
+    volumeRateData,
+    tplMarketData,
+    compositionData,
+    advancedSummary,
+  });
+  const advancedMetaRows: [string, ResultMeta | null][] =
+    activeTab === "advanced"
+      ? [
+          ["Carry / Roll-down", carryMeta],
+          ["利差归因", spreadMeta],
+          ["KRD归因", krdMeta],
+          ["高级摘要", advancedSummaryMeta],
+          ["Campisi 四效应", campisiFourMeta],
+          ["Campisi 六效应", campisiEnhancedMeta],
+          ["Campisi 到期桶", campisiMaturityMeta],
+        ]
+      : [];
+
+  const volumeRateState: DataSectionState = derivePnlDataSectionState({
+    meta: volumeRateMeta,
+    isLoading: loading && activeTab === "volume-rate",
+    isError: error !== null && activeTab === "volume-rate",
+    errorMessage: error,
+    isEmpty: !volumeRateData || (volumeRateData.items?.length ?? 0) === 0,
+  });
+
+  const waterfallState: DataSectionState = derivePnlDataSectionState({
+    meta: volumeRateMeta,
+    isLoading: loading && activeTab === "volume-rate",
+    isError: error !== null && activeTab === "volume-rate",
+    errorMessage: error,
+    isEmpty: false,
+  });
+
+  const tplMarketState: DataSectionState = derivePnlDataSectionState({
+    meta: tplMarketMeta,
+    isLoading: loading && activeTab === "tpl-market",
+    isError: error !== null && activeTab === "tpl-market",
+    errorMessage: error,
+    isEmpty: !tplMarketData || (tplMarketData.data_points?.length ?? 0) === 0,
+  });
+
+  const advancedCarryState: DataSectionState = derivePnlDataSectionState({
+    meta: carryMeta,
+    isLoading: loading && activeTab === "advanced",
+    isError: error !== null && activeTab === "advanced",
+    errorMessage: error,
+    isEmpty: !carryRollDownData || (carryRollDownData.items?.length ?? 0) === 0,
+  });
+
+  const campisiFourState: DataSectionState = derivePnlDataSectionState({
+    meta: campisiFourMeta,
+    isLoading: loading && activeTab === "advanced",
+    isError: error !== null && activeTab === "advanced",
+    errorMessage: error,
+    isEmpty: !(campisiFourEffects ?? campisiData),
+  });
+
+  const campisiEnhancedState: DataSectionState = derivePnlDataSectionState({
+    meta: campisiEnhancedMeta,
+    isLoading: loading && activeTab === "advanced",
+    isError: error !== null && activeTab === "advanced",
+    errorMessage: error,
+    isEmpty: !campisiEnhanced,
+  });
+
+  const campisiMaturityState: DataSectionState = derivePnlDataSectionState({
+    meta: campisiMaturityMeta,
+    isLoading: loading && activeTab === "advanced",
+    isError: error !== null && activeTab === "advanced",
+    errorMessage: error,
+    isEmpty: !campisiMaturityBuckets,
+  });
 
   return (
     <div style={shellStyle}>
@@ -329,114 +511,157 @@ export function PnlAttributionView({ reportDate }: Props) {
         testId="pnl-attribution-current-view-lead"
       />
 
-      {error && (
+      {currentViewMeta ? (
+        <div data-testid="pnl-attribution-current-view-meta" style={metaStripStyle}>
+          <div style={metaCellStyle}>
+            <span style={metaLabelStyle}>{currentViewDate.label}</span>
+            <span style={metaValueStyle}>{currentViewDate.value}</span>
+          </div>
+          <div style={metaCellStyle}>
+            <span style={metaLabelStyle}>generated_at</span>
+            <span style={metaValueStyle}>{currentViewMeta.generated_at}</span>
+          </div>
+          <div style={metaCellStyle}>
+            <span style={metaLabelStyle}>quality_flag</span>
+            <span style={metaValueStyle}>{currentViewMeta.quality_flag}</span>
+          </div>
+          <div style={metaCellStyle}>
+            <span style={metaLabelStyle}>fallback_mode</span>
+            <span style={metaValueStyle}>{currentViewMeta.fallback_mode}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "advanced" ? (
+        <div data-testid="pnl-attribution-advanced-view-meta" style={metaStripStyle}>
+          {advancedMetaRows.map(([title, meta]) => (
+            <div key={title} style={metaCellStyle}>
+              <span style={metaLabelStyle}>{title}</span>
+              <span style={metaValueStyle}>
+                {meta
+                  ? `${meta.quality_flag} · ${meta.fallback_mode} · ${meta.generated_at}`
+                  : loading
+                    ? "加载中…"
+                    : "—"}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {activeTab === "volume-rate" && volumeRateData && !loading && !error ? (
         <div
           style={{
-            ...headerCardStyle,
-            borderColor: "#f5c2c2",
-            background: "#fef2f2",
-            color: "#b91c1c",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 12,
           }}
         >
-          加载失败：{error}
-        </div>
-      )}
-
-      {loading && (
-        <div style={{ ...headerCardStyle, textAlign: "center", color: "#5c6b82" }}>加载中…</div>
-      )}
-
-      {!loading && !error && activeTab === "volume-rate" && volumeRateData ? (
-        <>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 12,
-            }}
-          >
-            <div style={{ ...headerCardStyle, padding: 16 }}>
-              <div style={{ fontSize: 12, color: "#5c6b82" }}>当期损益</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>{formatYi(volumeRateData.total_current_pnl)}</div>
-              <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.current_period}</div>
-            </div>
-            {volumeRateData.has_previous_data && (
-              <>
-                <div style={{ ...headerCardStyle, padding: 16 }}>
-                  <div style={{ fontSize: 12, color: "#5c6b82" }}>上期损益</div>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>
-                    {formatYi(volumeRateData.total_previous_pnl)}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.previous_period}</div>
-                </div>
-                <div style={{ ...headerCardStyle, padding: 16, background: "#e8f6ee", borderColor: "#c8e8d5" }}>
-                  <div style={{ fontSize: 12, color: "#15803d" }}>规模效应</div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: (volumeRateData.total_volume_effect ?? 0) >= 0 ? "#15803d" : "#b91c1c",
-                    }}
-                  >
-                    {formatYi(volumeRateData.total_volume_effect)}
-                  </div>
-                </div>
-                <div style={{ ...headerCardStyle, padding: 16, background: "#edf3ff", borderColor: "#cddcff" }}>
-                  <div style={{ fontSize: 12, color: "#1f5eff" }}>利率效应</div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: (volumeRateData.total_rate_effect ?? 0) >= 0 ? "#1f5eff" : "#b35a16",
-                    }}
-                  >
-                    {formatYi(volumeRateData.total_rate_effect)}
-                  </div>
-                </div>
-                <div style={{ ...headerCardStyle, padding: 16, background: "#f6f0ff", borderColor: "#e4d6fb" }}>
-                  <div style={{ fontSize: 12, color: "#6d3bb3" }}>损益变动</div>
-                  <div
-                    style={{
-                      fontSize: 20,
-                      fontWeight: 700,
-                      color: (volumeRateData.total_pnl_change ?? 0) >= 0 ? "#15803d" : "#b91c1c",
-                    }}
-                  >
-                    {formatYi(volumeRateData.total_pnl_change)}
-                  </div>
-                </div>
-              </>
-            )}
+          <div style={{ ...headerCardStyle, padding: 16 }}>
+            <div style={{ fontSize: 12, color: "#5c6b82" }}>当期损益</div>
+            <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>{formatYiNumeric(volumeRateData.total_current_pnl)}</div>
+            <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.current_period}</div>
           </div>
-          <AttributionWaterfallChart data={volumeRateData} />
-          <VolumeRateAnalysisChart data={volumeRateData} />
+          {volumeRateData.has_previous_data && (
+            <>
+              <div style={{ ...headerCardStyle, padding: 16 }}>
+                <div style={{ fontSize: 12, color: "#5c6b82" }}>上期损益</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>
+                  {formatYiNumeric(volumeRateData.total_previous_pnl)}
+                </div>
+                <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.previous_period}</div>
+              </div>
+              <div style={{ ...headerCardStyle, padding: 16, background: "#e8f6ee", borderColor: "#c8e8d5" }}>
+                <div style={{ fontSize: 12, color: "#15803d" }}>规模效应</div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: (numericRaw(volumeRateData.total_volume_effect) ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                  }}
+                >
+                  {formatYiNumeric(volumeRateData.total_volume_effect)}
+                </div>
+              </div>
+              <div style={{ ...headerCardStyle, padding: 16, background: "#edf3ff", borderColor: "#cddcff" }}>
+                <div style={{ fontSize: 12, color: "#1f5eff" }}>利率效应</div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: (numericRaw(volumeRateData.total_rate_effect) ?? 0) >= 0 ? "#1f5eff" : "#b35a16",
+                  }}
+                >
+                  {formatYiNumeric(volumeRateData.total_rate_effect)}
+                </div>
+              </div>
+              <div style={{ ...headerCardStyle, padding: 16, background: "#f6f0ff", borderColor: "#e4d6fb" }}>
+                <div style={{ fontSize: 12, color: "#6d3bb3" }}>损益变动</div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: (numericRaw(volumeRateData.total_pnl_change) ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                  }}
+                >
+                  {formatYiNumeric(volumeRateData.total_pnl_change)}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {activeTab === "volume-rate" ? (
+        <>
+          <AttributionWaterfallChart
+            data={volumeRateData}
+            state={waterfallState}
+            onRetry={() => void loadData()}
+          />
+          <VolumeRateAnalysisChart
+            data={volumeRateData}
+            state={volumeRateState}
+            onRetry={() => void loadData()}
+          />
         </>
       ) : null}
 
-      {!loading && !error && activeTab === "volume-rate" && !volumeRateData && (
-        <div style={{ ...headerCardStyle, color: "#5c6b82" }}>暂无规模/利率归因数据。</div>
-      )}
+      {activeTab === "tpl-market" ? (
+        <TPLMarketChart
+          data={tplMarketData}
+          state={tplMarketState}
+          onRetry={() => void loadData()}
+        />
+      ) : null}
 
-      {!loading && !error && activeTab === "tpl-market" && (
-        <TPLMarketChart data={tplMarketData} />
-      )}
-
-      {!loading && !error && activeTab === "composition" && (
+      {!loading && !error && activeTab === "composition" ? (
         <PnLCompositionChart data={compositionData} />
-      )}
+      ) : null}
 
-      {!loading && !error && activeTab === "advanced" && (
+      {activeTab === "advanced" ? (
         <>
-          <CampisiAttributionPanel data={campisiFourEffects ?? campisiData} />
-          <CampisiEnhancedPanel data={campisiEnhanced} />
-          <CampisiMaturityBucketPanel data={campisiMaturityBuckets} />
+          <CampisiAttributionPanel
+            data={campisiFourEffects ?? campisiData}
+            state={campisiFourState}
+            onRetry={() => void loadData()}
+          />
+          <CampisiEnhancedPanel data={campisiEnhanced} state={campisiEnhancedState} onRetry={() => void loadData()} />
+          <CampisiMaturityBucketPanel
+            data={campisiMaturityBuckets}
+            state={campisiMaturityState}
+            onRetry={() => void loadData()}
+          />
           <AdvancedAttributionChart
             carryData={carryRollDownData}
             spreadData={spreadData}
             krdData={krdData}
+            summaryData={advancedSummary}
+            state={advancedCarryState}
+            onRetry={() => void loadData()}
           />
         </>
-      )}
+      ) : null}
     </div>
   );
 }

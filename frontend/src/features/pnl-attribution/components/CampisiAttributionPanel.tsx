@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { CampisiAttributionPayload, CampisiFourEffectsPayload } from "../../../api/contracts";
+import { DataSection } from "../../../components/DataSection";
+import type { DataSectionState } from "../../../components/DataSection.types";
 
 const cardStyle = {
   padding: 24,
@@ -35,6 +37,8 @@ type NormalizedCampisiData = {
 
 type Props = {
   data: CampisiAttributionPayload | CampisiFourEffectsPayload | null;
+  state: DataSectionState;
+  onRetry: () => void;
 };
 
 function normalizeCampisiData(
@@ -68,20 +72,26 @@ function normalizeCampisiData(
   }
 
   return {
-    total_income: data.total_income,
-    total_treasury_effect: data.total_treasury_effect,
-    total_spread_effect: data.total_spread_effect,
-    total_selection_effect: data.total_selection_effect,
-    income_contribution_pct: data.income_contribution_pct,
-    treasury_contribution_pct: data.treasury_contribution_pct,
-    spread_contribution_pct: data.spread_contribution_pct,
-    selection_contribution_pct: data.selection_contribution_pct,
+    total_income: data.total_income.raw ?? 0,
+    total_treasury_effect: data.total_treasury_effect.raw ?? 0,
+    total_spread_effect: data.total_spread_effect.raw ?? 0,
+    total_selection_effect: data.total_selection_effect.raw ?? 0,
+    income_contribution_pct: data.income_contribution_pct.raw ?? 0,
+    treasury_contribution_pct: data.treasury_contribution_pct.raw ?? 0,
+    spread_contribution_pct: data.spread_contribution_pct.raw ?? 0,
+    selection_contribution_pct: data.selection_contribution_pct.raw ?? 0,
     interpretation: data.interpretation,
-    items: data.items,
+    items: data.items.map((row) => ({
+      category: row.category,
+      income_return: row.income_return.raw ?? 0,
+      treasury_effect: row.treasury_effect.raw ?? 0,
+      spread_effect: row.spread_effect.raw ?? 0,
+      selection_effect: row.selection_effect.raw ?? 0,
+    })),
   };
 }
 
-export function CampisiAttributionPanel({ data }: Props) {
+export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
   const normalized = useMemo(() => normalizeCampisiData(data), [data]);
 
   const barOption = useMemo<EChartsOption | null>(() => {
@@ -123,83 +133,77 @@ export function CampisiAttributionPanel({ data }: Props) {
     };
   }, [normalized]);
 
-  if (!normalized) {
-    return (
-      <div style={cardStyle}>
-        <h3 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: "#162033" }}>
-          Campisi 四效应归因
-        </h3>
-        <p style={{ margin: "12px 0 0", color: "#5c6b82" }}>暂无 Campisi 归因数据。</p>
-      </div>
-    );
-  }
-
   return (
-    <div style={cardStyle}>
-      <h3 style={{ margin: "0 0 8px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
-        Campisi 四效应归因（组合）
-      </h3>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}>
-        {normalized.interpretation}
-      </p>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-          gap: 12,
-          marginBottom: 16,
-          fontSize: 12,
-          color: "#5c6b82",
-        }}
-      >
-        <div>
-          收入 {normalized.income_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_income)}
+    <DataSection title="Campisi 四效应归因（组合）" state={state} onRetry={onRetry}>
+      {!normalized ? (
+        <div style={cardStyle}>
+          <p style={{ margin: 0, color: "#5c6b82" }}>暂无 Campisi 归因数据。</p>
         </div>
-        <div>
-          国债 {normalized.treasury_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_treasury_effect)}
-        </div>
-        <div>
-          利差 {normalized.spread_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_spread_effect)}
-        </div>
-        <div>
-          选择 {normalized.selection_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_selection_effect)}
-        </div>
-      </div>
-      {barOption && <ReactECharts option={barOption} style={{ height: 220 }} notMerge lazyUpdate />}
-      {normalized.items.length > 0 && (
-        <div style={{ marginTop: 20, overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr style={{ background: "#f0f3f8" }}>
-                <th style={{ textAlign: "left", padding: 8 }}>类别</th>
-                <th style={{ textAlign: "right", padding: 8 }}>收入(亿)</th>
-                <th style={{ textAlign: "right", padding: 8 }}>国债(亿)</th>
-                <th style={{ textAlign: "right", padding: 8 }}>利差(亿)</th>
-                <th style={{ textAlign: "right", padding: 8 }}>选择(亿)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {normalized.items.map((row, index) => (
-                <tr key={`${row.category}-${index}`} style={{ borderBottom: "1px solid #eef2f7" }}>
-                  <td style={{ padding: 8 }}>{row.category}</td>
-                  <td style={{ textAlign: "right", padding: 8 }}>
-                    {(row.income_return / 100_000_000).toFixed(2)}
-                  </td>
-                  <td style={{ textAlign: "right", padding: 8 }}>
-                    {(row.treasury_effect / 100_000_000).toFixed(2)}
-                  </td>
-                  <td style={{ textAlign: "right", padding: 8 }}>
-                    {(row.spread_effect / 100_000_000).toFixed(2)}
-                  </td>
-                  <td style={{ textAlign: "right", padding: 8 }}>
-                    {(row.selection_effect / 100_000_000).toFixed(2)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      ) : (
+        <div style={cardStyle}>
+          <p style={{ margin: "0 0 16px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}>
+            {normalized.interpretation}
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+              marginBottom: 16,
+              fontSize: 12,
+              color: "#5c6b82",
+            }}
+          >
+            <div>
+              收入 {normalized.income_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_income)}
+            </div>
+            <div>
+              国债 {normalized.treasury_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_treasury_effect)}
+            </div>
+            <div>
+              利差 {normalized.spread_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_spread_effect)}
+            </div>
+            <div>
+              选择 {normalized.selection_contribution_pct.toFixed(1)}% · {formatYi(normalized.total_selection_effect)}
+            </div>
+          </div>
+          {barOption && <ReactECharts option={barOption} style={{ height: 220 }} notMerge lazyUpdate />}
+          {normalized.items.length > 0 && (
+            <div style={{ marginTop: 20, overflow: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr style={{ background: "#f0f3f8" }}>
+                    <th style={{ textAlign: "left", padding: 8 }}>类别</th>
+                    <th style={{ textAlign: "right", padding: 8 }}>收入(亿)</th>
+                    <th style={{ textAlign: "right", padding: 8 }}>国债(亿)</th>
+                    <th style={{ textAlign: "right", padding: 8 }}>利差(亿)</th>
+                    <th style={{ textAlign: "right", padding: 8 }}>选择(亿)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {normalized.items.map((row, index) => (
+                    <tr key={`${row.category}-${index}`} style={{ borderBottom: "1px solid #eef2f7" }}>
+                      <td style={{ padding: 8 }}>{row.category}</td>
+                      <td style={{ textAlign: "right", padding: 8 }}>
+                        {(row.income_return / 100_000_000).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: 8 }}>
+                        {(row.treasury_effect / 100_000_000).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: 8 }}>
+                        {(row.spread_effect / 100_000_000).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: 8 }}>
+                        {(row.selection_effect / 100_000_000).toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
-    </div>
+    </DataSection>
   );
 }

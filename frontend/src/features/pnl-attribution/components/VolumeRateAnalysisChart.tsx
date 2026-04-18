@@ -1,6 +1,8 @@
 import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { VolumeRateAttributionPayload } from "../../../api/contracts";
+import { DataSection } from "../../../components/DataSection";
+import type { DataSectionState } from "../../../components/DataSection.types";
 
 const cardStyle = {
   padding: 24,
@@ -28,10 +30,12 @@ const thStyle = {
 
 type Props = {
   data: VolumeRateAttributionPayload | null;
+  state: DataSectionState;
+  onRetry: () => void;
 };
 
 /** 量价归因：分类别当期/上期损益对比 + 明细表（规模、收益率、一阶效应与对账）。 */
-export function VolumeRateAnalysisChart({ data }: Props) {
+export function VolumeRateAnalysisChart({ data, state, onRetry }: Props) {
   const categoryOption = useMemo<EChartsOption | null>(() => {
     if (!data) {
       return null;
@@ -58,235 +62,233 @@ export function VolumeRateAnalysisChart({ data }: Props) {
         {
           name: "当期损益",
           type: "bar",
-          data: rows.map((r) => r.current_pnl / 100_000_000),
+          data: rows.map((r) => (r.current_pnl.raw ?? 0) / 100_000_000),
           itemStyle: { color: "#3b82f6", borderRadius: [4, 4, 0, 0] },
         },
         {
           name: "上期损益",
           type: "bar",
-          data: rows.map((r) => (r.previous_pnl ?? 0) / 100_000_000),
+          data: rows.map((r) => (r.previous_pnl?.raw ?? 0) / 100_000_000),
           itemStyle: { color: "#94a3b8", borderRadius: [4, 4, 0, 0] },
         },
       ],
     };
   }, [data]);
 
-  if (!data) {
-    return (
-      <div style={{ ...cardStyle, textAlign: "center", color: "#5c6b82" }}>暂无数据</div>
-    );
-  }
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-      {categoryOption && (
-        <div style={cardStyle}>
-          <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
-            各产品类别损益对比（资产类顶层）
-          </h3>
-          <ReactECharts option={categoryOption} style={{ height: 300 }} notMerge lazyUpdate />
-        </div>
-      )}
+    <DataSection title="量价归因明细" state={state} onRetry={onRetry}>
+      {data ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {categoryOption && (
+            <div style={cardStyle}>
+              <h3 style={{ margin: "0 0 16px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
+                各产品类别损益对比（资产类顶层）
+              </h3>
+              <ReactECharts option={categoryOption} style={{ height: 300 }} notMerge lazyUpdate />
+            </div>
+          )}
 
-      <div style={cardStyle}>
-        <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#162033" }}>
-          归因分析明细表（亿元）
-        </h3>
-        <p style={{ margin: "0 0 12px", fontSize: 12, color: "#5c6b82" }}>
-          损益变动 = 规模一阶效应 + 利率一阶效应 + 交叉效应
-        </p>
-        <div style={tableShellStyle}>
-          <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse", fontSize: 12 }}>
-            <thead>
-              <tr>
-                <th
-                  style={{
-                    ...thStyle,
-                    textAlign: "left",
-                    position: "sticky",
-                    left: 0,
-                    zIndex: 1,
-                  }}
-                >
-                  产品类别
-                </th>
-                <th style={thStyle}>规模日均·当期</th>
-                <th style={thStyle}>规模日均·上期</th>
-                <th style={thStyle}>收益率·当期</th>
-                <th style={thStyle}>收益率·上期</th>
-                <th style={thStyle}>当期损益</th>
-                <th style={thStyle}>损益变动</th>
-                <th style={thStyle}>规模一阶</th>
-                <th style={thStyle}>利率一阶</th>
-                <th style={thStyle}>交叉</th>
-                <th style={thStyle}>归因合计</th>
-                <th style={thStyle}>对账差异</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.items
-                .filter((item) => item.category_type === "asset")
-                .map((item, idx) => (
-                  <tr key={`asset-${idx}`} style={{ borderBottom: "1px solid #eef2f7" }}>
-                    <td
+          <div style={cardStyle}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#162033" }}>
+              归因分析明细表（亿元）
+            </h3>
+            <p style={{ margin: "0 0 12px", fontSize: 12, color: "#5c6b82" }}>
+              损益变动 = 规模一阶效应 + 利率一阶效应 + 交叉效应
+            </p>
+            <div style={tableShellStyle}>
+              <table style={{ width: "100%", minWidth: 1100, borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th
                       style={{
-                        padding: "8px 10px",
+                        ...thStyle,
                         textAlign: "left",
-                        fontWeight: item.level === 0 ? 600 : 400,
-                        paddingLeft: item.level > 0 ? 28 : 10,
-                        background: "#ffffff",
+                        position: "sticky",
+                        left: 0,
+                        zIndex: 1,
                       }}
                     >
-                      {item.category}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
-                      {((item.current_scale ?? 0) / 100_000_000).toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
-                      {item.previous_scale != null
-                        ? (item.previous_scale / 100_000_000).toFixed(2)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.current_yield != null ? `${item.current_yield.toFixed(2)}%` : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.previous_yield != null ? `${item.previous_yield.toFixed(2)}%` : "—"}
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "8px 10px",
-                        color: item.current_pnl >= 0 ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      {(item.current_pnl / 100_000_000).toFixed(2)}
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "8px 10px",
-                        color:
-                          (item.pnl_change ?? 0) >= 0 ? "#16a34a" : "#dc2626",
-                      }}
-                    >
-                      {item.pnl_change != null
-                        ? `${(item.pnl_change / 100_000_000) >= 0 ? "+" : ""}${(item.pnl_change / 100_000_000).toFixed(2)}`
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.volume_effect != null
-                        ? (item.volume_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.rate_effect != null
-                        ? (item.rate_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.interaction_effect != null
-                        ? (item.interaction_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600 }}>
-                      {item.attrib_sum != null
-                        ? (item.attrib_sum / 100_000_000).toFixed(4)
-                        : "0.0000"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.recon_error != null
-                        ? Math.abs(item.recon_error / 100_000_000) < 0.0001
-                          ? "\u2248 0"
-                          : (item.recon_error / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
+                      产品类别
+                    </th>
+                    <th style={thStyle}>规模日均·当期</th>
+                    <th style={thStyle}>规模日均·上期</th>
+                    <th style={thStyle}>收益率·当期</th>
+                    <th style={thStyle}>收益率·上期</th>
+                    <th style={thStyle}>当期损益</th>
+                    <th style={thStyle}>损益变动</th>
+                    <th style={thStyle}>规模一阶</th>
+                    <th style={thStyle}>利率一阶</th>
+                    <th style={thStyle}>交叉</th>
+                    <th style={thStyle}>归因合计</th>
+                    <th style={thStyle}>对账差异</th>
                   </tr>
-                ))}
-              {data.items
-                .filter((item) => item.category_type === "liability")
-                .map((item, idx) => (
-                  <tr key={`l-${idx}`} style={{ borderBottom: "1px solid #eef2f7" }}>
-                    <td
-                      style={{
-                        padding: "8px 10px",
-                        textAlign: "left",
-                        fontWeight: item.level === 0 ? 600 : 400,
-                        paddingLeft: item.level > 0 ? 28 : 10,
-                      }}
-                    >
-                      {item.category}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
-                      {((item.current_scale ?? 0) / 100_000_000).toFixed(2)}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
-                      {item.previous_scale != null
-                        ? (item.previous_scale / 100_000_000).toFixed(2)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.current_yield != null ? `${item.current_yield.toFixed(2)}%` : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.previous_yield != null ? `${item.previous_yield.toFixed(2)}%` : "—"}
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "8px 10px",
-                        color: item.current_pnl >= 0 ? "#15803d" : "#b91c1c",
-                      }}
-                    >
-                      {item.current_pnl != null
-                        ? (item.current_pnl / 100_000_000).toFixed(2)
-                        : "—"}
-                    </td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        padding: "8px 10px",
-                        color:
-                          (item.pnl_change ?? 0) >= 0 ? "#16a34a" : "#dc2626",
-                      }}
-                    >
-                      {item.pnl_change != null
-                        ? `${(item.pnl_change / 100_000_000) >= 0 ? "+" : ""}${(item.pnl_change / 100_000_000).toFixed(2)}`
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.volume_effect != null
-                        ? (item.volume_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.rate_effect != null
-                        ? (item.rate_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.interaction_effect != null
-                        ? (item.interaction_effect / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600 }}>
-                      {item.attrib_sum != null
-                        ? (item.attrib_sum / 100_000_000).toFixed(4)
-                        : "0.0000"}
-                    </td>
-                    <td style={{ textAlign: "right", padding: "8px 10px" }}>
-                      {item.recon_error != null
-                        ? Math.abs(item.recon_error / 100_000_000) < 0.0001
-                          ? "\u2248 0"
-                          : (item.recon_error / 100_000_000).toFixed(4)
-                        : "—"}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
+                </thead>
+                <tbody>
+                  {data.items
+                    .filter((item) => item.category_type === "asset")
+                    .map((item, idx) => (
+                      <tr key={`asset-${idx}`} style={{ borderBottom: "1px solid #eef2f7" }}>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            textAlign: "left",
+                            fontWeight: item.level === 0 ? 600 : 400,
+                            paddingLeft: item.level > 0 ? 28 : 10,
+                            background: "#ffffff",
+                          }}
+                        >
+                          {item.category}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
+                          {((item.current_scale.raw ?? 0) / 100_000_000).toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
+                          {item.previous_scale != null
+                            ? ((item.previous_scale.raw ?? 0) / 100_000_000).toFixed(2)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.current_yield != null
+                            ? `${(item.current_yield.raw ?? 0).toFixed(2)}%`
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.previous_yield != null ? `${(item.previous_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            color: (item.current_pnl.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                          }}
+                        >
+                          {((item.current_pnl.raw ?? 0) / 100_000_000).toFixed(2)}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            color: (item.pnl_change?.raw ?? 0) >= 0 ? "#16a34a" : "#dc2626",
+                          }}
+                        >
+                          {item.pnl_change != null
+                            ? `${(item.pnl_change.raw ?? 0) / 100_000_000 >= 0 ? "+" : ""}${((item.pnl_change.raw ?? 0) / 100_000_000).toFixed(2)}`
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.volume_effect != null
+                            ? ((item.volume_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.rate_effect != null
+                            ? ((item.rate_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.interaction_effect != null
+                            ? ((item.interaction_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600 }}>
+                          {item.attrib_sum != null
+                            ? ((item.attrib_sum.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "0.0000"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.recon_error != null
+                            ? Math.abs((item.recon_error.raw ?? 0) / 100_000_000) < 0.0001
+                              ? "\u2248 0"
+                              : ((item.recon_error.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  {data.items
+                    .filter((item) => item.category_type === "liability")
+                    .map((item, idx) => (
+                      <tr key={`l-${idx}`} style={{ borderBottom: "1px solid #eef2f7" }}>
+                        <td
+                          style={{
+                            padding: "8px 10px",
+                            textAlign: "left",
+                            fontWeight: item.level === 0 ? 600 : 400,
+                            paddingLeft: item.level > 0 ? 28 : 10,
+                          }}
+                        >
+                          {item.category}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
+                          {((item.current_scale.raw ?? 0) / 100_000_000).toFixed(2)}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontVariantNumeric: "tabular-nums" }}>
+                          {item.previous_scale != null
+                            ? ((item.previous_scale.raw ?? 0) / 100_000_000).toFixed(2)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.current_yield != null ? `${(item.current_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.previous_yield != null ? `${(item.previous_yield.raw ?? 0).toFixed(2)}%` : "—"}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            color: (item.current_pnl.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                          }}
+                        >
+                          {item.current_pnl != null
+                            ? ((item.current_pnl.raw ?? 0) / 100_000_000).toFixed(2)
+                            : "—"}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "right",
+                            padding: "8px 10px",
+                            color: (item.pnl_change?.raw ?? 0) >= 0 ? "#16a34a" : "#dc2626",
+                          }}
+                        >
+                          {item.pnl_change != null
+                            ? `${(item.pnl_change.raw ?? 0) / 100_000_000 >= 0 ? "+" : ""}${((item.pnl_change.raw ?? 0) / 100_000_000).toFixed(2)}`
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.volume_effect != null
+                            ? ((item.volume_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.rate_effect != null
+                            ? ((item.rate_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.interaction_effect != null
+                            ? ((item.interaction_effect.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px", fontWeight: 600 }}>
+                          {item.attrib_sum != null
+                            ? ((item.attrib_sum.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "0.0000"}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 10px" }}>
+                          {item.recon_error != null
+                            ? Math.abs((item.recon_error.raw ?? 0) / 100_000_000) < 0.0001
+                              ? "\u2248 0"
+                              : ((item.recon_error.raw ?? 0) / 100_000_000).toFixed(4)
+                            : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </DataSection>
   );
 }

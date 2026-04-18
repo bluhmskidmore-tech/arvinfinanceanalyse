@@ -29,6 +29,11 @@ describe("PnlAttributionPage", () => {
     expect(await screen.findByTestId("pnl-attribution-page-title")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-workbench-lead")).toBeInTheDocument();
     expect(screen.getByTestId("pnl-attribution-current-view-lead")).toBeInTheDocument();
+    expect(await screen.findByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("当前期间");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-03");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-04-09T10:30:00Z");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("ok");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("none");
 
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();
@@ -38,5 +43,9 @@ describe("PnlAttributionPage", () => {
     expect(await screen.findByText("Campisi 四效应归因（组合）")).toBeInTheDocument();
     expect(screen.getByText("Campisi 六效应归因（扩展）")).toBeInTheDocument();
     expect(screen.getByText("Campisi 到期桶拆解")).toBeInTheDocument();
+    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("Carry / Roll-down");
+    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("利差归因");
+    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("KRD归因");
+    expect(screen.getByTestId("pnl-attribution-advanced-view-meta")).toHaveTextContent("高级摘要");
   });
 });
