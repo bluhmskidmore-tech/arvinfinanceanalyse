@@ -11,15 +11,24 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.pnl_repo import PnlRepository
 from backend.app.repositories.yield_curve_repo import YieldCurveRepository
+from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_from_raw
 from backend.app.schemas.pnl_attribution import (
     AdvancedAttributionSummary,
+    CampisiAttributionItem,
     CampisiAttributionPayload,
+    CarryRollDownItem,
     CarryRollDownPayload,
+    KRDAttributionBucket,
     KRDAttributionPayload,
     PnlAttributionAnalysisSummary,
+    PnlCompositionItem,
     PnlCompositionPayload,
+    PnlCompositionTrendItem,
+    SpreadAttributionItem,
     SpreadAttributionPayload,
     TPLMarketCorrelationPayload,
+    TPLMarketDataPoint,
+    VolumeRateAttributionItem,
     VolumeRateAttributionPayload,
 )
 from backend.app.services.formal_result_runtime import build_formal_result_envelope, build_formal_result_meta
@@ -148,6 +157,65 @@ def _with_optional_warnings(payload: dict[str, Any], *, warn: bool) -> dict[str,
     return payload
 
 
+_NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
+
+_LIST_FIELD_ITEM_CLASS: dict[tuple[type, str], type] = {
+    (VolumeRateAttributionPayload, "items"): VolumeRateAttributionItem,
+    (TPLMarketCorrelationPayload, "data_points"): TPLMarketDataPoint,
+    (PnlCompositionPayload, "items"): PnlCompositionItem,
+    (PnlCompositionPayload, "trend_data"): PnlCompositionTrendItem,
+    (CarryRollDownPayload, "items"): CarryRollDownItem,
+    (SpreadAttributionPayload, "items"): SpreadAttributionItem,
+    (KRDAttributionPayload, "buckets"): KRDAttributionBucket,
+    (CampisiAttributionPayload, "items"): CampisiAttributionItem,
+}
+
+
+def _numeric_dict(raw: float | None, unit: NumericUnit, sign_aware: bool) -> dict[str, Any]:
+    return numeric_from_raw(raw=raw, unit=unit, sign_aware=sign_aware).model_dump(mode="json")
+
+
+def _promote_flat(payload: dict[str, Any], NumericClass: type) -> dict[str, Any]:
+    field_map: dict[str, tuple[NumericUnit, bool]] = getattr(NumericClass, "_NUMERIC_FIELDS", {}) or {}
+    out = dict(payload)
+    for name, (unit, sign_aware) in field_map.items():
+        if name not in out:
+            continue
+        v = out[name]
+        if v is None or isinstance(v, Numeric):
+            continue
+        if isinstance(v, dict) and _NUMERIC_JSON_KEYS <= set(v.keys()):
+            continue
+        if isinstance(v, (int, float)):
+            out[name] = _numeric_dict(float(v), unit, sign_aware)
+    return out
+
+
+def _promote_payload_numerics(payload: dict[str, Any], PayloadClass: type) -> dict[str, Any]:
+    out = _promote_flat(payload, PayloadClass)
+    for (cls, field_name), item_cls in _LIST_FIELD_ITEM_CLASS.items():
+        if cls is not PayloadClass:
+            continue
+        lst = out.get(field_name)
+        if not isinstance(lst, list):
+            continue
+        out[field_name] = [
+            _promote_flat(it, item_cls) if isinstance(it, dict) else it for it in lst
+        ]
+    return out
+
+
+def _to_workbook_scalars(payload: dict[str, Any]) -> dict[str, Any]:
+    """Strip top-level Numeric JSON dicts to raw scalars for core_finance workbench."""
+    out: dict[str, Any] = {}
+    for k, v in payload.items():
+        if isinstance(v, dict) and _NUMERIC_JSON_KEYS <= set(v.keys()):
+            out[k] = v.get("raw")
+        else:
+            out[k] = v
+    return out
+
+
 def volume_rate_attribution_envelope(
     *,
     report_date: str | None,
@@ -165,7 +233,8 @@ def volume_rate_attribution_envelope(
             previous_period="",
             compare_type=compare_type,
         )
-        p = VolumeRateAttributionPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, VolumeRateAttributionPayload)
+        p = VolumeRateAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.volume_rate"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -197,7 +266,8 @@ def volume_rate_attribution_envelope(
         compare_type=compare_type,
     )
     warn = not cur_pnl or (compare_type == "mom" and not prev_snap)
-    p = VolumeRateAttributionPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, VolumeRateAttributionPayload)
+    p = VolumeRateAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.volume_rate") if warn else _meta_ok("pnl_attribution.volume_rate"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -215,7 +285,8 @@ def tpl_market_correlation_envelope(*, months: int = 12) -> dict[str, object]:
             start_period="",
             end_period="",
         )
-        p = TPLMarketCorrelationPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, TPLMarketCorrelationPayload)
+        p = TPLMarketCorrelationPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.tpl_market"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -268,7 +339,8 @@ def tpl_market_correlation_envelope(*, months: int = 12) -> dict[str, object]:
         end_period=end_p,
     )
     warn = len(points) < 2
-    p = TPLMarketCorrelationPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, TPLMarketCorrelationPayload)
+    p = TPLMarketCorrelationPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.tpl_market") if warn else _meta_ok("pnl_attribution.tpl_market"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -290,7 +362,8 @@ def pnl_composition_envelope(
             pnl_rows=[],
             trend_rows=[],
         )
-        p = PnlCompositionPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, PnlCompositionPayload)
+        p = PnlCompositionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.composition"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -332,7 +405,8 @@ def pnl_composition_envelope(
         trend_rows=trend,
     )
     warn = not rows
-    p = PnlCompositionPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, PnlCompositionPayload)
+    p = PnlCompositionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.composition") if warn else _meta_ok("pnl_attribution.composition"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -345,8 +419,10 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
     rd = report_date or (repo_dates[0] if repo_dates else "")
     vol_env = volume_rate_attribution_envelope(report_date=rd or None, compare_type="mom")
     tpl_env = tpl_market_correlation_envelope(months=12)
-    vol = dict(vol_env.get("result") or {})
-    tpl = dict(tpl_env.get("result") or {})
+    vol_raw = dict(vol_env.get("result") or {})
+    tpl_raw = dict(tpl_env.get("result") or {})
+    vol = _to_workbook_scalars(vol_raw)
+    tpl = _to_workbook_scalars(tpl_raw)
 
     corr = tpl.get("correlation_coefficient")
     corr_f = float(corr) if corr is not None else None
@@ -356,8 +432,9 @@ def attribution_analysis_summary_envelope(*, report_date: str | None) -> dict[st
         rate_effect=vol.get("total_rate_effect"),
         correlation_tpl_treasury=corr_f,
     )
-    warn = bool(vol.get("warnings")) or bool(tpl.get("warnings"))
-    p = PnlAttributionAnalysisSummary.model_validate(summary).model_dump(mode="json")
+    warn = bool(vol_raw.get("warnings")) or bool(tpl_raw.get("warnings"))
+    promoted = _promote_payload_numerics(summary, PnlAttributionAnalysisSummary)
+    p = PnlAttributionAnalysisSummary.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.summary") if warn else _meta_ok("pnl_attribution.summary"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -370,7 +447,8 @@ def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
     ftp = float(get_settings().ftp_rate_pct)
     if not dates:
         payload = pa_wb.build_carry_roll_down(report_date="", bond_rows=[], ftp_rate_pct=ftp, curve_slope_bp=None)
-        p = CarryRollDownPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, CarryRollDownPayload)
+        p = CarryRollDownPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.carry_rolldown"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -395,7 +473,8 @@ def carry_roll_down_envelope(*, report_date: str | None) -> dict[str, object]:
         curve_slope_bp=slope,
     )
     warn = not rows
-    p = CarryRollDownPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, CarryRollDownPayload)
+    p = CarryRollDownPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.carry_rolldown") if warn else _meta_ok("pnl_attribution.carry_rolldown"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -416,7 +495,8 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
             treasury_10y_start_pct=None,
             treasury_10y_end_pct=None,
         )
-        p = SpreadAttributionPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
+        p = SpreadAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.spread"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -441,7 +521,8 @@ def spread_attribution_envelope(*, report_date: str | None, lookback_days: int =
         treasury_10y_end_pct=t_end,
     )
     warn = not rows_e or not rows_s
-    p = SpreadAttributionPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, SpreadAttributionPayload)
+    p = SpreadAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.spread") if warn else _meta_ok("pnl_attribution.spread"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -461,7 +542,8 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
             bond_rows_start=[],
             treasury_shift_bp=None,
         )
-        p = KRDAttributionPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
+        p = KRDAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.krd"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -485,7 +567,8 @@ def krd_attribution_envelope(*, report_date: str | None, lookback_days: int = 30
         treasury_shift_bp=shift_bp,
     )
     warn = not rows_e or not rows_s
-    p = KRDAttributionPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, KRDAttributionPayload)
+    p = KRDAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.krd") if warn else _meta_ok("pnl_attribution.krd"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -498,14 +581,15 @@ def advanced_attribution_summary_envelope(*, report_date: str | None) -> dict[st
     k = krd_attribution_envelope(report_date=report_date, lookback_days=30)
     payload = pa_wb.build_advanced_attribution_summary(
         report_date=str(report_date or ""),
-        carry_payload=dict(c.get("result") or {}),
-        spread_payload=dict(s.get("result") or {}),
-        krd_payload=dict(k.get("result") or {}),
+        carry_payload=_to_workbook_scalars(dict(c.get("result") or {})),
+        spread_payload=_to_workbook_scalars(dict(s.get("result") or {})),
+        krd_payload=_to_workbook_scalars(dict(k.get("result") or {})),
     )
     rd = report_date or dict(c.get("result") or {}).get("report_date") or ""
     payload["report_date"] = str(rd or payload["report_date"])
     warn = any(bool(dict(x.get("result") or {}).get("warnings")) for x in (c, s, k))
-    p = AdvancedAttributionSummary.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, AdvancedAttributionSummary)
+    p = AdvancedAttributionSummary.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.advanced_summary") if warn else _meta_ok("pnl_attribution.advanced_summary"),
         result_payload=_with_optional_warnings(p, warn=warn),
@@ -529,7 +613,8 @@ def campisi_attribution_envelope(
             bond_rows=[],
             treasury_dy_decimal=None,
         )
-        p = CampisiAttributionPayload.model_validate(payload).model_dump(mode="json")
+        promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
+        p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
         return build_formal_result_envelope(
             result_meta=_meta_warn("pnl_attribution.campisi"),
             result_payload=_with_optional_warnings(p, warn=True),
@@ -553,7 +638,8 @@ def campisi_attribution_envelope(
         treasury_dy_decimal=dy,
     )
     warn = not rows
-    p = CampisiAttributionPayload.model_validate(payload).model_dump(mode="json")
+    promoted = _promote_payload_numerics(payload, CampisiAttributionPayload)
+    p = CampisiAttributionPayload.model_validate(promoted).model_dump(mode="json")
     return build_formal_result_envelope(
         result_meta=_meta_warn("pnl_attribution.campisi") if warn else _meta_ok("pnl_attribution.campisi"),
         result_payload=_with_optional_warnings(p, warn=warn),
