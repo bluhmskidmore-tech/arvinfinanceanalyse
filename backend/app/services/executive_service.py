@@ -7,7 +7,7 @@ from backend.app.core_finance.alert_engine import evaluate_alerts
 from backend.app.governance.formal_compute_lineage import resolve_completed_formal_build_lineage
 from backend.app.core_finance.liability_analytics_compat import compute_liability_yield_metrics
 from backend.app.core_finance.risk_tensor import compute_portfolio_risk_tensor
-from backend.app.governance.settings import get_settings
+from backend.app.governance.settings import get_settings, Settings
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.formal_zqtz_balance_metrics_repo import (
     FormalZqtzBalanceMetricsRepository,
@@ -36,6 +36,11 @@ from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
 
+_MISS_SOURCE = "sv_exec_dashboard_explicit_miss_v1"
+_DEFAULT_SOURCE = "sv_exec_dashboard_v1"
+_DEFAULT_RULE = "rv_exec_dashboard_v1"
+_CACHE_VERSION = "cv_exec_dashboard_v1"
+
 
 def _normalize_report_date(report_date: str | None) -> str | None:
     if report_date is None:
@@ -57,7 +62,7 @@ def _envelope(
         basis="analytical",
         trace_id=f"tr_{result_kind.replace('.', '_')}",
         result_kind=result_kind,
-        cache_version="cv_exec_dashboard_v1",
+        cache_version=_CACHE_VERSION,
         source_version=source_version,
         rule_version=rule_version,
         quality_flag=quality_flag,
@@ -327,11 +332,6 @@ def _empty_alerts_payload() -> AlertsPayload:
     )
 
 
-_MISS_SOURCE = _MISS_SOURCE
-_DEFAULT_SOURCE = _DEFAULT_SOURCE
-_DEFAULT_RULE = _DEFAULT_RULE
-
-
 def _build_repo_payload_envelope(
     result_kind: str,
     repo_factory,
@@ -452,10 +452,10 @@ def _build_contribution_from_repo(
 
 
 def _fetch_aum(
-    settings,
+    settings: Settings,
     normalized_report_date: str | None,
-    src_versions: list,
-    rule_versions: list,
+    src_versions: list[object],
+    rule_versions: list[object],
 ) -> tuple[float | None, str]:
     balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
     dates = list(getattr(balance_repo, "list_report_dates", lambda: [])())
@@ -480,11 +480,11 @@ def _fetch_aum(
 
 
 def _fetch_ytd(
-    settings,
+    settings: Settings,
     normalized_report_date: str | None,
     governance_dir: str,
-    src_versions: list,
-    rule_versions: list,
+    src_versions: list[object],
+    rule_versions: list[object],
 ) -> tuple[float | None, str]:
     pnl_repo = PnlRepository(str(settings.duckdb_path))
     dates = list(
@@ -522,10 +522,10 @@ def _fetch_ytd(
 
 
 def _fetch_nim(
-    settings,
+    settings: Settings,
     normalized_report_date: str | None,
-    src_versions: list,
-    rule_versions: list,
+    src_versions: list[object],
+    rule_versions: list[object],
 ) -> tuple[float | None, str]:
     liability_repo = LiabilityAnalyticsRepository(str(settings.duckdb_path))
     current = normalized_report_date or liability_repo.resolve_latest_report_date()
@@ -557,11 +557,11 @@ def _fetch_nim(
 
 
 def _fetch_dv01(
-    settings,
+    settings: Settings,
     normalized_report_date: str | None,
     governance_dir: str,
-    src_versions: list,
-    rule_versions: list,
+    src_versions: list[object],
+    rule_versions: list[object],
 ) -> tuple[float | None, str]:
     bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
     dates = list(getattr(bond_repo, "list_report_dates", lambda: [])())
