@@ -2479,15 +2479,14 @@ export type CubeQueryResult = CubeQueryPayload & { result_meta: ResultMeta };
 
 export type LiabilityBucketAmountItem = {
   bucket: string;
-  /** 原币金额（元），V1 多为 number；迁移中可为 decimal string */
-  amount?: number | string | null;
-  amount_yi?: number | string | null;
+  amount?: Numeric | null;
+  amount_yi?: Numeric | null;
 };
 
 export type LiabilityNameAmountItem = {
   name: string;
-  amount?: number | string | null;
-  amount_yi?: number | string | null;
+  amount?: Numeric | null;
+  amount_yi?: Numeric | null;
 };
 
 export type LiabilityRiskBucketsPayload = {
@@ -2501,11 +2500,10 @@ export type LiabilityRiskBucketsPayload = {
 };
 
 export type LiabilityYieldKpi = {
-  /** 小数口径，如 0.0255 = 2.55% */
-  asset_yield: number | null;
-  liability_cost: number | null;
-  market_liability_cost: number | null;
-  nim: number | null;
+  asset_yield: Numeric | null;
+  liability_cost: Numeric | null;
+  market_liability_cost: Numeric | null;
+  nim: Numeric | null;
 };
 
 export type LiabilityYieldMetricsPayload = {
@@ -2515,74 +2513,63 @@ export type LiabilityYieldMetricsPayload = {
 
 export type LiabilityCounterpartyItem = {
   name: string;
-  value: number;
-  type?: string;
-  weighted_cost?: number | null;
-  weighted_rate?: number | null;
+  value?: Numeric | null;
+  type: string;
+  weighted_cost?: Numeric | null;
 };
 
 export type LiabilityCounterpartyTypeSlice = {
   name: string;
-  value: number;
+  value?: Numeric | null;
 };
 
 export type LiabilityCounterpartyPayload = {
   report_date: string;
-  total_value: number;
+  total_value: Numeric;
   top_10: LiabilityCounterpartyItem[];
   by_type: LiabilityCounterpartyTypeSlice[];
 };
 
-export type LiabMonthlyCounterpartyDetailItem = {
-  name: string;
-  avg_value: number;
-  proportion: number;
-  weighted_cost?: number | null;
+/** 与后端 `LiabilityMonthlyBreakdownRow` 对齐。 */
+export type LiabilityMonthlyBreakdownRow = {
+  category?: string | null;
+  bucket?: string | null;
   type?: string | null;
-};
-
-export type LiabMonthlyCategoryBreakdownItem = {
-  category: string;
-  avg_balance: number;
-  proportion: number;
-};
-
-export type LiabMonthlyBucketItem = {
-  bucket: string;
-  avg_balance: number;
-};
-
-export type LiabMonthlyInstitutionTypeItem = {
-  type: string;
-  avg_value: number;
+  name?: string | null;
+  avg_balance?: Numeric | null;
+  avg_value?: Numeric | null;
+  proportion?: Numeric | null;
+  amount?: Numeric | null;
+  pct?: Numeric | null;
+  weighted_cost?: Numeric | null;
 };
 
 export type LiabilitiesMonthlyItem = {
   month: string;
   month_label: string;
-  avg_total_liabilities: number;
-  avg_interbank_liabilities: number;
-  avg_issued_liabilities: number;
-  avg_liability_cost: number | null;
-  mom_change: number | null;
-  mom_change_pct: number | null;
-  counterparty_top10?: LiabMonthlyCounterpartyDetailItem[];
-  by_institution_type?: LiabMonthlyInstitutionTypeItem[];
-  structure_overview?: LiabMonthlyCategoryBreakdownItem[];
-  term_buckets?: LiabMonthlyBucketItem[];
-  interbank_by_type?: LiabMonthlyCategoryBreakdownItem[];
-  interbank_term_buckets?: LiabMonthlyBucketItem[];
-  issued_by_type?: LiabMonthlyCategoryBreakdownItem[];
-  issued_term_buckets?: LiabMonthlyBucketItem[];
-  counterparty_details?: LiabMonthlyCounterpartyDetailItem[];
+  avg_total_liabilities: Numeric | null;
+  avg_interbank_liabilities: Numeric | null;
+  avg_issued_liabilities: Numeric | null;
+  avg_liability_cost: Numeric | null;
+  mom_change: Numeric | null;
+  mom_change_pct: Numeric | null;
+  counterparty_top10?: LiabilityMonthlyBreakdownRow[];
+  by_institution_type?: LiabilityMonthlyBreakdownRow[];
+  structure_overview?: LiabilityMonthlyBreakdownRow[];
+  term_buckets?: LiabilityMonthlyBreakdownRow[];
+  interbank_by_type?: LiabilityMonthlyBreakdownRow[];
+  interbank_term_buckets?: LiabilityMonthlyBreakdownRow[];
+  issued_by_type?: LiabilityMonthlyBreakdownRow[];
+  issued_term_buckets?: LiabilityMonthlyBreakdownRow[];
+  counterparty_details?: LiabilityMonthlyBreakdownRow[];
   num_days: number;
 };
 
 export type LiabilitiesMonthlyPayload = {
   year: number;
   months: LiabilitiesMonthlyItem[];
-  ytd_avg_total_liabilities: number;
-  ytd_avg_liability_cost: number | null;
+  ytd_avg_total_liabilities: Numeric | null;
+  ytd_avg_liability_cost: Numeric | null;
 };
 
 /** ADB 日均分析 — 与 V1 `/api/analysis/adb` 对齐 */

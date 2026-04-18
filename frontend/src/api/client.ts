@@ -5091,7 +5091,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return {
         report_date: options.reportDate?.trim() || "",
-        total_value: 0,
+        total_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
         top_10: [],
         by_type: [],
       };
@@ -5101,7 +5101,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return {
         year,
         months: [],
-        ytd_avg_total_liabilities: 0,
+        ytd_avg_total_liabilities: null,
         ytd_avg_liability_cost: null,
       };
     },

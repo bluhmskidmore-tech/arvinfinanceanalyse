@@ -5,41 +5,17 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type { LiabilityYieldKpi } from "../../../api/contracts";
+import { adaptLiabilityCounterparty } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";
 import { LiabilityNimStressMonthlyPanel } from "../components/LiabilityNimStressMonthlyPanel";
 import { LiabilityNimStressPanel } from "../components/LiabilityNimStressPanel";
 import { LiabilityStructureGrids } from "../components/LiabilityStructureGrids";
-import { bucketAmountToYi, nameAmountToYi } from "../utils/money";
+import { bucketAmountToYi, nameAmountToYi, numericToYi, numericYuanRaw, numericPctRaw } from "../utils/money";
 
 const { Title, Text } = Typography;
 
 type TabKey = "daily" | "monthly";
-
-function normalizeDailyRows(
-  payload: {
-    total_value: number;
-    top_10: {
-      name: string;
-      value: number;
-      type?: string;
-      weighted_cost?: number | null;
-      weighted_rate?: number | null;
-    }[];
-  } | null,
-): LiabilityCpRow[] {
-  if (!payload) {
-    return [];
-  }
-  const cpTotal = payload.total_value ?? 0;
-  return (payload.top_10 ?? []).map((it) => ({
-    name: it.name,
-    valueYuan: it.value,
-    pct: cpTotal > 0 ? (it.value / cpTotal) * 100 : 0,
-    type: it.type || "",
-    weightedCost: it.weighted_cost ?? it.weighted_rate ?? null,
-  }));
-}
 
 export default function LiabilityAnalyticsPage() {
   const client = useApiClient();
@@ -113,6 +89,17 @@ export default function LiabilityAnalyticsPage() {
 
   const yieldKpi: LiabilityYieldKpi | null = yieldQuery.data?.kpi ?? null;
 
+  const cpVm = useMemo(
+    () =>
+      adaptLiabilityCounterparty({
+        payload: cpQuery.data,
+        isLoading: cpQuery.isLoading,
+        isError: cpQuery.isError,
+      }),
+    [cpQuery.data, cpQuery.isLoading, cpQuery.isError],
+  );
+  const dailyCpRows = cpVm.vm?.rows ?? [];
+
   const monthlyMonthsSorted = useMemo(() => {
     const ms = monthlyQuery.data?.months || [];
     return [...ms].sort((a, b) => (a.month > b.month ? -1 : a.month < b.month ? 1 : 0));
@@ -145,7 +132,32 @@ export default function LiabilityAnalyticsPage() {
     return ms.find((m) => m.month === selectedMonth) || null;
   }, [adbMonthlyQuery.data?.months, selectedMonth]);
 
-  const dailyCpRows = useMemo(() => normalizeDailyRows(cpQuery.data ?? null), [cpQuery.data]);
+  const mCpTotal = selectedMonthData ? numericYuanRaw(selectedMonthData.avg_total_liabilities) : 0;
+  const monthlyCpRowsAll: LiabilityCpRow[] = useMemo(() => {
+    if (!selectedMonthData) {
+      return [];
+    }
+    return (selectedMonthData.counterparty_details ?? []).map((it) => {
+      const valueYuan = numericYuanRaw(it.avg_value ?? null);
+      return {
+        name: it.name ?? "",
+        valueYuan,
+        pct: mCpTotal > 0 ? (valueYuan / mCpTotal) * 100 : 0,
+        type: it.type ?? "",
+        weightedCost: numericPctRaw(it.weighted_cost ?? null),
+      };
+    });
+  }, [mCpTotal, selectedMonthData]);
+
+  const monthlyByInstitution = useMemo(() => {
+    if (!selectedMonthData?.by_institution_type) {
+      return [];
+    }
+    return selectedMonthData.by_institution_type.map((x) => ({
+      name: x.type ?? "",
+      value: numericYuanRaw(x.avg_value ?? null),
+    }));
+  }, [selectedMonthData?.by_institution_type]);
 
   const dailyStructure = useMemo(() => {
     const raw = riskQuery.data?.liabilities_structure ?? [];
@@ -177,34 +189,13 @@ export default function LiabilityAnalyticsPage() {
     return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYi(x) }));
   }, [riskQuery.data?.issued_liabilities_term_buckets]);
 
-  const mCpTotal = selectedMonthData?.avg_total_liabilities ?? 0;
-  const monthlyCpRowsAll: LiabilityCpRow[] = useMemo(() => {
-    if (!selectedMonthData) {
-      return [];
-    }
-    return (selectedMonthData.counterparty_details ?? []).map((it) => ({
-      name: it.name,
-      valueYuan: it.avg_value,
-      pct: mCpTotal > 0 ? (it.avg_value / mCpTotal) * 100 : 0,
-      type: it.type || "",
-      weightedCost: it.weighted_cost ?? null,
-    }));
-  }, [mCpTotal, selectedMonthData]);
-
-  const monthlyByInstitution = useMemo(() => {
-    if (!selectedMonthData?.by_institution_type) {
-      return [];
-    }
-    return selectedMonthData.by_institution_type.map((x) => ({ name: x.type, value: x.avg_value }));
-  }, [selectedMonthData?.by_institution_type]);
-
   const mStructure = useMemo(() => {
     if (!selectedMonthData) {
       return [];
     }
     return (selectedMonthData.structure_overview ?? []).map((x) => ({
-      name: x.category,
-      amountYi: x.avg_balance / 1e8,
+      name: x.category ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -213,8 +204,8 @@ export default function LiabilityAnalyticsPage() {
       return [];
     }
     return (selectedMonthData.term_buckets ?? []).map((x) => ({
-      bucket: x.bucket,
-      amountYi: x.avg_balance / 1e8,
+      bucket: x.bucket ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -223,8 +214,8 @@ export default function LiabilityAnalyticsPage() {
       return [];
     }
     return (selectedMonthData.interbank_by_type ?? []).map((x) => ({
-      name: x.category,
-      amountYi: x.avg_balance / 1e8,
+      name: x.category ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -233,8 +224,8 @@ export default function LiabilityAnalyticsPage() {
       return [];
     }
     return (selectedMonthData.interbank_term_buckets ?? []).map((x) => ({
-      bucket: x.bucket,
-      amountYi: x.avg_balance / 1e8,
+      bucket: x.bucket ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -243,8 +234,8 @@ export default function LiabilityAnalyticsPage() {
       return [];
     }
     return (selectedMonthData.issued_by_type ?? []).map((x) => ({
-      name: x.category,
-      amountYi: x.avg_balance / 1e8,
+      name: x.category ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -253,8 +244,8 @@ export default function LiabilityAnalyticsPage() {
       return [];
     }
     return (selectedMonthData.issued_term_buckets ?? []).map((x) => ({
-      bucket: x.bucket,
-      amountYi: x.avg_balance / 1e8,
+      bucket: x.bucket ?? "",
+      amountYi: numericToYi(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -356,9 +347,9 @@ export default function LiabilityAnalyticsPage() {
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
                 <LiabilityNimStressPanel yieldKpi={yieldKpi} />
                 <LiabilityCounterpartyBlock
-                  totalValueYuan={cpQuery.data?.total_value ?? 0}
+                  totalValueYuan={cpVm.vm?.totalValueYuan ?? 0}
                   counterpartyRows={dailyCpRows}
-                  byType={cpQuery.data?.by_type ?? []}
+                  byType={cpVm.vm?.byType ?? []}
                   loading={cpQuery.isLoading}
                   errorText={
                     cpQuery.isError ? (cpQuery.error as Error)?.message ?? "对手方数据加载失败" : null

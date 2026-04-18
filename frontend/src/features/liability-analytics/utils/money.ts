@@ -1,40 +1,45 @@
-import { decimalToScaledBigInt } from "../../positions/utils/format";
+import type { Numeric } from "../../../api/contracts";
 
-/** 元（decimal string 或 V1 number）→ 亿元，用于图表数值轴。 */
-export function yuanToYiNumber(v: string | number | null | undefined): number {
-  if (v === null || v === undefined) {
+export function numericYuanRaw(n: Numeric | null | undefined): number {
+  if (!n || n.raw === null || !Number.isFinite(n.raw)) {
     return 0;
   }
-  if (typeof v === "number") {
-    if (!Number.isFinite(v)) {
-      return 0;
-    }
-    return v / 1e8;
+  return n.unit === "yuan" ? n.raw : 0;
+}
+
+export function numericPctRaw(n: Numeric | null | undefined): number | null {
+  if (!n || n.raw === null || !Number.isFinite(n.raw)) {
+    return null;
   }
-  const s = v.trim();
-  if (!s) {
+  return n.raw;
+}
+
+export function numericToYi(n: Numeric | null | undefined): number {
+  if (!n || n.raw === null || !Number.isFinite(n.raw)) {
     return 0;
   }
-  const bi = decimalToScaledBigInt(s, 4);
-  return Number(bi) / 1e12;
+  if (n.unit === "yi") {
+    return n.raw;
+  }
+  if (n.unit === "yuan") {
+    return n.raw / 1e8;
+  }
+  return 0;
 }
 
 export function nameAmountToYi(item: {
-  amount?: number | string | null;
-  amount_yi?: number | string | null;
+  amount?: Numeric | null;
+  amount_yi?: Numeric | null;
 }): number {
   if (item.amount_yi !== null && item.amount_yi !== undefined) {
-    if (typeof item.amount_yi === "number") {
-      return Number.isFinite(item.amount_yi) ? item.amount_yi : 0;
-    }
-    return yuanToYiNumber(item.amount_yi);
+    return numericToYi(item.amount_yi);
   }
-  return yuanToYiNumber(item.amount ?? null);
+  return numericToYi(item.amount ?? null);
 }
 
 export function bucketAmountToYi(item: {
-  amount?: number | string | null;
-  amount_yi?: number | string | null;
+  amount?: Numeric | null;
+  amount_yi?: Numeric | null;
 }): number {
   return nameAmountToYi(item);
 }
