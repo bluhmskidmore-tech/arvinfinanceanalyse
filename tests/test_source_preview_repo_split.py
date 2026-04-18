@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+
 from tests.helpers import load_module
 
 
@@ -85,3 +87,21 @@ def test_source_preview_repo_helper_mappings_stay_stable():
     assert preview_mod._trace_table_name("tyw") == "phase1_tyw_rule_traces"
     assert preview_mod._trace_table_name("pnl_517") == "phase1_nonstd_pnl_rule_traces"
     assert preview_mod._join_source_versions(["", "sv_a", "sv_a", "sv_b"]) == "sv_a__sv_b"
+
+
+def test_source_preview_reads_module_reexports_split_helpers():
+    reads_mod = load_module(
+        "backend.app.repositories.source_preview_repo_reads",
+        "backend/app/repositories/source_preview_repo_reads.py",
+    )
+
+    columns_mod = importlib.import_module("backend.app.repositories.source_preview_repo_columns")
+    row_reads_mod = importlib.import_module("backend.app.repositories.source_preview_repo_row_reads")
+    summary_reads_mod = importlib.import_module("backend.app.repositories.source_preview_repo_summary_reads")
+    versions_mod = importlib.import_module("backend.app.repositories.source_preview_repo_versions")
+
+    assert reads_mod._build_preview_columns is columns_mod._build_preview_columns
+    assert reads_mod._build_trace_columns is columns_mod._build_trace_columns
+    assert reads_mod._history_query_parts is summary_reads_mod._history_query_parts
+    assert reads_mod._read_paged_table is row_reads_mod._read_paged_table
+    assert reads_mod.source_preview_batch_version is versions_mod.source_preview_batch_version
