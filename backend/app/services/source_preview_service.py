@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from backend.app.repositories.source_preview_repo import (
-    SUPPORTED_PREVIEW_SOURCE_FAMILIES,
+from backend.app.core_finance.source_preview_parsers import (
     TYW_PRODUCT_TYPE,
     TYW_TRACE_FIELDS,
+)
+from backend.app.repositories.source_preview_repo import (
+    SUPPORTED_PREVIEW_SOURCE_FAMILIES,
     load_preview_rows,
     load_rule_traces,
     summarize_source_file,
