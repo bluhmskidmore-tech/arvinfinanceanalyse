@@ -407,6 +407,17 @@ export function pathMatchesWorkbenchSection(sectionPath: string, pathname: strin
   return sectionPath === pathname;
 }
 
+export function findWorkbenchSectionByPath(
+  pathname: string,
+  sections: WorkbenchSection[] = visibleWorkbenchNavigation,
+) {
+  const resolved = resolveWorkbenchPathAlias(pathname);
+  return (
+    sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ??
+    sections[0]
+  );
+}
+
 export function resolveWorkbenchGroupKey(section: WorkbenchSection): WorkbenchGroupKey {
   return workbenchSectionGroups[section.key] ?? "overview";
 }
@@ -432,17 +443,6 @@ export const primaryWorkbenchNavigationGroups: WorkbenchNavigationGroup[] =
       ),
     }))
     .filter((group) => group.sections.length > 0);
-
-export function findWorkbenchSectionByPath(
-  pathname: string,
-  sections: WorkbenchSection[] = visibleWorkbenchNavigation,
-) {
-  const resolved = resolveWorkbenchPathAlias(pathname);
-  return (
-    sections.find((section) => pathMatchesWorkbenchSection(section.path, resolved)) ??
-    sections[0]
-  );
-}
 
 export function findWorkbenchGroupByPath(pathname: string) {
   const currentSection = findWorkbenchSectionByPath(pathname);

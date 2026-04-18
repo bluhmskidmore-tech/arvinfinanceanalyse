@@ -275,6 +275,18 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("bond-dashboard-route-shell")).toBeInTheDocument();
   });
 
+  it("redirects legacy /adb to the average-balance page", async () => {
+    renderWorkbenchApp(["/adb"], { client: mockClient });
+
+    expect(await screen.findByTestId("average-balance-page")).toBeInTheDocument();
+  });
+
+  it("redirects legacy /macro-analysis to the market-data page", async () => {
+    renderWorkbenchApp(["/macro-analysis"], { client: mockClient });
+
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+  });
+
   it("renders the balance-analysis route", async () => {
     renderWorkbenchApp(["/balance-analysis"], { client: mockClient });
 
