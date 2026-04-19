@@ -69,17 +69,18 @@ export function BondAnalyticsFilterActionStrip({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
             <div>
-              <div style={FIELD}>Report date</div>
+              <div style={FIELD}>报表日期</div>
               <Select
                 value={reportDate}
                 onChange={onReportDateChange}
                 options={dateOptions}
                 style={{ width: 172 }}
                 size="small"
+                placeholder="选择报表日"
               />
             </div>
             <div>
-              <div style={FIELD}>Period</div>
+              <div style={FIELD}>统计区间</div>
               <Select
                 value={periodType}
                 onChange={(value) => onPeriodTypeChange(value as PeriodType)}

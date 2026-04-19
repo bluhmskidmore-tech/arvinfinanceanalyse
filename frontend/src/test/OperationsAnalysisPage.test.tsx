@@ -125,6 +125,9 @@ describe("OperationsAnalysisPage", () => {
             batch_created_at: "2026-04-10T09:00:00Z",
             source_family: "zqtz",
             report_date: "2025-12-31",
+            report_start_date: "2025-12-01",
+            report_end_date: "2025-12-31",
+            report_granularity: "daily",
             source_file: "ZQTZSHOW-20251231.xls",
             total_rows: 55,
             manual_review_count: 1,
@@ -177,8 +180,24 @@ describe("OperationsAnalysisPage", () => {
             trade_date: "2026-04-10",
             value_numeric: 1.75,
             unit: "%",
+            frequency: "daily",
             source_version: "sv_choice_macro_hub_test",
             vendor_version: "vv_choice_macro_20260410",
+            quality_flag: "ok" as const,
+            refresh_tier: "stable" as const,
+            fetch_mode: "latest" as const,
+            fetch_granularity: "batch" as const,
+            policy_note: "thin slice",
+            latest_change: -0.05,
+            recent_points: [
+              {
+                trade_date: "2026-04-09",
+                value_numeric: 1.8,
+                source_version: "sv",
+                vendor_version: "vv",
+                quality_flag: "ok" as const,
+              },
+            ],
           },
         ],
       },
@@ -272,6 +291,26 @@ describe("OperationsAnalysisPage", () => {
     );
     expect(screen.getByText("Macro data release calendar updated.")).toBeInTheDocument();
     expect(screen.getByText("vendor callback timeout")).toBeInTheDocument();
+    const sourceFiles = screen.getAllByTestId("operations-source-file");
+    expect(sourceFiles.some((el) => el.textContent?.includes("ZQTZSHOW-20251231.xls"))).toBe(true);
+    expect(screen.getAllByTestId("operations-source-group-counts").some((el) => el.textContent?.includes("债券类 55")))
+      .toBe(true);
+    expect(screen.getAllByTestId("operations-source-preview-mode").every((el) => el.textContent?.includes("tabular")))
+      .toBe(true);
+    expect(screen.getByTestId("operations-macro-fetch-meta")).toHaveTextContent("stable");
+    expect(screen.getByTestId("operations-macro-fetch-meta")).toHaveTextContent("latest");
+    expect(screen.getByTestId("operations-macro-policy-note")).toHaveTextContent("thin slice");
+    expect(screen.getByTestId("operations-macro-latest-change")).toHaveTextContent("-0.05");
+    expect(screen.getByTestId("operations-macro-recent-points")).toHaveTextContent("有 1 条");
+    expect(screen.getByTestId("operations-news-meta-evt-001")).toHaveTextContent("err 0");
+    expect(screen.getByTestId("operations-news-meta-evt-002")).toHaveTextContent("err 101");
+    expect(screen.getByTestId("operations-news-meta-evt-002")).toHaveTextContent("vendor callback timeout");
+    expect(screen.getByText(/区间 2025-12-01/)).toBeInTheDocument();
+    expect(screen.getByText(/粒度\s+daily/)).toBeInTheDocument();
+    expect(screen.getAllByText(/规则 rv_source_preview_v1/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText(/频率 daily/)).toBeInTheDocument();
+    expect(screen.getByText(/质量 ok/)).toBeInTheDocument();
+    expect(screen.getByTestId("operations-news-meta-evt-001")).toHaveTextContent("sectornews");
 
     await waitFor(() => {
       expect(getSourceFoundation).toHaveBeenCalledTimes(1);
@@ -375,6 +414,13 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
         "缺失 EUR/CNY",
       );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
+        "USD/CNY middle rate",
+      );
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent("fx_daily_mid");
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent("sv_fx_formal_status_test");
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent("vv_fx_formal_status_test");
+      expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent("营业日");
       expect(screen.getByTestId("operations-entry-formal-fx-status")).toHaveTextContent(
         "tr_fx_formal_status_test",
       );
@@ -540,6 +586,114 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-formal-fx-count")).toHaveTextContent("不可用");
     });
   });
+  it("keeps the first screen evidence-only and removes mock business panels", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("operations-entry-balance-section");
+
+    expect(
+      screen.getByText(
+        "本页 wave 1 只保留受控证据条、正式专题入口和一个由实时查询状态生成的判断建议，不再在首页混排硬编码 KPI、mock 经营事项或静态业务结论。",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和 PnL 刷新入口。所有正式数值均以后端契约为准。",
+      ),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("operations-business-kpis")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
+  });
+
+  it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+
+    renderPage({
+      ...base,
+      getSourceFoundation: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_empty_source",
+          basis: "analytical" as const,
+          result_kind: "preview.source-foundation",
+          formal_use_allowed: false,
+          source_version: "sv_empty_source",
+          vendor_version: "vv_none",
+          rule_version: "rv_source_preview_v1",
+          cache_version: "cv_source_preview_v1",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:00:00Z",
+        },
+        result: { sources: [] },
+      })),
+      getMacroFoundation: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_macro_catalog",
+          basis: "analytical" as const,
+          result_kind: "preview.macro-foundation",
+          formal_use_allowed: false,
+          source_version: "sv_macro_catalog",
+          vendor_version: "vv_catalog",
+          rule_version: "rv_phase1_macro_vendor_v1",
+          cache_version: "cv_phase1_macro_vendor_v1",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:01:00Z",
+        },
+        result: { read_target: "duckdb" as const, series: [] },
+      })),
+      getChoiceMacroLatest: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_macro_latest_empty",
+          basis: "analytical" as const,
+          result_kind: "macro.choice.latest",
+          formal_use_allowed: false,
+          source_version: "sv_macro_latest_empty",
+          vendor_version: "vv_macro_latest_empty",
+          rule_version: "rv_choice_macro_thin_slice_v1",
+          cache_version: "cv_choice_macro_thin_slice_v1",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:02:00Z",
+        },
+        result: { read_target: "duckdb" as const, series: [] },
+      })),
+      getFxFormalStatus: vi.fn(async () => ({
+        result_meta: {
+          trace_id: "tr_fx_empty",
+          basis: "formal" as const,
+          result_kind: "fx.formal.status",
+          formal_use_allowed: true,
+          source_version: "sv_fx_empty",
+          vendor_version: "vv_fx_empty",
+          rule_version: "rv_fx_formal_mid_v1",
+          cache_version: "cv_fx_formal_mid_v1",
+          quality_flag: "ok" as const,
+          vendor_status: "ok" as const,
+          fallback_mode: "none" as const,
+          scenario_flag: false,
+          generated_at: "2026-04-10T09:03:00Z",
+        },
+        result: {
+          read_target: "duckdb" as const,
+          vendor_priority: ["choice", "akshare", "fail_closed"],
+          candidate_count: 0,
+          materialized_count: 0,
+          latest_trade_date: null,
+          carry_forward_count: 0,
+          rows: [],
+        },
+      })),
+    });
+
+    expect(await screen.findByText("Evidence chain incomplete")).toBeInTheDocument();
+    const recommendation = await screen.findByTestId("operations-entry-recommendation");
+    expect(recommendation).not.toHaveTextContent("Evidence is sufficient for today’s operating call");
+  });
 });
-
-

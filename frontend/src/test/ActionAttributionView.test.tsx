@@ -76,6 +76,8 @@ function createActionAttributionResult(
         delta_duration: ratio(0.05),
         delta_dv01: dv01(10_000),
         delta_spread_dv01: dv01(0),
+        opportunity_cost: yuan(10_000),
+        opportunity_cost_method: "shadow_bench",
       },
     ],
     period_start_duration: ratio(3.1),
@@ -113,6 +115,10 @@ describe("ActionAttributionView", () => {
       expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
 
+    expect(await screen.findByTestId("action-attribution-meta")).toHaveTextContent("2026-03-31");
+    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("MoM");
+    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("2026-03-01");
+    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("2026-04-10T00:00:00Z");
     expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
       "交易动作归因概览",
     );
@@ -132,9 +138,38 @@ describe("ActionAttributionView", () => {
 
     expect(screen.getByText("按动作类型汇总")).toBeInTheDocument();
     expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
 
     expect(screen.getAllByText("动作明细").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("加仓利率债")).toBeInTheDocument();
+    expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
+    expect(screen.getByText("019547")).toBeInTheDocument();
+    expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
+    expect(screen.getByText("shadow_bench")).toBeInTheDocument();
+  });
+
+  it("shows readiness metadata when backend returns component hints", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createActionAttributionResult({
+          status: "partial",
+          missing_inputs: ["formal_positions"],
+          available_components: ["actions"],
+          blocked_components: [],
+        }),
+      })),
+    };
+
+    render(
+      <ApiClientProvider client={client}>
+        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("action-attribution-readiness")).toHaveTextContent("partial");
+    expect(screen.getByTestId("action-attribution-readiness")).toHaveTextContent("formal_positions");
   });
 
   it("renders warning alert when warnings exist", async () => {

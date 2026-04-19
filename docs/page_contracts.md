@@ -949,6 +949,65 @@
   - `tests/test_pnl_attribution_api_contract.py`
   - `tests/test_pnl_attribution_workbench_contract.py`
 
+## 13.5 PAGE-OPS-001 经营分析
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-OPS-001`
+- 页面名称：`经营分析`
+- 前端路由：`/operations-analysis`
+- 页面状态：`wave-1 temporary exception`
+
+### B. 页面只回答一个问题
+
+`今天的经营判断是否已有可信证据支撑；如果需要下钻，第一站应该进入哪个正式专题页？`
+
+本页 wave 1 不承担完整经营驾驶舱，也不承担静态经营结论展示。
+
+### C. wave 1 允许的首屏区块
+
+- source preview 状态
+- macro latest 状态
+- formal FX status
+- balance-analysis overview 速览
+- pnl refresh operational status
+- 一个只由 live query 状态推导出的 recommendation panel
+- drilldown links
+
+### D. wave 1 首屏禁止区块
+
+- 硬编码 KPI 行
+- `BusinessConclusion`
+- `RevenueCostBridge`
+- `QualityObservation`
+- `BusinessContributionTable`
+- mock `AlertList`
+- mock `CalendarList`
+- `TenorConcentrationPanel`
+- `ManagementOutput`
+
+### E. 页面依赖的最小 query 边界
+
+- `getSourceFoundation`
+- `getMacroFoundation`
+- `getChoiceMacroLatest`
+- `getFxFormalStatus`
+- `getBalanceAnalysisDates`
+- `getBalanceAnalysisOverview`
+- `getChoiceNewsEvents` 仅可作为 advisory 信息
+- `refreshFormalPnl` / `getFormalPnlImportStatus` 仅可作为 operational state
+
+### F. 验证要求
+
+- 首屏 recommendation 必须能追到：
+  `API response -> page-local derivation -> component`
+- 若 wave 1 未完成本页闭环，则下一轮 readiness pass 必须把本页从 `live` 降级
+- 相关前端验证至少覆盖：
+  - `frontend/src/test/OperationsAnalysisPage.test.tsx`
+  - `frontend/src/test/navigation.test.ts`
+  - `frontend/src/test/RouteRegistry.test.tsx`
+  - `frontend/src/test/WorkbenchShell.test.tsx`
+
 ## 14. 当前缺口
 
 ### 14.1 `as_of_date` 未统一

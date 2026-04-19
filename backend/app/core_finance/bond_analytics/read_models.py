@@ -249,7 +249,20 @@ def compute_benchmark_excess(
         treasury_curve_prior=treasury_curve_prior,
         total_market_value=total_market_value,
     ) * Decimal("100")
-    allocation_effect = ZERO
+    allocation_effect = _compute_allocation_effect(
+        rows,
+        benchmark_id=benchmark_id,
+        benchmark_return=benchmark_return,
+        total_market_value=total_market_value,
+        period_start=period_start,
+        period_end=period_end,
+        treasury_curve_current=treasury_curve_current,
+        treasury_curve_prior=treasury_curve_prior,
+        cdb_curve_current=cdb_curve_current,
+        cdb_curve_prior=cdb_curve_prior,
+        aaa_credit_curve_current=aaa_credit_curve_current,
+        aaa_credit_curve_prior=aaa_credit_curve_prior,
+    )
     selection_effect = excess_return - duration_effect - curve_effect - spread_effect - allocation_effect
     explained_excess = duration_effect + curve_effect + spread_effect + selection_effect + allocation_effect
     recon_error = excess_return - explained_excess

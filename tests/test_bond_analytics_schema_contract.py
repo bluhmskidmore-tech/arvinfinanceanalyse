@@ -91,6 +91,7 @@ def test_return_decomposition_response_nested_defaults():
     assert resp.by_asset_class == []
     assert resp.bond_details == []
     assert resp.warnings == []
+    assert resp.warnings_detail == []
 
 
 def test_benchmark_excess_response_defaults_and_nested():
@@ -237,6 +238,7 @@ def test_action_attribution_defaults_and_nested():
     assert resp.missing_inputs == []
     assert resp.blocked_components == []
     assert resp.warnings == []
+    assert resp.warnings_detail == []
 
 
 def test_accounting_class_audit_defaults():

@@ -53,9 +53,9 @@ function createAccountingAuditResult(
         infer_accounting_class: "FVOCI",
         map_accounting_class: "FVTPL",
         infer_rule_id: "r1",
-        infer_match: null,
+        infer_match: "exact",
         map_rule_id: "r2",
-        map_match: null,
+        map_match: "fuzzy",
         is_divergent: true,
         is_map_unclassified: false,
       },
@@ -90,13 +90,20 @@ describe("AccountingClassAuditView", () => {
       expect(client.getBondAnalyticsAccountingClassAudit).toHaveBeenCalledWith("2026-03-31"),
     );
 
-    expect(await screen.findByTestId("accounting-class-audit-shell-lead")).toBeInTheDocument();
+    expect(await screen.findByTestId("accounting-class-audit-computed-at")).toHaveTextContent(
+      "2026-04-10T00:00:00Z",
+    );
+    expect(screen.getByTestId("accounting-class-audit-shell-lead")).toBeInTheDocument();
     expect(screen.getByTestId("accounting-class-audit-rules-lead")).toBeInTheDocument();
     expect(screen.getByTestId("accounting-class-audit-detail-lead")).toBeInTheDocument();
     expect(screen.getByText("资产类别数（去重）")).toBeInTheDocument();
     expect(screen.getByText("分歧分类")).toBeInTheDocument();
     expect(screen.getByText("映射为其他（other）")).toBeInTheDocument();
     expect(screen.getByText("覆盖市值")).toBeInTheDocument();
+    expect(screen.getByTestId("accounting-audit-total-positions")).toHaveTextContent("100");
+    expect(screen.getByText("分歧持仓数")).toBeInTheDocument();
+    expect(screen.getByText("精确匹配")).toBeInTheDocument();
+    expect(screen.getByText("模糊匹配")).toBeInTheDocument();
     expect(screen.getAllByText(/infer_accounting_class/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/map_accounting_class/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("审计明细")).toBeInTheDocument();

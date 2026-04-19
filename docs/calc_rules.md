@@ -195,6 +195,11 @@ PnL Bridge 结构：
 
 ## 12. ZQTZ / TYW Formal Balance
 
+命名映射约定：
+- `TYWL` 指源文件命名（例如 `TYWLSHOW-*.xls`）。
+- `tyw` 指系统内部 source family / 表名命名（例如 `tyw_interbank_daily_snapshot`、`fact_formal_tyw_balance_daily`）。
+- 本节出现 `TYW` / `tyw` 时默认指系统内部同一语义域，不表示另一套独立规则。
+
 ### 12.1 输入边界
 
 `zqtz / tyw` 正式资产负债分析只允许读取：

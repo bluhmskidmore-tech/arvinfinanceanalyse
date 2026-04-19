@@ -4,6 +4,11 @@
 
 定义系统的标准化数据契约，作为 `zqtz`、`tyw`、FI 损益、非标分录、日均、FX、Choice、AkShare 接入后的统一语义层。
 
+命名映射约定：
+- `TYWL` 指源文件命名（例如 `TYWLSHOW-*.xls`）。
+- `tyw` 指系统内部 source family / 表名命名（例如 `tyw_interbank_daily_snapshot`、`fact_formal_tyw_balance_daily`）。
+- 文档中出现 `TYW` / `tyw` 时默认指系统内部同一语义域，不表示另一套独立规则。
+
 ## 2. 设计原则
 
 1. 原始数据不直接进入正式计算。

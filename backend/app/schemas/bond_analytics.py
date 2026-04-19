@@ -175,6 +175,10 @@ class ReturnDecompositionResponse(BaseModel):
     total_market_value: Numeric = Field(default_factory=lambda: numeric_from_raw(raw=0.0, unit="yuan", sign_aware=False))
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warnings_detail: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Structured warnings with stable codes (e.g., trading placeholder).",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "carry": ("yuan", True),
@@ -591,6 +595,10 @@ class ActionAttributionResponse(BaseModel):
     blocked_components: list[str] = Field(default_factory=list)
     computed_at: str = ""
     warnings: list[str] = Field(default_factory=list, description="Warning messages")
+    warnings_detail: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Structured warnings with stable codes (parallel to string warnings).",
+    )
 
     _NUMERIC_FIELDS: ClassVar[dict[str, tuple[NumericUnit, bool]]] = {
         "total_pnl_from_actions": ("yuan", True),

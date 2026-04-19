@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Avoid jsdom canvas/ECharts teardown flakiness; assertions use titles + tables + KPIs. */
@@ -85,7 +86,20 @@ function createReturnDecompositionResult(
         market_value: yuan(100_000_000),
       },
     ],
-    by_accounting_class: [],
+    by_accounting_class: [
+      {
+        asset_class: "FVTPL",
+        carry: yuan(500_000),
+        roll_down: yuan(0),
+        rate_effect: yuan(0),
+        spread_effect: yuan(0),
+        convexity_effect: yuan(0),
+        trading: yuan(0),
+        total: yuan(500_000),
+        bond_count: 1,
+        market_value: yuan(50_000_000),
+      },
+    ],
     bond_details: [
       {
         bond_code: "019547",
@@ -151,10 +165,17 @@ describe("ReturnDecompositionView", () => {
     expect(await screen.findByText("经济口径合计")).toBeInTheDocument();
     expect(screen.getByText("OCI 未入表影响")).toBeInTheDocument();
     expect(screen.getByText("会计口径（损益表）")).toBeInTheDocument();
+    expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("MoM");
+    expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent(
+      "计算时间：2026-04-10T00:00:00Z",
+    );
+    expect(screen.getByTestId("return-decomposition-bond-count")).toHaveTextContent("3");
+    expect(screen.getByTestId("return-decomposition-total-mv")).toBeInTheDocument();
 
     expect(screen.getByText("收益效应分解")).toBeInTheDocument();
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("利率债")).toBeInTheDocument();
+    expect(screen.getByTestId("return-decomposition-by-accounting-class")).toHaveTextContent("FVTPL");
   });
 
   it("forwards non-default asset/accounting filters as the optional API options bag", async () => {
@@ -183,6 +204,35 @@ describe("ReturnDecompositionView", () => {
         accountingClass: "OCI",
       }),
     );
+  });
+
+  it("renders bond_details table inside collapse after expanding", async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createReturnDecompositionResult(),
+      })),
+    };
+
+    render(
+      <ApiClientProvider client={client}>
+        <ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByTestId("return-decomposition-bond-details-collapse")).toBeInTheDocument();
+    await user.click(screen.getByText("券级拆解（按券明细）"));
+    const table = await screen.findByTestId("return-decomposition-bond-details-table");
+    expect(table).toBeInTheDocument();
+    expect(within(table).getByText("019547")).toBeInTheDocument();
+    expect(within(table).getByText("AC")).toBeInTheDocument();
+    expect(within(table).getByText("利率债")).toBeInTheDocument();
+    const thead = table.querySelector("thead");
+    expect(thead).toBeTruthy();
+    expect(within(thead as HTMLElement).getByText("可解释（对账）")).toBeInTheDocument();
+    expect(within(thead as HTMLElement).getByText("纯经济口径效应")).toBeInTheDocument();
   });
 
   it("renders warning alert when warnings exist", async () => {

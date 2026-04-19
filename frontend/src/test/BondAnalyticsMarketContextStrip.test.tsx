@@ -36,7 +36,7 @@ describe("BondAnalyticsMarketContextStrip", () => {
     expect(screen.getByText("Report date")).toBeInTheDocument();
     expect(screen.getByText("2026-03-31")).toBeInTheDocument();
     expect(screen.getByText("Period")).toBeInTheDocument();
-    expect(screen.getByText("MoM")).toBeInTheDocument();
+    expect(screen.getByText("月度环比")).toBeInTheDocument();
     expect(screen.getByText("Drill lead")).toBeInTheDocument();
     expect(screen.getByText("动作归因")).toBeInTheDocument();
     expect(screen.getByText("Headline eligible")).toBeInTheDocument();

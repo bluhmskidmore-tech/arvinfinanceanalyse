@@ -10,6 +10,9 @@ import type {
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
+import PerformanceComparison from "./PerformanceComparison";
+import RiskTrendChart from "./RiskTrendChart";
+import BondEventCalendar from "./BondEventCalendar";
 
 export interface BondAnalyticsOverviewPanelsProps {
   dateOptions: Array<{ value: string; label: string }>;
@@ -93,6 +96,20 @@ export function BondAnalyticsOverviewPanels({
           topAnomalies={overviewModel.topAnomalies}
           onOpenModuleDetail={onOpenModuleDetail}
         />
+
+        <PerformanceComparison />
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
+          <RiskTrendChart />
+          <BondEventCalendar />
+        </div>
       </div>
     </div>
   );

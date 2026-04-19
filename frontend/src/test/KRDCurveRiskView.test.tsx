@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /** Avoid jsdom canvas/ECharts teardown errors; contract test targets copy + tables only. */
@@ -66,13 +67,26 @@ function createKRDCurveRiskResult(
       {
         scenario_name: "parallel_10bp",
         scenario_description: "收益率曲线平行 +10bp",
-        shocks: {},
+        shocks: { parallel_shift_bp: 10 },
         pnl_economic: yuan(-500_000),
         pnl_oci: yuan(0),
         pnl_tpl: yuan(0),
-        rate_contribution: yuan(0),
-        convexity_contribution: yuan(0),
-        by_asset_class: {},
+        rate_contribution: yuan(-400_000),
+        convexity_contribution: yuan(-100_000),
+        by_asset_class: {
+          rate: {
+            pnl_economic: yuan(-400_000),
+            pnl_oci: yuan(0),
+            pnl_tpl: yuan(0),
+            pnl_other_bucket: yuan(-12_000),
+          },
+          credit: {
+            pnl_economic: yuan(-100_000),
+            pnl_oci: yuan(-50_000),
+            pnl_tpl: yuan(-50_000),
+            pnl_other_bucket: yuan(-3_000),
+          },
+        },
       },
     ],
     by_asset_class: [
@@ -133,10 +147,50 @@ describe("KRDCurveRiskView", () => {
 
     expect(screen.getByText("KRD 分布")).toBeInTheDocument();
     expect(screen.getByText("情景冲击")).toBeInTheDocument();
+    expect(screen.getByText("parallel_10bp")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线平行 +10bp")).toBeInTheDocument();
+    expect(screen.getByTestId("krd-computed-at")).toHaveTextContent(
+      "计算时间：2026-04-10T00:00:00Z",
+    );
+    expect(screen.getByText("parallel_shift_bp 10")).toBeInTheDocument();
+    expect(screen.getByText("利率贡献")).toBeInTheDocument();
+    expect(screen.getByText("凸性贡献")).toBeInTheDocument();
 
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("rate")).toBeInTheDocument();
+  });
+
+  it("shows scenario by_asset_class breakdown when scenario row is expanded", async () => {
+    const user = userEvent.setup();
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async () => ({
+        result_meta: createResultMeta(),
+        result: createKRDCurveRiskResult(),
+      })),
+    };
+
+    const { container } = render(
+      <ApiClientProvider client={client}>
+        <KRDCurveRiskView reportDate="2026-03-31" />
+      </ApiClientProvider>,
+    );
+
+    await screen.findByTestId("krd-scenarios-table");
+    const expandIcon = container.querySelector(
+      '[data-testid="krd-scenarios-table"] .ant-table-row-expand-icon',
+    );
+    expect(expandIcon).toBeTruthy();
+    await user.click(expandIcon as HTMLElement);
+
+    const panel = await screen.findByTestId("krd-scenario-by-asset-class");
+    expect(within(panel).getByText("rate")).toBeInTheDocument();
+    expect(within(panel).getByText("credit")).toBeInTheDocument();
+    expect(within(panel).getByText("经济口径")).toBeInTheDocument();
+    expect(within(panel).getByTestId("krd-scenario-by-asset-class-extra-keys")).toHaveTextContent(
+      "pnl_other_bucket",
+    );
+    expect(within(panel).getByText("pnl_other_bucket")).toBeInTheDocument();
   });
 
   it("renders warning alert when warnings exist", async () => {

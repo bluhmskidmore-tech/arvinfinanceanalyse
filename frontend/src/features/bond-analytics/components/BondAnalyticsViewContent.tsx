@@ -1,5 +1,4 @@
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Col, Row } from "antd";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApiEnvelope } from "../../../api/contracts";
 import type {
@@ -22,16 +21,6 @@ const BondAnalyticsDetailSection = lazy(() =>
   import("./BondAnalyticsDetailSection").then((module) => ({
     default: module.BondAnalyticsDetailSection,
   })),
-);
-
-const PerformanceComparison = lazy(async () => import("./PerformanceComparison"));
-const RiskTrendChart = lazy(async () => import("./RiskTrendChart"));
-const BondEventCalendar = lazy(async () => import("./BondEventCalendar"));
-
-const phase3PageFallback = (
-  <div style={{ color: "#8090a8", fontSize: 13 }} data-testid="bond-analysis-phase3-page-loading">
-    Loading bond analytics modules…
-  </div>
 );
 
 export function BondAnalyticsViewContent() {
@@ -257,11 +246,6 @@ export function BondAnalyticsViewContent() {
           lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
         />
       </Suspense>
-
-      <Suspense fallback={phase3PageFallback}>
-        <PerformanceComparison />
-      </Suspense>
-
       <section
         style={{ display: "flex", flexDirection: "column", gap: 12 }}
       >
@@ -287,16 +271,6 @@ export function BondAnalyticsViewContent() {
         </Suspense>
       </section>
 
-      <Suspense fallback={phase3PageFallback}>
-        <Row gutter={[12, 12]}>
-          <Col xs={24} lg={12}>
-            <RiskTrendChart />
-          </Col>
-          <Col xs={24} lg={12}>
-            <BondEventCalendar />
-          </Col>
-        </Row>
-      </Suspense>
     </div>
   );
 }

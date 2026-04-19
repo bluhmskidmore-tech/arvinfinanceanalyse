@@ -56,14 +56,14 @@ describe("BondAnalyticsFilterActionStrip", () => {
     );
 
     expect(screen.getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
-    expect(screen.getByText("Report date")).toBeInTheDocument();
-    expect(screen.getByText("Period")).toBeInTheDocument();
+    expect(screen.getByText("报表日期")).toBeInTheDocument();
+    expect(screen.getByText("统计区间")).toBeInTheDocument();
     expect(screen.getByText("Refresh")).toBeInTheDocument();
     expect(screen.getByText("No refresh run has been captured yet.")).toBeInTheDocument();
     expect(screen.getByText("高级筛选")).toBeInTheDocument();
 
     expect(screen.getByTitle("2026-03-31")).toBeInTheDocument();
-    expect(screen.getByTitle("Month")).toBeInTheDocument();
+    expect(screen.getByTitle("月度环比")).toBeInTheDocument();
 
     const comboboxes = screen.getAllByRole("combobox");
     expect(comboboxes.length).toBeGreaterThanOrEqual(2);
@@ -78,7 +78,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
     });
 
     fireEvent.mouseDown(screen.getAllByRole("combobox")[1]!);
-    const periodOption = await screen.findByTitle("YTD");
+    const periodOption = await screen.findByTitle("年初至今");
     await user.click(periodOption);
 
     await waitFor(() => {

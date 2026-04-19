@@ -8,7 +8,7 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --moss-shell-gap: 24px;
+  --moss-shell-gap: 18px;
 }
 
 * {
@@ -47,7 +47,7 @@ select {
 
 .workbench-shell-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  grid-template-columns: minmax(216px, 244px) minmax(0, 1fr);
   gap: var(--moss-shell-gap);
   align-items: start;
 }

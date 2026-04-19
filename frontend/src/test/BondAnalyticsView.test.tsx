@@ -165,7 +165,13 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-kpi-ribbon")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("组合表现对比（年初至今 · 示意）")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("风险趋势（近12周 · 示意）")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("关键事件与日历（示意）")).toBeInTheDocument();
     expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
     expect(within(topCockpit).getByText("交易建议")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();

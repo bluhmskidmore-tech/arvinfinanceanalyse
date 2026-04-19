@@ -119,6 +119,11 @@ EMPTY_WARNING = "DuckDB bond analytics fact table not yet populated — returnin
 RETURN_TRADING_GAP_WARNING = (
     "Trading PnL remains a Phase 3 placeholder (0); transaction-level trade inputs are not integrated."
 )
+RETURN_TRADING_GAP_WARNING_DETAIL = {
+    "code": "return_decomposition_trading_placeholder_phase3",
+    "component": "trading",
+    "detail": "transaction_level_trade_inputs_not_integrated",
+}
 BENCHMARK_WARNING = "Benchmark index data not yet available; benchmark-side fields remain zero"
 BENCHMARK_EXCESS_SPREAD_GAP_WARNING = (
     "Benchmark excess spread_effect is 0 because treasury/aaa_credit snapshots are missing for one or both "
@@ -368,6 +373,7 @@ def _empty_return_response(meta, report_date: date, period_type: str, period_sta
                 "recon_error_pct": ZERO,
                 "computed_at": meta.generated_at.isoformat(),
                 "warnings": [EMPTY_WARNING],
+                "warnings_detail": [],
             },
             ReturnDecompositionResponse,
         )
@@ -568,6 +574,7 @@ def _build_return_decomposition_payload(
                 "warnings": _ordered_unique_warnings(
                     [RETURN_TRADING_GAP_WARNING, *relevant_curve_warnings, fx_current_warning, fx_prior_warning, *fx_missing_warnings]
                 ),
+                "warnings_detail": [RETURN_TRADING_GAP_WARNING_DETAIL],
             },
             ReturnDecompositionResponse,
         )
@@ -1604,6 +1611,10 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
                 "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
                 "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
                 "warnings": warnings,
+                "warnings_detail": [
+                    {"code": w.code, "level": w.level, "message": w.message}
+                    for w in analysis_envelope.result.warnings
+                ],
             },
             ActionAttributionResponse,
         )

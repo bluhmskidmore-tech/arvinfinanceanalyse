@@ -17,6 +17,8 @@ function renderShellAt(path: string) {
         children: [
           { index: true, element: <div>shell body</div> },
           { path: "dashboard", element: <div>dashboard alias body</div> },
+          { path: "bond-analysis", element: <div>bond-analysis body</div> },
+          { path: "operations-analysis", element: <div>operations body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
@@ -82,6 +84,58 @@ describe("WorkbenchShell", () => {
     expect(board).toHaveTextContent("损益桥接");
   });
 
+  it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {
+    renderShellAt("/bond-analysis");
+
+    expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+  });
+
+  it("renders a global terminal bar that separates page context from shell market ticker", async () => {
+    renderShellAt("/bond-analysis?report_date=2026-03-31");
+
+    expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+
+    const terminalBar = screen.getByTestId("workbench-terminal-bar");
+    const pageContext = within(terminalBar).getByTestId("workbench-page-context");
+    const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
+    const operatorZone = within(terminalBar).getByTestId("workbench-operator-zone");
+
+    expect(pageContext).toHaveTextContent("Page Context");
+    expect(pageContext).toHaveTextContent("债券分析");
+    expect(pageContext).toHaveTextContent("2026-03-31");
+
+    expect(marketTicker).toHaveTextContent("Shell Market Ticker");
+    expect(marketTicker).toHaveTextContent("10Y");
+    expect(marketTicker).toHaveTextContent("DR007");
+    expect(marketTicker).toHaveTextContent("AAA 3Y");
+
+    expect(operatorZone).toHaveTextContent("鎶ヨ〃涓績");
+    expect(operatorZone).toHaveTextContent("涓彴閰嶇疆");
+  });
+
+  it("marks the active workspace and keeps auxiliary shell links in a lower-priority support area", async () => {
+    renderShellAt("/bond-analysis");
+
+    const navigation = await screen.findByTestId("workbench-group-nav");
+    const portfolioLink = within(navigation)
+      .getAllByRole("link")
+      .find((candidate) => candidate.getAttribute("href") === "/balance-analysis");
+
+    expect(portfolioLink).toBeDefined();
+    expect(portfolioLink).toHaveAttribute("data-active", "true");
+
+    const supportNav = screen.getByTestId("workbench-support-nav");
+    const supportHrefs = within(supportNav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+
+    expect(supportHrefs).toContain("/platform-config");
+    expect(supportHrefs).toContain("/reports");
+  });
+
   it("does not render the portfolio decision surface outside the portfolio group", async () => {
     renderShellAt("/platform-config");
 
@@ -122,5 +176,14 @@ describe("WorkbenchShell", () => {
       .find((candidate) => candidate.getAttribute("href") === "/");
     expect(dashLink).toBeDefined();
     expect(dashLink).toHaveAttribute("href", "/");
+  });
+
+  it("shows a governance banner for operations-analysis while it is a temporary exception", async () => {
+    renderShellAt("/operations-analysis");
+
+    const banner = await screen.findByTestId("workbench-governance-banner");
+    expect(banner).toBeInTheDocument();
+    expect(screen.getByText("operations body")).toBeInTheDocument();
+    expect(banner).toHaveTextContent(/temporary exception/i);
   });
 });

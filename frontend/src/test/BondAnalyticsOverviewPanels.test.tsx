@@ -55,6 +55,24 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", 
   ),
 }));
 
+vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
+  default: function MockPerformanceComparison() {
+    return <div data-testid="mock-performance-comparison" />;
+  },
+}));
+
+vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
+  default: function MockRiskTrendChart() {
+    return <div data-testid="mock-risk-trend-chart" />;
+  },
+}));
+
+vi.mock("../features/bond-analytics/components/BondEventCalendar", () => ({
+  default: function MockBondEventCalendar() {
+    return <div data-testid="mock-bond-event-calendar" />;
+  },
+}));
+
 import { BondAnalyticsOverviewPanels } from "../features/bond-analytics/components/BondAnalyticsOverviewPanels";
 import type { BondAnalyticsOverviewModel, BondAnalyticsReadinessItem } from "../features/bond-analytics/lib/bondAnalyticsOverviewModel";
 
@@ -166,6 +184,9 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-action-count",
       "4",
     );
+    expect(screen.getByTestId("mock-performance-comparison")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-risk-trend-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-event-calendar")).toBeInTheDocument();
 
     const market = screen.getByTestId("mock-bond-market-context-strip");
     expect(market).toHaveAttribute("data-report-date", "2026-03-31");

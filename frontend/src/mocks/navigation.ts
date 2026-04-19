@@ -17,6 +17,8 @@ export type WorkbenchSection = {
   readiness: WorkbenchReadiness;
   readinessLabel: string;
   readinessNote: string;
+  governanceStatus?: "temporary-exception";
+  governanceBanner?: string;
   navigationVisibility?: "primary" | "hidden";
 };
 
@@ -141,7 +143,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "经营摘要与后续分析入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
+    governanceBanner:
+      "Temporary exception: this route stays visible in wave 1 only while PAGE-OPS-001 closes. If that closure slips, demote it in the next readiness pass.",
     readinessNote:
       "已接 source preview、macro、news、formal FX 状态，以及资产负债 overview 速览与跳转。",
   },
@@ -152,7 +157,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "bond",
     description: "债券工作台入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 governed bond analytics cockpit，页面内按模块 readiness 展示已落地与待晋升能力。",
   },
   {
@@ -162,7 +168,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "宏观与资产价格向债券的传导估计",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 macro-bond-linkage 分析读链路；完整序列见市场数据页。",
   },
   {
@@ -172,7 +179,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "team",
     description: "团队贡献入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接统一 ApiClient 读链路。",
   },
   {
@@ -201,8 +209,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/liability-analytics",
     icon: "analysis",
     description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
-    readiness: "live",
-    readinessLabel: "Live",
+    readiness: "placeholder",
+    readinessLabel: "Deferred",
     readinessNote:
       "已接负债风险桶、收益率/NIM、对手方与月度序列读链路；月度概览与 Top10 柱序列与 V1 对齐。",
   },
@@ -213,7 +221,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "market",
     description: "市场观察入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接宏观、FX analytical 与 formal FX 状态读链路。",
   },
   {
@@ -223,7 +232,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "settings",
     description: "配置与治理入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "展示系统健康检查与数据源状态。",
   },
   {
@@ -243,7 +253,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "bond",
     description: "承接 V1「/bonds」书签；债券组合 KPI、结构、风险一览。",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 /api/bond-dashboard 聚合读链路。",
   },
   {
@@ -253,7 +264,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "bond",
     description: "债券与同业持仓明细、分布与客户下钻",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 /api/positions 正式读链路（与 V1 对齐）；缺数时由后端返回空表与受控元数据。",
   },
   {
@@ -263,7 +275,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "同业与债券口径的 ADB analytical 视图；正式余额真源见「资产负债分析」。",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "可直接打开本路由；正式 governed 余额仍以资产负债分析页为准。",
   },
   {
@@ -273,7 +286,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "科目口径损益总览、账户聚合与明细透视。",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "直接消费后端 ledger-pnl read model，不在前端补算科目口径汇总。",
   },
   {
@@ -304,7 +318,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "risk",
     description: "持仓集中度与限额预警",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 bond analytics credit-spread-migration 集中度载荷与展示限额对照。",
   },
   {
@@ -314,7 +329,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "risk",
     description: "久期缺口分析、月度现金流投影与再投资风险",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 /api/cashflow-projection 只读链路。",
   },
   {
@@ -324,7 +340,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "kpi",
     description: "KPI 指标、批量导入、抓取计分与溯源",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接 /api/kpi 读写链路，与 V1 行为对齐。",
   },
   {
@@ -334,7 +351,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "decision",
     description: "Choice 新闻事件与回调异常入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接真实 Choice news 只读链路。",
   },
   {
@@ -344,7 +362,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "产品类别损益与场景分析入口",
     readiness: "live",
-    readinessLabel: "Live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
     readinessNote: "已接产品损益主分支，并为月度经营分析预留同屏并存分支。",
   },
   {

@@ -32,6 +32,16 @@ def test_bond_action_attribution_service_returns_explicit_unavailable_contract()
         "action_attribution",
     ]
     assert any("unavailable" in warning.lower() for warning in payload["result"]["warnings"])
+    assert payload["result"]["warnings_detail"] == [
+        {
+            "code": "bond_action_placeholder",
+            "level": "warning",
+            "message": (
+                "Governed trade-action facts unavailable; returning unavailable action-attribution contract "
+                "until trade records are integrated."
+            ),
+        }
+    ]
     assert not any("ready" in warning.lower() for warning in payload["result"]["warnings"])
     assert not any("placeholder" in warning.lower() for warning in payload["result"]["warnings"])
     assert not any("fabricated" in warning.lower() for warning in payload["result"]["warnings"])

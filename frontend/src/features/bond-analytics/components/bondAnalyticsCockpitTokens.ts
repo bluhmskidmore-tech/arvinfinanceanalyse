@@ -6,9 +6,9 @@ import type {
 } from "../lib/bondAnalyticsOverviewModel";
 
 export const PERIOD_OPTIONS = [
-  { value: "MoM", label: "Month" },
-  { value: "YTD", label: "YTD" },
-  { value: "TTM", label: "TTM" },
+  { value: "MoM", label: "月度环比" },
+  { value: "YTD", label: "年初至今" },
+  { value: "TTM", label: "近12个月" },
 ];
 
 export const BOND_ANALYTICS_ASSET_CLASS_FILTER_OPTIONS = [
@@ -34,8 +34,8 @@ export const BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS = [
   { value: "25,50,100", label: "25 / 50 / 100 bp" },
 ] as const;
 
-export const BORDER = "#d9e4f0";
-export const SHADOW = "0 16px 34px rgba(19, 37, 70, 0.07)";
+export const BORDER = "#dbe5ef";
+export const SHADOW = "0 8px 20px rgba(19, 37, 70, 0.045)";
 
 export const EYEBROW: CSSProperties = {
   fontSize: 11,
@@ -55,7 +55,7 @@ export const FIELD: CSSProperties = {
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  return { borderRadius: 24, borderColor: BORDER, boxShadow: SHADOW, background };
+  return { borderRadius: 20, borderColor: BORDER, boxShadow: SHADOW, background };
 }
 
 export function toneColor(tone: BondAnalyticsTruthTone) {

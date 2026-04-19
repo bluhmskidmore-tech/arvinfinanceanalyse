@@ -39,6 +39,41 @@ describe("workbench navigation mocks", () => {
     expect(dash?.path).toBe("/");
   });
 
+  it("marks operations-analysis as a temporary exception within the primary workbench", () => {
+    const section = workbenchNavigation.find((s) => s.key === "operations-analysis");
+    expect(section?.path).toBe("/operations-analysis");
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("Temporary");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "operations-analysis")).toBe(true);
+  });
+
+  it("marks the wave-1 temporary-exception routes explicitly in navigation metadata", () => {
+    const temporaryExceptionKeys = [
+      "operations-analysis",
+      "bond-analysis",
+      "cross-asset",
+      "team-performance",
+      "market-data",
+      "platform-config",
+      "bond-dashboard",
+      "positions",
+      "average-balance",
+      "ledger-pnl",
+      "concentration-monitor",
+      "cashflow-projection",
+      "kpi-performance",
+      "news-events",
+      "product-category-pnl",
+    ];
+
+    for (const key of temporaryExceptionKeys) {
+      const section = workbenchNavigation.find((item) => item.key === key);
+      expect(section?.readiness).toBe("live");
+      expect(section?.readinessLabel).toBe("Temporary");
+      expect(section?.governanceStatus).toBe("temporary-exception");
+    }
+  });
+
   it("keeps risk-overview outside the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
     expect(riskOverview?.readiness).toBe("placeholder");
@@ -76,12 +111,13 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(false);
   });
 
-  it("promotes liability-analytics into the live primary navigation", () => {
+  it("demotes liability-analytics out of the live primary navigation", () => {
     const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
     expect(liab?.path).toBe("/liability-analytics");
-    expect(liab?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
+    expect(liab?.readiness).toBe("placeholder");
+    expect(liab?.readinessLabel).toBe("Deferred");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
   });
 
   it("promotes cashflow-projection into the live primary navigation", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "../../../lib/echarts";
-import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
+import { Card, Statistic, Row, Col, Table, Alert, Spin, Collapse } from "antd";
 import { useApiClient } from "../../../api/client";
 import type {
   BondAnalyticsAccountingClassFilter,
@@ -130,6 +130,48 @@ const effectColumns = [
   { title: "债券数", dataIndex: "bond_count", key: "bond_count" },
 ];
 
+const accountingClassEffectColumns = effectColumns.map((col, i) =>
+  i === 0 ? { ...col, title: "会计分类", key: "accounting_slice" } : col,
+);
+
+const bondDetailColumns = [
+  { title: "债券代码", dataIndex: "bond_code", key: "bond_code" },
+  {
+    title: "债券简称",
+    dataIndex: "bond_name",
+    key: "bond_name",
+    render: (v: string | null) => v ?? "—",
+  },
+  { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+  { title: "会计分类", dataIndex: "accounting_class", key: "accounting_class" },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+  { title: "Carry（票息）", dataIndex: "carry", key: "carry", render: formatWan },
+  { title: "Roll-down（骑乘）", dataIndex: "roll_down", key: "roll_down", render: formatWan },
+  { title: "利率效应", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
+  { title: "利差效应", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
+  {
+    title: "凸性效应",
+    dataIndex: "convexity_effect",
+    key: "convexity_effect",
+    render: (v: ReturnDecompositionResponse["bond_details"][number]["convexity_effect"]) =>
+      v ? formatWan(v) : "—",
+  },
+  { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
+  { title: "合计", dataIndex: "total", key: "total", render: formatWan },
+  {
+    title: "可解释（对账）",
+    dataIndex: "explained_for_recon",
+    key: "explained_for_recon",
+    render: formatWan,
+  },
+  {
+    title: "纯经济口径效应",
+    dataIndex: "economic_only_effects",
+    key: "economic_only_effects",
+    render: formatWan,
+  },
+];
+
 export function ReturnDecompositionView({
   reportDate,
   periodType,
@@ -176,6 +218,8 @@ export function ReturnDecompositionView({
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
+  const periodLabel = `${data.period_type} · ${data.period_start} — ${data.period_end}`;
+
   const effects = [
     { label: "Carry（票息）", value: data.carry },
     { label: "Roll-down（骑乘）", value: data.roll_down },
@@ -194,6 +238,17 @@ export function ReturnDecompositionView({
         description="按报告日、期间和筛选条件读取后端收益分解 read model；页面只展示经济口径、会计口径与 OCI 影响，不在前端重算正式损益。"
         testId="return-decomposition-shell-lead"
       />
+      <Card size="small" title="报告期间" data-testid="return-decomposition-period">
+        <div style={{ fontSize: 13, color: "#5c6b82" }}>{periodLabel}</div>
+        {data.computed_at ? (
+          <div
+            style={{ fontSize: 12, color: "#8090a8", marginTop: 6 }}
+            data-testid="return-decomposition-computed-at"
+          >
+            计算时间：{data.computed_at}
+          </div>
+        ) : null}
+      </Card>
       <Row gutter={16}>
         <Col span={8}>
           <Card size="small">
@@ -208,6 +263,18 @@ export function ReturnDecompositionView({
         <Col span={8}>
           <Card size="small">
             <Statistic title="会计口径（损益表）" value={formatWan(data.explained_pnl_accounting ?? data.explained_pnl)} />
+          </Card>
+        </Col>
+      </Row>
+      <Row gutter={16}>
+        <Col span={12}>
+          <Card size="small" data-testid="return-decomposition-bond-count">
+            <Statistic title="债券只数（顶层）" value={data.bond_count} />
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card size="small" data-testid="return-decomposition-total-mv">
+            <Statistic title="总市值（顶层）" value={formatWan(data.total_market_value)} />
           </Card>
         </Col>
       </Row>
@@ -254,6 +321,42 @@ export function ReturnDecompositionView({
             size="small"
           />
         </Card>
+      )}
+
+      {data.by_accounting_class && data.by_accounting_class.length > 0 && (
+        <Card title="按会计分类拆分" size="small" data-testid="return-decomposition-by-accounting-class">
+          <Table
+            dataSource={data.by_accounting_class}
+            columns={accountingClassEffectColumns}
+            rowKey={(row) => `${row.asset_class}`}
+            pagination={false}
+            size="small"
+          />
+        </Card>
+      )}
+
+      {data.bond_details && data.bond_details.length > 0 && (
+        <Collapse
+          bordered={false}
+          data-testid="return-decomposition-bond-details-collapse"
+          items={[
+            {
+              key: "bond-details",
+              label: "券级拆解（按券明细）",
+              children: (
+                <Table
+                  data-testid="return-decomposition-bond-details-table"
+                  dataSource={data.bond_details}
+                  columns={bondDetailColumns}
+                  rowKey={(row) => row.bond_code}
+                  pagination={false}
+                  size="small"
+                  scroll={{ x: "max-content" }}
+                />
+              ),
+            },
+          ]}
+        />
       )}
 
       <SectionLead

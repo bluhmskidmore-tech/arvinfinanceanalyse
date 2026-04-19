@@ -178,6 +178,7 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByText("MOSS")).toBeInTheDocument();
     expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
   it("renders the source-preview route", async () => {
@@ -206,7 +207,7 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("bond-analysis-route-shell")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "债券分析" })).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
   it("renders the cross-asset route", async () => {
@@ -232,12 +233,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("positions-report-date")).toBeInTheDocument();
   });
 
-  it("renders the liability-analytics route as a live page", async () => {
+  it("renders the liability-analytics route as a placeholder surface", async () => {
     renderWorkbenchApp(["/liability-analytics"], { client: mockClient });
 
-    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "负债结构分析" })).toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-readiness-banner")).not.toBeInTheDocument();
   });
 
   it("renders the cashflow-projection route", async () => {

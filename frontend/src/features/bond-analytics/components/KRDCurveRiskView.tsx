@@ -2,11 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Card, Statistic, Row, Col, Table, Alert, Spin } from "antd";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { useApiClient } from "../../../api/client";
-import type { Numeric } from "../../../api/contracts";
+import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
 import { formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
+
+function formatScenarioShocks(shocks: Record<string, number>): string {
+  const entries = Object.entries(shocks ?? {});
+  if (entries.length === 0) {
+    return "—";
+  }
+  return entries.map(([k, v]) => `${k} ${v}`).join(" · ");
+}
 
 interface Props {
   reportDate: string;
@@ -14,11 +22,118 @@ interface Props {
 }
 
 const scenarioColumns = [
+  { title: "情景键", dataIndex: "scenario_name", key: "scenario_name" },
   { title: "情景", dataIndex: "scenario_description", key: "scenario_description" },
+  {
+    title: "冲击参数",
+    dataIndex: "shocks",
+    key: "shocks",
+    ellipsis: true,
+    render: (shocks: Record<string, number>) => formatScenarioShocks(shocks),
+  },
   { title: "经济口径影响", dataIndex: "pnl_economic", key: "pnl_economic", render: formatWan },
   { title: "OCI影响", dataIndex: "pnl_oci", key: "pnl_oci", render: formatWan },
   { title: "TPL影响", dataIndex: "pnl_tpl", key: "pnl_tpl", render: formatWan },
+  {
+    title: "利率贡献",
+    dataIndex: "rate_contribution",
+    key: "rate_contribution",
+    render: formatWan,
+  },
+  {
+    title: "凸性贡献",
+    dataIndex: "convexity_contribution",
+    key: "convexity_contribution",
+    render: formatWan,
+  },
 ];
+
+const SCENARIO_BY_AC_CORE_KEYS = new Set(["pnl_economic", "pnl_oci", "pnl_tpl"]);
+
+function collectScenarioByAssetClassExtraKeys(
+  bac: Record<string, Record<string, Numeric>>,
+): string[] {
+  const extra = new Set<string>();
+  for (const metrics of Object.values(bac)) {
+    for (const k of Object.keys(metrics ?? {})) {
+      if (!SCENARIO_BY_AC_CORE_KEYS.has(k)) {
+        extra.add(k);
+      }
+    }
+  }
+  return Array.from(extra).sort((a, b) => a.localeCompare(b));
+}
+
+function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
+  const bac = record.by_asset_class ?? {};
+  const extraKeys = collectScenarioByAssetClassExtraKeys(bac);
+  const rows = Object.entries(bac).map(([asset_class, metrics]) => {
+    const row: Record<string, string | Numeric | undefined> = {
+      asset_class,
+      pnl_economic: metrics.pnl_economic,
+      pnl_oci: metrics.pnl_oci,
+      pnl_tpl: metrics.pnl_tpl,
+    };
+    for (const ek of extraKeys) {
+      row[ek] = metrics[ek];
+    }
+    return row;
+  });
+  const scenarioByAssetClassColumns = [
+    { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+    {
+      title: "经济口径",
+      dataIndex: "pnl_economic",
+      key: "pnl_economic",
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+    },
+    {
+      title: "OCI 影响",
+      dataIndex: "pnl_oci",
+      key: "pnl_oci",
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+    },
+    {
+      title: "TPL 影响",
+      dataIndex: "pnl_tpl",
+      key: "pnl_tpl",
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+    },
+    ...extraKeys.map((ek) => ({
+      title: ek,
+      dataIndex: ek,
+      key: ek,
+      render: (v: Numeric | undefined) => (v ? formatWan(v) : "—"),
+    })),
+  ];
+  if (rows.length === 0) {
+    return (
+      <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="krd-scenario-by-asset-class-empty">
+        暂无按资产类别的情景拆分
+      </div>
+    );
+  }
+  return (
+    <div data-testid="krd-scenario-by-asset-class">
+      {extraKeys.length > 0 ? (
+        <div
+          style={{ fontSize: 11, color: "#8090a8", marginBottom: 8 }}
+          data-testid="krd-scenario-by-asset-class-extra-keys"
+        >
+          额外口径键：{extraKeys.join("、")}
+        </div>
+      ) : null}
+      <Table
+        dataSource={rows}
+        columns={scenarioByAssetClassColumns}
+        rowKey="asset_class"
+        pagination={false}
+        size="small"
+        scroll={extraKeys.length > 2 ? { x: "max-content" } : undefined}
+      />
+    </div>
+  );
+}
 
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
@@ -218,6 +333,11 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
         description="按报告日读取后端 KRD curve risk read model；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
         testId="krd-curve-risk-shell-lead"
       />
+      {data.computed_at ? (
+        <div style={{ fontSize: 12, color: "#8090a8" }} data-testid="krd-computed-at">
+          计算时间：{data.computed_at}
+        </div>
+      ) : null}
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -260,11 +380,13 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       {data.scenarios.length > 0 && (
         <Card title="情景冲击" size="small">
           <Table
+            data-testid="krd-scenarios-table"
             dataSource={data.scenarios}
             columns={scenarioColumns}
             rowKey="scenario_name"
             pagination={false}
             size="small"
+            expandable={{ expandedRowRender: renderScenarioAssetClassBreakdown }}
           />
         </Card>
       )}

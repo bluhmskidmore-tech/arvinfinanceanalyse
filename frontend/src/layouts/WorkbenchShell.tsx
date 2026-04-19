@@ -6,9 +6,11 @@ import {
   BarChartOutlined,
   FileTextOutlined,
   FundOutlined,
+  QuestionCircleOutlined,
   SettingOutlined,
   TeamOutlined,
   TrophyOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import type { ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
@@ -63,18 +65,31 @@ function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
   } as const;
 }
 
+function sectionBadgeStyle(section: Pick<WorkbenchSection, "readiness" | "governanceStatus">) {
+  if (section.governanceStatus === "temporary-exception") {
+    return {
+      background: shellTokens.colorBgWarningSoft,
+      color: shellTokens.colorWarning,
+      border: `1px solid ${shellTokens.colorBorderWarning}`,
+    } as const;
+  }
+
+  return readinessBadgeStyle(section.readiness);
+}
+
 function groupButtonStyle(active: boolean) {
   return {
-    display: "grid",
+    display: "flex",
+    alignItems: "center",
     gap: 10,
-    padding: "14px 16px",
-    borderRadius: 18,
-    background: active ? shellTokens.colorAccentSoft : "rgba(255,255,255,0.45)",
-    color: active ? shellTokens.colorAccent : shellTokens.colorTextPrimary,
+    padding: "10px 12px",
+    borderRadius: 16,
+    background: active ? "rgba(221, 233, 241, 0.92)" : "transparent",
+    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
     border: active
       ? `1px solid ${shellTokens.colorBorderStrong}`
-      : `1px solid ${shellTokens.colorBorderSoft}`,
-    boxShadow: active ? "0 14px 26px rgba(22, 35, 46, 0.08)" : "none",
+      : "1px solid transparent",
+    boxShadow: active ? "inset 3px 0 0 #2c5a79" : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
@@ -98,15 +113,59 @@ function groupSectionPillStyle(active: boolean) {
   } as const;
 }
 
-const sidePanelStyle = {
-  display: "grid",
-  gap: 12,
-  padding: 16,
-  borderRadius: 22,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "rgba(255,255,255,0.55)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.7)",
+function sidebarSectionLinkStyle(active: boolean) {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 10px",
+    borderRadius: 12,
+    background: active ? "rgba(255,255,255,0.88)" : "transparent",
+    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
+    border: active ? `1px solid ${shellTokens.colorBorderSoft}` : "1px solid transparent",
+    boxShadow: active ? "inset 2px 0 0 #2c5a79" : "none",
+    fontSize: 12,
+    fontWeight: active ? 700 : 600,
+    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
+  } as const;
+}
+
+function supportLinkStyle(active: boolean) {
+  return {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 10px",
+    borderRadius: 12,
+    background: active ? "rgba(233, 238, 235, 0.88)" : "transparent",
+    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextMuted,
+    border: active ? `1px solid ${shellTokens.colorBorderSoft}` : "1px solid transparent",
+    fontSize: 12,
+    fontWeight: 600,
+    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
+  } as const;
+}
+
+const shellSectionLabelStyle = {
+  fontSize: 10,
+  letterSpacing: "0.14em",
+  textTransform: "uppercase",
+  color: shellTokens.colorTextMuted,
+  fontWeight: 700,
 } as const;
+
+const shellTickerItems = [
+  { key: "cgb10y", label: "10Y CGB", value: "1.94%", delta: "+2bp", tone: "up" },
+  { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
+  { key: "aaa3y", label: "AAA 3Y", value: "45bp", delta: "-3bp", tone: "down" },
+  { key: "usd-cny", label: "USD/CNY", value: "7.21", delta: "+0.02", tone: "up" },
+] as const;
+
+const shellSupportEntries = [
+  { key: "reports", label: "鎶ヨ〃涓績", to: "/reports", icon: <FileTextOutlined /> },
+  { key: "platform", label: "涓彴閰嶇疆", to: "/platform-config", icon: <SettingOutlined /> },
+  { key: "help", label: "甯姪鏂囨。", to: "/", icon: <QuestionCircleOutlined /> },
+] as const;
 
 type PortfolioStage = {
   title: string;
@@ -162,6 +221,7 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 export function WorkbenchShell() {
   const location = useLocation();
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
+  const searchParams = new URLSearchParams(location.search);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
   const currentGroup =
     primaryWorkbenchNavigationGroups.find(
@@ -172,7 +232,11 @@ export function WorkbenchShell() {
   const isMockDataSource =
     typeof dataSourceRaw !== "string" || dataSourceRaw.trim().toLowerCase() !== "real";
   const isPortfolioGroup = currentGroup.key === "portfolio";
+  const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   const currentGroupSectionCount = currentGroupSections.length;
+  const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
+  const shellReportDate = explicitReportDate || (isBondAnalysisMinimalShell ? "Latest available" : "Route default");
+  const terminalStatusLabel = isMockDataSource ? "Derived display" : "Live feed";
   const portfolioLeadSections = portfolioFlow
     .map((item) => ({
       ...item,
@@ -199,7 +263,7 @@ export function WorkbenchShell() {
       className="workbench-shell-grid"
       style={{
         minHeight: "100vh",
-        padding: "24px clamp(18px, 2vw, 30px)",
+        padding: "18px clamp(16px, 1.8vw, 28px)",
         background: shellTokens.colorBgApp,
       }}
     >
@@ -208,21 +272,27 @@ export function WorkbenchShell() {
         style={{
           display: "grid",
           alignContent: "start",
-          gap: 18,
-          padding: 18,
+          gap: 14,
+          padding: isBondAnalysisMinimalShell ? 12 : 14,
           border: `1px solid ${shellTokens.colorBorder}`,
-          borderRadius: 32,
-          boxShadow: shellTokens.shadowPanel,
-          background: `linear-gradient(180deg, ${shellTokens.colorBgSurface} 0%, ${shellTokens.colorBgCanvas} 100%)`,
-          backdropFilter: "blur(16px)",
+          borderRadius: isBondAnalysisMinimalShell ? 22 : 26,
+          boxShadow: "0 18px 36px rgba(22, 35, 46, 0.06)",
+          background: "rgba(247, 247, 242, 0.9)",
+          backdropFilter: "blur(12px)",
         }}
       >
-        <div style={sidePanelStyle}>
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            padding: "4px 2px 14px",
+            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+          }}
+        >
           <div
             style={{
               display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
+              alignItems: "center",
               gap: 12,
             }}
           >
@@ -232,20 +302,52 @@ export function WorkbenchShell() {
                 placeItems: "center",
                 width: 40,
                 height: 40,
-                borderRadius: 14,
+                borderRadius: 12,
                 background: shellTokens.colorTextPrimary,
                 color: shellTokens.colorBgCanvas,
                 fontWeight: 700,
-                boxShadow: "0 12px 24px rgba(22, 35, 46, 0.18)",
+                boxShadow: "0 10px 22px rgba(22, 35, 46, 0.14)",
               }}
             >
               M
             </div>
+            <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+              <span
+                style={{
+                  color: shellTokens.colorTextPrimary,
+                  fontWeight: 700,
+                  fontSize: 18,
+                  letterSpacing: "-0.03em",
+                }}
+              >
+                MOSS
+              </span>
+              <span style={{ color: shellTokens.colorTextMuted, fontSize: 11 }}>
+                Fixed Income Terminal
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <span
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                padding: "6px 10px",
+                padding: "4px 10px",
+                borderRadius: 999,
+                background: "rgba(233, 238, 235, 0.96)",
+                color: shellTokens.colorTextSecondary,
+                fontSize: 11,
+                fontWeight: 700,
+              }}
+            >
+              {currentGroup.label}
+            </span>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "4px 10px",
                 borderRadius: 999,
                 background: isMockDataSource
                   ? shellTokens.colorBgWarningSoft
@@ -253,62 +355,46 @@ export function WorkbenchShell() {
                 color: isMockDataSource ? shellTokens.colorWarning : shellTokens.colorAccent,
                 fontSize: 11,
                 fontWeight: 700,
-                letterSpacing: "0.04em",
-                textTransform: "uppercase",
               }}
             >
-              {isMockDataSource ? "Mock mode" : "Real API"}
-            </span>
-          </div>
-          <div style={{ display: "grid", gap: 4 }}>
-            <span
-              style={{
-                display: "block",
-                color: shellTokens.colorTextPrimary,
-                fontWeight: 700,
-                fontSize: 20,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              MOSS
-            </span>
-            <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
-              Phase 1 workbench shell
+              {terminalStatusLabel}
             </span>
           </div>
         </div>
 
-        <section
-          style={{
-            ...sidePanelStyle,
-            gap: 8,
-          }}
-        >
-          <span
+        {/* {!isBondAnalysisMinimalShell ? (
+          <section
             style={{
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: shellTokens.colorTextMuted,
+              ...sidePanelStyle,
+              gap: 8,
             }}
           >
-            Current Scope
-          </span>
-          <div
-            style={{
-              color: shellTokens.colorTextPrimary,
-              fontSize: 13,
-              lineHeight: 1.7,
-            }}
-          >
-            当前左侧只保留工作台分组。具体分析页收进当前分组的子导航，减少首页扫描负担。
-          </div>
-        </section>
+            <span
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: shellTokens.colorTextMuted,
+              }}
+            >
+              Current Scope
+            </span>
+            <div
+              style={{
+                color: shellTokens.colorTextPrimary,
+                fontSize: 13,
+                lineHeight: 1.7,
+              }}
+            >
+              当前左侧只保留工作台分组。具体分析页收进当前分组的子导航，减少首页扫描负担。
+            </div>
+          </section>
+        ) : null} */}
 
-        <nav
+        {/* <nav
           aria-label="Primary workspaces"
           data-testid="workbench-group-nav"
-          style={{ display: "grid", gap: 10 }}
+          style={{ display: "grid", gap: isBondAnalysisMinimalShell ? 6 : 10 }}
         >
           {primaryWorkbenchNavigationGroups.map((group) => {
             const active = group.key === currentGroup.key;
@@ -356,61 +442,242 @@ export function WorkbenchShell() {
           })}
         </nav>
 
-        <section
-          style={{
-            display: "grid",
-            gap: 10,
-            paddingTop: 4,
-            borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
-          }}
-        >
-          <div
+        {isBondAnalysisMinimalShell ? (
+          <section
+            data-testid="workbench-sidebar-sections"
             style={{
-              fontSize: 11,
-              letterSpacing: "0.08em",
-              textTransform: "uppercase",
-              color: shellTokens.colorTextMuted,
+              display: "grid",
+              gap: 6,
+              paddingTop: 6,
+              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
-            Reserved Modules
-          </div>
-          {secondaryWorkbenchNavigation.map((item) => {
-            const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
+            <span
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: shellTokens.colorTextMuted,
+              }}
+            >
+              组合工作台
+            </span>
+            {currentGroupSections.map((section) => {
+              const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
-            return (
-              <NavLink
-                key={item.key}
-                to={item.path}
-                style={{
-                  display: "grid",
-                  gap: 6,
-                  padding: "12px 14px",
-                  borderRadius: 16,
-                  background: active ? "#f4f7fb" : "#ffffff",
-                  border: active
-                    ? `1px solid ${shellTokens.colorBorder}`
-                    : `1px solid ${shellTokens.colorBorderSoft}`,
-                  color: shellTokens.colorTextPrimary,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
-                  <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
+              return (
+                <NavLink
+                  key={section.key}
+                  to={section.path}
+                  style={sidebarSectionLinkStyle(active)}
+                >
+                  <span style={{ fontSize: 14 }}>{iconMap[section.icon]}</span>
+                  <span style={{ flex: 1 }}>{section.label}</span>
+                </NavLink>
+              );
+            })}
+          </section>
+        ) : (
+          <section
+            style={{
+              display: "grid",
+              gap: 10,
+              paddingTop: 4,
+              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+                color: shellTokens.colorTextMuted,
+              }}
+            >
+              Reserved Modules
+            </div>
+            {secondaryWorkbenchNavigation.map((item) => {
+              const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
+
+              return (
+                <NavLink
+                  key={item.key}
+                  to={item.path}
+                  style={{
+                    display: "grid",
+                    gap: 6,
+                    padding: "12px 14px",
+                    borderRadius: 16,
+                    background: active ? "#f4f7fb" : "#ffffff",
+                    border: active
+                      ? `1px solid ${shellTokens.colorBorder}`
+                      : `1px solid ${shellTokens.colorBorderSoft}`,
+                    color: shellTokens.colorTextPrimary,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 16 }}>{iconMap[item.icon]}</span>
+                    <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
+                    <span
+                      style={{
+                        ...sectionBadgeStyle(item),
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {item.readinessLabel}
+                    </span>
+                  </div>
+                  <div style={{ color: shellTokens.colorTextMuted, fontSize: 12, lineHeight: 1.6 }}>
+                    {item.readinessNote}
+                  </div>
+                </NavLink>
+              );
+            })}
+          </section>
+        )} */}
+
+        <section style={{ display: "grid", gap: 8 }}>
+          <span style={shellSectionLabelStyle}>Workspaces</span>
+          <nav
+            aria-label="Primary workspaces"
+            data-testid="workbench-group-nav"
+            style={{ display: "grid", gap: 4 }}
+          >
+            {primaryWorkbenchNavigationGroups.map((group) => {
+              const active = group.key === currentGroup.key;
+
+              return (
+                <NavLink
+                  key={group.key}
+                  to={group.defaultPath}
+                  data-active={active ? "true" : "false"}
+                  style={groupButtonStyle(active)}
+                >
+                  <span style={{ fontSize: 15 }}>{iconMap[group.icon]}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{group.label}</span>
                   <span
                     style={{
-                      ...readinessBadgeStyle(item.readiness),
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: 24,
+                      height: 24,
+                      paddingInline: 7,
                       borderRadius: 999,
-                      padding: "2px 8px",
+                      background: active ? "#ffffff" : "rgba(233, 238, 235, 0.92)",
+                      color: active ? shellTokens.colorAccent : shellTokens.colorTextMuted,
                       fontSize: 11,
                       fontWeight: 700,
                     }}
                   >
-                    {item.readinessLabel}
+                    {group.sections.length}
                   </span>
-                </div>
-                <div style={{ color: shellTokens.colorTextMuted, fontSize: 12, lineHeight: 1.6 }}>
-                  {item.readinessNote}
-                </div>
+                </NavLink>
+              );
+            })}
+          </nav>
+        </section>
+
+        {isBondAnalysisMinimalShell ? (
+          <section
+            data-testid="workbench-sidebar-sections"
+            style={{
+              display: "grid",
+              gap: 6,
+              paddingTop: 4,
+              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+            }}
+          >
+            <span style={shellSectionLabelStyle}>Portfolio Pages</span>
+            {currentGroupSections.map((section) => {
+              const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
+
+              return (
+                <NavLink
+                  key={section.key}
+                  to={section.path}
+                  data-active={active ? "true" : "false"}
+                  style={sidebarSectionLinkStyle(active)}
+                >
+                  <span style={{ fontSize: 13 }}>{iconMap[section.icon]}</span>
+                  <span style={{ flex: 1, minWidth: 0 }}>{section.label}</span>
+                </NavLink>
+              );
+            })}
+          </section>
+        ) : (
+          <section
+            style={{
+              display: "grid",
+              gap: 8,
+              paddingTop: 4,
+              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+            }}
+          >
+            <span style={shellSectionLabelStyle}>Reserved Modules</span>
+            {secondaryWorkbenchNavigation.map((item) => {
+              const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
+
+              return (
+                <NavLink
+                  key={item.key}
+                  to={item.path}
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    padding: "10px 12px",
+                    borderRadius: 14,
+                    background: active ? "#f4f7fb" : "rgba(255,255,255,0.72)",
+                    border: active
+                      ? `1px solid ${shellTokens.colorBorder}`
+                      : `1px solid ${shellTokens.colorBorderSoft}`,
+                    color: shellTokens.colorTextPrimary,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 14 }}>{iconMap[item.icon]}</span>
+                    <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
+                    <span
+                      style={{
+                        ...sectionBadgeStyle(item),
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        fontSize: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {item.readinessLabel}
+                    </span>
+                  </div>
+                  <div style={{ color: shellTokens.colorTextMuted, fontSize: 11, lineHeight: 1.5 }}>
+                    {item.readinessNote}
+                  </div>
+                </NavLink>
+              );
+            })}
+          </section>
+        )}
+
+        <section
+          data-testid="workbench-support-nav"
+          style={{
+            display: "grid",
+            gap: 6,
+            paddingTop: 4,
+            borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+          }}
+        >
+          <span style={shellSectionLabelStyle}>Support</span>
+          {shellSupportEntries.map((item) => {
+            const active = item.to !== "/" && pathnameResolved === item.to;
+
+            return (
+              <NavLink key={item.key} to={item.to} style={supportLinkStyle(active)}>
+                <span style={{ fontSize: 13 }}>{item.icon}</span>
+                <span style={{ flex: 1 }}>{item.label}</span>
               </NavLink>
             );
           })}
@@ -419,135 +686,390 @@ export function WorkbenchShell() {
 
       <div className="workbench-main-column">
         <header
+          data-testid="workbench-terminal-bar"
           style={{
-            display: "flex",
-            flexWrap: isPortfolioGroup ? "wrap" : "nowrap",
-            alignItems: isPortfolioGroup ? "stretch" : "flex-start",
-            justifyContent: "space-between",
-            gap: 18,
-            padding: "22px 26px",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 14,
+            alignItems: "stretch",
+            padding: "12px 16px",
             border: `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: 30,
-            boxShadow: shellTokens.shadowPanel,
-            background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 88%)`,
+            borderRadius: 22,
+            boxShadow: "0 14px 28px rgba(22, 35, 46, 0.05)",
+            background: "rgba(252, 251, 248, 0.92)",
           }}
         >
-          {isPortfolioGroup ? (
-            <>
-              <section
-                data-testid="portfolio-workbench-lead"
+          <section
+            data-testid="workbench-page-context"
+            style={{
+              display: "grid",
+              gap: 6,
+              minWidth: 0,
+            }}
+          >
+            <span style={shellSectionLabelStyle}>Page Context</span>
+            <div
+              style={{
+                color: shellTokens.colorTextPrimary,
+                fontSize: "clamp(22px, 2.4vw, 34px)",
+                lineHeight: 1,
+                fontWeight: 700,
+                letterSpacing: "-0.05em",
+              }}
+            >
+              {currentSection.label}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 8,
+                color: shellTokens.colorTextSecondary,
+                fontSize: 12,
+              }}
+            >
+              <span>{currentGroup.label}</span>
+              <span>Report Date {shellReportDate}</span>
+            </div>
+          </section>
+
+          <section
+            data-testid="workbench-market-ticker"
+            style={{
+              display: "grid",
+              gap: 8,
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                alignItems: "center",
+              }}
+            >
+              <span style={shellSectionLabelStyle}>Shell Market Ticker</span>
+              <span
                 style={{
-                  flex: "1 1 0",
-                  display: "grid",
-                  gap: 18,
-                  minWidth: 0,
+                  color: shellTokens.colorTextMuted,
+                  fontSize: 11,
+                  fontWeight: 600,
                 }}
               >
-                <div style={{ display: "grid", gap: 10 }}>
-                  <span
-                    style={{
-                      color: shellTokens.colorTextMuted,
-                      fontSize: 12,
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                    }}
-                  >
-                    Portfolio Workbench
-                  </span>
-                  <div
-                    style={{
-                      fontSize: "clamp(26px, 3vw, 34px)",
-                      lineHeight: 1.15,
-                      fontWeight: 700,
-                      letterSpacing: "-0.04em",
-                      color: shellTokens.colorTextPrimary,
-                      maxWidth: 700,
-                    }}
-                  >
-                    组合状态先看错配，再看损益，最后定位仓位与归因
-                  </div>
-                  <div
-                    style={{
-                      maxWidth: 760,
-                      color: shellTokens.colorTextSecondary,
-                      fontSize: 14,
-                      lineHeight: 1.8,
-                    }}
-                  >
-                    当前工作台聚合 {currentGroup.label} 的核心 live 页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把 placeholder 或 analytical 结果误读成正式结论。
-                  </div>
-                </div>
-
+                shell-level display only
+              </span>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                gap: 8,
+              }}
+            >
+              {shellTickerItems.map((item) => (
                 <div
+                  key={item.key}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: 10,
+                    gap: 2,
+                    padding: "8px 10px",
+                    borderRadius: 14,
+                    border: `1px solid ${shellTokens.colorBorderSoft}`,
+                    background: "rgba(247, 247, 242, 0.82)",
                   }}
                 >
-                  {[
-                    {
-                      label: "可访问页面",
-                      value: `${currentGroupSectionCount}`,
-                      detail: "当前分组内 live route",
-                    },
-                    {
-                      label: "默认入口",
-                      value: "资产负债分析",
-                      detail: "优先用正式余额判断状态",
-                    },
-                    {
-                      label: "阅读原则",
-                      value: "先正式后解释",
-                      detail: "占位模块不混入首屏判断",
-                    },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
+                  <span style={{ color: shellTokens.colorTextMuted, fontSize: 11 }}>{item.label}</span>
+                  <strong
+                    style={{
+                      color: shellTokens.colorTextPrimary,
+                      fontSize: 18,
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {item.value}
+                  </strong>
+                  <span
+                    style={{
+                      color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
+                      fontSize: 11,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.delta}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section
+            data-testid="workbench-operator-zone"
+            style={{
+              display: "grid",
+              alignContent: "space-between",
+              gap: 10,
+              minWidth: 156,
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                gap: 8,
+                color: shellTokens.colorTextSecondary,
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              <UserOutlined />
+              <span>Admin</span>
+            </div>
+            <div style={{ display: "grid", gap: 6, justifyItems: "stretch" }}>
+              {shellSupportEntries
+                .filter((item) => item.key !== "help")
+                .map((item) => (
+                  <NavLink
+                    key={`terminal-${item.key}`}
+                    to={item.to}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: `1px solid ${shellTokens.colorBorderSoft}`,
+                      background: "#ffffff",
+                      color: shellTokens.colorTextPrimary,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    <span style={{ fontSize: 12 }}>{item.icon}</span>
+                    <span>{item.label}</span>
+                  </NavLink>
+                ))}
+            </div>
+          </section>
+        </header>
+        {!isBondAnalysisMinimalShell ? (
+          <header
+            style={{
+              display: "flex",
+              flexWrap: isPortfolioGroup ? "wrap" : "nowrap",
+              alignItems: isPortfolioGroup ? "stretch" : "flex-start",
+              justifyContent: "space-between",
+              gap: 18,
+              padding: "22px 26px",
+              border: `1px solid ${shellTokens.colorBorder}`,
+              borderRadius: 30,
+              boxShadow: shellTokens.shadowPanel,
+              background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 88%)`,
+            }}
+          >
+            {isPortfolioGroup ? (
+              <>
+                <section
+                  data-testid="portfolio-workbench-lead"
+                  style={{
+                    flex: "1 1 0",
+                    display: "grid",
+                    gap: 18,
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <span
                       style={{
-                        display: "grid",
-                        gap: 4,
-                        padding: "14px 16px",
-                        borderRadius: 20,
-                        border: `1px solid ${shellTokens.colorBorderSoft}`,
-                        background: "rgba(255,255,255,0.72)",
+                        color: shellTokens.colorTextMuted,
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
                       }}
                     >
-                      <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
-                        {item.label}
-                      </span>
-                      <strong
+                      Portfolio Workbench
+                    </span>
+                    <div
+                      style={{
+                        fontSize: "clamp(26px, 3vw, 34px)",
+                        lineHeight: 1.15,
+                        fontWeight: 700,
+                        letterSpacing: "-0.04em",
+                        color: shellTokens.colorTextPrimary,
+                        maxWidth: 700,
+                      }}
+                    >
+                      组合状态先看错配，再看损益，最后定位仓位与归因
+                    </div>
+                    <div
+                      style={{
+                        maxWidth: 760,
+                        color: shellTokens.colorTextSecondary,
+                        fontSize: 14,
+                        lineHeight: 1.8,
+                      }}
+                    >
+                      当前工作台聚合 {currentGroup.label} 的核心 live 页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把 placeholder 或 analytical 结果误读成正式结论。
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    {[
+                      {
+                        label: "可访问页面",
+                        value: `${currentGroupSectionCount}`,
+                        detail: "当前分组内 live route",
+                      },
+                      {
+                        label: "默认入口",
+                        value: "资产负债分析",
+                        detail: "优先用正式余额判断状态",
+                      },
+                      {
+                        label: "阅读原则",
+                        value: "先正式后解释",
+                        detail: "占位模块不混入首屏判断",
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
                         style={{
-                          color: shellTokens.colorTextPrimary,
-                          fontSize: item.value.length > 8 ? 16 : 24,
-                          lineHeight: 1.2,
+                          display: "grid",
+                          gap: 4,
+                          padding: "14px 16px",
+                          borderRadius: 20,
+                          border: `1px solid ${shellTokens.colorBorderSoft}`,
+                          background: "rgba(255,255,255,0.72)",
                         }}
                       >
-                        {item.value}
-                      </strong>
-                      <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
-                        {item.detail}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
+                        <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
+                          {item.label}
+                        </span>
+                        <strong
+                          style={{
+                            color: shellTokens.colorTextPrimary,
+                            fontSize: item.value.length > 8 ? 16 : 24,
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {item.value}
+                        </strong>
+                        <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
+                          {item.detail}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
 
-              <aside
-                data-testid="portfolio-workbench-flow"
-                style={{
-                  flex: "0 0 min(360px, 100%)",
-                  display: "grid",
-                  gap: 10,
-                  padding: 18,
-                  borderRadius: 24,
-                  border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background:
-                    "linear-gradient(180deg, rgba(225, 235, 242, 0.72) 0%, rgba(255,255,255,0.82) 100%)",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.78)",
-                }}
-              >
-                <div style={{ display: "grid", gap: 6 }}>
+                <aside
+                  data-testid="portfolio-workbench-flow"
+                  style={{
+                    flex: "0 0 min(360px, 100%)",
+                    display: "grid",
+                    gap: 10,
+                    padding: 18,
+                    borderRadius: 24,
+                    border: `1px solid ${shellTokens.colorBorderSoft}`,
+                    background:
+                      "linear-gradient(180deg, rgba(225, 235, 242, 0.72) 0%, rgba(255,255,255,0.82) 100%)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.78)",
+                  }}
+                >
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <span
+                      style={{
+                        color: shellTokens.colorTextMuted,
+                        fontSize: 12,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                      }}
+                    >
+                      Suggested Flow
+                    </span>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 700,
+                        color: shellTokens.colorTextPrimary,
+                      }}
+                    >
+                      先用正式结果做结论，再下钻解释原因
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {portfolioLeadSections.map((item, index) => {
+                      const active = pathMatchesWorkbenchSection(item.section.path, pathnameResolved);
+
+                      return (
+                        <NavLink
+                          key={item.section.key}
+                          to={item.section.path}
+                          style={{
+                            display: "grid",
+                            gap: 6,
+                            padding: "14px 16px",
+                            borderRadius: 18,
+                            background: active ? shellTokens.colorAccentSoft : "rgba(255,255,255,0.76)",
+                            border: active
+                              ? `1px solid ${shellTokens.colorBorderStrong}`
+                              : `1px solid ${shellTokens.colorBorderSoft}`,
+                            color: shellTokens.colorTextPrimary,
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                            <span
+                              style={{
+                                display: "grid",
+                                placeItems: "center",
+                                width: 28,
+                                height: 28,
+                                borderRadius: 999,
+                                background: active ? shellTokens.colorAccent : shellTokens.colorBgMuted,
+                                color: active ? "#ffffff" : shellTokens.colorTextSecondary,
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {index + 1}
+                            </span>
+                            <span style={{ flex: 1, fontWeight: 700 }}>{item.title}</span>
+                            <span
+                              style={{
+                                ...sectionBadgeStyle(item.section),
+                                borderRadius: 999,
+                                padding: "2px 8px",
+                                fontSize: 11,
+                                fontWeight: 700,
+                              }}
+                            >
+                              {item.section.readinessLabel}
+                            </span>
+                          </div>
+                          <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
+                            {item.detail}
+                          </div>
+                          <div style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
+                            {item.section.label} · {item.section.readinessNote}
+                          </div>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </aside>
+              </>
+            ) : (
+              <>
+                <div style={{ display: "grid", gap: 8 }}>
                   <span
                     style={{
                       color: shellTokens.colorTextMuted,
@@ -556,140 +1078,56 @@ export function WorkbenchShell() {
                       letterSpacing: "0.08em",
                     }}
                   >
-                    Suggested Flow
+                    Phase 1 Status
                   </span>
                   <div
                     style={{
-                      fontSize: 18,
+                      fontSize: 22,
                       fontWeight: 700,
                       color: shellTokens.colorTextPrimary,
                     }}
                   >
-                    先用正式结果做结论，再下钻解释原因
+                    当前只突出可验证的真实读链路
+                  </div>
+                  <div style={{ color: shellTokens.colorTextSecondary, fontSize: 14, lineHeight: 1.7 }}>
+                    当前工作台：{currentGroup.label}。页面切换收进组内导航，避免在壳层堆满入口。
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gap: 10 }}>
-                  {portfolioLeadSections.map((item, index) => {
-                    const active = pathMatchesWorkbenchSection(item.section.path, pathnameResolved);
-
-                    return (
-                      <NavLink
-                        key={item.section.key}
-                        to={item.section.path}
-                        style={{
-                          display: "grid",
-                          gap: 6,
-                          padding: "14px 16px",
-                          borderRadius: 18,
-                          background: active ? shellTokens.colorAccentSoft : "rgba(255,255,255,0.76)",
-                          border: active
-                            ? `1px solid ${shellTokens.colorBorderStrong}`
-                            : `1px solid ${shellTokens.colorBorderSoft}`,
-                          color: shellTokens.colorTextPrimary,
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <span
-                            style={{
-                              display: "grid",
-                              placeItems: "center",
-                              width: 28,
-                              height: 28,
-                              borderRadius: 999,
-                              background: active ? shellTokens.colorAccent : shellTokens.colorBgMuted,
-                              color: active ? "#ffffff" : shellTokens.colorTextSecondary,
-                              fontSize: 12,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {index + 1}
-                          </span>
-                          <span style={{ flex: 1, fontWeight: 700 }}>{item.title}</span>
-                          <span
-                            style={{
-                              ...readinessBadgeStyle(item.section.readiness),
-                              borderRadius: 999,
-                              padding: "2px 8px",
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {item.section.readinessLabel}
-                          </span>
-                        </div>
-                        <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.6 }}>
-                          {item.detail}
-                        </div>
-                        <div style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
-                          {item.section.label} · {item.section.readinessNote}
-                        </div>
-                      </NavLink>
-                    );
-                  })}
-                </div>
-              </aside>
-            </>
-          ) : (
-            <>
-              <div style={{ display: "grid", gap: 8 }}>
-                <span
-                  style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 12,
-                    textTransform: "uppercase",
-                    letterSpacing: "0.08em",
-                  }}
-                >
-                  Phase 1 Status
-                </span>
                 <div
-                  style={{
-                    fontSize: 22,
-                    fontWeight: 700,
-                    color: shellTokens.colorTextPrimary,
-                  }}
+                  style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}
                 >
-                  当前只突出可验证的真实读链路
+                  <span
+                    style={{
+                      ...sectionBadgeStyle(currentSection),
+                      borderRadius: 999,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {currentSection.label} · {currentSection.readinessLabel}
+                  </span>
+                  <span
+                    style={{
+                      maxWidth: 420,
+                      color: shellTokens.colorTextSecondary,
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      textAlign: "right",
+                    }}
+                  >
+                    {currentSection.readinessNote}
+                  </span>
                 </div>
-                <div style={{ color: shellTokens.colorTextSecondary, fontSize: 14, lineHeight: 1.7 }}>
-                  当前工作台：{currentGroup.label}。页面切换收进组内导航，避免在壳层堆满入口。
-                </div>
-              </div>
-
-              <div
-                style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}
-              >
-                <span
-                  style={{
-                    ...readinessBadgeStyle(currentSection.readiness),
-                    borderRadius: 999,
-                    padding: "6px 12px",
-                    fontSize: 12,
-                    fontWeight: 700,
-                  }}
-                >
-                  {currentSection.label} · {currentSection.readinessLabel}
-                </span>
-                <span
-                  style={{
-                    maxWidth: 420,
-                    color: shellTokens.colorTextSecondary,
-                    fontSize: 13,
-                    lineHeight: 1.6,
-                    textAlign: "right",
-                  }}
-                >
-                  {currentSection.readinessNote}
-                </span>
-              </div>
-            </>
-          )}
-        </header>
+              </>
+            )}
+          </header>
+        ) : null}
 
         <main
           style={{
-            padding: 24,
+            padding: isBondAnalysisMinimalShell ? 0 : 24,
             border: `1px solid ${shellTokens.colorBorder}`,
             borderRadius: 30,
             boxShadow: shellTokens.shadowPanel,
@@ -699,7 +1137,7 @@ export function WorkbenchShell() {
             gap: 20,
           }}
         >
-          {isPortfolioGroup ? (
+          {isPortfolioGroup && !isBondAnalysisMinimalShell ? (
             <section
               data-testid="portfolio-workbench-board"
               style={{
@@ -765,7 +1203,7 @@ export function WorkbenchShell() {
                             <span style={{ flex: 1, fontWeight: 700 }}>{section.label}</span>
                             <span
                               style={{
-                                ...readinessBadgeStyle(section.readiness),
+                                ...sectionBadgeStyle(section),
                                 borderRadius: 999,
                                 padding: "2px 8px",
                                 fontSize: 11,
@@ -787,55 +1225,57 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          <section
-            data-testid="workbench-section-subnav"
-            style={{
-              display: "grid",
-              gap: 12,
-              paddingBottom: 18,
-              borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-            }}
-          >
-            <div style={{ display: "grid", gap: 4 }}>
-              <span
-                style={{
-                  color: shellTokens.colorTextMuted,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                }}
-              >
-                {isPortfolioGroup ? "All Live Pages" : "In This Workspace"}
-              </span>
-              <div
-                style={{
-                  color: shellTokens.colorTextPrimary,
-                  fontSize: 18,
-                  fontWeight: 700,
-                }}
-              >
-                {currentGroup.label}
+          {!isBondAnalysisMinimalShell ? (
+            <section
+              data-testid="workbench-section-subnav"
+              style={{
+                display: "grid",
+                gap: 12,
+                paddingBottom: 18,
+                borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+              }}
+            >
+              <div style={{ display: "grid", gap: 4 }}>
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {isPortfolioGroup ? "All Live Pages" : "In This Workspace"}
+                </span>
+                <div
+                  style={{
+                    color: shellTokens.colorTextPrimary,
+                    fontSize: 18,
+                    fontWeight: 700,
+                  }}
+                >
+                  {currentGroup.label}
+                </div>
               </div>
-            </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {currentGroupSections.map((section) => {
-                const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                {currentGroupSections.map((section) => {
+                  const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
 
-                return (
-                  <NavLink
-                    key={section.key}
-                    to={section.path}
-                    style={groupSectionPillStyle(active)}
-                  >
-                    <span style={{ fontSize: 14 }}>{iconMap[section.icon]}</span>
-                    <span>{section.label}</span>
-                  </NavLink>
-                );
-              })}
-            </div>
-          </section>
+                  return (
+                    <NavLink
+                      key={section.key}
+                      to={section.path}
+                      style={groupSectionPillStyle(active)}
+                    >
+                      <span style={{ fontSize: 14 }}>{iconMap[section.icon]}</span>
+                      <span>{section.label}</span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           {currentSection.readiness !== "live" ? (
             <section
@@ -863,31 +1303,33 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
+          {currentSection.governanceStatus === "temporary-exception" ? (
+            <section
+              data-testid="workbench-governance-banner"
+              style={{
+                borderRadius: 18,
+                border: `1px solid ${shellTokens.colorBorderWarning}`,
+                background: shellTokens.colorBgWarningSoft,
+                color: shellTokens.colorTextPrimary,
+                padding: 18,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>Temporary exception</div>
+              <div style={{ fontSize: 14, lineHeight: 1.6 }}>
+                {currentSection.governanceBanner ?? currentSection.readinessNote}
+              </div>
+              <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
+                Wave 1 keeps this route visible only while its page contract closes; do not treat
+                it as a fully governed surface.
+              </div>
+            </section>
+          ) : null}
+
           <Outlet />
         </main>
       </div>
-
-      {isMockDataSource ? (
-        <div
-          data-testid="workbench-mock-mode-badge"
-          style={{
-            position: "fixed",
-            right: 16,
-            bottom: 16,
-            zIndex: 1000,
-            padding: "6px 12px",
-            borderRadius: 999,
-            background: shellTokens.colorTextPrimary,
-            color: shellTokens.colorBgSurface,
-            fontSize: 12,
-            fontWeight: 700,
-            boxShadow: "0 8px 24px rgba(19, 37, 70, 0.2)",
-            pointerEvents: "none",
-          }}
-        >
-          Mock Mode
-        </div>
-      ) : null}
     </div>
   );
 }

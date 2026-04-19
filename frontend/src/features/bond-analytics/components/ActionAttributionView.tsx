@@ -56,6 +56,53 @@ const detailColumns = [
     width: 80,
     render: (v: Numeric) => v.display,
   },
+  {
+    title: "会计损益",
+    dataIndex: "pnl_accounting",
+    key: "pnl_accounting",
+    width: 110,
+    render: (v: Numeric) => {
+      const num = bondNumericRaw(v);
+      const color = num >= 0 ? "#cf1322" : "#3f8600";
+      return <span style={{ color, fontVariantNumeric: "tabular-nums" }}>{formatWan(v)}</span>;
+    },
+  },
+  {
+    title: "ΔDV01",
+    dataIndex: "delta_dv01",
+    key: "delta_dv01",
+    width: 100,
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "Δ利差DV01",
+    dataIndex: "delta_spread_dv01",
+    key: "delta_spread_dv01",
+    width: 110,
+    render: (v: Numeric) => v.display,
+  },
+  {
+    title: "涉及债券",
+    dataIndex: "bonds_involved",
+    key: "bonds_involved",
+    width: 120,
+    render: (codes: string[]) => (codes?.length ? codes.join("、") : "—"),
+  },
+  {
+    title: "机会成本",
+    key: "opportunity_cost",
+    width: 100,
+    render: (_: unknown, row: { opportunity_cost?: Numeric }) =>
+      row.opportunity_cost ? formatWan(row.opportunity_cost) : "—",
+  },
+  {
+    title: "机会成本口径",
+    key: "opportunity_cost_method",
+    width: 110,
+    ellipsis: true,
+    render: (_: unknown, row: { opportunity_cost_method?: string }) =>
+      row.opportunity_cost_method?.trim() ? row.opportunity_cost_method : "—",
+  },
 ];
 
 export function ActionAttributionView({ reportDate, periodType }: Props) {
@@ -88,6 +135,15 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
+  const hasReadinessMeta =
+    (data.status !== undefined &&
+      data.status !== null &&
+      data.status !== "" &&
+      data.status !== "ok") ||
+    (data.available_components?.length ?? 0) > 0 ||
+    (data.missing_inputs?.length ?? 0) > 0 ||
+    (data.blocked_components?.length ?? 0) > 0;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
@@ -96,6 +152,45 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         description="按报告日和期间读取后端 action attribution read model；页面只展示动作数量、损益贡献、久期和 DV01 变化，不在前端补算正式归因。"
         testId="action-attribution-shell-lead"
       />
+      <div
+        style={{ fontSize: 12, color: "#8090a8", lineHeight: 1.65 }}
+        data-testid="action-attribution-meta"
+      >
+        <span>报告日 {data.report_date}</span>
+        <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+        <span>期间 {data.period_type}</span>
+        <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+        <span>
+          {data.period_start} — {data.period_end}
+        </span>
+        {data.computed_at ? (
+          <>
+            <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
+            <span>计算时间 {data.computed_at}</span>
+          </>
+        ) : null}
+      </div>
+      {hasReadinessMeta ? (
+        <Alert
+          type={data.status && data.status !== "ok" ? "warning" : "info"}
+          showIcon
+          message={data.status ? `读面状态：${data.status}` : "读面组件信息"}
+          description={
+            <div style={{ fontSize: 13, lineHeight: 1.65 }}>
+              {(data.available_components?.length ?? 0) > 0 ? (
+                <div>可用组件：{data.available_components!.join("、")}</div>
+              ) : null}
+              {(data.missing_inputs?.length ?? 0) > 0 ? (
+                <div>缺失输入：{data.missing_inputs!.join("、")}</div>
+              ) : null}
+              {(data.blocked_components?.length ?? 0) > 0 ? (
+                <div>受阻组件：{data.blocked_components!.join("、")}</div>
+              ) : null}
+            </div>
+          }
+          data-testid="action-attribution-readiness"
+        />
+      ) : null}
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -157,17 +252,25 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                       }}
                     />
                   </div>
-                  <span
+                  <div
                     style={{
-                      width: 100,
+                      width: 200,
                       textAlign: "right",
-                      fontVariantNumeric: "tabular-nums",
-                      color: pnl >= 0 ? "#cf1322" : "#3f8600",
-                      fontSize: 13,
+                      fontSize: 12,
+                      color: "#5c6b82",
+                      lineHeight: 1.4,
                     }}
                   >
-                    {formatWan(item.total_pnl_economic)}
-                  </span>
+                    <div style={{ fontVariantNumeric: "tabular-nums", color: pnl >= 0 ? "#cf1322" : "#3f8600" }}>
+                      经济 {formatWan(item.total_pnl_economic)}
+                    </div>
+                    <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                      会计 {formatWan(item.total_pnl_accounting)}
+                    </div>
+                    <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                      均次 {formatWan(item.avg_pnl_per_action)}
+                    </div>
+                  </div>
                 </div>
               );
             })}

@@ -6,6 +6,20 @@ import type { AccountingClassAuditResponse } from "../types";
 import { formatPct, formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
+function matchLabel(raw: string | null): string {
+  if (raw === null || raw === undefined || raw === "") {
+    return "—";
+  }
+  const m: Record<string, string> = {
+    exact: "精确匹配",
+    fuzzy: "模糊匹配",
+    defaulted: "默认兜底",
+    none: "无匹配",
+    missing: "缺失",
+  };
+  return m[raw.toLowerCase()] ?? raw;
+}
+
 interface Props {
   reportDate: string;
 }
@@ -24,7 +38,21 @@ const auditColumns = [
   { title: "推断分类", dataIndex: "infer_accounting_class", key: "infer_accounting_class", width: 90 },
   { title: "映射分类", dataIndex: "map_accounting_class", key: "map_accounting_class", width: 90 },
   { title: "推断规则", dataIndex: "infer_rule_id", key: "infer_rule_id", width: 80 },
+  {
+    title: "推断匹配",
+    dataIndex: "infer_match",
+    key: "infer_match",
+    width: 88,
+    render: (v: string | null) => matchLabel(v),
+  },
   { title: "映射规则", dataIndex: "map_rule_id", key: "map_rule_id", width: 80 },
+  {
+    title: "映射匹配",
+    dataIndex: "map_match",
+    key: "map_match",
+    width: 88,
+    render: (v: string | null) => matchLabel(v),
+  },
   {
     title: "状态",
     key: "flags",
@@ -77,6 +105,11 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         description="按报告日读取后端 accounting class audit read model；页面只对比推断路径与映射路径，不在前端重写会计分类。"
         testId="accounting-class-audit-shell-lead"
       />
+      {data.computed_at ? (
+        <div style={{ fontSize: 12, color: "#8090a8" }} data-testid="accounting-class-audit-computed-at">
+          计算时间：{data.computed_at}
+        </div>
+      ) : null}
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
@@ -104,6 +137,55 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         <Col span={6}>
           <Card size="small">
             <Statistic title="覆盖市值" value={formatWan(data.total_market_value)} />
+          </Card>
+        </Col>
+      </Row>
+      <Row gutter={16}>
+        <Col span={8}>
+          <Card size="small" data-testid="accounting-audit-total-positions">
+            <Statistic title="持仓笔数（顶层）" value={data.total_positions} />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="分歧持仓数"
+              value={data.divergent_position_count}
+              valueStyle={data.divergent_position_count > 0 ? { color: "#cf1322" } : undefined}
+            />
+          </Card>
+        </Col>
+        <Col span={8}>
+          <Card size="small">
+            <Statistic
+              title="分歧持仓市值"
+              value={formatWan(data.divergent_market_value)}
+              valueStyle={
+                Number(data.divergent_market_value.raw) !== 0 ? { color: "#cf1322" } : undefined
+              }
+            />
+          </Card>
+        </Col>
+      </Row>
+      <Row gutter={16}>
+        <Col span={12}>
+          <Card size="small">
+            <Statistic
+              title="映射未分类持仓数"
+              value={data.map_unclassified_position_count}
+              valueStyle={data.map_unclassified_position_count > 0 ? { color: "#faad14" } : undefined}
+            />
+          </Card>
+        </Col>
+        <Col span={12}>
+          <Card size="small">
+            <Statistic
+              title="映射未分类市值"
+              value={formatWan(data.map_unclassified_market_value)}
+              valueStyle={
+                Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "#faad14" } : undefined
+              }
+            />
           </Card>
         </Col>
       </Row>
@@ -143,7 +225,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             rowKey="asset_class"
             pagination={false}
             size="small"
-            scroll={{ x: 1000 }}
+            scroll={{ x: 1200 }}
           />
         </Card>
       )}

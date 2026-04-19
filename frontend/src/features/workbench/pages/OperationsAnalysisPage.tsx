@@ -5,8 +5,6 @@ import { Link } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
-import { AlertList } from "../../../components/AlertList";
-import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
 import {
   PageFilterTray,
@@ -17,16 +15,6 @@ import {
 } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
-import { BusinessContributionTable } from "../business-analysis/BusinessContributionTable";
-import {
-  OPERATIONS_CALENDAR_MOCK,
-  OPERATIONS_WATCH_ITEMS,
-} from "../business-analysis/businessAnalysisWorkbenchMocks";
-import { ManagementOutput } from "../business-analysis/ManagementOutput";
-import { QualityObservation } from "../business-analysis/QualityObservation";
-import { RevenueCostBridge } from "../business-analysis/RevenueCostBridge";
-import { TenorConcentrationPanel } from "../business-analysis/TenorConcentrationPanel";
 import { KpiCard } from "../components/KpiCard";
 
 const summaryGridStyle = {
@@ -38,20 +26,6 @@ const summaryGridStyle = {
 const hubGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 18,
-  marginTop: 18,
-} as const;
-
-const tripleGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: 18,
-  marginTop: 18,
-} as const;
-
-const pairGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
   gap: 18,
   marginTop: 18,
 } as const;
@@ -101,6 +75,15 @@ function buildStatusCardContent(input: {
     };
   }
   return input;
+}
+
+function formatGroupCounts(groupCounts: Record<string, number> | undefined): string {
+  if (!groupCounts || Object.keys(groupCounts).length === 0) {
+    return "—";
+  }
+  return Object.entries(groupCounts)
+    .map(([k, n]) => `${k} ${n}`)
+    .join(" · ");
 }
 
 function summarizeNewsPayload(event: {
@@ -200,24 +183,6 @@ export default function OperationsAnalysisPage() {
     enabled: Boolean(latestBalanceReportDate),
     retry: false,
   });
-  const balanceSummaryQuery = useQuery({
-    queryKey: [
-      "operations-entry",
-      "balance-analysis-summary",
-      client.mode,
-      latestBalanceReportDate,
-    ],
-    queryFn: () =>
-      client.getBalanceAnalysisSummary({
-        reportDate: latestBalanceReportDate as string,
-        positionScope: "all",
-        currencyBasis: "CNY",
-        limit: 48,
-        offset: 0,
-      }),
-    enabled: Boolean(latestBalanceReportDate),
-    retry: false,
-  });
 
   const sourceSummaries = useMemo(
     () => sourceQuery.data?.result.sources ?? [],
@@ -251,10 +216,6 @@ export default function OperationsAnalysisPage() {
       .sort((left, right) => right.localeCompare(left))[0];
   }, [macroLatest]);
 
-  const balanceSummaryRows = useMemo(
-    () => balanceSummaryQuery.data?.result.rows ?? [],
-    [balanceSummaryQuery.data?.result.rows],
-  );
   const sourceStatusCard = buildStatusCardContent({
     isError: sourceQuery.isError,
     value: String(sourceSummaries.length),
@@ -275,6 +236,69 @@ export default function OperationsAnalysisPage() {
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
     detail: `最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} / 沿用前值数量 ${fxFormalStatus?.carry_forward_count ?? 0}`,
   });
+
+  const recommendation = useMemo(() => {
+    const hasCriticalError =
+      sourceQuery.isError ||
+      macroCatalogQuery.isError ||
+      macroLatestQuery.isError ||
+      fxFormalStatusQuery.isError ||
+      balanceDatesQuery.isError ||
+      balanceOverviewQuery.isError;
+    const hasCriticalEmpty =
+      sourceSummaries.length === 0 ||
+      macroLatest.length === 0 ||
+      fxFormalRows.length === 0;
+
+    if (hasCriticalError || hasCriticalEmpty) {
+      return {
+        title: "Evidence chain incomplete",
+        detail:
+          "One or more governed reads failed. Validate source preview, macro latest, formal FX status, and the balance overview before making today’s operating judgment.",
+        actionLabel: "Review source preview",
+        actionTo: "/source-preview",
+      };
+    }
+
+    if (!latestBalanceReportDate || !balanceOverviewQuery.data?.result) {
+      return {
+        title: "Await governed balance evidence",
+        detail:
+          "Today’s operating judgment is not yet backed by a resolved balance-analysis report date. Start from the formal balance page when the report becomes available.",
+        actionLabel: "Open balance analysis",
+        actionTo: "/balance-analysis",
+      };
+    }
+
+    if (missingFxRows.length > 0) {
+      return {
+        title: "Judgment is usable but degraded",
+        detail: `Formal FX status is still missing ${missingFxRows.length} pair(s). Use the formal balance overview for the first decision, then verify market coverage before wider drilldown.`,
+        actionLabel: "Open market data",
+        actionTo: "/market-data",
+      };
+    }
+
+    return {
+      title: "Evidence is sufficient for today’s operating call",
+      detail: `Current evidence resolves to balance report ${balanceOverviewQuery.data.result.report_date}. Start with the governed balance overview, then drill into source preview or market context only if the first conclusion needs explanation.`,
+      actionLabel: "Open balance analysis",
+      actionTo: "/balance-analysis",
+    };
+  }, [
+    balanceDatesQuery.isError,
+    balanceOverviewQuery.data?.result,
+    balanceOverviewQuery.isError,
+    fxFormalStatusQuery.isError,
+    latestBalanceReportDate,
+    macroCatalogQuery.isError,
+    macroLatestQuery.isError,
+    macroLatest.length,
+    missingFxRows.length,
+    sourceQuery.isError,
+    sourceSummaries.length,
+    fxFormalRows.length,
+  ]);
 
   async function handlePnlRefresh() {
     setIsPnlRefreshing(true);
@@ -306,7 +330,7 @@ export default function OperationsAnalysisPage() {
       <PageHeader
         title="经营分析"
         eyebrow="Overview"
-        description="当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和 PnL 刷新入口。所有正式数值均以后端契约为准。"
+        description="本页 wave 1 只保留受控证据条、正式专题入口和判断建议；首页不再混排硬编码 KPI、mock 经营事项或静态业务结论。所有正式数值均以后端契约为准。"
         badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
       >
@@ -348,6 +372,76 @@ export default function OperationsAnalysisPage() {
         </PageFilterTray>
       </PageHeader>
 
+      <PageSectionLead
+        eyebrow="Decision"
+        title="先确认今天的经营判断是否有证据支撑"
+        description="本页 wave 1 只保留受控证据条、正式专题入口和一个由实时查询状态生成的判断建议，不再在首页混排硬编码 KPI、mock 经营事项或静态业务结论。"
+      />
+      <SectionCard title={recommendation.title}>
+        <div
+          data-testid="operations-entry-recommendation"
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              color: "#5c6b82",
+              fontSize: 14,
+              lineHeight: 1.7,
+            }}
+          >
+            {recommendation.detail}
+          </p>
+          <div style={summaryGridStyle}>
+            <div>
+              <KpiCard
+                title="Source preview"
+                value={sourceStatusCard.value}
+                detail={sourceStatusCard.detail}
+                valueVariant="text"
+                status={sourceQuery.isError ? "warning" : "normal"}
+              />
+            </div>
+            <div>
+              <KpiCard
+                title="Macro latest"
+                value={macroStatusCard.value}
+                detail={macroStatusCard.detail}
+                valueVariant="text"
+                status={macroCatalogQuery.isError || macroLatestQuery.isError ? "warning" : "normal"}
+              />
+            </div>
+            <div>
+              <KpiCard
+                title="Formal FX"
+                value={formalFxStatusCard.value}
+                detail={formalFxStatusCard.detail}
+                valueVariant="text"
+                status={fxFormalStatusQuery.isError ? "warning" : "normal"}
+              />
+            </div>
+            <div>
+              <KpiCard
+                title="Balance report"
+                value={latestBalanceReportDate ?? "Pending"}
+                detail="Resolved from balance-analysis dates"
+                valueVariant="text"
+                status={balanceDatesQuery.isError || balanceOverviewQuery.isError ? "warning" : "normal"}
+              />
+            </div>
+          </div>
+          <div>
+            <Link to={recommendation.actionTo} style={linkStyle}>
+              {recommendation.actionLabel}
+            </Link>
+          </div>
+        </div>
+      </SectionCard>
+
+      {/* wave-1 removed mock business panels
       <div data-testid="operations-business-kpis" style={summaryGridStyle}>
         <KpiCard
           label="市场资产"
@@ -436,6 +530,8 @@ export default function OperationsAnalysisPage() {
         <TenorConcentrationPanel />
         <ManagementOutput />
       </div>
+
+      */}
 
       <PageSectionLead
         eyebrow="专题入口"
@@ -641,6 +737,20 @@ export default function OperationsAnalysisPage() {
                             报告日 {summary.report_date ?? "—"} / 行数 {summary.total_rows} / 人工复核{" "}
                             {summary.manual_review_count}
                           </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-file">
+                            源文件 {summary.source_file?.trim() ? summary.source_file : "—"}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-group-counts">
+                            分组计数 {formatGroupCounts(summary.group_counts)}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-preview-mode">
+                            预览模式 {summary.preview_mode ?? "—"}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }}>
+                            区间 {summary.report_start_date ?? "—"} — {summary.report_end_date ?? "—"} · 粒度{" "}
+                            {summary.report_granularity ?? "—"}
+                            {summary.rule_version ? ` · 规则 ${summary.rule_version}` : ""}
+                          </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
                             导入批次 {summary.ingest_batch_id ?? "latest"}
                           </div>
@@ -685,6 +795,26 @@ export default function OperationsAnalysisPage() {
                           <div style={{ color: "#5c6b82", fontSize: 13 }}>
                             {point.trade_date} / {point.value_numeric.toFixed(2)} {point.unit}
                           </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-fetch-meta">
+                            刷新层级 {point.refresh_tier ?? "—"} · 拉取 {point.fetch_mode ?? "—"} · 粒度{" "}
+                            {point.fetch_granularity ?? "—"}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-policy-note">
+                            策略说明 {point.policy_note?.trim() ? point.policy_note : "—"}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-latest-change">
+                            最新变动 {point.latest_change === null || point.latest_change === undefined ? "—" : String(point.latest_change)}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-recent-points">
+                            近期点位{" "}
+                            {Array.isArray(point.recent_points) && point.recent_points.length > 0
+                              ? `有 ${point.recent_points.length} 条`
+                              : "无"}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }}>
+                            频率 {point.frequency ?? "—"} · 供应商版本 {point.vendor_version ?? "—"}
+                            {point.quality_flag ? ` · 质量 ${point.quality_flag}` : ""}
+                          </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
                             源版本 {point.source_version}
                           </div>
@@ -719,6 +849,12 @@ export default function OperationsAnalysisPage() {
                           <strong>{event.topic_code}</strong>
                           <div style={{ color: "#5c6b82", fontSize: 13 }}>
                             分组 {event.group_id} / {event.received_at}
+                          </div>
+                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid={`operations-news-meta-${event.event_key}`}>
+                            类型 {event.content_type ?? "—"} · serial {event.serial_id ?? "—"} · req{" "}
+                            {event.request_id ?? "—"} · idx {event.item_index ?? "—"} · err{" "}
+                            {event.error_code}
+                            {event.error_msg?.trim() ? ` · ${event.error_msg}` : ""}
                           </div>
                           <div style={{ color: "#162033", fontSize: 14, lineHeight: 1.6 }}>
                             {summarizeNewsPayload(event)}
@@ -765,9 +901,17 @@ export default function OperationsAnalysisPage() {
                             }}
                           >
                             <strong>{row.pair_label}</strong>
+                            <div style={{ color: "#8090a8", fontSize: 12 }}>
+                              {row.series_name?.trim() || row.vendor_series_code || "—"}
+                            </div>
                             <div style={{ color: "#5c6b82", fontSize: 13 }}>
                               状态 {row.status} / 交易日 {row.trade_date ?? "待定"} / 观测日{" "}
-                              {row.observed_trade_date ?? "待定"}
+                              {row.observed_trade_date ?? "待定"} / 营业日{" "}
+                              {row.is_business_day === null ? "—" : row.is_business_day ? "是" : "否"}
+                            </div>
+                            <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-fx-row-versions">
+                              来源 {row.source_name ?? "—"} · 源版本 {row.source_version ?? "—"} · 供应商版本{" "}
+                              {row.vendor_version ?? "—"}
                             </div>
                             <div style={{ color: "#8090a8", fontSize: 12 }}>
                               {row.status === "missing"

@@ -366,7 +366,10 @@ def test_allocation_effect_uses_non_carry_sector_returns() -> None:
         aaa_credit_curve_prior={"5Y": Decimal("3.00")},
     )
 
-    assert summary["allocation_effect"] == Decimal("0")
+    assert summary["allocation_effect"] == Decimal("-200.0000000")
+    assert summary["selection_effect"] == Decimal("200.00000000")
+    assert summary["recon_error"] == Decimal("0")
+    assert summary["explained_excess"] == summary["excess_return"]
 
 
 def test_portfolio_return_is_invariant_across_benchmark_choice() -> None:
@@ -509,4 +512,7 @@ def test_allocation_effect_sums_correctly() -> None:
         benchmark_curve_prior={"1Y": Decimal("2.00"), "5Y": Decimal("2.00")},
     )
 
-    assert summary["allocation_effect"] == Decimal("0")
+    assert summary["allocation_effect"] == Decimal("500.0000000")
+    assert summary["selection_effect"] == Decimal("1000.00000000")
+    assert summary["recon_error"] == Decimal("0")
+    assert summary["explained_excess"] == summary["excess_return"]
