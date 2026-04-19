@@ -16,6 +16,14 @@ class DuckDBRepository:
 
     path: str
     guard_path_exists: bool = field(default=False, repr=False)
+    read_only: bool = field(default=True, repr=False)
+
+    def healthcheck(self) -> dict[str, object]:
+        return {
+            "ok": True,
+            "mode": "read_only",
+            "path": self.path,
+        }
 
     def _fetch_rows(self, query: str, params: list[object] | None = None) -> list[tuple]:
         if self.guard_path_exists and not Path(self.path).exists():

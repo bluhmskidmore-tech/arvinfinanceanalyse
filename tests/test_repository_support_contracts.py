@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from tests.helpers import load_module
 
 
@@ -290,6 +292,35 @@ def test_duckdb_healthcheck_ignores_read_only_false_field():
     repo = duck_module.DuckDBRepository("/tmp/x.duckdb", read_only=False)
     assert repo.read_only is False
     assert repo.healthcheck() == {"ok": True, "mode": "read_only", "path": "/tmp/x.duckdb"}
+
+
+def test_duckdb_repository_keeps_connections_read_only_for_compat_flag(monkeypatch: pytest.MonkeyPatch):
+    duck_module = load_module(
+        "backend.app.repositories.duck_support_contract_c",
+        "backend/app/repositories/duckdb_repo.py",
+    )
+    calls: list[tuple[str, object, object | None]] = []
+
+    class FakeConnection:
+        def execute(self, query: str, params: list[object]):
+            calls.append(("execute", query, tuple(params)))
+            return self
+
+        def fetchall(self):
+            return [("ok",)]
+
+        def close(self) -> None:
+            calls.append(("close", None, None))
+
+    def fake_connect(path: str, *, read_only: bool):
+        calls.append(("connect", path, read_only))
+        return FakeConnection()
+
+    monkeypatch.setattr(duck_module.duckdb, "connect", fake_connect)
+
+    repo = duck_module.DuckDBRepository("/tmp/compat.duckdb", read_only=False)
+    assert repo._fetch_rows("select 1") == [("ok",)]
+    assert calls[0] == ("connect", "/tmp/compat.duckdb", True)
 
 
 def test_formal_zqtz_balance_metrics_repository_lists_report_dates(tmp_path):
