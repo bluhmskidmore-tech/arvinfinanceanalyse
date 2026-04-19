@@ -5,6 +5,8 @@ import { Link } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
+import { AlertList } from "../../../components/AlertList";
+import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
 import {
   PageFilterTray,
@@ -15,6 +17,16 @@ import {
 } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
+import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
+import { BusinessContributionTable } from "../business-analysis/BusinessContributionTable";
+import { ManagementOutput } from "../business-analysis/ManagementOutput";
+import { QualityObservation } from "../business-analysis/QualityObservation";
+import { RevenueCostBridge } from "../business-analysis/RevenueCostBridge";
+import { TenorConcentrationPanel } from "../business-analysis/TenorConcentrationPanel";
+import {
+  OPERATIONS_CALENDAR_MOCK,
+  OPERATIONS_WATCH_ITEMS,
+} from "../business-analysis/businessAnalysisWorkbenchMocks";
 import { KpiCard } from "../components/KpiCard";
 
 const summaryGridStyle = {
@@ -50,6 +62,38 @@ const balanceOverviewGridStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
   gap: 16,
   marginTop: 16,
+} as const;
+
+const operationsHeroStripStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 14,
+  marginTop: 20,
+  marginBottom: 20,
+} as const;
+
+const tripleGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 18,
+  alignItems: "start",
+  marginTop: 14,
+} as const;
+
+const contributionGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 18,
+  alignItems: "start",
+  marginTop: 14,
+} as const;
+
+const pairGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+  gap: 18,
+  alignItems: "start",
+  marginTop: 14,
 } as const;
 
 function formatOverviewNumber(raw: string | number | null | undefined): string {
@@ -183,6 +227,24 @@ export default function OperationsAnalysisPage() {
     enabled: Boolean(latestBalanceReportDate),
     retry: false,
   });
+  const balanceSummaryQuery = useQuery({
+    queryKey: [
+      "operations-entry",
+      "balance-analysis-summary",
+      client.mode,
+      latestBalanceReportDate,
+    ],
+    queryFn: () =>
+      client.getBalanceAnalysisSummary({
+        reportDate: latestBalanceReportDate as string,
+        positionScope: "all",
+        currencyBasis: "CNY",
+        limit: 6,
+        offset: 0,
+      }),
+    enabled: Boolean(latestBalanceReportDate),
+    retry: false,
+  });
 
   const sourceSummaries = useMemo(
     () => sourceQuery.data?.result.sources ?? [],
@@ -215,6 +277,10 @@ export default function OperationsAnalysisPage() {
       .map((point) => point.trade_date)
       .sort((left, right) => right.localeCompare(left))[0];
   }, [macroLatest]);
+  const balanceSummaryRows = useMemo(
+    () => balanceSummaryQuery.data?.result.rows ?? [],
+    [balanceSummaryQuery.data?.result.rows],
+  );
 
   const sourceStatusCard = buildStatusCardContent({
     isError: sourceQuery.isError,
@@ -236,6 +302,27 @@ export default function OperationsAnalysisPage() {
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
     detail: `最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} / 沿用前值数量 ${fxFormalStatus?.carry_forward_count ?? 0}`,
   });
+
+  const stagedBusinessKpis = useMemo(
+    () => [
+      { title: "市场资产", value: "3,525.0", unit: "亿", detail: "债券 + 同业", trend: "up" as const },
+      { title: "市场负债", value: "1,817.9", unit: "亿", detail: "发行 + 同业", trend: "up" as const },
+      { title: "静态资产收益率", value: "2.07%", detail: "当前加权", trend: "up" as const },
+      { title: "静态负债成本", value: "1.77%", detail: "当前加权", trend: "up" as const },
+      { title: "静态利差", value: "29.5", unit: "bp", detail: "收益 - 成本", trend: "down" as const },
+      { title: "净经营贡献", value: "40.65", unit: "亿", detail: "静态年化口径", trend: "down" as const },
+      { title: "发行负债占比", value: "66.3%", detail: "CD 占发行 81.8%", trend: "up" as const },
+      {
+        title: "重大关注",
+        value: "4",
+        unit: "项",
+        detail: "缺口 / 滚续 / 逾期 / 集中度",
+        status: "warning" as const,
+        trend: "down" as const,
+      },
+    ],
+    [],
+  );
 
   const recommendation = useMemo(() => {
     const hasCriticalError =
@@ -299,6 +386,72 @@ export default function OperationsAnalysisPage() {
     sourceSummaries.length,
     fxFormalRows.length,
   ]);
+  const operationsHeadlineCards = useMemo(
+    () => [
+      {
+        title: "市场价值合计",
+        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
+        unit: "亿",
+        detail: "正式余额读链路",
+      },
+      {
+        title: "摊余成本合计",
+        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
+        unit: "亿",
+        detail: "正式余额读链路",
+      },
+      {
+        title: "应计利息合计",
+        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
+        unit: "亿",
+        detail: "正式余额读链路",
+      },
+      {
+        title: "源批次数",
+        value: sourceStatusCard.value,
+        detail: sourceStatusCard.detail,
+      },
+      {
+        title: "宏观最新点位",
+        value: macroStatusCard.value,
+        detail: macroStatusCard.detail,
+      },
+      {
+        title: "Formal FX 覆盖",
+        value: formalFxStatusCard.value,
+        detail: formalFxStatusCard.detail,
+        status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
+      },
+      {
+        title: "新闻事件",
+        value: newsStatusCard.value,
+        detail: newsStatusCard.detail,
+      },
+      {
+        title: "汇总行数",
+        value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
+        detail: `明细 ${balanceOverviewQuery.data?.result.detail_row_count ?? 0} 行`,
+      },
+    ],
+    [
+      balanceOverviewQuery.data?.result.accrued_interest_amount,
+      balanceOverviewQuery.data?.result.detail_row_count,
+      balanceOverviewQuery.data?.result.summary_row_count,
+      balanceOverviewQuery.data?.result.total_amortized_cost_amount,
+      balanceOverviewQuery.data?.result.total_market_value_amount,
+      formalFxStatusCard.detail,
+      formalFxStatusCard.value,
+      fxFormalStatusQuery.isError,
+      macroStatusCard.detail,
+      macroStatusCard.value,
+      newsStatusCard.detail,
+      newsStatusCard.value,
+      sourceStatusCard.detail,
+      sourceStatusCard.value,
+    ],
+  );
+
+  void stagedBusinessKpis;
 
   async function handlePnlRefresh() {
     setIsPnlRefreshing(true);
@@ -441,8 +594,8 @@ export default function OperationsAnalysisPage() {
         </div>
       </SectionCard>
 
-      {/* wave-1 removed mock business panels
-      <div data-testid="operations-business-kpis" style={summaryGridStyle}>
+
+      <div data-testid="operations-business-kpis-staged" style={operationsHeroStripStyle}>
         <KpiCard
           label="市场资产"
           value="3,525.0"
@@ -494,7 +647,7 @@ export default function OperationsAnalysisPage() {
         title="结论、桥接与质量观察"
         description="先看管理层结论，再看收益成本桥和质量观察，确认当前经营判断、利差来源和压力点是否一致。"
       />
-      <div style={tripleGridStyle}>
+      <div data-testid="operations-conclusion-grid" style={tripleGridStyle}>
         <BusinessConclusion />
         <RevenueCostBridge />
         <QualityObservation />
@@ -505,7 +658,7 @@ export default function OperationsAnalysisPage() {
         title="经营贡献与重点事项"
         description="这一组把余额贡献、重点事项和经营日历放在同一层，方便从结论直接过渡到行动与跟踪。"
       />
-      <div style={tripleGridStyle}>
+      <div data-testid="operations-contribution-grid" style={contributionGridStyle}>
         <BusinessContributionTable
           reportDate={latestBalanceReportDate}
           rows={balanceSummaryRows}
@@ -526,12 +679,12 @@ export default function OperationsAnalysisPage() {
         title="期限结构与管理输出"
         description="将期限缺口、集中度和管理输出并排，形成经营判断之后的结构解释层。"
       />
-      <div style={pairGridStyle}>
+      <div data-testid="operations-structure-grid" style={pairGridStyle}>
         <TenorConcentrationPanel />
         <ManagementOutput />
       </div>
 
-      */}
+
 
       <PageSectionLead
         eyebrow="专题入口"

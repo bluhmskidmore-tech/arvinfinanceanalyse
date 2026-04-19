@@ -395,3 +395,174 @@ def test_bond_analytics_empty_date_uses_empty_lineage_not_latest_manifest(tmp_pa
     assert payload["result_meta"]["source_version"] == "sv_bond_analytics_empty"
     assert payload["result"]["bond_count"] == 0
     get_settings.cache_clear()
+
+
+def _minimal_return_summary_for_trading_overlay() -> dict:
+    z = Decimal("0")
+    one = Decimal("1")
+    row = {
+        "instrument_code": "TB-001",
+        "instrument_name": "T",
+        "asset_class_std": "rate",
+        "accounting_class": "AC",
+        "portfolio_name": "组合利率",
+        "cost_center": "CC-RATE",
+        "market_value": Decimal("100"),
+        "carry": one,
+        "roll_down": z,
+        "rate_effect": z,
+        "spread_effect": z,
+        "convexity_effect": z,
+        "fx_effect": z,
+        "trading": z,
+        "total": one,
+    }
+    return {
+        "carry_total": one,
+        "roll_down_total": z,
+        "rate_effect_total": z,
+        "spread_effect_total": z,
+        "convexity_effect_total": z,
+        "fx_effect_total": z,
+        "trading_total": z,
+        "total_market_value": Decimal("100"),
+        "bond_count": 1,
+        "bond_details": [row],
+        "by_asset_class": [],
+        "by_accounting_class": [],
+    }
+
+
+def test_overlay_return_decomposition_trading_pnl517_mom_single_report_date(tmp_path, monkeypatch):
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    key = "TB-001::组合利率::CC-RATE"
+
+    class FakePnl:
+        def __init__(self, _path: str) -> None:
+            pass
+
+        def list_union_report_dates(self) -> list[str]:
+            return ["2026-03-31"]
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+            assert dates == ["2026-03-31"]
+            return {key: Decimal("2.5")}
+
+    monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
+    summary = _minimal_return_summary_for_trading_overlay()
+    out, _warnings, wd = service_mod._overlay_return_decomposition_trading_pnl517(
+        summary,
+        period_type="MoM",
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+    )
+    assert out["bond_details"][0]["trading"] == Decimal("2.5")
+    assert out["trading_total"] == Decimal("2.5")
+    assert out["bond_details"][0]["total"] == Decimal("3.5")
+    rate = next(b for b in out["by_asset_class"] if b["key"] == "rate")
+    assert rate["trading"] == Decimal("2.5")
+    codes = [d.get("code") for d in wd]
+    assert "return_decomposition_trading_pnl517_formal" in codes
+    assert "return_decomposition_trading_pnl517_multi_month_aggregate" not in codes
+
+
+def test_overlay_return_decomposition_trading_pnl517_ytd_sums_multiple_report_dates(tmp_path, monkeypatch):
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    key = "TB-001::组合利率::CC-RATE"
+
+    class FakePnl:
+        def __init__(self, _path: str) -> None:
+            pass
+
+        def list_union_report_dates(self) -> list[str]:
+            return ["2026-03-31", "2026-02-28", "2026-01-31", "2025-12-31"]
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+            assert set(dates) == {"2026-01-31", "2026-02-28", "2026-03-31"}
+            return {key: Decimal("9")}
+
+    monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
+    summary = _minimal_return_summary_for_trading_overlay()
+    out, _warnings, wd = service_mod._overlay_return_decomposition_trading_pnl517(
+        summary,
+        period_type="YTD",
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 3, 31),
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+    )
+    assert out["bond_details"][0]["trading"] == Decimal("9")
+    assert out["trading_total"] == Decimal("9")
+    codes = [d.get("code") for d in wd]
+    assert "return_decomposition_trading_pnl517_formal" in codes
+    assert "return_decomposition_trading_pnl517_multi_month_aggregate" in codes
+
+
+def test_overlay_return_decomposition_trading_pnl517_ttm_sums_multiple_report_dates(tmp_path, monkeypatch):
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+    key = "TB-001::组合利率::CC-RATE"
+
+    class FakePnl:
+        def __init__(self, _path: str) -> None:
+            pass
+
+        def list_union_report_dates(self) -> list[str]:
+            return ["2026-03-31", "2025-03-31"]
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+            assert set(dates) == {"2025-03-31", "2026-03-31"}
+            return {key: Decimal("4")}
+
+    monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
+    summary = _minimal_return_summary_for_trading_overlay()
+    out, _warnings, wd = service_mod._overlay_return_decomposition_trading_pnl517(
+        summary,
+        period_type="TTM",
+        period_start=date(2025, 3, 31),
+        period_end=date(2026, 3, 31),
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+    )
+    assert out["bond_details"][0]["trading"] == Decimal("4")
+    assert "return_decomposition_trading_pnl517_multi_month_aggregate" in {d.get("code") for d in wd}
+
+
+def test_overlay_return_decomposition_trading_pnl517_ytd_degrades_when_no_report_dates_in_period(
+    tmp_path, monkeypatch,
+):
+    service_mod = load_module(
+        "backend.app.services.bond_analytics_service",
+        "backend/app/services/bond_analytics_service.py",
+    )
+
+    class FakePnl:
+        def __init__(self, _path: str) -> None:
+            pass
+
+        def list_union_report_dates(self) -> list[str]:
+            return ["2025-12-31"]
+
+        def merged_capital_gain_517_by_position_for_dates(self, dates: list[str]) -> dict[str, Decimal]:
+            raise AssertionError("merge should not run when date list is empty")
+
+    monkeypatch.setattr(service_mod, "PnlRepository", FakePnl)
+    summary = _minimal_return_summary_for_trading_overlay()
+    out, _warnings, wd = service_mod._overlay_return_decomposition_trading_pnl517(
+        summary,
+        period_type="YTD",
+        period_start=date(2026, 1, 1),
+        period_end=date(2026, 3, 31),
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+    )
+    assert out["bond_details"][0]["trading"] == Decimal("0")
+    assert out["trading_total"] == Decimal("0")
+    codes = {d.get("code") for d in wd}
+    assert "return_decomposition_trading_pnl517_no_fact_dates_in_period" in codes

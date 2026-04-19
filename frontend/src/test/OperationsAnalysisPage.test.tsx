@@ -586,10 +586,16 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-formal-fx-count")).toHaveTextContent("不可用");
     });
   });
-  it("keeps the first screen evidence-only and removes mock business panels", async () => {
+  it("renders the business-analysis cockpit on the first screen", async () => {
     renderPage(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("operations-entry-balance-section");
+    expect(await screen.findByTestId("operations-business-kpis")).toBeInTheDocument();
+    expect(await screen.findByTestId("operations-conclusion-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("operations-contribution-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
+    return;
 
     expect(
       screen.getByText(

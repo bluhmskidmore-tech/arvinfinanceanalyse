@@ -11,6 +11,7 @@ from backend.app.governance.formal_compute_lineage import (
 )
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings, get_settings
+from backend.app.core_finance.action_attribution import compute_action_attribution_bonds
 from backend.app.core_finance.bond_analytics.common import (
     STANDARD_SCENARIOS,
     infer_curve_type,
@@ -24,6 +25,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     build_krd_distribution,
     compute_benchmark_excess,
     rating_aa_and_below_portfolio_weight,
+    rebucket_return_decomposition,
     summarize_accounting_audit,
     summarize_credit,
     summarize_portfolio_risk,
@@ -31,6 +33,7 @@ from backend.app.core_finance.bond_analytics.read_models import (
     weighted_average_by_market_value,
 )
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
+from backend.app.repositories.pnl_repo import PnlRepository
 try:
     from backend.app.repositories.yield_curve_repo import (
         FX_LATEST_FALLBACK_PREFIX,
@@ -121,9 +124,36 @@ RETURN_TRADING_GAP_WARNING = (
 )
 RETURN_TRADING_GAP_WARNING_DETAIL = {
     "code": "return_decomposition_trading_placeholder_phase3",
+    "level": "warning",
     "component": "trading",
     "detail": "transaction_level_trade_inputs_not_integrated",
 }
+RETURN_TRADING_PNL517_FROM_FORMAL_DETAIL = {
+    "code": "return_decomposition_trading_pnl517_formal",
+    "level": "info",
+    "message": "trading_component_sourced_from_merged_formal_fi_and_nonstd_bridge_capital_gain_517_position_match",
+}
+RETURN_TRADING_PNL517_PARTIAL_DETAIL = {
+    "code": "return_decomposition_trading_pnl517_partial_coverage",
+    "level": "warning",
+    "message": "some_positions_have_no_matching_pnl517_row_same_instrument_book",
+}
+RETURN_TRADING_PNL517_PERIOD_DETAIL = {
+    "code": "return_decomposition_trading_pnl517_multi_month_aggregate",
+    "level": "warning",
+    "message": "capital_gain_517_summed_across_multiple_report_dates_interpret_with_caution",
+}
+RETURN_TRADING_PNL517_NO_PERIOD_DATES_DETAIL = {
+    "code": "return_decomposition_trading_pnl517_no_fact_dates_in_period",
+    "level": "warning",
+    "detail": "union_formal_nonstd_report_dates_empty_for_period_bounds",
+}
+BENCHMARK_EXCESS_RECON_GAP = (
+    "Benchmark excess reconciliation gap (recon_error) is material; verify curve inputs and portfolio snapshot."
+)
+BENCHMARK_EXCESS_EXPLAINED_MISMATCH = (
+    "Benchmark excess Brinson components do not sum to explained_excess (internal consistency check failed)."
+)
 BENCHMARK_WARNING = "Benchmark index data not yet available; benchmark-side fields remain zero"
 BENCHMARK_EXCESS_SPREAD_GAP_WARNING = (
     "Benchmark excess spread_effect is 0 because treasury/aaa_credit snapshots are missing for one or both "
@@ -147,6 +177,17 @@ IN_FLIGHT_STATUSES = {"queued", "running"}
 STALE_IN_FLIGHT_AFTER = timedelta(hours=1)
 
 
+def _benchmark_excess_brinson_sum_matches_explained(summary: dict[str, object]) -> bool:
+    s = (
+        safe_decimal(summary["duration_effect"])
+        + safe_decimal(summary["curve_effect"])
+        + safe_decimal(summary["spread_effect"])
+        + safe_decimal(summary["selection_effect"])
+        + safe_decimal(summary["allocation_effect"])
+    )
+    return abs(s - safe_decimal(summary["explained_excess"])) <= Decimal("0.0001")
+
+
 class BondAnalyticsRefreshServiceError(RuntimeError):
     pass
 
@@ -165,6 +206,155 @@ def _text(value: Decimal) -> str:
 
 def _repo() -> BondAnalyticsRepository:
     return BondAnalyticsRepository(str(get_settings().duckdb_path))
+
+
+def _pnl_position_key_from_bond_row(row: dict[str, object]) -> str:
+    inst = str(row.get("instrument_code") or "").strip()
+    pn = str(row.get("portfolio_name") or "").strip()
+    cc = str(row.get("cost_center") or "").strip()
+    return f"{inst}::{pn}::{cc}"
+
+
+def _action_attribution_bond_line(row: dict[str, object]) -> dict[str, object]:
+    pn = str(row.get("portfolio_name") or "").strip()
+    cc = str(row.get("cost_center") or "").strip()
+    return {
+        "bond_code": str(row.get("instrument_code") or "").strip(),
+        "book_id": f"{pn}::{cc}",
+        "market_value": row.get("market_value"),
+        "modified_duration": row.get("modified_duration"),
+        "asset_class": str(row.get("asset_class_std") or row.get("accounting_class") or ""),
+    }
+
+
+def _resolve_prior_bond_snapshot_date(repo: BondAnalyticsRepository, period_end: str) -> str | None:
+    prior_dates = [d for d in repo.list_report_dates() if d < period_end]
+    return max(prior_dates) if prior_dates else None
+
+
+def _pnl_report_dates_for_action_attribution(
+    pnl_repo: PnlRepository,
+    *,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+) -> tuple[list[str], list[str]]:
+    codes: list[str] = []
+    if period_type == "MoM":
+        return [period_end.isoformat()], codes
+    selected: list[str] = []
+    for raw in pnl_repo.list_union_report_dates():
+        try:
+            ds = date.fromisoformat(str(raw))
+        except ValueError:
+            continue
+        if period_start <= ds <= period_end:
+            selected.append(str(raw))
+    selected = sorted(set(selected))
+    if len(selected) > 1:
+        codes.append("ACTION_ATTRIBUTION_PNL517_MULTI_MONTH_SUM")
+    return selected, codes
+
+
+def _build_action_attribution_pnl_by_key(
+    pnl_repo: PnlRepository,
+    *,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+) -> tuple[dict[str, Decimal], list[str]]:
+    dates, extra = _pnl_report_dates_for_action_attribution(
+        pnl_repo,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    if not dates:
+        return {}, extra + ["ACTION_ATTRIBUTION_PNL517_NO_FACT_DATES"]
+    merged = pnl_repo.merged_capital_gain_517_by_position_for_dates(dates)
+    if not merged:
+        extra.append("ACTION_ATTRIBUTION_PNL517_EMPTY_MERGE")
+    return merged, extra
+
+
+def _overlay_return_decomposition_trading_pnl517(
+    summary: dict[str, object],
+    *,
+    period_type: str,
+    period_start: date,
+    period_end: date,
+    duckdb_path: str,
+) -> tuple[dict[str, object], list[str], list[dict[str, str]]]:
+    """Attach ``capital_gain_517`` from formal+nonstd PnL facts to each bond row; re-bucket by class.
+
+    MoM uses the period-end report date only. YTD/TTM sum ``capital_gain_517`` over every union
+    (formal FI + nonstd bridge) ``report_date`` in ``[period_start, period_end]``. If none exist,
+    trading stays at 0 with structured ``warnings_detail`` (no fabricated 517).
+    """
+    extra_warnings: list[str] = []
+    details: list[dict[str, str]] = []
+    pnl_repo = PnlRepository(duckdb_path)
+    dates, _ = _pnl_report_dates_for_action_attribution(
+        pnl_repo,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+    )
+    if not dates:
+        extra_warnings.append(
+            "No formal/nonstd PnL report dates fall within period_start–period_end; "
+            "capital_gain_517 trading overlay skipped."
+        )
+        details.extend(
+            [
+                dict(RETURN_TRADING_PNL517_NO_PERIOD_DATES_DETAIL),
+                dict(RETURN_TRADING_GAP_WARNING_DETAIL),
+            ]
+        )
+        return summary, extra_warnings, details
+
+    multi_month = len(dates) > 1
+    pnl_map = pnl_repo.merged_capital_gain_517_by_position_for_dates(dates)
+    bond_rows = list(summary.get("bond_details") or [])
+    matched_mv = ZERO
+    total_mv = ZERO
+    for row in bond_rows:
+        if not isinstance(row, dict):
+            continue
+        key = _pnl_position_key_from_bond_row(row)
+        econ = safe_decimal(row.get("total"))
+        tv = pnl_map.get(key, ZERO)
+        mv = safe_decimal(row.get("market_value"))
+        total_mv += mv
+        if tv != ZERO:
+            matched_mv += mv
+        row["trading"] = tv
+        row["total"] = econ + tv
+
+    summary["bond_details"] = bond_rows
+    summary["trading_total"] = sum((safe_decimal(r.get("trading")) for r in bond_rows if isinstance(r, dict)), ZERO)
+    by_ac, by_acc = rebucket_return_decomposition(bond_rows)
+    summary["by_asset_class"] = by_ac
+    summary["by_accounting_class"] = by_acc
+
+    if not pnl_map:
+        extra_warnings.append(
+            "No capital_gain_517 rows in formal/nonstd PnL tables for the selected report date(s); trading remains 0."
+        )
+        details.append(dict(RETURN_TRADING_GAP_WARNING_DETAIL))
+        if multi_month:
+            details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_PERIOD_DETAIL.items()})
+        return summary, extra_warnings, details
+
+    details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_FROM_FORMAL_DETAIL.items()})
+    if multi_month:
+        details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_PERIOD_DETAIL.items()})
+    if total_mv > ZERO and matched_mv < total_mv - Q8:
+        extra_warnings.append(
+            "capital_gain_517 matched for a subset of positions (instrument+book); others show trading 0."
+        )
+        details.append({k: str(v) for k, v in RETURN_TRADING_PNL517_PARTIAL_DETAIL.items()})
+    return summary, extra_warnings, details
 
 
 def _lineage(report_date: str, rows: list[dict[str, object]]) -> dict[str, str]:
@@ -483,7 +673,7 @@ def _build_asset_class_breakdown(row: dict[str, object]) -> "AssetClassBreakdown
                 "rate_effect": row["rate_effect"],
                 "spread_effect": row["spread_effect"],
                 "convexity_effect": row.get("convexity_effect", ZERO),
-                "trading": ZERO,
+                "trading": row.get("trading", ZERO),
                 "total": row["total"],
                 "bond_count": int(row["bond_count"]),
                 "market_value": row["market_value"],
@@ -494,6 +684,7 @@ def _build_asset_class_breakdown(row: dict[str, object]) -> "AssetClassBreakdown
 
 
 def _build_bond_level_decomposition(row: dict[str, object]) -> "BondLevelDecomposition":
+    trading = row.get("trading", ZERO)
     return BondLevelDecomposition.model_validate(
         promote_flat_payload(
             {
@@ -507,7 +698,7 @@ def _build_bond_level_decomposition(row: dict[str, object]) -> "BondLevelDecompo
                 "rate_effect": row["rate_effect"],
                 "spread_effect": row["spread_effect"],
                 "convexity_effect": row.get("convexity_effect", ZERO),
-                "trading": ZERO,
+                "trading": trading,
                 "total": row["total"],
                 "explained_for_recon": row["total"],
                 "economic_only_effects": (
@@ -535,7 +726,10 @@ def _build_return_decomposition_payload(
     fx_current_warning: "str | None",
     fx_prior_warning: "str | None",
     fx_missing_warnings: list[str],
+    trading_extra_warnings: list[str] | None = None,
+    warnings_detail: list[dict[str, str]] | None = None,
 ) -> "ReturnDecompositionResponse":
+    trading_total = safe_decimal(summary.get("trading_total", ZERO))
     explained_total = (
         summary["carry_total"]
         + summary["roll_down_total"]
@@ -543,6 +737,13 @@ def _build_return_decomposition_payload(
         + summary["spread_effect_total"]
         + summary["convexity_effect_total"]
         + summary.get("fx_effect_total", ZERO)
+        + trading_total
+    )
+    trading_warn_head: list[str | None] = []
+    if trading_total == ZERO:
+        trading_warn_head.append(RETURN_TRADING_GAP_WARNING)
+    detail_payload = (
+        warnings_detail if warnings_detail is not None else [dict(RETURN_TRADING_GAP_WARNING_DETAIL)]
     )
     return ReturnDecompositionResponse.model_validate(
         promote_flat_payload(
@@ -555,7 +756,7 @@ def _build_return_decomposition_payload(
                 "roll_down": summary["roll_down_total"],
                 "rate_effect": summary["rate_effect_total"],
                 "spread_effect": summary["spread_effect_total"],
-                "trading": ZERO,
+                "trading": trading_total,
                 "fx_effect": summary.get("fx_effect_total", ZERO),
                 "convexity_effect": summary.get("convexity_effect_total", ZERO),
                 "explained_pnl": explained_total,
@@ -572,9 +773,16 @@ def _build_return_decomposition_payload(
                 "total_market_value": summary["total_market_value"],
                 "computed_at": meta.generated_at.isoformat(),
                 "warnings": _ordered_unique_warnings(
-                    [RETURN_TRADING_GAP_WARNING, *relevant_curve_warnings, fx_current_warning, fx_prior_warning, *fx_missing_warnings]
+                    [
+                        *(trading_extra_warnings or []),
+                        *trading_warn_head,
+                        *relevant_curve_warnings,
+                        fx_current_warning,
+                        fx_prior_warning,
+                        *fx_missing_warnings,
+                    ]
                 ),
-                "warnings_detail": [RETURN_TRADING_GAP_WARNING_DETAIL],
+                "warnings_detail": detail_payload,
             },
             ReturnDecompositionResponse,
         )
@@ -636,6 +844,13 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         fx_rates_current=fx_rates_current,
         fx_rates_prior=fx_rates_prior,
     )
+    summary, trading_extra_warnings, trading_wd = _overlay_return_decomposition_trading_pnl517(
+        summary,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+        duckdb_path=str(get_settings().duckdb_path),
+    )
     payload = _build_return_decomposition_payload(
         report_date=report_date,
         period_type=period_type,
@@ -647,6 +862,8 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         fx_current_warning=fx_current_warning,
         fx_prior_warning=fx_prior_warning,
         fx_missing_warnings=fx_missing_warnings,
+        trading_extra_warnings=trading_extra_warnings,
+        warnings_detail=trading_wd,
     )
     return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
@@ -1032,10 +1249,12 @@ def _build_benchmark_excess_warnings(
         and summary["spread_effect"] == ZERO
         and (treasury_current is None or treasury_prior is None or aaa_current is None or aaa_prior is None)
     )
+    recon_large = abs(safe_decimal(summary["recon_error"])) > Decimal("0.02")
     return _ordered_unique_warnings(
         [
             BENCHMARK_WARNING if not current_curve or not prior_curve else None,
             BENCHMARK_EXCESS_SPREAD_GAP_WARNING if spread_excess_incomplete else None,
+            BENCHMARK_EXCESS_RECON_GAP if recon_large else None,
             curves["current_warning"],
             curves["prior_warning"],
             *_curve_warnings_for_return_rows(
@@ -1064,11 +1283,14 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
             cdb_curve_current=None, cdb_curve_prior=None,
             aaa_credit_curve_current=None, aaa_credit_curve_prior=None,
         )
+        bench_warns = [EMPTY_WARNING]
+        if not _benchmark_excess_brinson_sum_matches_explained(summary):
+            bench_warns.append(BENCHMARK_EXCESS_EXPLAINED_MISMATCH)
         payload = _build_benchmark_excess_payload(
             report_date=report_date, period_type=period_type,
             period_start=period_start, period_end=period_end,
             benchmark_id=benchmark_id, summary=summary, meta=meta,
-            warnings=[EMPTY_WARNING],
+            warnings=_ordered_unique_warnings(bench_warns),
         )
         return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
 
@@ -1117,6 +1339,8 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         treasury_current=treasury_current, treasury_prior=treasury_prior,
         aaa_current=aaa_current, aaa_prior=aaa_prior,
     )
+    if not _benchmark_excess_brinson_sum_matches_explained(summary):
+        warnings = _ordered_unique_warnings([*warnings, BENCHMARK_EXCESS_EXPLAINED_MISMATCH])
     payload = _build_benchmark_excess_payload(
         report_date=report_date, period_type=period_type,
         period_start=period_start, period_end=period_end,
@@ -1572,55 +1796,182 @@ def get_accounting_class_audit(report_date: date) -> dict:
 
 
 def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
-    analysis_envelope = build_bond_action_attribution_placeholder_envelope(
-        AnalysisQuery(
-            consumer="bond_analytics.action_attribution",
-            analysis_key="bond_action_attribution",
-            report_date=report_date.isoformat(),
-            basis="formal",
-            view=period_type,
+    period_start, period_end = resolve_period(report_date, period_type)
+    repo = _repo()
+    rows_end = repo.fetch_bond_analytics_rows(report_date=period_end.isoformat())
+    if not rows_end:
+        analysis_envelope = build_bond_action_attribution_placeholder_envelope(
+            AnalysisQuery(
+                consumer="bond_analytics.action_attribution",
+                analysis_key="bond_action_attribution",
+                report_date=report_date.isoformat(),
+                basis="formal",
+                view=period_type,
+            )
         )
+        summary = analysis_envelope.result.summary
+        warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
+        response = ActionAttributionResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "period_type": str(summary["period_type"]),
+                    "period_start": date.fromisoformat(str(summary["period_start"])),
+                    "period_end": date.fromisoformat(str(summary["period_end"])),
+                    "total_actions": int(summary["total_actions"]),
+                    "total_pnl_from_actions": summary["total_pnl_from_actions"],
+                    "by_action_type": [
+                        ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
+                        for item in analysis_envelope.result.facets.get("by_action_type", [])
+                    ],
+                    "action_details": [
+                        ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
+                        for item in analysis_envelope.result.facets.get("action_details", [])
+                    ],
+                    "period_start_duration": summary["period_start_duration"],
+                    "period_end_duration": summary["period_end_duration"],
+                    "duration_change_from_actions": summary["duration_change_from_actions"],
+                    "period_start_dv01": summary["period_start_dv01"],
+                    "period_end_dv01": summary["period_end_dv01"],
+                    "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
+                    "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+                    "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+                    "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+                    "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
+                    "warnings": warnings,
+                    "warnings_detail": [
+                        {"code": w.code, "level": w.level, "message": w.message}
+                        for w in analysis_envelope.result.warnings
+                    ],
+                },
+                ActionAttributionResponse,
+            )
+        )
+        return build_formal_result_envelope(
+            result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
+            result_payload=response.model_dump(mode="json"),
+        )
+
+    prior_rd = _resolve_prior_bond_snapshot_date(repo, period_end.isoformat())
+    rows_start = repo.fetch_bond_analytics_rows(report_date=prior_rd) if prior_rd else []
+
+    pnl_repo = PnlRepository(str(get_settings().duckdb_path))
+    pnl_by_key, pnl_warn_codes = _build_action_attribution_pnl_by_key(
+        pnl_repo,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
     )
-    summary = analysis_envelope.result.summary
-    warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
+
+    try:
+        raw = compute_action_attribution_bonds(
+            period_start=period_start,
+            period_end=period_end,
+            positions_start=[_action_attribution_bond_line(r) for r in rows_start],
+            positions_end=[_action_attribution_bond_line(r) for r in rows_end],
+            pnl_by_key=pnl_by_key,
+        )
+    except Exception:
+        analysis_envelope = build_bond_action_attribution_placeholder_envelope(
+            AnalysisQuery(
+                consumer="bond_analytics.action_attribution",
+                analysis_key="bond_action_attribution",
+                report_date=report_date.isoformat(),
+                basis="formal",
+                view=period_type,
+            )
+        )
+        summary = analysis_envelope.result.summary
+        warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
+        response = ActionAttributionResponse.model_validate(
+            promote_flat_payload(
+                {
+                    "report_date": report_date,
+                    "period_type": str(summary["period_type"]),
+                    "period_start": date.fromisoformat(str(summary["period_start"])),
+                    "period_end": date.fromisoformat(str(summary["period_end"])),
+                    "total_actions": int(summary["total_actions"]),
+                    "total_pnl_from_actions": summary["total_pnl_from_actions"],
+                    "by_action_type": [
+                        ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
+                        for item in analysis_envelope.result.facets.get("by_action_type", [])
+                    ],
+                    "action_details": [
+                        ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
+                        for item in analysis_envelope.result.facets.get("action_details", [])
+                    ],
+                    "period_start_duration": summary["period_start_duration"],
+                    "period_end_duration": summary["period_end_duration"],
+                    "duration_change_from_actions": summary["duration_change_from_actions"],
+                    "period_start_dv01": summary["period_start_dv01"],
+                    "period_end_dv01": summary["period_end_dv01"],
+                    "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
+                    "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+                    "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+                    "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+                    "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
+                    "warnings": warnings,
+                    "warnings_detail": [
+                        {"code": w.code, "level": w.level, "message": w.message}
+                        for w in analysis_envelope.result.warnings
+                    ],
+                },
+                ActionAttributionResponse,
+            )
+        )
+        return build_formal_result_envelope(
+            result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
+            result_payload=response.model_dump(mode="json"),
+        )
+
+    meta = _meta("bond_analytics.action_attribution", report_date, rows_end)
+    warn_parts: list[str] = [str(w) for w in (raw.get("warnings") or [])]
+    if not prior_rd:
+        warn_parts.append("ACTION_ATTRIBUTION_NO_PRIOR_SNAPSHOT")
+    warn_parts.extend(pnl_warn_codes)
+    warn_strings = _ordered_unique_warnings(warn_parts)
+    warnings_detail = [{"code": w, "level": "warning", "message": w} for w in warn_strings]
+
+    missing_inputs: list[str] = []
+    if not pnl_by_key:
+        missing_inputs.append("fact_formal_pnl_fi_capital_gain_517")
+
     response = ActionAttributionResponse.model_validate(
         promote_flat_payload(
             {
                 "report_date": report_date,
-                "period_type": str(summary["period_type"]),
-                "period_start": date.fromisoformat(str(summary["period_start"])),
-                "period_end": date.fromisoformat(str(summary["period_end"])),
-                "total_actions": int(summary["total_actions"]),
-                "total_pnl_from_actions": summary["total_pnl_from_actions"],
+                "period_type": period_type,
+                "period_start": date.fromisoformat(str(raw["period_start"])),
+                "period_end": date.fromisoformat(str(raw["period_end"])),
+                "total_actions": int(raw["total_actions"]),
+                "total_pnl_from_actions": raw["total_pnl_from_actions"],
                 "by_action_type": [
                     ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
-                    for item in analysis_envelope.result.facets.get("by_action_type", [])
+                    for item in raw.get("by_action_type", [])
                 ],
                 "action_details": [
                     ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
-                    for item in analysis_envelope.result.facets.get("action_details", [])
+                    for item in raw.get("action_details", [])
                 ],
-                "period_start_duration": summary["period_start_duration"],
-                "period_end_duration": summary["period_end_duration"],
-                "duration_change_from_actions": summary["duration_change_from_actions"],
-                "period_start_dv01": summary["period_start_dv01"],
-                "period_end_dv01": summary["period_end_dv01"],
-                "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
-                "available_components": [str(item) for item in list(summary.get("available_components") or [])],
-                "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
-                "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
-                "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
-                "warnings": warnings,
-                "warnings_detail": [
-                    {"code": w.code, "level": w.level, "message": w.message}
-                    for w in analysis_envelope.result.warnings
-                ],
+                "period_start_duration": raw["period_start_duration"],
+                "period_end_duration": raw["period_end_duration"],
+                "duration_change_from_actions": raw["duration_change_from_actions"],
+                "period_start_dv01": raw["period_start_dv01"],
+                "period_end_dv01": raw["period_end_dv01"],
+                "status": "ready",
+                "available_components": ["snapshot_diff", "capital_gain_517_allocation"],
+                "missing_inputs": missing_inputs,
+                "blocked_components": [],
+                "computed_at": meta.generated_at.isoformat(),
+                "warnings": _ordered_unique_warnings(warn_strings),
+                "warnings_detail": warnings_detail,
             },
             ActionAttributionResponse,
         )
     )
+    meta_adj = meta.model_copy(update={"quality_flag": "warning" if warn_strings else "ok"})
     return build_formal_result_envelope(
-        result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
+        result_meta=meta_adj,
         result_payload=response.model_dump(mode="json"),
     )
 

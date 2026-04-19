@@ -516,3 +516,69 @@ def test_allocation_effect_sums_correctly() -> None:
     assert summary["selection_effect"] == Decimal("1000.00000000")
     assert summary["recon_error"] == Decimal("0")
     assert summary["explained_excess"] == summary["excess_return"]
+
+
+def test_summarize_return_decomposition_trading_defaults_to_zero() -> None:
+    summary = summarize_return_decomposition(
+        [
+            {
+                "instrument_code": "B1",
+                "instrument_name": "Treasury 5Y",
+                "asset_class_raw": "利率债",
+                "asset_class_std": "rate",
+                "bond_type": "国债",
+                "accounting_class": "AC",
+                "face_value": Decimal("100"),
+                "market_value": Decimal("100"),
+                "coupon_rate": Decimal("0"),
+                "years_to_maturity": Decimal("5"),
+                "tenor_bucket": "5Y",
+                "modified_duration": Decimal("4"),
+                "convexity": Decimal("2"),
+            }
+        ],
+        period_start=date(2026, 3, 1),
+        period_end=date(2026, 3, 31),
+    )
+    assert summary["trading_total"] == Decimal("0")
+    assert summary["bond_details"][0]["trading"] == Decimal("0")
+
+
+def test_rebucket_return_decomposition_aggregates_trading() -> None:
+    from backend.app.core_finance.bond_analytics.read_models import rebucket_return_decomposition
+
+    z = Decimal("0")
+    d1: dict = {
+        "instrument_code": "A1",
+        "asset_class_std": "rate",
+        "accounting_class": "AC",
+        "carry": z,
+        "roll_down": z,
+        "rate_effect": z,
+        "spread_effect": z,
+        "convexity_effect": z,
+        "fx_effect": z,
+        "trading": Decimal("3"),
+        "market_value": Decimal("100"),
+        "total": Decimal("3"),
+    }
+    d2: dict = {
+        "instrument_code": "A2",
+        "asset_class_std": "credit",
+        "accounting_class": "AC",
+        "carry": z,
+        "roll_down": z,
+        "rate_effect": z,
+        "spread_effect": z,
+        "convexity_effect": z,
+        "fx_effect": z,
+        "trading": Decimal("7"),
+        "market_value": Decimal("200"),
+        "total": Decimal("7"),
+    }
+    by_ac, by_acc = rebucket_return_decomposition([d1, d2])
+    rate = next(b for b in by_ac if b["key"] == "rate")
+    credit = next(b for b in by_ac if b["key"] == "credit")
+    assert rate["trading"] == Decimal("3")
+    assert credit["trading"] == Decimal("7")
+    assert sum((b["trading"] for b in by_acc), Decimal("0")) == Decimal("10")

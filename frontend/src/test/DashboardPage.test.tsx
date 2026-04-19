@@ -61,9 +61,7 @@ describe("DashboardPage", () => {
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     expect(screen.getByRole("navigation")).toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-module-snapshot")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-structure-teaser")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-tasks-calendar")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-overview-hero-strip")).toBeInTheDocument();
     await waitFor(() => {
       expect(releaseSnapshot).toBeDefined();
     });
@@ -104,7 +102,7 @@ describe("DashboardPage", () => {
     expect(alertsCalls).toBe(0);
   });
 
-  it("shows governed result metadata instead of supplemental demo panels", async () => {
+  it("renders the dashboard overview cockpit sections", async () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
@@ -112,10 +110,17 @@ describe("DashboardPage", () => {
     expect(statusStrip).toBeInTheDocument();
     expect(within(statusStrip).getByText("Overview")).toBeInTheDocument();
     expect(within(statusStrip).getByText("Attribution")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-global-judgment")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-alert-center")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-module-entry-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-macro-spot-grid")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
+    expect(await screen.findByTestId("dashboard-liability-counterparty-section")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-governed-meta")).toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-module-snapshot")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-structure-teaser")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("dashboard-tasks-calendar")).not.toBeInTheDocument();
   });
 
   it("surfaces a strong mock-data warning when the app is not using real APIs", async () => {

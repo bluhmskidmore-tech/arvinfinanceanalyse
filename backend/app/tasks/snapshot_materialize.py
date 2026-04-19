@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -35,6 +36,8 @@ from backend.app.schemas.snapshot import (
 )
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
+
+logger = logging.getLogger(__name__)
 
 SNAPSHOT_RULE_VERSION = "rv_snapshot_zqtz_tyw_v1"
 SNAPSHOT_SCHEMA_VERSION = "snapshot.schema.v1"
@@ -83,6 +86,19 @@ def _materialize_standard_snapshots(
         report_date=report_date,
         ingest_batch_id=ingest_batch_id,
     )
+    if store.mode == "local" and selected:
+        before = len(selected)
+        selected = [
+            row
+            for row in selected
+            if row.get("archived_path") and Path(str(row["archived_path"])).is_file()
+        ]
+        dropped = before - len(selected)
+        if dropped:
+            logger.warning(
+                "snapshot_materialize skipped %s manifest row(s) pointing at missing archive files",
+                dropped,
+            )
     if not selected:
         combined_sv = "sv_snapshot_empty"
         completed = SnapshotBuildRunRecord(

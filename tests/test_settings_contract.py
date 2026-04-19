@@ -9,6 +9,7 @@ from backend.app.governance.settings import (
     DEV_POSTGRES_DSN,
     Settings,
     get_settings,
+    resolve_data_input_root_path,
     resolve_governance_sql_dsn,
     resolve_postgres_dsn,
     resolve_repo_relative_path,
@@ -121,3 +122,38 @@ def test_resolve_repo_relative_path_preserves_absolute_and_empty_values(tmp_path
 
     assert resolve_repo_relative_path(str(absolute), repo_root=tmp_path) == str(absolute)
     assert resolve_repo_relative_path("", repo_root=tmp_path) == ""
+
+
+def test_resolve_data_input_root_path_prefers_existing_data_warehouse_raw_files(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    monkeypatch.delenv("RAW_FILES_DIR", raising=False)
+    repo_root = tmp_path / "repo"
+    (repo_root / "data_warehouse" / "raw_files").mkdir(parents=True)
+
+    resolved = resolve_data_input_root_path(repo_root=repo_root, pydantic_value=Path("data_input"))
+
+    assert resolved == (repo_root / "data_warehouse" / "raw_files").resolve()
+
+
+def test_resolve_data_input_root_path_honors_v1_raw_files_env(tmp_path, monkeypatch):
+    monkeypatch.delenv("MOSS_DATA_INPUT_ROOT", raising=False)
+    repo_root = tmp_path / "repo"
+    custom = repo_root / "incoming" / "raw"
+    custom.mkdir(parents=True)
+    monkeypatch.setenv("RAW_FILES_DIR", "incoming/raw")
+
+    resolved = resolve_data_input_root_path(repo_root=repo_root, pydantic_value=Path("data_input"))
+
+    assert resolved == custom.resolve()
+
+
+def test_resolve_data_input_root_path_moss_env_overrides_raw_files_layout(tmp_path, monkeypatch):
+    repo_root = tmp_path / "repo"
+    (repo_root / "data_warehouse" / "raw_files").mkdir(parents=True)
+    explicit = repo_root / "explicit_drop"
+    explicit.mkdir(parents=True)
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", "explicit_drop")
+
+    resolved = resolve_data_input_root_path(repo_root=repo_root, pydantic_value=Path("explicit_drop"))
+
+    assert resolved == explicit.resolve()

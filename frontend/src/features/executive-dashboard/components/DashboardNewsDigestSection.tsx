@@ -3,8 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
 import type { ChoiceNewsEvent } from "../../../api/contracts";
-import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { shellTokens } from "../../../theme/tokens";
+import {
+  DashboardCockpitSection,
+} from "./DashboardCockpitSection";
+import { cockpitInsetCardStyle } from "./DashboardCockpitSection.styles";
 
 function summarizeNewsLine(event: ChoiceNewsEvent) {
   if (event.payload_text?.trim()) {
@@ -21,17 +25,25 @@ function summarizeNewsLine(event: ChoiceNewsEvent) {
 
 function formatReceivedTime(iso: string) {
   try {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) {
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
       return iso.slice(11, 16) || "—";
     }
-    return d.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return date.toLocaleTimeString("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   } catch {
     return "—";
   }
 }
 
-function toState(isLoading: boolean, isError: boolean, count: number): DataSectionState {
+function toState(
+  isLoading: boolean,
+  isError: boolean,
+  count: number,
+): DataSectionState {
   if (isLoading) return { kind: "loading" };
   if (isError) return { kind: "error", message: "资讯加载失败" };
   if (count === 0) return { kind: "empty", hint: "当前没有可用的 Choice 资讯条目。" };
@@ -53,35 +65,46 @@ export function DashboardNewsDigestSection() {
   );
 
   return (
-    <div data-testid="dashboard-news-digest-section">
-      <DataSection title="市场资讯（Choice）" state={state} onRetry={() => void query.refetch()}>
-        <ul
-          style={{
-            margin: 0,
-            padding: "0 0 0 18px",
-            display: "grid",
-            gap: 10,
-            fontSize: 13,
-            color: "#162033",
-            lineHeight: 1.55,
-          }}
-        >
-          {events.map((e) => (
-            <li key={`${e.event_key}-${e.serial_id}`}>
-              <span
-                style={{
-                  fontVariantNumeric: "tabular-nums",
-                  color: "#5c6b82",
-                  marginRight: 8,
-                }}
-              >
-                {formatReceivedTime(e.received_at)}
-              </span>
-              {summarizeNewsLine(e)}
-            </li>
-          ))}
-        </ul>
-      </DataSection>
-    </div>
+    <DashboardCockpitSection
+      testId="dashboard-news-digest-section"
+      eyebrow="News Digest"
+      title="市场资讯"
+      state={state}
+      onRetry={() => void query.refetch()}
+    >
+      <div data-testid="dashboard-news-digest-list" style={{ display: "grid", gap: 10 }}>
+        {events.map((event) => (
+          <article
+            key={`${event.event_key}-${event.serial_id}`}
+            style={{
+              ...cockpitInsetCardStyle,
+              gridTemplateColumns: "68px minmax(0, 1fr)",
+              alignItems: "start",
+              gap: 12,
+            }}
+          >
+            <span
+              style={{
+                color: shellTokens.colorTextPrimary,
+                fontSize: 14,
+                fontWeight: 700,
+                fontVariantNumeric: "tabular-nums",
+              }}
+            >
+              {formatReceivedTime(event.received_at)}
+            </span>
+            <span
+              style={{
+                color: shellTokens.colorTextSecondary,
+                fontSize: 13,
+                lineHeight: 1.6,
+              }}
+            >
+              {summarizeNewsLine(event)}
+            </span>
+          </article>
+        ))}
+      </div>
+    </DashboardCockpitSection>
   );
 }

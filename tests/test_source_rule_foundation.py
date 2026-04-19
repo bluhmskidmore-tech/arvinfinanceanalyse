@@ -37,6 +37,18 @@ def test_source_rules_detect_family_and_date_from_supported_file_names():
     assert rules_module.extract_report_date_from_name("TYWLSHOW-2025.06.01.xls") == "2025-06-01"
 
 
+def test_source_rules_v1_substring_family_detection():
+    """MOSS-SYSTEM-V1 `ingest_daily_data` classifies by substring, not only strict prefixes."""
+    rules_module = load_module(
+        "backend.app.services.source_rules",
+        "backend/app/services/source_rules.py",
+    )
+
+    assert rules_module.detect_source_family("EXPORT-ZQTZ-20250101.xls") == "zqtz"
+    assert rules_module.detect_source_family("tywl-export-20250101.xls") == "tyw"
+    assert rules_module.extract_report_date_from_name("EXPORT-ZQTZ-20250101.xls") == "2025-01-01"
+
+
 def test_zqtz_other_bond_prefix_rule_maps_to_expected_preview_group():
     rules_module = load_module(
         "backend.app.services.source_rules",

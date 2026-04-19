@@ -73,6 +73,7 @@ def summarize_return_decomposition(
     spread_effect_total = ZERO
     convexity_effect_total = ZERO
     fx_effect_total = ZERO
+    trading_total = ZERO
     for row in rows:
         carry = safe_decimal(row.get("coupon_rate")) * safe_decimal(row.get("face_value")) * days / Decimal("365")
         curve_type = infer_curve_type(
@@ -120,12 +121,14 @@ def summarize_return_decomposition(
             fx_rates_current=fx_rates_current,
             fx_rates_prior=fx_rates_prior,
         )
+        trading = ZERO
         carry_total += carry
         roll_down_total += roll_down
         rate_effect_total += rate_effect
         spread_effect_total += spread_effect
         convexity_effect_total += convexity_effect
         fx_effect_total += fx_effect
+        trading_total += trading
         detail_rows.append(
             {
                 **row,
@@ -135,7 +138,8 @@ def summarize_return_decomposition(
                 "spread_effect": spread_effect,
                 "convexity_effect": convexity_effect,
                 "fx_effect": fx_effect,
-                "total": carry + roll_down + rate_effect + spread_effect + convexity_effect + fx_effect,
+                "trading": trading,
+                "total": carry + roll_down + rate_effect + spread_effect + convexity_effect + fx_effect + trading,
             }
         )
     return {
@@ -145,6 +149,7 @@ def summarize_return_decomposition(
         "spread_effect_total": spread_effect_total,
         "convexity_effect_total": convexity_effect_total,
         "fx_effect_total": fx_effect_total,
+        "trading_total": trading_total,
         "total_market_value": _sum(rows, "market_value"),
         "bond_count": len(rows),
         "bond_details": detail_rows,
@@ -525,6 +530,7 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
                 "spread_effect": ZERO,
                 "convexity_effect": ZERO,
                 "fx_effect": ZERO,
+                "trading": ZERO,
                 "market_value": ZERO,
                 "bond_count": 0,
                 "total": ZERO,
@@ -536,10 +542,18 @@ def _aggregate_return(rows: list[dict[str, Any]], field_name: str) -> list[dict[
         bucket["spread_effect"] += safe_decimal(row.get("spread_effect"))
         bucket["convexity_effect"] += safe_decimal(row.get("convexity_effect"))
         bucket["fx_effect"] += safe_decimal(row.get("fx_effect"))
+        bucket["trading"] += safe_decimal(row.get("trading"))
         bucket["market_value"] += safe_decimal(row["market_value"])
         bucket["bond_count"] += 1
         bucket["total"] += safe_decimal(row.get("total"))
     return list(grouped.values())
+
+
+def rebucket_return_decomposition(
+    detail_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Re-aggregate by asset / accounting class after per-bond fields (e.g. trading) are updated."""
+    return _aggregate_return(detail_rows, "asset_class_std"), _aggregate_return(detail_rows, "accounting_class")
 
 
 def _curve_roll_down(

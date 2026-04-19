@@ -28,6 +28,10 @@ if str(_REPO_ROOT) not in sys.path:
 os.environ.setdefault("MOSS_OBJECT_STORE_MODE", "local")
 os.environ.setdefault("MOSS_GOVERNANCE_BACKEND", "jsonl")
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+_fx_csv = _REPO_ROOT / "data_input" / "fx" / "fx_daily_mid.csv"
+if _fx_csv.is_file():
+    # Offline USD/CNY so balance / FX formal steps do not block on Choice or AkShare.
+    os.environ.setdefault("MOSS_FX_MID_CSV_PATH", "data_input/fx/fx_daily_mid.csv")
 
 # Fix Windows GBK terminal encoding
 if sys.stdout.encoding and sys.stdout.encoding.lower().startswith("gbk"):
@@ -144,6 +148,7 @@ def run_pipeline():
             duckdb_path=duckdb_path,
             governance_dir=governance_dir,
             archive_dir=archive_dir,
+            data_root=str(Path(settings.data_input_root).resolve()),
         )
         status = result.get("status", "unknown") if isinstance(result, dict) else "done"
         print(f"  ✓ Balance analysis: {status}")

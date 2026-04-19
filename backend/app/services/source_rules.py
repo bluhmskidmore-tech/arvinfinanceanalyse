@@ -4,21 +4,13 @@ import calendar
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
-
-_SOURCE_PATTERNS = {
-    "zqtz": re.compile(r"^ZQTZSHOW-", re.IGNORECASE),
-    "tyw": re.compile(r"^TYWLSHOW-", re.IGNORECASE),
-}
-_PNL_PATTERN = re.compile(
-    r"^FI\u635f\u76ca(?P<year>\d{4})(?P<month>\d{2})\.xls$",
-    re.IGNORECASE,
-)
 _NONSTD_PNL_PATTERN = re.compile(
-    r"^\u975e\u6807(?P<bucket>514|516|517)-(?P<start>\d{8})-(?P<end>\d{4})\.xlsx$",
+    r"\u975e\u6807(?P<bucket>514|516|517)-(?P<start>\d{8})-(?P<end>\d{4})\.xlsx$",
     re.IGNORECASE,
 )
+_FI_MONTH_SUFFIX = re.compile(r"FI\u635f\u76ca(?P<ym>\d{6})\.xls$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -31,17 +23,25 @@ class SourceFileMetadata:
 
 
 def detect_source_family(file_name: str) -> str:
-    pnl_match = _PNL_PATTERN.search(file_name)
-    if pnl_match is not None:
+    """
+    MOSS-SYSTEM-V1 parity (`ingest_daily_data.scan_and_process_files`):
+    case-fold ASCII via upper(); Chinese literals unchanged.
+    """
+    fn_u = file_name.upper()
+    if "ZQTZSHOW" in fn_u or "ZQTZ" in fn_u:
+        return "zqtz"
+    if "TYWLSHOW" in fn_u or "TYWL" in fn_u:
+        return "tyw"
+    if "FI损益" in file_name or "FI损益" in fn_u:
         return "pnl"
-
-    nonstd_match = _NONSTD_PNL_PATTERN.search(file_name)
-    if nonstd_match is not None:
-        return f"pnl_{nonstd_match.group('bucket')}"
-
-    for family, pattern in _SOURCE_PATTERNS.items():
-        if pattern.search(file_name):
-            return family
+    if "FI" in fn_u:
+        return "pnl"
+    if "非标517" in file_name:
+        return "pnl_517"
+    if "非标516" in file_name:
+        return "pnl_516"
+    if "非标514" in file_name:
+        return "pnl_514"
     return "unknown"
 
 
@@ -49,22 +49,42 @@ def extract_report_date_from_name(file_name: str) -> str | None:
     return describe_source_file(file_name).report_date
 
 
+def _extract_loose_date_v1(file_name: str) -> str:
+    """Ported from V1 `extract_date_from_filename` — last resort is today (local)."""
+    match = re.search(r"(\d{8})", file_name)
+    if match:
+        try:
+            return datetime.strptime(match.group(1), "%Y%m%d").date().isoformat()
+        except ValueError:
+            pass
+
+    match = re.search(r"(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})", file_name)
+    if match:
+        year, month, day = int(match.group(1)), int(match.group(2)), int(match.group(3))
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            pass
+
+    match = re.search(r"(\d{1,2})\.(\d{1,2})", file_name)
+    if match:
+        month_int, day_int = int(match.group(1)), int(match.group(2))
+        try:
+            current_year = date.today().year
+            return date(current_year, month_int, day_int).isoformat()
+        except ValueError:
+            pass
+
+    return date.today().isoformat()
+
+
 def describe_source_file(file_name: str) -> SourceFileMetadata:
-    pnl_match = _PNL_PATTERN.search(file_name)
-    if pnl_match is not None:
-        year = int(pnl_match.group("year"))
-        month = int(pnl_match.group("month"))
-        month_end = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
-        return SourceFileMetadata(
-            source_family="pnl",
-            report_date=month_end,
-            report_start_date=f"{year:04d}-{month:02d}-01",
-            report_end_date=month_end,
-            report_granularity="month",
-        )
+    family = detect_source_family(file_name)
+    if family == "unknown":
+        return SourceFileMetadata(source_family="unknown")
 
     nonstd_match = _NONSTD_PNL_PATTERN.search(file_name)
-    if nonstd_match is not None:
+    if nonstd_match and family == f"pnl_{nonstd_match.group('bucket')}":
         bucket = nonstd_match.group("bucket")
         start_date = _parse_yyyymmdd(nonstd_match.group("start"))
         end_date = _derive_range_end_date(
@@ -79,16 +99,36 @@ def describe_source_file(file_name: str) -> SourceFileMetadata:
             report_granularity="range",
         )
 
-    match = re.search(r"(\d{4})[.]?(\d{2})[.]?(\d{2})(?=\.xls$)", file_name, re.IGNORECASE)
-    if match is None:
-        return SourceFileMetadata(source_family=detect_source_family(file_name))
-    year, month, day = match.groups()
-    report_date = f"{year}-{month}-{day}"
+    if family == "pnl":
+        month_match = _FI_MONTH_SUFFIX.search(file_name)
+        if month_match:
+            ym = month_match.group("ym")
+            year, month = int(ym[:4]), int(ym[4:6])
+            month_end = date(year, month, calendar.monthrange(year, month)[1]).isoformat()
+            return SourceFileMetadata(
+                source_family="pnl",
+                report_date=month_end,
+                report_start_date=f"{year:04d}-{month:02d}-01",
+                report_end_date=month_end,
+                report_granularity="month",
+            )
+
+    if family in {"pnl_514", "pnl_516", "pnl_517"} and not nonstd_match:
+        rd = _extract_loose_date_v1(file_name)
+        return SourceFileMetadata(
+            source_family=family,
+            report_date=rd,
+            report_start_date=rd,
+            report_end_date=rd,
+            report_granularity="day",
+        )
+
+    rd = _extract_loose_date_v1(file_name)
     return SourceFileMetadata(
-        source_family=detect_source_family(file_name),
-        report_date=report_date,
-        report_start_date=report_date,
-        report_end_date=report_date,
+        source_family=family,
+        report_date=rd,
+        report_start_date=rd,
+        report_end_date=rd,
         report_granularity="day",
     )
 

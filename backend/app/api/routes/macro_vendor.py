@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Query
+from fastapi import HTTPException
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
@@ -14,7 +15,6 @@ from backend.app.services.macro_vendor_service import (
 from backend.app.tasks.choice_macro import refresh_choice_macro_snapshot
 
 router = APIRouter()
-
 
 @router.get("/ui/preview/macro-foundation")
 def macro_foundation() -> dict[str, object]:
@@ -44,8 +44,17 @@ def fx_analytical() -> dict[str, object]:
 def choice_series_refresh(
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
-    result = refresh_choice_macro_snapshot.fn(backfill_days=backfill_days)
-    return result
+    try:
+        return refresh_choice_macro_snapshot.fn(backfill_days=backfill_days)
+    except RuntimeError as exc:
+        error_text = str(exc)
+        normalized_error = error_text.lower()
+        if "no access for this api" in normalized_error:
+            raise HTTPException(
+                status_code=424,
+                detail="Choice API permission denied for current account. Refresh cannot run until API entitlement is enabled.",
+            ) from exc
+        raise
 
 
 @router.get("/ui/macro/choice-series/refresh-status")

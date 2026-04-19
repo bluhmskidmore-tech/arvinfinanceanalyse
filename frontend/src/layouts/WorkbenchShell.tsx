@@ -12,9 +12,12 @@ import {
   TrophyOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { useApiClient } from "../api/client";
+import type { ChoiceMacroLatestPoint } from "../api/contracts";
 import {
   findWorkbenchSectionByPath,
   pathMatchesWorkbenchSection,
@@ -82,14 +85,12 @@ function groupButtonStyle(active: boolean) {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "10px 12px",
-    borderRadius: 16,
-    background: active ? "rgba(221, 233, 241, 0.92)" : "transparent",
+    padding: "9px 10px",
+    borderRadius: 12,
+    background: active ? "rgba(221, 233, 241, 0.64)" : "transparent",
     color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
-    border: active
-      ? `1px solid ${shellTokens.colorBorderStrong}`
-      : "1px solid transparent",
-    boxShadow: active ? "inset 3px 0 0 #2c5a79" : "none",
+    border: "1px solid transparent",
+    boxShadow: active ? "inset 2px 0 0 #2c5a79" : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
@@ -113,55 +114,196 @@ function groupSectionPillStyle(active: boolean) {
   } as const;
 }
 
-function sidebarSectionLinkStyle(active: boolean) {
-  return {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "8px 10px",
-    borderRadius: 12,
-    background: active ? "rgba(255,255,255,0.88)" : "transparent",
-    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
-    border: active ? `1px solid ${shellTokens.colorBorderSoft}` : "1px solid transparent",
-    boxShadow: active ? "inset 2px 0 0 #2c5a79" : "none",
-    fontSize: 12,
-    fontWeight: active ? 700 : 600,
-    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
-  } as const;
-}
-
 function supportLinkStyle(active: boolean) {
   return {
     display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "8px 10px",
-    borderRadius: 12,
-    background: active ? "rgba(233, 238, 235, 0.88)" : "transparent",
+    gap: 8,
+    padding: "6px 8px",
+    borderRadius: 10,
+    background: active ? "rgba(233, 238, 235, 0.72)" : "transparent",
     color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextMuted,
-    border: active ? `1px solid ${shellTokens.colorBorderSoft}` : "1px solid transparent",
-    fontSize: 12,
+    border: "1px solid transparent",
+    fontSize: 11,
     fontWeight: 600,
     transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
   } as const;
 }
 
 const shellSectionLabelStyle = {
-  fontSize: 10,
-  letterSpacing: "0.14em",
+  fontSize: 9,
+  letterSpacing: "0.18em",
   textTransform: "uppercase",
   color: shellTokens.colorTextMuted,
   fontWeight: 700,
 } as const;
 
-const shellTickerItems = [
+type ShellTickerTone = "up" | "down";
+
+type ShellTickerItem = {
+  key: string;
+  label: string;
+  value: string;
+  delta: string;
+  tone: ShellTickerTone;
+};
+
+const fallbackShellTickerItems: ShellTickerItem[] = [
   { key: "cgb10y", label: "10Y CGB", value: "1.94%", delta: "+2bp", tone: "up" },
   { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "aaa3y", label: "AAA 3Y", value: "45bp", delta: "-3bp", tone: "down" },
+  { key: "omo7d", label: "OMO 7D", value: "1.75%", delta: "+1bp", tone: "up" },
   { key: "usd-cny", label: "USD/CNY", value: "7.21", delta: "+0.02", tone: "up" },
 ] as const;
 
-const shellSupportEntries = [
+const shellTickerSeriesSpecs = [
+  {
+    key: "cgb10y",
+    label: "10Y CGB",
+    matchers: ["中债国债到期收益率:10年", "10年期国债到期收益率"],
+  },
+  {
+    key: "policyBank10y",
+    label: "Policy 10Y",
+    matchers: ["中债政策性金融债到期收益率(国开行)10年"],
+  },
+  {
+    key: "us10y",
+    label: "US 10Y",
+    matchers: ["美国10年期国债收益率", "美国:国债收益率:10年"],
+  },
+  {
+    key: "cnUs10ySpread",
+    label: "CN-US 10Y",
+    matchers: ["中美国债利差(10Y)", "10Y中国国债-10Y美国国债"],
+  },
+  {
+    key: "dr007",
+    label: "DR007",
+    matchers: ["DR007"],
+  },
+  {
+    key: "omo7d",
+    label: "OMO 7D",
+    matchers: ["公开市场7天逆回购利率"],
+  },
+  {
+    key: "usd-cny",
+    label: "USD/CNY",
+    matchers: ["即期汇率:美元兑人民币", "USD/CNY"],
+  },
+] as const;
+
+type ShellTickerKey = (typeof shellTickerSeriesSpecs)[number]["key"];
+
+const shellTickerDisplayKeys: ShellTickerKey[] = [
+  "cgb10y",
+  "policyBank10y",
+  "us10y",
+  "cnUs10ySpread",
+  "dr007",
+  "omo7d",
+  "usd-cny",
+];
+
+const shellTickerSeriesIdsByKey: Record<ShellTickerKey, string[]> = {
+  // Cross-asset / latest payload aliases for China 10Y sovereign.
+  cgb10y: ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"],
+  // Policy-bank 10Y is currently anchored on the CDB lane.
+  policyBank10y: ["EMM00166502"],
+  // US 10Y can come from cross-asset or EDB-oriented identifiers.
+  us10y: ["CA.US_GOV_10Y", "EMG00001310", "E1003238"],
+  // CN-US spread can arrive directly as cross-asset headline or legacy spread id.
+  cnUs10ySpread: ["CA.CN_US_SPREAD", "EM1"],
+  // DR007 appears both as raw choice macro and catalog-aligned headline lanes.
+  dr007: ["CA.DR007", "M002", "EMM00167613"],
+  // Open-market 7D reverse repo currently only exposes one stable series id locally.
+  omo7d: ["M001"],
+  // USD/CNY can arrive from middle-rate or spot-oriented lanes.
+  "usd-cny": ["CA.USDCNY", "EMM00058124"],
+};
+
+function formatShellTickerNumber(value: number, digits = 2) {
+  return value.toFixed(digits).replace(/\.?0+$/, "");
+}
+
+function formatShellTickerValue(point: ChoiceMacroLatestPoint) {
+  if (point.unit === "%") {
+    return `${formatShellTickerNumber(point.value_numeric)}%`;
+  }
+
+  if (point.unit === "bp") {
+    return `${formatShellTickerNumber(point.value_numeric, 0)}bp`;
+  }
+
+  return formatShellTickerNumber(point.value_numeric);
+}
+
+function formatShellTickerDelta(point: ChoiceMacroLatestPoint) {
+  if (point.latest_change == null) {
+    return "--";
+  }
+
+  if (point.unit === "%") {
+    const deltaBp = point.latest_change * 100;
+    const sign = deltaBp > 0 ? "+" : "";
+    return `${sign}${formatShellTickerNumber(deltaBp, Math.abs(deltaBp) < 1 ? 1 : 0)}bp`;
+  }
+
+  const sign = point.latest_change > 0 ? "+" : "";
+  return `${sign}${formatShellTickerNumber(point.latest_change)}`;
+}
+
+export function buildShellTickerItems(
+  series: ChoiceMacroLatestPoint[],
+  keys: ShellTickerKey[] = shellTickerDisplayKeys,
+): ShellTickerItem[] {
+  const resolved: ShellTickerItem[] = [];
+
+  for (const spec of shellTickerSeriesSpecs.filter((item) => keys.includes(item.key))) {
+    const stableSeriesIds = shellTickerSeriesIdsByKey[spec.key] ?? [];
+    const point =
+      series.find((candidate) => stableSeriesIds.includes(candidate.series_id)) ??
+      series.find((candidate) =>
+        spec.matchers.some((matcher) => candidate.series_name.includes(matcher)),
+      );
+    if (!point) {
+      continue;
+    }
+
+    resolved.push({
+      key: spec.key,
+      label: spec.label,
+      value: formatShellTickerValue(point),
+      delta: formatShellTickerDelta(point),
+      tone: point.latest_change != null && point.latest_change < 0 ? "down" : "up",
+    });
+  }
+
+  return resolved.length > 0 ? resolved : fallbackShellTickerItems;
+}
+
+const shellUtilityEntries = [
+  {
+    key: "reports",
+    label: "\u62a5\u8868\u4e2d\u5fc3",
+    to: "/reports",
+    icon: <FileTextOutlined />,
+  },
+  {
+    key: "platform",
+    label: "\u4e2d\u53f0\u914d\u7f6e",
+    to: "/platform-config",
+    icon: <SettingOutlined />,
+  },
+  {
+    key: "help",
+    label: "\u5e2e\u52a9\u6587\u6863",
+    to: "/",
+    icon: <QuestionCircleOutlined />,
+  },
+] as const;
+
+const _shellSupportEntries = [
   { key: "reports", label: "鎶ヨ〃涓績", to: "/reports", icon: <FileTextOutlined /> },
   { key: "platform", label: "涓彴閰嶇疆", to: "/platform-config", icon: <SettingOutlined /> },
   { key: "help", label: "甯姪鏂囨。", to: "/", icon: <QuestionCircleOutlined /> },
@@ -219,6 +361,7 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 }
 
 export function WorkbenchShell() {
+  const client = useApiClient();
   const location = useLocation();
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
@@ -228,15 +371,32 @@ export function WorkbenchShell() {
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
     ) ?? primaryWorkbenchNavigationGroups[0];
   const currentGroupSections = currentGroup.sections;
-  const dataSourceRaw = import.meta.env.VITE_DATA_SOURCE;
-  const isMockDataSource =
-    typeof dataSourceRaw !== "string" || dataSourceRaw.trim().toLowerCase() !== "real";
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
-  const shellReportDate = explicitReportDate || (isBondAnalysisMinimalShell ? "Latest available" : "Route default");
-  const terminalStatusLabel = isMockDataSource ? "Derived display" : "Live feed";
+  const bondAnalyticsDatesQuery = useQuery({
+    queryKey: ["workbench-shell", "bond-analytics-dates", client.mode],
+    queryFn: () => client.getBondAnalyticsDates(),
+    enabled: isBondAnalysisMinimalShell && !explicitReportDate,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const shellTickerQuery = useQuery({
+    queryKey: ["workbench-shell", "choice-macro-latest", client.mode],
+    queryFn: () => client.getChoiceMacroLatest(),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const shellReportDate =
+    explicitReportDate ||
+    (isBondAnalysisMinimalShell
+      ? bondAnalyticsDatesQuery.data?.result.report_dates[0] ?? "Latest available"
+      : "Route default");
+  const shellTickerItems = useMemo(
+    () => buildShellTickerItems(shellTickerQuery.data?.result.series ?? []),
+    [shellTickerQuery.data?.result.series],
+  );
   const portfolioLeadSections = portfolioFlow
     .map((item) => ({
       ...item,
@@ -273,19 +433,19 @@ export function WorkbenchShell() {
           display: "grid",
           alignContent: "start",
           gap: 14,
-          padding: isBondAnalysisMinimalShell ? 12 : 14,
-          border: `1px solid ${shellTokens.colorBorder}`,
-          borderRadius: isBondAnalysisMinimalShell ? 22 : 26,
-          boxShadow: "0 18px 36px rgba(22, 35, 46, 0.06)",
-          background: "rgba(247, 247, 242, 0.9)",
-          backdropFilter: "blur(12px)",
+          padding: isBondAnalysisMinimalShell ? "8px 12px 14px 0" : "10px 14px 16px 0",
+          border: "none",
+          borderRight: `1px solid ${shellTokens.colorBorderSoft}`,
+          borderRadius: 0,
+          boxShadow: "none",
+          background: "transparent",
         }}
       >
         <div
           style={{
             display: "grid",
-            gap: 10,
-            padding: "4px 2px 14px",
+            gap: 8,
+            padding: "6px 4px 14px 8px",
             borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
@@ -311,54 +471,18 @@ export function WorkbenchShell() {
             >
               M
             </div>
-            <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <div style={{ display: "grid", gap: 0, minWidth: 0 }}>
               <span
                 style={{
                   color: shellTokens.colorTextPrimary,
                   fontWeight: 700,
-                  fontSize: 18,
+                  fontSize: 17,
                   letterSpacing: "-0.03em",
                 }}
               >
                 MOSS
               </span>
-              <span style={{ color: shellTokens.colorTextMuted, fontSize: 11 }}>
-                Fixed Income Terminal
-              </span>
             </div>
-          </div>
-
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: "rgba(233, 238, 235, 0.96)",
-                color: shellTokens.colorTextSecondary,
-                fontSize: 11,
-                fontWeight: 700,
-              }}
-            >
-              {currentGroup.label}
-            </span>
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                padding: "4px 10px",
-                borderRadius: 999,
-                background: isMockDataSource
-                  ? shellTokens.colorBgWarningSoft
-                  : shellTokens.colorAccentSoft,
-                color: isMockDataSource ? shellTokens.colorWarning : shellTokens.colorAccent,
-                fontSize: 11,
-                fontWeight: 700,
-              }}
-            >
-              {terminalStatusLabel}
-            </span>
           </div>
         </div>
 
@@ -539,12 +663,12 @@ export function WorkbenchShell() {
           </section>
         )} */}
 
-        <section style={{ display: "grid", gap: 8 }}>
+        <section style={{ display: "grid", gap: 6 }}>
           <span style={shellSectionLabelStyle}>Workspaces</span>
           <nav
             aria-label="Primary workspaces"
             data-testid="workbench-group-nav"
-            style={{ display: "grid", gap: 4 }}
+            style={{ display: "grid", gap: 2 }}
           >
             {primaryWorkbenchNavigationGroups.map((group) => {
               const active = group.key === currentGroup.key;
@@ -556,24 +680,40 @@ export function WorkbenchShell() {
                   data-active={active ? "true" : "false"}
                   style={groupButtonStyle(active)}
                 >
-                  <span style={{ fontSize: 15 }}>{iconMap[group.icon]}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontWeight: 700 }}>{group.label}</span>
                   <span
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minWidth: 24,
-                      height: 24,
-                      paddingInline: 7,
+                      display: "grid",
+                      placeItems: "center",
+                      width: 18,
+                      height: 18,
                       borderRadius: 999,
-                      background: active ? "#ffffff" : "rgba(233, 238, 235, 0.92)",
+                      border: `1px solid ${active ? shellTokens.colorAccent : shellTokens.colorBorderStrong}`,
                       color: active ? shellTokens.colorAccent : shellTokens.colorTextMuted,
-                      fontSize: 11,
-                      fontWeight: 700,
+                      fontSize: 10,
+                      background: active ? "rgba(255,255,255,0.72)" : "transparent",
                     }}
                   >
-                    {group.sections.length}
+                    {iconMap[group.icon]}
+                  </span>
+                  <span
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      fontWeight: active ? 700 : 600,
+                      fontSize: 13,
+                    }}
+                  >
+                    {group.label}
+                  </span>
+                  <span
+                    style={{
+                      color: active ? shellTokens.colorAccent : shellTokens.colorTextMuted,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    {String(group.sections.length).padStart(2, "0")}
                   </span>
                 </NavLink>
               );
@@ -581,39 +721,12 @@ export function WorkbenchShell() {
           </nav>
         </section>
 
-        {isBondAnalysisMinimalShell ? (
+        {isBondAnalysisMinimalShell ? null : (
           <section
-            data-testid="workbench-sidebar-sections"
             style={{
               display: "grid",
               gap: 6,
-              paddingTop: 4,
-              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
-            }}
-          >
-            <span style={shellSectionLabelStyle}>Portfolio Pages</span>
-            {currentGroupSections.map((section) => {
-              const active = pathMatchesWorkbenchSection(section.path, pathnameResolved);
-
-              return (
-                <NavLink
-                  key={section.key}
-                  to={section.path}
-                  data-active={active ? "true" : "false"}
-                  style={sidebarSectionLinkStyle(active)}
-                >
-                  <span style={{ fontSize: 13 }}>{iconMap[section.icon]}</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>{section.label}</span>
-                </NavLink>
-              );
-            })}
-          </section>
-        ) : (
-          <section
-            style={{
-              display: "grid",
-              gap: 8,
-              paddingTop: 4,
+              paddingTop: 8,
               borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
@@ -627,33 +740,28 @@ export function WorkbenchShell() {
                   to={item.path}
                   style={{
                     display: "grid",
-                    gap: 4,
-                    padding: "10px 12px",
-                    borderRadius: 14,
-                    background: active ? "#f4f7fb" : "rgba(255,255,255,0.72)",
-                    border: active
-                      ? `1px solid ${shellTokens.colorBorder}`
-                      : `1px solid ${shellTokens.colorBorderSoft}`,
-                    color: shellTokens.colorTextPrimary,
+                    gap: 2,
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    background: active ? "rgba(255,255,255,0.64)" : "transparent",
+                    color: shellTokens.colorTextSecondary,
+                    border: "1px solid transparent",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 14 }}>{iconMap[item.icon]}</span>
-                    <span style={{ flex: 1, fontWeight: 700 }}>{item.label}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
+                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{item.label}</span>
                     <span
                       style={{
                         ...sectionBadgeStyle(item),
                         borderRadius: 999,
-                        padding: "2px 8px",
+                        padding: "1px 6px",
                         fontSize: 10,
                         fontWeight: 700,
                       }}
                     >
                       {item.readinessLabel}
                     </span>
-                  </div>
-                  <div style={{ color: shellTokens.colorTextMuted, fontSize: 11, lineHeight: 1.5 }}>
-                    {item.readinessNote}
                   </div>
                 </NavLink>
               );
@@ -665,18 +773,18 @@ export function WorkbenchShell() {
           data-testid="workbench-support-nav"
           style={{
             display: "grid",
-            gap: 6,
-            paddingTop: 4,
+            gap: 4,
+            paddingTop: 8,
             borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
           <span style={shellSectionLabelStyle}>Support</span>
-          {shellSupportEntries.map((item) => {
+          {shellUtilityEntries.map((item) => {
             const active = item.to !== "/" && pathnameResolved === item.to;
 
             return (
               <NavLink key={item.key} to={item.to} style={supportLinkStyle(active)}>
-                <span style={{ fontSize: 13 }}>{item.icon}</span>
+                <span style={{ fontSize: 11 }}>{item.icon}</span>
                 <span style={{ flex: 1 }}>{item.label}</span>
               </NavLink>
             );
@@ -689,169 +797,174 @@ export function WorkbenchShell() {
           data-testid="workbench-terminal-bar"
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-            gap: 14,
-            alignItems: "stretch",
-            padding: "12px 16px",
-            border: `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: 22,
-            boxShadow: "0 14px 28px rgba(22, 35, 46, 0.05)",
-            background: "rgba(252, 251, 248, 0.92)",
+            gap: 8,
+            padding: "0 0 10px",
+            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+            background: "transparent",
           }}
         >
-          <section
-            data-testid="workbench-page-context"
+          <div
             style={{
-              display: "grid",
-              gap: 6,
-              minWidth: 0,
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "flex-end",
+              justifyContent: "space-between",
+              gap: 16,
             }}
           >
-            <span style={shellSectionLabelStyle}>Page Context</span>
-            <div
-              style={{
-                color: shellTokens.colorTextPrimary,
-                fontSize: "clamp(22px, 2.4vw, 34px)",
-                lineHeight: 1,
-                fontWeight: 700,
-                letterSpacing: "-0.05em",
-              }}
-            >
-              {currentSection.label}
-            </div>
-            <div
+            <section
+              data-testid="workbench-page-context"
               style={{
                 display: "flex",
                 flexWrap: "wrap",
+                alignItems: "baseline",
                 gap: 8,
-                color: shellTokens.colorTextSecondary,
-                fontSize: 12,
+                minWidth: 0,
               }}
             >
-              <span>{currentGroup.label}</span>
-              <span>Report Date {shellReportDate}</span>
-            </div>
-          </section>
-
-          <section
-            data-testid="workbench-market-ticker"
-            style={{
-              display: "grid",
-              gap: 8,
-              minWidth: 0,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: 12,
-                alignItems: "center",
-              }}
-            >
-              <span style={shellSectionLabelStyle}>Shell Market Ticker</span>
+              <div
+                style={{
+                  color: shellTokens.colorTextPrimary,
+                  fontSize: "clamp(36px, 4.4vw, 52px)",
+                  lineHeight: 0.96,
+                  fontWeight: 700,
+                  letterSpacing: "-0.07em",
+                }}
+              >
+                {currentSection.label}
+              </div>
               <span
                 style={{
-                  color: shellTokens.colorTextMuted,
-                  fontSize: 11,
+                  color: shellTokens.colorTextSecondary,
+                  fontSize: 14,
                   fontWeight: 600,
                 }}
               >
-                shell-level display only
+                {"\u62a5\u544a\u65e5"} {shellReportDate}
               </span>
-            </div>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                gap: 8,
-              }}
-            >
-              {shellTickerItems.map((item) => (
-                <div
-                  key={item.key}
-                  style={{
-                    display: "grid",
-                    gap: 2,
-                    padding: "8px 10px",
-                    borderRadius: 14,
-                    border: `1px solid ${shellTokens.colorBorderSoft}`,
-                    background: "rgba(247, 247, 242, 0.82)",
-                  }}
-                >
-                  <span style={{ color: shellTokens.colorTextMuted, fontSize: 11 }}>{item.label}</span>
-                  <strong
-                    style={{
-                      color: shellTokens.colorTextPrimary,
-                      fontSize: 18,
-                      lineHeight: 1.1,
-                    }}
-                  >
-                    {item.value}
-                  </strong>
-                  <span
-                    style={{
-                      color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {item.delta}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
+            </section>
 
-          <section
-            data-testid="workbench-operator-zone"
-            style={{
-              display: "grid",
-              alignContent: "space-between",
-              gap: 10,
-              minWidth: 156,
-            }}
-          >
-            <div
+            <section
+              data-testid="workbench-operator-zone"
               style={{
-                display: "inline-flex",
+                display: "flex",
+                flexWrap: "wrap",
                 alignItems: "center",
                 justifyContent: "flex-end",
                 gap: 8,
-                color: shellTokens.colorTextSecondary,
-                fontSize: 12,
-                fontWeight: 700,
+                minWidth: 0,
               }}
             >
-              <UserOutlined />
-              <span>Admin</span>
-            </div>
-            <div style={{ display: "grid", gap: 6, justifyItems: "stretch" }}>
-              {shellSupportEntries
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px",
+                  borderRadius: 999,
+                  background: "rgba(221, 233, 241, 0.76)",
+                  color: shellTokens.colorAccent,
+                  fontSize: 11,
+                  fontWeight: 700,
+                }}
+              >
+                <UserOutlined />
+                <span>{"\u7ba1\u7406\u89c6\u89d2"}</span>
+              </span>
+              {shellUtilityEntries
                 .filter((item) => item.key !== "help")
                 .map((item) => (
                   <NavLink
                     key={`terminal-${item.key}`}
                     to={item.to}
                     style={{
-                      display: "flex",
+                      display: "inline-flex",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      padding: "8px 10px",
-                      borderRadius: 12,
-                      border: `1px solid ${shellTokens.colorBorderSoft}`,
-                      background: "#ffffff",
+                      gap: 6,
+                      padding: "6px 2px",
                       color: shellTokens.colorTextPrimary,
                       fontSize: 12,
                       fontWeight: 700,
+                      borderBottom: `1px solid transparent`,
                     }}
                   >
-                    <span style={{ fontSize: 12 }}>{item.icon}</span>
+                    <span style={{ fontSize: 11 }}>{item.icon}</span>
                     <span>{item.label}</span>
                   </NavLink>
                 ))}
-            </div>
+            </section>
+          </div>
+
+          <section
+            data-testid="workbench-market-ticker"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 12,
+              minWidth: 0,
+            }}
+          >
+            <span
+              style={{
+                color: shellTokens.colorTextMuted,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.12em",
+                textTransform: "uppercase",
+              }}
+            >
+              Shell Market Ticker
+            </span>
+            {shellTickerItems.map((item) => (
+              <div
+                key={item.key}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "baseline",
+                  gap: 6,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: 10,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {item.label}
+                </span>
+                <strong
+                  style={{
+                    color: shellTokens.colorTextPrimary,
+                    fontSize: 16,
+                    lineHeight: 1,
+                    fontWeight: 700,
+                    fontVariantNumeric: "tabular-nums",
+                  }}
+                >
+                  {item.value}
+                </strong>
+                <span
+                  style={{
+                    color: item.tone === "down" ? shellTokens.colorSuccess : shellTokens.colorWarning,
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}
+                >
+                  {item.delta}
+                </span>
+                <span
+                  style={{
+                    width: 1,
+                    height: 10,
+                    background: shellTokens.colorBorderSoft,
+                  }}
+                />
+              </div>
+            ))}
           </section>
         </header>
         {!isBondAnalysisMinimalShell ? (
@@ -1128,10 +1241,12 @@ export function WorkbenchShell() {
         <main
           style={{
             padding: isBondAnalysisMinimalShell ? 0 : 24,
-            border: `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: 30,
-            boxShadow: shellTokens.shadowPanel,
-            background: `linear-gradient(180deg, ${shellTokens.colorBgSurface} 0%, ${shellTokens.colorBgCanvas} 100%)`,
+            border: isBondAnalysisMinimalShell ? "none" : `1px solid ${shellTokens.colorBorder}`,
+            borderRadius: isBondAnalysisMinimalShell ? 0 : 30,
+            boxShadow: isBondAnalysisMinimalShell ? "none" : shellTokens.shadowPanel,
+            background: isBondAnalysisMinimalShell
+              ? "transparent"
+              : `linear-gradient(180deg, ${shellTokens.colorBgSurface} 0%, ${shellTokens.colorBgCanvas} 100%)`,
             display: "grid",
             alignContent: "start",
             gap: 20,

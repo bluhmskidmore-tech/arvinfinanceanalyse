@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from decimal import Decimal
 
 import duckdb
+
+
+def _position_book_key(portfolio_name: object, cost_center: object) -> str:
+    pn = str(portfolio_name or "").strip()
+    cc = str(cost_center or "").strip()
+    return f"{pn}::{cc}"
 
 
 @dataclass
@@ -66,6 +73,48 @@ class PnlRepository:
                 "trace_id",
             ],
         )
+
+    def merged_capital_gain_517_by_position_for_dates(self, report_dates: list[str]) -> dict[str, Decimal]:
+        """Sum formal FI + nonstd bridge ``capital_gain_517`` by ``instrument::{portfolio}::{cost_center``.
+
+        Missing tables or unreadable DuckDB paths yield an empty map without raising.
+        """
+        if not report_dates:
+            return {}
+        dates = sorted({str(d) for d in report_dates})
+        placeholders = ",".join(["?" for _ in dates])
+        acc: dict[str, Decimal] = defaultdict(Decimal)
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+        except duckdb.Error:
+            return {}
+        try:
+            for table, inst_column in (
+                ("fact_formal_pnl_fi", "instrument_code"),
+                ("fact_nonstd_pnl_bridge", "bond_code"),
+            ):
+                try:
+                    rows = conn.execute(
+                        f"""
+                        select {inst_column}, portfolio_name, cost_center,
+                               coalesce(sum(cast(capital_gain_517 as decimal(24,8))), 0)
+                        from {table}
+                        where cast(report_date as varchar) in ({placeholders})
+                        group by 1, 2, 3
+                        """,
+                        dates,
+                    ).fetchall()
+                except duckdb.Error:
+                    continue
+                for inst, pn, cc, amt in rows:
+                    inst_code = str(inst or "").strip()
+                    if not inst_code:
+                        continue
+                    pk = f"{inst_code}::{_position_book_key(pn, cc)}"
+                    acc[pk] += Decimal(str(amt))
+        finally:
+            conn.close()
+        return dict(acc)
 
     def overview_totals(self, report_date: str) -> dict[str, object]:
         formal_rows = self.fetch_formal_fi_rows(report_date)

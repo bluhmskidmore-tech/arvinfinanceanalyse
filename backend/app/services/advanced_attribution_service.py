@@ -162,6 +162,7 @@ def advanced_attribution_bundle_envelope(
         source_version=SOURCE_VERSION_NOT_READY,
         rule_version=RULE_VERSION_ADVANCED_ATTRIBUTION,
         quality_flag="warning",
+        source_surface="formal_balance",
     )
     return build_formal_result_envelope(
         result_meta=meta,

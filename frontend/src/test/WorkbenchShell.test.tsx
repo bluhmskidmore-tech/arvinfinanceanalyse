@@ -1,6 +1,8 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 
-import { WorkbenchShell } from "../layouts/WorkbenchShell";
+import { createApiClient, type ApiClient } from "../api/client";
+import type { ResultMeta } from "../api/contracts";
+import { buildShellTickerItems, WorkbenchShell } from "../layouts/WorkbenchShell";
 import {
   primaryWorkbenchNavigation,
   primaryWorkbenchNavigationGroups,
@@ -8,7 +10,26 @@ import {
 } from "../mocks/navigation";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
-function renderShellAt(path: string) {
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
+  return {
+    trace_id: "tr_shell",
+    basis: "formal",
+    result_kind: "workbench.shell",
+    formal_use_allowed: true,
+    source_version: "sv_shell",
+    vendor_version: "vv_shell",
+    rule_version: "rv_shell",
+    cache_version: "cv_shell",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-19T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function renderShellAt(path: string, client?: ApiClient) {
   return renderWorkbenchApp([path], {
     routes: [
       {
@@ -25,6 +46,7 @@ function renderShellAt(path: string) {
         ],
       },
     ],
+    client,
   });
 }
 
@@ -91,6 +113,7 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("workbench-sidebar-sections")).not.toBeInTheDocument();
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {
@@ -103,17 +126,305 @@ describe("WorkbenchShell", () => {
     const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
     const operatorZone = within(terminalBar).getByTestId("workbench-operator-zone");
 
-    expect(pageContext).toHaveTextContent("Page Context");
     expect(pageContext).toHaveTextContent("债券分析");
     expect(pageContext).toHaveTextContent("2026-03-31");
 
     expect(marketTicker).toHaveTextContent("Shell Market Ticker");
     expect(marketTicker).toHaveTextContent("10Y");
     expect(marketTicker).toHaveTextContent("DR007");
-    expect(marketTicker).toHaveTextContent("AAA 3Y");
+    expect(marketTicker).toHaveTextContent("USD/CNY");
 
-    expect(operatorZone).toHaveTextContent("鎶ヨ〃涓績");
-    expect(operatorZone).toHaveTextContent("涓彴閰嶇疆");
+    expect(operatorZone).toHaveTextContent("报表中心");
+    expect(operatorZone).toHaveTextContent("中台配置");
+  });
+
+  it("uses backend bond dates and macro latest endpoints for shell report date and ticker values", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: async () => ({
+        result_meta: createResultMeta({
+          result_kind: "bond_analytics.dates",
+        }),
+        result: {
+          report_dates: ["2026-02-28"],
+        },
+      }),
+      getChoiceMacroLatest: async () => ({
+        result_meta: createResultMeta({
+          result_kind: "macro.choice.latest",
+        }),
+        result: {
+          read_target: "duckdb" as const,
+          series: [
+            {
+              series_id: "E1000180",
+              series_name: "中债国债到期收益率:10年",
+              trade_date: "2026-02-28",
+              value_numeric: 1.88,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: -0.02,
+            },
+            {
+              series_id: "M002",
+              series_name: "DR007",
+              trade_date: "2026-02-28",
+              value_numeric: 1.81,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: -0.05,
+            },
+            {
+              series_id: "M001",
+              series_name: "公开市场7天逆回购利率",
+              trade_date: "2026-02-28",
+              value_numeric: 1.75,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.01,
+            },
+            {
+              series_id: "CA.USDCNY",
+              series_name: "即期汇率:美元兑人民币",
+              trade_date: "2026-02-28",
+              value_numeric: 7.18,
+              unit: "CNY/USD",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.02,
+            },
+          ],
+        },
+      }),
+    };
+
+    renderShellAt("/bond-analysis", client);
+
+    expect(await screen.findByText("bond-analysis body")).toBeInTheDocument();
+    const terminalBar = screen.getByTestId("workbench-terminal-bar");
+    const pageContext = within(terminalBar).getByTestId("workbench-page-context");
+    const marketTicker = within(terminalBar).getByTestId("workbench-market-ticker");
+
+    await waitFor(() => {
+      expect(pageContext).toHaveTextContent("2026-02-28");
+      expect(marketTicker).toHaveTextContent("1.88%");
+      expect(marketTicker).toHaveTextContent("1.81%");
+      expect(marketTicker).toHaveTextContent("1.75%");
+      expect(marketTicker).toHaveTextContent("7.18");
+    });
+  });
+
+  it("prefers stable series_id matching for shell tickers before falling back to series_name", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getChoiceMacroLatest: async () => ({
+        result_meta: createResultMeta({
+          result_kind: "macro.choice.latest",
+        }),
+        result: {
+          read_target: "duckdb" as const,
+          series: [
+            {
+              series_id: "E1000180",
+              series_name: "custom ten-year label",
+              trade_date: "2026-02-28",
+              value_numeric: 1.91,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.02,
+            },
+            {
+              series_id: "M002",
+              series_name: "custom dr label",
+              trade_date: "2026-02-28",
+              value_numeric: 1.79,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: -0.04,
+            },
+            {
+              series_id: "M001",
+              series_name: "custom omo label",
+              trade_date: "2026-02-28",
+              value_numeric: 1.74,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.01,
+            },
+            {
+              series_id: "CA.USDCNY",
+              series_name: "custom fx label",
+              trade_date: "2026-02-28",
+              value_numeric: 7.16,
+              unit: "CNY/USD",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.03,
+            },
+          ],
+        },
+      }),
+    };
+
+    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+
+    const marketTicker = await screen.findByTestId("workbench-market-ticker");
+
+    await waitFor(() => {
+      expect(marketTicker).toHaveTextContent("1.91%");
+      expect(marketTicker).toHaveTextContent("1.79%");
+      expect(marketTicker).toHaveTextContent("1.74%");
+      expect(marketTicker).toHaveTextContent("7.16");
+    });
+  });
+
+  it("includes stable series_id aliases for future shell ticker concepts", () => {
+    const items = buildShellTickerItems(
+      [
+        {
+          series_id: "EMM00166502",
+          series_name: "custom policy label",
+          trade_date: "2026-02-28",
+          value_numeric: 2.09,
+          unit: "%",
+          source_version: "sv_macro",
+          vendor_version: "vv_macro",
+          latest_change: 0.01,
+        },
+        {
+          series_id: "CA.US_GOV_10Y",
+          series_name: "custom us label",
+          trade_date: "2026-02-28",
+          value_numeric: 4.12,
+          unit: "%",
+          source_version: "sv_macro",
+          vendor_version: "vv_macro",
+          latest_change: 0.03,
+        },
+        {
+          series_id: "CA.CN_US_SPREAD",
+          series_name: "custom spread label",
+          trade_date: "2026-02-28",
+          value_numeric: -205,
+          unit: "bp",
+          source_version: "sv_macro",
+          vendor_version: "vv_macro",
+          latest_change: -4,
+        },
+      ],
+      ["policyBank10y", "us10y", "cnUs10ySpread"],
+    );
+
+    expect(items).toEqual([
+      expect.objectContaining({ key: "policyBank10y", value: "2.09%" }),
+      expect.objectContaining({ key: "us10y", value: "4.12%" }),
+      expect.objectContaining({ key: "cnUs10ySpread", value: "-205bp" }),
+    ]);
+  });
+
+  it("renders future shell ticker concepts in the topbar once they are in the display set", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getChoiceMacroLatest: async () => ({
+        result_meta: createResultMeta({
+          result_kind: "macro.choice.latest",
+        }),
+        result: {
+          read_target: "duckdb" as const,
+          series: [
+            {
+              series_id: "CA.CN_GOV_10Y",
+              series_name: "中债国债到期收益率:10年",
+              trade_date: "2026-02-28",
+              value_numeric: 1.91,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.02,
+            },
+            {
+              series_id: "CA.US_GOV_10Y",
+              series_name: "美国10年期国债收益率",
+              trade_date: "2026-02-28",
+              value_numeric: 4.12,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.03,
+            },
+            {
+              series_id: "CA.CN_US_SPREAD",
+              series_name: "中美国债利差(10Y)",
+              trade_date: "2026-02-28",
+              value_numeric: -205,
+              unit: "bp",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: -4,
+            },
+            {
+              series_id: "EMM00166502",
+              series_name: "中债政策性金融债到期收益率(国开行)10年",
+              trade_date: "2026-02-28",
+              value_numeric: 2.09,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.01,
+            },
+            {
+              series_id: "CA.DR007",
+              series_name: "存款类机构质押式回购加权利率:DR007",
+              trade_date: "2026-02-28",
+              value_numeric: 1.79,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: -0.04,
+            },
+            {
+              series_id: "M001",
+              series_name: "公开市场7天逆回购利率",
+              trade_date: "2026-02-28",
+              value_numeric: 1.74,
+              unit: "%",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.01,
+            },
+            {
+              series_id: "CA.USDCNY",
+              series_name: "即期汇率:美元兑人民币",
+              trade_date: "2026-02-28",
+              value_numeric: 7.16,
+              unit: "CNY/USD",
+              source_version: "sv_macro",
+              vendor_version: "vv_macro",
+              latest_change: 0.03,
+            },
+          ],
+        },
+      }),
+    };
+
+    renderShellAt("/bond-analysis?report_date=2026-02-28", client);
+
+    const marketTicker = await screen.findByTestId("workbench-market-ticker");
+
+    await waitFor(() => {
+      expect(marketTicker).toHaveTextContent("US 10Y");
+      expect(marketTicker).toHaveTextContent("CN-US 10Y");
+      expect(marketTicker).toHaveTextContent("Policy 10Y");
+      expect(marketTicker).toHaveTextContent("4.12%");
+      expect(marketTicker).toHaveTextContent("-205bp");
+      expect(marketTicker).toHaveTextContent("2.09%");
+    });
   });
 
   it("marks the active workspace and keeps auxiliary shell links in a lower-priority support area", async () => {

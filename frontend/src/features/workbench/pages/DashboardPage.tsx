@@ -6,6 +6,7 @@ import { useApiClient } from "../../../api/client";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { shellTokens } from "../../../theme/tokens";
+import type { Tone } from "../../../utils/tone";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { DashboardBondCounterpartySection } from "../../executive-dashboard/components/DashboardBondCounterpartySection";
@@ -13,7 +14,17 @@ import { DashboardBondHeadlineSection } from "../../executive-dashboard/componen
 import { DashboardLiabilityCounterpartySection } from "../../executive-dashboard/components/DashboardLiabilityCounterpartySection";
 import { DashboardMacroSpotSection } from "../../executive-dashboard/components/DashboardMacroSpotSection";
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
-import { OverviewSection } from "../../executive-dashboard/components/OverviewSection";
+import {
+  DashboardAlertCenterPanel,
+  DashboardGlobalJudgmentPanel,
+  DashboardModuleEntryGrid,
+  DashboardModuleSnapshotPanel,
+  DashboardOverviewHeroStrip,
+  DashboardTasksCalendarPanels,
+  type DashboardAlert,
+  type DashboardHeroMetric,
+  type DashboardJudgment,
+} from "../dashboard/DashboardOverviewSections";
 
 const PnlAttributionSection = lazy(
   () => import("../../executive-dashboard/components/PnlAttributionSection"),
@@ -93,73 +104,54 @@ function resolveReturnedDateLabel(
   };
 }
 
-const dashboardHeroStyle = {
-  padding: "24px clamp(20px, 2vw, 30px)",
-  borderRadius: 28,
-  border: `1px solid ${shellTokens.colorBorder}`,
-  background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 78%)`,
-  boxShadow: shellTokens.shadowPanel,
-} as const;
+function headerButtonStyle(kind: "primary" | "secondary") {
+  const isPrimary = kind === "primary";
+  return {
+    height: 38,
+    padding: "0 16px",
+    borderRadius: 999,
+    border: isPrimary
+      ? `1px solid ${shellTokens.colorAccent}`
+      : `1px solid ${shellTokens.colorBorderSoft}`,
+    background: isPrimary ? shellTokens.colorAccentSoft : "#ffffff",
+    color: isPrimary ? shellTokens.colorAccent : shellTokens.colorTextSecondary,
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+  } as const;
+}
 
-const dashboardSummaryCardStyle = {
-  display: "grid",
-  gap: 6,
-  padding: "14px 16px",
-  borderRadius: 18,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "rgba(255,255,255,0.55)",
-  minHeight: 92,
-  alignContent: "start",
-} as const;
+function dashboardSignalForTone(
+  tone: Tone,
+  index: number,
+): DashboardHeroMetric["spark"] {
+  if (tone === "positive") {
+    return index % 2 === 0 ? "softUp" : "swing";
+  }
+  if (tone === "negative") {
+    return "softDown";
+  }
+  if (tone === "warning") {
+    return "swing";
+  }
+  return index % 2 === 0 ? "flat" : "softUp";
+}
 
-const dashboardWarningPanelStyle = {
-  display: "grid",
-  gap: 10,
-  padding: 18,
-  borderRadius: 20,
-  border: `1px solid ${shellTokens.colorBorderWarning}`,
-  background: shellTokens.colorBgWarningSoft,
-  color: shellTokens.colorTextWarning,
-  minHeight: "100%",
-} as const;
+function formatSnapshotMode(
+  mode: string | undefined,
+  isLoading: boolean,
+): string {
+  if (isLoading) return "loading";
+  if (!mode) return "pending";
+  return mode;
+}
 
-const dashboardGovernancePanelStyle = {
-  display: "grid",
-  gap: 14,
-  padding: 18,
-  borderRadius: 20,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `linear-gradient(180deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 100%)`,
-} as const;
-
-const dashboardStatusCardStyle = {
-  display: "grid",
-  gap: 8,
-  padding: 16,
-  borderRadius: 18,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: shellTokens.colorBgCanvas,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
-} as const;
-
-const dashboardGovernedSurfaceStyle = {
-  display: "grid",
-  gap: 16,
-  padding: 18,
-  borderRadius: 24,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `linear-gradient(180deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 100%)`,
-} as const;
-
-const reportDateInputStyle = {
-  minWidth: 180,
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: `1px solid ${shellTokens.colorBorder}`,
-  background: shellTokens.colorBgCanvas,
-  color: shellTokens.colorTextPrimary,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
-} as const;
+function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
+  if (display && display.trim() && display.trim() !== "—") {
+    return display;
+  }
+  return fallbackLabel;
+}
 
 export default function DashboardPage() {
   const client = useApiClient();
@@ -248,155 +240,351 @@ export default function DashboardPage() {
 
   const overviewStatus = describeMetaStatus(overviewMeta);
   const attributionStatus = describeMetaStatus(attributionMeta);
-  const summaryCards = useMemo(
-    () => [
+
+  const heroMetrics = useMemo<DashboardHeroMetric[]>(() => {
+    const overviewMetrics =
+      adapterOutput.overview.vm?.metrics.map((metric, index) => ({
+        id: metric.id,
+        label: metric.label,
+        value: metric.value.display,
+        note: metric.detail,
+        delta: formatHeroDelta(metric.delta.display, "read path"),
+        tone: metric.tone,
+        spark: dashboardSignalForTone(metric.tone, index),
+      })) ?? [];
+
+    const governanceMetrics: DashboardHeroMetric[] = [
       {
-        label: "Report date",
+        id: "report-date",
+        label: "报告日",
         value: effectiveReportDate || "latest",
-        note: snapshotResult?.report_date ? "backend effective" : "user selection",
+        note: snapshotResult?.report_date ? "后端生效日期" : "用户选择 / 默认日期",
+        delta: overviewDateLabel.label,
+        tone: "neutral",
+        spark: "flat",
       },
       {
-        label: "Snapshot",
-        value: snapshotQuery.isLoading ? "loading" : snapshotResult?.mode ?? "pending",
-        note: snapshotPartialNote ? "partial surface" : "complete surface",
+        id: "snapshot-mode",
+        label: "快照模式",
+        value: formatSnapshotMode(snapshotResult?.mode, snapshotQuery.isLoading),
+        note: snapshotPartialNote || "首页首屏只保留已落地的受治理结果。",
+        delta: snapshotPartialNote ? "partial surface" : "complete surface",
+        tone: snapshotPartialNote ? "warning" : "positive",
+        spark: snapshotPartialNote ? "softDown" : "softUp",
       },
       {
-        label: "Attention",
-        value: attentionItems.length > 0 ? String(attentionItems.length) : "0",
-        note: attentionItems.length > 0 ? attentionItems.join(" / ") : "no governed flags",
+        id: "attention-items",
+        label: "治理关注",
+        value: attentionItems.length > 0 ? `${attentionItems.length} 项` : "无异常",
+        note:
+          attentionItems.length > 0
+            ? attentionItems.join(" / ")
+            : "当前没有 quality / fallback / vendor 警示。",
+        delta: attentionItems.length > 0 ? "manual review" : "governed",
+        tone: attentionItems.length > 0 ? "warning" : "positive",
+        spark: attentionItems.length > 0 ? "swing" : "softUp",
       },
       {
-        label: "Data source",
-        value: client.mode === "real" ? "Real API" : "Mock mode",
-        note: client.mode === "real" ? "live read path" : "demo surface only",
+        id: "data-source",
+        label: "读取模式",
+        value: client.mode === "real" ? "Real API" : "Mock",
+        note: client.mode === "real" ? "真实读链路" : "仅用于界面演示",
+        delta: client.mode === "real" ? "live" : "demo",
+        tone: client.mode === "real" ? "positive" : "warning",
+        spark: client.mode === "real" ? "softUp" : "flat",
       },
-    ],
-    [
-      attentionItems,
-      client.mode,
-      effectiveReportDate,
-      snapshotPartialNote,
-      snapshotQuery.isLoading,
-      snapshotResult?.mode,
-      snapshotResult?.report_date,
-    ],
-  );
+    ];
+
+    return [...overviewMetrics, ...governanceMetrics].slice(0, 8);
+  }, [
+    adapterOutput.overview.vm?.metrics,
+    attentionItems,
+    client.mode,
+    effectiveReportDate,
+    overviewDateLabel.label,
+    snapshotPartialNote,
+    snapshotQuery.isLoading,
+    snapshotResult?.mode,
+    snapshotResult?.report_date,
+  ]);
+
+  const globalJudgment = useMemo<DashboardJudgment>(() => {
+    const metrics = adapterOutput.overview.vm?.metrics ?? [];
+    const segments = adapterOutput.attribution.vm?.segments ?? [];
+
+    const bullets = metrics.slice(0, 3).map((metric) => {
+      const delta =
+        metric.delta.display && metric.delta.display !== "—"
+          ? `，变动 ${metric.delta.display}`
+          : "";
+      return `${metric.label} ${metric.value.display}${delta}：${metric.detail}`;
+    });
+
+    if (segments.length > 0) {
+      const topSegments = segments
+        .slice(0, 2)
+        .map((segment) => `${segment.label} ${segment.amount.display}`)
+        .join(" / ");
+      bullets.push(`经营贡献拆解已就绪：${topSegments}`);
+    }
+
+    if (snapshotPartialNote) {
+      bullets.push(snapshotPartialNote);
+    }
+
+    const tags: DashboardJudgment["tags"] = [];
+    tags.push({ label: client.mode === "real" ? "真实读链路" : "演示数据", tone: client.mode === "real" ? "positive" : "warning" });
+    tags.push({
+      label: attentionItems.length > 0 ? "需人工确认" : "治理通过",
+      tone: attentionItems.length > 0 ? "warning" : "positive",
+    });
+    if (snapshotPartialNote) {
+      tags.push({ label: "含缺域", tone: "warning" });
+    }
+    if (segments.length > 0) {
+      tags.push({ label: "贡献拆解可下钻", tone: "accent" });
+    }
+
+    if (metrics.length === 0) {
+      return {
+        title: "全局判断",
+        body:
+          "首页当前先呈现治理状态、报告日和分流入口。等快照回到可读状态后，再基于首屏数字做方向性判断。",
+        bullets: bullets.length > 0 ? bullets : ["等待首页快照返回后再形成正式判断。"],
+        tags,
+      };
+    }
+
+    const leadSummary = metrics
+      .slice(0, 3)
+      .map((metric) => `${metric.label} ${metric.value.display}`)
+      .join("、");
+
+    const body =
+      attentionItems.length > 0 || snapshotPartialNote
+        ? `当前先看 ${leadSummary}，但首页仍存在需要人工确认的治理提示。首屏可以做方向性判断，正式结论仍应在专题页复核。`
+        : `当前先看 ${leadSummary}。首页负责先给状态判断和优先级排序，需要原因链条时，再进入债券分析、跨资产驱动和资产负债分析继续下钻。`;
+
+    return {
+      title: "全局判断",
+      body,
+      bullets,
+      tags,
+    };
+  }, [
+    adapterOutput.attribution.vm?.segments,
+    adapterOutput.overview.vm?.metrics,
+    attentionItems,
+    client.mode,
+    snapshotPartialNote,
+  ]);
+
+  const dashboardAlerts = useMemo<DashboardAlert[]>(() => {
+    const alerts: DashboardAlert[] = [];
+    const metrics = adapterOutput.overview.vm?.metrics ?? [];
+
+    if (client.mode !== "real") {
+      alerts.push({
+        id: "mock-mode",
+        title: "当前处于 Mock 模式",
+        detail: "首屏数字仅用于界面演示，不应直接作为业务判断依据。",
+        severity: "high",
+      });
+    }
+
+    attentionItems.forEach((item, index) => {
+      alerts.push({
+        id: `attention-${index}`,
+        title: "治理状态待复核",
+        detail: item,
+        severity: "high",
+      });
+    });
+
+    if (snapshotPartialNote) {
+      alerts.push({
+        id: "partial-note",
+        title: "快照含缺域",
+        detail: snapshotPartialNote,
+        severity: "medium",
+      });
+    }
+
+    metrics
+      .filter((metric) => metric.tone === "warning" || metric.tone === "negative")
+      .slice(0, 3)
+      .forEach((metric) => {
+        alerts.push({
+          id: `metric-${metric.id}`,
+          title: metric.label,
+          detail: `${metric.value.display} / ${metric.detail}`,
+          severity: metric.tone === "negative" ? "high" : "medium",
+        });
+      });
+
+    if (alerts.length === 0) {
+      alerts.push({
+        id: "no-strong-alert",
+        title: "当前无强治理预警",
+        detail: "可以先基于首屏指标做方向性判断，再按模块下钻核实来源。",
+        severity: "low",
+      });
+    }
+
+    return alerts.slice(0, 4);
+  }, [
+    adapterOutput.overview.vm?.metrics,
+    attentionItems,
+    client.mode,
+    snapshotPartialNote,
+  ]);
 
   return (
     <section data-testid="fixed-income-dashboard-page">
       <PageHeader
         title="驾驶舱"
-        eyebrow="Overview"
-        description="首页只保留当前已经落地的受治理概览与经营贡献拆解，不再在首屏混排演示模块、排除面探测结果或静态管理摘要。需要继续下钻时，进入对应工作台。"
-        badgeLabel={client.mode === "real" ? "真实 API" : "Mock Mode"}
+        eyebrow="Dashboard Overview"
+        description={`观察日期 ${effectiveReportDate || "latest"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}
+        badgeLabel={client.mode === "real" ? "管理视角" : "演示视角"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
-        style={dashboardHeroStyle}
+        style={{
+          padding: "28px clamp(20px, 2vw, 30px)",
+          borderRadius: 32,
+          border: `1px solid ${shellTokens.colorBorder}`,
+          background:
+            "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.96) 100%)",
+          boxShadow: shellTokens.shadowPanel,
+        }}
         actions={
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "end" }}>
-            <label style={{ display: "grid", gap: 6 }}>
-              <span style={{ color: "#64748b", fontSize: 12 }}>报告日</span>
-              <input
-                aria-label="报告日"
-                type="date"
-                value={reportDate}
-                onChange={(event) => setReportDate(event.target.value)}
-                style={reportDateInputStyle}
-              />
-            </label>
-            <label
-              style={{
-                display: "flex",
-                gap: 8,
-                alignItems: "center",
-                color: "#162033",
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              <input
-                aria-label="允许历史日（含缺域）"
-                type="checkbox"
-                checked={allowPartial}
-                onChange={(event) => setAllowPartial(event.target.checked)}
-              />
-              <span>允许历史日（含缺域）</span>
-            </label>
+          <div style={{ display: "grid", gap: 14, justifyItems: "end" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() => void snapshotQuery.refetch()}
+                style={headerButtonStyle("primary")}
+              >
+                刷新
+              </button>
+              <button
+                type="button"
+                disabled
+                style={{
+                  ...headerButtonStyle("secondary"),
+                  opacity: 0.64,
+                  cursor: "not-allowed",
+                }}
+              >
+                导出
+              </button>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "end" }}>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>报告日</span>
+                <input
+                  aria-label="报告日"
+                  type="date"
+                  value={reportDate}
+                  onChange={(event) => setReportDate(event.target.value)}
+                  style={{
+                    minWidth: 176,
+                    padding: "11px 14px",
+                    borderRadius: 14,
+                    border: `1px solid ${shellTokens.colorBorder}`,
+                    background: shellTokens.colorBgCanvas,
+                    color: shellTokens.colorTextPrimary,
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+                  }}
+                />
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  color: shellTokens.colorTextPrimary,
+                  fontSize: 13,
+                  cursor: "pointer",
+                }}
+              >
+                <input
+                  aria-label="允许历史日（含缺域）"
+                  type="checkbox"
+                  checked={allowPartial}
+                  onChange={(event) => setAllowPartial(event.target.checked)}
+                />
+                <span>允许历史日（含缺域）</span>
+              </label>
+            </div>
           </div>
         }
       >
-        <div style={{ display: "grid", gap: 14 }}>
-          <p
-            style={{
-              margin: 0,
-              color: shellTokens.colorTextSecondary,
-              fontSize: 13,
-              lineHeight: 1.75,
-              maxWidth: 860,
-            }}
-          >
-            当前首页优先回答两个问题：现在看到的核心经营数字是什么，以及是否需要进入专门页面继续下钻。
-            未纳入当前 cutover 的模块不再在这里尝试请求。
-          </p>
-          <div className="dashboard-hero-summary">
-            {summaryCards.map((card) => (
-              <article key={card.label} style={dashboardSummaryCardStyle}>
-                <span
-                  style={{
-                    color: shellTokens.colorTextMuted,
-                    fontSize: 11,
-                    fontWeight: 700,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  {card.label}
-                </span>
-                <strong
-                  style={{
-                    color: shellTokens.colorTextPrimary,
-                    fontSize: 18,
-                    lineHeight: 1.2,
-                    letterSpacing: "-0.02em",
-                  }}
-                >
-                  {card.value}
-                </strong>
-                <span
-                  style={{
-                    color: shellTokens.colorTextSecondary,
-                    fontSize: 12,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {card.note}
-                </span>
-              </article>
+        <div style={{ display: "grid", gap: 18 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            {[
+              "范围 / 驾驶舱首屏",
+              "口径 / 受治理快照",
+              `模式 / ${client.mode === "real" ? "live" : "mock"}`,
+              `缺域 / ${allowPartial ? "允许" : "关闭"}`,
+            ].map((chip) => (
+              <span
+                key={chip}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "7px 12px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.84)",
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  color: shellTokens.colorTextSecondary,
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {chip}
+              </span>
             ))}
           </div>
+          <DashboardOverviewHeroStrip metrics={heroMetrics} />
         </div>
       </PageHeader>
 
       <div className="dashboard-gov-grid">
         {client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote ? (
-          <section data-testid="dashboard-data-warning" style={dashboardWarningPanelStyle}>
-          <div style={{ fontWeight: 700, fontSize: 14 }}>Data Status</div>
-          {client.mode !== "real" ? (
-            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-              当前页面正在使用 mock 数据源。此时首页数字只用于界面演示，不应作为业务判断依据。
-            </div>
-          ) : null}
-          {attentionItems.length > 0 ? (
-            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
-              当前首页存在需要人工留意的数据状态： {attentionItems.join("；")}
-            </div>
-          ) : null}
-          {snapshotPartialNote ? (
-            <div style={{ fontSize: 13, lineHeight: 1.7 }}>{snapshotPartialNote}</div>
-          ) : null}
+          <section data-testid="dashboard-data-warning" style={{
+            display: "grid",
+            gap: 10,
+            padding: 20,
+            borderRadius: 24,
+            border: `1px solid ${shellTokens.colorBorderWarning}`,
+            background: shellTokens.colorBgWarningSoft,
+            color: shellTokens.colorTextWarning,
+            minHeight: "100%",
+          }}>
+            <div style={{ fontWeight: 800, fontSize: 15 }}>Data Status</div>
+            {client.mode !== "real" ? (
+              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                当前页面正在使用 mock 数据源。此时首页数字只用于界面演示，不应直接作为业务判断依据。
+              </div>
+            ) : null}
+            {attentionItems.length > 0 ? (
+              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+                当前首页存在需要人工留意的数据状态：{attentionItems.join("；")}
+              </div>
+            ) : null}
+            {snapshotPartialNote ? (
+              <div style={{ fontSize: 13, lineHeight: 1.7 }}>{snapshotPartialNote}</div>
+            ) : null}
           </section>
         ) : (
-          <section style={dashboardGovernancePanelStyle}>
-            <div
+          <section style={{
+            display: "grid",
+            gap: 12,
+            padding: 20,
+            borderRadius: 24,
+            border: `1px solid ${shellTokens.colorBorderSoft}`,
+            background: "linear-gradient(180deg, rgba(252,251,248,0.96) 0%, rgba(247,247,242,0.96) 100%)",
+          }}>
+            <span
               style={{
                 color: shellTokens.colorTextMuted,
                 fontSize: 11,
@@ -406,18 +594,24 @@ export default function DashboardPage() {
               }}
             >
               Decision Focus
-            </div>
-            <div style={{ color: shellTokens.colorTextPrimary, fontSize: 18, fontWeight: 700 }}>
+            </span>
+            <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 18, fontWeight: 800 }}>
               Keep the first screen verdict-driven
-            </div>
-            <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.7 }}>
-              Review governed freshness and fallback state before trusting any number, then drill
-              into the dedicated workspace only when the surface shows clear follow-up demand.
-            </div>
+            </strong>
+            <p style={{ margin: 0, color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.7 }}>
+              先确认首页读链路和日期一致，再用首屏数字做方向性判断。原因链条、持仓结构和盘中上下文，都在对应专题页继续展开。
+            </p>
           </section>
         )}
 
-        <section style={dashboardGovernancePanelStyle}>
+        <section style={{
+          display: "grid",
+          gap: 14,
+          padding: 20,
+          borderRadius: 24,
+          border: `1px solid ${shellTokens.colorBorderSoft}`,
+          background: "linear-gradient(180deg, rgba(252,251,248,0.96) 0%, rgba(247,247,242,0.96) 100%)",
+        }}>
           <div
             style={{
               color: shellTokens.colorTextMuted,
@@ -438,7 +632,18 @@ export default function DashboardPage() {
               { title: "Overview", status: overviewStatus, date: overviewDateLabel },
               { title: "Attribution", status: attributionStatus, date: attributionDateLabel },
             ].map((item) => (
-              <article key={item.title} style={dashboardStatusCardStyle}>
+              <article
+                key={item.title}
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  padding: 16,
+                  borderRadius: 18,
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  background: shellTokens.colorBgCanvas,
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+                }}
+              >
                 <div
                   style={{
                     fontSize: 12,
@@ -467,21 +672,28 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      <div style={{ display: "grid", gap: 20 }}>
-        <div className="dashboard-primary-grid">
-          <OverviewSection
-          overview={adapterOutput.overview}
-          onRetry={() => void snapshotQuery.refetch()}
-        />
+      <div className="dashboard-overview-command-grid">
+        <DashboardGlobalJudgmentPanel judgment={globalJudgment} />
+        <DashboardModuleSnapshotPanel />
+        <DashboardAlertCenterPanel alerts={dashboardAlerts} />
+      </div>
 
+      <div className="dashboard-overview-support-grid">
         <section
           data-testid="dashboard-governed-surface"
-          style={dashboardGovernedSurfaceStyle}
+          style={{
+            display: "grid",
+            gap: 16,
+            padding: 22,
+            borderRadius: 28,
+            border: `1px solid ${shellTokens.colorBorderSoft}`,
+            background: "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.96) 100%)",
+          }}
         >
           <PageSectionLead
-            eyebrow="Governed"
+            eyebrow="Contribution"
             title="经营贡献拆解"
-            description="这里保留首页级经营贡献拆解，用于快速判断是否需要进入专门损益拆解工作台继续分析。页面会同时展示来源元数据，避免把缺数、回退或 mock 情况误判为正式结果。"
+            description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
             style={{ marginTop: 0 }}
           />
           <Suspense fallback={<LazyPanelFallback title="经营贡献拆解" />}>
@@ -492,40 +704,38 @@ export default function DashboardPage() {
           </Suspense>
         </section>
 
-        </div>
-
-        <div className="dashboard-secondary-grid">
-          <div className="dashboard-span-wide">
-            <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
-          </div>
-
-          <DashboardMacroSpotSection />
-
-          <DashboardNewsDigestSection />
-
-          <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
-
-          <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
-        </div>
-
-        <FormalResultMetaPanel
-          testId="dashboard-governed-meta"
-          title="Dashboard Result Meta"
-          emptyText="首页受治理模块尚未返回 result_meta。"
-          sections={[
-            {
-              key: "overview",
-              title: "Overview",
-              meta: overviewMeta,
-            },
-            {
-              key: "attribution",
-              title: "Attribution",
-              meta: attributionMeta,
-            },
-          ]}
-        />
+        <DashboardTasksCalendarPanels />
       </div>
+
+      <div className="dashboard-overview-live-grid">
+        <div className="dashboard-span-wide">
+          <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+        </div>
+        <DashboardMacroSpotSection />
+        <DashboardNewsDigestSection />
+        <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
+        <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
+      </div>
+
+      <DashboardModuleEntryGrid />
+
+      <FormalResultMetaPanel
+        testId="dashboard-governed-meta"
+        title="Dashboard Result Meta"
+        emptyText="首页受治理模块尚未返回 result_meta。"
+        sections={[
+          {
+            key: "overview",
+            title: "Overview",
+            meta: overviewMeta,
+          },
+          {
+            key: "attribution",
+            title: "Attribution",
+            meta: attributionMeta,
+          },
+        ]}
+      />
     </section>
   );
 }

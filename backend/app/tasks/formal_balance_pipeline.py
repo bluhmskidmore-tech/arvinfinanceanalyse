@@ -101,7 +101,7 @@ def _normalize_iso_date(value: str | None, *, field_name: str) -> date | None:
 def _resolve_report_dates(
     *,
     governance_dir: str | None,
-    ingest_batch_id: str,
+    ingest_batch_id: str | None,
     source_families: list[str],
     report_date: str | None,
     start_date: str | None,
@@ -154,7 +154,10 @@ def _resolve_report_dates(
 
     if not resolved_dates:
         raise ValueError(
-            "Formal balance pipeline could not resolve any eligible report_date values from the ingest batch."
+            "Formal balance pipeline could not resolve any eligible report_date values "
+            "from the manifest (ingest_batch_id="
+            f"{ingest_batch_id!r}). Place zqtz/tyw sources under data_input (or raw_files) "
+            "and run ingest, or pass --report-date."
         )
     return resolved_dates
 
@@ -177,9 +180,8 @@ def _run_formal_balance_pipeline(
         archive_dir=archive_dir,
         source_family_allowlist=source_families,
     )
-    ingest_batch_id = str(ingest_payload.get("ingest_batch_id") or "").strip()
-    if not ingest_batch_id:
-        raise ValueError("Formal balance pipeline requires a non-empty ingest_batch_id from ingest.")
+    # New incremental ingest may be empty (already archived); fall back to latest manifest rows.
+    ingest_batch_id = str(ingest_payload.get("ingest_batch_id") or "").strip() or None
 
     report_dates = _resolve_report_dates(
         governance_dir=governance_dir,

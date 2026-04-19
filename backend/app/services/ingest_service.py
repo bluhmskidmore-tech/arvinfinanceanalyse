@@ -11,6 +11,35 @@ from backend.app.schemas.ingest import IngestManifestRow, IngestRunSummary
 from backend.app.services.source_rules import describe_source_file
 
 
+def _iter_data_input_scan_paths(data_root: Path) -> list[Path]:
+    """
+    V1 scans only `data_input/*.csv|xls|xlsx` at the root; V3 also keeps nested paths
+    (e.g. `fx/`, `pnl/`) for compatibility with existing layouts and tests.
+    """
+    if not data_root.exists():
+        return []
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for pattern in ("*.csv", "*.xls", "*.xlsx"):
+        for path in sorted(data_root.glob(pattern)):
+            if path.is_file():
+                key = path.resolve()
+                if key not in seen:
+                    seen.add(key)
+                    ordered.append(path)
+    for path in sorted(data_root.rglob("*")):
+        if not path.is_file():
+            continue
+        if path.suffix.lower() not in {".csv", ".xls", ".xlsx"}:
+            continue
+        key = path.resolve()
+        if key in seen:
+            continue
+        seen.add(key)
+        ordered.append(path)
+    return ordered
+
+
 @dataclass
 class IngestService:
     data_root: Path
@@ -20,10 +49,7 @@ class IngestService:
 
     def scan(self, ingest_batch_id: str | None = None) -> list[dict[str, object]]:
         rows: list[dict[str, object]] = []
-        for path in sorted(self.data_root.rglob("*")):
-            if not path.is_file():
-                continue
-
+        for path in _iter_data_input_scan_paths(self.data_root):
             metadata = describe_source_file(path.name)
             source_family = metadata.source_family
             if self.source_family_allowlist is not None and source_family not in self.source_family_allowlist:

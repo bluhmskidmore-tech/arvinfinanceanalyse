@@ -41,6 +41,40 @@ def resolve_repo_relative_path(path_value: str, *, repo_root: Path = _REPO_ROOT)
     return str((repo_root / candidate).resolve())
 
 
+def _env_nonempty(key: str) -> bool:
+    value = os.environ.get(key)
+    return bool(value and str(value).strip())
+
+
+# Default relative path for product-category PnL sources (must match field default below).
+_DEFAULT_PRODUCT_CATEGORY_REL = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+
+
+def resolve_data_input_root_path(*, repo_root: Path, pydantic_value: Path) -> Path:
+    """
+    Raw input directory (aligned with MOSS-SYSTEM-V1 `resolve_raw_dir`):
+
+    1. ``MOSS_DATA_INPUT_ROOT`` — explicit override (via Settings field).
+    2. ``RAW_FILES_DIR`` — V1 env; relative paths anchor to repo root.
+    3. ``<repo>/data_warehouse/raw_files`` if that directory exists.
+    4. Otherwise ``pydantic_value`` resolved relative to repo (default ``data_input``).
+    """
+    if _env_nonempty("MOSS_DATA_INPUT_ROOT"):
+        return Path(resolve_repo_relative_path(str(pydantic_value), repo_root=repo_root)).resolve()
+
+    raw_files_env = str(os.environ.get("RAW_FILES_DIR", "") or "").strip()
+    if raw_files_env:
+        candidate = Path(raw_files_env).expanduser()
+        resolved = candidate.resolve() if candidate.is_absolute() else (repo_root / candidate).resolve()
+        return resolved
+
+    v1_raw = (repo_root / "data_warehouse" / "raw_files").resolve()
+    if v1_raw.is_dir():
+        return v1_raw
+
+    return Path(resolve_repo_relative_path(str(pydantic_value), repo_root=repo_root)).resolve()
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILES, env_prefix="MOSS_", extra="ignore")
 
@@ -74,7 +108,7 @@ class Settings(BaseSettings):
     choice_timeout_seconds: float = 10.0
     fx_official_source_path: str = ""
     fx_mid_csv_path: str = ""
-    product_category_source_dir: Path = Path("data_input") / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    product_category_source_dir: Path = _DEFAULT_PRODUCT_CATEGORY_REL
     ftp_rate_pct: Decimal = Decimal("1.75")
     formal_pnl_enabled: bool = True
     formal_pnl_scope_json: str = '["*"]'
@@ -99,11 +133,9 @@ class Settings(BaseSettings):
                 repo_root=_REPO_ROOT,
             )
         )
-        self.data_input_root = Path(
-            resolve_repo_relative_path(
-                str(self.data_input_root),
-                repo_root=_REPO_ROOT,
-            )
+        self.data_input_root = resolve_data_input_root_path(
+            repo_root=_REPO_ROOT,
+            pydantic_value=self.data_input_root,
         )
         self.local_archive_path = Path(
             resolve_repo_relative_path(
@@ -111,12 +143,16 @@ class Settings(BaseSettings):
                 repo_root=_REPO_ROOT,
             )
         )
-        self.product_category_source_dir = Path(
-            resolve_repo_relative_path(
-                str(self.product_category_source_dir),
-                repo_root=_REPO_ROOT,
-            )
+        _default_pc_resolved = (
+            Path(resolve_repo_relative_path(str(_DEFAULT_PRODUCT_CATEGORY_REL), repo_root=_REPO_ROOT)).resolve()
         )
+        _pc_from_field = Path(
+            resolve_repo_relative_path(str(self.product_category_source_dir), repo_root=_REPO_ROOT),
+        ).resolve()
+        if _pc_from_field == _default_pc_resolved:
+            self.product_category_source_dir = (self.data_input_root / _DEFAULT_PRODUCT_CATEGORY_REL.name).resolve()
+        else:
+            self.product_category_source_dir = _pc_from_field
         self.choice_macro_catalog_file = resolve_repo_relative_path(
             self.choice_macro_catalog_file,
             repo_root=_REPO_ROOT,

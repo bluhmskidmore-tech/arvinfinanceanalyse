@@ -11,6 +11,7 @@ from pathlib import Path
 import xlrd
 from openpyxl import load_workbook
 
+from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.services.source_rules import describe_source_file
 
@@ -39,10 +40,10 @@ class PnlRefreshInput:
 
 
 def resolve_pnl_data_input_root() -> Path:
-    configured_root = os.getenv("MOSS_DATA_INPUT_ROOT")
+    configured_root = str(os.getenv("MOSS_DATA_INPUT_ROOT", "") or "").strip()
     if configured_root:
-        return Path(configured_root).expanduser()
-    return Path(__file__).resolve().parents[3] / "data_input"
+        return Path(configured_root).expanduser().resolve()
+    return get_settings().data_input_root
 
 
 def load_latest_pnl_refresh_input(
@@ -166,6 +167,35 @@ def _manifest_candidates(governance_dir: str | Path) -> list[PnlSourceSnapshot]:
 
 def _direct_candidates(data_root: Path) -> list[PnlSourceSnapshot]:
     candidates: list[PnlSourceSnapshot] = []
+    seen: set[Path] = set()
+
+    def _append(path: Path) -> None:
+        key = path.resolve()
+        if key in seen:
+            return
+        metadata = describe_source_file(path.name)
+        if metadata.report_date is None or metadata.source_family not in SUPPORTED_PNL_SOURCE_FAMILIES:
+            return
+        seen.add(key)
+        stat = path.stat()
+        candidates.append(
+            PnlSourceSnapshot(
+                source_family=metadata.source_family,
+                report_date=metadata.report_date,
+                path=path,
+                source_version=_build_source_version(path),
+                ingest_batch_id="ib_pnl_direct",
+                created_at=str(stat.st_mtime_ns),
+            )
+        )
+
+    if data_root.exists():
+        flat_paths: list[Path] = []
+        for pattern in ("*.xls", "*.xlsx"):
+            flat_paths.extend(p for p in data_root.glob(pattern) if p.is_file())
+        for path in sorted(flat_paths, key=lambda p: str(p)):
+            _append(path)
+
     directory_specs = {
         "pnl": ("pnl", "*.xls"),
         "pnl_514": ("pnl_514", "*.xlsx"),
@@ -173,25 +203,12 @@ def _direct_candidates(data_root: Path) -> list[PnlSourceSnapshot]:
         "pnl_517": ("pnl_517", "*.xlsx"),
     }
 
-    for family, (directory_name, pattern) in directory_specs.items():
+    for _family, (directory_name, pattern) in directory_specs.items():
         source_dir = data_root / directory_name
         if not source_dir.exists():
             continue
         for path in sorted(source_dir.glob(pattern)):
-            metadata = describe_source_file(path.name)
-            if metadata.source_family != family or metadata.report_date is None:
-                continue
-            stat = path.stat()
-            candidates.append(
-                PnlSourceSnapshot(
-                    source_family=family,
-                    report_date=metadata.report_date,
-                    path=path,
-                    source_version=_build_source_version(path),
-                    ingest_batch_id="ib_pnl_direct",
-                    created_at=str(stat.st_mtime_ns),
-                )
-            )
+            _append(path)
     return candidates
 
 
