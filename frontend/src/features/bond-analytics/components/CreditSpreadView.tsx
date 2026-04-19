@@ -872,8 +872,8 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                       textAlign: "center",
                     }}
                   >
-                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi} Top5{" "}
-                    {data.concentration_by_issuer.top5_concentration}
+                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi.display} Top5{" "}
+                    {data.concentration_by_issuer.top5_concentration.display}
                   </div>
                   <Row gutter={16} align="middle">
                     <Col xs={24} md={12}>

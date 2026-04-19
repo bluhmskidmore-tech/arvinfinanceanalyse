@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ResultMeta } from "../../../api/contracts";
+import { formatRawAsNumeric } from "../../../utils/format";
 import type { ActionAttributionResponse } from "../types";
 import {
   classifyWarningSignals,
@@ -29,6 +30,11 @@ function createResultMeta(
   };
 }
 
+const yuan = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: true });
+const ratio = (raw: number, signAware = true) =>
+  formatRawAsNumeric({ raw, unit: "ratio", sign_aware: signAware });
+const dv01 = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+
 function createActionAttribution(
   overrides: Partial<ActionAttributionResponse> = {},
 ): ActionAttributionResponse {
@@ -38,14 +44,14 @@ function createActionAttribution(
     period_start: "2026-03-01",
     period_end: "2026-03-31",
     total_actions: 0,
-    total_pnl_from_actions: "0",
+    total_pnl_from_actions: yuan(0),
     by_action_type: [],
     action_details: [],
-    period_start_duration: "3.10",
-    period_end_duration: "3.05",
-    duration_change_from_actions: "-0.05",
-    period_start_dv01: "120000",
-    period_end_dv01: "115000",
+    period_start_duration: ratio(3.1, false),
+    period_end_duration: ratio(3.05, false),
+    duration_change_from_actions: ratio(-0.05),
+    period_start_dv01: dv01(120000),
+    period_end_dv01: dv01(115000),
     warnings: [],
     computed_at: "2026-04-10T00:00:00Z",
     ...overrides,
@@ -78,15 +84,15 @@ describe("bondAnalyticsModuleReadiness", () => {
     const readiness = deriveActionAttributionReadiness({
       actionAttribution: createActionAttribution({
         total_actions: 3,
-        total_pnl_from_actions: "2500000",
+        total_pnl_from_actions: yuan(2500000),
         by_action_type: [
           {
             action_type: "ADD_DURATION",
             action_type_name: "Add duration",
             action_count: 3,
-            total_pnl_economic: "2500000",
-            total_pnl_accounting: "2500000",
-            avg_pnl_per_action: "833333",
+            total_pnl_economic: yuan(2500000),
+            total_pnl_accounting: yuan(2500000),
+            avg_pnl_per_action: yuan(833333),
           },
         ],
       }),
@@ -105,15 +111,15 @@ describe("bondAnalyticsModuleReadiness", () => {
     const readiness = deriveActionAttributionReadiness({
       actionAttribution: createActionAttribution({
         total_actions: 3,
-        total_pnl_from_actions: "2500000",
+        total_pnl_from_actions: yuan(2500000),
         by_action_type: [
           {
             action_type: "ADD_DURATION",
             action_type_name: "Add duration",
             action_count: 3,
-            total_pnl_economic: "2500000",
-            total_pnl_accounting: "2500000",
-            avg_pnl_per_action: "833333",
+            total_pnl_economic: yuan(2500000),
+            total_pnl_accounting: yuan(2500000),
+            avg_pnl_per_action: yuan(833333),
           },
         ],
       }),

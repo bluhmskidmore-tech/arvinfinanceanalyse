@@ -160,6 +160,8 @@ describe("BondAnalyticsView", () => {
       {},
       { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
     );
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("当前结论");
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("久期");
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();

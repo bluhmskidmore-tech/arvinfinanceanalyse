@@ -1,14 +1,15 @@
 import { Card, Col, Row, Spin } from "antd";
 
-import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload } from "../../../api/contracts";
+import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { formatPct, formatYi, toneColor } from "../utils/formatters";
 
-function numOr(raw: string): number {
-  const n = parseFloat(raw);
-  return Number.isFinite(n) ? n : NaN;
+function numOr(raw: Numeric | null | undefined): number {
+  const n = bondNumericRaw(raw);
+  return Number.isFinite(n) ? n : Number.NaN;
 }
 
-function relRatioLine(label: string, prevRaw: string, curRaw: string): string | null {
+function relRatioLine(label: string, prevRaw: Numeric | null | undefined, curRaw: Numeric | null | undefined): string | null {
   const p = numOr(prevRaw);
   const c = numOr(curRaw);
   if (!Number.isFinite(p) || p === 0 || !Number.isFinite(c)) return null;
@@ -16,7 +17,7 @@ function relRatioLine(label: string, prevRaw: string, curRaw: string): string | 
   return `${label} ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 }
 
-function spreadBpFoot(curRaw: string, prevRaw: string | undefined): string | null {
+function spreadBpFoot(curRaw: Numeric | null | undefined, prevRaw: Numeric | null | undefined): string | null {
   const c = numOr(curRaw);
   if (!Number.isFinite(c)) return null;
   const curBp = c < 0.5 ? c * 10000 : c;

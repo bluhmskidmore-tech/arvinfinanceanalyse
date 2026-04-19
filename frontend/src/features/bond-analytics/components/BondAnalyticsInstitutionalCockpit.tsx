@@ -24,6 +24,42 @@ export interface BondAnalyticsInstitutionalCockpitProps {
   reportDate: string;
 }
 
+function buildCockpitConclusion(args: {
+  duration: number;
+  creditWeight: number;
+  spreadMedian: number;
+}) {
+  const { duration, creditWeight, spreadMedian } = args;
+
+  if (Number.isFinite(duration) && duration >= 3.8) {
+    return {
+      title: "当前结论",
+      body: "当前更应该先盯久期风险。",
+      detail: `加权久期 ${duration.toFixed(2)} 年，先看 KRD 与期限结构，再决定是否切到信用模块。`,
+    };
+  }
+
+  if (Number.isFinite(creditWeight) && creditWeight >= 0.35) {
+    return {
+      title: "当前结论",
+      body: "当前更应该先盯信用敞口。",
+      detail: `信用权重 ${(creditWeight * 100).toFixed(1)}%，建议优先复核信用迁徙与行业集中度。`,
+    };
+  }
+
+  const spreadBp = Number.isFinite(spreadMedian)
+    ? (spreadMedian < 0.5 ? spreadMedian * 10000 : spreadMedian)
+    : Number.NaN;
+
+  return {
+    title: "当前结论",
+    body: "当前先看久期与收益率分布的平衡状态。",
+    detail: `加权久期 ${Number.isFinite(duration) ? `${duration.toFixed(2)} 年` : "—"}，信用利差中位数 ${
+      Number.isFinite(spreadBp) ? `${spreadBp.toFixed(1)} bp` : "—"
+    }。`,
+  };
+}
+
 export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsInstitutionalCockpitProps) {
   const client = useApiClient();
 
@@ -89,7 +125,7 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
       series: [
         {
           type: "bar" as const,
-          data: items.map((it) => parseFloat(it.total_market_value) / 1e8),
+          data: items.map((it) => bondNumericRaw(it.total_market_value) / 1e8),
           itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
           barMaxWidth: 36,
         },
@@ -116,7 +152,7 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
       series: [
         {
           type: "bar" as const,
-          data: items.map((it) => parseFloat(it.total_market_value) / 1e8),
+          data: items.map((it) => bondNumericRaw(it.total_market_value) / 1e8),
           itemStyle: { color: "#2f8f63", borderRadius: [6, 6, 0, 0] },
           barMaxWidth: 40,
         },
@@ -127,7 +163,9 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
   const industryBarOption = useMemo(() => {
     const items = industryQ.data?.result.items ?? [];
     if (!items.length) return null;
-    const sorted = [...items].sort((a, b) => parseFloat(b.percentage) - parseFloat(a.percentage));
+    const sorted = [...items].sort(
+      (a, b) => bondNumericRaw(b.percentage ?? null) - bondNumericRaw(a.percentage ?? null),
+    );
     return {
       grid: { left: 120, right: 24, top: 16, bottom: 24, containLabel: false },
       tooltip: { trigger: "axis" as const, axisPointer: { type: "shadow" as const } },
@@ -145,7 +183,7 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
       series: [
         {
           type: "bar" as const,
-          data: sorted.map((it) => parseFloat(it.percentage)),
+          data: sorted.map((it) => bondNumericRaw(it.percentage ?? null)),
           itemStyle: { color: "#ff7a45", borderRadius: [0, 6, 6, 0] },
           barMaxWidth: 18,
         },
@@ -170,15 +208,21 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
 
   const spreadColumns = [
     { title: "券种", dataIndex: "bond_type", key: "bond_type" },
-    { title: "中位收益率", dataIndex: "median_yield", key: "median_yield", render: (v: string) => formatPct(v) },
+    { title: "中位收益率", dataIndex: "median_yield", key: "median_yield", render: (v: Numeric | null) => (v ? formatPct(v) : "—") },
     { title: "只数", dataIndex: "bond_count", key: "bond_count" },
     { title: "市值", dataIndex: "total_market_value", key: "total_market_value", render: formatWan },
   ];
 
   const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "驾驶舱数据加载失败") : null;
 
-  const dur = headline ? parseFloat(headline.kpis.weighted_duration) : NaN;
+  const dur = headline ? bondNumericRaw(headline.kpis.weighted_duration) : Number.NaN;
   const cw = portfolioHl ? bondNumericRaw(portfolioHl.credit_weight) : NaN;
+  const spreadMedian = headline ? bondNumericRaw(headline.kpis.credit_spread_median) : Number.NaN;
+  const conclusion = buildCockpitConclusion({
+    duration: dur,
+    creditWeight: cw,
+    spreadMedian,
+  });
 
   return (
     <section
@@ -186,6 +230,20 @@ export function BondAnalyticsInstitutionalCockpit({ reportDate }: BondAnalyticsI
       style={{ display: "flex", flexDirection: "column", gap: 12 }}
     >
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
+
+      <Card
+        size="small"
+        data-testid="bond-analysis-cockpit-conclusion"
+        style={panelStyle("#f7fbff")}
+      >
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ ...FIELD, color: "#6b7f99" }}>{conclusion.title}</div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: "#18314d", lineHeight: 1.4 }}>
+            {conclusion.body}
+          </div>
+          <Text type="secondary">{conclusion.detail}</Text>
+        </div>
+      </Card>
 
       <Card size="small" style={panelStyle("#fbfcfe")} styles={{ body: { paddingBlock: 16 } }}>
         <div style={FIELD}>债市 KPI（驾驶舱）</div>
