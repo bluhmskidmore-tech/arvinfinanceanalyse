@@ -253,7 +253,7 @@ function formatShellTickerDelta(point: ChoiceMacroLatestPoint) {
   return `${sign}${formatShellTickerNumber(point.latest_change)}`;
 }
 
-export function buildShellTickerItems(
+function buildShellTickerItems(
   series: ChoiceMacroLatestPoint[],
   keys: ShellTickerKey[] = shellTickerDisplayKeys,
 ): ShellTickerItem[] {

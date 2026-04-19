@@ -313,7 +313,7 @@ export function BondAnalyticsInstitutionalCockpit({
       },
       {
         queryKey: ["bond-analytics-institutional", "holdings", client.mode, reportDate],
-        queryFn: () => client.getBondAnalyticsTopHoldings(reportDate, 5),
+        queryFn: () => client.getBondAnalyticsTopHoldings(reportDate, 10),
         enabled: Boolean(reportDate),
       },
       {
@@ -393,7 +393,25 @@ export function BondAnalyticsInstitutionalCockpit({
 
   const leadMaturity = maturityItems[0];
   const assetClassItems = (portfolioHl?.by_asset_class ?? []).slice(0, 4);
-  const topHoldings = (holdingsQ.data?.result.items ?? []).slice(0, 3);
+  const topHoldings = (holdingsQ.data?.result.items ?? []).slice(0, 10);
+  const ratingDistribution = useMemo(() => {
+    const buckets = new Map<string, { count: number; faceValue: number }>();
+    for (const item of holdingsQ.data?.result.items ?? []) {
+      const key = item.rating?.trim() || "Unrated";
+      const next = buckets.get(key) ?? { count: 0, faceValue: 0 };
+      next.count += 1;
+      next.faceValue += bondNumericRaw(item.face_value);
+      buckets.set(key, next);
+    }
+    return Array.from(buckets.entries())
+      .map(([rating, stats]) => ({
+        rating,
+        count: stats.count,
+        faceValue: stats.faceValue,
+      }))
+      .sort((left, right) => right.faceValue - left.faceValue)
+      .slice(0, 6);
+  }, [holdingsQ.data?.result.items]);
   const actionTypeRows = (actionAttribution?.by_action_type ?? []).slice(0, 4);
   const totalActionPnl = bondNumericRaw(actionAttribution?.total_pnl_from_actions ?? null);
   const ytmDeltaBp = computeBpDelta(k?.weighted_ytm ?? null, p?.weighted_ytm ?? null);
@@ -585,7 +603,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={8}>
-          <Card size="small" title="利率驱动拆解" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card size="small" title="收益率与久期分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ color: "#5c6b82", fontSize: 12 }}>加权收益率</span>
@@ -603,7 +621,7 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card size="small" title="信用利差" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card size="small" title="利差分析（中位数，bp）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ color: "#5c6b82", fontSize: 12 }}>信用权重</span>
@@ -642,7 +660,7 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card size="small" title="组合收益概览" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card size="small" title="持仓明细（前10）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ color: "#5c6b82", fontSize: 12 }}>组合市值</span>
@@ -677,7 +695,7 @@ export function BondAnalyticsInstitutionalCockpit({
                   ))}
                 </div>
               ) : (
-                <Text type="secondary">暂无重仓摘要</Text>
+                <Text type="secondary">暂无持仓明细</Text>
               )}
             </div>
           </Card>
@@ -686,18 +704,13 @@ export function BondAnalyticsInstitutionalCockpit({
 
       <Row gutter={[12, 12]}>
         <Col xs={24} lg={8}>
-          <Card size="small" title="组合暴露" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card size="small" title="信用等级分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
                 <DashboardMetric
-                  label="组合规模"
-                  value={portfolioHl ? formatYi(portfolioHl.total_market_value) : "—"}
+                  label="债券只数"
+                  value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
                   detail="portfolio headlines"
-                />
-                <DashboardMetric
-                  label="DV01"
-                  value={portfolioHl ? formatWan(portfolioHl.total_dv01) : "—"}
-                  detail="组合利率敏感度"
                 />
                 <DashboardMetric
                   label="Top5 集中度"
@@ -705,18 +718,23 @@ export function BondAnalyticsInstitutionalCockpit({
                   detail="发行人权重"
                 />
                 <DashboardMetric
-                  label="债券只数"
-                  value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
-                  detail="持仓明细数量"
+                  label="信用权重"
+                  value={portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
+                  detail="信用债市值占比"
+                />
+                <DashboardMetric
+                  label="DV01"
+                  value={portfolioHl ? formatWan(portfolioHl.total_dv01) : "—"}
+                  detail="组合利率敏感度"
                 />
               </div>
-              {assetClassItems.length > 0 ? (
+              {ratingDistribution.length > 0 ? (
                 <div style={compactListStyle}>
-                  {assetClassItems.map((item) => (
-                    <div key={item.asset_class} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ color: "#61758f", fontSize: 12 }}>{item.asset_class}</span>
+                  {ratingDistribution.map((item) => (
+                    <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "#61758f", fontSize: 12 }}>{item.rating}</span>
                       <span style={{ color: "#18314d", fontWeight: 700, fontSize: 12 }}>
-                        {item.weight.display} · 久期 {item.duration.display}
+                        {item.count} bonds · {formatWan(item.faceValue)}
                       </span>
                     </div>
                   ))}
@@ -767,7 +785,7 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card size="small" title="交易建议" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card size="small" title="决策事项" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ color: "#52657f", fontSize: 13, lineHeight: 1.7 }}>
                 首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应 drill。

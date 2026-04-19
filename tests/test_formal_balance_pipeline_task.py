@@ -100,7 +100,10 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
     assert payload["steps"]["balance_runtime"]["result"] == {"zqtz_rows": 2, "tyw_rows": 2}
 
 
-def test_formal_balance_pipeline_fails_closed_when_ingest_batch_id_is_missing(monkeypatch):
+def test_formal_balance_pipeline_runs_when_incremental_ingest_has_no_batch_but_report_date_is_explicit(
+    monkeypatch,
+):
+    """Empty incremental ingest is normal after a full archive; lineage falls back to manifest + DuckDB."""
     pipeline_mod = _load_pipeline_module()
 
     calls: list[str] = []
@@ -109,123 +112,59 @@ def test_formal_balance_pipeline_fails_closed_when_ingest_batch_id_is_missing(mo
         calls.append("ingest")
         return {"status": "completed"}
 
-    def _fake_snapshot(**_kwargs):
+    def _fake_snapshot(**kwargs):
         calls.append("snapshot")
-        raise AssertionError("snapshot should not run without ingest_batch_id")
+        assert kwargs.get("ingest_batch_id") is None
+        assert kwargs.get("report_date") == "2025-12-31"
+        return {"status": "completed", "zqtz_rows": 0, "tyw_rows": 0}
 
-    def _fake_balance(**_kwargs):
+    def _fake_balance(**kwargs):
         calls.append("balance")
-        raise AssertionError("balance should not run without ingest_batch_id")
+        assert kwargs.get("ingest_batch_id") is None
+        assert kwargs.get("report_date") == "2025-12-31"
+        return {"status": "completed", "zqtz_rows": 0, "tyw_rows": 0}
 
     monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
     monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
     monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
 
-    try:
-        pipeline_mod.run_formal_balance_pipeline.fn(report_date="2025-12-31")
-    except ValueError as exc:
-        assert "ingest_batch_id" in str(exc)
-    else:
-        raise AssertionError("pipeline should fail closed when ingest_batch_id is missing")
-
-    assert calls == ["ingest"]
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(report_date="2025-12-31")
+    assert calls == ["ingest", "snapshot", "balance"]
+    assert payload["status"] == "completed"
 
 
-def test_formal_balance_pipeline_does_not_materialize_from_stale_snapshots_when_ingest_batch_id_is_missing(
+def test_formal_balance_pipeline_passes_none_ingest_batch_through_snapshot_and_balance(
     tmp_path,
     monkeypatch,
 ):
+    """With an explicit report_date, missing incremental batch id must not abort the orchestration."""
     pipeline_mod = _load_pipeline_module()
-    snapshot_mod = load_module(
-        "backend.app.repositories.snapshot_repo",
-        "backend/app/repositories/snapshot_repo.py",
-    )
 
     duckdb_path = tmp_path / "moss.duckdb"
-    conn = duckdb.connect(str(duckdb_path), read_only=False)
-    try:
-        snapshot_mod.ensure_snapshot_tables(conn)
-        conn.execute(
-            """
-            insert into zqtz_bond_daily_snapshot (
-              report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-              account_category, asset_class, bond_type, issuer_name, industry_name, rating,
-              currency_code, face_value_native, market_value_native, amortized_cost_native,
-              accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
-              overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
-              ingest_batch_id, trace_id
-            ) values (
-              '2025-12-31', 'stale-z', '债券A', '组合A', 'CC100',
-              '可供出售债券', '债券类', '国债', '发行人A', '主权', 'AAA',
-              'USD', 100, 100, 90, 5, 0.025, 0.03, '2027-12-31', null,
-              0, false, '固定', 'sv-stale-z', 'rv-snap-1', 'ib-stale', 'trace-stale-z'
-            )
-            """
-        )
-        conn.execute(
-            """
-            insert into tyw_interbank_daily_snapshot (
-              report_date, position_id, product_type, position_side, counterparty_name,
-              account_type, special_account_type, core_customer_type, currency_code,
-              principal_native, accrued_interest_native, funding_cost_rate, maturity_date,
-              source_version, rule_version, ingest_batch_id, trace_id
-            ) values (
-              '2025-12-31', 'stale-t', '持有至到期同业存单', 'liability', '银行A',
-              '负债账户', '一般', '股份制银行', 'USD',
-              10, 2, 0.015, '2026-06-30',
-              'sv-stale-t', 'rv-snap-1', 'ib-stale', 'trace-stale-t'
-            )
-            """
-        )
-        conn.execute(
-            """
-            insert into fx_daily_mid (
-              trade_date, base_currency, quote_currency, mid_rate,
-              source_name, is_business_day, is_carry_forward, source_version
-            ) values (
-              '2025-12-31', 'USD', 'CNY', 7.20, 'CFETS', true, false, 'sv-stale-fx'
-            )
-            """
-        )
-    finally:
-        conn.close()
+    calls: list[tuple[str, object]] = []
 
     def _fake_ingest(**_kwargs):
         return {"status": "completed"}
 
+    def _fake_snapshot(**kwargs):
+        calls.append(("snapshot", kwargs.get("ingest_batch_id")))
+        return {"status": "completed", "zqtz_rows": 0, "tyw_rows": 0}
+
+    def _fake_balance(**kwargs):
+        calls.append(("balance", kwargs.get("ingest_batch_id")))
+        return {"status": "completed", "zqtz_rows": 0, "tyw_rows": 0}
+
     monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
 
-    try:
-        pipeline_mod.run_formal_balance_pipeline.fn(
-            report_date="2025-12-31",
-            duckdb_path=str(duckdb_path),
-            governance_dir=str(tmp_path / "governance"),
-        )
-    except ValueError as exc:
-        assert "ingest_batch_id" in str(exc)
-    else:
-        raise AssertionError("pipeline should fail closed when ingest_batch_id is missing")
-
-    conn = duckdb.connect(str(duckdb_path), read_only=True)
-    try:
-        table_names = {
-            row[0]
-            for row in conn.execute(
-                """
-                select table_name
-                from information_schema.tables
-                where table_name in ('fact_formal_zqtz_balance_daily', 'fact_formal_tyw_balance_daily')
-                """
-            ).fetchall()
-        }
-        zqtz_count = conn.execute("select count(*) from fact_formal_zqtz_balance_daily").fetchone()[0]
-        tyw_count = conn.execute("select count(*) from fact_formal_tyw_balance_daily").fetchone()[0]
-    finally:
-        conn.close()
-
-    assert table_names == {"fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"}
-    assert zqtz_count == 0
-    assert tyw_count == 0
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        report_date="2025-12-31",
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+    )
+    assert payload["status"] == "completed"
+    assert calls == [("snapshot", None), ("balance", None)]
 
 
 def test_formal_balance_pipeline_backfills_manifest_report_date_range_in_order(tmp_path, monkeypatch):

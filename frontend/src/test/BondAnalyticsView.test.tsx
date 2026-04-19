@@ -169,11 +169,11 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("组合表现对比（年初至今 · 示意）")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("风险趋势（近12周 · 示意）")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("关键事件与日历（示意）")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("组合表现对比（年初至今）")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("风险趋势（近12周）")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("关键事件与日历（未来两周）")).toBeInTheDocument();
     expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("交易建议")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-return-decomposition")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-credit-spread")).toBeInTheDocument();
@@ -192,6 +192,31 @@ describe("BondAnalyticsView", () => {
         ),
       ),
     ).toBe(false);
+    },
+    20_000,
+  );
+
+  it(
+    "renders the third-page bond-analysis cockpit sections from the mockup",
+    async () => {
+      renderBondAnalyticsView();
+
+      const topCockpit = await screen.findByTestId(
+        "bond-analysis-top-cockpit",
+        {},
+        { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+      );
+
+      expect(within(topCockpit).getByText("组合摘要")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("债券资产结构")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("收益率与久期分布")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("信用等级分布")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("利差分析（中位数，bp）")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("持仓明细（前10）")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("组合表现对比（年初至今）")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("风险趋势（近12周）")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("关键事件与日历（未来两周）")).toBeInTheDocument();
     },
     20_000,
   );

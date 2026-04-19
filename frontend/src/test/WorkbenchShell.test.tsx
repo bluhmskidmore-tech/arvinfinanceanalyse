@@ -2,7 +2,8 @@ import { screen, waitFor, within } from "@testing-library/react";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
-import { buildShellTickerItems, WorkbenchShell } from "../layouts/WorkbenchShell";
+import { WorkbenchShell } from "../layouts/WorkbenchShell";
+import { buildShellTickerItems } from "../layouts/workbenchShellTicker";
 import {
   primaryWorkbenchNavigation,
   primaryWorkbenchNavigationGroups,

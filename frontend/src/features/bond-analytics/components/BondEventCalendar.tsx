@@ -44,7 +44,7 @@ const EVENTS: CalendarItem[] = [
 export function BondEventCalendar() {
   return (
     <SectionCard
-      title="关键事件与日历（示意）"
+      title="关键事件与日历（未来两周）"
       style={{ ...panelStyle("#ffffff"), border: `1px solid ${BORDER}` }}
     >
       <CalendarList items={EVENTS} />

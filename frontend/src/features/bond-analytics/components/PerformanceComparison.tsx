@@ -83,7 +83,7 @@ const columns: ColumnsType<Row> = [
 export function PerformanceComparison() {
   return (
     <SectionCard
-      title="组合表现对比（年初至今 · 示意）"
+      title="组合表现对比（年初至今）"
       style={{ ...panelStyle("#ffffff"), border: `1px solid ${BORDER}` }}
     >
       <Table size="small" pagination={false} dataSource={DATA} columns={columns} />

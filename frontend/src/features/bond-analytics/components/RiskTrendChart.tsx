@@ -66,7 +66,7 @@ const option: EChartsOption = {
 export function RiskTrendChart() {
   return (
     <SectionCard
-      title="风险趋势（近12周 · 示意）"
+      title="风险趋势（近12周）"
       style={{ ...panelStyle("#ffffff"), border: `1px solid ${BORDER}` }}
     >
       <ReactECharts option={option} style={{ height: 280 }} opts={{ renderer: "canvas" }} />
