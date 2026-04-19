@@ -21,6 +21,97 @@ BALANCE_ZQTZ_FACT_TABLE = "fact_formal_zqtz_balance_daily"
 
 _DASHBOARD_ASSET_GROUP_COLUMNS = frozenset({"bond_type", "rating", "portfolio_name", "tenor_bucket"})
 
+# Column name constants — single source of truth for row→dict mapping and INSERT ordering.
+
+_SNAPSHOT_COLUMNS = (
+    "report_date",
+    "instrument_code",
+    "instrument_name",
+    "portfolio_name",
+    "cost_center",
+    "account_category",
+    "asset_class",
+    "bond_type",
+    "issuer_name",
+    "industry_name",
+    "rating",
+    "currency_code",
+    "face_value_native",
+    "market_value_native",
+    "amortized_cost_native",
+    "accrued_interest_native",
+    "coupon_rate",
+    "ytm_value",
+    "maturity_date",
+    "next_call_date",
+    "overdue_days",
+    "is_issuance_like",
+    "interest_mode",
+    "source_version",
+    "rule_version",
+    "ingest_batch_id",
+    "trace_id",
+)
+
+_ANALYTICS_COLUMNS = (
+    "report_date",
+    "instrument_code",
+    "instrument_name",
+    "portfolio_name",
+    "cost_center",
+    "asset_class_raw",
+    "asset_class_std",
+    "bond_type",
+    "issuer_name",
+    "industry_name",
+    "rating",
+    "accounting_class",
+    "accounting_rule_id",
+    "currency_code",
+    "face_value",
+    "market_value_native",
+    "market_value",
+    "amortized_cost",
+    "accrued_interest",
+    "coupon_rate",
+    "interest_mode",
+    "interest_payment_frequency",
+    "interest_rate_style",
+    "ytm",
+    "maturity_date",
+    "next_call_date",
+    "years_to_maturity",
+    "tenor_bucket",
+    "macaulay_duration",
+    "modified_duration",
+    "convexity",
+    "dv01",
+    "is_credit",
+    "spread_dv01",
+    "source_version",
+    "rule_version",
+    "ingest_batch_id",
+    "trace_id",
+)
+
+_RISK_OVERVIEW_COLUMNS = (
+    "report_date",
+    "portfolio_modified_duration",
+    "portfolio_dv01",
+    "credit_market_value_ratio_pct",
+    "weighted_years_to_maturity",
+)
+
+_RISK_INDICATORS_KEYS = (
+    "total_market_value",
+    "total_dv01",
+    "weighted_duration",
+    "credit_ratio",
+    "weighted_convexity",
+    "total_spread_dv01",
+    "reinvestment_ratio_1y",
+)
+
 
 @dataclass
 class BondAnalyticsRepository:
@@ -65,36 +156,7 @@ class BondAnalyticsRepository:
                 """,
                 [report_date],
             ).fetchall()
-            columns = [
-                "report_date",
-                "instrument_code",
-                "instrument_name",
-                "portfolio_name",
-                "cost_center",
-                "account_category",
-                "asset_class",
-                "bond_type",
-                "issuer_name",
-                "industry_name",
-                "rating",
-                "currency_code",
-                "face_value_native",
-                "market_value_native",
-                "amortized_cost_native",
-                "accrued_interest_native",
-                "coupon_rate",
-                "ytm_value",
-                "maturity_date",
-                "next_call_date",
-                "overdue_days",
-                "is_issuance_like",
-                "interest_mode",
-                "source_version",
-                "rule_version",
-                "ingest_batch_id",
-                "trace_id",
-            ]
-            return [dict(zip(columns, row, strict=True)) for row in rows]
+            return [dict(zip(_SNAPSHOT_COLUMNS, row, strict=True)) for row in rows]
         finally:
             conn.close()
 
@@ -239,47 +301,7 @@ class BondAnalyticsRepository:
                 """,
                 params,
             ).fetchall()
-            columns = [
-                "report_date",
-                "instrument_code",
-                "instrument_name",
-                "portfolio_name",
-                "cost_center",
-                "asset_class_raw",
-                "asset_class_std",
-                "bond_type",
-                "issuer_name",
-                "industry_name",
-                "rating",
-                "accounting_class",
-                "accounting_rule_id",
-                "currency_code",
-                "face_value",
-                "market_value_native",
-                "market_value",
-                "amortized_cost",
-                "accrued_interest",
-                "coupon_rate",
-                "interest_mode",
-                "interest_payment_frequency",
-                "interest_rate_style",
-                "ytm",
-                "maturity_date",
-                "next_call_date",
-                "years_to_maturity",
-                "tenor_bucket",
-                "macaulay_duration",
-                "modified_duration",
-                "convexity",
-                "dv01",
-                "is_credit",
-                "spread_dv01",
-                "source_version",
-                "rule_version",
-                "ingest_batch_id",
-                "trace_id",
-            ]
-            return [dict(zip(columns, row, strict=True)) for row in rows]
+            return [dict(zip(_ANALYTICS_COLUMNS, row, strict=True)) for row in rows]
         finally:
             conn.close()
 
@@ -339,14 +361,7 @@ class BondAnalyticsRepository:
             ).fetchone()
             if row is None or row[0] is None:
                 return None
-            columns = [
-                "report_date",
-                "portfolio_modified_duration",
-                "portfolio_dv01",
-                "credit_market_value_ratio_pct",
-                "weighted_years_to_maturity",
-            ]
-            return dict(zip(columns, row, strict=True))
+            return dict(zip(_RISK_OVERVIEW_COLUMNS, row, strict=True))
         finally:
             conn.close()
 
@@ -685,16 +700,7 @@ class BondAnalyticsRepository:
             ).fetchone()
             if row is None:
                 return _empty_dashboard_risk_indicators_row()
-            keys = (
-                "total_market_value",
-                "total_dv01",
-                "weighted_duration",
-                "credit_ratio",
-                "weighted_convexity",
-                "total_spread_dv01",
-                "reinvestment_ratio_1y",
-            )
-            return _normalize_dashboard_risk_row(dict(zip(keys, row, strict=True)))
+            return _normalize_dashboard_risk_row(dict(zip(_RISK_INDICATORS_KEYS, row, strict=True)))
         finally:
             conn.close()
 
