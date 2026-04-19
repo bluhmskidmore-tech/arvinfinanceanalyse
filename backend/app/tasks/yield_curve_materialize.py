@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +23,7 @@ from backend.app.schemas.formal_compute_runtime import (
 from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.formal_compute_runtime import run_formal_materialize
 
+logger = logging.getLogger(__name__)
 
 YIELD_CURVE_MODULE = ensure_formal_module(
     FormalComputeModuleDescriptor(
@@ -87,6 +89,9 @@ def _execute_yield_curve_materialization(
             else:
                 snapshots.append(adapter.fetch_yield_curve(curve_type=curve_type, trade_date=trade_date))
         except Exception as exc:
+            # Broad catch is intentional: any vendor fetch error (network, parse,
+            # data quality) must be wrapped into FormalComputeMaterializeFailure so
+            # the governance runtime can record a structured failure for this date.
             raise FormalComputeMaterializeFailure(
                 source_version=f"sv_yield_curve_failed_{trade_date.replace('-', '')}_{curve_type}",
                 vendor_version="vv_none",
@@ -138,6 +143,9 @@ def ensure_yield_curve_inputs_on_or_before(
                     max_backtrack_days=max_backtrack_days,
                 )
             except Exception:
+                # Broad catch is intentional: if vendor fetch fails but we already have
+                # a fallback curve on or before this date, silently continue. Otherwise,
+                # re-raise to signal missing data.
                 if repo.fetch_latest_trade_date_on_or_before(curve_type, anchor_date) is not None:
                     continue
                 raise
@@ -162,6 +170,8 @@ def _fetch_curve_snapshot_on_or_before(
         try:
             return adapter.fetch_yield_curve(curve_type=curve_type, trade_date=candidate_date)
         except Exception as exc:
+            # Broad catch is intentional: accumulate the last error across all backtrack
+            # attempts so we can re-raise it if no date in the window has data.
             last_error = exc
     if last_error is not None:
         raise last_error
@@ -275,12 +285,16 @@ def _load_aaa_credit_curve_from_choice_snapshot(
         try:
             return _build_aaa_credit_snapshot(rows=snapshot_rows, trade_date=trade_date)
         except Exception as exc:
+            # Broad catch is intentional: snapshot_rows is the primary source; if it
+            # fails we fall through to fact_rows as a secondary source before giving up.
             snapshot_error = exc
     if fact_rows:
         try:
             return _build_aaa_credit_snapshot(rows=fact_rows, trade_date=trade_date)
-        except Exception:
-            pass
+        except Exception as exc:
+            # Secondary source also failed; log and fall through so snapshot_error
+            # (primary failure) is raised below, or return None if neither had data.
+            logger.warning("aaa_credit fact_rows snapshot build failed for trade_date=%s: %s", trade_date, exc)
     if snapshot_error is not None:
         raise snapshot_error
     return None

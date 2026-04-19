@@ -1,8 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import hashlib
 import json
+import logging
 from dataclasses import asdict
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -23,6 +24,8 @@ from backend.app.repositories.choice_fx_catalog import (
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.repositories.currency_codes import normalize_currency_code
 from backend.app.tasks.broker import register_actor_once
+
+logger = logging.getLogger(__name__)
 
 CHOICE_SOURCE_NAME = "CFETS"
 AKSHARE_SOURCE_NAME = "AKSHARE"
@@ -292,6 +295,7 @@ def _materialize_fx_mid_rows(
     csv_path: str,
     duckdb_path: str,
 ) -> dict[str, object]:
+    logger.info("starting materialize_fx_mid_rows for csv_path=%s", csv_path)
     csv_file = Path(csv_path)
     if not csv_file.exists():
         raise FileNotFoundError(f"FX mid CSV not found: {csv_file}")
@@ -330,6 +334,7 @@ def _materialize_fx_mid_rows(
 
     _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=rows)
 
+    logger.info("completed materialize_fx_mid_rows")
     return {
         "status": "completed",
         "row_count": len(rows),
@@ -411,6 +416,7 @@ def _materialize_fx_mid_for_report_date(
     official_csv_path: str = "",
     explicit_csv_path: str = "",
 ) -> dict[str, object]:
+    logger.info("starting materialize_fx_mid_for_report_date for report_date=%s", report_date)
     csv_path = resolve_fx_mid_csv_path(
         official_csv_path=official_csv_path,
         explicit_csv_path=explicit_csv_path,
@@ -422,6 +428,7 @@ def _materialize_fx_mid_for_report_date(
             csv_path=str(csv_path),
             duckdb_path=duckdb_path,
         )
+        logger.info("completed materialize_fx_mid_for_report_date")
         return {
             **payload,
             "source_kind": "csv_override",
@@ -437,11 +444,13 @@ def _materialize_fx_mid_for_report_date(
             candidates=candidates,
         )
     except Exception as exc:
+        logger.error("task failed: %s", exc, exc_info=True)
         choice_error = exc
         choice_rows = []
 
     if choice_rows:
         _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=choice_rows)
+        logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",
             "row_count": len(choice_rows),
@@ -459,11 +468,13 @@ def _materialize_fx_mid_for_report_date(
             candidates=candidates,
         )
     except Exception as exc:
+        logger.error("task failed: %s", exc, exc_info=True)
         akshare_error = exc
         akshare_rows = []
 
     if akshare_rows:
         _replace_fx_mid_rows(duckdb_path=duckdb_path, rows=akshare_rows)
+        logger.info("completed materialize_fx_mid_for_report_date")
         return {
             "status": "completed",
             "row_count": len(akshare_rows),
