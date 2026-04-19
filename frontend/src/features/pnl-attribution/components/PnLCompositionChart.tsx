@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
-import type { Numeric, PnlCompositionPayload, PnlCompositionTrendItem } from "../../../api/contracts";
+import type { PnlCompositionPayload } from "../../../api/contracts";
 
 const cardStyle = {
   padding: 24,
@@ -21,9 +21,6 @@ const COLORS = {
   capital: "#f59e0b",
   other: "#94a3b8",
 } as const;
-
-/** API 部分响应仍可能携带 trend `other_income`，但 `PnlCompositionTrendItem` 类型尚未纳入该字段。 */
-type PnlCompositionTrendRow = PnlCompositionTrendItem & { other_income?: Numeric };
 
 function rawOr(n: { raw: number | null } | null | undefined, fallback = 0): number {
   if (!n) return fallback;
@@ -173,7 +170,7 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           name: "其他收入",
           type: "bar" as const,
           stack: "t",
-          data: data.trend_data.map((t) => rawOr((t as PnlCompositionTrendRow).other_income) / 100_000_000),
+          data: data.trend_data.map((t) => rawOr(t.other_income) / 100_000_000),
           itemStyle: { color: COLORS.other, borderRadius: [4, 4, 0, 0] },
         },
       ],

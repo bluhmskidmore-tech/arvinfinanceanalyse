@@ -7,7 +7,7 @@ vi.mock("../lib/echarts", () => ({
   ),
 }));
 
-import type { Numeric, PnlCompositionPayload, PnlCompositionTrendItem } from "../api/contracts";
+import type { Numeric, PnlCompositionPayload } from "../api/contracts";
 import type { DataSectionState } from "../components/DataSection.types";
 import { PnLCompositionChart } from "../features/pnl-attribution/components/PnLCompositionChart";
 
@@ -62,7 +62,7 @@ describe("PnLCompositionChart", () => {
           capital_gain: num(4_500_000),
           total_pnl: num(50_500_000),
           other_income: num(3_000_000),
-        } as unknown as PnlCompositionTrendItem,
+        },
       ],
     };
 

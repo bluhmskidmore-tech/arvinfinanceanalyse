@@ -23,7 +23,7 @@ const KPI_DEFS: {
   key: KpiKey;
   label: string;
   unit: string;
-  format: (v: Numeric | number | null | undefined) => string;
+  format: (v: Numeric | null | undefined) => string;
 }[] = [
   { key: "total_market_value", label: "债券持仓规模", unit: "亿", format: formatYi },
   { key: "unrealized_pnl", label: "未实现损益", unit: "亿", format: formatYi },

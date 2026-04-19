@@ -3,8 +3,9 @@ import { render, screen } from "@testing-library/react";
 
 import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import type { VolumeRateAttributionPayload } from "../../../api/contracts";
 
-function renderWith(state: DataSectionState, data = null as any) {
+function renderWith(state: DataSectionState, data: VolumeRateAttributionPayload | null = null) {
   render(
     <VolumeRateAnalysisChart data={data} state={state} onRetry={vi.fn()} />,
   );

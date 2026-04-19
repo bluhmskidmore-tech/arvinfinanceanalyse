@@ -44,8 +44,8 @@ describe("bond analytics payload contract location", () => {
     expect(featureTypesText).toContain("export type AccountingClassAuditResponse = ApiAccountingClassAuditPayload;");
 
     expect(contractsText).toContain("bond_name: string | null;");
-    expect(contractsText).toContain("convexity_effect: string;");
-    expect(contractsText).toContain("tracking_error: string | null;");
-    expect(contractsText).toContain("information_ratio: string | null;");
+    expect(contractsText).toContain("convexity_effect: Numeric;");
+    expect(contractsText).toContain("tracking_error: Numeric | null;");
+    expect(contractsText).toContain("information_ratio: Numeric | null;");
   });
 });

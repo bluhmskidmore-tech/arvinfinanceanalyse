@@ -78,7 +78,6 @@ function createReturnDecompositionResult(
         roll_down: yuan(2_000_000),
         rate_effect: yuan(0),
         spread_effect: yuan(0),
-        fx_effect: yuan(0),
         convexity_effect: yuan(10_000),
         trading: yuan(0),
         total: yuan(3_000_000),
