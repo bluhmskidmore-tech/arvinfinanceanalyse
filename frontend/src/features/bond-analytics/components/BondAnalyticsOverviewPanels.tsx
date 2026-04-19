@@ -1,20 +1,15 @@
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type {
+  ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,
   BondAnalyticsAssetClassFilter,
   BondAnalyticsScenarioSetFilter,
   PeriodType,
 } from "../types";
-import { BondAnalyticsDecisionRail } from "./BondAnalyticsDecisionRail";
 import { BondAnalyticsFilterActionStrip } from "./BondAnalyticsFilterActionStrip";
 import { BondAnalyticsInstitutionalCockpit } from "./BondAnalyticsInstitutionalCockpit";
-import { BondAnalyticsFuturePanel } from "./BondAnalyticsFuturePanel";
-import { BondAnalyticsHeadlineZone } from "./BondAnalyticsHeadlineZone";
 import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStrip";
-import { BondAnalyticsOverviewWatchlistCard } from "./BondAnalyticsOverviewWatchlistCard";
-import { BondAnalyticsReadinessMatrix } from "./BondAnalyticsReadinessMatrix";
-import { promotionLabel } from "./bondAnalyticsCockpitTokens";
 
 export interface BondAnalyticsOverviewPanelsProps {
   dateOptions: Array<{ value: string; label: string }>;
@@ -30,6 +25,7 @@ export interface BondAnalyticsOverviewPanelsProps {
   onScenarioSetChange: (value: BondAnalyticsScenarioSetFilter) => void;
   spreadScenarios: string;
   onSpreadScenariosChange: (value: string) => void;
+  actionAttributionResult?: ActionAttributionResponse | null;
   overviewModel: BondAnalyticsOverviewModel;
   onOpenModuleDetail: (key: BondAnalyticsModuleKey) => void;
   onRefreshAnalytics?: () => void;
@@ -52,6 +48,7 @@ export function BondAnalyticsOverviewPanels({
   onScenarioSetChange,
   spreadScenarios,
   onSpreadScenariosChange,
+  actionAttributionResult = null,
   overviewModel,
   onOpenModuleDetail,
   onRefreshAnalytics,
@@ -59,24 +56,6 @@ export function BondAnalyticsOverviewPanels({
   analyticsRefreshError = null,
   lastAnalyticsRefreshRunId = null,
 }: BondAnalyticsOverviewPanelsProps) {
-  const headlineTile = overviewModel.headlineTiles[0] ?? null;
-  const headlineCtaLabel = headlineTile ? `Open ${headlineTile.label}` : null;
-  const activeReadinessItem =
-    overviewModel.readinessItems.find((item) => item.key === overviewModel.activeModuleContext.key) ??
-    overviewModel.readinessItems[0];
-  const watchlistItems = overviewModel.readinessItems.filter(
-    (item) => item.key !== overviewModel.activeModuleContext.key,
-  );
-  const promotedItems = overviewModel.readinessItems.filter(
-    (item) => item.promotionDestination !== "readiness-only",
-  );
-  const warningItems = overviewModel.readinessItems.filter(
-    (item) =>
-      item.statusLabel === "warning" ||
-      item.statusLabel === "placeholder-blocked" ||
-      item.statusLabel === "request-error",
-  );
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "grid", gap: 12 }} data-testid="bond-analysis-top-cockpit">
@@ -84,7 +63,7 @@ export function BondAnalyticsOverviewPanels({
           reportDate={reportDate}
           periodType={periodType}
           leadModuleLabel={overviewModel.activeModuleContext.label}
-          leadPromotionLabel={promotionLabel(activeReadinessItem.promotionDestination)}
+          leadPromotionLabel="Drill available"
           truthStrip={overviewModel.truthStrip}
         />
 
@@ -108,44 +87,12 @@ export function BondAnalyticsOverviewPanels({
           lastAnalyticsRefreshRunId={lastAnalyticsRefreshRunId}
         />
 
-        <BondAnalyticsInstitutionalCockpit reportDate={reportDate} />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.85fr) minmax(300px, 0.95fr)",
-            gap: 12,
-            alignItems: "start",
-          }}
-        >
-          <div style={{ display: "grid", gap: 12 }}>
-            <BondAnalyticsHeadlineZone
-              headlineTile={headlineTile}
-              headlineCtaLabel={headlineCtaLabel}
-              promotedItems={promotedItems}
-              warningItems={warningItems}
-              onOpenModuleDetail={onOpenModuleDetail}
-            />
-
-            <BondAnalyticsOverviewWatchlistCard topAnomalies={overviewModel.topAnomalies} />
-          </div>
-
-          <div style={{ display: "grid", gap: 12 }} data-testid="bond-analysis-right-rail">
-            <BondAnalyticsFuturePanel futureVisibilityItems={overviewModel.futureVisibilityItems} />
-
-            <BondAnalyticsDecisionRail
-              activeModuleContext={overviewModel.activeModuleContext}
-              activeReadinessItem={activeReadinessItem}
-              watchlistItems={watchlistItems}
-              onOpenModuleDetail={onOpenModuleDetail}
-            />
-
-            <BondAnalyticsReadinessMatrix
-              readinessItems={overviewModel.readinessItems}
-              onOpenModuleDetail={onOpenModuleDetail}
-            />
-          </div>
-        </div>
+        <BondAnalyticsInstitutionalCockpit
+          reportDate={reportDate}
+          actionAttribution={actionAttributionResult}
+          topAnomalies={overviewModel.topAnomalies}
+          onOpenModuleDetail={onOpenModuleDetail}
+        />
       </div>
     </div>
   );

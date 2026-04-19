@@ -160,27 +160,24 @@ describe("BondAnalyticsView", () => {
       {},
       { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
     );
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("当前结论");
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("市场状态（一句话）");
     expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("久期");
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
-    expect(within(topCockpit).getByTestId("bond-analysis-right-rail")).toBeInTheDocument();
-    expect(within(topCockpit).getByTestId("bond-analysis-future-panel")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
+    expect(within(topCockpit).getByText("交易建议")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-home-open-return-decomposition")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-home-open-credit-spread")).toBeInTheDocument();
     expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
 
-    expect(screen.queryByTestId("bond-analysis-headline-action-attribution")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("bond-analysis-open-headline-action-attribution")).not.toBeInTheDocument();
-    expect(screen.getByTestId("bond-analysis-readiness-matrix")).toBeInTheDocument();
     expect(
       await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toHaveAttribute(
       "data-module-key",
       "action-attribution",
-    );
-    expect(screen.getByTestId("bond-analysis-readiness-return-decomposition")).toHaveAttribute(
-      "data-promotion-destination",
-      "readiness-only",
     );
     expect(
       fetchMock.mock.calls.some((call) =>
@@ -208,7 +205,7 @@ describe("BondAnalyticsView", () => {
     20_000,
   );
 
-  it("promotes clean action attribution and keeps cockpit drill switching", async () => {
+  it("uses homepage action buttons to drive drill switching", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
       const url =
@@ -279,12 +276,8 @@ describe("BondAnalyticsView", () => {
       }),
     );
 
-    expect(
-      await screen.findByTestId("bond-analysis-headline-action-attribution", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
-    ).toBeInTheDocument();
-
     await user.click(
-      await screen.findByTestId("bond-analysis-open-headline-action-attribution", {}, {
+      await screen.findByTestId("bond-analysis-home-open-action-attribution", {}, {
         timeout: BOND_ANALYTICS_FIND_TIMEOUT,
       }),
     );
@@ -297,17 +290,15 @@ describe("BondAnalyticsView", () => {
     });
 
     await user.click(
-      within(
-        await screen.findByTestId("bond-analysis-readiness-action-attribution", {}, {
-          timeout: BOND_ANALYTICS_FIND_TIMEOUT,
-        }),
-      ).getByTestId("bond-analysis-open-action-attribution"),
+      await screen.findByTestId("bond-analysis-home-open-credit-spread", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
     );
 
     await waitFor(() => {
       expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
         "data-module-key",
-        "action-attribution",
+        "credit-spread",
       );
     });
   });

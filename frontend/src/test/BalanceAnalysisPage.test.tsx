@@ -518,13 +518,19 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
       "formal / analytical",
     );
-    expect(screen.getByRole("heading", { name: "页首概览" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "正式状态摘要" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "当前行动信号" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("市场资产");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("3,525.0");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("总市值合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("999.99");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("摊余成本合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("888.88");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("应计利息合计");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("债券资产(剔除发行类)");
+      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("市场资产");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("999.99");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("888.88");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("77.77");
@@ -532,12 +538,20 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("3");
     });
 
+    expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
+      "Review 1-2 year gap positioning",
+    );
+    expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
+      "Negative gap in 1-2 year bucket",
+    );
+    expect(screen.getByTestId("balance-analysis-priority-board")).toHaveTextContent(
+      "240001.IB maturity",
+    );
+
     expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("利率债组合");
     expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("同业负债池");
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-workbook-cards")).toHaveTextContent(
-        "债券资产(剔除发行类)",
-      );
+      expect(screen.queryByTestId("balance-analysis-workbook-cards")).not.toBeInTheDocument();
       expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-bond_business_types"),
@@ -574,6 +588,16 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).toHaveTextContent(
         "Negative gap in 1-2 year bucket",
       );
+      expect(
+        within(screen.getByTestId("balance-analysis-right-rail-panel-event_calendar")).getByLabelText(
+          "balance-event-type-filter",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByTestId("balance-analysis-right-rail-panel-risk_alerts")).getByLabelText(
+          "balance-risk-severity-filter",
+        ),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText("第 1 / 2 页")).toBeInTheDocument();
 
@@ -1364,5 +1388,3 @@ describe("BalanceAnalysisPage", () => {
     });
   });
 });
-
-

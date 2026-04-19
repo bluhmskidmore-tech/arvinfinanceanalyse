@@ -14,8 +14,26 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsMarketContextStrip",
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsInstitutionalCockpit", () => ({
-  BondAnalyticsInstitutionalCockpit: (props: { reportDate: string }) => (
-    <div data-testid="mock-bond-institutional-cockpit" data-report-date={props.reportDate} />
+  BondAnalyticsInstitutionalCockpit: (props: {
+    reportDate: string;
+    topAnomalies?: string[];
+    actionAttribution?: { total_actions?: number } | null;
+    onOpenModuleDetail: (key: string) => void;
+  }) => (
+    <div
+      data-testid="mock-bond-institutional-cockpit"
+      data-report-date={props.reportDate}
+      data-anomaly-count={String(props.topAnomalies?.length ?? 0)}
+      data-action-count={String(props.actionAttribution?.total_actions ?? 0)}
+    >
+      <button
+        type="button"
+        data-testid="mock-home-open-action"
+        onClick={() => props.onOpenModuleDetail("action-attribution")}
+      >
+        open home action
+      </button>
+    </div>
   ),
 }));
 
@@ -34,63 +52,6 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", 
         trigger refresh
       </button>
     </div>
-  ),
-}));
-
-vi.mock("../features/bond-analytics/components/BondAnalyticsHeadlineZone", () => ({
-  BondAnalyticsHeadlineZone: (props: {
-    headlineTile: { key: string; label: string } | null;
-    headlineCtaLabel: string | null;
-    promotedItems: { key: string }[];
-    warningItems: { key: string }[];
-    onOpenModuleDetail: (key: string) => void;
-  }) => (
-    <div
-      data-testid="mock-bond-headline-zone"
-      data-headline-key={props.headlineTile?.key ?? ""}
-      data-headline-label={props.headlineTile?.label ?? ""}
-      data-headline-cta={props.headlineCtaLabel ?? ""}
-      data-promoted-count={String(props.promotedItems.length)}
-      data-warning-count={String(props.warningItems.length)}
-    >
-      {props.headlineTile ? (
-        <button
-          type="button"
-          data-testid={`mock-bond-headline-open-${props.headlineTile.key}`}
-          onClick={() => props.onOpenModuleDetail(props.headlineTile!.key)}
-        >
-          headline drill
-        </button>
-      ) : null}
-    </div>
-  ),
-}));
-
-vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewWatchlistCard", () => ({
-  BondAnalyticsOverviewWatchlistCard: (props: { topAnomalies: string[] }) => (
-    <div data-testid="mock-bond-watchlist-card" data-anomaly-count={String(props.topAnomalies.length)} />
-  ),
-}));
-
-vi.mock("../features/bond-analytics/components/BondAnalyticsFuturePanel", () => ({
-  BondAnalyticsFuturePanel: (props: { futureVisibilityItems: { key: string }[] }) => (
-    <div data-testid="mock-bond-future-panel" data-future-count={String(props.futureVisibilityItems.length)} />
-  ),
-}));
-
-vi.mock("../features/bond-analytics/components/BondAnalyticsDecisionRail", () => ({
-  BondAnalyticsDecisionRail: () => <div data-testid="mock-bond-decision-rail" />,
-}));
-
-vi.mock("../features/bond-analytics/components/BondAnalyticsReadinessMatrix", () => ({
-  BondAnalyticsReadinessMatrix: (props: { onOpenModuleDetail: (key: string) => void }) => (
-    <button
-      type="button"
-      data-testid="mock-bond-readiness-matrix"
-      onClick={() => props.onOpenModuleDetail("return-decomposition")}
-    >
-      readiness drill
-    </button>
   ),
 }));
 
@@ -160,7 +121,7 @@ function createOverviewModel(): BondAnalyticsOverviewModel {
 }
 
 describe("BondAnalyticsOverviewPanels", () => {
-  it("composes cockpit shells, passes overview props to children, and wires drill plus refresh callbacks", async () => {
+  it("composes the simplified homepage shells, passes overview props to children, and wires drill plus refresh callbacks", async () => {
     const user = userEvent.setup();
     const onOpenModuleDetail = vi.fn();
     const onRefreshAnalytics = vi.fn();
@@ -184,6 +145,7 @@ describe("BondAnalyticsOverviewPanels", () => {
         onScenarioSetChange={vi.fn()}
         spreadScenarios="10,25,50"
         onSpreadScenariosChange={vi.fn()}
+        actionAttributionResult={{ total_actions: 4 } as never}
         overviewModel={overviewModel}
         onOpenModuleDetail={onOpenModuleDetail}
         onRefreshAnalytics={onRefreshAnalytics}
@@ -196,7 +158,14 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-report-date",
       "2026-03-31",
     );
-    expect(screen.getByTestId("bond-analysis-right-rail")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-institutional-cockpit")).toHaveAttribute(
+      "data-anomaly-count",
+      "1",
+    );
+    expect(screen.getByTestId("mock-bond-institutional-cockpit")).toHaveAttribute(
+      "data-action-count",
+      "4",
+    );
 
     const market = screen.getByTestId("mock-bond-market-context-strip");
     expect(market).toHaveAttribute("data-report-date", "2026-03-31");
@@ -207,23 +176,10 @@ describe("BondAnalyticsOverviewPanels", () => {
     expect(filter).toHaveAttribute("data-report-date", "2026-03-31");
     expect(filter).toHaveAttribute("data-period-type", "MoM");
 
-    const headline = screen.getByTestId("mock-bond-headline-zone");
-    expect(headline).toHaveAttribute("data-headline-key", "action-attribution");
-    expect(headline).toHaveAttribute("data-headline-label", "Headline Action Attribution");
-    expect(headline).toHaveAttribute("data-headline-cta", "Open Headline Action Attribution");
-    expect(headline).toHaveAttribute("data-promoted-count", "1");
-    expect(headline).toHaveAttribute("data-warning-count", "1");
-
-    expect(screen.getByTestId("mock-bond-watchlist-card")).toHaveAttribute("data-anomaly-count", "1");
-    expect(screen.getByTestId("mock-bond-future-panel")).toHaveAttribute("data-future-count", "1");
-
     await user.click(screen.getByTestId("mock-filter-refresh"));
     expect(onRefreshAnalytics).toHaveBeenCalledTimes(1);
 
-    await user.click(screen.getByTestId("mock-bond-headline-open-action-attribution"));
+    await user.click(screen.getByTestId("mock-home-open-action"));
     expect(onOpenModuleDetail).toHaveBeenCalledWith("action-attribution");
-
-    await user.click(screen.getByTestId("mock-bond-readiness-matrix"));
-    expect(onOpenModuleDetail).toHaveBeenCalledWith("return-decomposition");
   });
 });

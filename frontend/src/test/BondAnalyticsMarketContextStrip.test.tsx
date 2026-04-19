@@ -30,14 +30,14 @@ describe("BondAnalyticsMarketContextStrip", () => {
 
     expect(screen.getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(screen.getByText("Bond analytics cockpit")).toBeInTheDocument();
-    expect(screen.getByText("Bond analytics")).toBeInTheDocument();
-    expect(screen.getByText("Hybrid governed cockpit")).toBeInTheDocument();
+    expect(screen.getByText("债券分析")).toBeInTheDocument();
+    expect(screen.getByText("Governed homepage")).toBeInTheDocument();
 
     expect(screen.getByText("Report date")).toBeInTheDocument();
     expect(screen.getByText("2026-03-31")).toBeInTheDocument();
     expect(screen.getByText("Period")).toBeInTheDocument();
     expect(screen.getByText("MoM")).toBeInTheDocument();
-    expect(screen.getByText("Lead module")).toBeInTheDocument();
+    expect(screen.getByText("Drill lead")).toBeInTheDocument();
     expect(screen.getByText("动作归因")).toBeInTheDocument();
     expect(screen.getByText("Headline eligible")).toBeInTheDocument();
 

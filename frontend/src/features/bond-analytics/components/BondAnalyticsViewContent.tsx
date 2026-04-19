@@ -248,6 +248,7 @@ export function BondAnalyticsViewContent() {
           onScenarioSetChange={setScenarioSet}
           spreadScenarios={spreadScenarios}
           onSpreadScenariosChange={setSpreadScenarios}
+          actionAttributionResult={actionAttributionQuery.data?.result ?? null}
           overviewModel={overviewModel}
           onOpenModuleDetail={setActiveTab}
           onRefreshAnalytics={() => void handleBondAnalyticsRefresh()}

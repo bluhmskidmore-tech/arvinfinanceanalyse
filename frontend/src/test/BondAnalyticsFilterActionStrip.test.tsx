@@ -33,11 +33,12 @@ function mockAnalyticsFilterProps() {
 }
 
 describe("BondAnalyticsFilterActionStrip", () => {
-  it("renders filters, refresh control, refresh state, and cockpit rule; wires callbacks", async () => {
+  it("renders primary controls, exposes advanced filters progressively, and wires callbacks", async () => {
     const user = userEvent.setup();
     const onReportDateChange = vi.fn();
     const onPeriodTypeChange = vi.fn();
     const onRefreshAnalytics = vi.fn();
+    const analyticsProps = mockAnalyticsFilterProps();
 
     renderStrip(
       <BondAnalyticsFilterActionStrip
@@ -46,7 +47,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
         onReportDateChange={onReportDateChange}
         periodType="MoM"
         onPeriodTypeChange={onPeriodTypeChange}
-        {...mockAnalyticsFilterProps()}
+        {...analyticsProps}
         onRefreshAnalytics={onRefreshAnalytics}
         isAnalyticsRefreshing={false}
         analyticsRefreshError={null}
@@ -57,19 +58,15 @@ describe("BondAnalyticsFilterActionStrip", () => {
     expect(screen.getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(screen.getByText("Report date")).toBeInTheDocument();
     expect(screen.getByText("Period")).toBeInTheDocument();
-    expect(screen.getByText("Overview refresh")).toBeInTheDocument();
-    expect(screen.getByText("Refresh state")).toBeInTheDocument();
-    expect(screen.getByText("Cockpit rule")).toBeInTheDocument();
+    expect(screen.getByText("Refresh")).toBeInTheDocument();
     expect(screen.getByText("No refresh run has been captured yet.")).toBeInTheDocument();
-    expect(
-      screen.getByText("Only action attribution may promote into headline or main-rail analytics in this phase."),
-    ).toBeInTheDocument();
+    expect(screen.getByText("高级筛选")).toBeInTheDocument();
 
     expect(screen.getByTitle("2026-03-31")).toBeInTheDocument();
     expect(screen.getByTitle("Month")).toBeInTheDocument();
 
     const comboboxes = screen.getAllByRole("combobox");
-    expect(comboboxes).toHaveLength(6);
+    expect(comboboxes.length).toBeGreaterThanOrEqual(2);
 
     fireEvent.mouseDown(comboboxes[0]!);
     const dateOption = await screen.findByTitle("2026-02-28");
@@ -86,6 +83,17 @@ describe("BondAnalyticsFilterActionStrip", () => {
 
     await waitFor(() => {
       expect(onPeriodTypeChange).toHaveBeenCalledWith("YTD");
+    });
+
+    await user.click(screen.getByText("高级筛选"));
+    const advancedComboboxes = screen.getAllByRole("combobox");
+    expect(advancedComboboxes).toHaveLength(6);
+
+    fireEvent.mouseDown(advancedComboboxes[2]!);
+    const assetOption = await screen.findByTitle("利率债");
+    await user.click(assetOption);
+    await waitFor(() => {
+      expect(analyticsProps.onAssetClassChange).toHaveBeenCalledWith("rate");
     });
 
     await user.click(screen.getByTestId("bond-analytics-refresh-button"));
