@@ -1,12 +1,14 @@
 :root {
-  color: #162033;
-  background: #f4f6f9;
+  color-scheme: light;
+  color: #1c2833;
+  background: #f1f3f2;
   font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  --moss-shell-gap: 24px;
 }
 
 * {
@@ -22,8 +24,9 @@ body,
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(31, 94, 255, 0.05), transparent 24%),
-    linear-gradient(180deg, #f8f9fc 0%, #f3f5f8 100%);
+    radial-gradient(circle at top left, rgba(44, 90, 121, 0.08), transparent 28%),
+    radial-gradient(circle at top right, rgba(90, 118, 107, 0.08), transparent 24%),
+    linear-gradient(180deg, #faf9f5 0%, #eef2ef 100%);
 }
 
 a {
@@ -40,4 +43,88 @@ select {
 
 .app-root {
   min-height: 100vh;
+}
+
+.workbench-shell-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 300px) minmax(0, 1fr);
+  gap: var(--moss-shell-gap);
+  align-items: start;
+}
+
+.workbench-shell-aside {
+  position: sticky;
+  top: 24px;
+}
+
+.workbench-main-column {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--moss-shell-gap);
+  min-width: 0;
+}
+
+.dashboard-hero-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.dashboard-gov-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 20px;
+}
+
+.dashboard-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.dashboard-primary-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.dashboard-secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.dashboard-span-wide {
+  grid-column: 1 / -1;
+}
+
+.overview-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+@media (max-width: 1180px) {
+  .workbench-shell-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .workbench-shell-aside {
+    position: static;
+  }
+
+  .dashboard-gov-grid,
+  .dashboard-primary-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-secondary-grid {
+    grid-template-columns: 1fr;
+  }
 }

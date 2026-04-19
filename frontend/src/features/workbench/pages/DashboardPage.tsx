@@ -5,6 +5,7 @@ import type { ResultMeta } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { shellTokens } from "../../../theme/tokens";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { DashboardBondCounterpartySection } from "../../executive-dashboard/components/DashboardBondCounterpartySection";
@@ -92,13 +93,72 @@ function resolveReturnedDateLabel(
   };
 }
 
+const dashboardHeroStyle = {
+  padding: "24px clamp(20px, 2vw, 30px)",
+  borderRadius: 28,
+  border: `1px solid ${shellTokens.colorBorder}`,
+  background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 78%)`,
+  boxShadow: shellTokens.shadowPanel,
+} as const;
+
+const dashboardSummaryCardStyle = {
+  display: "grid",
+  gap: 6,
+  padding: "14px 16px",
+  borderRadius: 18,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: "rgba(255,255,255,0.55)",
+  minHeight: 92,
+  alignContent: "start",
+} as const;
+
+const dashboardWarningPanelStyle = {
+  display: "grid",
+  gap: 10,
+  padding: 18,
+  borderRadius: 20,
+  border: `1px solid ${shellTokens.colorBorderWarning}`,
+  background: shellTokens.colorBgWarningSoft,
+  color: shellTokens.colorTextWarning,
+  minHeight: "100%",
+} as const;
+
+const dashboardGovernancePanelStyle = {
+  display: "grid",
+  gap: 14,
+  padding: 18,
+  borderRadius: 20,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: `linear-gradient(180deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 100%)`,
+} as const;
+
+const dashboardStatusCardStyle = {
+  display: "grid",
+  gap: 8,
+  padding: 16,
+  borderRadius: 18,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: shellTokens.colorBgCanvas,
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+} as const;
+
+const dashboardGovernedSurfaceStyle = {
+  display: "grid",
+  gap: 16,
+  padding: 18,
+  borderRadius: 24,
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: `linear-gradient(180deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 100%)`,
+} as const;
+
 const reportDateInputStyle = {
   minWidth: 180,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
+  padding: "12px 14px",
+  borderRadius: 14,
+  border: `1px solid ${shellTokens.colorBorder}`,
+  background: shellTokens.colorBgCanvas,
+  color: shellTokens.colorTextPrimary,
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
 } as const;
 
 export default function DashboardPage() {
@@ -188,6 +248,39 @@ export default function DashboardPage() {
 
   const overviewStatus = describeMetaStatus(overviewMeta);
   const attributionStatus = describeMetaStatus(attributionMeta);
+  const summaryCards = useMemo(
+    () => [
+      {
+        label: "Report date",
+        value: effectiveReportDate || "latest",
+        note: snapshotResult?.report_date ? "backend effective" : "user selection",
+      },
+      {
+        label: "Snapshot",
+        value: snapshotQuery.isLoading ? "loading" : snapshotResult?.mode ?? "pending",
+        note: snapshotPartialNote ? "partial surface" : "complete surface",
+      },
+      {
+        label: "Attention",
+        value: attentionItems.length > 0 ? String(attentionItems.length) : "0",
+        note: attentionItems.length > 0 ? attentionItems.join(" / ") : "no governed flags",
+      },
+      {
+        label: "Data source",
+        value: client.mode === "real" ? "Real API" : "Mock mode",
+        note: client.mode === "real" ? "live read path" : "demo surface only",
+      },
+    ],
+    [
+      attentionItems,
+      client.mode,
+      effectiveReportDate,
+      snapshotPartialNote,
+      snapshotQuery.isLoading,
+      snapshotResult?.mode,
+      snapshotResult?.report_date,
+    ],
+  );
 
   return (
     <section data-testid="fixed-income-dashboard-page">
@@ -197,6 +290,7 @@ export default function DashboardPage() {
         description="首页只保留当前已经落地的受治理概览与经营贡献拆解，不再在首屏混排演示模块、排除面探测结果或静态管理摘要。需要继续下钻时，进入对应工作台。"
         badgeLabel={client.mode === "real" ? "真实 API" : "Mock Mode"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
+        style={dashboardHeroStyle}
         actions={
           <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "end" }}>
             <label style={{ display: "grid", gap: 6 }}>
@@ -231,107 +325,159 @@ export default function DashboardPage() {
         }
       >
         <div style={{ display: "grid", gap: 14 }}>
-          <p style={{ margin: 0, color: "#64748b", fontSize: 13, lineHeight: 1.7 }}>
+          <p
+            style={{
+              margin: 0,
+              color: shellTokens.colorTextSecondary,
+              fontSize: 13,
+              lineHeight: 1.75,
+              maxWidth: 860,
+            }}
+          >
             当前首页优先回答两个问题：现在看到的核心经营数字是什么，以及是否需要进入专门页面继续下钻。
             未纳入当前 cutover 的模块不再在这里尝试请求。
           </p>
+          <div className="dashboard-hero-summary">
+            {summaryCards.map((card) => (
+              <article key={card.label} style={dashboardSummaryCardStyle}>
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  {card.label}
+                </span>
+                <strong
+                  style={{
+                    color: shellTokens.colorTextPrimary,
+                    fontSize: 18,
+                    lineHeight: 1.2,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  {card.value}
+                </strong>
+                <span
+                  style={{
+                    color: shellTokens.colorTextSecondary,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {card.note}
+                </span>
+              </article>
+            ))}
+          </div>
         </div>
       </PageHeader>
 
-      {client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote ? (
-        <section
-          data-testid="dashboard-data-warning"
-          style={{
-            display: "grid",
-            gap: 10,
-            marginBottom: 20,
-            padding: 16,
-            borderRadius: 18,
-            border: "1px solid #f1d3b5",
-            background: "#fff8f1",
-            color: "#8a4b14",
-          }}
-        >
+      <div className="dashboard-gov-grid">
+        {client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote ? (
+          <section data-testid="dashboard-data-warning" style={dashboardWarningPanelStyle}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>Data Status</div>
           {client.mode !== "real" ? (
-            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
               当前页面正在使用 mock 数据源。此时首页数字只用于界面演示，不应作为业务判断依据。
             </div>
           ) : null}
           {attentionItems.length > 0 ? (
-            <div style={{ fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 13, lineHeight: 1.7 }}>
               当前首页存在需要人工留意的数据状态： {attentionItems.join("；")}
             </div>
           ) : null}
           {snapshotPartialNote ? (
-            <div style={{ fontSize: 13, lineHeight: 1.6 }}>{snapshotPartialNote}</div>
+            <div style={{ fontSize: 13, lineHeight: 1.7 }}>{snapshotPartialNote}</div>
           ) : null}
-        </section>
-      ) : null}
+          </section>
+        ) : (
+          <section style={dashboardGovernancePanelStyle}>
+            <div
+              style={{
+                color: shellTokens.colorTextMuted,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.08em",
+                textTransform: "uppercase",
+              }}
+            >
+              Decision Focus
+            </div>
+            <div style={{ color: shellTokens.colorTextPrimary, fontSize: 18, fontWeight: 700 }}>
+              Keep the first screen verdict-driven
+            </div>
+            <div style={{ color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.7 }}>
+              Review governed freshness and fallback state before trusting any number, then drill
+              into the dedicated workspace only when the surface shows clear follow-up demand.
+            </div>
+          </section>
+        )}
 
-      <section
-        data-testid="dashboard-data-status-strip"
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-          gap: 12,
-          marginBottom: 20,
-        }}
-      >
-        {[
-          { title: "Overview", status: overviewStatus, date: overviewDateLabel },
-          { title: "Attribution", status: attributionStatus, date: attributionDateLabel },
-        ].map((item) => (
-          <article
-            key={item.title}
+        <section style={dashboardGovernancePanelStyle}>
+          <div
             style={{
-              display: "grid",
-              gap: 6,
-              padding: 14,
-              borderRadius: 16,
-              border: "1px solid #e4ebf5",
-              background: "#f7f9fc",
+              color: shellTokens.colorTextMuted,
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#162033" }}>{item.title}</div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              quality: {item.status.quality}
-            </div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              {item.date.label}: {item.date.value}
-            </div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              generated_at: {item.status.generatedAt}
-            </div>
-            <div style={{ fontSize: 12, color: "#64748b" }}>
-              fallback: {item.status.fallback}
-            </div>
-          </article>
-        ))}
-      </section>
+            Governed Surfaces
+          </div>
+          <section
+            data-testid="dashboard-data-status-strip"
+            className="dashboard-status-grid"
+            style={{ display: "grid", marginBottom: 0 }}
+          >
+            {[
+              { title: "Overview", status: overviewStatus, date: overviewDateLabel },
+              { title: "Attribution", status: attributionStatus, date: attributionDateLabel },
+            ].map((item) => (
+              <article key={item.title} style={dashboardStatusCardStyle}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: shellTokens.colorTextPrimary,
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  {item.title}
+                </div>
+                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                  quality: {item.status.quality}
+                </div>
+                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                  {item.date.label}: {item.date.value}
+                </div>
+                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                  generated_at: {item.status.generatedAt}
+                </div>
+                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                  fallback: {item.status.fallback}
+                </div>
+              </article>
+            ))}
+          </section>
+        </section>
+      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 20,
-        }}
-      >
-        <OverviewSection
+      <div style={{ display: "grid", gap: 20 }}>
+        <div className="dashboard-primary-grid">
+          <OverviewSection
           overview={adapterOutput.overview}
           onRetry={() => void snapshotQuery.refetch()}
         />
 
-        <DashboardNewsDigestSection />
-
-        <DashboardMacroSpotSection />
-
-        <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
-
-        <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
-
-        <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
-
-        <section data-testid="dashboard-governed-surface" style={{ display: "grid", gap: 16 }}>
+        <section
+          data-testid="dashboard-governed-surface"
+          style={dashboardGovernedSurfaceStyle}
+        >
           <PageSectionLead
             eyebrow="Governed"
             title="经营贡献拆解"
@@ -345,6 +491,22 @@ export default function DashboardPage() {
             />
           </Suspense>
         </section>
+
+        </div>
+
+        <div className="dashboard-secondary-grid">
+          <div className="dashboard-span-wide">
+            <DashboardBondHeadlineSection reportDate={effectiveReportDate} />
+          </div>
+
+          <DashboardMacroSpotSection />
+
+          <DashboardNewsDigestSection />
+
+          <DashboardBondCounterpartySection reportDate={effectiveReportDate} />
+
+          <DashboardLiabilityCounterpartySection reportDate={effectiveReportDate} />
+        </div>
 
         <FormalResultMetaPanel
           testId="dashboard-governed-meta"

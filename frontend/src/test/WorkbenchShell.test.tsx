@@ -57,10 +57,37 @@ describe("WorkbenchShell", () => {
     const hrefs = within(subnav)
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
-    expect(hrefs).toEqual(
-      expect.arrayContaining(["/platform-config", "/reports"]),
-    );
+    expect(hrefs).toEqual(["/platform-config"]);
     expect(hrefs).not.toContain("/cube-query");
+    expect(hrefs).not.toContain("/reports");
+  });
+
+  it("renders a portfolio-specific decision surface when browsing the portfolio workbench", async () => {
+    renderShellAt("/pnl");
+
+    const lead = await screen.findByTestId("portfolio-workbench-lead");
+    expect(lead).toHaveTextContent("组合状态先看错配，再看损益，最后定位仓位与归因");
+    expect(lead).toHaveTextContent("资产负债分析");
+
+    const flow = screen.getByTestId("portfolio-workbench-flow");
+    expect(flow).toHaveTextContent("先看资产负债");
+    expect(flow).toHaveTextContent("最后做原因解释");
+
+    const board = screen.getByTestId("portfolio-workbench-board");
+    expect(board).toHaveTextContent("状态判断");
+    expect(board).toHaveTextContent("仓位与结构");
+    expect(board).toHaveTextContent("原因解释");
+    expect(board).toHaveTextContent("债券总览");
+    expect(board).toHaveTextContent("持仓透视");
+    expect(board).toHaveTextContent("损益桥接");
+  });
+
+  it("does not render the portfolio decision surface outside the portfolio group", async () => {
+    renderShellAt("/platform-config");
+
+    expect(await screen.findByText("platform body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
   });
 
   it("renders the reserved modules section outside the grouped workspace nav", async () => {
