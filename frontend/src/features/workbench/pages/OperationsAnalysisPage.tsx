@@ -595,7 +595,24 @@ export default function OperationsAnalysisPage() {
       </SectionCard>
 
 
-      <div data-testid="operations-business-kpis-staged" style={operationsHeroStripStyle}>
+      <div data-testid="operations-business-kpis" style={operationsHeroStripStyle}>
+        {operationsHeadlineCards.map((card) => (
+          <KpiCard
+            key={card.title}
+            label={card.title}
+            value={card.value}
+            unit={card.unit}
+            detail={card.detail}
+            valueVariant="metric"
+            status={card.status}
+          />
+        ))}
+      </div>
+
+      <div
+        data-testid="operations-business-kpis-staged"
+        style={{ ...operationsHeroStripStyle, display: "none" }}
+      >
         <KpiCard
           label="市场资产"
           value="3,525.0"
@@ -648,9 +665,24 @@ export default function OperationsAnalysisPage() {
         description="先看管理层结论，再看收益成本桥和质量观察，确认当前经营判断、利差来源和压力点是否一致。"
       />
       <div data-testid="operations-conclusion-grid" style={tripleGridStyle}>
-        <BusinessConclusion />
+        <BusinessConclusion
+          reportDate={balanceOverviewQuery.data?.result.report_date}
+          detailRowCount={balanceOverviewQuery.data?.result.detail_row_count}
+          summaryRowCount={balanceOverviewQuery.data?.result.summary_row_count}
+          marketValueAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount)}
+          amortizedCostAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
+          accruedInterestAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
+          missingFxCount={missingFxRows.length}
+        />
         <RevenueCostBridge />
-        <QualityObservation />
+        <QualityObservation
+          sourceCount={sourceSummaries.length}
+          macroCount={macroLatest.length}
+          newsCount={newsTotal}
+          fxMaterializedCount={fxFormalStatus?.materialized_count}
+          fxCandidateCount={fxFormalStatus?.candidate_count}
+          missingFxCount={missingFxRows.length}
+        />
       </div>
 
       <PageSectionLead
@@ -681,7 +713,12 @@ export default function OperationsAnalysisPage() {
       />
       <div data-testid="operations-structure-grid" style={pairGridStyle}>
         <TenorConcentrationPanel />
-        <ManagementOutput />
+        <ManagementOutput
+          recommendationTitle={recommendation.title}
+          recommendationDetail={recommendation.detail}
+          recommendationActionLabel={recommendation.actionLabel}
+          missingFxCount={missingFxRows.length}
+        />
       </div>
 
 
