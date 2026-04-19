@@ -156,6 +156,11 @@ describe("PnlBridgePage", () => {
     expect(summary).toHaveTextContent("15.45");
     expect(summary).toHaveTextContent("15.40");
 
+    const conclusion = await screen.findByTestId("pnl-bridge-conclusion");
+    expect(conclusion).toHaveTextContent("当前结论");
+    expect(conclusion).toHaveTextContent("解释损益基本贴近实际损益");
+    expect(conclusion).toHaveTextContent("残差需要跟踪");
+
     const warnings = await screen.findByTestId("pnl-bridge-warnings");
     expect(warnings).toHaveTextContent("Residual spike on instrument IC-1");
 

@@ -1717,6 +1717,14 @@ describe("createApiClient", () => {
   });
 
   it("uses real mode to fetch formal pnl bridge envelope", async () => {
+    const yuan = (raw: number, signAware = true) => ({
+      raw,
+      unit: "yuan" as const,
+      display: String(raw),
+      precision: 2,
+      sign_aware: signAware,
+    });
+
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({
@@ -1743,19 +1751,19 @@ describe("createApiClient", () => {
             ok_count: 0,
             warning_count: 0,
             error_count: 0,
-            total_beginning_dirty_mv: "0",
-            total_ending_dirty_mv: "0",
-            total_carry: "0",
-            total_roll_down: "0",
-            total_treasury_curve: "0",
-            total_credit_spread: "0",
-            total_fx_translation: "0",
-            total_realized_trading: "0",
-            total_unrealized_fv: "0",
-            total_manual_adjustment: "0",
-            total_explained_pnl: "0",
-            total_actual_pnl: "0",
-            total_residual: "0",
+            total_beginning_dirty_mv: yuan(0, false),
+            total_ending_dirty_mv: yuan(0, false),
+            total_carry: yuan(0),
+            total_roll_down: yuan(0),
+            total_treasury_curve: yuan(0),
+            total_credit_spread: yuan(0),
+            total_fx_translation: yuan(0),
+            total_realized_trading: yuan(0),
+            total_unrealized_fv: yuan(0),
+            total_manual_adjustment: yuan(0),
+            total_explained_pnl: yuan(0),
+            total_actual_pnl: yuan(0),
+            total_residual: yuan(0),
             quality_flag: "ok",
           },
           warnings: [],
@@ -1769,7 +1777,7 @@ describe("createApiClient", () => {
       fetchImpl: fetchMock as unknown as typeof fetch,
     });
 
-    await client.getPnlBridge("2026-02-28");
+    const payload = await client.getPnlBridge("2026-02-28");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/pnl/bridge?report_date=2026-02-28",
@@ -1779,6 +1787,11 @@ describe("createApiClient", () => {
         }),
       }),
     );
+    expect(payload.result.summary.total_actual_pnl).toMatchObject({
+      raw: 0,
+      unit: "yuan",
+      sign_aware: true,
+    });
   });
 
   it("uses real mode to fetch product-category pnl dates", async () => {

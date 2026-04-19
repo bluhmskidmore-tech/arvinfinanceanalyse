@@ -22,6 +22,13 @@ import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
 import { pnlActionButtonStyle } from "./PnlRuntimeSupport";
 
+function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
+  const tone = toneFromNumeric(n);
+  if (tone === "positive") return "positive";
+  if (tone === "negative") return "negative";
+  return "default";
+}
+
 const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
@@ -251,6 +258,44 @@ function SectionLead(props: {
   );
 }
 
+function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
+  if (!summary) {
+    return {
+      title: "当前结论",
+      body: "正式桥接结果待载入，先确认报告日与上游物化状态。",
+      detail: "读模型返回后再判断 explained PnL 与 actual PnL 的贴合程度。",
+    };
+  }
+
+  const explained = Math.abs(summary.total_explained_pnl.raw ?? 0);
+  const actual = Math.abs(summary.total_actual_pnl.raw ?? 0);
+  const residual = Math.abs(summary.total_residual.raw ?? 0);
+  const base = Math.max(explained, actual, 1);
+  const residualRatio = residual / base;
+
+  if (summary.quality_flag === "error" || residualRatio > 0.1) {
+    return {
+      title: "当前结论",
+      body: "解释损益与实际损益存在明显偏离，需要优先检查残差来源。",
+      detail: `当前 residual ${summary.total_residual.display}，已高于首屏可接受阈值。`,
+    };
+  }
+
+  if (summary.quality_flag === "warning" || residualRatio > 0.02) {
+    return {
+      title: "当前结论",
+      body: "解释损益基本贴近实际损益，但仍有残差需要跟踪。",
+      detail: `当前 residual ${summary.total_residual.display}，建议结合 warning 与明细表继续核对。`,
+    };
+  }
+
+  return {
+    title: "当前结论",
+    body: "解释损益与实际损益基本一致，残差可控。",
+    detail: `当前 residual ${summary.total_residual.display}，formal bridge 可作为首屏结论阅读。`,
+  };
+}
+
 function numericNumericCol(
   field: keyof PnlBridgeRow,
   headerName: string,
@@ -353,6 +398,7 @@ export default function PnlBridgePage() {
   const warnings = vm?.warnings ?? [];
 
   const chartOption = useMemo(() => (summary ? buildWaterfallOption(summary) : null), [summary]);
+  const conclusion = useMemo(() => buildBridgeConclusion(summary), [summary]);
 
   const agGridShellStyle = useMemo(
     () =>
@@ -510,6 +556,30 @@ export default function PnlBridgePage() {
         >
           {summary ? (
             <>
+              <Card
+                data-testid="pnl-bridge-conclusion"
+                size="small"
+                style={{
+                  marginBottom: 20,
+                  borderRadius: 16,
+                  border: "1px solid #dbe7f5",
+                  background: "#f7fbff",
+                  boxShadow: "0 10px 24px rgba(31, 94, 255, 0.06)",
+                }}
+              >
+                <div style={{ display: "grid", gap: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7f99" }}>
+                    {conclusion.title}
+                  </span>
+                  <div style={{ fontSize: 20, fontWeight: 600, color: "#162033", lineHeight: 1.4 }}>
+                    {conclusion.body}
+                  </div>
+                  <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+                    {conclusion.detail}
+                  </div>
+                </div>
+              </Card>
+
               <div data-testid="pnl-bridge-summary-cards" style={summaryGridStyle}>
                 <KpiCard title="行数" value={cellText(summary.row_count)} detail="summary.row_count" unit="行" />
                 <KpiCard title="质量 ok" value={cellText(summary.ok_count)} detail="summary.ok_count" tone="default" />
@@ -524,19 +594,19 @@ export default function PnlBridgePage() {
                   title="合计 explained PnL"
                   value={summary.total_explained_pnl.display}
                   detail="summary.total_explained_pnl"
-                  tone={toneFromNumeric(summary.total_explained_pnl)}
+                  tone={kpiToneFromNumeric(summary.total_explained_pnl)}
                 />
                 <KpiCard
                   title="合计 actual PnL"
                   value={summary.total_actual_pnl.display}
                   detail="summary.total_actual_pnl"
-                  tone={toneFromNumeric(summary.total_actual_pnl)}
+                  tone={kpiToneFromNumeric(summary.total_actual_pnl)}
                 />
                 <KpiCard
                   title="合计 residual"
                   value={summary.total_residual.display}
                   detail="summary.total_residual"
-                  tone={toneFromNumeric(summary.total_residual)}
+                  tone={kpiToneFromNumeric(summary.total_residual)}
                 />
                 <KpiCard
                   title="质量 quality_flag"
