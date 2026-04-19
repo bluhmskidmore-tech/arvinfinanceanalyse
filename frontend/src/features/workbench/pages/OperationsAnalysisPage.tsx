@@ -100,11 +100,11 @@ function formatOverviewNumber(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
     return "—";
   }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
+  const parsed = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(parsed)) {
     return String(raw);
   }
-  return n.toLocaleString("zh-CN");
+  return parsed.toLocaleString("zh-CN");
 }
 
 function buildStatusCardContent(input: {
@@ -126,8 +126,8 @@ function formatGroupCounts(groupCounts: Record<string, number> | undefined): str
     return "—";
   }
   return Object.entries(groupCounts)
-    .map(([k, n]) => `${k} ${n}`)
-    .join(" · ");
+    .map(([key, count]) => `${key} ${count}`)
+    .join(" / ");
 }
 
 function summarizeNewsPayload(event: {
@@ -143,7 +143,7 @@ function summarizeNewsPayload(event: {
     return event.payload_json;
   }
   if (event.error_code !== 0) {
-    return event.error_msg || "供应商回调返回了空错误信息。";
+    return event.error_msg || "供应商回调返回空错误信息。";
   }
   return "回调内容为空。";
 }
@@ -209,8 +209,10 @@ export default function OperationsAnalysisPage() {
     queryFn: () => client.getBalanceAnalysisDates(),
     retry: false,
   });
+
   const balanceReportDates = balanceDatesQuery.data?.result.report_dates ?? [];
   const latestBalanceReportDate = balanceReportDates[0] ?? null;
+
   const balanceOverviewQuery = useQuery({
     queryKey: [
       "operations-entry",
@@ -227,6 +229,7 @@ export default function OperationsAnalysisPage() {
     enabled: Boolean(latestBalanceReportDate),
     retry: false,
   });
+
   const balanceSummaryQuery = useQuery({
     queryKey: [
       "operations-entry",
@@ -269,6 +272,11 @@ export default function OperationsAnalysisPage() {
     [newsQuery.data?.result.events],
   );
   const newsTotal = newsQuery.data?.result.total_rows ?? 0;
+  const balanceSummaryRows = useMemo(
+    () => balanceSummaryQuery.data?.result.rows ?? [],
+    [balanceSummaryQuery.data?.result.rows],
+  );
+
   const latestTradeDate = useMemo(() => {
     if (macroLatest.length === 0) {
       return "暂无";
@@ -277,10 +285,6 @@ export default function OperationsAnalysisPage() {
       .map((point) => point.trade_date)
       .sort((left, right) => right.localeCompare(left))[0];
   }, [macroLatest]);
-  const balanceSummaryRows = useMemo(
-    () => balanceSummaryQuery.data?.result.rows ?? [],
-    [balanceSummaryQuery.data?.result.rows],
-  );
 
   const sourceStatusCard = buildStatusCardContent({
     isError: sourceQuery.isError,
@@ -302,27 +306,6 @@ export default function OperationsAnalysisPage() {
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
     detail: `最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} / 沿用前值数量 ${fxFormalStatus?.carry_forward_count ?? 0}`,
   });
-
-  const stagedBusinessKpis = useMemo(
-    () => [
-      { title: "市场资产", value: "3,525.0", unit: "亿", detail: "债券 + 同业", trend: "up" as const },
-      { title: "市场负债", value: "1,817.9", unit: "亿", detail: "发行 + 同业", trend: "up" as const },
-      { title: "静态资产收益率", value: "2.07%", detail: "当前加权", trend: "up" as const },
-      { title: "静态负债成本", value: "1.77%", detail: "当前加权", trend: "up" as const },
-      { title: "静态利差", value: "29.5", unit: "bp", detail: "收益 - 成本", trend: "down" as const },
-      { title: "净经营贡献", value: "40.65", unit: "亿", detail: "静态年化口径", trend: "down" as const },
-      { title: "发行负债占比", value: "66.3%", detail: "CD 占发行 81.8%", trend: "up" as const },
-      {
-        title: "重大关注",
-        value: "4",
-        unit: "项",
-        detail: "缺口 / 滚续 / 逾期 / 集中度",
-        status: "warning" as const,
-        trend: "down" as const,
-      },
-    ],
-    [],
-  );
 
   const recommendation = useMemo(() => {
     const hasCriticalError =
@@ -376,69 +359,70 @@ export default function OperationsAnalysisPage() {
     balanceDatesQuery.isError,
     balanceOverviewQuery.data?.result,
     balanceOverviewQuery.isError,
+    fxFormalRows.length,
     fxFormalStatusQuery.isError,
     latestBalanceReportDate,
     macroCatalogQuery.isError,
-    macroLatestQuery.isError,
     macroLatest.length,
+    macroLatestQuery.isError,
     missingFxRows.length,
     sourceQuery.isError,
     sourceSummaries.length,
-    fxFormalRows.length,
   ]);
+
   const operationsHeadlineCards = useMemo(
     () => [
       {
-        title: "市场价值合计",
+        title: "Market Value",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
-        unit: "亿",
-        detail: "正式余额读链路",
+        unit: "Yi",
+        detail: "governed balance overview",
       },
       {
-        title: "摊余成本合计",
+        title: "Amortized Cost",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
-        unit: "亿",
-        detail: "正式余额读链路",
+        unit: "Yi",
+        detail: "governed balance overview",
       },
       {
-        title: "应计利息合计",
+        title: "Accrued Interest",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
-        unit: "亿",
-        detail: "正式余额读链路",
+        unit: "Yi",
+        detail: "governed balance overview",
       },
       {
-        title: "源批次数",
+        title: "Source Batches",
         value: sourceStatusCard.value,
         detail: sourceStatusCard.detail,
       },
       {
-        title: "宏观最新点位",
+        title: "Macro Latest",
         value: macroStatusCard.value,
         detail: macroStatusCard.detail,
       },
       {
-        title: "Formal FX 覆盖",
+        title: "Formal FX Coverage",
         value: formalFxStatusCard.value,
         detail: formalFxStatusCard.detail,
         status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
       },
       {
-        title: "新闻事件",
+        title: "News Events",
         value: newsStatusCard.value,
         detail: newsStatusCard.detail,
       },
       {
-        title: "汇总行数",
+        title: "Summary Rows",
         value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
-        detail: `明细 ${balanceOverviewQuery.data?.result.detail_row_count ?? 0} 行`,
+        detail: `detail ${balanceOverviewQuery.data?.result.detail_row_count ?? 0} rows`,
       },
     ],
     [
-      balanceOverviewQuery.data?.result.accrued_interest_amount,
-      balanceOverviewQuery.data?.result.detail_row_count,
-      balanceOverviewQuery.data?.result.summary_row_count,
-      balanceOverviewQuery.data?.result.total_amortized_cost_amount,
-      balanceOverviewQuery.data?.result.total_market_value_amount,
+      balanceOverviewQuery.data?.result?.detail_row_count,
+      balanceOverviewQuery.data?.result?.summary_row_count,
+      balanceOverviewQuery.data?.result?.total_accrued_interest_amount,
+      balanceOverviewQuery.data?.result?.total_amortized_cost_amount,
+      balanceOverviewQuery.data?.result?.total_market_value_amount,
       formalFxStatusCard.detail,
       formalFxStatusCard.value,
       fxFormalStatusQuery.isError,
@@ -450,8 +434,6 @@ export default function OperationsAnalysisPage() {
       sourceStatusCard.value,
     ],
   );
-
-  void stagedBusinessKpis;
 
   async function handlePnlRefresh() {
     setIsPnlRefreshing(true);
@@ -467,7 +449,7 @@ export default function OperationsAnalysisPage() {
       });
       if (payload.status !== "completed") {
         const hint =
-          payload.error_message ?? payload.detail ?? `PnL 刷新未完成：${payload.status}`;
+          payload.error_message ?? payload.detail ?? `PnL refresh not completed: ${payload.status}`;
         const rid = payload.run_id ? ` run_id: ${payload.run_id}` : "";
         throw new Error(`${hint}${rid}`);
       }
@@ -483,7 +465,7 @@ export default function OperationsAnalysisPage() {
       <PageHeader
         title="经营分析"
         eyebrow="Overview"
-        description="本页 wave 1 只保留受控证据条、正式专题入口和判断建议；首页不再混排硬编码 KPI、mock 经营事项或静态业务结论。所有正式数值均以后端契约为准。"
+        description="本页先回答经营判断、贡献结构和管理动作，再把受治理专题入口与运维证据面板放到后面。首页不再把 staged 指标伪装成正式经营结论。"
         badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
       >
@@ -525,76 +507,6 @@ export default function OperationsAnalysisPage() {
         </PageFilterTray>
       </PageHeader>
 
-      <PageSectionLead
-        eyebrow="Decision"
-        title="先确认今天的经营判断是否有证据支撑"
-        description="本页 wave 1 只保留受控证据条、正式专题入口和一个由实时查询状态生成的判断建议，不再在首页混排硬编码 KPI、mock 经营事项或静态业务结论。"
-      />
-      <SectionCard title={recommendation.title}>
-        <div
-          data-testid="operations-entry-recommendation"
-          style={{
-            display: "grid",
-            gap: 12,
-          }}
-        >
-          <p
-            style={{
-              margin: 0,
-              color: "#5c6b82",
-              fontSize: 14,
-              lineHeight: 1.7,
-            }}
-          >
-            {recommendation.detail}
-          </p>
-          <div style={summaryGridStyle}>
-            <div>
-              <KpiCard
-                title="Source preview"
-                value={sourceStatusCard.value}
-                detail={sourceStatusCard.detail}
-                valueVariant="text"
-                status={sourceQuery.isError ? "warning" : "normal"}
-              />
-            </div>
-            <div>
-              <KpiCard
-                title="Macro latest"
-                value={macroStatusCard.value}
-                detail={macroStatusCard.detail}
-                valueVariant="text"
-                status={macroCatalogQuery.isError || macroLatestQuery.isError ? "warning" : "normal"}
-              />
-            </div>
-            <div>
-              <KpiCard
-                title="Formal FX"
-                value={formalFxStatusCard.value}
-                detail={formalFxStatusCard.detail}
-                valueVariant="text"
-                status={fxFormalStatusQuery.isError ? "warning" : "normal"}
-              />
-            </div>
-            <div>
-              <KpiCard
-                title="Balance report"
-                value={latestBalanceReportDate ?? "Pending"}
-                detail="Resolved from balance-analysis dates"
-                valueVariant="text"
-                status={balanceDatesQuery.isError || balanceOverviewQuery.isError ? "warning" : "normal"}
-              />
-            </div>
-          </div>
-          <div>
-            <Link to={recommendation.actionTo} style={linkStyle}>
-              {recommendation.actionLabel}
-            </Link>
-          </div>
-        </div>
-      </SectionCard>
-
-
       <div data-testid="operations-business-kpis" style={operationsHeroStripStyle}>
         {operationsHeadlineCards.map((card) => (
           <KpiCard
@@ -609,60 +521,10 @@ export default function OperationsAnalysisPage() {
         ))}
       </div>
 
-      <div
-        data-testid="operations-business-kpis-staged"
-        style={{ ...operationsHeroStripStyle, display: "none" }}
-      >
-        <KpiCard
-          label="市场资产"
-          value="3,525.0"
-          unit="亿"
-          detail="债券+买入"
-          valueVariant="metric"
-        />
-        <KpiCard
-          label="市场负债"
-          value="1,817.9"
-          unit="亿"
-          detail="发行+买入"
-          valueVariant="metric"
-        />
-        <KpiCard label="静态资产收益率" value="2.07%" detail="加权到期" valueVariant="metric" />
-        <KpiCard label="静态负债成本" value="1.77%" detail="当期加权" valueVariant="metric" />
-        <KpiCard
-          label="静态利差"
-          value="29.5"
-          unit="bp"
-          detail="资产收益-负债成本"
-          valueVariant="metric"
-        />
-        <KpiCard
-          label="净经营贡献"
-          value="40.65"
-          unit="亿"
-          detail="静态年化口径"
-          valueVariant="metric"
-        />
-        <KpiCard
-          label="发行负债占比"
-          value="66.3%"
-          detail="CD占发行 81.8%"
-          valueVariant="metric"
-        />
-        <KpiCard
-          label="重大关注"
-          value="4"
-          unit="项"
-          detail="缺口/滚续/集中度"
-          valueVariant="metric"
-          status="warning"
-        />
-      </div>
-
       <PageSectionLead
-        eyebrow="核心视图"
+        eyebrow="Core View"
         title="结论、桥接与质量观察"
-        description="先看管理层结论，再看收益成本桥和质量观察，确认当前经营判断、利差来源和压力点是否一致。"
+        description="首屏先给出当前已被正式读链路支撑的经营判断，再用质量观察告诉你哪些指标仍是待补口径。收益成本桥继续明确标为示意。"
       />
       <div data-testid="operations-conclusion-grid" style={tripleGridStyle}>
         <BusinessConclusion
@@ -686,9 +548,9 @@ export default function OperationsAnalysisPage() {
       </div>
 
       <PageSectionLead
-        eyebrow="经营贡献"
-        title="经营贡献与重点事项"
-        description="这一组把余额贡献、重点事项和经营日历放在同一层，方便从结论直接过渡到行动与跟踪。"
+        eyebrow="Contribution"
+        title="经营贡献与行动项"
+        description="把正式余额读面的汇总行、当前关注事项和近期经营日历放到同一层，方便从判断直接过渡到行动。"
       />
       <div data-testid="operations-contribution-grid" style={contributionGridStyle}>
         <BusinessContributionTable
@@ -698,18 +560,18 @@ export default function OperationsAnalysisPage() {
           error={balanceSummaryQuery.isError}
           onRetry={() => void balanceSummaryQuery.refetch()}
         />
-        <SectionCard title="关注事项">
+        <SectionCard title="本期关注事项">
           <AlertList items={OPERATIONS_WATCH_ITEMS} />
         </SectionCard>
-        <SectionCard title="经营日历">
+        <SectionCard title="近期经营日历">
           <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
         </SectionCard>
       </div>
 
       <PageSectionLead
-        eyebrow="结构解读"
-        title="期限结构与管理输出"
-        description="将期限缺口、集中度和管理输出并排，形成经营判断之后的结构解释层。"
+        eyebrow="Structure"
+        title="期限与集中度 / 管理输出"
+        description="期限缺口和管理动作继续放在本页首屏，但只保留可读的结构解读，不再冒充正式阈值结论。"
       />
       <div data-testid="operations-structure-grid" style={pairGridStyle}>
         <TenorConcentrationPanel />
@@ -720,8 +582,6 @@ export default function OperationsAnalysisPage() {
           missingFxCount={missingFxRows.length}
         />
       </div>
-
-
 
       <PageSectionLead
         eyebrow="专题入口"
@@ -795,7 +655,7 @@ export default function OperationsAnalysisPage() {
                   {balanceOverviewQuery.data.result.report_date}
                 </span>
                 ，口径 position_scope={balanceOverviewQuery.data.result.position_scope}，
-                currency_basis={balanceOverviewQuery.data.result.currency_basis}。这里仅保留正式工作簿速览，
+                currency_basis={balanceOverviewQuery.data.result.currency_basis}。这里只保留正式工作簿速览，
                 作为经营分析后的专题入口，不在本页展开完整工作簿。
               </p>
               <div style={balanceOverviewGridStyle}>
@@ -826,9 +686,7 @@ export default function OperationsAnalysisPage() {
                 <div data-testid="operations-entry-balance-amortized">
                   <KpiCard
                     title="摊余成本合计"
-                    value={formatOverviewNumber(
-                      balanceOverviewQuery.data.result.total_amortized_cost_amount,
-                    )}
+                    value={formatOverviewNumber(balanceOverviewQuery.data.result.total_amortized_cost_amount)}
                     detail="正式读面摊余成本"
                     valueVariant="text"
                   />
@@ -836,9 +694,7 @@ export default function OperationsAnalysisPage() {
                 <div data-testid="operations-entry-balance-accrued">
                   <KpiCard
                     title="应计利息合计"
-                    value={formatOverviewNumber(
-                      balanceOverviewQuery.data.result.total_accrued_interest_amount,
-                    )}
+                    value={formatOverviewNumber(balanceOverviewQuery.data.result.total_accrued_interest_amount)}
                     detail="正式读面应计利息"
                     valueVariant="text"
                   />
@@ -848,6 +704,32 @@ export default function OperationsAnalysisPage() {
           ) : null}
         </AsyncSection>
       </div>
+
+      <SectionCard title={recommendation.title}>
+        <div
+          data-testid="operations-entry-recommendation"
+          style={{
+            display: "grid",
+            gap: 12,
+          }}
+        >
+          <p
+            style={{
+              margin: 0,
+              color: "#5c6b82",
+              fontSize: 14,
+              lineHeight: 1.7,
+            }}
+          >
+            {recommendation.detail}
+          </p>
+          <div>
+            <Link to={recommendation.actionTo} style={linkStyle}>
+              {recommendation.actionLabel}
+            </Link>
+          </div>
+        </div>
+      </SectionCard>
 
       <Collapse
         style={{ marginTop: 28 }}
@@ -937,9 +819,9 @@ export default function OperationsAnalysisPage() {
                             预览模式 {summary.preview_mode ?? "—"}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            区间 {summary.report_start_date ?? "—"} — {summary.report_end_date ?? "—"} · 粒度{" "}
+                            区间 {summary.report_start_date ?? "—"} - {summary.report_end_date ?? "—"} / 粒度{" "}
                             {summary.report_granularity ?? "—"}
-                            {summary.rule_version ? ` · 规则 ${summary.rule_version}` : ""}
+                            {summary.rule_version ? ` / 规则 ${summary.rule_version}` : ""}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
                             导入批次 {summary.ingest_batch_id ?? "latest"}
@@ -986,14 +868,17 @@ export default function OperationsAnalysisPage() {
                             {point.trade_date} / {point.value_numeric.toFixed(2)} {point.unit}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-fetch-meta">
-                            刷新层级 {point.refresh_tier ?? "—"} · 拉取 {point.fetch_mode ?? "—"} · 粒度{" "}
+                            刷新层级 {point.refresh_tier ?? "—"} / 拉取 {point.fetch_mode ?? "—"} / 粒度{" "}
                             {point.fetch_granularity ?? "—"}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-policy-note">
                             策略说明 {point.policy_note?.trim() ? point.policy_note : "—"}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-latest-change">
-                            最新变动 {point.latest_change === null || point.latest_change === undefined ? "—" : String(point.latest_change)}
+                            最新变化{" "}
+                            {point.latest_change === null || point.latest_change === undefined
+                              ? "—"
+                              : String(point.latest_change)}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-recent-points">
                             近期点位{" "}
@@ -1002,8 +887,8 @@ export default function OperationsAnalysisPage() {
                               : "无"}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            频率 {point.frequency ?? "—"} · 供应商版本 {point.vendor_version ?? "—"}
-                            {point.quality_flag ? ` · 质量 ${point.quality_flag}` : ""}
+                            频率 {point.frequency ?? "—"} / 供应商版本 {point.vendor_version ?? "—"}
+                            {point.quality_flag ? ` / 质量 ${point.quality_flag}` : ""}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }}>
                             源版本 {point.source_version}
@@ -1041,10 +926,10 @@ export default function OperationsAnalysisPage() {
                             分组 {event.group_id} / {event.received_at}
                           </div>
                           <div style={{ color: "#8090a8", fontSize: 12 }} data-testid={`operations-news-meta-${event.event_key}`}>
-                            类型 {event.content_type ?? "—"} · serial {event.serial_id ?? "—"} · req{" "}
-                            {event.request_id ?? "—"} · idx {event.item_index ?? "—"} · err{" "}
+                            类型 {event.content_type ?? "—"} / serial {event.serial_id ?? "—"} / req{" "}
+                            {event.request_id ?? "—"} / idx {event.item_index ?? "—"} / err{" "}
                             {event.error_code}
-                            {event.error_msg?.trim() ? ` · ${event.error_msg}` : ""}
+                            {event.error_msg?.trim() ? ` / ${event.error_msg}` : ""}
                           </div>
                           <div style={{ color: "#162033", fontSize: 14, lineHeight: 1.6 }}>
                             {summarizeNewsPayload(event)}
@@ -1058,9 +943,7 @@ export default function OperationsAnalysisPage() {
                     title="正式 FX 中间价状态"
                     isLoading={fxFormalStatusQuery.isLoading}
                     isError={fxFormalStatusQuery.isError}
-                    isEmpty={
-                      !fxFormalStatusQuery.isLoading && !fxFormalStatusQuery.isError && fxFormalRows.length === 0
-                    }
+                    isEmpty={!fxFormalStatusQuery.isLoading && !fxFormalStatusQuery.isError && fxFormalRows.length === 0}
                     onRetry={() => void fxFormalStatusQuery.refetch()}
                   >
                     <PageSurfacePanel
@@ -1100,7 +983,7 @@ export default function OperationsAnalysisPage() {
                               {row.is_business_day === null ? "—" : row.is_business_day ? "是" : "否"}
                             </div>
                             <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-fx-row-versions">
-                              来源 {row.source_name ?? "—"} · 源版本 {row.source_version ?? "—"} · 供应商版本{" "}
+                              来源 {row.source_name ?? "—"} / 源版本 {row.source_version ?? "—"} / 供应商版本{" "}
                               {row.vendor_version ?? "—"}
                             </div>
                             <div style={{ color: "#8090a8", fontSize: 12 }}>
@@ -1139,8 +1022,7 @@ export default function OperationsAnalysisPage() {
                             lineHeight: 1.7,
                           }}
                         >
-                          手动触发正式损益（PnL）物化任务，与正式 FX 状态读面相互独立。该入口只负责发起刷新与展示任务状态，
-                          不在当前页面演绎正式损益大表。
+                          手动触发正式损益（PnL）物化任务，与正式 FX 状态读面相互独立。
                         </p>
                         {lastPnlRefreshRunId ? (
                           <p

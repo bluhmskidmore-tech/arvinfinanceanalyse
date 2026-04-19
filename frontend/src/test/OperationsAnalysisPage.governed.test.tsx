@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -299,15 +299,19 @@ describe("OperationsAnalysisPage governed values", () => {
     });
 
     const cockpit = await screen.findByTestId("operations-business-kpis");
-    expect(cockpit).toHaveTextContent("901.25");
-    expect(cockpit).toHaveTextContent("880.5");
-    expect(cockpit).toHaveTextContent("12.75");
-    expect(cockpit).toHaveTextContent("2");
-    expect(cockpit).toHaveTextContent("4");
-    expect(cockpit).not.toHaveTextContent("3,525.0");
+    await waitFor(() => {
+      expect(cockpit).toHaveTextContent("901.25");
+      expect(cockpit).toHaveTextContent("880.5");
+      expect(cockpit).toHaveTextContent("12.75");
+      expect(cockpit).toHaveTextContent("2");
+      expect(cockpit).toHaveTextContent("4");
+      expect(cockpit).not.toHaveTextContent("3,525.0");
+    });
 
     const conclusionGrid = await screen.findByTestId("operations-conclusion-grid");
-    expect(conclusionGrid).toHaveTextContent("2026-01-31");
-    expect(conclusionGrid).toHaveTextContent("11");
+    await waitFor(() => {
+      expect(conclusionGrid).toHaveTextContent("2026-01-31");
+      expect(conclusionGrid).toHaveTextContent("11");
+    });
   });
 });

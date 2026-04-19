@@ -16,9 +16,9 @@ export function ManagementOutput({
   const items: Array<{ title: string; body: string }> = [
     {
       title: "经营判断",
-      body:
-        recommendationTitle ??
-        "先以正式余额读链路为准，再决定是否进入专题页继续下钻。",
+      body: recommendationTitle
+        ? `当前首页建议为：${recommendationTitle}`
+        : "先以正式余额读链路为准，再决定是否进入专题页继续下钻。",
     },
     {
       title: "当前限制",

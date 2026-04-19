@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Row, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
@@ -266,23 +266,50 @@ export function BondAnalyticsInstitutionalCockpit({
   onOpenModuleDetail,
 }: BondAnalyticsInstitutionalCockpitProps) {
   const client = useApiClient();
+  const dashboardDatesQuery = useQuery({
+    queryKey: ["bond-analytics-institutional", "dashboard-dates", client.mode],
+    queryFn: () => client.getBondDashboardDates(),
+    enabled: Boolean(reportDate),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const dashboardReportDate = useMemo(() => {
+    if (!reportDate) {
+      return "";
+    }
+
+    if (!dashboardDatesQuery.data && !dashboardDatesQuery.isError) {
+      return "";
+    }
+
+    const availableDates = dashboardDatesQuery.data?.result.report_dates ?? [];
+    if (availableDates.length > 0) {
+      return availableDates.includes(reportDate) ? reportDate : availableDates[0];
+    }
+
+    return reportDate;
+  }, [dashboardDatesQuery.data, dashboardDatesQuery.isError, reportDate]);
+  const isDashboardDateFallback =
+    Boolean(reportDate) &&
+    Boolean(dashboardReportDate) &&
+    dashboardReportDate !== reportDate;
 
   const [headlineQ, spreadQ, maturityQ, holdingsQ, portfolioHlQ] = useQueries({
     queries: [
       {
-        queryKey: ["bond-analytics-institutional", "headline", client.mode, reportDate],
-        queryFn: () => client.getBondDashboardHeadlineKpis(reportDate),
-        enabled: Boolean(reportDate),
+        queryKey: ["bond-analytics-institutional", "headline", client.mode, dashboardReportDate],
+        queryFn: () => client.getBondDashboardHeadlineKpis(dashboardReportDate),
+        enabled: Boolean(dashboardReportDate),
       },
       {
-        queryKey: ["bond-analytics-institutional", "spread", client.mode, reportDate],
-        queryFn: () => client.getBondDashboardSpreadAnalysis(reportDate),
-        enabled: Boolean(reportDate),
+        queryKey: ["bond-analytics-institutional", "spread", client.mode, dashboardReportDate],
+        queryFn: () => client.getBondDashboardSpreadAnalysis(dashboardReportDate),
+        enabled: Boolean(dashboardReportDate),
       },
       {
-        queryKey: ["bond-analytics-institutional", "maturity", client.mode, reportDate],
-        queryFn: () => client.getBondDashboardMaturityStructure(reportDate),
-        enabled: Boolean(reportDate),
+        queryKey: ["bond-analytics-institutional", "maturity", client.mode, dashboardReportDate],
+        queryFn: () => client.getBondDashboardMaturityStructure(dashboardReportDate),
+        enabled: Boolean(dashboardReportDate),
       },
       {
         queryKey: ["bond-analytics-institutional", "holdings", client.mode, reportDate],
@@ -386,6 +413,11 @@ export function BondAnalyticsInstitutionalCockpit({
         <div data-testid="bond-analysis-kpi-ribbon">
           <HeadlineKpis data={headline} loading={headlineQ.isPending} />
         </div>
+        {isDashboardDateFallback ? (
+          <div style={{ marginTop: 10, fontSize: 11, color: "#6f84a0", lineHeight: 1.5 }}>
+            仪表盘快照使用 {dashboardReportDate}
+          </div>
+        ) : null}
         <div style={{ marginTop: 10, fontSize: 11, color: "#8a9bb0", lineHeight: 1.5 }}>
           指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
 {formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
