@@ -70,5 +70,8 @@ def test_volume_rate_shape_keys(tmp_path, monkeypatch) -> None:
     ):
         assert k in payload
     assert payload["items"] == []
-    assert isinstance(payload["total_current_pnl"], (int, float))
+    total = payload["total_current_pnl"]
+    assert isinstance(total, dict)
+    for nk in ("raw", "unit", "display", "precision", "sign_aware"):
+        assert nk in total
     get_settings.cache_clear()

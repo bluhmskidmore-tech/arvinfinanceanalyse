@@ -145,10 +145,15 @@ function buildTruthStrip(
     return {
       title: "Truth and provenance",
       items: [
-        { key: "basis", label: "Basis", value: "Unavailable", tone: "danger" },
-        { key: "freshness", label: "Freshness", value: "Request error", tone: "danger" },
-        { key: "quality", label: "Quality", value: "Request error", tone: "danger" },
-        { key: "coverage", label: "Coverage", value: "Overview narrow", tone: "neutral" },
+        { key: "basis", label: "Basis", value: "Dashboard snapshot", tone: "warning" },
+        {
+          key: "freshness",
+          label: "Freshness",
+          value: "Action attribution unavailable",
+          tone: "warning",
+        },
+        { key: "quality", label: "Quality", value: "Partial overview", tone: "warning" },
+        { key: "coverage", label: "Coverage", value: "Dashboard snapshot only", tone: "neutral" },
       ],
     };
   }
@@ -240,7 +245,7 @@ function buildTopAnomalies(
   const anomalies = new Set<string>();
 
   if (error) {
-    anomalies.add(error);
+    anomalies.add("Action attribution unavailable in homepage.");
   }
 
   if (meta?.fallback_mode && meta.fallback_mode !== "none") {

@@ -112,8 +112,11 @@ class AnalysisViewTool:
             row_count=len(cube_response.rows),
             quality_flag=cube_response.result_meta.quality_flag,
         )
+        cube_meta = cube_response.result_meta.model_dump(mode="python")
+        for key in ("tables_used", "filters_applied", "evidence_rows", "next_drill"):
+            cube_meta.pop(key, None)
         result_meta = AgentResultMeta(
-            **cube_response.result_meta.model_dump(mode="python"),
+            **cube_meta,
             tables_used=evidence.tables_used,
             filters_applied=evidence.filters_applied,
             sql_executed=evidence.sql_executed,

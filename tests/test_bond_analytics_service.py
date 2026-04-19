@@ -31,8 +31,10 @@ def _configure_and_materialize(tmp_path, monkeypatch):
     return duckdb_path, governance_dir, task_mod
 
 
-def _numeric_raw(value: dict[str, object]) -> Decimal:
-    return Decimal(str(value["raw"]))
+def _numeric_raw(value: dict[str, object] | str) -> Decimal:
+    if isinstance(value, dict):
+        return Decimal(str(value["raw"]))
+    return Decimal(str(value))
 
 
 def test_bond_analytics_service_returns_empty_warning_without_fact_data(tmp_path, monkeypatch):
@@ -211,8 +213,8 @@ def test_bond_analytics_return_decomposition_aggregates_carry_and_buckets(tmp_pa
     assert result["bond_count"] == 3
     assert _numeric_raw(result["total_market_value"]) == Decimal("429")
     assert _numeric_raw(result["carry"]).quantize(Decimal("0.00000001")) == expected_carry.quantize(Decimal("0.00000001"))
-    assert result["actual_pnl"]["raw"] == result["carry"]["raw"]
-    assert result["explained_pnl"]["raw"] == result["carry"]["raw"]
+    assert _numeric_raw(result["actual_pnl"]) == _numeric_raw(result["carry"])
+    assert _numeric_raw(result["explained_pnl"]) == _numeric_raw(result["carry"])
     assert {row["asset_class"] for row in result["by_asset_class"]} == {"credit", "rate"}
     assert {row["asset_class"] for row in result["by_accounting_class"]} == {"AC", "OCI", "TPL"}
     assert len(result["bond_details"]) == 3

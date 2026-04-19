@@ -99,7 +99,11 @@ from backend.app.schemas.bond_analytics import (
     SpreadScenarioResult,
 )
 from backend.app.services.analysis_adapters import build_bond_action_attribution_placeholder_envelope
-from backend.app.services.explicit_numeric import numeric_json, promote_flat_payload
+from backend.app.services.explicit_numeric import (
+    collapse_numeric_json_to_q8_strings,
+    numeric_json,
+    promote_flat_payload,
+)
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_envelope_from_lineage,
@@ -202,6 +206,20 @@ def _trace_id() -> str:
 
 def _text(value: Decimal) -> str:
     return format(value.quantize(Q8, rounding=ROUND_HALF_UP), "f")
+
+
+def _bond_analytics_api_payload(payload: dict[str, object]) -> dict[str, object]:
+    """Bond analytics formal endpoints expose legacy Q8 strings, not governed Numeric JSON dicts."""
+    out = collapse_numeric_json_to_q8_strings(payload)
+    scenarios = out.get("spread_scenarios")
+    if isinstance(scenarios, list):
+        for row in scenarios:
+            if not isinstance(row, dict):
+                continue
+            sc = row.get("spread_change_bp")
+            if isinstance(sc, str):
+                row["spread_change_bp"] = float(Decimal(sc))
+    return out
 
 
 def _repo() -> BondAnalyticsRepository:
@@ -398,7 +416,7 @@ def _build_fact_envelope(
         lineage=_lineage(report_date.isoformat(), rows),
         default_cache_version=CACHE_VERSION,
         source_surface="bond_analytics",
-        result_payload=result_payload,
+        result_payload=_bond_analytics_api_payload(result_payload),
     )
 
 
@@ -568,7 +586,9 @@ def _empty_return_response(meta, report_date: date, period_type: str, period_sta
             ReturnDecompositionResponse,
         )
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
 
 def _fetch_fx_rates(
@@ -865,7 +885,9 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
 
 def _resolve_curve_for_service(
@@ -1292,7 +1314,9 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
             benchmark_id=benchmark_id, summary=summary, meta=meta,
             warnings=_ordered_unique_warnings(bench_warns),
         )
-        return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+        return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
     curves = _fetch_benchmark_curves(
@@ -1347,7 +1371,9 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         benchmark_id=benchmark_id, summary=summary, meta=meta,
         warnings=warnings,
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
 
 def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dict:
@@ -1422,7 +1448,9 @@ def get_krd_curve_risk(report_date: date, scenario_set: str = "standard") -> dic
             KRDCurveRiskResponse,
         )
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
 
 def _fetch_credit_curves(
@@ -1560,7 +1588,9 @@ def get_credit_spread_migration(report_date: date, spread_scenarios: str = "10,2
         meta=meta,
         warnings=migration_warnings,
     )
-    return build_formal_result_envelope(result_meta=meta, result_payload=payload.model_dump(mode="json"))
+    return build_formal_result_envelope(
+        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+    )
 
 
 def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationMetrics | None:
@@ -1849,7 +1879,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         )
         return build_formal_result_envelope(
             result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
-            result_payload=response.model_dump(mode="json"),
+            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
         )
 
     prior_rd = _resolve_prior_bond_snapshot_date(repo, period_end.isoformat())
@@ -1921,7 +1951,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
         )
         return build_formal_result_envelope(
             result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
-            result_payload=response.model_dump(mode="json"),
+            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
         )
 
     meta = _meta("bond_analytics.action_attribution", report_date, rows_end)
@@ -1972,7 +2002,7 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     meta_adj = meta.model_copy(update={"quality_flag": "warning" if warn_strings else "ok"})
     return build_formal_result_envelope(
         result_meta=meta_adj,
-        result_payload=response.model_dump(mode="json"),
+        result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
     )
 
 

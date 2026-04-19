@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, is_dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Mapping
 
 from pydantic import BaseModel
@@ -10,10 +10,29 @@ from backend.app.schemas.common_numeric import Numeric, NumericUnit, numeric_fro
 
 
 NUMERIC_JSON_KEYS = frozenset({"raw", "unit", "display", "precision", "sign_aware"})
+_Q8 = Decimal("0.00000001")
 
 
 def is_numeric_json(value: Any) -> bool:
     return isinstance(value, dict) and NUMERIC_JSON_KEYS <= set(value.keys())
+
+
+def numeric_json_to_q8_string(value: dict[str, Any]) -> str:
+    """Format a governed Numeric JSON dict as a fixed 8dp decimal string (bond analytics formal contract)."""
+    raw = value.get("raw")
+    dec = Decimal("0") if raw is None else Decimal(str(raw))
+    return format(dec.quantize(_Q8, rounding=ROUND_HALF_UP), "f")
+
+
+def collapse_numeric_json_to_q8_strings(obj: Any) -> Any:
+    """Recursively replace Numeric-shaped dicts with Q8 decimal strings; pass through other JSON values."""
+    if is_numeric_json(obj):
+        return numeric_json_to_q8_string(obj)
+    if isinstance(obj, list):
+        return [collapse_numeric_json_to_q8_strings(item) for item in obj]
+    if isinstance(obj, dict):
+        return {k: collapse_numeric_json_to_q8_strings(v) for k, v in obj.items()}
+    return obj
 
 
 def numeric_json(raw: Any, unit: NumericUnit, sign_aware: bool) -> dict[str, Any]:

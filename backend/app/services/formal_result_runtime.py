@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Literal
 
-from backend.app.schemas.result_meta import ResultMeta, SourceSurface
+from backend.app.schemas.result_meta import (
+    ResultMeta,
+    SourceSurface,
+    infer_source_surface_for_result_kind,
+)
 
 ResultBasis = Literal["formal", "scenario", "analytical"]
 QualityFlag = Literal["ok", "warning", "error", "stale"]
@@ -44,6 +48,7 @@ def _build_result_meta(
     source_surface: SourceSurface | None = None,
 ) -> ResultMeta:
     formal_use_allowed, scenario_flag = _BASIS_FIXED_FLAGS[basis]
+    effective_surface = source_surface or infer_source_surface_for_result_kind(result_kind)
     return ResultMeta(
         trace_id=trace_id,
         basis=basis,
@@ -61,7 +66,7 @@ def _build_result_meta(
         tables_used=list(tables_used or []),
         evidence_rows=evidence_rows,
         next_drill=list(next_drill or []),
-        source_surface=source_surface,
+        source_surface=effective_surface,
     )
 
 

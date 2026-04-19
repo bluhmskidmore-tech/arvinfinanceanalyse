@@ -159,4 +159,34 @@ describe("buildBondAnalyticsOverviewModel", () => {
       ]),
     );
   });
+
+  it("uses controlled homepage fallback messaging when action attribution fails", () => {
+    const model = buildBondAnalyticsOverviewModel({
+      reportDate: "2026-03-31",
+      periodType: "MoM",
+      activeModuleKey: "action-attribution",
+      actionAttributionEnvelope: null,
+      actionAttributionError: "backend 503 for action attribution",
+    });
+
+    expect(model.truthStrip.items).toEqual([
+      expect.objectContaining({ key: "basis", value: "Dashboard snapshot", tone: "warning" }),
+      expect.objectContaining({
+        key: "freshness",
+        value: "Action attribution unavailable",
+        tone: "warning",
+      }),
+      expect.objectContaining({ key: "quality", value: "Partial overview", tone: "warning" }),
+      expect.objectContaining({ key: "coverage", value: "Dashboard snapshot only", tone: "neutral" }),
+    ]);
+    expect(model.topAnomalies).toEqual(["Action attribution unavailable in homepage."]);
+    expect(model.readinessItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "action-attribution",
+          statusLabel: "request-error",
+        }),
+      ]),
+    );
+  });
 });

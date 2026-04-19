@@ -4,7 +4,7 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query
 
-from backend.app.governance.settings import settings
+from backend.app.governance.settings import get_settings
 from backend.app.services.liability_analytics_service import (
     liabilities_monthly_payload,
     liability_counterparty_payload,
@@ -35,7 +35,7 @@ def liability_risk_buckets(
 ) -> dict[str, object]:
     validated = _validate_optional_report_date(report_date)
     return liability_risk_buckets_payload(
-        duckdb_path=str(settings.duckdb_path),
+        duckdb_path=str(get_settings().duckdb_path),
         report_date=validated,
     )
 
@@ -46,7 +46,7 @@ def liability_yield_metrics(
 ) -> dict[str, object]:
     validated = _validate_optional_report_date(report_date)
     return liability_yield_metrics_payload(
-        duckdb_path=str(settings.duckdb_path),
+        duckdb_path=str(get_settings().duckdb_path),
         report_date=validated,
     )
 
@@ -58,7 +58,7 @@ def liability_counterparty(
 ) -> dict[str, object]:
     validated = _validate_optional_report_date(report_date)
     return liability_counterparty_payload(
-        duckdb_path=str(settings.duckdb_path),
+        duckdb_path=str(get_settings().duckdb_path),
         report_date=validated,
         top_n=top_n,
     )
@@ -70,7 +70,7 @@ def liabilities_monthly(
 ) -> dict[str, object]:
     resolved_year = year or date.today().year
     return liabilities_monthly_payload(
-        duckdb_path=str(settings.duckdb_path),
+        duckdb_path=str(get_settings().duckdb_path),
         year=resolved_year,
     )
 

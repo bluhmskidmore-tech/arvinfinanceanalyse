@@ -16,17 +16,28 @@ SourceSurface = Literal[
     "pnl_bridge",
 ]
 
-_GOVERNED_RESULT_KIND_PREFIXES = (
-    "executive.",
-    "pnl_attribution.",
-    "balance-analysis.",
-    "liability_analytics.",
-    "bond_analytics.",
-    "bond_dashboard.",
-    "risk.tensor",
-    "cashflow_projection.",
-    "pnl.bridge",
+_GOVERNED_RESULT_KIND_SOURCE_SURFACES: list[tuple[str, SourceSurface]] = [
+    ("executive.", "executive_analytical"),
+    ("pnl_attribution.", "formal_pnl"),
+    ("balance-analysis.", "formal_balance"),
+    ("liability_analytics.", "formal_liability"),
+    ("bond_analytics.", "bond_analytics"),
+    ("bond_dashboard.", "bond_analytics"),
+    ("risk.tensor", "risk_tensor"),
+    ("cashflow_projection.", "cashflow"),
+    ("pnl.bridge", "pnl_bridge"),
+]
+
+_GOVERNED_RESULT_KIND_PREFIXES = tuple(
+    prefix for prefix, _ in _GOVERNED_RESULT_KIND_SOURCE_SURFACES
 )
+
+
+def infer_source_surface_for_result_kind(result_kind: str) -> SourceSurface | None:
+    for prefix, surface in _GOVERNED_RESULT_KIND_SOURCE_SURFACES:
+        if result_kind.startswith(prefix):
+            return surface
+    return None
 
 
 class ResultMeta(BaseModel):

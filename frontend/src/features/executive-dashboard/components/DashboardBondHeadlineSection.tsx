@@ -119,7 +119,7 @@ export function DashboardBondHeadlineSection({
         {
           label: "利率敏感度合计",
           value: `${formatNumeric(formatRawAsNumeric({ raw: rateSensitivity, unit: "ratio", sign_aware: false, precision: 2 }))} 万元`,
-          detail: "DV01 口径",
+          detail: "基点价值口径",
         },
         {
           label: "债券只数",

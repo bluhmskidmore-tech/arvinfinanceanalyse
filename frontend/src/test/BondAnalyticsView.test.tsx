@@ -236,6 +236,32 @@ describe("BondAnalyticsView", () => {
     20_000,
   );
 
+  it("keeps the homepage stable with controlled fallback copy when action attribution fails", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => {
+        throw new Error("backend 503 for action attribution");
+      }),
+    };
+
+    renderBondAnalyticsView(client);
+
+    const topCockpit = await screen.findByTestId(
+      "bond-analysis-top-cockpit",
+      {},
+      { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+    );
+
+    expect(topCockpit).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(topCockpit).queryByText("Request error")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(within(topCockpit).getByText("Dashboard snapshot only")).toBeInTheDocument();
+      expect(within(topCockpit).getByText("Action attribution unavailable")).toBeInTheDocument();
+    });
+  });
+
   it("uses homepage action buttons to drive drill switching", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
