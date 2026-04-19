@@ -40,7 +40,7 @@ export function RiskOverviewSection({
             >
               <span style={{ fontWeight: 600 }}>{signal.label}</span>
               <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                <span>{signal.value}</span>
+                <span>{signal.value.display}</span>
                 <span
                   style={{
                     padding: "4px 10px",

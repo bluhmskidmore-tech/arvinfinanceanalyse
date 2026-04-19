@@ -47,7 +47,7 @@ export default function ContributionSection({
                 <td style={{ paddingBlock: 14 }}>{row.name}</td>
                 <td style={{ paddingBlock: 14, color: "#5c6b82" }}>{row.owner}</td>
                 <td style={{ paddingBlock: 14, color: "#2f8f63", fontWeight: 600 }}>
-                  {row.contribution}
+                  {row.contribution.display}
                 </td>
                 <td style={{ paddingBlock: 14, minWidth: 140 }}>
                   <div

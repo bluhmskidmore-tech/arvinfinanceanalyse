@@ -116,8 +116,10 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           })),
           label: {
             show: true,
-            formatter: (params: { value: number }) => {
-              const v = params.value;
+            formatter: (params: { value?: unknown }) => {
+              const rawValue =
+                typeof params.value === "number" ? params.value : Number(params.value ?? 0);
+              const v = Number.isFinite(rawValue) ? rawValue : 0;
               const sign = v >= 0 ? "+" : "";
               return `${sign}${v.toFixed(2)}`;
             },
