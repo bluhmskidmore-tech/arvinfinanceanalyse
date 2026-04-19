@@ -56,11 +56,14 @@ function env(overrides: Partial<CashflowProjectionPayload> = {}, metaOverride: P
 }
 
 describe("adaptCashflowProjection", () => {
-  it("maps a normal payload into a view-model", () => {
+  it("treats KPI-only payloads as ok instead of empty", () => {
     const out = adaptCashflowProjection({ envelope: env(), isLoading: false, isError: false });
-    expect(out.state.kind).toBe("empty"); // lists empty so state="empty"
-    // With non-empty lists it's "ok":
-    const out2 = adaptCashflowProjection({
+    expect(out.state.kind).toBe("ok");
+    expect(out.vm?.kpis.durationGap.raw).toBe(1.25);
+  });
+
+  it("maps non-empty projection lists into a view-model", () => {
+    const out = adaptCashflowProjection({
       envelope: env({
         monthly_buckets: [
           {
@@ -75,9 +78,9 @@ describe("adaptCashflowProjection", () => {
       isLoading: false,
       isError: false,
     });
-    expect(out2.state.kind).toBe("ok");
-    expect(out2.vm?.kpis.durationGap.raw).toBe(1.25);
-    expect(out2.vm?.monthlyBuckets[0].assetInflow.raw).toBe(1e8);
+    expect(out.state.kind).toBe("ok");
+    expect(out.vm?.kpis.durationGap.raw).toBe(1.25);
+    expect(out.vm?.monthlyBuckets[0].assetInflow.raw).toBe(1e8);
   });
 
   it("returns loading state when isLoading", () => {

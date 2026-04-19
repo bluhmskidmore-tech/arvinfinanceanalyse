@@ -108,4 +108,52 @@ describe("CashflowProjectionPage", () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledWith("2026-04-01"));
   });
+
+  it("surfaces a first-screen conclusion from the duration gap", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("cashflow-conclusion")).toHaveTextContent("当前结论");
+    expect(screen.getByTestId("cashflow-conclusion")).toHaveTextContent("资产久期长于负债");
+  });
+
+  it("uses DataSection fallback banner when result_meta marks latest_snapshot fallback", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const orig = client.getCashflowProjection.bind(client);
+    client.getCashflowProjection = async (reportDate: string) => {
+      const envelope = await orig(reportDate);
+      return {
+        ...envelope,
+        result_meta: {
+          ...envelope.result_meta,
+          fallback_mode: "latest_snapshot",
+          filters_applied: { report_date: "2026-03-29" },
+        },
+      };
+    };
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <CashflowProjectionPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId("data-section-fallback-banner")).toHaveTextContent("已回退至最近可用日");
+  });
 });

@@ -105,7 +105,17 @@ function deriveState(
     };
   }
   const payload = envelope.result;
-  if (!payload || (payload.monthly_buckets.length === 0 && payload.top_maturing_assets_12m.length === 0)) {
+  if (!payload) {
+    return { kind: "empty" };
+  }
+  const hasKpis =
+    payload.duration_gap.raw !== null ||
+    payload.asset_duration.raw !== null ||
+    payload.liability_duration.raw !== null ||
+    payload.equity_duration.raw !== null ||
+    payload.rate_sensitivity_1bp.raw !== null ||
+    payload.reinvestment_risk_12m.raw !== null;
+  if (!hasKpis && payload.monthly_buckets.length === 0 && payload.top_maturing_assets_12m.length === 0) {
     return { kind: "empty" };
   }
   return { kind: "ok" };

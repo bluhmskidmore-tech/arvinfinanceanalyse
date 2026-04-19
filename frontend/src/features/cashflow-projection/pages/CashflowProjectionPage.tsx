@@ -4,6 +4,7 @@ import { Alert, Card, Col, Row, Select, Space, Spin, Table, Typography } from "a
 
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
+import { DataSection } from "../../../components/DataSection";
 import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { KpiCard } from "../../workbench/components/KpiCard";
@@ -60,6 +61,32 @@ function SectionLead(props: {
   );
 }
 
+function buildConclusion(durationGap: Numeric | undefined) {
+  const raw = durationGap?.raw;
+  if (raw === null || raw === undefined) {
+    return {
+      title: "当前结论",
+      body: "久期缺口待确认，先核对报告日与上游现金流分桶是否齐备。",
+    };
+  }
+  if (raw > 0.05) {
+    return {
+      title: "当前结论",
+      body: "资产久期长于负债，当前为正久期缺口。",
+    };
+  }
+  if (raw < -0.05) {
+    return {
+      title: "当前结论",
+      body: "负债久期长于资产，当前为负久期缺口。",
+    };
+  }
+  return {
+    title: "当前结论",
+    body: "资产与负债久期基本匹配，缺口已收敛到接近平衡区间。",
+  };
+}
+
 export default function CashflowProjectionPage() {
   const client = useApiClient();
   const datesQuery = useQuery({
@@ -90,6 +117,7 @@ export default function CashflowProjectionPage() {
     [projectionQuery.data, projectionQuery.isLoading, projectionQuery.isError],
   );
   const vm = adapted.vm;
+  const conclusion = buildConclusion(vm?.kpis.durationGap);
 
   const chartOption = useMemo((): EChartsOption | null => {
     const buckets = vm?.monthlyBuckets ?? [];
@@ -194,152 +222,187 @@ export default function CashflowProjectionPage() {
         </div>
       </FilterBar>
 
-      {projectionQuery.isLoading ? (
-        <div style={{ textAlign: "center", padding: 48 }}>
-          <Spin />
-        </div>
-      ) : projectionQuery.isError ? (
-        <Alert type="error" message="加载现金流预测失败，请稍后重试。" showIcon />
-      ) : vm ? (
-        <>
-          <SectionLead
-            eyebrow="Overview"
-            title="现金流概览"
-            description="先看久期缺口、资产负债久期和敏感度，再进入月度投影与到期资产列表，保持阅读顺序与其他标准页一致。"
-          />
-          <div style={summaryGridStyle}>
-            <div data-testid="cashflow-kpi-duration-gap">
-              <KpiCard
-                title="久期缺口（年）"
-                value={vm.kpis.durationGap.display}
-                detail="资产久期 - 负债久期"
-                valueVariant="text"
-              />
-            </div>
-            <div data-testid="cashflow-kpi-asset-dur">
-              <KpiCard title="资产久期（年）" value={vm.kpis.assetDuration.display} detail="资产侧久期" valueVariant="text" />
-            </div>
-            <div data-testid="cashflow-kpi-liability-dur">
-              <KpiCard
-                title="负债久期（年）"
-                value={vm.kpis.liabilityDuration.display}
-                detail="负债侧久期"
-                valueVariant="text"
-              />
-            </div>
-            <div data-testid="cashflow-kpi-dv01">
-              <KpiCard
-                title="1bp 敏感度"
-                value={vm.kpis.rateSensitivity1bp.display}
-                detail="利率敏感度"
-                valueVariant="text"
-              />
-            </div>
-            <div data-testid="cashflow-kpi-equity-dur">
-              <KpiCard title="权益久期（年）" value={vm.kpis.equityDuration.display} detail="权益侧久期" valueVariant="text" />
-            </div>
-            <div data-testid="cashflow-kpi-reinvest">
-              <KpiCard
-                title="再投资风险（12M）"
-                value={vm.kpis.reinvestmentRisk12m.display}
-                detail="12 个月再投资风险"
-                valueVariant="text"
-              />
-            </div>
+      <DataSection
+        title="现金流预测结果"
+        state={adapted.state}
+        onRetry={() => {
+          void projectionQuery.refetch();
+        }}
+        extra={
+          effectiveDate ? (
+            <Typography.Text type="secondary">{`报告日 ${effectiveDate}`}</Typography.Text>
+          ) : null
+        }
+      >
+        {projectionQuery.isLoading ? (
+          <div style={{ textAlign: "center", padding: 48 }}>
+            <Spin />
           </div>
-
-          <SectionLead
-            eyebrow="Projection"
-            title="月度投影"
-            description="图表区继续展示 24 个月现金流投影，右侧保留补充指标，不改变现有图表与数据口径。"
-          />
-          <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-            <Col xs={24} lg={16}>
-              <Card
-                data-testid="cashflow-monthly-chart"
-                size="small"
-                title="月度现金流投影"
-                style={{
-                  borderRadius: 16,
-                  border: `1px solid ${t.colorBorderSoft}`,
-                  minHeight: 360,
-                }}
-              >
-                {chartOption ? (
-                  <ReactECharts option={chartOption} style={{ height: 320 }} />
-                ) : (
-                  <Typography.Text type="secondary">暂无分桶数据</Typography.Text>
-                )}
-              </Card>
-            </Col>
-            <Col xs={24} lg={8}>
-              <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <Card size="small" title="权益久期（年）">
-                  <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                    {vm.kpis.equityDuration.display}
-                  </Typography.Text>
-                </Card>
-                <Card size="small" title="再投资风险（12M）">
-                  <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
-                    {vm.kpis.reinvestmentRisk12m.display}
-                  </Typography.Text>
-                </Card>
+        ) : projectionQuery.isError ? (
+          <Alert type="error" message="加载现金流预测失败，请稍后重试。" showIcon />
+        ) : vm ? (
+          <>
+            <Card
+              data-testid="cashflow-conclusion"
+              style={{
+                marginBottom: 20,
+                borderRadius: 16,
+                border: `1px solid ${t.colorBorderSoft}`,
+                background: "#f7fbff",
+              }}
+            >
+              <Space direction="vertical" size={6}>
+                <Typography.Text style={{ fontSize: 12, fontWeight: 700, color: "#56708f" }}>
+                  {conclusion.title}
+                </Typography.Text>
+                <Typography.Title level={4} style={{ margin: 0 }}>
+                  {conclusion.body}
+                </Typography.Title>
+                <Typography.Text type="secondary">
+                  {`报告日 ${vm.reportDate} · 久期缺口 ${vm.kpis.durationGap.display}`}
+                </Typography.Text>
               </Space>
-            </Col>
-          </Row>
+            </Card>
 
-          <SectionLead
-            eyebrow="Maturity"
-            title="到期资产与提示"
-            description="Top10 到期资产列表和 warning 区保持现有契约，只调整为更清晰的阅读层级。"
-          />
-          <Card
-            size="small"
-            title="12 个月内 Top10 到期资产"
-            style={{ marginBottom: 16, borderRadius: 16, border: `1px solid ${t.colorBorderSoft}` }}
-          >
-            <Table
-              data-testid="cashflow-top-assets-table"
+            <SectionLead
+              eyebrow="Overview"
+              title="现金流概览"
+              description="先看久期缺口、资产负债久期和敏感度，再进入月度投影与到期资产列表，保持阅读顺序与其他标准页一致。"
+            />
+            <div style={summaryGridStyle}>
+              <div data-testid="cashflow-kpi-duration-gap">
+                <KpiCard
+                  title="久期缺口（年）"
+                  value={vm.kpis.durationGap.display}
+                  detail="资产久期 - 负债久期"
+                  valueVariant="text"
+                />
+              </div>
+              <div data-testid="cashflow-kpi-asset-dur">
+                <KpiCard title="资产久期（年）" value={vm.kpis.assetDuration.display} detail="资产侧久期" valueVariant="text" />
+              </div>
+              <div data-testid="cashflow-kpi-liability-dur">
+                <KpiCard
+                  title="负债久期（年）"
+                  value={vm.kpis.liabilityDuration.display}
+                  detail="负债侧久期"
+                  valueVariant="text"
+                />
+              </div>
+              <div data-testid="cashflow-kpi-dv01">
+                <KpiCard
+                  title="1bp 敏感度"
+                  value={vm.kpis.rateSensitivity1bp.display}
+                  detail="利率敏感度"
+                  valueVariant="text"
+                />
+              </div>
+              <div data-testid="cashflow-kpi-equity-dur">
+                <KpiCard title="权益久期（年）" value={vm.kpis.equityDuration.display} detail="权益侧久期" valueVariant="text" />
+              </div>
+              <div data-testid="cashflow-kpi-reinvest">
+                <KpiCard
+                  title="再投资风险（12M）"
+                  value={vm.kpis.reinvestmentRisk12m.display}
+                  detail="12 个月再投资风险"
+                  valueVariant="text"
+                />
+              </div>
+            </div>
+
+            <SectionLead
+              eyebrow="Projection"
+              title="月度投影"
+              description="图表区继续展示 24 个月现金流投影，右侧保留补充指标，不改变现有图表与数据口径。"
+            />
+            <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
+              <Col xs={24} lg={16}>
+                <Card
+                  data-testid="cashflow-monthly-chart"
+                  size="small"
+                  title="月度现金流投影"
+                  style={{
+                    borderRadius: 16,
+                    border: `1px solid ${t.colorBorderSoft}`,
+                    minHeight: 360,
+                  }}
+                >
+                  {chartOption ? (
+                    <ReactECharts option={chartOption} style={{ height: 320 }} />
+                  ) : (
+                    <Typography.Text type="secondary">暂无分桶数据</Typography.Text>
+                  )}
+                </Card>
+              </Col>
+              <Col xs={24} lg={8}>
+                <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                  <Card size="small" title="权益久期（年）">
+                    <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
+                      {vm.kpis.equityDuration.display}
+                    </Typography.Text>
+                  </Card>
+                  <Card size="small" title="再投资风险（12M）">
+                    <Typography.Text style={{ fontSize: 18, fontWeight: 600 }}>
+                      {vm.kpis.reinvestmentRisk12m.display}
+                    </Typography.Text>
+                  </Card>
+                </Space>
+              </Col>
+            </Row>
+
+            <SectionLead
+              eyebrow="Maturity"
+              title="到期资产与提示"
+              description="Top10 到期资产列表和 warning 区保持现有契约，只调整为更清晰的阅读层级。"
+            />
+            <Card
               size="small"
-              pagination={false}
-              rowKey={(r) => r.instrumentCode}
-              dataSource={vm.topMaturingAssets}
-              columns={[
-                { title: "代码", dataIndex: "instrumentCode" },
-                { title: "名称", dataIndex: "instrumentName" },
-                { title: "到期日", dataIndex: "maturityDate" },
-                {
-                  title: "面值",
-                  dataIndex: "faceValue",
-                  align: "right" as const,
-                  render: (v: Numeric) => v.display,
-                },
-                {
-                  title: "市值",
-                  dataIndex: "marketValue",
-                  align: "right" as const,
-                  render: (v: Numeric) => v.display,
-                },
-              ]}
-            />
-          </Card>
+              title="12 个月内 Top10 到期资产"
+              style={{ marginBottom: 16, borderRadius: 16, border: `1px solid ${t.colorBorderSoft}` }}
+            >
+              <Table
+                data-testid="cashflow-top-assets-table"
+                size="small"
+                pagination={false}
+                rowKey={(r) => r.instrumentCode}
+                dataSource={vm.topMaturingAssets}
+                columns={[
+                  { title: "代码", dataIndex: "instrumentCode" },
+                  { title: "名称", dataIndex: "instrumentName" },
+                  { title: "到期日", dataIndex: "maturityDate" },
+                  {
+                    title: "面值",
+                    dataIndex: "faceValue",
+                    align: "right" as const,
+                    render: (v: Numeric) => v.display,
+                  },
+                  {
+                    title: "市值",
+                    dataIndex: "marketValue",
+                    align: "right" as const,
+                    render: (v: Numeric) => v.display,
+                  },
+                ]}
+              />
+            </Card>
 
-          {vm.warnings?.length ? (
-            <Alert
-              type="warning"
-              showIcon
-              message="提示"
-              description={
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
-                  {vm.warnings.map((w) => (
-                    <li key={w}>{w}</li>
-                  ))}
-                </ul>
-              }
-            />
-          ) : null}
-        </>
-      ) : null}
+            {vm.warnings?.length ? (
+              <Alert
+                type="warning"
+                showIcon
+                message="提示"
+                description={
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {vm.warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
+                }
+              />
+            ) : null}
+          </>
+        ) : null}
+      </DataSection>
     </section>
   );
 }
