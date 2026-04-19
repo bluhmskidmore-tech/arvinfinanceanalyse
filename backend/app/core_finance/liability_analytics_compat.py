@@ -690,7 +690,6 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
             counterparty.first_position_id = position_id
 
     months: list[dict[str, Any]] = []
-    prev_avg_total: Decimal | None = None
     year_total_amount = ZERO
     year_total_days = 0
 
@@ -711,8 +710,6 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
         # outward compatibility behavior here instead of exposing recomputed values.
         mom_change = None
         mom_change_pct = None
-        prev_avg_total = avg_total
-
         counterparty_total_avg = sum((cpty.value for cpty in agg.counterparty.values()), ZERO) / divisor
         details: list[dict[str, Any]] = []
         sorted_counterparties = sorted(
