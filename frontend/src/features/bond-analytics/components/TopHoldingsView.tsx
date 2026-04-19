@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Card, Select, Space, Spin, Statistic, Table } from "antd";
+import { Alert, Card, Space, Spin, Statistic, Table } from "antd";
 import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
@@ -71,19 +71,7 @@ export function TopHoldingsView({ reportDate }: Props) {
     return data.items.reduce((acc, row) => acc + bondNumericRaw(row.weight), 0);
   }, [data]);
 
-  if (loading && !data) {
-    return (
-      <div data-testid="top-holdings-loading" style={{ padding: 24 }}>
-        <Spin />
-      </div>
-    );
-  }
-
-  if (error) {
-    return <Alert type="error" message={error} showIcon />;
-  }
-
-  if (!data) {
+  if (!reportDate) {
     return null;
   }
 
@@ -91,40 +79,63 @@ export function TopHoldingsView({ reportDate }: Props) {
     <div data-testid="top-holdings-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <Space align="center" wrap data-testid="bond-analytics-top-holdings-toolbar">
         <span style={{ color: "rgba(0,0,0,0.55)" }}>展示条数</span>
-        <Select
+        <select
           aria-label="bond-analytics-top-holdings-topn"
           data-testid="bond-analytics-top-holdings-topn"
           value={topN}
-          options={TOP_N_OPTIONS.map((n) => ({ value: n, label: String(n) }))}
-          onChange={(v) => setTopN(v)}
-          style={{ minWidth: 88 }}
-        />
+          onChange={(e) => setTopN(Number(e.target.value))}
+          style={{
+            minWidth: 88,
+            height: 32,
+            border: "1px solid #d9d9d9",
+            borderRadius: 6,
+            background: "#fff",
+            color: "#162033",
+            fontSize: 14,
+          }}
+        >
+          {TOP_N_OPTIONS.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
       </Space>
-      {data.warnings.length > 0 ? (
-        <Alert type="warning" showIcon message={data.warnings.join(" ")} />
-      ) : null}
-      <Card size="small">
-        <Statistic
-          title={`Top ${data.top_n} 合计市值占比（相对组合总市值）`}
-          value={formatPct({
-            raw: topWeightSum,
-            unit: "ratio",
-            display: "",
-            precision: 4,
-            sign_aware: false,
-          })}
-        />
-      </Card>
-      <Card size="small" title="持仓明细">
-        <Table
-          size="small"
-          rowKey={(row) => row.instrument_code}
-          columns={columns}
-          dataSource={data.items}
-          pagination={false}
-          scroll={{ x: true }}
-        />
-      </Card>
+      {error ? (
+        <Alert type="error" message={error} showIcon />
+      ) : loading && !data ? (
+        <div data-testid="top-holdings-loading" style={{ padding: 24 }}>
+          <Spin />
+        </div>
+      ) : !data ? null : (
+        <>
+          {data.warnings.length > 0 ? (
+            <Alert type="warning" showIcon message={data.warnings.join(" ")} />
+          ) : null}
+          <Card size="small">
+            <Statistic
+              title={`Top ${data.top_n} 合计市值占比（相对组合总市值）`}
+              value={formatPct({
+                raw: topWeightSum,
+                unit: "ratio",
+                display: "",
+                precision: 4,
+                sign_aware: false,
+              })}
+            />
+          </Card>
+          <Card size="small" title="持仓明细">
+            <Table
+              size="small"
+              rowKey={(row) => row.instrument_code}
+              columns={columns}
+              dataSource={data.items}
+              pagination={false}
+              scroll={{ x: true }}
+            />
+          </Card>
+        </>
+      )}
     </div>
   );
 }
