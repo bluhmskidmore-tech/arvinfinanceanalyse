@@ -562,6 +562,7 @@ def test_bond_action_service_uses_placeholder_envelope_builder(monkeypatch):
     assert captured["query"].analysis_key == "bond_action_attribution"
     assert payload["result"]["period_type"] == "MoM"
     assert payload["result_meta"]["result_kind"] == "bond_analytics.action_attribution"
+    assert payload["result_meta"]["source_surface"] == "bond_analytics"
     assert payload["result"]["status"] == "unavailable"
     assert payload["result"]["missing_inputs"] == ["trade_level_action_facts"]
 
