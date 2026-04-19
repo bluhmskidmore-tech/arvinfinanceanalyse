@@ -197,7 +197,7 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
     expect(screen.getByText(/观察日期/)).toBeInTheDocument();
     expect(screen.getByText("市场概览")).toBeInTheDocument();
-    expect(screen.getByText("利率、资金与成交观察")).toBeInTheDocument();
+    expect(screen.getByText("利率、资金、宏观深度与成交观察")).toBeInTheDocument();
     expect(screen.getByText("宏观序列与分析观察")).toBeInTheDocument();
     expect(screen.getByText("目录与结果元数据")).toBeInTheDocument();
     expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
@@ -651,5 +651,4 @@ describe("MarketDataPage", () => {
     });
   });
 });
-
 
