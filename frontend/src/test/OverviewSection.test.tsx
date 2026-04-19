@@ -2,89 +2,95 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { OverviewPayload } from "../api/contracts";
+import type { Numeric } from "../api/contracts";
+import type { DataSectionState } from "../components/DataSection.types";
+import type { DashboardAdapterOutput } from "../features/executive-dashboard/adapters/executiveDashboardAdapter";
 import { OverviewSection } from "../features/executive-dashboard/components/OverviewSection";
 
-function overviewFixture(): OverviewPayload {
+function numeric(
+  raw: number | null,
+  display: string,
+  unit: Numeric["unit"] = "yuan",
+  signAware = true,
+  precision = 2,
+): Numeric {
   return {
-    title: "总览",
+    raw,
+    unit,
+    display,
+    precision,
+    sign_aware: signAware,
+  };
+}
+
+function overviewVm(): NonNullable<DashboardAdapterOutput["overview"]["vm"]> {
+  return {
+    title: "鎬昏",
     metrics: [
       {
         id: "m1",
-        label: "资产规模",
-        value: "¥120 亿",
-        delta: "+2.1%",
+        label: "璧勪骇瑙勬ā",
+        value: numeric(12_000_000_000, "120.00 浜?", "yuan", false),
+        delta: numeric(0.021, "+2.10%", "pct"),
         tone: "positive",
-        detail: "较上月末",
+        detail: "杈冧笂鏈堟湯",
       },
       {
         id: "m2",
-        label: "流动性覆盖",
-        value: "118%",
-        delta: "持平",
+        label: "娴佸姩鎬ц鐩?",
+        value: numeric(1.18, "118.00%", "pct", false),
+        delta: numeric(0, "鎸佸钩", "pct", false),
         tone: "neutral",
-        detail: "监管口径",
+        detail: "鐩戠鍙ｅ緞",
       },
     ],
   };
 }
 
-describe("OverviewSection", () => {
-  it("renders title, metric count badge, labels, values, deltas, and detail text", () => {
-    const data = overviewFixture();
+function renderOverview(state: DataSectionState) {
+  const onRetry = vi.fn();
+  render(
+    <OverviewSection
+      overview={{
+        vm: state.kind === "ok" ? overviewVm() : null,
+        state,
+        meta: null,
+      }}
+      onRetry={onRetry}
+    />,
+  );
+  return { onRetry };
+}
 
-    render(
-      <OverviewSection
-        data={data}
-        isLoading={false}
-        isError={false}
-        onRetry={() => undefined}
-      />,
-    );
+describe("OverviewSection", () => {
+  it("renders current overview VM cards with Numeric display strings", () => {
+    renderOverview({ kind: "ok" });
 
     expect(screen.getByText("经营总览")).toBeInTheDocument();
     expect(screen.getByText("2 项")).toBeInTheDocument();
-    expect(screen.getByText("资产规模")).toBeInTheDocument();
-    expect(screen.getByText("¥120 亿")).toBeInTheDocument();
-    expect(screen.getByText("+2.1%")).toBeInTheDocument();
-    expect(screen.getByText("较上月末")).toBeInTheDocument();
-    expect(screen.getByText("流动性覆盖")).toBeInTheDocument();
-    expect(screen.getByText("118%")).toBeInTheDocument();
-    expect(screen.getByText("持平")).toBeInTheDocument();
-    expect(screen.getByText("监管口径")).toBeInTheDocument();
+    expect(screen.getByText("璧勪骇瑙勬ā")).toBeInTheDocument();
+    expect(screen.getByText("120.00 浜?")).toBeInTheDocument();
+    expect(screen.getByText("+2.10%")).toBeInTheDocument();
+    expect(screen.getByText("杈冧笂鏈堟湯")).toBeInTheDocument();
+    expect(screen.getByText("娴佸姩鎬ц鐩?")).toBeInTheDocument();
+    expect(screen.getByText("118.00%")).toBeInTheDocument();
+    expect(screen.getByText("鎸佸钩")).toBeInTheDocument();
+    expect(screen.getByText("鐩戠鍙ｅ緞")).toBeInTheDocument();
   });
 
-  it("renders empty state when metrics is empty", () => {
-    const data: OverviewPayload = { title: "总览", metrics: [] };
-
-    render(
-      <OverviewSection
-        data={data}
-        isLoading={false}
-        isError={false}
-        onRetry={() => undefined}
-      />,
-    );
+  it("renders empty state when overview state is empty", () => {
+    renderOverview({ kind: "empty" });
 
     expect(screen.getByText("当前暂无可展示内容。")).toBeInTheDocument();
-    expect(screen.queryByText("资产规模")).not.toBeInTheDocument();
+    expect(screen.queryByText("璧勪骇瑙勬ā")).not.toBeInTheDocument();
   });
 
   it("shows retry in error state and calls onRetry", async () => {
-    const onRetry = vi.fn();
     const user = userEvent.setup();
-
-    render(
-      <OverviewSection
-        data={overviewFixture()}
-        isLoading={false}
-        isError
-        onRetry={onRetry}
-      />,
-    );
+    const { onRetry } = renderOverview({ kind: "error" });
 
     expect(screen.getByText("数据载入失败。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /重\s*试/ }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

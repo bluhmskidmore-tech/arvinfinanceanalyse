@@ -7,9 +7,29 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import { BenchmarkExcessView } from "../features/bond-analytics/components/BenchmarkExcessView";
 import type { BenchmarkExcessResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const pct = (raw: number | null) => numeric(raw, "pct");
+const bp = (raw: number | null) => numeric(raw, "bp");
+const ratio = (raw: number | null, precision?: number) => numeric(raw, "ratio", false, precision);
+const ratioAsBp = (raw: number | null) => bp(raw === null ? null : raw * 10_000);
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -38,20 +58,20 @@ function createBenchmarkExcessResult(
     period_type: "MoM",
     period_start: "2026-03-01",
     period_end: "2026-03-31",
-    portfolio_return: "0.0045",
-    benchmark_return: "0.0040",
-    excess_return: "0.0005",
-    duration_effect: "0.0002",
-    curve_effect: "0.0001",
-    spread_effect: "0.0001",
-    selection_effect: "0.0001",
-    allocation_effect: "0",
-    explained_excess: "0.0005",
-    recon_error: "0",
-    portfolio_duration: "4.2",
-    benchmark_duration: "4.0",
-    duration_diff: "0.2",
-    excess_sources: [{ source: "久期敞口", contribution: "0.0002", description: "" }],
+    portfolio_return: pct(0.0045),
+    benchmark_return: pct(0.0040),
+    excess_return: ratioAsBp(0.0005),
+    duration_effect: ratioAsBp(0.0002),
+    curve_effect: ratioAsBp(0.0001),
+    spread_effect: ratioAsBp(0.0001),
+    selection_effect: ratioAsBp(0.0001),
+    allocation_effect: ratioAsBp(0),
+    explained_excess: ratioAsBp(0.0005),
+    recon_error: ratioAsBp(0),
+    portfolio_duration: ratio(4.2, 1),
+    benchmark_duration: ratio(4.0, 1),
+    duration_diff: ratio(0.2, 1),
+    excess_sources: [{ source: "久期敞口", contribution: ratioAsBp(0.0002), description: "" }],
     benchmark_id: "CDB_INDEX",
     benchmark_name: "中债国开债总指数",
     tracking_error: null,

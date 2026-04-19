@@ -1,11 +1,32 @@
 import type { SeriesOption } from "echarts";
 import { describe, expect, it } from "vitest";
 
+import type { Numeric } from "../api/contracts";
 import type { AssetClassRiskSummary, KRDBucket } from "../features/bond-analytics/types";
 import {
   buildAssetClassMarketValuePieOption,
   buildKrdDv01BarOption,
 } from "../features/bond-analytics/utils/echartsRiskCharts";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const pct = (raw: number | null, precision?: number) => numeric(raw, "pct", false, precision);
+const ratio = (raw: number | null, precision?: number) => numeric(raw, "ratio", false, precision);
+const dv01 = (raw: number | null, precision?: number) => numeric(raw, "dv01", false, precision);
 
 function firstSeriesEntry(series: SeriesOption | SeriesOption[] | undefined): SeriesOption | undefined {
   if (series == null) return undefined;
@@ -22,15 +43,15 @@ describe("echartsRiskCharts", () => {
       const buckets: KRDBucket[] = [
         {
           tenor: "1Y",
-          krd: "0",
-          dv01: "123456",
-          market_value_weight: "0",
+          krd: ratio(0),
+          dv01: dv01(123_456),
+          market_value_weight: ratio(0),
         },
         {
           tenor: "5Y",
-          krd: "0",
-          dv01: "240000",
-          market_value_weight: "0",
+          krd: ratio(0),
+          dv01: dv01(240_000),
+          market_value_weight: ratio(0),
         },
       ];
       const option = buildKrdDv01BarOption(buckets);
@@ -61,31 +82,31 @@ describe("echartsRiskCharts", () => {
       const rows: AssetClassRiskSummary[] = [
         {
           asset_class: "rate",
-          market_value: "10000000",
-          duration: "1",
-          dv01: "1",
-          weight: "40%",
+          market_value: yuan(10_000_000),
+          duration: ratio(1),
+          dv01: dv01(1),
+          weight: pct(0.4, 0),
         },
         {
           asset_class: "credit",
-          market_value: "8000000",
-          duration: "2",
-          dv01: "2",
-          weight: "35%",
+          market_value: yuan(8_000_000),
+          duration: ratio(2),
+          dv01: dv01(2),
+          weight: pct(0.35, 0),
         },
         {
           asset_class: "other",
-          market_value: "5000000",
-          duration: "3",
-          dv01: "3",
-          weight: "25%",
+          market_value: yuan(5_000_000),
+          duration: ratio(3),
+          dv01: dv01(3),
+          weight: pct(0.25, 0),
         },
         {
           asset_class: "unknown_slice",
-          market_value: "1000000",
-          duration: "0",
-          dv01: "0",
-          weight: "5%",
+          market_value: yuan(1_000_000),
+          duration: ratio(0),
+          dv01: dv01(0),
+          weight: pct(0.05, 0),
         },
       ];
       const option = buildAssetClassMarketValuePieOption(rows);
@@ -105,16 +126,16 @@ describe("echartsRiskCharts", () => {
         formatter?: (p: {
           data?: {
             name: string;
-            marketValueRaw: string;
-            weight: string;
+            marketValueRaw: Numeric;
+            weight: Numeric;
           };
         }) => string;
       };
       const text = tooltip?.formatter?.({
         data: {
           name: "rate",
-          marketValueRaw: "10000000",
-          weight: "40%",
+          marketValueRaw: yuan(10_000_000),
+          weight: pct(0.4, 0),
         },
       });
       expect(text).toContain("市值");

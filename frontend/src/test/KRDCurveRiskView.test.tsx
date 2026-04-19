@@ -8,8 +8,28 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import { KRDCurveRiskView } from "../features/bond-analytics/components/KRDCurveRiskView";
+import type { KRDCurveRiskResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const ratio = (raw: number | null, precision?: number) => numeric(raw, "ratio", false, precision);
+const dv01 = (raw: number | null, precision?: number) => numeric(raw, "dv01", false, precision);
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -30,36 +50,38 @@ function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   };
 }
 
-function createKRDCurveRiskResult(overrides: Record<string, unknown> = {}) {
+function createKRDCurveRiskResult(
+  overrides: Partial<KRDCurveRiskResponse> = {},
+): KRDCurveRiskResponse {
   return {
     report_date: "2026-03-31",
-    portfolio_duration: "4.25",
-    portfolio_modified_duration: "3.90",
-    portfolio_dv01: "150000",
-    portfolio_convexity: "22.5",
+    portfolio_duration: ratio(4.25, 2),
+    portfolio_modified_duration: ratio(3.9, 2),
+    portfolio_dv01: dv01(150_000),
+    portfolio_convexity: ratio(22.5, 1),
     krd_buckets: [
-      { tenor: "3Y", krd: "0.8", dv01: "0.02", market_value_weight: "0.2" },
+      { tenor: "3Y", krd: ratio(0.8, 1), dv01: dv01(0.02, 2), market_value_weight: ratio(0.2, 1) },
     ],
     scenarios: [
       {
         scenario_name: "parallel_10bp",
         scenario_description: "收益率曲线平行 +10bp",
         shocks: {},
-        pnl_economic: "-500000",
-        pnl_oci: "0",
-        pnl_tpl: "0",
-        rate_contribution: "0",
-        convexity_contribution: "0",
+        pnl_economic: yuan(-500_000),
+        pnl_oci: yuan(0),
+        pnl_tpl: yuan(0),
+        rate_contribution: yuan(0),
+        convexity_contribution: yuan(0),
         by_asset_class: {},
       },
     ],
     by_asset_class: [
       {
         asset_class: "rate",
-        market_value: "800000000",
-        duration: "4.1",
-        dv01: "120000",
-        weight: "0.65",
+        market_value: yuan(800_000_000),
+        duration: ratio(4.1, 1),
+        dv01: dv01(120_000),
+        weight: ratio(0.65, 2),
       },
     ],
     warnings: [],

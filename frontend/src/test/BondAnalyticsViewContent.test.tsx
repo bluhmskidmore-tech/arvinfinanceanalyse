@@ -7,6 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import { runPollingTask } from "../app/jobs/polling";
+import type { Numeric, ResultMeta } from "../api/contracts";
+import type { ActionAttributionResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
 
 let latestOverviewProps: Record<string, unknown> | null = null;
 let latestDetailProps: Record<string, unknown> | null = null;
@@ -103,6 +106,73 @@ import { BondAnalyticsViewContent } from "../features/bond-analytics/components/
 
 const runPollingTaskMock = vi.mocked(runPollingTask);
 
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const ratio = (raw: number | null, precision?: number) => numeric(raw, "ratio", false, precision);
+const dv01 = (raw: number | null, precision?: number) => numeric(raw, "dv01", false, precision);
+
+function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
+  return {
+    trace_id: "tr_test",
+    basis: "formal",
+    result_kind: "bond_analytics.action_attribution",
+    formal_use_allowed: true,
+    source_version: "sv_test",
+    vendor_version: "vv_test",
+    rule_version: "rv_test",
+    cache_version: "cv_test",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-04-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function createActionAttributionResult(
+  overrides: Partial<ActionAttributionResponse> = {},
+): ActionAttributionResponse {
+  return {
+    report_date: "2026-03-31",
+    period_type: "MoM",
+    period_start: "2026-03-01",
+    period_end: "2026-03-31",
+    total_actions: 1,
+    total_pnl_from_actions: yuan(100),
+    by_action_type: [],
+    action_details: [],
+    period_start_duration: ratio(3),
+    period_end_duration: ratio(3),
+    duration_change_from_actions: ratio(0),
+    period_start_dv01: dv01(0),
+    period_end_dv01: dv01(0),
+    warnings: [],
+    computed_at: "2026-04-12T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function createActionAttributionEnvelope() {
+  return {
+    result_meta: createResultMeta(),
+    result: createActionAttributionResult(),
+  };
+}
+
 function renderViewContent(client = createApiClient({ mode: "mock" })) {
   latestOverviewProps = null;
   latestDetailProps = null;
@@ -136,40 +206,7 @@ describe("BondAnalyticsViewContent", () => {
   it("passes initial wiring state into overview and detail mocks", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsActionAttribution: vi.fn(async () => ({
-        result_meta: {
-          trace_id: "tr_test",
-          basis: "formal" as const,
-          result_kind: "bond_analytics.action_attribution",
-          formal_use_allowed: true,
-          source_version: "sv_test",
-          vendor_version: "vv_test",
-          rule_version: "rv_test",
-          cache_version: "cv_test",
-          quality_flag: "ok" as const,
-          vendor_status: "ok" as const,
-          fallback_mode: "none" as const,
-          scenario_flag: false,
-          generated_at: "2026-04-12T00:00:00Z",
-        },
-        result: {
-          report_date: "2026-03-31",
-          period_type: "MoM",
-          period_start: "2026-03-01",
-          period_end: "2026-03-31",
-          total_actions: 1,
-          total_pnl_from_actions: "100",
-          by_action_type: [],
-          action_details: [],
-          period_start_duration: "3",
-          period_end_duration: "3",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
-          warnings: [],
-          computed_at: "2026-04-12T00:00:00Z",
-        },
-      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
     renderViewContent(client);
 
@@ -200,40 +237,7 @@ describe("BondAnalyticsViewContent", () => {
     const user = userEvent.setup();
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsActionAttribution: vi.fn(async () => ({
-        result_meta: {
-          trace_id: "tr_test",
-          basis: "formal" as const,
-          result_kind: "bond_analytics.action_attribution",
-          formal_use_allowed: true,
-          source_version: "sv_test",
-          vendor_version: "vv_test",
-          rule_version: "rv_test",
-          cache_version: "cv_test",
-          quality_flag: "ok" as const,
-          vendor_status: "ok" as const,
-          fallback_mode: "none" as const,
-          scenario_flag: false,
-          generated_at: "2026-04-12T00:00:00Z",
-        },
-        result: {
-          report_date: "2026-03-31",
-          period_type: "MoM",
-          period_start: "2026-03-01",
-          period_end: "2026-03-31",
-          total_actions: 1,
-          total_pnl_from_actions: "100",
-          by_action_type: [],
-          action_details: [],
-          period_start_duration: "3",
-          period_end_duration: "3",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
-          warnings: [],
-          computed_at: "2026-04-12T00:00:00Z",
-        },
-      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
     renderViewContent(client);
 
@@ -260,40 +264,7 @@ describe("BondAnalyticsViewContent", () => {
 
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsActionAttribution: vi.fn(async () => ({
-        result_meta: {
-          trace_id: "tr_test",
-          basis: "formal" as const,
-          result_kind: "bond_analytics.action_attribution",
-          formal_use_allowed: true,
-          source_version: "sv_test",
-          vendor_version: "vv_test",
-          rule_version: "rv_test",
-          cache_version: "cv_test",
-          quality_flag: "ok" as const,
-          vendor_status: "ok" as const,
-          fallback_mode: "none" as const,
-          scenario_flag: false,
-          generated_at: "2026-04-12T00:00:00Z",
-        },
-        result: {
-          report_date: "2026-03-31",
-          period_type: "MoM",
-          period_start: "2026-03-01",
-          period_end: "2026-03-31",
-          total_actions: 1,
-          total_pnl_from_actions: "100",
-          by_action_type: [],
-          action_details: [],
-          period_start_duration: "3",
-          period_end_duration: "3",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
-          warnings: [],
-          computed_at: "2026-04-12T00:00:00Z",
-        },
-      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
 
     renderViewContent(client);
@@ -333,40 +304,7 @@ describe("BondAnalyticsViewContent", () => {
 
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsActionAttribution: vi.fn(async () => ({
-        result_meta: {
-          trace_id: "tr_test",
-          basis: "formal" as const,
-          result_kind: "bond_analytics.action_attribution",
-          formal_use_allowed: true,
-          source_version: "sv_test",
-          vendor_version: "vv_test",
-          rule_version: "rv_test",
-          cache_version: "cv_test",
-          quality_flag: "ok" as const,
-          vendor_status: "ok" as const,
-          fallback_mode: "none" as const,
-          scenario_flag: false,
-          generated_at: "2026-04-12T00:00:00Z",
-        },
-        result: {
-          report_date: "2026-03-31",
-          period_type: "MoM",
-          period_start: "2026-03-01",
-          period_end: "2026-03-31",
-          total_actions: 1,
-          total_pnl_from_actions: "100",
-          by_action_type: [],
-          action_details: [],
-          period_start_duration: "3",
-          period_end_duration: "3",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
-          warnings: [],
-          computed_at: "2026-04-12T00:00:00Z",
-        },
-      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
 
     renderViewContent(client);
@@ -392,40 +330,7 @@ describe("BondAnalyticsViewContent", () => {
 
     const client = {
       ...createApiClient({ mode: "mock" }),
-      getBondAnalyticsActionAttribution: vi.fn(async () => ({
-        result_meta: {
-          trace_id: "tr_test",
-          basis: "formal" as const,
-          result_kind: "bond_analytics.action_attribution",
-          formal_use_allowed: true,
-          source_version: "sv_test",
-          vendor_version: "vv_test",
-          rule_version: "rv_test",
-          cache_version: "cv_test",
-          quality_flag: "ok" as const,
-          vendor_status: "ok" as const,
-          fallback_mode: "none" as const,
-          scenario_flag: false,
-          generated_at: "2026-04-12T00:00:00Z",
-        },
-        result: {
-          report_date: "2026-03-31",
-          period_type: "MoM",
-          period_start: "2026-03-01",
-          period_end: "2026-03-31",
-          total_actions: 1,
-          total_pnl_from_actions: "100",
-          by_action_type: [],
-          action_details: [],
-          period_start_duration: "3",
-          period_end_duration: "3",
-          duration_change_from_actions: "0",
-          period_start_dv01: "0",
-          period_end_dv01: "0",
-          warnings: [],
-          computed_at: "2026-04-12T00:00:00Z",
-        },
-      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
     };
 
     renderViewContent(client);

@@ -9,8 +9,26 @@ vi.mock("../lib/echarts", () => ({
 
 import { ReturnDecompositionView } from "../features/bond-analytics/components/ReturnDecompositionView";
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import type { ReturnDecompositionResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const pct = (raw: number | null) => numeric(raw, "pct");
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -39,33 +57,33 @@ function createReturnDecompositionResult(
     period_type: "MoM",
     period_start: "2026-03-01",
     period_end: "2026-03-31",
-    carry: "1000000",
-    roll_down: "2000000",
-    rate_effect: "0",
-    spread_effect: "0",
-    trading: "0",
-    fx_effect: "0",
-    convexity_effect: "0",
-    explained_pnl: "3000000",
-    explained_pnl_accounting: "2800000",
-    explained_pnl_economic: "3200000",
-    oci_reserve_impact: "500000",
-    actual_pnl: "3000000",
-    recon_error: "0",
-    recon_error_pct: "0",
+    carry: yuan(1_000_000),
+    roll_down: yuan(2_000_000),
+    rate_effect: yuan(0),
+    spread_effect: yuan(0),
+    trading: yuan(0),
+    fx_effect: yuan(0),
+    convexity_effect: yuan(0),
+    explained_pnl: yuan(3_000_000),
+    explained_pnl_accounting: yuan(2_800_000),
+    explained_pnl_economic: yuan(3_200_000),
+    oci_reserve_impact: yuan(500_000),
+    actual_pnl: yuan(3_000_000),
+    recon_error: yuan(0),
+    recon_error_pct: pct(0),
     by_asset_class: [
       {
         asset_class: "利率债",
-        carry: "1000000",
-        roll_down: "2000000",
-        rate_effect: "0",
-        spread_effect: "0",
-        fx_effect: "0",
-        convexity_effect: "10000",
-        trading: "0",
-        total: "3000000",
+        carry: yuan(1_000_000),
+        roll_down: yuan(2_000_000),
+        rate_effect: yuan(0),
+        spread_effect: yuan(0),
+        fx_effect: yuan(0),
+        convexity_effect: yuan(10_000),
+        trading: yuan(0),
+        total: yuan(3_000_000),
         bond_count: 3,
-        market_value: "100000000",
+        market_value: yuan(100_000_000),
       },
     ],
     by_accounting_class: [],
@@ -75,20 +93,20 @@ function createReturnDecompositionResult(
         bond_name: null,
         asset_class: "利率债",
         accounting_class: "AC",
-        market_value: "100000000",
-        carry: "1000000",
-        roll_down: "2000000",
-        rate_effect: "0",
-        spread_effect: "0",
-        convexity_effect: "10000",
-        trading: "0",
-        total: "3000000",
-        explained_for_recon: "3000000",
-        economic_only_effects: "2010000",
+        market_value: yuan(100_000_000),
+        carry: yuan(1_000_000),
+        roll_down: yuan(2_000_000),
+        rate_effect: yuan(0),
+        spread_effect: yuan(0),
+        convexity_effect: yuan(10_000),
+        trading: yuan(0),
+        total: yuan(3_000_000),
+        explained_for_recon: yuan(3_000_000),
+        economic_only_effects: yuan(2_010_000),
       },
     ],
     bond_count: 3,
-    total_market_value: "100000000",
+    total_market_value: yuan(100_000_000),
     warnings: [],
     computed_at: "2026-04-10T00:00:00Z",
     ...overrides,

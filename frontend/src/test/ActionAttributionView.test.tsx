@@ -2,9 +2,28 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import { ActionAttributionView } from "../features/bond-analytics/components/ActionAttributionView";
 import type { ActionAttributionResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const ratio = (raw: number | null) => numeric(raw, "ratio");
+const dv01 = (raw: number | null) => numeric(raw, "dv01");
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -34,15 +53,15 @@ function createActionAttributionResult(
     period_start: "2026-03-01",
     period_end: "2026-03-31",
     total_actions: 2,
-    total_pnl_from_actions: "1500000",
+    total_pnl_from_actions: yuan(1_500_000),
     by_action_type: [
       {
         action_type: "ADD_DURATION",
         action_type_name: "加久期",
         action_count: 2,
-        total_pnl_economic: "1500000",
-        total_pnl_accounting: "1500000",
-        avg_pnl_per_action: "750000",
+        total_pnl_economic: yuan(1_500_000),
+        total_pnl_accounting: yuan(1_500_000),
+        avg_pnl_per_action: yuan(750_000),
       },
     ],
     action_details: [
@@ -52,18 +71,18 @@ function createActionAttributionResult(
         action_date: "2026-03-15",
         bonds_involved: ["019547"],
         description: "加仓利率债",
-        pnl_economic: "800000",
-        pnl_accounting: "800000",
-        delta_duration: "0.05",
-        delta_dv01: "10000",
-        delta_spread_dv01: "0",
+        pnl_economic: yuan(800_000),
+        pnl_accounting: yuan(800_000),
+        delta_duration: ratio(0.05),
+        delta_dv01: dv01(10_000),
+        delta_spread_dv01: dv01(0),
       },
     ],
-    period_start_duration: "3.10",
-    period_end_duration: "3.20",
-    duration_change_from_actions: "0.10",
-    period_start_dv01: "120000",
-    period_end_dv01: "130000",
+    period_start_duration: ratio(3.1),
+    period_end_duration: ratio(3.2),
+    duration_change_from_actions: ratio(0.1),
+    period_start_dv01: dv01(120_000),
+    period_end_dv01: dv01(130_000),
     warnings: [],
     computed_at: "2026-04-10T00:00:00Z",
     ...overrides,

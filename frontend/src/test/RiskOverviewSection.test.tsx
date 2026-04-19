@@ -2,40 +2,56 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import type { RiskOverviewPayload } from "../api/contracts";
+import type { Numeric, RiskOverviewPayload } from "../api/contracts";
 import { RiskOverviewSection } from "../features/executive-dashboard/components/RiskOverviewSection";
+
+function numeric(
+  raw: number | null,
+  display: string,
+  unit: Numeric["unit"] = "ratio",
+  signAware = false,
+  precision = 2,
+): Numeric {
+  return {
+    raw,
+    unit,
+    display,
+    precision,
+    sign_aware: signAware,
+  };
+}
 
 function riskFixture(): RiskOverviewPayload {
   return {
-    title: "风险",
+    title: "椋庨櫓",
     signals: [
       {
         id: "sig1",
         label: "DV01",
-        value: "12.4",
+        value: numeric(12.4, "12.4", "dv01", false, 1),
         status: "stable",
-        detail: "限额内",
+        detail: "闄愰鍐?",
       },
       {
         id: "sig2",
-        label: "集中度",
-        value: "偏高",
+        label: "闆嗕腑搴?",
+        value: numeric(0.82, "鍋忛珮"),
         status: "watch",
-        detail: "接近预警线",
+        detail: "鎺ヨ繎棰勮绾?",
       },
       {
         id: "sig3",
-        label: "流动性",
-        value: "紧张",
+        label: "娴佸姩鎬?",
+        value: numeric(-1, "绱у紶"),
         status: "warning",
-        detail: "需压降",
+        detail: "闇€鍘嬮檷",
       },
     ],
   };
 }
 
 describe("RiskOverviewSection", () => {
-  it("renders signal labels, values, statuses, and detail text", () => {
+  it("renders signal labels, Numeric value displays, statuses, and detail text", () => {
     const data = riskFixture();
 
     render(
@@ -52,21 +68,21 @@ describe("RiskOverviewSection", () => {
     expect(screen.getByText("DV01")).toBeInTheDocument();
     expect(screen.getByText("12.4")).toBeInTheDocument();
     expect(screen.getByText("稳定")).toBeInTheDocument();
-    expect(screen.getByText("限额内")).toBeInTheDocument();
+    expect(screen.getByText("闄愰鍐?")).toBeInTheDocument();
 
-    expect(screen.getByText("集中度")).toBeInTheDocument();
-    expect(screen.getByText("偏高")).toBeInTheDocument();
+    expect(screen.getByText("闆嗕腑搴?")).toBeInTheDocument();
+    expect(screen.getByText("鍋忛珮")).toBeInTheDocument();
     expect(screen.getByText("关注")).toBeInTheDocument();
-    expect(screen.getByText("接近预警线")).toBeInTheDocument();
+    expect(screen.getByText("鎺ヨ繎棰勮绾?")).toBeInTheDocument();
 
-    expect(screen.getByText("流动性")).toBeInTheDocument();
-    expect(screen.getByText("紧张")).toBeInTheDocument();
+    expect(screen.getByText("娴佸姩鎬?")).toBeInTheDocument();
+    expect(screen.getByText("绱у紶")).toBeInTheDocument();
     expect(screen.getByText("预警")).toBeInTheDocument();
-    expect(screen.getByText("需压降")).toBeInTheDocument();
+    expect(screen.getByText("闇€鍘嬮檷")).toBeInTheDocument();
   });
 
   it("renders empty state when signals is empty", () => {
-    const data: RiskOverviewPayload = { title: "风险", signals: [] };
+    const data: RiskOverviewPayload = { title: "椋庨櫓", signals: [] };
 
     render(
       <RiskOverviewSection
@@ -94,7 +110,7 @@ describe("RiskOverviewSection", () => {
     );
 
     expect(screen.getByText("数据载入失败。")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /重\s*试/ }));
+    await user.click(screen.getByRole("button", { name: "重试" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

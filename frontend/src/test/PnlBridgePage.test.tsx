@@ -280,7 +280,7 @@ describe("PnlBridgePage", () => {
       getPnlBridge: vi.fn(async () => ({
         result_meta: {
           ...buildMeta("pnl.bridge", "tr_bridge_fallback"),
-          fallback_mode: "latest_snapshot",
+          fallback_mode: "latest_snapshot" as const,
           filters_applied: { report_date: "2025-12-30" },
         },
         result: buildBridgePayload("2025-12-31", "IC-1", "15.40"),

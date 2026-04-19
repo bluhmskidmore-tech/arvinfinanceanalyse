@@ -8,8 +8,34 @@ vi.mock("../lib/echarts", () => ({
 }));
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import { CreditSpreadView } from "../features/bond-analytics/components/CreditSpreadView";
+import type {
+  CreditSpreadAnalysisResponse,
+  CreditSpreadMigrationResponse,
+} from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
+
+function numeric(
+  raw: number | null,
+  unit: Numeric["unit"],
+  signAware = false,
+  precision?: number,
+): Numeric {
+  return formatRawAsNumeric({
+    raw,
+    unit,
+    sign_aware: signAware,
+    ...(precision === undefined ? {} : { precision }),
+  });
+}
+
+const yuan = (raw: number | null) => numeric(raw, "yuan", true);
+const ratio = (raw: number | null, precision?: number) => numeric(raw, "ratio", false, precision);
+const bp = (raw: number | null, precision?: number) => numeric(raw, "bp", false, precision);
+const dv01 = (raw: number | null, precision?: number) => numeric(raw, "dv01", false, precision);
+const ratioAsBp = (raw: number | null, precision?: number) =>
+  bp(raw === null ? null : raw * 10_000, precision);
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -30,22 +56,24 @@ function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   };
 }
 
-function createCreditSpreadResult(overrides: Record<string, unknown> = {}) {
+function createCreditSpreadResult(
+  overrides: Partial<CreditSpreadMigrationResponse> = {},
+): CreditSpreadMigrationResponse {
   return {
     report_date: "2026-03-31",
     credit_bond_count: 42,
-    credit_market_value: "5000000000",
-    credit_weight: "0.35",
-    spread_dv01: "80000",
-    weighted_avg_spread: "0.0085",
-    weighted_avg_spread_duration: "3.2",
+    credit_market_value: yuan(5_000_000_000),
+    credit_weight: ratio(0.35, 2),
+    spread_dv01: dv01(80_000),
+    weighted_avg_spread: ratioAsBp(0.0085, 2),
+    weighted_avg_spread_duration: ratio(3.2, 1),
     spread_scenarios: [
       {
         scenario_name: "spr_25w",
-        spread_change_bp: 25,
-        pnl_impact: "-1200000",
-        oci_impact: "-400000",
-        tpl_impact: "-800000",
+        spread_change_bp: bp(25, 0),
+        pnl_impact: yuan(-1_200_000),
+        oci_impact: yuan(-400_000),
+        tpl_impact: yuan(-800_000),
       },
     ],
     migration_scenarios: [
@@ -54,20 +82,22 @@ function createCreditSpreadResult(overrides: Record<string, unknown> = {}) {
         from_rating: "AA",
         to_rating: "A",
         affected_bonds: 2,
-        affected_market_value: "200000000",
-        pnl_impact: "-500000",
+        affected_market_value: yuan(200_000_000),
+        pnl_impact: yuan(-500_000),
       },
     ],
-    oci_credit_exposure: "3000000000",
-    oci_spread_dv01: "50000",
-    oci_sensitivity_25bp: "-750000",
+    oci_credit_exposure: yuan(3_000_000_000),
+    oci_spread_dv01: dv01(50_000),
+    oci_sensitivity_25bp: yuan(-750_000),
     warnings: [],
     computed_at: "2026-04-10T00:00:00Z",
     ...overrides,
   };
 }
 
-function createCreditSpreadDetailResult(overrides: Record<string, unknown> = {}) {
+function createCreditSpreadDetailResult(
+  overrides: Partial<CreditSpreadAnalysisResponse> = {},
+): CreditSpreadAnalysisResponse {
   return {
     report_date: "2026-03-31",
     credit_bond_count: 42,
@@ -149,9 +179,9 @@ describe("CreditSpreadView", () => {
         result: createCreditSpreadResult({
           concentration_by_issuer: {
             dimension: "发行人",
-            hhi: "0.12",
-            top5_concentration: "0.45",
-            top_items: [{ name: "发行人A", weight: "0.2", market_value: "1000000000" }],
+            hhi: ratio(0.12, 2),
+            top5_concentration: ratio(0.45, 2),
+            top_items: [{ name: "发行人A", weight: ratio(0.2, 1), market_value: yuan(1_000_000_000) }],
           },
         }),
       })),
