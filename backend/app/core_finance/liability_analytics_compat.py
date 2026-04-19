@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 from collections import defaultdict
@@ -34,6 +33,25 @@ V1_MONTHLY_BUCKET_ORDER: tuple[str, ...] = (
     "5-10Y",
     "10Y+",
     "Matured",
+)
+
+V1_TOTAL_LIABILITY_ORDER: tuple[str, ...] = (
+    "同业负债",
+    "发行负债",
+)
+
+V1_INTERBANK_PRODUCT_ORDER: tuple[str, ...] = (
+    "卖出回购票据",
+    "卖出回购证券",
+    "同业存放",
+    "同业拆入",
+)
+
+V1_ISSUED_PRODUCT_ORDER: tuple[str, ...] = (
+    "同业存单",
+    "商业银行债",
+    "次级债券",
+    "资产支持证券",
 )
 
 
@@ -119,6 +137,33 @@ def zqtz_asset_amount(row: dict[str, Any]) -> Decimal:
     return to_decimal(face)
 
 
+def zqtz_asset_yield_weight(row: dict[str, Any]) -> Decimal:
+    asset_class = str(row.get("asset_class") or "").strip()
+    if "持有至到期" in asset_class:
+        amortized = row.get("amortized_cost_native")
+        if amortized not in (None, ""):
+            return to_decimal(amortized)
+    return zqtz_asset_amount(row)
+
+
+def zqtz_issued_weight(row: dict[str, Any]) -> Decimal:
+    market = row.get("market_value_native")
+    face = row.get("face_value_native")
+    if market not in (None, ""):
+        return to_decimal(market)
+    return to_decimal(face)
+
+
+def zqtz_ncd_weight(row: dict[str, Any]) -> Decimal:
+    face = row.get("face_value_native")
+    market = row.get("market_value_native")
+    if face not in (None, ""):
+        return to_decimal(face)
+    if market not in (None, ""):
+        return to_decimal(market)
+    return ZERO
+
+
 def normalize_bond_rate_decimal(value: object | None) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -194,7 +239,7 @@ def monthly_v1_bucket_name(report_date: date, maturity_value: object) -> str:
 
 
 def is_interbank_cd(row: dict[str, Any]) -> bool:
-    bond_type = str(row.get("bond_type") or "")
+    bond_type = str(row.get("bond_type") or row.get("sub_type") or "")
     instrument_name = str(row.get("instrument_name") or "")
     return "同业存单" in bond_type or "同业存单" in instrument_name
 
@@ -240,6 +285,22 @@ def sort_name_amount_items(items: dict[str, Decimal]) -> list[tuple[str, Decimal
     return sorted(items.items(), key=lambda item: (-item[1], item[0]))
 
 
+def sort_items_with_preferred_order(
+    items: dict[str, Decimal],
+    preferred_order: tuple[str, ...] = (),
+) -> list[tuple[str, Decimal]]:
+    preferred_rank = {name: index for index, name in enumerate(preferred_order)}
+    fallback_rank = len(preferred_order)
+    return sorted(
+        items.items(),
+        key=lambda item: (
+            preferred_rank.get(item[0], fallback_rank),
+            -item[1],
+            item[0],
+        ),
+    )
+
+
 def build_name_amount_payload(items: dict[str, Decimal]) -> list[dict[str, Any]]:
     payload: list[dict[str, Any]] = []
     for name, amount in sort_name_amount_items(items):
@@ -250,6 +311,27 @@ def build_name_amount_payload(items: dict[str, Decimal]) -> list[dict[str, Any]]
                 "name": name,
                 "amount": to_float(amount),
                 "amount_yi": to_float(to_amount_yi(amount)),
+            }
+        )
+    return payload
+
+
+def build_v1_name_amount_payload(
+    items: dict[str, Decimal],
+    *,
+    preferred_order: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    total = sum((amount for amount in items.values() if amount > ZERO), ZERO)
+    payload: list[dict[str, Any]] = []
+    for name, amount in sort_items_with_preferred_order(items, preferred_order):
+        if amount <= ZERO:
+            continue
+        pct = (amount / total * ONE_HUNDRED) if total > ZERO else ZERO
+        payload.append(
+            {
+                "name": name,
+                "amount": to_float(amount),
+                "pct": round(to_float(pct) or 0.0, 4),
             }
         )
     return payload
@@ -266,6 +348,22 @@ def build_bucket_amount_payload(items: dict[str, Decimal]) -> list[dict[str, Any
                 "bucket": label,
                 "amount": to_float(amount),
                 "amount_yi": to_float(to_amount_yi(amount)),
+            }
+        )
+    return payload
+
+
+def build_v1_bucket_amount_payload(items: dict[str, Decimal]) -> list[dict[str, Any]]:
+    total = sum((items.get(label, ZERO) for label in V1_MONTHLY_BUCKET_ORDER), ZERO)
+    payload: list[dict[str, Any]] = []
+    for label in V1_MONTHLY_BUCKET_ORDER:
+        amount = items.get(label, ZERO)
+        pct = (amount / total * ONE_HUNDRED) if total > ZERO else ZERO
+        payload.append(
+            {
+                "bucket": label,
+                "amount": to_float(amount),
+                "pct": round(to_float(pct) or 0.0, 4),
             }
         )
     return payload
@@ -344,7 +442,7 @@ def compute_liability_risk_buckets(
             continue
         name = clean_text(row.get("bond_type"), "发行债券")
         issued_structure[name] += amount
-        bucket_name = maturity_bucket(report_dt, row.get("maturity_date"))
+        bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
         issued_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -356,7 +454,7 @@ def compute_liability_risk_buckets(
             continue
         name = clean_text(row.get("product_type"), "同业其他")
         interbank_structure[name] += amount
-        bucket_name = maturity_bucket(report_dt, row.get("maturity_date"))
+        bucket_name = monthly_v1_bucket_name(report_dt, row.get("maturity_date"))
         interbank_terms[bucket_name] += amount
         total_terms[bucket_name] += amount
 
@@ -370,12 +468,21 @@ def compute_liability_risk_buckets(
 
     return {
         "report_date": report_date,
-        "liabilities_structure": build_name_amount_payload(liabilities_structure),
-        "liabilities_term_buckets": build_bucket_amount_payload(total_terms),
-        "interbank_liabilities_structure": build_name_amount_payload(interbank_structure),
-        "interbank_liabilities_term_buckets": build_bucket_amount_payload(interbank_terms),
-        "issued_liabilities_structure": build_name_amount_payload(issued_structure),
-        "issued_liabilities_term_buckets": build_bucket_amount_payload(issued_terms),
+        "liabilities_structure": build_v1_name_amount_payload(
+            liabilities_structure,
+            preferred_order=V1_TOTAL_LIABILITY_ORDER,
+        ),
+        "liabilities_term_buckets": build_v1_bucket_amount_payload(total_terms),
+        "interbank_liabilities_structure": build_v1_name_amount_payload(
+            interbank_structure,
+            preferred_order=V1_INTERBANK_PRODUCT_ORDER,
+        ),
+        "interbank_liabilities_term_buckets": build_v1_bucket_amount_payload(interbank_terms),
+        "issued_liabilities_structure": build_v1_name_amount_payload(
+            issued_structure,
+            preferred_order=V1_ISSUED_PRODUCT_ORDER,
+        ),
+        "issued_liabilities_term_buckets": build_v1_bucket_amount_payload(issued_terms),
     }
 
 
@@ -392,16 +499,24 @@ def compute_liability_yield_metrics(
         if bool(row.get("is_issuance_like")):
             amount = zqtz_liability_amount(row)
             rate = normalize_bond_rate_decimal(row.get("coupon_rate"))
+            if rate is None:
+                rate = normalize_bond_rate_decimal(row.get("interest_rate"))
             liability_pairs.append((amount, rate))
             if is_interbank_cd(row):
-                market_liability_pairs.append((amount, rate))
+                market_liability_pairs.append((zqtz_ncd_weight(row), rate))
             continue
         if not is_interest_bearing_bond_asset(row):
             continue
-        amount = zqtz_asset_amount(row)
+        amount = zqtz_asset_yield_weight(row)
         ytm = normalize_bond_rate_decimal(row.get("ytm_value"))
         coupon = normalize_bond_rate_decimal(row.get("coupon_rate"))
-        rate = ytm if ytm not in (None, ZERO) else coupon
+        interest_rate = normalize_bond_rate_decimal(row.get("interest_rate"))
+        if ytm not in (None, ZERO):
+            rate = ytm
+        elif coupon not in (None, ZERO):
+            rate = coupon
+        else:
+            rate = interest_rate
         asset_pairs.append((amount, rate))
 
     for row in tyw_rows:
@@ -591,12 +706,11 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
         avg_issued = agg.issued_sum / divisor
         avg_liability_cost = (agg.weighted_num / agg.weighted_den) if agg.weighted_den > ZERO else None
 
-        mom_change = (avg_total - prev_avg_total) if prev_avg_total is not None else None
-        mom_change_pct = (
-            ((mom_change / prev_avg_total) * ONE_HUNDRED)
-            if mom_change is not None and prev_avg_total is not None and prev_avg_total > ZERO
-            else None
-        )
+        # V1 monthly endpoint uses the cached route, whose single-month helper never
+        # threads prev_month_avg_total into the outward payload. Preserve that
+        # outward compatibility behavior here instead of exposing recomputed values.
+        mom_change = None
+        mom_change_pct = None
         prev_avg_total = avg_total
 
         counterparty_total_avg = sum((cpty.value for cpty in agg.counterparty.values()), ZERO) / divisor

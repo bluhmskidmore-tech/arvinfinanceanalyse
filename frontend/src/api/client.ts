@@ -61,6 +61,7 @@ import type {
   AdbPayload,
   LiabilitiesMonthlyPayload,
   LiabilityCounterpartyPayload,
+  LiabilityKnowledgeBriefPayload,
   LiabilityRiskBucketsPayload,
   LiabilityYieldMetricsPayload,
   CustomerBondDetailsResponse,
@@ -543,6 +544,7 @@ export type ApiClient = {
     reportDate?: string | null;
     topN?: number;
   }) => Promise<LiabilityCounterpartyPayload>;
+  getLiabilityKnowledgeBrief: () => Promise<ApiEnvelope<LiabilityKnowledgeBriefPayload>>;
   getLiabilitiesMonthly: (year: number) => Promise<LiabilitiesMonthlyPayload>;
   getLiabilityAdbMonthly: (year: number) => Promise<AdbMonthlyResponse>;
   getAdb: (params: { startDate: string; endDate: string }) => Promise<AdbPayload>;
@@ -5126,6 +5128,33 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         by_type: [],
       };
     },
+    async getLiabilityKnowledgeBrief() {
+      await delay();
+      return {
+        result_meta: {
+          trace_id: "tr_liability_knowledge_mock",
+          basis: "analytical",
+          result_kind: "liability.page_knowledge",
+          formal_use_allowed: false,
+          source_version: "sv_liability_knowledge_mock",
+          vendor_version: "vv_none",
+          rule_version: "rv_liability_knowledge_v1",
+          cache_version: "cv_liability_knowledge_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: new Date().toISOString(),
+        },
+        result: {
+          page_id: "liability-analytics",
+          available: false,
+          vault_path: null,
+          status_note: "mock-no-obsidian",
+          notes: [],
+        },
+      };
+    },
     async getLiabilitiesMonthly(year: number) {
       await delay();
       return {
@@ -6067,6 +6096,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/analysis/liabilities/counterparty${q ? `?${q}` : ""}`,
       );
     },
+    getLiabilityKnowledgeBrief: () =>
+      requestJson<LiabilityKnowledgeBriefPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/liability/business-context",
+      ),
     getLiabilitiesMonthly: (year) =>
       requestEnvelopeOrPlainJson<LiabilitiesMonthlyPayload>(
         fetchImpl,

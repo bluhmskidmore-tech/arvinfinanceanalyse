@@ -8,6 +8,7 @@ import type { LiabilityYieldKpi } from "../../../api/contracts";
 import { adaptLiabilityCounterparty } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";
+import { LiabilityKnowledgePanel } from "../components/LiabilityKnowledgePanel";
 import { LiabilityMonthlySnapshotCards } from "../components/LiabilityMonthlySnapshotCards";
 import { LiabilityNimStressMonthlyPanel } from "../components/LiabilityNimStressMonthlyPanel";
 import { LiabilityNimStressPanel } from "../components/LiabilityNimStressPanel";
@@ -117,6 +118,13 @@ export default function LiabilityAnalyticsPage() {
     retry: false,
   });
 
+  const knowledgeQuery = useQuery({
+    queryKey: ["liability", "knowledge-brief", client.mode],
+    queryFn: () => client.getLiabilityKnowledgeBrief(),
+    enabled: activeTab === "daily",
+    retry: false,
+  });
+
   const adbMonthlyQuery = useQuery({
     queryKey: ["liability", "adb-monthly", client.mode, selectedYear],
     queryFn: () => client.getLiabilityAdbMonthly(selectedYear),
@@ -125,6 +133,8 @@ export default function LiabilityAnalyticsPage() {
   });
 
   const yieldKpi: LiabilityYieldKpi | null = yieldQuery.data?.kpi ?? null;
+  const knowledgeNotes = knowledgeQuery.data?.result.notes ?? [];
+  const knowledgeStatusNote = knowledgeQuery.data?.result.status_note ?? null;
 
   const cpVm = useMemo(
     () =>
@@ -439,6 +449,16 @@ export default function LiabilityAnalyticsPage() {
                 />
               ) : null}
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
+                <LiabilityKnowledgePanel
+                  notes={knowledgeNotes}
+                  loading={knowledgeQuery.isLoading}
+                  errorText={
+                    knowledgeQuery.isError
+                      ? (knowledgeQuery.error as Error)?.message ?? "业务资料加载失败"
+                      : null
+                  }
+                  statusNote={knowledgeStatusNote}
+                />
                 <Card
                   data-testid="liability-conclusion"
                   style={{

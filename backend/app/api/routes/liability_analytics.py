@@ -4,6 +4,10 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query
 
+from backend.app.services.liability_knowledge_service import (
+    liability_knowledge_brief_envelope,
+)
+
 router = APIRouter(tags=["liability-analytics"])
 
 
@@ -55,3 +59,8 @@ def liabilities_monthly(
     year: int | None = Query(None, ge=2000, le=2100),
 ) -> dict[str, object]:
     _raise_liability_analytics_not_promoted()
+
+
+@router.get("/ui/liability/business-context")
+def liability_business_context() -> dict[str, object]:
+    return liability_knowledge_brief_envelope()

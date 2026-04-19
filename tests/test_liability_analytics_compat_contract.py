@@ -8,6 +8,9 @@ from backend.app.core_finance.liability_analytics_compat import (
     classify_counterparty,
     classify_monthly_counterparty,
     coerce_date,
+    compute_liabilities_monthly,
+    compute_liability_risk_buckets,
+    compute_liability_yield_metrics,
     is_self_counterparty,
     maturity_bucket,
     monthly_v1_bucket_name,
@@ -100,3 +103,203 @@ def test_is_self_counterparty_uses_contains_rule() -> None:
     assert is_self_counterparty("中国银行股份有限公司青岛银行合作部") is True
     assert is_self_counterparty("青岛银行股份有限公司") is True
     assert is_self_counterparty("ALPHA BANK") is False
+
+
+def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> None:
+    payload = compute_liability_risk_buckets(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": True,
+                "bond_type": "商业银行债",
+                "market_value_native": "200",
+                "face_value_native": "180",
+                "maturity_date": "2027-03-15",
+            }
+        ],
+        tyw_rows=[
+            {
+                "is_asset_side": False,
+                "principal_native": "500",
+                "product_type": "同业存放",
+                "maturity_date": "2026-03-15",
+            },
+            {
+                "is_asset_side": False,
+                "principal_native": "100",
+                "product_type": "卖出回购证券",
+                "maturity_date": "2026-07-01",
+            },
+            {
+                "is_asset_side": False,
+                "principal_native": "20",
+                "product_type": "卖出回购票据",
+                "maturity_date": None,
+            },
+            {
+                "is_asset_side": False,
+                "principal_native": "50",
+                "product_type": "同业拆入",
+                "maturity_date": "2029-02-26",
+            },
+        ],
+    )
+
+    assert payload["liabilities_structure"] == [
+        {"name": "同业负债", "amount": 670.0, "pct": 77.0115},
+        {"name": "发行负债", "amount": 200.0, "pct": 22.9885},
+    ]
+    assert payload["interbank_liabilities_structure"] == [
+        {"name": "卖出回购票据", "amount": 20.0, "pct": 2.9851},
+        {"name": "卖出回购证券", "amount": 100.0, "pct": 14.9254},
+        {"name": "同业存放", "amount": 500.0, "pct": 74.6269},
+        {"name": "同业拆入", "amount": 50.0, "pct": 7.4627},
+    ]
+    assert [item["bucket"] for item in payload["liabilities_term_buckets"]] == [
+        "0-3M",
+        "3-6M",
+        "6-12M",
+        "1-3Y",
+        "3-5Y",
+        "5-10Y",
+        "10Y+",
+        "Matured",
+    ]
+    assert payload["liabilities_term_buckets"][0] == {
+        "bucket": "0-3M",
+        "amount": 520.0,
+        "pct": 59.7701,
+    }
+    assert payload["liabilities_term_buckets"][1] == {
+        "bucket": "3-6M",
+        "amount": 100.0,
+        "pct": 11.4943,
+    }
+    assert payload["liabilities_term_buckets"][3] == {
+        "bucket": "1-3Y",
+        "amount": 200.0,
+        "pct": 22.9885,
+    }
+    assert payload["liabilities_term_buckets"][4:] == [
+        {"bucket": "3-5Y", "amount": 50.0, "pct": 5.7471},
+        {"bucket": "5-10Y", "amount": 0.0, "pct": 0.0},
+        {"bucket": "10Y+", "amount": 0.0, "pct": 0.0},
+        {"bucket": "Matured", "amount": 0.0, "pct": 0.0},
+    ]
+    assert all("amount_yi" not in item for item in payload["liabilities_structure"])
+    assert all("amount_yi" not in item for item in payload["liabilities_term_buckets"])
+
+
+def test_compute_liability_yield_metrics_uses_v1_face_value_for_market_ncd_weight() -> None:
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": True,
+                "bond_type": "同业存单",
+                "instrument_name": "NCD-1",
+                "market_value_native": "200",
+                "face_value_native": "100",
+                "coupon_rate": "4.0",
+            }
+        ],
+        tyw_rows=[
+            {
+                "is_asset_side": False,
+                "principal_native": "100",
+                "funding_cost_rate": "0",
+            }
+        ],
+    )
+
+    assert payload["kpi"] == {
+        "asset_yield": None,
+        "liability_cost": 0.02666666666666667,
+        "market_liability_cost": 0.02,
+        "nim": None,
+    }
+
+
+def test_compute_liability_yield_metrics_falls_back_to_interest_rate_for_bond_assets() -> None:
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": False,
+                "asset_class": "可供出售类资产",
+                "market_value_native": "100",
+                "coupon_rate": None,
+                "ytm_value": None,
+                "interest_rate": "2.5",
+            }
+        ],
+        tyw_rows=[],
+    )
+
+    assert payload["kpi"] == {
+        "asset_yield": 0.025,
+        "liability_cost": None,
+        "market_liability_cost": None,
+        "nim": None,
+    }
+
+
+def test_compute_liability_yield_metrics_uses_amortized_cost_for_htm_asset_weight() -> None:
+    payload = compute_liability_yield_metrics(
+        "2026-02-26",
+        zqtz_rows=[
+            {
+                "is_issuance_like": False,
+                "asset_class": "持有至到期类资产",
+                "market_value_native": "200",
+                "amortized_cost_native": "100",
+                "coupon_rate": "4.0",
+                "ytm_value": None,
+            }
+        ],
+        tyw_rows=[
+            {
+                "is_asset_side": True,
+                "principal_native": "100",
+                "funding_cost_rate": "0",
+            }
+        ],
+    )
+
+    assert payload["kpi"] == {
+        "asset_yield": 0.02,
+        "liability_cost": None,
+        "market_liability_cost": None,
+        "nim": None,
+    }
+
+
+def test_compute_liabilities_monthly_keeps_v1_mom_fields_null() -> None:
+    payload = compute_liabilities_monthly(
+        2026,
+        zqtz_rows=[
+            {
+                "report_date": "2026-01-31",
+                "bond_type": "同业存单",
+                "is_issuance_like": True,
+                "amortized_cost_native": "100",
+                "coupon_rate": "4.0",
+                "maturity_date": "2026-04-01",
+            },
+            {
+                "report_date": "2026-02-28",
+                "bond_type": "同业存单",
+                "is_issuance_like": True,
+                "amortized_cost_native": "120",
+                "coupon_rate": "4.0",
+                "maturity_date": "2026-05-01",
+            },
+        ],
+        tyw_rows=[],
+    )
+
+    assert [item["month"] for item in payload["months"]] == ["2026-01", "2026-02"]
+    assert payload["months"][0]["mom_change"] is None
+    assert payload["months"][0]["mom_change_pct"] is None
+    assert payload["months"][1]["mom_change"] is None
+    assert payload["months"][1]["mom_change_pct"] is None

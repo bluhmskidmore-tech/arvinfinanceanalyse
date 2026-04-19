@@ -2695,6 +2695,54 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch liability business context from the obsidian bridge route", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_liability_knowledge",
+          basis: "analytical",
+          result_kind: "liability.page_knowledge",
+          formal_use_allowed: false,
+          source_version: "sv_liability_knowledge",
+          vendor_version: "vv_none",
+          rule_version: "rv_liability_knowledge_v1",
+          cache_version: "cv_liability_knowledge_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-19T00:00:00Z",
+        },
+        result: {
+          page_id: "liability-analytics",
+          available: true,
+          vault_path: "D:\\PKL-WIKI\\wiki",
+          status_note: "obsidian-local",
+          notes: [],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const payload = await client.getLiabilityKnowledgeBrief();
+
+    expect(payload.result.available).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/liability/business-context",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to export balance-analysis workbook xlsx", async () => {
     const workbookBlob = new Blob(["xlsx-binary"], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

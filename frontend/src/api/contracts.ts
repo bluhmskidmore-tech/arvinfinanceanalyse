@@ -2530,6 +2530,23 @@ export type LiabilityCounterpartyPayload = {
   by_type: LiabilityCounterpartyTypeSlice[];
 };
 
+export type LiabilityKnowledgeNote = {
+  id: string;
+  title: string;
+  summary: string;
+  why_it_matters: string;
+  key_questions: string[];
+  source_path: string;
+};
+
+export type LiabilityKnowledgeBriefPayload = {
+  page_id: string;
+  available: boolean;
+  vault_path: string | null;
+  status_note: string | null;
+  notes: LiabilityKnowledgeNote[];
+};
+
 /** 与后端 `LiabilityMonthlyBreakdownRow` 对齐。 */
 export type LiabilityMonthlyBreakdownRow = {
   category?: string | null;

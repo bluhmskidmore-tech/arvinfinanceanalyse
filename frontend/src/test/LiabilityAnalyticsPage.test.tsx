@@ -126,6 +126,47 @@ function counterpartyPayload(reportDate: string, totalValue = 200_000_000): Liab
 }
 
 describe("LiabilityAnalyticsPage", () => {
+  it("renders an obsidian business briefing panel when note matches are available", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderLiabilityPage({
+      ...base,
+      getBalanceAnalysisDates: vi.fn(async () => balanceDates(["2025-12-31"])),
+      getLiabilityRiskBuckets: vi.fn(async () => riskPayload("2025-12-31")),
+      getLiabilityYieldMetrics: vi.fn(async () => yieldPayload("2025-12-31")),
+      getLiabilityCounterparty: vi.fn(async () => counterpartyPayload("2025-12-31")),
+      getLiabilitiesMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_total_liabilities: null, ytd_avg_liability_cost: null })),
+      getLiabilityAdbMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_assets: 0, ytd_avg_liabilities: 0, ytd_asset_yield: null, ytd_liability_cost: null, ytd_nim: null, unit: "percent" })),
+      getLiabilityKnowledgeBrief: vi.fn(async () => ({
+        result_meta: meta("liability_analytics.knowledge"),
+        result: {
+          page_id: "liability-analytics",
+          available: true,
+          vault_path: "D:\\PKL-WIKI\\wiki",
+          status_note: "obsidian-local",
+          notes: [
+            {
+              id: "liquidity-chain",
+              title: "同业负债、流动性与金融市场业务传导链",
+              summary: "同业负债会先重定价资金成本，再传导到配置边界和交易动作。",
+              why_it_matters: "适合解释负债成本、期限稳定性和流动性约束如何影响本页指标。",
+              key_questions: [
+                "当前流动性变化是总量变化还是结构变化？",
+                "本行缺的是头寸还是稳定负债？",
+              ],
+              source_path: "D:\\PKL-WIKI\\wiki\\同业负债、流动性与金融市场业务传导链.md",
+            },
+          ],
+        },
+      })),
+    } as ApiClient);
+
+    expect(await screen.findByTestId("liability-knowledge-panel")).toBeInTheDocument();
+    expect(screen.getByText("业务资料")).toBeInTheDocument();
+    expect(screen.getByText("同业负债、流动性与金融市场业务传导链")).toBeInTheDocument();
+    expect(screen.getByText(/当前流动性变化是总量变化还是结构变化/)).toBeInTheDocument();
+  });
+
   it("renders a first-screen funding conclusion for daily analysis", async () => {
     const base = createApiClient({ mode: "real" });
 
