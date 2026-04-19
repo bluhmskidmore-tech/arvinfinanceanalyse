@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -387,6 +387,111 @@ describe("AgentWorkbenchPage", () => {
 
     const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
     expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "AuditFlow"]);
+  });
+
+
+
+  it("ignores a stale query response after a newer manual process load wins", async () => {
+    vi.useFakeTimers();
+    let resolveQueryResponse!: (value: Response) => void;
+    const queryResponse = new Promise<Response>((resolve) => {
+      resolveQueryResponse = resolve;
+    });
+    let resolveManualLoadResponse!: (value: Response) => void;
+    const manualLoadResponse = new Promise<Response>((resolve) => {
+      resolveManualLoadResponse = resolve;
+    });
+    fetchMock.mockReturnValueOnce(queryResponse).mockReturnValueOnce(manualLoadResponse);
+
+    render(<AgentWorkbenchPage />);
+
+    fireEvent.change(screen.getByLabelText("repo-path-input"), {
+      target: { value: "F:\\MOSS-SYSTEM-V1" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(AGENT_PLACEHOLDER), {
+      target: { value: "GitNexus processes" },
+    });
+    const submitButton = document.querySelector('button[type="submit"]');
+    if (!(submitButton instanceof HTMLButtonElement)) {
+      throw new Error("query submit button not found");
+    }
+    fireEvent.click(submitButton);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const manualProcessButton = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent?.includes("读取"));
+    if (!(manualProcessButton instanceof HTMLButtonElement)) {
+      throw new Error("manual process button not found");
+    }
+    fireEvent.click(manualProcessButton);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      resolveManualLoadResponse(
+        buildJsonResponse({
+          answer: "GitNexus processes ready.",
+          cards: [
+            {
+              title: "GitNexus Processes Table",
+              type: "table",
+              data: [{ name: "NewestManualFlow", type: "cross_community", steps: 5 }],
+              spec: { columns: ["name", "type", "steps"] },
+            },
+          ],
+          evidence: {
+            tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/processes"],
+            filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+            evidence_rows: 1,
+            quality_flag: "ok",
+          },
+          result_meta: {
+            trace_id: "tr_gitnexus_processes_manual_current",
+            basis: "analytical",
+            generated_at: "2026-04-12T09:00:00Z",
+          },
+          next_drill: [],
+        }),
+      )
+      await Promise.resolve()
+    });
+
+    let select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+    expect(select).toHaveValue("NewestManualFlow");
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "NewestManualFlow"]);
+
+    await act(async () => {
+      resolveQueryResponse(
+        buildJsonResponse({
+          answer: "GitNexus processes ready.",
+          cards: [
+            {
+              title: "GitNexus Processes Table",
+              type: "table",
+              data: [{ name: "StaleQueryFlow", type: "cross_community", steps: 2 }],
+              spec: { columns: ["name", "type", "steps"] },
+            },
+          ],
+          evidence: {
+            tables_used: ["gitnexus://repo/MOSS-SYSTEM-V1/processes"],
+            filters_applied: { repo_path: "F:\\MOSS-SYSTEM-V1" },
+            evidence_rows: 1,
+            quality_flag: "ok",
+          },
+          result_meta: {
+            trace_id: "tr_gitnexus_processes_query_old",
+            basis: "analytical",
+            generated_at: "2026-04-12T09:00:00Z",
+          },
+          next_drill: [],
+        }),
+      )
+      await Promise.resolve()
+    });
+
+    select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
+    expect(select).toHaveValue("NewestManualFlow");
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(["", "NewestManualFlow"]);
   });
 
   it("submits explicit repo_path in filters when provided", async () => {

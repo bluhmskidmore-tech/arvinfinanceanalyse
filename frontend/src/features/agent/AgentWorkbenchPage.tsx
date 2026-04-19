@@ -1,4 +1,4 @@
-﻿import { useDeferredValue, useEffect, useState, type FormEvent } from "react";
+﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { shellTokens as t } from "../../theme/tokens";
 import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
@@ -326,12 +326,27 @@ export default function AgentWorkbenchPage() {
   const [processLoading, setProcessLoading] = useState(false);
   const [result, setResult] = useState<AgentQueryResult | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
+  const repoPathRef = useRef(repoPath);
+  const processStateRequestVersionRef = useRef(0);
   const deferredProcessSearch = useDeferredValue(processSearch);
   const filteredProcesses = availableProcesses.filter((processName) =>
     processName.toLowerCase().includes(deferredProcessSearch.trim().toLowerCase()),
   );
   const recentUnpinnedRepoPaths = recentRepoPaths.filter((path) => !pinnedRepoPaths.includes(path));
   const isCurrentRepoPinned = pinnedRepoPaths.includes(repoPath.trim());
+  repoPathRef.current = repoPath;
+
+  function beginProcessStateRequest() {
+    processStateRequestVersionRef.current += 1;
+    return processStateRequestVersionRef.current;
+  }
+
+  function canCommitProcessState(requestVersion: number, requestRepoPath: string) {
+    return (
+      processStateRequestVersionRef.current === requestVersion &&
+      requestRepoPath === repoPathRef.current.trim()
+    );
+  }
 
   function rememberRepoPath(nextRepoPath: string) {
     setRecentRepoPaths((currentPaths) => {
@@ -367,6 +382,7 @@ export default function AgentWorkbenchPage() {
 
   useEffect(() => {
     const normalizedRepoPath = repoPath.trim();
+    const requestVersion = beginProcessStateRequest();
     if (!normalizedRepoPath) {
       setAvailableProcesses([]);
       setSelectedProcess("");
@@ -374,7 +390,7 @@ export default function AgentWorkbenchPage() {
     }
 
     const timeoutId = window.setTimeout(() => {
-      void loadGitNexusProcesses(normalizedRepoPath);
+      void loadGitNexusProcesses(normalizedRepoPath, requestVersion);
     }, 350);
     return () => window.clearTimeout(timeoutId);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- debounce repo path changes only
@@ -391,6 +407,8 @@ export default function AgentWorkbenchPage() {
   }, [filteredProcesses, selectedProcess]);
 
   async function executeAgentQuery(question: string, mode: "query" | "processes" = "query") {
+    const normalizedRepoPath = repoPath.trim();
+    const requestVersion = beginProcessStateRequest();
     try {
       const response = await fetch("/api/agent/query", {
         method: "POST",
@@ -400,7 +418,7 @@ export default function AgentWorkbenchPage() {
         body: JSON.stringify({
           question,
           basis: "formal",
-          filters: buildFilters(question, repoPath, selectedProcess),
+          filters: buildFilters(question, normalizedRepoPath, selectedProcess),
           position_scope: "all",
           currency_basis: "CNY",
           context: {
@@ -412,6 +430,9 @@ export default function AgentWorkbenchPage() {
       const payload = (await response.json()) as unknown;
 
       if (response.status === 503 && isDisabledPayload(payload)) {
+        if (!canCommitProcessState(requestVersion, normalizedRepoPath)) {
+          return;
+        }
         setError({
           kind: "disabled",
           detail: payload.detail,
@@ -429,24 +450,28 @@ export default function AgentWorkbenchPage() {
       }
 
       const nextProcesses = extractProcessNames(payload.cards);
-      if (nextProcesses.length > 0) {
+      if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setAvailableProcesses(nextProcesses);
         setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
-      } else if (mode === "processes") {
+      } else if (mode === "processes" && canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setAvailableProcesses([]);
         setSelectedProcess("");
       }
 
-      if (repoPath.trim().length > 0) {
-        rememberRepoPath(repoPath);
+      if (normalizedRepoPath.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
+        rememberRepoPath(normalizedRepoPath);
       }
-      setResult(payload);
+      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+        setResult(payload);
+      }
       return payload;
     } catch (requestError) {
-      setError({
-        kind: "request",
-        message: buildErrorMessage(requestError),
-      });
+      if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
+        setError({
+          kind: "request",
+          message: buildErrorMessage(requestError),
+        });
+      }
     }
   }
 
@@ -472,8 +497,10 @@ export default function AgentWorkbenchPage() {
     }
   }
 
-  async function loadGitNexusProcesses(repoPathOverride: string) {
-    if (!repoPathOverride.trim()) {
+  async function loadGitNexusProcesses(repoPathOverride: string, requestVersion?: number) {
+    const normalizedRepoPath = repoPathOverride.trim();
+    const activeRequestVersion = requestVersion ?? beginProcessStateRequest();
+    if (!normalizedRepoPath) {
       setError({
         kind: "request",
         message: "请先输入 GitNexus Repo Path。",
@@ -492,7 +519,7 @@ export default function AgentWorkbenchPage() {
         body: JSON.stringify({
           question: "请给我看 GitNexus processes",
           basis: "formal",
-          filters: { repo_path: repoPathOverride.trim() },
+          filters: { repo_path: normalizedRepoPath },
           position_scope: "all",
           currency_basis: "CNY",
           context: {
@@ -511,18 +538,24 @@ export default function AgentWorkbenchPage() {
       }
 
       const nextProcesses = extractProcessNames(payload.cards);
-      setAvailableProcesses(nextProcesses);
-      setProcessSearch("");
-      setSelectedProcess(nextProcesses[0] ?? "");
-      rememberRepoPath(repoPathOverride);
-      setResult(payload);
+      if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
+        setAvailableProcesses(nextProcesses);
+        setProcessSearch("");
+        setSelectedProcess(nextProcesses[0] ?? "");
+        rememberRepoPath(normalizedRepoPath);
+        setResult(payload);
+      }
     } catch (requestError) {
-      setError({
-        kind: "request",
-        message: buildErrorMessage(requestError),
-      });
+      if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
+        setError({
+          kind: "request",
+          message: buildErrorMessage(requestError),
+        });
+      }
     } finally {
-      setProcessLoading(false);
+      if (processStateRequestVersionRef.current === activeRequestVersion) {
+        setProcessLoading(false);
+      }
     }
   }
 
