@@ -1,14 +1,14 @@
 import type { LiabilityCounterpartyPayload, Numeric } from "../../../api/contracts";
 
-import type { LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
-import { numericPctRaw, numericYuanRaw } from "../utils/money";
+import type { LiabilityCpRow, LiabilityTypeRow } from "../components/LiabilityCounterpartyBlock";
+import { numericYuanRaw, shareOfTotalNumeric } from "../utils/money";
 
 export type LiabilityCounterpartyState = { kind: "loading" } | { kind: "error" } | { kind: "empty" } | { kind: "ok" };
 
 export type LiabilityCounterpartyVM = {
-  totalValueYuan: number;
+  totalValue: Numeric;
   rows: LiabilityCpRow[];
-  byType: { name: string; value: number }[];
+  byType: LiabilityTypeRow[];
 };
 
 export type AdaptLiabilityCounterpartyInput = {
@@ -33,22 +33,19 @@ export function adaptLiabilityCounterparty(input: AdaptLiabilityCounterpartyInpu
   if (!p) {
     return { vm: null, state: { kind: "empty" } };
   }
-  const total = numericYuanRaw(p.total_value);
-  const rows: LiabilityCpRow[] = (p.top_10 ?? []).map((it) => {
-    const valueYuan = numericYuanRaw(it.value ?? null);
-    return {
-      name: it.name,
-      valueYuan,
-      pct: total > 0 ? (valueYuan / total) * 100 : 0,
-      type: it.type ?? "",
-      weightedCost: numericPctRaw(it.weighted_cost ?? null),
-    };
-  });
-  const byType = (p.by_type ?? []).map((x) => ({
-    name: x.name,
-    value: numericYuanRaw(x.value ?? null),
+
+  const rows: LiabilityCpRow[] = (p.top_10 ?? []).map((it) => ({
+    name: it.name,
+    value: it.value ?? null,
+    share: shareOfTotalNumeric(it.value ?? null, p.total_value),
+    type: it.type ?? "",
+    weightedCost: it.weighted_cost ?? null,
   }));
-  const vm: LiabilityCounterpartyVM = { totalValueYuan: total, rows, byType };
-  const kind = total === 0 && rows.length === 0 ? "empty" : "ok";
+  const byType: LiabilityTypeRow[] = (p.by_type ?? []).map((x) => ({
+    name: x.name,
+    value: x.value ?? null,
+  }));
+  const vm: LiabilityCounterpartyVM = { totalValue: p.total_value, rows, byType };
+  const kind = numericYuanRaw(p.total_value) === 0 && rows.length === 0 ? "empty" : "ok";
   return { vm, state: { kind } };
 }

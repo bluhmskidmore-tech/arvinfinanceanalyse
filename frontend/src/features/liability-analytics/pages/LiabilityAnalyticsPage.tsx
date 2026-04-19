@@ -12,11 +12,47 @@ import { LiabilityMonthlySnapshotCards } from "../components/LiabilityMonthlySna
 import { LiabilityNimStressMonthlyPanel } from "../components/LiabilityNimStressMonthlyPanel";
 import { LiabilityNimStressPanel } from "../components/LiabilityNimStressPanel";
 import { LiabilityStructureGrids } from "../components/LiabilityStructureGrids";
-import { bucketAmountToYi, nameAmountToYi, numericToYi, numericYuanRaw, numericPctRaw } from "../utils/money";
+import {
+  bucketAmountToYiNumeric,
+  nameAmountToYiNumeric,
+  numericPctRaw,
+  numericToYiNumeric,
+  shareOfTotalNumeric,
+} from "../utils/money";
 
 const { Title, Text } = Typography;
 
 type TabKey = "daily" | "monthly";
+
+function buildDailyLiabilityConclusion(args: {
+  yieldKpi: LiabilityYieldKpi | null;
+  counterpartyRows: LiabilityCpRow[];
+}) {
+  const topShare = Math.max(...args.counterpartyRows.map((row) => row.share?.raw ?? 0), 0);
+  const nimRaw = numericPctRaw(args.yieldKpi?.nim ?? null);
+
+  if (nimRaw !== null && nimRaw <= 0) {
+    return {
+      title: "当前结论",
+      body: "负债成本已经压过资产收益，净息差承压。",
+      detail: `当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}，需优先检查高成本资金来源与期限结构。`,
+    };
+  }
+
+  if (topShare >= 0.3) {
+    return {
+      title: "当前结论",
+      body: "净息差仍为正，但资金来源集中度偏高，头部对手方依赖需要重点关注。",
+      detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? "—"}，当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}。`,
+    };
+  }
+
+  return {
+    title: "当前结论",
+    body: "净息差仍为正，资金来源分布相对均衡。",
+    detail: `头部对手方占比 ${args.counterpartyRows[0]?.share?.display ?? "—"}，当前 NIM ${args.yieldKpi?.nim?.display ?? "—"}。`,
+  };
+}
 
 export default function LiabilityAnalyticsPage() {
   const client = useApiClient();
@@ -133,22 +169,20 @@ export default function LiabilityAnalyticsPage() {
     return ms.find((m) => m.month === selectedMonth) || null;
   }, [adbMonthlyQuery.data?.months, selectedMonth]);
 
-  const mCpTotal = selectedMonthData ? numericYuanRaw(selectedMonthData.avg_total_liabilities) : 0;
   const monthlyCpRowsAll: LiabilityCpRow[] = useMemo(() => {
     if (!selectedMonthData) {
       return [];
     }
     return (selectedMonthData.counterparty_details ?? []).map((it) => {
-      const valueYuan = numericYuanRaw(it.avg_value ?? null);
       return {
         name: it.name ?? "",
-        valueYuan,
-        pct: mCpTotal > 0 ? (valueYuan / mCpTotal) * 100 : 0,
+        value: it.avg_value ?? null,
+        share: shareOfTotalNumeric(it.avg_value ?? null, selectedMonthData.avg_total_liabilities ?? null),
         type: it.type ?? "",
-        weightedCost: numericPctRaw(it.weighted_cost ?? null),
+        weightedCost: it.weighted_cost ?? null,
       };
     });
-  }, [mCpTotal, selectedMonthData]);
+  }, [selectedMonthData]);
 
   const monthlyByInstitution = useMemo(() => {
     if (!selectedMonthData?.by_institution_type) {
@@ -156,7 +190,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return selectedMonthData.by_institution_type.map((x) => ({
       name: x.type ?? "",
-      value: numericYuanRaw(x.avg_value ?? null),
+      value: x.avg_value ?? null,
     }));
   }, [selectedMonthData?.by_institution_type]);
 
@@ -166,47 +200,45 @@ export default function LiabilityAnalyticsPage() {
     if (!top10?.length || !selectedMonthData) {
       return undefined;
     }
-    const total = mCpTotal;
     return top10.map((it) => {
-      const valueYuan = numericYuanRaw(it.avg_value ?? null);
       return {
         name: it.name ?? "",
-        valueYuan,
-        pct: total > 0 ? (valueYuan / total) * 100 : 0,
+        value: it.avg_value ?? null,
+        share: shareOfTotalNumeric(it.avg_value ?? null, selectedMonthData.avg_total_liabilities ?? null),
         type: it.type ?? "",
-        weightedCost: numericPctRaw(it.weighted_cost ?? null),
+        weightedCost: it.weighted_cost ?? null,
       };
     });
-  }, [mCpTotal, selectedMonthData]);
+  }, [selectedMonthData]);
 
   const dailyStructure = useMemo(() => {
     const raw = riskQuery.data?.liabilities_structure ?? [];
-    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYi(x) }));
+    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYiNumeric(x) }));
   }, [riskQuery.data?.liabilities_structure]);
 
   const dailyTerm = useMemo(() => {
     const raw = riskQuery.data?.liabilities_term_buckets ?? [];
-    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYi(x) }));
+    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYiNumeric(x) }));
   }, [riskQuery.data?.liabilities_term_buckets]);
 
   const dailyIbStructure = useMemo(() => {
     const raw = riskQuery.data?.interbank_liabilities_structure ?? [];
-    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYi(x) }));
+    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYiNumeric(x) }));
   }, [riskQuery.data?.interbank_liabilities_structure]);
 
   const dailyIbTerm = useMemo(() => {
     const raw = riskQuery.data?.interbank_liabilities_term_buckets ?? [];
-    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYi(x) }));
+    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYiNumeric(x) }));
   }, [riskQuery.data?.interbank_liabilities_term_buckets]);
 
   const dailyIssuedStructure = useMemo(() => {
     const raw = riskQuery.data?.issued_liabilities_structure ?? [];
-    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYi(x) }));
+    return raw.map((x) => ({ name: x.name, amountYi: nameAmountToYiNumeric(x) }));
   }, [riskQuery.data?.issued_liabilities_structure]);
 
   const dailyIssuedTerm = useMemo(() => {
     const raw = riskQuery.data?.issued_liabilities_term_buckets ?? [];
-    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYi(x) }));
+    return raw.map((x) => ({ bucket: x.bucket, amountYi: bucketAmountToYiNumeric(x) }));
   }, [riskQuery.data?.issued_liabilities_term_buckets]);
 
   const mStructure = useMemo(() => {
@@ -215,7 +247,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.structure_overview ?? []).map((x) => ({
       name: x.category ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -225,7 +257,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -235,7 +267,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.interbank_by_type ?? []).map((x) => ({
       name: x.category ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -245,7 +277,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.interbank_term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -255,7 +287,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.issued_by_type ?? []).map((x) => ({
       name: x.category ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -265,7 +297,7 @@ export default function LiabilityAnalyticsPage() {
     }
     return (selectedMonthData.issued_term_buckets ?? []).map((x) => ({
       bucket: x.bucket ?? "",
-      amountYi: numericToYi(x.avg_balance ?? null),
+      amountYi: numericToYiNumeric(x.avg_balance ?? null),
     }));
   }, [selectedMonthData]);
 
@@ -280,7 +312,25 @@ export default function LiabilityAnalyticsPage() {
     !datesQuery.isLoading &&
     !datesBlockingError &&
     (datesQuery.data?.result.report_dates.length ?? 0) === 0;
-
+  const reportDateSelectDisabled = Boolean(explicitReportDate) || datesBlockingError || datesEmpty;
+  const dailyPrimaryError = activeTab === "daily" && (riskQuery.isError || cpVm.state.kind === "error");
+  const dailyPrimaryEmpty =
+    activeTab === "daily" &&
+    !datesBlockingError &&
+    !datesEmpty &&
+    !riskQuery.isLoading &&
+    !riskQuery.isError &&
+    cpVm.state.kind === "empty" &&
+    dailyStructure.length === 0 &&
+    dailyTerm.length === 0 &&
+    dailyIbStructure.length === 0 &&
+    dailyIbTerm.length === 0 &&
+    dailyIssuedStructure.length === 0 &&
+    dailyIssuedTerm.length === 0;
+  const dailyConclusion = buildDailyLiabilityConclusion({
+    yieldKpi,
+    counterpartyRows: dailyCpRows,
+  });
   return (
     <section data-testid="liability-analytics-page">
       <Row justify="space-between" align="top" gutter={[16, 16]} style={{ marginBottom: 16 }}>
@@ -325,7 +375,7 @@ export default function LiabilityAnalyticsPage() {
                   style={{ minWidth: 160 }}
                   value={reportDate || undefined}
                   placeholder="选择报告日"
-                  disabled={Boolean(explicitReportDate) || datesBlockingError}
+                  disabled={reportDateSelectDisabled}
                   options={dateOptions.map((d) => ({ value: d, label: d }))}
                   onChange={(v) => setSelectedReportDate(v)}
                 />
@@ -339,20 +389,44 @@ export default function LiabilityAnalyticsPage() {
           </Space>
 
           {datesBlockingError ? (
-            <Alert type="error" showIcon message="无法加载资产负债可用日期，请稍后重试。" />
+            <Alert
+              data-testid="liability-page-state"
+              type="error"
+              showIcon
+              message="无法加载资产负债可用日期，请稍后重试。"
+            />
           ) : null}
-          {datesEmpty ? <Alert type="info" showIcon message="暂无可用报告日。" /> : null}
+          {datesEmpty ? (
+            <Alert
+              data-testid="liability-page-state"
+              type="info"
+              showIcon
+              message="暂无可用报告日。"
+            />
+          ) : null}
 
-          {riskQuery.isLoading ? (
+          {datesBlockingError || datesEmpty ? null : riskQuery.isLoading ? (
             <div style={{ textAlign: "center", padding: 48 }}>
               <Spin size="large" />
             </div>
-          ) : riskQuery.isError ? (
+          ) : dailyPrimaryError ? (
             <Alert
+              data-testid="liability-page-state"
               type="error"
               showIcon
-              message="负债结构主数据加载失败"
-              description={(riskQuery.error as Error)?.message ?? "请求失败"}
+              message="日常负债主数据加载失败"
+              description={
+                riskQuery.isError
+                  ? (riskQuery.error as Error)?.message ?? "请求失败"
+                  : (cpQuery.error as Error | undefined)?.message ?? "对手方数据加载失败"
+              }
+            />
+          ) : dailyPrimaryEmpty ? (
+            <Alert
+              data-testid="liability-page-state"
+              type="info"
+              showIcon
+              message="所选报告日暂无负债分析数据。"
             />
           ) : (
             <>
@@ -365,9 +439,35 @@ export default function LiabilityAnalyticsPage() {
                 />
               ) : null}
               <Space direction="vertical" size={16} style={{ width: "100%" }}>
-                <LiabilityNimStressPanel yieldKpi={yieldKpi} />
+                <Card
+                  data-testid="liability-conclusion"
+                  style={{
+                    borderRadius: 16,
+                    border: "1px solid #dbe7f5",
+                    background: "#f7fbff",
+                    boxShadow: "0 10px 24px rgba(31, 94, 255, 0.06)",
+                  }}
+                >
+                  <Space direction="vertical" size={6} style={{ width: "100%" }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        letterSpacing: "0.06em",
+                        textTransform: "uppercase",
+                        color: "#6b7f99",
+                      }}
+                    >
+                      {dailyConclusion.title}
+                    </span>
+                    <div style={{ fontSize: 20, fontWeight: 600, color: "#162033", lineHeight: 1.4 }}>
+                      {dailyConclusion.body}
+                    </div>
+                    <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>{dailyConclusion.detail}</div>
+                  </Space>
+                </Card>
                 <LiabilityCounterpartyBlock
-                  totalValueYuan={cpVm.vm?.totalValueYuan ?? 0}
+                  totalValue={cpVm.vm?.totalValue ?? null}
                   counterpartyRows={dailyCpRows}
                   byType={cpVm.vm?.byType ?? []}
                   loading={cpQuery.isLoading}
@@ -375,6 +475,7 @@ export default function LiabilityAnalyticsPage() {
                     cpQuery.isError ? (cpQuery.error as Error)?.message ?? "对手方数据加载失败" : null
                   }
                 />
+                <LiabilityNimStressPanel yieldKpi={yieldKpi} />
                 <LiabilityStructureGrids
                   structure={dailyStructure}
                   term={dailyTerm}
@@ -460,7 +561,7 @@ export default function LiabilityAnalyticsPage() {
               <LiabilityCounterpartyBlock
                 title="资金来源依赖度（Top 10 对手方）"
                 subtitle="口径：月度日均（TYWL 负债端）。"
-                totalValueYuan={mCpTotal}
+                totalValue={selectedMonthData.avg_total_liabilities ?? null}
                 counterpartyRows={monthlyCpRowsAll}
                 barRankingRows={monthlyCpBarRows}
                 byType={monthlyByInstitution}

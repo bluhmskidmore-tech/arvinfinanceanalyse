@@ -1,8 +1,14 @@
 import { Card, Table, Typography } from "antd";
 
+import type { Numeric } from "../../../api/contracts";
+import { numericToYiNumeric } from "../utils/money";
 import type { LiabilityCpRow } from "./LiabilityCounterpartyBlock";
 
 const { Text } = Typography;
+
+function numericDisplay(value: Numeric | null | undefined): string {
+  return value?.display ?? "—";
+}
 
 export function LiabilityCustomerTable({
   rows,
@@ -16,7 +22,7 @@ export function LiabilityCustomerTable({
   return (
     <Card
       size="small"
-      title="客户维度明细表（业务规模 & 加权负债成本）"
+      title="客户维度明细表（业务规模与加权负债成本）"
       extra={<Text type="secondary">客户数：{loading ? "—" : rows.length}</Text>}
     >
       {subtitle ? (
@@ -30,33 +36,32 @@ export function LiabilityCustomerTable({
         pagination={false}
         locale={{ emptyText: "暂无数据" }}
         scroll={{ x: 900, y: 460 }}
-        dataSource={rows.map((r, idx) => ({ ...r, key: `${r.name}-${idx}` }))}
+        dataSource={rows.map((row, index) => ({ ...row, key: `${row.name}-${index}` }))}
         columns={[
           { title: "对手方/客户", dataIndex: "name", ellipsis: true },
           {
             title: "业务规模(亿元)",
-            dataIndex: "valueYuan",
+            dataIndex: "value",
             align: "right",
-            render: (v: number) => (v / 1e8).toFixed(2),
+            render: (value: Numeric | null) => numericDisplay(numericToYiNumeric(value)),
           },
           {
             title: "占比",
-            dataIndex: "pct",
+            dataIndex: "share",
             align: "right",
-            render: (v: number) => `${v.toFixed(2)}%`,
+            render: (value: Numeric | null) => numericDisplay(value),
           },
           {
             title: "加权负债成本",
             dataIndex: "weightedCost",
             align: "right",
-            render: (v: number | null) =>
-              v === null || v === undefined ? "—" : `${(Number(v) * 100).toFixed(2)}%`,
+            render: (value: Numeric | null) => numericDisplay(value),
           },
           {
             title: "类型",
             dataIndex: "type",
             ellipsis: true,
-            render: (v: string) => v || "—",
+            render: (value: string) => value || "—",
           },
         ]}
       />

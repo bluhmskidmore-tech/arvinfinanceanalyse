@@ -1,8 +1,10 @@
 import { Card, Col, Row, Spin, Typography } from "antd";
 import { useMemo } from "react";
 
+import type { Numeric } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { concentrationMetrics } from "../utils/concentration";
+import { numericToYiNumeric, numericYuanRaw } from "../utils/money";
 
 const { Text } = Typography;
 
@@ -13,35 +15,38 @@ const PIE_EXTRA = ["#13c2c2", "#fa8c16", "#52c41a", "#722ed1", "#eb2f96"];
 
 export type LiabilityCpRow = {
   name: string;
-  valueYuan: number;
-  pct: number;
+  value: Numeric | null;
+  share: Numeric | null;
   type: string;
-  weightedCost: number | null;
+  weightedCost: Numeric | null;
 };
 
-function truncateName(s: string, n = 10): string {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
+export type LiabilityTypeRow = {
+  name: string;
+  value: Numeric | null;
+};
+
+function truncateName(value: string, max = 10): string {
+  return value.length > max ? `${value.slice(0, max)}...` : value;
 }
 
-function bankNonBankFromByType(by: { name: string; value: number }[]): { name: string; value: number }[] {
-  const bank = by.find((x) => x.name === "Bank")?.value || 0;
-  const nonbank = by.reduce((sum, x) => (x.name === "Bank" ? sum : sum + (x.value || 0)), 0);
+function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value: number }[] {
+  const bank = numericYuanRaw(rows.find((row) => row.name === "Bank")?.value);
+  const nonBank = rows.reduce(
+    (sum, row) => (row.name === "Bank" ? sum : sum + numericYuanRaw(row.value)),
+    0,
+  );
   return [
     { name: "银行", value: bank },
-    { name: "非银行", value: nonbank },
+    { name: "非银行", value: nonBank },
   ];
 }
 
 export function LiabilityCounterpartyBlock({
   title = "资金来源依赖度（Top 10 对手方）",
-  subtitle = "口径：TYWL 负债端（对手方名称 × 余额；剔除「青岛银行股份有限公司」）。",
-  totalValueYuan,
-  /** 全量对手方行（与明细表一致）；集中度 HHI / Top10 依赖度由此计算。 */
+  subtitle = "口径：TYWL 负债端（对手方名称 × 余额；剔除“青岛银行股份有限公司”）。",
+  totalValue,
   counterpartyRows,
-  /**
-   * 若提供（如月度 `counterparty_top10`），柱状图序列与该顺序一致；
-   * 集中度仍基于 `counterpartyRows` 全量。
-   */
   barRankingRows,
   byType,
   loading,
@@ -49,18 +54,19 @@ export function LiabilityCounterpartyBlock({
 }: {
   title?: string;
   subtitle?: string;
-  totalValueYuan: number;
+  totalValue: Numeric | null;
   counterpartyRows: LiabilityCpRow[];
   barRankingRows?: LiabilityCpRow[];
-  byType: { name: string; value: number }[];
+  byType: LiabilityTypeRow[];
   loading: boolean;
   errorText: string | null;
 }) {
   const ranked = useMemo(
-    () => [...counterpartyRows].sort((a, b) => b.valueYuan - a.valueYuan),
+    () => [...counterpartyRows].sort((a, b) => numericYuanRaw(b.value) - numericYuanRaw(a.value)),
     [counterpartyRows],
   );
-  const cpTop10 = useMemo(() => {
+
+  const top10Rows = useMemo(() => {
     if (barRankingRows && barRankingRows.length > 0) {
       return barRankingRows.slice(0, 10);
     }
@@ -68,13 +74,12 @@ export function LiabilityCounterpartyBlock({
   }, [barRankingRows, ranked]);
 
   const { top10Share, hhiTimes10000 } = useMemo(() => {
-    const weights = counterpartyRows.map((r) => r.valueYuan);
+    const weights = counterpartyRows.map((row) => numericYuanRaw(row.value));
     return concentrationMetrics(weights);
   }, [counterpartyRows]);
 
   const donut = useMemo(() => bankNonBankFromByType(byType), [byType]);
-
-  const revTop10 = useMemo(() => [...cpTop10].reverse(), [cpTop10]);
+  const reversedTop10 = useMemo(() => [...top10Rows].reverse(), [top10Rows]);
 
   const barOption: EChartsOption = useMemo(
     () => ({
@@ -83,64 +88,65 @@ export function LiabilityCounterpartyBlock({
         trigger: "axis",
         axisPointer: { type: "shadow" },
         formatter: (params: unknown) => {
-          const arr = params as { data: { value: number; row: LiabilityCpRow } }[];
-          if (!arr?.length) {
-            return "";
-          }
-          const row = arr[0].data.row;
-          const wc =
-            row.weightedCost === null || row.weightedCost === undefined
-              ? "—"
-              : `${(Number(row.weightedCost) * 100).toFixed(2)}%`;
-          return `${row.name}<br/>余额：${(row.valueYuan / 1e8).toFixed(2)} 亿<br/>占比：${row.pct.toFixed(2)}%<br/>加权负债成本：${wc}<br/>类型：${row.type || "—"}`;
+          const rows = params as { data: { row: LiabilityCpRow } }[];
+          const row = rows?.[0]?.data?.row;
+          if (!row) return "";
+          const balanceDisplay = numericToYiNumeric(row.value)?.display ?? "—";
+          const shareDisplay = row.share?.display ?? "—";
+          const weightedCostDisplay = row.weightedCost?.display ?? "—";
+          return `${row.name}<br/>余额：${balanceDisplay}<br/>占比：${shareDisplay}<br/>加权负债成本：${weightedCostDisplay}<br/>类型：${row.type || "—"}`;
         },
       },
       xAxis: { type: "value" },
       yAxis: {
         type: "category",
-        data: revTop10.map((r) => truncateName(r.name)),
+        data: reversedTop10.map((row) => truncateName(row.name)),
         axisLabel: { width: 110, overflow: "truncate" },
       },
       series: [
         {
           type: "bar",
-          data: revTop10.map((r) => ({
-            value: r.valueYuan / 1e8,
-            row: r,
+          data: reversedTop10.map((row) => ({
+            value: numericToYiNumeric(row.value)?.raw ?? 0,
+            row,
           })),
           itemStyle: { color: LIAB_RED, borderRadius: [0, 4, 4, 0] },
         },
       ],
     }),
-    [revTop10],
+    [reversedTop10],
   );
 
   const pieOption: EChartsOption = useMemo(
     () => ({
       tooltip: {
         trigger: "item",
-        formatter: (p: unknown) => {
-          const x = p as { name: string; value: number };
-          const tot = totalValueYuan;
-          const pct = tot > 0 ? (x.value / tot) * 100 : 0;
-          return `${x.name}<br/>余额：${(x.value / 1e8).toFixed(2)} 亿<br/>占比：${pct.toFixed(2)}%`;
+        formatter: (params: unknown) => {
+          const point = params as { name: string; value: number };
+          const total = numericYuanRaw(totalValue);
+          const pct = total > 0 ? (point.value / total) * 100 : 0;
+          return `${point.name}<br/>余额：${(point.value / 1e8).toFixed(2)} 亿<br/>占比：${pct.toFixed(2)}%`;
         },
       },
       series: [
         {
           type: "pie",
           radius: ["40%", "65%"],
-          data: donut.map((d, idx) => ({
-            ...d,
+          data: donut.map((item, index) => ({
+            ...item,
             itemStyle: {
               color:
-                donut.length <= 2 ? (idx === 0 ? PIE_BANK : PIE_NONBANK) : PIE_EXTRA[idx % PIE_EXTRA.length],
+                donut.length <= 2
+                  ? index === 0
+                    ? PIE_BANK
+                    : PIE_NONBANK
+                  : PIE_EXTRA[index % PIE_EXTRA.length],
             },
           })),
         },
       ],
     }),
-    [donut, totalValueYuan],
+    [donut, totalValue],
   );
 
   return (
@@ -151,7 +157,8 @@ export function LiabilityCounterpartyBlock({
           title={title}
           extra={
             <Text type="secondary">
-              总规模：{(totalValueYuan / 1e8).toFixed(0)} 亿 · Top10 占比：{(top10Share * 100).toFixed(2)}% · HHI：{" "}
+              总规模：{numericToYiNumeric(totalValue)?.display ?? "—"} · Top10 占比：{(top10Share * 100).toFixed(2)}% · HHI：
+              {" "}
               {hhiTimes10000.toFixed(0)}
             </Text>
           }

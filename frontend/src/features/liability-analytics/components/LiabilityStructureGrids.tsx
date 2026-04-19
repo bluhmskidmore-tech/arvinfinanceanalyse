@@ -1,29 +1,36 @@
 import { Card, Col, Row, Typography } from "antd";
 
+import type { Numeric } from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
+import { numericOrDash } from "../utils/money";
 
 const { Text } = Typography;
 
 const COLORS = ["#cf1322", "#1d39c4", "#08979c", "#389e0d", "#531dab"];
 
-type NamedYi = { name: string; amountYi: number };
-type BucketYi = { bucket: string; amountYi: number };
+type NamedYi = { name: string; amountYi: Numeric | null };
+type BucketYi = { bucket: string; amountYi: Numeric | null };
 
 function pieOption(items: NamedYi[]): EChartsOption {
   return {
     color: COLORS,
     tooltip: {
       trigger: "item",
-      formatter: (p: unknown) => {
-        const x = p as { name: string; value: number; percent: number };
-        return `${x.name}<br/>${x.percent.toFixed(2)}%<br/>${x.value.toFixed(2)} 亿元`;
+      formatter: (params: unknown) => {
+        const point = params as { data?: { name: string; amountYi: Numeric | null }; percent?: number };
+        const item = point.data;
+        return `${item?.name ?? ""}<br/>${(point.percent ?? 0).toFixed(2)}%<br/>${numericOrDash(item?.amountYi)}`;
       },
     },
     series: [
       {
         type: "pie",
         radius: ["42%", "68%"],
-        data: items.map((s) => ({ name: s.name, value: s.amountYi })),
+        data: items.map((item) => ({
+          name: item.name,
+          value: item.amountYi?.raw ?? 0,
+          amountYi: item.amountYi,
+        })),
         label: { show: false },
       },
     ],
@@ -36,36 +43,44 @@ function barOption(items: BucketYi[]): EChartsOption {
     tooltip: {
       trigger: "axis",
       formatter: (params: unknown) => {
-        const arr = params as { name: string; value: number }[];
-        if (!arr?.length) {
-          return "";
-        }
-        return `${arr[0].name}<br/>${arr[0].value.toFixed(2)} 亿元`;
+        const list = params as { data?: { amountYi: Numeric | null }[]; name?: string }[];
+        const first = list?.[0];
+        const data = first?.data as { amountYi: Numeric | null } | undefined;
+        return `${first?.name ?? ""}<br/>${numericOrDash(data?.amountYi)}`;
       },
     },
     grid: { left: 48, right: 16, top: 16, bottom: 32 },
-    xAxis: { type: "category", data: items.map((x) => x.bucket), axisLabel: { fontSize: 11 } },
+    xAxis: { type: "category", data: items.map((item) => item.bucket), axisLabel: { fontSize: 11 } },
     yAxis: { type: "value" },
-    series: [{ type: "bar", data: items.map((x) => x.amountYi), barMaxWidth: 48 }],
+    series: [
+      {
+        type: "bar",
+        data: items.map((item) => ({
+          value: item.amountYi?.raw ?? 0,
+          amountYi: item.amountYi,
+        })),
+        barMaxWidth: 48,
+      },
+    ],
   };
 }
 
 function PieLegend({ items }: { items: NamedYi[] }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 8 }}>
-      {items.map((s, idx) => (
-        <Text key={s.name} style={{ fontSize: 12 }} type="secondary">
+      {items.map((item, index) => (
+        <Text key={item.name} style={{ fontSize: 12 }} type="secondary">
           <span
             style={{
               display: "inline-block",
               width: 10,
               height: 10,
               borderRadius: 999,
-              background: COLORS[idx % COLORS.length],
+              background: COLORS[index % COLORS.length],
               marginRight: 6,
             }}
           />
-          {s.name}: {s.amountYi.toFixed(2)} 亿
+          {item.name}: {numericOrDash(item.amountYi)}
         </Text>
       ))}
     </div>
@@ -79,7 +94,6 @@ export function LiabilityStructureGrids({
   interbankTerm,
   issuedStructure,
   issuedTerm,
-  /** 负债结构饼图下方补充说明（V1 月度口径文案对齐）。 */
   structurePieCaption,
 }: {
   structure: NamedYi[];
@@ -109,7 +123,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={16}>
           <Card size="small" title="期限结构（单位：亿元）">
             <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
-              口径：发行债券（asset_class 含「发行类」）+ 同业负债（direction=Liability）。
+              口径：发行债券（asset_class 含“发行类”）+ 同业负债（direction=Liability）。
             </Text>
             <div style={{ height: 300 }}>
               <ReactECharts option={barOption(term)} style={{ height: 300 }} notMerge lazyUpdate />
@@ -122,12 +136,7 @@ export function LiabilityStructureGrids({
         <Col xs={24} lg={12}>
           <Card size="small" title="同业负债业务结构（按产品类型，亿元）">
             <div style={{ height: 300 }}>
-              <ReactECharts
-                option={pieOption(interbankStructure)}
-                style={{ height: 300 }}
-                notMerge
-                lazyUpdate
-              />
+              <ReactECharts option={pieOption(interbankStructure)} style={{ height: 300 }} notMerge lazyUpdate />
             </div>
             <PieLegend items={interbankStructure} />
           </Card>
