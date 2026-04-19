@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+﻿import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
@@ -57,8 +57,8 @@ export function DashboardBondHeadlineSection({ reportDate }: DashboardBondHeadli
     const dur = nativeToNumber(kpis.weighted_duration);
     const cpn = nativeToNumber(kpis.weighted_coupon);
     const spr = nativeToNumber(kpis.credit_spread_median);
-    const dv = nativeToNumber(kpis.total_dv01);
-    const dvWan = dv / 10_000;
+    const rateSensitivity = nativeToNumber(kpis.total_dv01) / 10_000;
+
     return [
       { label: "债券持仓规模", value: formatNumeric(formatRawAsNumeric({ raw: mv, unit: "yuan", sign_aware: false })) },
       { label: "未实现损益", value: formatNumeric(formatRawAsNumeric({ raw: pnl, unit: "yuan", sign_aware: true })) },
@@ -67,8 +67,8 @@ export function DashboardBondHeadlineSection({ reportDate }: DashboardBondHeadli
       { label: "加权票息率", value: formatNumeric(formatRawAsNumeric({ raw: cpn, unit: "pct", sign_aware: false })) },
       { label: "信用利差(中位数)", value: formatNumeric(formatRawAsNumeric({ raw: spr, unit: "pct", sign_aware: false })) },
       {
-        label: "DV01 合计",
-        value: `${formatNumeric(formatRawAsNumeric({ raw: dvWan, unit: "ratio", sign_aware: false, precision: 2 }))} 万元`,
+        label: "利率敏感度合计",
+        value: `${formatNumeric(formatRawAsNumeric({ raw: rateSensitivity, unit: "ratio", sign_aware: false, precision: 2 }))} 万元`,
       },
       {
         label: "债券只数",
@@ -96,9 +96,9 @@ export function DashboardBondHeadlineSection({ reportDate }: DashboardBondHeadli
           ) : null
         }
       >
-        <div style={GRID_STYLE}>
+        <div data-testid="dashboard-bond-headline-grid" style={GRID_STYLE}>
           {cells.map((c) => (
-            <div key={c.label} style={CELL_STYLE}>
+            <div key={c.label} data-testid="dashboard-bond-headline-kpi" style={CELL_STYLE}>
               <div style={{ fontSize: 12, color: "#8090a8" }}>{c.label}</div>
               <div style={{ fontSize: 20, fontWeight: 700, color: "#162033", fontVariantNumeric: "tabular-nums" }}>
                 {c.value}
