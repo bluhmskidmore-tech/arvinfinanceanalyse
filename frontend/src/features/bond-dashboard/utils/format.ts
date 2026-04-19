@@ -1,43 +1,55 @@
-/** Format backend decimal strings (native CNY amounts) for display. */
+import type { Numeric } from "../../../api/contracts";
 
-export function nativeToNumber(s: string): number {
-  const n = Number.parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
+type NumericLike = Numeric | string | number | null | undefined;
+
+/** Read governed Numeric.raw for dashboard render math. */
+export function nativeToNumber(value: NumericLike): number {
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+  if (value?.raw === null || value?.raw === undefined || !Number.isFinite(value.raw)) {
+    return 0;
+  }
+  return value.raw;
 }
 
-/** 原币 → 亿元 */
-export function formatYi(s: string, digits = 2): string {
-  return (nativeToNumber(s) / 1e8).toLocaleString("zh-CN", {
+/** 鍘熷竵 鈫?浜垮厓 */
+export function formatYi(value: NumericLike, digits = 2): string {
+  return (nativeToNumber(value) / 1e8).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
-/** 小数利率 → 百分比显示 */
-export function formatRatePercent(s: string, digits = 2): string {
-  return (nativeToNumber(s) * 100).toLocaleString("zh-CN", {
+/** 灏忔暟鍒╃巼 鈫?鐧惧垎姣旀樉绀?*/
+export function formatRatePercent(value: NumericLike, digits = 2): string {
+  return (nativeToNumber(value) * 100).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
-/** DV01 原币（元）→ 万元 */
-export function formatDv01Wan(s: string, digits = 2): string {
-  return (nativeToNumber(s) / 1e4).toLocaleString("zh-CN", {
+/** DV01 鍘熷竵锛堝厓锛夆啋 涓囧厓 */
+export function formatDv01Wan(value: NumericLike, digits = 2): string {
+  return (nativeToNumber(value) / 1e4).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
-export function formatYears(s: string, digits = 2): string {
-  return nativeToNumber(s).toLocaleString("zh-CN", {
+export function formatYears(value: NumericLike, digits = 2): string {
+  return nativeToNumber(value).toLocaleString("zh-CN", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
 }
 
-export function formatMomRatio(cur: string, prev: string | undefined): string | null {
-  if (prev === undefined) return null;
+export function formatMomRatio(cur: NumericLike, prev: NumericLike): string | null {
+  if (prev === undefined || prev === null) return null;
   const a = nativeToNumber(cur);
   const b = nativeToNumber(prev);
   if (b === 0) return null;

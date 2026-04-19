@@ -1,12 +1,12 @@
 import { Button, Card } from "antd";
 
-import type { RiskIndicatorsPayload } from "../../../api/contracts";
+import type { Numeric, RiskIndicatorsPayload } from "../../../api/contracts";
 import { formatDv01Wan, formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
 
 const ROWS: {
   label: string;
   key: keyof RiskIndicatorsPayload;
-  format: (v: string) => string;
+  format: (v: Numeric | null | undefined) => string;
 }[] = [
   { label: "组合市值", key: "total_market_value", format: (v) => `${formatYi(v)} 亿` },
   { label: "DV01", key: "total_dv01", format: (v) => `${formatDv01Wan(v)} 万元` },
@@ -47,7 +47,7 @@ export function RiskIndicatorsPanel({
           >
             <span style={{ color: "rgba(0,0,0,0.65)" }}>{r.label}</span>
             <span style={{ fontWeight: 600, color: "#1677ff" }}>
-              {data ? r.format(String(data[r.key])) : "—"}
+              {data ? r.format(data[r.key] as Numeric | null | undefined) : "—"}
             </span>
           </div>
         ))}

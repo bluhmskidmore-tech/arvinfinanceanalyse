@@ -1,7 +1,7 @@
 import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import type { SpreadAnalysisItem, SpreadAnalysisPayload } from "../../../api/contracts";
+import type { Numeric, SpreadAnalysisItem, SpreadAnalysisPayload } from "../../../api/contracts";
 import { formatRatePercent, formatYi } from "../utils/format";
 
 export function SpreadTable({
@@ -18,7 +18,7 @@ export function SpreadTable({
       dataIndex: "median_yield",
       key: "my",
       align: "right",
-      render: (v: string) => formatRatePercent(v),
+      render: (v: Numeric | null) => formatRatePercent(v),
     },
     { title: "数量", dataIndex: "bond_count", key: "n", align: "right" },
     {
@@ -26,7 +26,7 @@ export function SpreadTable({
       dataIndex: "total_market_value",
       key: "mv",
       align: "right",
-      render: (v: string) => formatYi(v),
+      render: (v: Numeric) => formatYi(v),
     },
   ];
 

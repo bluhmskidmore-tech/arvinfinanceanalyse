@@ -4412,31 +4412,33 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardHeadlineKpis(reportDate: string) {
       await delay();
-      const mv = "328709000000.00000000";
-      const prevMv = "320000000000.00000000";
+      const zy = (raw: number, sign_aware = false) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware });
+      const zp = (raw: number, sign_aware = true) => formatRawAsNumeric({ raw, unit: "pct", sign_aware });
+      const zr = (raw: number, sign_aware = false) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware });
+      const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.headline_kpis",
         {
           report_date: reportDate,
           prev_report_date: "2026-02-28",
           kpis: {
-            total_market_value: mv,
-            unrealized_pnl: "1850000000.00000000",
-            weighted_ytm: "0.02850000",
-            weighted_duration: "3.45000000",
-            weighted_coupon: "0.03120000",
-            credit_spread_median: "0.00850000",
-            total_dv01: "-125430.50000000",
+            total_market_value: zy(328_709_000_000),
+            unrealized_pnl: zy(1_850_000_000, true),
+            weighted_ytm: zp(0.0285),
+            weighted_duration: zr(3.45),
+            weighted_coupon: zp(0.0312),
+            credit_spread_median: zp(0.0085),
+            total_dv01: zd(-125_430.5),
             bond_count: 428,
           },
           prev_kpis: {
-            total_market_value: prevMv,
-            unrealized_pnl: "1600000000.00000000",
-            weighted_ytm: "0.02810000",
-            weighted_duration: "3.52000000",
-            weighted_coupon: "0.03080000",
-            credit_spread_median: "0.00890000",
-            total_dv01: "-128900.00000000",
+            total_market_value: zy(320_000_000_000),
+            unrealized_pnl: zy(1_600_000_000, true),
+            weighted_ytm: zp(0.0281),
+            weighted_duration: zr(3.52),
+            weighted_coupon: zp(0.0308),
+            credit_spread_median: zp(0.0089),
+            total_dv01: zd(-128_900),
             bond_count: 415,
           },
         },
@@ -4445,43 +4447,44 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardAssetStructure(reportDate: string, groupBy: string) {
       await delay();
-      const total = "328709000000.00000000";
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.asset_structure",
         {
           report_date: reportDate,
           group_by: groupBy,
-          total_market_value: total,
+          total_market_value: zy(328_709_000_000),
           items: [
             {
               category: "政策性金融债",
-              total_market_value: "98500000000.00000000",
+              total_market_value: zy(98_500_000_000),
               bond_count: 42,
-              percentage: "29.96428571",
+              percentage: zp(29.96428571),
             },
             {
               category: "地方政府债",
-              total_market_value: "82000000000.00000000",
+              total_market_value: zy(82_000_000_000),
               bond_count: 56,
-              percentage: "24.94571429",
+              percentage: zp(24.94571429),
             },
             {
               category: "同业存单",
-              total_market_value: "71000000000.00000000",
+              total_market_value: zy(71_000_000_000),
               bond_count: 120,
-              percentage: "21.60000000",
+              percentage: zp(21.6),
             },
             {
               category: "信用债-企业",
-              total_market_value: "49209000000.00000000",
+              total_market_value: zy(49_209_000_000),
               bond_count: 150,
-              percentage: "14.97000000",
+              percentage: zp(14.97),
             },
             {
               category: "其他",
-              total_market_value: "26000000000.00000000",
+              total_market_value: zy(26_000_000_000),
               bond_count: 60,
-              percentage: "7.91000000",
+              percentage: zp(7.91),
             },
           ],
         },
@@ -4490,19 +4493,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardYieldDistribution(reportDate: string) {
       await delay();
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: true });
       return buildMockApiEnvelope(
         "bond_dashboard.yield_distribution",
         {
           report_date: reportDate,
-          weighted_ytm: "0.02850000",
+          weighted_ytm: zp(0.0285),
           items: [
-            { yield_bucket: "<1.5%", total_market_value: "12000000000.00000000", bond_count: 12 },
-            { yield_bucket: "1.5%-2.0%", total_market_value: "45000000000.00000000", bond_count: 88 },
-            { yield_bucket: "2.0%-2.5%", total_market_value: "98000000000.00000000", bond_count: 142 },
-            { yield_bucket: "2.5%-3.0%", total_market_value: "110000000000.00000000", bond_count: 118 },
-            { yield_bucket: "3.0%-3.5%", total_market_value: "42000000000.00000000", bond_count: 48 },
-            { yield_bucket: "3.5%-4.0%", total_market_value: "15000000000.00000000", bond_count: 15 },
-            { yield_bucket: ">4.0%", total_market_value: "6709000000.00000000", bond_count: 5 },
+            { yield_bucket: "<1.5%", total_market_value: zy(12_000_000_000), bond_count: 12 },
+            { yield_bucket: "1.5%-2.0%", total_market_value: zy(45_000_000_000), bond_count: 88 },
+            { yield_bucket: "2.0%-2.5%", total_market_value: zy(98_000_000_000), bond_count: 142 },
+            { yield_bucket: "2.5%-3.0%", total_market_value: zy(110_000_000_000), bond_count: 118 },
+            { yield_bucket: "3.0%-3.5%", total_market_value: zy(42_000_000_000), bond_count: 48 },
+            { yield_bucket: "3.5%-4.0%", total_market_value: zy(15_000_000_000), bond_count: 15 },
+            { yield_bucket: ">4.0%", total_market_value: zy(6_709_000_000), bond_count: 5 },
           ],
         },
         { basis: "formal", formal_use_allowed: true },
@@ -4510,6 +4515,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardPortfolioComparison(reportDate: string) {
       await delay();
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: true });
+      const zr = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
+      const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.portfolio_comparison",
         {
@@ -4517,26 +4526,26 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           items: [
             {
               portfolio_name: "银行账户",
-              total_market_value: "185000000000.00000000",
-              weighted_ytm: "0.02780000",
-              weighted_duration: "3.21000000",
-              total_dv01: "-70200.00000000",
+              total_market_value: zy(185_000_000_000),
+              weighted_ytm: zp(0.0278),
+              weighted_duration: zr(3.21),
+              total_dv01: zd(-70_200),
               bond_count: 220,
             },
             {
               portfolio_name: "交易账户",
-              total_market_value: "98000000000.00000000",
-              weighted_ytm: "0.02950000",
-              weighted_duration: "3.88000000",
-              total_dv01: "-40200.00000000",
+              total_market_value: zy(98_000_000_000),
+              weighted_ytm: zp(0.0295),
+              weighted_duration: zr(3.88),
+              total_dv01: zd(-40_200),
               bond_count: 128,
             },
             {
               portfolio_name: "OCI 账户",
-              total_market_value: "45709000000.00000000",
-              weighted_ytm: "0.02890000",
-              weighted_duration: "3.55000000",
-              total_dv01: "-15030.50000000",
+              total_market_value: zy(45_709_000_000),
+              weighted_ytm: zp(0.0289),
+              weighted_duration: zr(3.55),
+              total_dv01: zd(-15_030.5),
               bond_count: 80,
             },
           ],
@@ -4546,6 +4555,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardSpreadAnalysis(reportDate: string) {
       await delay();
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: true });
       return buildMockApiEnvelope(
         "bond_dashboard.spread_analysis",
         {
@@ -4553,27 +4564,27 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           items: [
             {
               bond_type: "国债",
-              median_yield: "0.02450000",
+              median_yield: zp(0.0245),
               bond_count: 45,
-              total_market_value: "52000000000.00000000",
+              total_market_value: zy(52_000_000_000),
             },
             {
               bond_type: "政金债",
-              median_yield: "0.02720000",
+              median_yield: zp(0.0272),
               bond_count: 62,
-              total_market_value: "78000000000.00000000",
+              total_market_value: zy(78_000_000_000),
             },
             {
               bond_type: "企业债",
-              median_yield: "0.03410000",
+              median_yield: zp(0.0341),
               bond_count: 88,
-              total_market_value: "91000000000.00000000",
+              total_market_value: zy(91_000_000_000),
             },
             {
               bond_type: "NCD",
-              median_yield: "0.02680000",
+              median_yield: zp(0.0268),
               bond_count: 130,
-              total_market_value: "87000000000.00000000",
+              total_market_value: zy(87_000_000_000),
             },
           ],
         },
@@ -4582,20 +4593,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardMaturityStructure(reportDate: string) {
       await delay();
-      const total = "328709000000.00000000";
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.maturity_structure",
         {
           report_date: reportDate,
-          total_market_value: total,
+          total_market_value: zy(328_709_000_000),
           items: [
-            { maturity_bucket: "7天内", total_market_value: "2100000000.00000000", bond_count: 8, percentage: "0.63871429" },
-            { maturity_bucket: "8-30天", total_market_value: "8900000000.00000000", bond_count: 22, percentage: "2.70700000" },
-            { maturity_bucket: "31-90天", total_market_value: "18500000000.00000000", bond_count: 35, percentage: "5.62857143" },
-            { maturity_bucket: "91天-1年", total_market_value: "62000000000.00000000", bond_count: 90, percentage: "18.86285714" },
-            { maturity_bucket: "1-3年", total_market_value: "128000000000.00000000", bond_count: 145, percentage: "38.94285714" },
-            { maturity_bucket: "3-5年", total_market_value: "72000000000.00000000", bond_count: 78, percentage: "21.90428571" },
-            { maturity_bucket: "5年以上", total_market_value: "55209000000.00000000", bond_count: 50, percentage: "16.79571429" },
+            { maturity_bucket: "7天内", total_market_value: zy(2_100_000_000), bond_count: 8, percentage: zp(0.63871429) },
+            { maturity_bucket: "8-30天", total_market_value: zy(8_900_000_000), bond_count: 22, percentage: zp(2.707) },
+            { maturity_bucket: "31-90天", total_market_value: zy(18_500_000_000), bond_count: 35, percentage: zp(5.62857143) },
+            { maturity_bucket: "91天-1年", total_market_value: zy(62_000_000_000), bond_count: 90, percentage: zp(18.86285714) },
+            { maturity_bucket: "1-3年", total_market_value: zy(128_000_000_000), bond_count: 145, percentage: zp(38.94285714) },
+            { maturity_bucket: "3-5年", total_market_value: zy(72_000_000_000), bond_count: 78, percentage: zp(21.90428571) },
+            { maturity_bucket: "5年以上", total_market_value: zy(55_209_000_000), bond_count: 50, percentage: zp(16.79571429) },
           ],
         },
         { basis: "formal", formal_use_allowed: true },
@@ -4603,16 +4615,18 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardIndustryDistribution(reportDate: string) {
       await delay();
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zp = (raw: number) => formatRawAsNumeric({ raw, unit: "pct", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.industry_distribution",
         {
           report_date: reportDate,
           items: [
-            { industry_name: "银行", total_market_value: "82000000000.00000000", bond_count: 95, percentage: "24.94571429" },
-            { industry_name: "城投", total_market_value: "61000000000.00000000", bond_count: 72, percentage: "18.55714286" },
-            { industry_name: "交通运输", total_market_value: "48000000000.00000000", bond_count: 48, percentage: "14.60428571" },
-            { industry_name: "电力", total_market_value: "39000000000.00000000", bond_count: 40, percentage: "11.86571429" },
-            { industry_name: "房地产", total_market_value: "28000000000.00000000", bond_count: 35, percentage: "8.51714286" },
+            { industry_name: "银行", total_market_value: zy(82_000_000_000), bond_count: 95, percentage: zp(24.94571429) },
+            { industry_name: "城投", total_market_value: zy(61_000_000_000), bond_count: 72, percentage: zp(18.55714286) },
+            { industry_name: "交通运输", total_market_value: zy(48_000_000_000), bond_count: 48, percentage: zp(14.60428571) },
+            { industry_name: "电力", total_market_value: zy(39_000_000_000), bond_count: 40, percentage: zp(11.86571429) },
+            { industry_name: "房地产", total_market_value: zy(28_000_000_000), bond_count: 35, percentage: zp(8.51714286) },
           ],
         },
         { basis: "formal", formal_use_allowed: true },
@@ -4620,17 +4634,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBondDashboardRiskIndicators(reportDate: string) {
       await delay();
+      const zy = (raw: number) => formatRawAsNumeric({ raw, unit: "yuan", sign_aware: false });
+      const zd = (raw: number) => formatRawAsNumeric({ raw, unit: "dv01", sign_aware: false });
+      const zr = (raw: number) => formatRawAsNumeric({ raw, unit: "ratio", sign_aware: false });
       return buildMockApiEnvelope(
         "bond_dashboard.risk_indicators",
         {
           report_date: reportDate,
-          total_market_value: "328709000000.00000000",
-          total_dv01: "-125430.50000000",
-          weighted_duration: "3.45000000",
-          credit_ratio: "0.42000000",
-          weighted_convexity: "0.08500000",
-          total_spread_dv01: "-45200.00000000",
-          reinvestment_ratio_1y: "0.18000000",
+          total_market_value: zy(328_709_000_000),
+          total_dv01: zd(-125_430.5),
+          weighted_duration: zr(3.45),
+          credit_ratio: zr(0.42),
+          weighted_convexity: zr(0.085),
+          total_spread_dv01: zd(-45_200),
+          reinvestment_ratio_1y: zr(0.18),
         },
         { basis: "formal", formal_use_allowed: true },
       );

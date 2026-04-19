@@ -26,6 +26,12 @@ describe("BondDashboardPage", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "债券总览" })).toBeInTheDocument();
+    await waitFor(() => {
+      const conclusion = screen.getByTestId("bond-dashboard-conclusion");
+      expect(conclusion).toHaveTextContent("当前结论");
+      expect(conclusion).toHaveTextContent("当前信用占比");
+      expect(conclusion).toHaveTextContent("总市值");
+    });
     expect(await screen.findByText("债券持仓规模")).toBeInTheDocument();
     const headline = screen.getByTestId("bond-dashboard-headline-kpis");
     const scaleCard = within(headline).getByTestId("bond-dashboard-kpi-total_market_value");
@@ -57,5 +63,43 @@ describe("BondDashboardPage", () => {
     await waitFor(() => {
       expect(spy.mock.calls.length).toBeGreaterThan(initial);
     });
+  });
+
+  it("surfaces an explicit empty-state note when no report dates are available", async () => {
+    const client = createApiClient({ mode: "mock" });
+    client.getBondDashboardDates = async () => ({
+      result_meta: {
+        trace_id: "tr_bond_dashboard_dates_empty",
+        basis: "formal",
+        result_kind: "bond_dashboard.dates",
+        formal_use_allowed: true,
+        source_version: "sv_empty",
+        vendor_version: "vv_none",
+        rule_version: "rv_empty",
+        cache_version: "cv_empty",
+        quality_flag: "warning",
+        vendor_status: "ok",
+        fallback_mode: "none",
+        scenario_flag: false,
+        generated_at: "2026-04-19T00:00:00Z",
+      },
+      result: { report_dates: [] },
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <BondDashboardPage />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-dashboard-page-state")).toHaveTextContent("暂无可用报告日");
+    });
+    expect(screen.getByRole("combobox", { name: "bond-dashboard-report-date" })).toBeDisabled();
   });
 });

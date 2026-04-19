@@ -2323,59 +2323,59 @@ export type BondDashboardHeadlinePayload = {
   report_date: string;
   prev_report_date: string | null;
   kpis: {
-    total_market_value: string;
-    unrealized_pnl: string;
-    weighted_ytm: string;
-    weighted_duration: string;
-    weighted_coupon: string;
-    credit_spread_median: string;
-    total_dv01: string;
+    total_market_value: Numeric;
+    unrealized_pnl: Numeric;
+    weighted_ytm: Numeric;
+    weighted_duration: Numeric;
+    weighted_coupon: Numeric;
+    credit_spread_median: Numeric;
+    total_dv01: Numeric;
     bond_count: number;
   };
   prev_kpis: {
-    total_market_value: string;
-    unrealized_pnl: string;
-    weighted_ytm: string;
-    weighted_duration: string;
-    weighted_coupon: string;
-    credit_spread_median: string;
-    total_dv01: string;
+    total_market_value: Numeric;
+    unrealized_pnl: Numeric;
+    weighted_ytm: Numeric;
+    weighted_duration: Numeric;
+    weighted_coupon: Numeric;
+    credit_spread_median: Numeric;
+    total_dv01: Numeric;
     bond_count: number;
   } | null;
 };
 
 export type AssetStructureItem = {
   category: string;
-  total_market_value: string;
+  total_market_value: Numeric;
   bond_count: number;
-  percentage: string;
+  percentage: Numeric | null;
 };
 
 export type AssetStructurePayload = {
   report_date: string;
   group_by: string;
   items: AssetStructureItem[];
-  total_market_value: string;
+  total_market_value: Numeric;
 };
 
 export type YieldDistributionItem = {
   yield_bucket: string;
-  total_market_value: string;
+  total_market_value: Numeric;
   bond_count: number;
 };
 
 export type YieldDistributionPayload = {
   report_date: string;
   items: YieldDistributionItem[];
-  weighted_ytm: string;
+  weighted_ytm: Numeric;
 };
 
 export type PortfolioComparisonItem = {
   portfolio_name: string;
-  total_market_value: string;
-  weighted_ytm: string;
-  weighted_duration: string;
-  total_dv01: string;
+  total_market_value: Numeric;
+  weighted_ytm: Numeric;
+  weighted_duration: Numeric;
+  total_dv01: Numeric;
   bond_count: number;
 };
 
@@ -2386,9 +2386,9 @@ export type PortfolioComparisonPayload = {
 
 export type SpreadAnalysisItem = {
   bond_type: string;
-  median_yield: string;
+  median_yield: Numeric | null;
   bond_count: number;
-  total_market_value: string;
+  total_market_value: Numeric;
 };
 
 export type SpreadAnalysisPayload = {
@@ -2398,22 +2398,22 @@ export type SpreadAnalysisPayload = {
 
 export type MaturityStructureItem = {
   maturity_bucket: string;
-  total_market_value: string;
+  total_market_value: Numeric;
   bond_count: number;
-  percentage: string;
+  percentage: Numeric | null;
 };
 
 export type MaturityStructurePayload = {
   report_date: string;
   items: MaturityStructureItem[];
-  total_market_value: string;
+  total_market_value: Numeric;
 };
 
 export type IndustryDistItem = {
   industry_name: string;
-  total_market_value: string;
+  total_market_value: Numeric;
   bond_count: number;
-  percentage: string;
+  percentage: Numeric | null;
 };
 
 export type IndustryDistPayload = {
@@ -2423,13 +2423,13 @@ export type IndustryDistPayload = {
 
 export type RiskIndicatorsPayload = {
   report_date: string;
-  total_market_value: string;
-  total_dv01: string;
-  weighted_duration: string;
-  credit_ratio: string;
-  weighted_convexity: string;
-  total_spread_dv01: string;
-  reinvestment_ratio_1y: string;
+  total_market_value: Numeric;
+  total_dv01: Numeric;
+  weighted_duration: Numeric;
+  credit_ratio: Numeric;
+  weighted_convexity: Numeric;
+  total_spread_dv01: Numeric;
+  reinvestment_ratio_1y: Numeric;
 };
 
 // --- Cube 多维查询 (`/api/cube`) ---

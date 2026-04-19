@@ -1,7 +1,7 @@
 import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import type { PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
+import type { Numeric, PortfolioComparisonItem, PortfolioComparisonPayload } from "../../../api/contracts";
 import { formatDv01Wan, formatRatePercent, formatYi, nativeToNumber } from "../utils/format";
 
 export function PortfolioTable({
@@ -33,40 +33,31 @@ export function PortfolioTable({
       dataIndex: "total_market_value",
       key: "mv",
       align: "right",
-      render: (v: string) => formatYi(v),
+      render: (v: Numeric) => formatYi(v),
     },
     {
       title: "收益率(%)",
       dataIndex: "weighted_ytm",
       key: "ytm",
       align: "right",
-      render: (v: string) => formatRatePercent(v),
+      render: (v: Numeric) => formatRatePercent(v),
     },
     {
       title: "久期(年)",
       dataIndex: "weighted_duration",
       key: "dur",
       align: "right",
-      render: (v: string) => nativeToNumber(v).toFixed(2),
+      render: (v: Numeric) => nativeToNumber(v).toFixed(2),
     },
     {
       title: "DV01(万元)",
       dataIndex: "total_dv01",
       key: "dv01",
       align: "right",
-      render: (v: string) => formatDv01Wan(v),
+      render: (v: Numeric) => formatDv01Wan(v),
     },
     { title: "数量", dataIndex: "bond_count", key: "n", align: "right" },
   ];
-
-  const footerRow: PortfolioComparisonItem = {
-    portfolio_name: "合计 / 加权",
-    total_market_value: String(totalMv),
-    weighted_ytm: String(wYtm),
-    weighted_duration: String(wDur),
-    total_dv01: String(totalDv01),
-    bond_count: totalBonds,
-  };
 
   return (
     <Card
@@ -86,22 +77,22 @@ export function PortfolioTable({
           <Table.Summary fixed>
             <Table.Summary.Row>
               <Table.Summary.Cell index={0}>
-                <strong>{footerRow.portfolio_name}</strong>
+                <strong>合计 / 加权</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={1} align="right">
-                <strong>{formatYi(footerRow.total_market_value)}</strong>
+                <strong>{formatYi(totalMv)}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={2} align="right">
-                <strong>{formatRatePercent(String(wYtm))}</strong>
+                <strong>{formatRatePercent(wYtm)}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={3} align="right">
-                <strong>{nativeToNumber(footerRow.weighted_duration).toFixed(2)}</strong>
+                <strong>{nativeToNumber(wDur).toFixed(2)}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={4} align="right">
-                <strong>{formatDv01Wan(footerRow.total_dv01)}</strong>
+                <strong>{formatDv01Wan(totalDv01)}</strong>
               </Table.Summary.Cell>
               <Table.Summary.Cell index={5} align="right">
-                <strong>{footerRow.bond_count}</strong>
+                <strong>{totalBonds}</strong>
               </Table.Summary.Cell>
             </Table.Summary.Row>
           </Table.Summary>

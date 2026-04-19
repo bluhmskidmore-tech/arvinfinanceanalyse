@@ -1,7 +1,7 @@
 import { Button, Card, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import type { IndustryDistItem, IndustryDistPayload } from "../../../api/contracts";
+import type { IndustryDistItem, IndustryDistPayload, Numeric } from "../../../api/contracts";
 import { formatYi, nativeToNumber } from "../utils/format";
 
 export function IndustryTable({
@@ -18,14 +18,14 @@ export function IndustryTable({
       dataIndex: "total_market_value",
       key: "mv",
       align: "right",
-      render: (v: string) => formatYi(v),
+      render: (v: Numeric) => formatYi(v),
     },
     {
       title: "占比(%)",
       dataIndex: "percentage",
       key: "pct",
       align: "right",
-      render: (v: string) => nativeToNumber(v).toFixed(2),
+      render: (v: Numeric | null) => nativeToNumber(v).toFixed(2),
     },
   ];
 

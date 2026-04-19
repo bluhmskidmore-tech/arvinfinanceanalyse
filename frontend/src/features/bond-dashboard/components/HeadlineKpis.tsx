@@ -1,7 +1,7 @@
 import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { Card, Col, Row, Spin } from "antd";
 
-import type { BondDashboardHeadlinePayload } from "../../../api/contracts";
+import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
 import {
   formatDv01Wan,
   formatMomRatio,
@@ -23,7 +23,7 @@ const KPI_DEFS: {
   key: KpiKey;
   label: string;
   unit: string;
-  format: (v: string) => string;
+  format: (v: Numeric | number | null | undefined) => string;
 }[] = [
   { key: "total_market_value", label: "债券持仓规模", unit: "亿", format: formatYi },
   { key: "unrealized_pnl", label: "未实现损益", unit: "亿", format: formatYi },
