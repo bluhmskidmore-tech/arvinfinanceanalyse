@@ -12,7 +12,12 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
-    "generated_at": "2026-04-18T05:57:55.952044Z"
+    "generated_at": "2026-04-19T03:13:33.752657Z",
+    "filters_applied": {},
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "pnl_bridge"
   },
   "result": {
     "report_date": "2025-12-31",
@@ -23,20 +28,104 @@
         "portfolio_name": "FI Desk",
         "cost_center": "CC100",
         "accounting_basis": "FVTPL",
-        "beginning_dirty_mv": "0",
-        "ending_dirty_mv": "0",
-        "carry": "12.50000000",
-        "roll_down": "0",
-        "treasury_curve": "0",
-        "credit_spread": "0",
-        "fx_translation": "0",
-        "realized_trading": "1.75000000",
-        "unrealized_fv": "-3.25000000",
-        "manual_adjustment": "0.50000000",
-        "explained_pnl": "11.50000000",
-        "actual_pnl": "11.50000000",
-        "residual": "0.00000000",
-        "residual_ratio": "0",
+        "beginning_dirty_mv": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "ending_dirty_mv": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "0.00",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "carry": {
+          "raw": 12.5,
+          "unit": "yuan",
+          "display": "+12.50",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "roll_down": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "treasury_curve": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "credit_spread": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "fx_translation": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "realized_trading": {
+          "raw": 1.75,
+          "unit": "yuan",
+          "display": "+1.75",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "unrealized_fv": {
+          "raw": -3.25,
+          "unit": "yuan",
+          "display": "-3.25",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "manual_adjustment": {
+          "raw": 0.5,
+          "unit": "yuan",
+          "display": "+0.50",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "explained_pnl": {
+          "raw": 11.5,
+          "unit": "yuan",
+          "display": "+11.50",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "actual_pnl": {
+          "raw": 11.5,
+          "unit": "yuan",
+          "display": "+11.50",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "residual": {
+          "raw": 0.0,
+          "unit": "yuan",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "residual_ratio": {
+          "raw": 0.0,
+          "unit": "ratio",
+          "display": "+0.00",
+          "precision": 2,
+          "sign_aware": true
+        },
         "quality_flag": "ok",
         "current_balance_found": false,
         "prior_balance_found": false,
@@ -51,19 +140,97 @@
       "ok_count": 1,
       "warning_count": 0,
       "error_count": 0,
-      "total_beginning_dirty_mv": "0",
-      "total_ending_dirty_mv": "0",
-      "total_carry": "12.50000000",
-      "total_roll_down": "0",
-      "total_treasury_curve": "0",
-      "total_credit_spread": "0",
-      "total_fx_translation": "0",
-      "total_realized_trading": "1.75000000",
-      "total_unrealized_fv": "-3.25000000",
-      "total_manual_adjustment": "0.50000000",
-      "total_explained_pnl": "11.50000000",
-      "total_actual_pnl": "11.50000000",
-      "total_residual": "0.00000000",
+      "total_beginning_dirty_mv": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "0.00",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "total_ending_dirty_mv": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "0.00",
+        "precision": 2,
+        "sign_aware": false
+      },
+      "total_carry": {
+        "raw": 12.5,
+        "unit": "yuan",
+        "display": "+12.50",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_roll_down": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_treasury_curve": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_credit_spread": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_fx_translation": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_realized_trading": {
+        "raw": 1.75,
+        "unit": "yuan",
+        "display": "+1.75",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_unrealized_fv": {
+        "raw": -3.25,
+        "unit": "yuan",
+        "display": "-3.25",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_manual_adjustment": {
+        "raw": 0.5,
+        "unit": "yuan",
+        "display": "+0.50",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_explained_pnl": {
+        "raw": 11.5,
+        "unit": "yuan",
+        "display": "+11.50",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_actual_pnl": {
+        "raw": 11.5,
+        "unit": "yuan",
+        "display": "+11.50",
+        "precision": 2,
+        "sign_aware": true
+      },
+      "total_residual": {
+        "raw": 0.0,
+        "unit": "yuan",
+        "display": "+0.00",
+        "precision": 2,
+        "sign_aware": true
+      },
       "quality_flag": "ok"
     },
     "warnings": [

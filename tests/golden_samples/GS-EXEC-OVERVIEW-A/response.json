@@ -12,7 +12,20 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
-    "generated_at": "2026-04-18T06:24:00.591903Z"
+    "generated_at": "2026-04-19T03:13:32.999553Z",
+    "filters_applied": {
+      "requested_report_date": "2026-02-28",
+      "effective_report_dates": {
+        "balance": "2026-02-28",
+        "pnl": "2026-02-28",
+        "liability": "2026-02-28",
+        "risk": "2026-02-28"
+      }
+    },
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "executive_analytical"
   },
   "result": {
     "title": "经营总览",
@@ -20,32 +33,80 @@
       {
         "id": "aum",
         "label": "资产规模",
-        "value": "3,572.76 亿",
-        "delta": "-3.76%",
+        "value": {
+          "raw": 357276000000.0,
+          "unit": "yuan",
+          "display": "3,572.76 亿",
+          "precision": 2,
+          "sign_aware": false
+        },
+        "delta": {
+          "raw": -0.03758596445859564,
+          "unit": "pct",
+          "display": "-3.76%",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive",
         "detail": "来自 governed formal balance overview，在 2026-02-28 的 CNY 资产口径市值合计。"
       },
       {
         "id": "yield",
         "label": "年内收益",
-        "value": "+4.69 亿",
-        "delta": "+1.96%",
+        "value": {
+          "raw": 469000000.0,
+          "unit": "yuan",
+          "display": "+4.69 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "delta": {
+          "raw": 0.01956521739130435,
+          "unit": "pct",
+          "display": "+1.96%",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive",
         "detail": "来自 fact_formal_pnl_fi 截至 2026-02-28 的年内 total_pnl 合计。"
       },
       {
         "id": "nim",
         "label": "净息差",
-        "value": "+0.01%",
-        "delta": "+0.00pp",
+        "value": {
+          "raw": 0.0001,
+          "unit": "pct",
+          "display": "+0.01%",
+          "precision": 2,
+          "sign_aware": true
+        },
+        "delta": {
+          "raw": 0.0,
+          "unit": "bp",
+          "display": "+0.00pp",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive",
         "detail": "来自受治理负债分析收益指标，在 2026-02-28 的 NIM 读面。"
       },
       {
         "id": "dv01",
         "label": "组合DV01",
-        "value": "13,826,218",
-        "delta": "-0.21%",
+        "value": {
+          "raw": 13826218.0,
+          "unit": "dv01",
+          "display": "13,826,218",
+          "precision": 0,
+          "sign_aware": false
+        },
+        "delta": {
+          "raw": -0.00207737278960664,
+          "unit": "pct",
+          "display": "-0.21%",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "warning",
         "detail": "来自 bond analytics 风险快照，在 2026-02-28 的组合 DV01。"
       }

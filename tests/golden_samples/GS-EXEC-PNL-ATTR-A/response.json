@@ -12,45 +12,83 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
-    "generated_at": "2026-04-18T06:24:01.218882Z"
+    "generated_at": "2026-04-19T03:13:32.863631Z",
+    "filters_applied": {
+      "report_date": "2026-02-28"
+    },
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "executive_analytical"
   },
   "result": {
     "title": "经营贡献拆解",
-    "total": "+1.75 亿",
+    "total": {
+      "raw": 175000000.0,
+      "unit": "yuan",
+      "display": "+1.75 亿",
+      "precision": 2,
+      "sign_aware": true
+    },
     "segments": [
       {
         "id": "carry",
         "label": "Carry",
-        "amount": 3.0,
-        "display_amount": "+3.00 亿",
+        "amount": {
+          "raw": 300000000.0,
+          "unit": "yuan",
+          "display": "+3.00 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive"
       },
       {
         "id": "roll",
         "label": "Roll-down",
-        "amount": -3.0,
-        "display_amount": "-3.00 亿",
+        "amount": {
+          "raw": -300000000.0,
+          "unit": "yuan",
+          "display": "-3.00 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "negative"
       },
       {
         "id": "credit",
         "label": "信用利差",
-        "amount": 0.5,
-        "display_amount": "+0.50 亿",
+        "amount": {
+          "raw": 50000000.0,
+          "unit": "yuan",
+          "display": "+0.50 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive"
       },
       {
         "id": "trading",
         "label": "交易损益",
-        "amount": 1.0,
-        "display_amount": "+1.00 亿",
+        "amount": {
+          "raw": 100000000.0,
+          "unit": "yuan",
+          "display": "+1.00 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive"
       },
       {
         "id": "other",
         "label": "其他",
-        "amount": 0.25,
-        "display_amount": "+0.25 亿",
+        "amount": {
+          "raw": 25000000.0,
+          "unit": "yuan",
+          "display": "+0.25 亿",
+          "precision": 2,
+          "sign_aware": true
+        },
         "tone": "positive"
       }
     ]

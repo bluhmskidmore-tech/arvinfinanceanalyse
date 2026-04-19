@@ -1,6 +1,6 @@
 {
   "result_meta": {
-    "trace_id": "tr_af943bdc2fc9",
+    "trace_id": "tr_68449da9e2bc",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
@@ -12,30 +12,155 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
-    "generated_at": "2026-04-18T06:58:56.779339Z"
+    "generated_at": "2026-04-19T03:13:34.099366Z",
+    "filters_applied": {},
+    "tables_used": [],
+    "evidence_rows": null,
+    "next_drill": [],
+    "source_surface": "risk_tensor"
   },
   "result": {
     "report_date": "2026-03-31",
-    "portfolio_dv01": "0.41281987",
-    "krd_1y": "0.00000000",
-    "krd_3y": "0.00000000",
-    "krd_5y": "0.00000000",
-    "krd_7y": "0.00000000",
-    "krd_10y": "0.11250583",
-    "krd_30y": "0.00000000",
-    "cs01": "0.41281987",
-    "portfolio_convexity": "145.79197672",
-    "portfolio_modified_duration": "9.62284069",
-    "issuer_concentration_hhi": "0.35590439",
-    "issuer_top5_weight": "1.00000000",
-    "asset_cashflow_30d": "12.00000000",
-    "asset_cashflow_90d": "12.00000000",
-    "liability_cashflow_30d": "0.00000000",
-    "liability_cashflow_90d": "0.00000000",
-    "liquidity_gap_30d": "12.00000000",
-    "liquidity_gap_90d": "12.00000000",
-    "liquidity_gap_30d_ratio": "0.02797203",
-    "total_market_value": "429.00000000",
+    "portfolio_dv01": {
+      "raw": 0.41281987,
+      "unit": "dv01",
+      "display": "0.41",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "krd_1y": {
+      "raw": 0.0,
+      "unit": "ratio",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "krd_3y": {
+      "raw": 0.0,
+      "unit": "ratio",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "krd_5y": {
+      "raw": 0.0,
+      "unit": "ratio",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "krd_7y": {
+      "raw": 0.0,
+      "unit": "ratio",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "krd_10y": {
+      "raw": 0.11250583,
+      "unit": "ratio",
+      "display": "+0.11",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "krd_30y": {
+      "raw": 0.0,
+      "unit": "ratio",
+      "display": "+0.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "cs01": {
+      "raw": 0.41281987,
+      "unit": "dv01",
+      "display": "0.41",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "portfolio_convexity": {
+      "raw": 145.79197672,
+      "unit": "ratio",
+      "display": "145.79",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "portfolio_modified_duration": {
+      "raw": 9.62284069,
+      "unit": "ratio",
+      "display": "9.62",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "issuer_concentration_hhi": {
+      "raw": 0.35590439,
+      "unit": "ratio",
+      "display": "0.36",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "issuer_top5_weight": {
+      "raw": 1.0,
+      "unit": "ratio",
+      "display": "1.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "asset_cashflow_30d": {
+      "raw": 12.0,
+      "unit": "yuan",
+      "display": "12.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "asset_cashflow_90d": {
+      "raw": 12.0,
+      "unit": "yuan",
+      "display": "12.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "liability_cashflow_30d": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "liability_cashflow_90d": {
+      "raw": 0.0,
+      "unit": "yuan",
+      "display": "0.00",
+      "precision": 2,
+      "sign_aware": false
+    },
+    "liquidity_gap_30d": {
+      "raw": 12.0,
+      "unit": "yuan",
+      "display": "+12.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "liquidity_gap_90d": {
+      "raw": 12.0,
+      "unit": "yuan",
+      "display": "+12.00",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "liquidity_gap_30d_ratio": {
+      "raw": 0.02797203,
+      "unit": "ratio",
+      "display": "+0.03",
+      "precision": 2,
+      "sign_aware": true
+    },
+    "total_market_value": {
+      "raw": 429.0,
+      "unit": "yuan",
+      "display": "429.00",
+      "precision": 2,
+      "sign_aware": false
+    },
     "bond_count": 3,
     "quality_flag": "warning",
     "warnings": [
