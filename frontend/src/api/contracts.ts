@@ -1965,6 +1965,7 @@ export type PnlCompositionTrendItem = {
   interest_income: Numeric;
   fair_value_change: Numeric;
   capital_gain: Numeric;
+  other_income: Numeric;
   total_pnl: Numeric;
 };
 

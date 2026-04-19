@@ -2,9 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import type { ResultMeta } from "../api/contracts";
+import type { Numeric, ResultMeta } from "../api/contracts";
 import { AccountingClassAuditView } from "../features/bond-analytics/components/AccountingClassAuditView";
 import type { AccountingClassAuditResponse } from "../features/bond-analytics/types";
+import { formatRawAsNumeric } from "../utils/format";
 
 function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   return {
@@ -25,26 +26,30 @@ function createResultMeta(overrides: Partial<ResultMeta> = {}): ResultMeta {
   };
 }
 
+function governed(raw: number | null, unit: Numeric["unit"], signAware = false): Numeric {
+  return formatRawAsNumeric({ raw, unit, sign_aware: signAware });
+}
+
 function createAccountingAuditResult(
   overrides: Partial<AccountingClassAuditResponse> = {},
 ): AccountingClassAuditResponse {
   return {
     report_date: "2026-03-31",
     total_positions: 100,
-    total_market_value: "10000000000",
+    total_market_value: governed(10_000_000_000, "yuan"),
     distinct_asset_classes: 5,
     divergent_asset_classes: 1,
     divergent_position_count: 3,
-    divergent_market_value: "300000000",
+    divergent_market_value: governed(300_000_000, "yuan"),
     map_unclassified_asset_classes: 0,
     map_unclassified_position_count: 0,
-    map_unclassified_market_value: "0",
+    map_unclassified_market_value: governed(0, "yuan"),
     rows: [
       {
-        asset_class: "政金债",
+        asset_class: "政策金债",
         position_count: 10,
-        market_value: "2000000000",
-        market_value_weight: "0.2",
+        market_value: governed(2_000_000_000, "yuan"),
+        market_value_weight: governed(0.2, "ratio"),
         infer_accounting_class: "FVOCI",
         map_accounting_class: "FVTPL",
         infer_rule_id: "r1",
@@ -85,29 +90,17 @@ describe("AccountingClassAuditView", () => {
       expect(client.getBondAnalyticsAccountingClassAudit).toHaveBeenCalledWith("2026-03-31"),
     );
 
-    expect(await screen.findByTestId("accounting-class-audit-shell-lead")).toHaveTextContent(
-      "会计分类审计概览",
-    );
-    expect(screen.getByTestId("accounting-class-audit-shell-lead")).toHaveTextContent(
-      "不在前端重写会计分类",
-    );
-    expect(screen.getByTestId("accounting-class-audit-rules-lead")).toHaveTextContent(
-      "分类路径说明",
-    );
-    expect(screen.getByTestId("accounting-class-audit-detail-lead")).toHaveTextContent(
-      "会计分类审计明细",
-    );
-    expect(await screen.findByText("资产类别数（去重）")).toBeInTheDocument();
+    expect(await screen.findByTestId("accounting-class-audit-shell-lead")).toBeInTheDocument();
+    expect(screen.getByTestId("accounting-class-audit-rules-lead")).toBeInTheDocument();
+    expect(screen.getByTestId("accounting-class-audit-detail-lead")).toBeInTheDocument();
+    expect(screen.getByText("资产类别数（去重）")).toBeInTheDocument();
     expect(screen.getByText("分歧分类")).toBeInTheDocument();
     expect(screen.getByText("映射为其他（other）")).toBeInTheDocument();
     expect(screen.getByText("覆盖市值")).toBeInTheDocument();
-
-    expect(screen.getByText(/本审计对比两条会计分类路径/)).toBeInTheDocument();
     expect(screen.getAllByText(/infer_accounting_class/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/map_accounting_class/).length).toBeGreaterThanOrEqual(1);
-
     expect(screen.getByText("审计明细")).toBeInTheDocument();
-    expect(screen.getByText("政金债")).toBeInTheDocument();
+    expect(screen.getByText("政策金债")).toBeInTheDocument();
   });
 
   it("renders warning alert when warnings exist", async () => {

@@ -272,6 +272,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       interest_income: y(22_000_000),
       fair_value_change: y(10_000_000),
       capital_gain: y(3_000_000),
+      other_income: y(0),
       total_pnl: y(35_000_000),
     },
     {
@@ -280,6 +281,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       interest_income: y(23_500_000),
       fair_value_change: y(8_000_000),
       capital_gain: y(2_500_000),
+      other_income: y(0),
       total_pnl: y(34_000_000),
     },
     {
@@ -288,6 +290,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       interest_income: y(24_000_000),
       fair_value_change: y(15_000_000),
       capital_gain: y(4_000_000),
+      other_income: y(0),
       total_pnl: y(43_000_000),
     },
     {
@@ -296,6 +299,7 @@ export const mockPnlComposition: PnlCompositionPayload = {
       interest_income: y(25_000_000),
       fair_value_change: y(18_000_000),
       capital_gain: y(4_500_000),
+      other_income: y(0),
       total_pnl: y(47_500_000),
     },
   ],

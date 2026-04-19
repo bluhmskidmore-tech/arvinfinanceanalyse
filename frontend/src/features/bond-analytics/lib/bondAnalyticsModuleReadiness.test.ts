@@ -129,6 +129,6 @@ describe("bondAnalyticsModuleReadiness", () => {
     expect(readiness.tier).toBe("summary");
     expect(readiness.statusLabel).toBe("eligible");
     expect(readiness.summary?.primaryValue).toBe("3");
-    expect(readiness.summary?.secondaryValue).toBe("2500000");
+    expect(readiness.summary?.secondaryValue).toBe(yuan(2500000).display);
   });
 });

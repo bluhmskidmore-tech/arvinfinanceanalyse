@@ -12,7 +12,6 @@
  */
 import type {
   ApiEnvelope,
-  ExecutiveMetric,
   Numeric,
   OverviewPayload,
   PnlAttributionPayload,
