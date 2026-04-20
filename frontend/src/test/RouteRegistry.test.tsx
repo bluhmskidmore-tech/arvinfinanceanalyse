@@ -233,10 +233,10 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("positions-report-date")).toBeInTheDocument();
   });
 
-  it("renders the liability-analytics route as a placeholder surface", async () => {
+  it("renders the liability-analytics route as a real page", async () => {
     renderWorkbenchApp(["/liability-analytics"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "负债结构分析" })).toBeInTheDocument();
   });
 
@@ -316,14 +316,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "损益归因分析" })).toBeInTheDocument();
   });
 
-  it("renders the risk-overview route as a placeholder surface", async () => {
+  it("renders the risk-overview route as a real page", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "风险总览" })).toBeInTheDocument();
-    expect(
-      (await screen.findAllByText(/executive risk overview 仍在当前 cutover 之外/i)).length,
-    ).toBeGreaterThan(0);
   });
 
   it("renders the risk-tensor route", async () => {

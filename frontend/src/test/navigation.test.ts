@@ -74,11 +74,11 @@ describe("workbench navigation mocks", () => {
     }
   });
 
-  it("keeps risk-overview outside the live primary navigation", () => {
+  it("keeps risk-overview in the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
-    expect(riskOverview?.readiness).toBe("placeholder");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
+    expect(riskOverview?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
   });
 
   it("promotes bond-dashboard into the live primary navigation", () => {
@@ -111,13 +111,13 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "positions")).toBe(false);
   });
 
-  it("demotes liability-analytics out of the live primary navigation", () => {
+  it("keeps liability-analytics in the live primary navigation", () => {
     const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
     expect(liab?.path).toBe("/liability-analytics");
-    expect(liab?.readiness).toBe("placeholder");
-    expect(liab?.readinessLabel).toBe("Deferred");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
+    expect(liab?.readiness).toBe("live");
+    expect(liab?.readinessLabel).toBe("Live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
   });
 
   it("promotes cashflow-projection into the live primary navigation", () => {

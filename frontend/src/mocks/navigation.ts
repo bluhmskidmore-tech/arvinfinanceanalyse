@@ -209,8 +209,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/liability-analytics",
     icon: "analysis",
     description: "NIM 压力测试、对手方集中度与负债期限结构（V1 口径）",
-    readiness: "placeholder",
-    readinessLabel: "Deferred",
+    readiness: "live",
+    readinessLabel: "Live",
     readinessNote:
       "已接负债风险桶、收益率/NIM、对手方与月度序列读链路；月度概览与 Top10 柱序列与 V1 对齐。",
   },
@@ -296,10 +296,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/risk-overview",
     icon: "risk",
     description: "风险总览与风险下钻入口",
-    readiness: "placeholder",
-    readinessLabel: "Placeholder",
+    readiness: "live",
+    readinessLabel: "Live",
     readinessNote:
-      "executive risk overview 仍在当前 cutover 之外；请优先使用风险张量与已落地的 bond analytics 读面。",
+      "已接 risk tensor 主链与 bond analytics 物化下钻视图（KRD 曲线 / 信用利差迁移）。",
   },
   {
     key: "risk-tensor",

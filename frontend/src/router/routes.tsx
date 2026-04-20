@@ -100,6 +100,14 @@ function placeholderRoute(section: WorkbenchSection): RouteObject {
   };
 }
 
+/**
+ * Workbench paths whose React pages are implemented while navigation readiness is still "placeholder".
+ * The readiness gate would otherwise render WorkbenchPlaceholderPage for those paths; listing them here
+ * bypasses that until the route is promoted to `live` in navigation metadata (then the entry is redundant
+ * and should be removed). Currently only routes that remain placeholder in `navigation.ts` need to appear.
+ */
+const READINESS_IMPLEMENTED_PATHS = new Set<string>(["/cube-query"]);
+
 function buildWorkbenchChildRoutes(): RouteObject[] {
   return workbenchNavigation.map((section) => {
     if (section.path === "/") {
@@ -109,7 +117,10 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.readiness !== "live" && section.path !== "/agent") {
+    const bypassReadiness =
+      section.path === "/agent" || READINESS_IMPLEMENTED_PATHS.has(section.path);
+
+    if (!bypassReadiness && section.readiness !== "live") {
       return placeholderRoute(section);
     }
 
