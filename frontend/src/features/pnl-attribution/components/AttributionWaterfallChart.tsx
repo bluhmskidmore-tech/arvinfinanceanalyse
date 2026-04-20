@@ -3,12 +3,13 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { VolumeRateAttributionPayload } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { designTokens } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: 24,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
+  padding: designTokens.space[6],
+  borderRadius: designTokens.radius.lg,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -40,28 +41,30 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
 
     categories.push("上期损益");
     values.push((data.total_previous_pnl?.raw ?? 0) / 100_000_000);
-    colors.push("#94a3b8");
+    colors.push(designTokens.color.neutral[500]);
 
     const vol = (data.total_volume_effect?.raw ?? 0) / 100_000_000;
     categories.push("规模效应");
     values.push(vol);
-    colors.push(vol >= 0 ? "#22c55e" : "#ef4444");
+    colors.push(vol >= 0 ? designTokens.color.semantic.profit : designTokens.color.semantic.loss);
 
     const rate = (data.total_rate_effect?.raw ?? 0) / 100_000_000;
     categories.push("利率效应");
     values.push(rate);
-    colors.push(rate >= 0 ? "#3b82f6" : "#f97316");
+    colors.push(
+      rate >= 0 ? designTokens.color.info[500] : designTokens.color.warning[500],
+    );
 
     const cross = (data.total_interaction_effect?.raw ?? 0) / 100_000_000;
     if (Math.abs(cross) > 0.001) {
       categories.push("交叉效应");
       values.push(cross);
-      colors.push("#a855f7");
+      colors.push(designTokens.color.primary[500]);
     }
 
     categories.push("当期损益");
     values.push((data.total_current_pnl.raw ?? 0) / 100_000_000);
-    colors.push("#0ea5e9");
+    colors.push(designTokens.color.primary[600]);
 
     return {
       tooltip: {
@@ -69,26 +72,29 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
         axisPointer: { type: "shadow" },
         valueFormatter: (v) => `${Number(v).toFixed(2)} 亿元`,
       },
-      grid: { left: 48, right: 24, top: 24, bottom: 32 },
+      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: designTokens.space[7] },
       xAxis: {
         type: "category",
         data: categories,
-        axisLabel: { fontSize: 11, color: "#5c6b82" },
+        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
       },
       yAxis: {
         type: "value",
         axisLabel: {
           formatter: (v: number) => `${v.toFixed(1)}亿`,
-          color: "#5c6b82",
+          color: designTokens.color.neutral[700],
         },
-        splitLine: { lineStyle: { type: "dashed", color: "#e8edf5" } },
+        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
       },
       series: [
         {
           type: "bar",
           data: values.map((v, i) => ({
             value: v,
-            itemStyle: { color: colors[i], borderRadius: [4, 4, 0, 0] },
+            itemStyle: {
+              color: colors[i],
+              borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            },
           })),
         },
       ],
@@ -98,12 +104,19 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
   return (
     <DataSection title="损益变动归因分解" state={state} onRetry={onRetry}>
       {!data ? null : !data.has_previous_data || !option ? (
-        <div style={{ ...cardStyle, textAlign: "center", color: "#5c6b82" }}>
+        <div style={{ ...cardStyle, textAlign: "center", color: designTokens.color.neutral[700] }}>
           {!data.has_previous_data ? "无上期对比数据，无法展示归因瀑布图。" : "暂无数据"}
         </div>
       ) : (
         <div style={cardStyle}>
-          <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", lineHeight: 1.5 }}>
+          <p
+            style={{
+              margin: `0 0 ${designTokens.space[3]}px`,
+              fontSize: designTokens.fontSize[13],
+              color: designTokens.color.neutral[700],
+              lineHeight: designTokens.lineHeight.normal,
+            }}
+          >
             规模一阶效应近似为 Δ规模×上期收益率；利率一阶效应近似为上期规模×Δ收益率；交叉效应为残差项。与
             Campisi 框架中的收入、国债、利差、选择等解释维度互补。
           </p>
@@ -112,11 +125,11 @@ export function AttributionWaterfallChart({ data, state, onRetry }: Props) {
             style={{
               display: "flex",
               flexWrap: "wrap",
-              gap: 16,
+              gap: designTokens.space[4],
               justifyContent: "center",
-              marginTop: 12,
-              fontSize: 12,
-              color: "#5c6b82",
+              marginTop: designTokens.space[3],
+              fontSize: designTokens.fontSize[12],
+              color: designTokens.color.neutral[700],
             }}
           >
             <span>当期损益 {formatYi(data.total_current_pnl.raw ?? undefined)}</span>

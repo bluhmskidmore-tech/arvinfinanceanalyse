@@ -19,6 +19,7 @@ import type {
   TPLMarketCorrelationPayload,
   VolumeRateAttributionPayload,
 } from "../../../api/contracts";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { derivePnlDataSectionState } from "../adapters/pnlAttributionAdapter";
 import { AdvancedAttributionChart } from "./AdvancedAttributionChart";
 import { AttributionWaterfallChart } from "./AttributionWaterfallChart";
@@ -32,23 +33,23 @@ import { VolumeRateAnalysisChart } from "./VolumeRateAnalysisChart";
 const shellStyle = {
   display: "flex",
   flexDirection: "column" as const,
-  gap: 20,
+  gap: designTokens.space[5],
 };
 
 const headerCardStyle = {
-  padding: 20,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
-  boxShadow: "0 8px 24px rgba(19, 37, 70, 0.06)",
+  padding: designTokens.space[5],
+  borderRadius: designTokens.radius.lg,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
+  boxShadow: designTokens.shadow.card,
 } as const;
 
 const modeBadgeStyle = {
   display: "inline-flex",
   alignItems: "center",
-  padding: "8px 12px",
+  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
   borderRadius: 999,
-  fontSize: 12,
+  fontSize: designTokens.fontSize[12],
   fontWeight: 600,
   letterSpacing: "0.04em",
   textTransform: "uppercase",
@@ -56,91 +57,91 @@ const modeBadgeStyle = {
 
 const sectionLeadWrapStyle = {
   display: "grid",
-  gap: 6,
+  gap: designTokens.space[2],
 } as const;
 
 const sectionEyebrowStyle = {
-  fontSize: 11,
+  fontSize: designTokens.fontSize[11],
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[600],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
-  fontSize: 18,
+  fontSize: designTokens.fontSize[18],
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
+  color: designTokens.color.neutral[700],
+  fontSize: designTokens.fontSize[13],
+  lineHeight: designTokens.lineHeight.relaxed,
 } as const;
 
 const tabBarStyle = {
   display: "flex",
   flexWrap: "wrap" as const,
-  gap: 8,
+  gap: designTokens.space[2],
   alignItems: "center",
 };
 
 const metaStripStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 10,
-  marginTop: 14,
-  padding: 14,
-  borderRadius: 12,
-  border: "1px solid #e4ebf5",
-  background: "#f7f9fc",
+  gap: designTokens.space[3],
+  marginTop: designTokens.space[4],
+  padding: designTokens.space[4],
+  borderRadius: designTokens.radius.md,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
 } as const;
 
 const metaCellStyle = {
   display: "grid",
-  gap: 4,
+  gap: designTokens.space[1],
 } as const;
 
 const metaLabelStyle = {
-  fontSize: 11,
+  fontSize: designTokens.fontSize[11],
   fontWeight: 700,
   letterSpacing: "0.06em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[600],
 } as const;
 
 const metaValueStyle = {
-  fontSize: 13,
-  color: "#162033",
-  lineHeight: 1.5,
+  fontSize: designTokens.fontSize[13],
+  color: designTokens.color.neutral[900],
+  lineHeight: designTokens.lineHeight.normal,
 } as const;
 
 function tabStyle(active: boolean, variant: "default" | "advanced" = "default") {
   const base = {
-    padding: "10px 16px",
-    borderRadius: 12,
+    padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
+    borderRadius: designTokens.radius.md,
     fontWeight: 600,
-    fontSize: 14,
+    fontSize: designTokens.fontSize[14],
     cursor: "pointer",
     border: "1px solid",
   } as const;
   if (variant === "advanced") {
     return {
       ...base,
-      borderColor: active ? "#6d3bb3" : "#e4d6fb",
-      background: active ? "#6d3bb3" : "#f6f0ff",
-      color: active ? "#ffffff" : "#6d3bb3",
+      borderColor: active ? designTokens.color.primary[700] : designTokens.color.primary[200],
+      background: active ? designTokens.color.primary[700] : designTokens.color.primary[50],
+      color: active ? designTokens.color.primary[50] : designTokens.color.primary[700],
     };
   }
   return {
     ...base,
-    borderColor: active ? "#1f5eff" : "#d7dfea",
-    background: active ? "#edf3ff" : "#ffffff",
-    color: active ? "#1f5eff" : "#162033",
+    borderColor: active ? designTokens.color.primary[600] : designTokens.color.neutral[300],
+    background: active ? designTokens.color.primary[100] : designTokens.color.primary[50],
+    color: active ? designTokens.color.primary[600] : designTokens.color.neutral[900],
   };
 }
 
@@ -409,22 +410,53 @@ export function PnlAttributionView({ reportDate }: Props) {
   return (
     <div style={shellStyle}>
       <div style={headerCardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: designTokens.space[4],
+            flexWrap: "wrap",
+          }}
+        >
           <div>
-            <h2 data-testid="pnl-attribution-page-title" style={{ margin: 0, fontSize: 20, fontWeight: 700, color: "#162033" }}>
+            <h2
+              data-testid="pnl-attribution-page-title"
+              style={{
+                margin: 0,
+                fontSize: designTokens.fontSize[20],
+                fontWeight: 700,
+                color: designTokens.color.neutral[900],
+              }}
+            >
               损益归因分析
             </h2>
-            <p style={{ margin: "8px 0 0", fontSize: 13, color: "#5c6b82", maxWidth: 640, lineHeight: 1.6 }}>
+            <p
+              style={{
+                margin: `${designTokens.space[2]}px 0 0`,
+                fontSize: designTokens.fontSize[13],
+                color: designTokens.color.neutral[700],
+                maxWidth: 640,
+                lineHeight: designTokens.lineHeight.normal,
+              }}
+            >
               规模/利率一阶与交叉效应、TPL 与市场、损益构成，以及 Carry–Roll、利差、KRD 与 Campisi
               四效应（收入、国债、利差、选择）对照阅读。
             </p>
           </div>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: designTokens.space[3],
+              flexWrap: "wrap",
+            }}
+          >
             <span
               style={{
                 ...modeBadgeStyle,
-                background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-                color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+                background:
+                  client.mode === "real" ? designTokens.color.success[50] : designTokens.color.info[50],
+                color: client.mode === "real" ? designTokens.color.success[600] : designTokens.color.info[600],
               }}
             >
               {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
@@ -447,18 +479,37 @@ export function PnlAttributionView({ reportDate }: Props) {
         {keyFindings.length > 0 && (
           <div
             style={{
-              marginTop: 16,
-              padding: 16,
-              borderRadius: 12,
+              marginTop: designTokens.space[4],
+              padding: designTokens.space[4],
+              borderRadius: designTokens.radius.md,
               border: "1px solid",
-              borderColor: activeTab === "advanced" ? "#e4d6fb" : "#f1d3b5",
-              background: activeTab === "advanced" ? "#f6f0ff" : "#fff4e8",
+              borderColor:
+                activeTab === "advanced"
+                  ? designTokens.color.primary[200]
+                  : designTokens.color.warning[200],
+              background:
+                activeTab === "advanced" ? designTokens.color.primary[50] : designTokens.color.warning[50],
             }}
           >
-            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, color: "#162033" }}>
+            <div
+              style={{
+                fontWeight: 700,
+                fontSize: designTokens.fontSize[13],
+                marginBottom: designTokens.space[2],
+                color: designTokens.color.neutral[900],
+              }}
+            >
               {activeTab === "advanced" ? "高级归因要点" : "关键发现"}
             </div>
-            <ul style={{ margin: 0, paddingLeft: 18, color: "#5c6b82", fontSize: 13, lineHeight: 1.6 }}>
+            <ul
+              style={{
+                margin: 0,
+                paddingLeft: designTokens.space[6],
+                color: designTokens.color.neutral[700],
+                fontSize: designTokens.fontSize[13],
+                lineHeight: designTokens.lineHeight.normal,
+              }}
+            >
               {keyFindings.map((t, i) => (
                 <li key={i}>{t}</li>
               ))}
@@ -467,14 +518,14 @@ export function PnlAttributionView({ reportDate }: Props) {
         )}
       </div>
 
-      <div style={{ ...headerCardStyle, padding: 16 }}>
+      <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
         <SectionLead
           eyebrow="Workbench"
           title="归因分析工作台"
           description="先选择归因视图，再阅读对应图表和关键发现；本页消费后端归因 read model，不在前端补算正式损益。"
           testId="pnl-attribution-workbench-lead"
         />
-        <FilterBar style={{ ...tabBarStyle, marginTop: 14 }}>
+        <FilterBar style={{ ...tabBarStyle, marginTop: designTokens.space[4] }}>
           <button type="button" style={tabStyle(activeTab === "volume-rate")} onClick={() => setActiveTab("volume-rate")}>
             规模 / 利率效应
           </button>
@@ -492,7 +543,7 @@ export function PnlAttributionView({ reportDate }: Props) {
             高级归因 + Campisi
           </button>
           {activeTab === "volume-rate" && (
-            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+            <div style={{ marginLeft: "auto", display: "flex", gap: designTokens.space[2] }}>
               <button
                 type="button"
                 style={tabStyle(compareType === "mom")}
@@ -562,54 +613,111 @@ export function PnlAttributionView({ reportDate }: Props) {
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: 12,
+            gap: designTokens.space[3],
           }}
         >
-          <div style={{ ...headerCardStyle, padding: 16 }}>
-            <div style={{ fontSize: 12, color: "#5c6b82" }}>当期损益</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>{formatYiNumeric(volumeRateData.total_current_pnl)}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.current_period}</div>
+          <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
+            <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>当期损益</div>
+            <div
+              style={{
+                fontSize: designTokens.fontSize[20],
+                fontWeight: 700,
+                color: designTokens.color.neutral[900],
+                ...tabularNumsStyle,
+              }}
+            >
+              {formatYiNumeric(volumeRateData.total_current_pnl)}
+            </div>
+            <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[500] }}>
+              {volumeRateData.current_period}
+            </div>
           </div>
           {volumeRateData.has_previous_data && (
             <>
-              <div style={{ ...headerCardStyle, padding: 16 }}>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>上期损益</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#162033" }}>
-                  {formatYiNumeric(volumeRateData.total_previous_pnl)}
-                </div>
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>{volumeRateData.previous_period}</div>
-              </div>
-              <div style={{ ...headerCardStyle, padding: 16, background: "#e8f6ee", borderColor: "#c8e8d5" }}>
-                <div style={{ fontSize: 12, color: "#15803d" }}>规模效应</div>
+              <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>上期损益</div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: (numericRaw(volumeRateData.total_volume_effect) ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                    color: designTokens.color.neutral[900],
+                    ...tabularNumsStyle,
+                  }}
+                >
+                  {formatYiNumeric(volumeRateData.total_previous_pnl)}
+                </div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[500] }}>
+                  {volumeRateData.previous_period}
+                </div>
+              </div>
+              <div
+                style={{
+                  ...headerCardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.success[50],
+                  borderColor: designTokens.color.success[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.profit }}>
+                  规模效应
+                </div>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[20],
+                    fontWeight: 700,
+                    color:
+                      (numericRaw(volumeRateData.total_volume_effect) ?? 0) >= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {formatYiNumeric(volumeRateData.total_volume_effect)}
                 </div>
               </div>
-              <div style={{ ...headerCardStyle, padding: 16, background: "#edf3ff", borderColor: "#cddcff" }}>
-                <div style={{ fontSize: 12, color: "#1f5eff" }}>利率效应</div>
+              <div
+                style={{
+                  ...headerCardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.info[50],
+                  borderColor: designTokens.color.info[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[600] }}>利率效应</div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: (numericRaw(volumeRateData.total_rate_effect) ?? 0) >= 0 ? "#1f5eff" : "#b35a16",
+                    color:
+                      (numericRaw(volumeRateData.total_rate_effect) ?? 0) >= 0
+                        ? designTokens.color.info[600]
+                        : designTokens.color.warning[600],
+                    ...tabularNumsStyle,
                   }}
                 >
                   {formatYiNumeric(volumeRateData.total_rate_effect)}
                 </div>
               </div>
-              <div style={{ ...headerCardStyle, padding: 16, background: "#f6f0ff", borderColor: "#e4d6fb" }}>
-                <div style={{ fontSize: 12, color: "#6d3bb3" }}>损益变动</div>
+              <div
+                style={{
+                  ...headerCardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.primary[100],
+                  borderColor: designTokens.color.primary[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.primary[700] }}>
+                  损益变动
+                </div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: (numericRaw(volumeRateData.total_pnl_change) ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                    color:
+                      (numericRaw(volumeRateData.total_pnl_change) ?? 0) >= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {formatYiNumeric(volumeRateData.total_pnl_change)}

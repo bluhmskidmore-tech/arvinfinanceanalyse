@@ -3,12 +3,13 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import type { CampisiAttributionPayload, CampisiFourEffectsPayload } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: 24,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
+  padding: designTokens.space[6],
+  borderRadius: designTokens.radius.lg,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
 } as const;
 
 function formatYi(value: number): string {
@@ -105,7 +106,9 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
       normalized.total_spread_effect,
       normalized.total_selection_effect,
     ].map((v) => v / 100_000_000);
-    const colors = values.map((v) => (v >= 0 ? "#22c55e" : "#ef4444"));
+    const colors = values.map((v) =>
+      v >= 0 ? designTokens.color.semantic.profit : designTokens.color.semantic.loss,
+    );
     return {
       tooltip: {
         trigger: "axis",
@@ -114,19 +117,29 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           return `${Number.isFinite(n) ? n.toFixed(2) : "—"} 亿`;
         },
       },
-      grid: { left: 100, right: 24, top: 16, bottom: 24 },
+      grid: { left: 100, right: designTokens.space[6], top: designTokens.space[4], bottom: designTokens.space[6] },
       xAxis: {
         type: "value",
-        axisLabel: { formatter: (v: number) => `${v.toFixed(1)}`, color: "#5c6b82" },
-        splitLine: { lineStyle: { type: "dashed", color: "#e8edf5" } },
+        axisLabel: {
+          formatter: (v: number) => `${v.toFixed(1)}`,
+          color: designTokens.color.neutral[700],
+        },
+        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
       },
-      yAxis: { type: "category", data: names, axisLabel: { fontSize: 12, color: "#5c6b82" } },
+      yAxis: {
+        type: "category",
+        data: names,
+        axisLabel: { fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] },
+      },
       series: [
         {
           type: "bar",
           data: values.map((v, i) => ({
             value: v,
-            itemStyle: { color: colors[i], borderRadius: [0, 4, 4, 0] },
+            itemStyle: {
+              color: colors[i],
+              borderRadius: [0, designTokens.radius.sm, designTokens.radius.sm, 0],
+            },
           })),
         },
       ],
@@ -137,21 +150,28 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
     <DataSection title="Campisi 四效应归因（组合）" state={state} onRetry={onRetry}>
       {!normalized ? (
         <div style={cardStyle}>
-          <p style={{ margin: 0, color: "#5c6b82" }}>暂无 Campisi 归因数据。</p>
+          <p style={{ margin: 0, color: designTokens.color.neutral[700] }}>暂无 Campisi 归因数据。</p>
         </div>
       ) : (
         <div style={cardStyle}>
-          <p style={{ margin: "0 0 16px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}>
+          <p
+            style={{
+              margin: `0 0 ${designTokens.space[4]}px`,
+              fontSize: designTokens.fontSize[13],
+              color: designTokens.color.neutral[700],
+              lineHeight: designTokens.lineHeight.normal,
+            }}
+          >
             {normalized.interpretation}
           </p>
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-              gap: 12,
-              marginBottom: 16,
-              fontSize: 12,
-              color: "#5c6b82",
+              gap: designTokens.space[3],
+              marginBottom: designTokens.space[4],
+              fontSize: designTokens.fontSize[12],
+              color: designTokens.color.neutral[700],
             }}
           >
             <div>
@@ -169,31 +189,48 @@ export function CampisiAttributionPanel({ data, state, onRetry }: Props) {
           </div>
           {barOption && <ReactECharts option={barOption} style={{ height: 220 }} notMerge lazyUpdate />}
           {normalized.items.length > 0 && (
-            <div style={{ marginTop: 20, overflow: "auto" }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <div style={{ marginTop: designTokens.space[5], overflow: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontSize: designTokens.fontSize[12],
+                }}
+              >
                 <thead>
-                  <tr style={{ background: "#f0f3f8" }}>
-                    <th style={{ textAlign: "left", padding: 8 }}>类别</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>收入(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>国债(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>利差(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>选择(亿)</th>
+                  <tr style={{ background: designTokens.color.neutral[100] }}>
+                    <th style={{ textAlign: "left", padding: designTokens.space[2] }}>类别</th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      收入(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      国债(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      利差(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      选择(亿)
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {normalized.items.map((row, index) => (
-                    <tr key={`${row.category}-${index}`} style={{ borderBottom: "1px solid #eef2f7" }}>
-                      <td style={{ padding: 8 }}>{row.category}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>
+                    <tr
+                      key={`${row.category}-${index}`}
+                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                    >
+                      <td style={{ padding: designTokens.space[2] }}>{row.category}</td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
                         {(row.income_return / 100_000_000).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8 }}>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
                         {(row.treasury_effect / 100_000_000).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8 }}>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
                         {(row.spread_effect / 100_000_000).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8 }}>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
                         {(row.selection_effect / 100_000_000).toFixed(2)}
                       </td>
                     </tr>

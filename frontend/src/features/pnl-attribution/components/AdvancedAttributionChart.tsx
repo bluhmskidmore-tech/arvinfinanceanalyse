@@ -8,12 +8,13 @@ import type {
 } from "../../../api/contracts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: 24,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
+  padding: designTokens.space[6],
+  borderRadius: designTokens.radius.lg,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -49,30 +50,43 @@ export function AdvancedAttributionChart({
     const rows = carryData.items.slice(0, 10);
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: 12 } },
-      grid: { left: 48, right: 24, top: 24, bottom: 48 },
+      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: 48 },
       xAxis: {
         type: "category",
         data: rows.map((r) => (r.category.length > 8 ? `${r.category.slice(0, 8)}…` : r.category)),
-        axisLabel: { fontSize: 11, rotate: 20, color: "#5c6b82" },
+        axisLabel: {
+          fontSize: designTokens.fontSize[11],
+          rotate: 20,
+          color: designTokens.color.neutral[700],
+        },
       },
       yAxis: {
         type: "value",
-        axisLabel: { formatter: (v: number) => `${v.toFixed(1)}%`, color: "#5c6b82" },
-        splitLine: { lineStyle: { type: "dashed", color: "#e8edf5" } },
+        axisLabel: {
+          formatter: (v: number) => `${v.toFixed(1)}%`,
+          color: designTokens.color.neutral[700],
+        },
+        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
       },
       series: [
         {
           name: "Carry",
           type: "bar",
           data: rows.map((r) => r.carry.raw ?? 0),
-          itemStyle: { color: "#22c55e", borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: designTokens.color.success[500],
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
         {
           name: "Roll-down",
           type: "bar",
           data: rows.map((r) => r.rolldown.raw ?? 0),
-          itemStyle: { color: "#3b82f6", borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: designTokens.color.info[500],
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
       ],
     };
@@ -87,20 +101,24 @@ export function AdvancedAttributionChart({
     const ychg = krdData.buckets.map((b) => b.yield_change?.raw ?? 0);
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: 12 } },
-      grid: { left: 52, right: 52, top: 24, bottom: 48 },
-      xAxis: { type: "category", data: tenors, axisLabel: { fontSize: 11, color: "#5c6b82" } },
+      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      grid: { left: 52, right: 52, top: designTokens.space[6], bottom: 48 },
+      xAxis: {
+        type: "category",
+        data: tenors,
+        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+      },
       yAxis: [
         {
           type: "value",
           name: "久期贡献(亿)",
-          axisLabel: { color: "#5c6b82" },
-          splitLine: { lineStyle: { type: "dashed", color: "#e8edf5" } },
+          axisLabel: { color: designTokens.color.neutral[700] },
+          splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[100] } },
         },
         {
           type: "value",
           name: "BP",
-          axisLabel: { color: "#5c6b82" },
+          axisLabel: { color: designTokens.color.neutral[700] },
           splitLine: { show: false },
         },
       ],
@@ -111,7 +129,10 @@ export function AdvancedAttributionChart({
           yAxisIndex: 0,
           data: contrib.map((v) => ({
             value: v,
-            itemStyle: { color: v >= 0 ? "#22c55e" : "#ef4444", borderRadius: [4, 4, 0, 0] },
+            itemStyle: {
+              color: v >= 0 ? designTokens.color.semantic.profit : designTokens.color.semantic.loss,
+              borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+            },
           })),
         },
         {
@@ -121,7 +142,7 @@ export function AdvancedAttributionChart({
           data: ychg,
           smooth: true,
           symbolSize: 8,
-          lineStyle: { color: "#3b82f6", width: 2 },
+          lineStyle: { color: designTokens.color.info[500], width: 2 },
         },
       ],
     };
@@ -133,22 +154,38 @@ export function AdvancedAttributionChart({
     }
     return {
       tooltip: { trigger: "axis" },
-      legend: { bottom: 0, textStyle: { fontSize: 12 } },
-      grid: { left: 48, right: 24, top: 24, bottom: 48 },
-      xAxis: { type: "category", data: krdData.buckets.map((b) => b.tenor), axisLabel: { fontSize: 11 } },
-      yAxis: { type: "value", axisLabel: { formatter: (v: number) => `${v}%`, color: "#5c6b82" } },
+      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: 48 },
+      xAxis: {
+        type: "category",
+        data: krdData.buckets.map((b) => b.tenor),
+        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+      },
+      yAxis: {
+        type: "value",
+        axisLabel: {
+          formatter: (v: number) => `${v}%`,
+          color: designTokens.color.neutral[700],
+        },
+      },
       series: [
         {
           name: "贡献占比",
           type: "bar",
           data: krdData.buckets.map((b) => b.contribution_pct.raw ?? 0),
-          itemStyle: { color: "#3b82f6", borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: designTokens.color.info[500],
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
         {
           name: "市值占比",
           type: "bar",
           data: krdData.buckets.map((b) => b.weight.raw ?? 0),
-          itemStyle: { color: "#22c55e", borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: designTokens.color.success[500],
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
       ],
     };
@@ -156,45 +193,91 @@ export function AdvancedAttributionChart({
 
   return (
     <DataSection title="Carry / 利差 / KRD 高级归因" state={state} onRetry={onRetry}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[5] }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-            gap: 12,
+            gap: designTokens.space[3],
           }}
         >
           {carryData && (
             <>
-              <div style={{ ...cardStyle, padding: 16, background: "#e8f6ee", borderColor: "#c8e8d5" }}>
-                <div style={{ fontSize: 12, color: "#15803d" }}>组合 Carry</div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.success[50],
+                  borderColor: designTokens.color.success[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.profit }}>
+                  组合 Carry
+                </div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: (carryData.portfolio_carry.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                    color:
+                      (carryData.portfolio_carry.raw ?? 0) >= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {(carryData.portfolio_carry.raw ?? 0).toFixed(2)}%
                 </div>
-                <div style={{ fontSize: 11, color: "#2f8f63" }}>票息 − FTP</div>
+                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.success[600] }}>
+                  票息 − FTP
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#edf3ff", borderColor: "#cddcff" }}>
-                <div style={{ fontSize: 12, color: "#1f5eff" }}>组合 Roll-down</div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.info[50],
+                  borderColor: designTokens.color.info[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[600] }}>
+                  组合 Roll-down
+                </div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
-                    color: (carryData.portfolio_rolldown.raw ?? 0) >= 0 ? "#1f5eff" : "#b35a16",
+                    color:
+                      (carryData.portfolio_rolldown.raw ?? 0) >= 0
+                        ? designTokens.color.info[600]
+                        : designTokens.color.warning[600],
+                    ...tabularNumsStyle,
                   }}
                 >
                   {(carryData.portfolio_rolldown.raw ?? 0).toFixed(2)}%
                 </div>
-                <div style={{ fontSize: 11, color: "#5c6b82" }}>骑乘</div>
+                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+                  骑乘
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#f6f0ff", borderColor: "#e4d6fb" }}>
-                <div style={{ fontSize: 12, color: "#6d3bb3" }}>静态收益（年化近似）</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "#6d3bb3" }}>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.primary[100],
+                  borderColor: designTokens.color.primary[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.primary[700] }}>
+                  静态收益（年化近似）
+                </div>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[20],
+                    fontWeight: 700,
+                    color: designTokens.color.primary[700],
+                    ...tabularNumsStyle,
+                  }}
+                >
                   {(
                     summaryData?.static_return_annualized?.raw ??
                     carryData.portfolio_static_return.raw ??
@@ -202,31 +285,59 @@ export function AdvancedAttributionChart({
                   ).toFixed(2)}
                   %
                 </div>
-                <div style={{ fontSize: 11, color: "#5c6b82" }}>Carry + Roll-down</div>
+                <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+                  Carry + Roll-down
+                </div>
               </div>
             </>
           )}
           {spreadData && (
             <>
-              <div style={{ ...cardStyle, padding: 16, background: "#fff4e8", borderColor: "#f1d3b5" }}>
-                <div style={{ fontSize: 12, color: "#b35a16" }}>国债曲线效应</div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.warning[50],
+                  borderColor: designTokens.color.warning[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.warning[600] }}>
+                  国债曲线效应
+                </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
-                    color: (spreadData.total_treasury_effect.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                    color:
+                      (spreadData.total_treasury_effect.raw ?? 0) >= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {formatYi(spreadData.total_treasury_effect.raw ?? undefined)}
                 </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#fde8e8", borderColor: "#f5c2c2" }}>
-                <div style={{ fontSize: 12, color: "#b91c1c" }}>10Y 变动</div>
+              <div
+                style={{
+                  ...cardStyle,
+                  padding: designTokens.space[4],
+                  background: designTokens.color.danger[50],
+                  borderColor: designTokens.color.danger[200],
+                }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.loss }}>
+                  10Y 变动
+                </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
-                    color: (spreadData.treasury_10y_change?.raw ?? 0) <= 0 ? "#15803d" : "#b91c1c",
+                    color:
+                      (spreadData.treasury_10y_change?.raw ?? 0) <= 0
+                        ? designTokens.color.semantic.profit
+                        : designTokens.color.semantic.loss,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {spreadData.treasury_10y_change !== null
@@ -237,49 +348,125 @@ export function AdvancedAttributionChart({
             </>
           )}
           {krdData && (
-            <div style={{ ...cardStyle, padding: 16, background: "#e6f9fc", borderColor: "#b8eaf0" }}>
-              <div style={{ fontSize: 12, color: "#0e7490" }}>组合 DV01</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "#0e7490" }}>
+            <div
+              style={{
+                ...cardStyle,
+                padding: designTokens.space[4],
+                background: designTokens.color.info[50],
+                borderColor: designTokens.color.info[200],
+              }}
+            >
+              <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[700] }}>组合 DV01</div>
+              <div
+                style={{
+                  fontSize: designTokens.fontSize[20],
+                  fontWeight: 700,
+                  color: designTokens.color.info[700],
+                  ...tabularNumsStyle,
+                }}
+              >
                 {((krdData.portfolio_dv01.raw ?? 0) / 10_000).toFixed(0)} 万
               </div>
-              <div style={{ fontSize: 11, color: "#5c6b82" }}>每 BP 价值变动</div>
+              <div style={{ fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] }}>
+                每 BP 价值变动
+              </div>
             </div>
           )}
         </div>
 
         {carryOption && carryData && (
           <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
+            <h3
+              style={{
+                margin: `0 0 ${designTokens.space[3]}px`,
+                fontSize: designTokens.fontSize[16],
+                fontWeight: 600,
+                color: designTokens.color.neutral[900],
+              }}
+            >
               {"Carry & Roll-down"} 分解
             </h3>
             <ReactECharts option={carryOption} style={{ height: 300 }} notMerge lazyUpdate />
-            <div style={{ marginTop: 12, overflow: "auto", maxHeight: 220 }}>
-              <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-                <thead style={{ background: "#f0f3f8", position: "sticky", top: 0 }}>
+            <div style={{ marginTop: designTokens.space[3], overflow: "auto", maxHeight: 220 }}>
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: designTokens.fontSize[12],
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead
+                  style={{
+                    background: designTokens.color.neutral[100],
+                    position: "sticky",
+                    top: 0,
+                  }}
+                >
                   <tr>
-                    <th style={{ textAlign: "left", padding: 8 }}>类别</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>市值(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>票息%</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>FTP%</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>Carry%</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>久期</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>Roll%</th>
+                    <th style={{ textAlign: "left", padding: designTokens.space[2] }}>类别</th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      市值(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      票息%
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      FTP%
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      Carry%
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      久期
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      Roll%
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {carryData.items.slice(0, 8).map((item, idx) => (
-                    <tr key={idx} style={{ borderBottom: "1px solid #eef2f7" }}>
-                      <td style={{ padding: 8 }}>{item.category}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>
+                    <tr
+                      key={idx}
+                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                    >
+                      <td style={{ padding: designTokens.space[2] }}>{item.category}</td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
                         {((item.market_value.raw ?? 0) / 1e8).toFixed(1)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{(item.coupon_rate.raw ?? 0).toFixed(2)}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{(item.funding_cost.raw ?? 0).toFixed(2)}</td>
-                      <td style={{ textAlign: "right", padding: 8, color: (item.carry.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c" }}>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {(item.coupon_rate.raw ?? 0).toFixed(2)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {(item.funding_cost.raw ?? 0).toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          color:
+                            (item.carry.raw ?? 0) >= 0
+                              ? designTokens.color.semantic.profit
+                              : designTokens.color.semantic.loss,
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(item.carry.raw ?? 0).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{(item.duration.raw ?? 0).toFixed(2)}</td>
-                      <td style={{ textAlign: "right", padding: 8, color: (item.rolldown.raw ?? 0) >= 0 ? "#1f5eff" : "#b35a16" }}>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {(item.duration.raw ?? 0).toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          color:
+                            (item.rolldown.raw ?? 0) >= 0
+                              ? designTokens.color.info[600]
+                              : designTokens.color.warning[600],
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(item.rolldown.raw ?? 0).toFixed(2)}
                       </td>
                     </tr>
@@ -292,9 +479,33 @@ export function AdvancedAttributionChart({
 
         {spreadData?.interpretation && (
           <div style={cardStyle}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: "#162033" }}>利差归因</h4>
-            <p style={{ margin: 0, fontSize: 14, color: "#5c6b82", lineHeight: 1.6 }}>{spreadData.interpretation}</p>
-            <p style={{ margin: "10px 0 0", fontSize: 12, color: "#94a3b8" }}>
+            <h4
+              style={{
+                margin: `0 0 ${designTokens.space[2]}px`,
+                fontSize: designTokens.fontSize[16],
+                fontWeight: 600,
+                color: designTokens.color.neutral[900],
+              }}
+            >
+              利差归因
+            </h4>
+            <p
+              style={{
+                margin: 0,
+                fontSize: designTokens.fontSize[14],
+                color: designTokens.color.neutral[700],
+                lineHeight: designTokens.lineHeight.normal,
+              }}
+            >
+              {spreadData.interpretation}
+            </p>
+            <p
+              style={{
+                margin: `${designTokens.space[3]}px 0 0`,
+                fontSize: designTokens.fontSize[12],
+                color: designTokens.color.neutral[500],
+              }}
+            >
               区间 {spreadData.start_date} ~ {spreadData.end_date}
             </p>
           </div>
@@ -302,50 +513,109 @@ export function AdvancedAttributionChart({
 
         {krdOption && krdData && (
           <div style={cardStyle}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600, color: "#162033" }}>KRD 归因</h3>
+            <h3
+              style={{
+                margin: `0 0 ${designTokens.space[3]}px`,
+                fontSize: designTokens.fontSize[16],
+                fontWeight: 600,
+                color: designTokens.color.neutral[900],
+              }}
+            >
+              KRD 归因
+            </h3>
             {krdData.curve_interpretation && (
-              <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", background: "#f7f9fc", padding: 12, borderRadius: 12 }}>
+              <p
+                style={{
+                  margin: `0 0 ${designTokens.space[3]}px`,
+                  fontSize: designTokens.fontSize[13],
+                  color: designTokens.color.neutral[700],
+                  background: designTokens.color.primary[50],
+                  padding: designTokens.space[3],
+                  borderRadius: designTokens.radius.md,
+                }}
+              >
                 曲线形态：{krdData.curve_interpretation}
                 {krdData.max_contribution_tenor ? (
-                  <span style={{ marginLeft: 12, color: "#1f5eff" }}>
+                  <span style={{ marginLeft: designTokens.space[3], color: designTokens.color.info[600] }}>
                     最大贡献期限 {krdData.max_contribution_tenor}（{formatYi(krdData.max_contribution_value.raw ?? undefined)}）
                   </span>
                 ) : null}
               </p>
             )}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: designTokens.space[4],
+              }}
+            >
               <ReactECharts option={krdOption} style={{ height: 280 }} notMerge lazyUpdate />
               {krdCompareOption && (
                 <ReactECharts option={krdCompareOption} style={{ height: 280 }} notMerge lazyUpdate />
               )}
             </div>
-            <div style={{ marginTop: 12, overflow: "auto" }}>
-              <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse" }}>
-                <thead style={{ background: "#f0f3f8" }}>
+            <div style={{ marginTop: designTokens.space[3], overflow: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  fontSize: designTokens.fontSize[12],
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead style={{ background: designTokens.color.neutral[100] }}>
                   <tr>
-                    <th style={{ textAlign: "left", padding: 8 }}>期限</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>债券数</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>市值(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>占比%</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>久期</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>Δyield</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>贡献(亿)</th>
-                    <th style={{ textAlign: "right", padding: 8 }}>贡献占比%</th>
+                    <th style={{ textAlign: "left", padding: designTokens.space[2] }}>期限</th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      债券数
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      市值(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      占比%
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      久期
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      Δyield
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      贡献(亿)
+                    </th>
+                    <th style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                      贡献占比%
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {krdData.buckets.map((b, idx) => (
-                    <tr key={idx} style={{ borderBottom: "1px solid #eef2f7" }}>
-                      <td style={{ padding: 8, fontWeight: 500 }}>{b.tenor}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{b.bond_count}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{((b.market_value.raw ?? 0) / 1e8).toFixed(1)}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{(b.weight.raw ?? 0).toFixed(1)}</td>
-                      <td style={{ textAlign: "right", padding: 8 }}>{(b.bucket_duration.raw ?? 0).toFixed(2)}</td>
+                    <tr
+                      key={idx}
+                      style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                    >
+                      <td style={{ padding: designTokens.space[2], fontWeight: 500 }}>{b.tenor}</td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {b.bond_count}
+                      </td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {((b.market_value.raw ?? 0) / 1e8).toFixed(1)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {(b.weight.raw ?? 0).toFixed(1)}
+                      </td>
+                      <td style={{ textAlign: "right", padding: designTokens.space[2], ...tabularNumsStyle }}>
+                        {(b.bucket_duration.raw ?? 0).toFixed(2)}
+                      </td>
                       <td
                         style={{
                           textAlign: "right",
-                          padding: 8,
-                          color: (b.yield_change?.raw ?? 0) <= 0 ? "#15803d" : "#b91c1c",
+                          padding: designTokens.space[2],
+                          color:
+                            (b.yield_change?.raw ?? 0) <= 0
+                              ? designTokens.color.semantic.profit
+                              : designTokens.color.semantic.loss,
+                          ...tabularNumsStyle,
                         }}
                       >
                         {b.yield_change !== null ? (b.yield_change.raw ?? 0).toFixed(1) : "—"}
@@ -353,13 +623,24 @@ export function AdvancedAttributionChart({
                       <td
                         style={{
                           textAlign: "right",
-                          padding: 8,
-                          color: (b.duration_contribution.raw ?? 0) >= 0 ? "#15803d" : "#b91c1c",
+                          padding: designTokens.space[2],
+                          color:
+                            (b.duration_contribution.raw ?? 0) >= 0
+                              ? designTokens.color.semantic.profit
+                              : designTokens.color.semantic.loss,
+                          ...tabularNumsStyle,
                         }}
                       >
                         {((b.duration_contribution.raw ?? 0) / 1e8).toFixed(2)}
                       </td>
-                      <td style={{ textAlign: "right", padding: 8, fontWeight: 600 }}>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          padding: designTokens.space[2],
+                          fontWeight: 600,
+                          ...tabularNumsStyle,
+                        }}
+                      >
                         {(b.contribution_pct.raw ?? 0).toFixed(1)}
                       </td>
                     </tr>

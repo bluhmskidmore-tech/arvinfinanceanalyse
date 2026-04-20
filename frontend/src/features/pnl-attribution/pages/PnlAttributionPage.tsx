@@ -1,7 +1,8 @@
 import { PnlAttributionView } from "../components/PnlAttributionView";
+import { designTokens } from "../../../theme/designSystem";
 
 const pageStyle = {
-  padding: "8px 4px 32px",
+  padding: `${designTokens.space[2]}px ${designTokens.space[1]}px ${designTokens.space[7]}px`,
   maxWidth: 1280,
   margin: "0 auto",
 } as const;

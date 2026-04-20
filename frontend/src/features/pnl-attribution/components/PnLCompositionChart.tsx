@@ -4,22 +4,23 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { DataSection } from "../../../components/DataSection";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { PnlCompositionPayload } from "../../../api/contracts";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
 const cardStyle = {
-  padding: 24,
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
+  padding: designTokens.space[6],
+  borderRadius: designTokens.radius.lg,
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.primary[50],
 } as const;
 
 const COLORS = {
-  positive: "#2f8f63",
-  neutral: "#6d7f99",
-  negative: "#c1554b",
-  interest: "#22c55e",
-  fairValue: "#3b82f6",
-  capital: "#f59e0b",
-  other: "#94a3b8",
+  positive: designTokens.color.success[600],
+  neutral: designTokens.color.neutral[600],
+  negative: designTokens.color.danger[500],
+  interest: designTokens.color.success[500],
+  fairValue: designTokens.color.info[500],
+  capital: designTokens.color.warning[500],
+  other: designTokens.color.neutral[500],
 } as const;
 
 function rawOr(n: { raw: number | null } | null | undefined, fallback = 0): number {
@@ -89,12 +90,12 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           return `${e.axisValue}<br/>${sign}${yi.toFixed(2)} 亿（占比 ${e.data.pct.toFixed(1)}%）`;
         },
       },
-      grid: { left: 90, right: 24, top: 10, bottom: 30, containLabel: true },
+      grid: { left: 90, right: designTokens.space[6], top: 10, bottom: 30, containLabel: true },
       xAxis: {
         type: "value" as const,
         name: "亿元",
-        axisLine: { show: true, lineStyle: { color: "#c4cedc" } },
-        splitLine: { lineStyle: { type: "dashed" as const, color: "#e4ebf5" } },
+        axisLine: { show: true, lineStyle: { color: designTokens.color.neutral[300] } },
+        splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[200] } },
       },
       yAxis: {
         type: "category" as const,
@@ -121,8 +122,8 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
               return `${sign}${v.toFixed(2)}`;
             },
             position: "inside" as const,
-            color: "#ffffff",
-            fontSize: 11,
+            color: designTokens.color.primary[50],
+            fontSize: designTokens.fontSize[11],
           },
         },
       ],
@@ -136,13 +137,20 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
     );
     return {
       tooltip: { trigger: "axis" as const },
-      legend: { bottom: 0, textStyle: { fontSize: 12 } },
-      grid: { left: 48, right: 24, top: 24, bottom: 48 },
-      xAxis: { type: "category" as const, data: periods, axisLabel: { fontSize: 11, color: "#5c6b82" } },
+      legend: { bottom: 0, textStyle: { fontSize: designTokens.fontSize[12] } },
+      grid: { left: 48, right: designTokens.space[6], top: designTokens.space[6], bottom: 48 },
+      xAxis: {
+        type: "category" as const,
+        data: periods,
+        axisLabel: { fontSize: designTokens.fontSize[11], color: designTokens.color.neutral[700] },
+      },
       yAxis: {
         type: "value" as const,
-        axisLabel: { formatter: (v: number) => `${v.toFixed(1)}亿`, color: "#5c6b82" },
-        splitLine: { lineStyle: { type: "dashed" as const, color: "#e8edf5" } },
+        axisLabel: {
+          formatter: (v: number) => `${v.toFixed(1)}亿`,
+          color: designTokens.color.neutral[700],
+        },
+        splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[100] } },
       },
       series: [
         {
@@ -164,14 +172,20 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map((t) => rawOr(t.capital_gain) / 100_000_000),
-          itemStyle: { color: COLORS.capital, borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: COLORS.capital,
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
         {
           name: "其他收入",
           type: "bar" as const,
           stack: "t",
           data: data.trend_data.map((t) => rawOr(t.other_income) / 100_000_000),
-          itemStyle: { color: COLORS.other, borderRadius: [4, 4, 0, 0] },
+          itemStyle: {
+            color: COLORS.other,
+            borderRadius: [designTokens.radius.sm, designTokens.radius.sm, 0, 0],
+          },
         },
       ],
     };
@@ -181,86 +195,118 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
 
   return (
     <DataSection title="损益构成" state={state} onRetry={onRetry}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[5] }}>
         {data && (
           <>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 16,
+                gap: designTokens.space[4],
               }}
             >
-              <div style={{ ...cardStyle, padding: 16 }}>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>总损益</div>
+              <div style={{ ...cardStyle, padding: designTokens.space[4] }}>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>总损益</div>
                 <div
                   style={{
-                    fontSize: 20,
+                    fontSize: designTokens.fontSize[20],
                     fontWeight: 700,
                     color: toneColor(rawOr(data.total_pnl)),
+                    ...tabularNumsStyle,
                   }}
                 >
                   {`${rawOr(data.total_pnl) >= 0 ? "+" : ""}${(rawOr(data.total_pnl) / 100_000_000).toFixed(2)} 亿`}
                 </div>
-                <div style={{ fontSize: 12, color: "#94a3b8" }}>{data.report_period}</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[500] }}>
+                  {data.report_period}
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#e8f6ee" }}>
-                <div style={{ fontSize: 12, color: "#15803d" }}>利息收入</div>
+              <div
+                style={{ ...cardStyle, padding: designTokens.space[4], background: designTokens.color.success[50] }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.semantic.profit }}>
+                  利息收入
+                </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
                     color: toneColor(rawOr(data.total_interest_income)),
+                    ...tabularNumsStyle,
                   }}
                 >
                   {`${(rawOr(data.total_interest_income) / 100_000_000).toFixed(2)} 亿`}
                 </div>
-                <div style={{ fontSize: 12, color: "#2f8f63" }}>占比 {rawOr(data.interest_pct).toFixed(1)}%</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.success[600] }}>
+                  占比 {rawOr(data.interest_pct).toFixed(1)}%
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#edf3ff" }}>
-                <div style={{ fontSize: 12, color: "#1f5eff" }}>公允价值变动</div>
+              <div style={{ ...cardStyle, padding: designTokens.space[4], background: designTokens.color.info[50] }}>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.info[600] }}>
+                  公允价值变动
+                </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
                     color: toneColor(rawOr(data.total_fair_value_change)),
+                    ...tabularNumsStyle,
                   }}
                 >
                   {`${rawOr(data.total_fair_value_change) >= 0 ? "+" : ""}${(rawOr(data.total_fair_value_change) / 100_000_000).toFixed(2)} 亿`}
                 </div>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>占比 {rawOr(data.fair_value_pct).toFixed(1)}%</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>
+                  占比 {rawOr(data.fair_value_pct).toFixed(1)}%
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#fff4e8" }}>
-                <div style={{ fontSize: 12, color: "#b35a16" }}>投资收益</div>
+              <div
+                style={{ ...cardStyle, padding: designTokens.space[4], background: designTokens.color.warning[50] }}
+              >
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.warning[600] }}>
+                  投资收益
+                </div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
                     color: toneColor(rawOr(data.total_capital_gain)),
+                    ...tabularNumsStyle,
                   }}
                 >
                   {`${rawOr(data.total_capital_gain) >= 0 ? "+" : ""}${(rawOr(data.total_capital_gain) / 100_000_000).toFixed(2)} 亿`}
                 </div>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>占比 {rawOr(data.capital_gain_pct).toFixed(1)}%</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>
+                  占比 {rawOr(data.capital_gain_pct).toFixed(1)}%
+                </div>
               </div>
-              <div style={{ ...cardStyle, padding: 16, background: "#f0f3f8" }}>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>其他收入</div>
+              <div style={{ ...cardStyle, padding: designTokens.space[4], background: designTokens.color.neutral[100] }}>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>其他收入</div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 700,
                     color: toneColor(rawOr(data.total_other_income)),
+                    ...tabularNumsStyle,
                   }}
                 >
                   {`${rawOr(data.total_other_income) >= 0 ? "+" : ""}${(rawOr(data.total_other_income) / 100_000_000).toFixed(2)} 亿`}
                 </div>
-                <div style={{ fontSize: 12, color: "#5c6b82" }}>占比 {rawOr(data.other_pct).toFixed(1)}%</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[700] }}>
+                  占比 {rawOr(data.other_pct).toFixed(1)}%
+                </div>
               </div>
             </div>
 
             {bipolarOption && (
               <div style={cardStyle}>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
+                <h3
+                  style={{
+                    margin: `0 0 ${designTokens.space[3]}px`,
+                    fontSize: designTokens.fontSize[16],
+                    fontWeight: 600,
+                    color: designTokens.color.neutral[900],
+                  }}
+                >
                   损益构成（带符号 · 亿元）
                 </h3>
                 <ReactECharts option={bipolarOption} style={{ height: 240 }} notMerge lazyUpdate />
@@ -269,7 +315,14 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
 
             {trendOption && (
               <div style={cardStyle}>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
+                <h3
+                  style={{
+                    margin: `0 0 ${designTokens.space[3]}px`,
+                    fontSize: designTokens.fontSize[16],
+                    fontWeight: 600,
+                    color: designTokens.color.neutral[900],
+                  }}
+                >
                   损益构成趋势
                 </h3>
                 <ReactECharts option={trendOption} style={{ height: 300 }} notMerge lazyUpdate />
@@ -278,20 +331,45 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
 
             {hasTableRows && (
               <div style={cardStyle}>
-                <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 600, color: "#162033" }}>
+                <h3
+                  style={{
+                    margin: `0 0 ${designTokens.space[3]}px`,
+                    fontSize: designTokens.fontSize[16],
+                    fontWeight: 600,
+                    color: designTokens.color.neutral[900],
+                  }}
+                >
                   分类别损益构成
                 </h3>
                 <div style={{ overflow: "auto" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      borderCollapse: "collapse",
+                      fontSize: designTokens.fontSize[13],
+                    }}
+                  >
                     <thead>
-                      <tr style={{ background: "#f0f3f8" }}>
-                        <th style={{ textAlign: "left", padding: 10 }}>资产类别</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>总损益(亿)</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>利息(亿)</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>公允(亿)</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>投资收益(亿)</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>其他(亿)</th>
-                        <th style={{ textAlign: "right", padding: 10 }}>利息占比</th>
+                      <tr style={{ background: designTokens.color.neutral[100] }}>
+                        <th style={{ textAlign: "left", padding: designTokens.space[3] }}>资产类别</th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          总损益(亿)
+                        </th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          利息(亿)
+                        </th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          公允(亿)
+                        </th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          投资收益(亿)
+                        </th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          其他(亿)
+                        </th>
+                        <th style={{ textAlign: "right", padding: designTokens.space[3], ...tabularNumsStyle }}>
+                          利息占比
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -300,26 +378,39 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                         const fvChange = rawOr(item.fair_value_change);
                         const capitalGain = rawOr(item.capital_gain);
                         const otherIncome = rawOr(item.other_income);
+                        const cellPad = designTokens.space[3];
                         return (
-                          <tr key={idx} style={{ borderBottom: "1px solid #eef2f7" }}>
-                            <td style={{ padding: 10, fontWeight: 500 }}>{item.category}</td>
+                          <tr
+                            key={idx}
+                            style={{ borderBottom: `1px solid ${designTokens.color.neutral[200]}` }}
+                          >
+                            <td style={{ padding: cellPad, fontWeight: 500 }}>{item.category}</td>
                             <td
                               style={{
                                 textAlign: "right",
-                                padding: 10,
+                                padding: cellPad,
                                 color: toneColor(totalPnl),
+                                ...tabularNumsStyle,
                               }}
                             >
                               {(totalPnl / 100_000_000).toFixed(2)}
                             </td>
-                            <td style={{ textAlign: "right", padding: 10, color: "#15803d" }}>
+                            <td
+                              style={{
+                                textAlign: "right",
+                                padding: cellPad,
+                                color: designTokens.color.semantic.profit,
+                                ...tabularNumsStyle,
+                              }}
+                            >
                               {(rawOr(item.interest_income) / 100_000_000).toFixed(2)}
                             </td>
                             <td
                               style={{
                                 textAlign: "right",
-                                padding: 10,
+                                padding: cellPad,
                                 color: toneColor(fvChange),
+                                ...tabularNumsStyle,
                               }}
                             >
                               {(fvChange / 100_000_000).toFixed(2)}
@@ -327,8 +418,9 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                             <td
                               style={{
                                 textAlign: "right",
-                                padding: 10,
+                                padding: cellPad,
                                 color: toneColor(capitalGain),
+                                ...tabularNumsStyle,
                               }}
                             >
                               {(capitalGain / 100_000_000).toFixed(2)}
@@ -336,13 +428,14 @@ export function PnLCompositionChart({ data, state, onRetry }: Props) {
                             <td
                               style={{
                                 textAlign: "right",
-                                padding: 10,
+                                padding: cellPad,
                                 color: toneColor(otherIncome),
+                                ...tabularNumsStyle,
                               }}
                             >
                               {(otherIncome / 100_000_000).toFixed(2)}
                             </td>
-                            <td style={{ textAlign: "right", padding: 10 }}>
+                            <td style={{ textAlign: "right", padding: cellPad, ...tabularNumsStyle }}>
                               {rawOr(item.interest_pct).toFixed(1)}%
                             </td>
                           </tr>
