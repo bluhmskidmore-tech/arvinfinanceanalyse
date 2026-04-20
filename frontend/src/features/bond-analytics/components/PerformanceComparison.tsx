@@ -2,7 +2,10 @@ import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import { SectionCard } from "../../../components/SectionCard";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { BORDER, panelStyle } from "./bondAnalyticsCockpitTokens";
+
+const dt = designTokens;
 
 type Row = {
   key: string;
@@ -73,18 +76,48 @@ const DATA: Row[] = [
 
 const columns: ColumnsType<Row> = [
   { title: "组合名称", dataIndex: "name", key: "name" },
-  { title: "规模(亿)", dataIndex: "scaleYi", key: "scaleYi", align: "right" },
-  { title: "收益率%", dataIndex: "yieldPct", key: "yieldPct", align: "right" },
-  { title: "初额较bp", dataIndex: "excessBp", key: "excessBp", align: "right" },
-  { title: "久期(年)", dataIndex: "durationY", key: "durationY", align: "right" },
-  { title: "最大回撤%", dataIndex: "maxDdPct", key: "maxDdPct", align: "right" },
+  {
+    title: "规模(亿)",
+    dataIndex: "scaleYi",
+    key: "scaleYi",
+    align: "right",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "收益率%",
+    dataIndex: "yieldPct",
+    key: "yieldPct",
+    align: "right",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "初额较bp",
+    dataIndex: "excessBp",
+    key: "excessBp",
+    align: "right",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "久期(年)",
+    dataIndex: "durationY",
+    key: "durationY",
+    align: "right",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "最大回撤%",
+    dataIndex: "maxDdPct",
+    key: "maxDdPct",
+    align: "right",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
 ];
 
 export function PerformanceComparison() {
   return (
     <SectionCard
       title="组合表现对比（年初至今）"
-      style={{ ...panelStyle("#ffffff"), border: `1px solid ${BORDER}` }}
+      style={{ ...panelStyle(dt.color.neutral[50]), border: `1px solid ${BORDER}` }}
     >
       <Table size="small" pagination={false} dataSource={DATA} columns={columns} />
     </SectionCard>

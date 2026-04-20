@@ -11,8 +11,11 @@ import type {
   CreditSpreadBondDetailRow,
   CreditSpreadMigrationResponse,
 } from "../types";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatWan, formatBp } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
+
+const dt = designTokens;
 
 interface Props {
   reportDate: string;
@@ -27,25 +30,72 @@ const spreadColumns = [
     dataIndex: "spread_change_bp",
     key: "spread_change_bp",
     render: (v: Numeric) => v.display,
+    onCell: () => ({ style: tabularNumsStyle }),
   },
-  { title: "总影响", dataIndex: "pnl_impact", key: "pnl_impact", render: formatWan },
-  { title: "OCI影响", dataIndex: "oci_impact", key: "oci_impact", render: formatWan },
-  { title: "TPL影响", dataIndex: "tpl_impact", key: "tpl_impact", render: formatWan },
+  {
+    title: "总影响",
+    dataIndex: "pnl_impact",
+    key: "pnl_impact",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "OCI影响",
+    dataIndex: "oci_impact",
+    key: "oci_impact",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "TPL影响",
+    dataIndex: "tpl_impact",
+    key: "tpl_impact",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
 ];
 
 const migrationColumns = [
   { title: "情景", dataIndex: "scenario_name", key: "scenario_name" },
   { title: "原评级", dataIndex: "from_rating", key: "from_rating" },
   { title: "目标评级", dataIndex: "to_rating", key: "to_rating" },
-  { title: "涉及债券", dataIndex: "affected_bonds", key: "affected_bonds" },
-  { title: "涉及市值", dataIndex: "affected_market_value", key: "affected_market_value", render: formatWan },
-  { title: "损益影响", dataIndex: "pnl_impact", key: "pnl_impact", render: formatWan },
+  {
+    title: "涉及债券",
+    dataIndex: "affected_bonds",
+    key: "affected_bonds",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "涉及市值",
+    dataIndex: "affected_market_value",
+    key: "affected_market_value",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "损益影响",
+    dataIndex: "pnl_impact",
+    key: "pnl_impact",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
 ];
 
 const issuerConcentrationColumns = [
   { title: "名称", dataIndex: "name", key: "name" },
-  { title: "权重", dataIndex: "weight", key: "weight" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+  {
+    title: "权重",
+    dataIndex: "weight",
+    key: "weight",
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
+  {
+    title: "市值",
+    dataIndex: "market_value",
+    key: "market_value",
+    render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
+  },
 ];
 
 const spreadDetailColumns = [
@@ -58,24 +108,28 @@ const spreadDetailColumns = [
     dataIndex: "ytm",
     key: "ytm",
     render: (value: string) => formatPctPoint(value),
+    onCell: () => ({ style: tabularNumsStyle }),
   },
   {
     title: "国债基准",
     dataIndex: "benchmark_yield",
     key: "benchmark_yield",
     render: (value: string) => formatPctPoint(value),
+    onCell: () => ({ style: tabularNumsStyle }),
   },
   {
     title: "利差",
     dataIndex: "credit_spread",
     key: "credit_spread",
     render: (value: string) => formatBp(value),
+    onCell: () => ({ style: tabularNumsStyle }),
   },
   {
     title: "市值",
     dataIndex: "market_value",
     key: "market_value",
     render: formatWan,
+    onCell: () => ({ style: tabularNumsStyle }),
   },
 ];
 
@@ -193,18 +247,25 @@ function spreadTermStructureOption(
 ): EChartsOption | null {
   if (!points.length) return null;
   return {
-    grid: { left: 48, right: 16, top: 24, bottom: 28, containLabel: false },
+    grid: {
+      left: dt.space[9],
+      right: dt.space[4],
+      top: dt.space[6],
+      bottom: dt.space[6] + dt.space[1],
+      containLabel: false,
+    },
     tooltip: { trigger: "axis" },
-    legend: { top: 0, textStyle: { fontSize: 11 } },
+    legend: { top: 0, textStyle: { fontSize: dt.fontSize[11], color: dt.color.neutral[600] } },
     xAxis: {
       type: "category",
       data: points.map((point) => point.tenor_bucket),
-      axisLabel: { color: "#5c6b82", fontSize: 11 },
+      axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11] },
+      axisLine: { lineStyle: { color: dt.color.neutral[200] } },
     },
     yAxis: {
       type: "value",
-      axisLabel: { color: "#5c6b82", fontSize: 11, formatter: "{value} bp" },
-      splitLine: { lineStyle: { type: "dashed", opacity: 0.35 } },
+      axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11], formatter: "{value} bp" },
+      splitLine: { lineStyle: { color: dt.color.neutral[200], type: "dashed", opacity: 0.35 } },
     },
     series: [
       {
@@ -212,21 +273,21 @@ function spreadTermStructureOption(
         type: "line",
         smooth: true,
         data: points.map((point) => Number(point.avg_spread_bps)),
-        itemStyle: { color: "#1f5eff" },
+        itemStyle: { color: dt.color.primary[500] },
         lineStyle: { width: 2 },
       },
       {
         name: "最小",
         type: "line",
         data: points.map((point) => Number(point.min_spread_bps)),
-        itemStyle: { color: "#2f8f63" },
+        itemStyle: { color: dt.color.success[500] },
         lineStyle: { type: "dashed" },
       },
       {
         name: "最大",
         type: "line",
         data: points.map((point) => Number(point.max_spread_bps)),
-        itemStyle: { color: "#ff7a45" },
+        itemStyle: { color: dt.color.warning[400] },
         lineStyle: { type: "dashed" },
       },
     ],
@@ -246,7 +307,13 @@ function concentrationBarOption(
     return Number.isFinite(w) ? Number((w * 100).toFixed(4)) : 0;
   });
   return {
-    grid: { left: 48, right: 12, top: 28, bottom: names.some((n) => n.length > 6) ? 52 : 36, containLabel: false },
+    grid: {
+      left: dt.space[9],
+      right: dt.space[3],
+      top: dt.space[6] + dt.space[1],
+      bottom: names.some((n) => n.length > 6) ? dt.space[9] + dt.space[1] : dt.space[4] + dt.space[5],
+      containLabel: false,
+    },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -259,14 +326,20 @@ function concentrationBarOption(
     xAxis: {
       type: "category",
       data: names,
-      axisLabel: { color: "#5c6b82", fontSize: 11, interval: 0, rotate: names.length > 5 ? 28 : 0 },
+      axisLabel: {
+        color: dt.color.neutral[600],
+        fontSize: dt.fontSize[11],
+        interval: 0,
+        rotate: names.length > 5 ? 28 : 0,
+      },
+      axisLine: { lineStyle: { color: dt.color.neutral[200] } },
     },
     yAxis: {
       type: "value",
       name: yAxisName,
-      nameTextStyle: { color: "#8c8c8c", fontSize: 11 },
-      axisLabel: { color: "#5c6b82", fontSize: 11, formatter: "{value}%" },
-      splitLine: { lineStyle: { type: "dashed", opacity: 0.35 } },
+      nameTextStyle: { color: dt.color.neutral[500], fontSize: dt.fontSize[11] },
+      axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11], formatter: "{value}%" },
+      splitLine: { lineStyle: { color: dt.color.neutral[200], type: "dashed", opacity: 0.35 } },
     },
     series: [
       {
@@ -296,18 +369,26 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
         return `${rating} × ${tenor}<br/>市值占比：${Number.isFinite(v) ? v.toFixed(2) : "—"}%`;
       },
     },
-    grid: { left: 56, right: 24, top: 16, bottom: 56, containLabel: true },
+    grid: {
+      left: dt.space[9] + dt.space[2],
+      right: dt.space[6],
+      top: dt.space[4],
+      bottom: dt.space[9] + dt.space[2],
+      containLabel: true,
+    },
     xAxis: {
       type: "category",
       data: [...CREDIT_DIST_TENOR_LABELS],
       splitArea: { show: true },
-      axisLabel: { color: "#5c6b82", fontSize: 11 },
+      axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11] },
+      axisLine: { lineStyle: { color: dt.color.neutral[200] } },
     },
     yAxis: {
       type: "category",
       data: [...CREDIT_DIST_RATING_LABELS],
       splitArea: { show: true },
-      axisLabel: { color: "#5c6b82", fontSize: 11 },
+      axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11] },
+      axisLine: { lineStyle: { color: dt.color.neutral[200] } },
     },
     visualMap: {
       min: 0,
@@ -315,11 +396,11 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
       calculable: true,
       orient: "horizontal",
       left: "center",
-      bottom: 4,
-      itemWidth: 12,
+      bottom: dt.space[1],
+      itemWidth: dt.space[3],
       itemHeight: 120,
-      inRange: { color: ["#dfe8ff", "#1f5eff"] },
-      textStyle: { fontSize: 11, color: "#5c6b82" },
+      inRange: { color: [dt.color.primary[100], dt.color.primary[600]] },
+      textStyle: { fontSize: dt.fontSize[11], color: dt.color.neutral[600] },
       formatter: (min, _max) => `${Number(min).toFixed(1)}%`,
     },
     series: [
@@ -328,8 +409,8 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
         data: seriesData,
         label: {
           show: true,
-          fontSize: 10,
-          color: "#262626",
+          fontSize: dt.fontSize[11],
+          color: dt.color.neutral[800],
           formatter: (params: unknown) => {
             const raw = (params as { value?: unknown }).value;
             const tuple = Array.isArray(raw) ? raw : [];
@@ -339,22 +420,28 @@ function ratingTenorHeatmapOption(seriesData: [number, number, number][], maxPct
           },
         },
         emphasis: {
-          itemStyle: { shadowBlur: 8, shadowColor: "rgba(0, 0, 0, 0.12)" },
+          itemStyle: { shadowBlur: dt.space[2], shadowColor: dt.color.neutral[300] },
         },
       },
     ],
   };
 }
 
-const ISSUER_SLICE_COLORS = ["#1f5eff", "#ff7a45", "#2f8f63", "#cc7a1a", "#8c8c8c"];
+const ISSUER_SLICE_COLORS = [
+  dt.color.primary[500],
+  dt.color.warning[400],
+  dt.color.success[500],
+  dt.color.warning[600],
+  dt.color.neutral[500],
+];
 
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   return {
     title: {
       text: `${metrics.dimension}  HHI ${metrics.hhi.display}  Top5 ${metrics.top5_concentration.display}`,
       left: "center",
-      top: 4,
-      textStyle: { fontSize: 11 },
+      top: dt.space[1],
+      textStyle: { fontSize: dt.fontSize[11], color: dt.color.neutral[600] },
     },
     tooltip: {
       trigger: "item",
@@ -405,8 +492,8 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
           top: "center",
           style: {
             text: "发行人集中度",
-            fill: "#262626",
-            fontSize: 14,
+            fill: dt.color.neutral[800],
+            fontSize: dt.fontSize[14],
             fontWeight: 500,
           },
         },
@@ -442,7 +529,7 @@ function ConcentrationPieCell({ metrics }: { metrics: ConcentrationMetrics | und
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          color: "rgba(0,0,0,0.45)",
+          color: dt.color.neutral[500],
         }}
       >
         暂无数据
@@ -512,7 +599,13 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
     if (!data?.spread_scenarios?.length) return null;
     const scenarios = data.spread_scenarios;
     return {
-      grid: { left: 52, right: 16, top: 24, bottom: 28, containLabel: false },
+      grid: {
+        left: dt.space[9] + dt.space[1],
+        right: dt.space[4],
+        top: dt.space[6],
+        bottom: dt.space[6] + dt.space[1],
+        containLabel: false,
+      },
       tooltip: {
         trigger: "axis",
         axisPointer: { type: "shadow" },
@@ -535,23 +628,24 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       xAxis: {
         type: "category",
         data: scenarios.map((s) => s.scenario_name),
-        axisLabel: { color: "#5c6b82", fontSize: 11, interval: 0, rotate: 15 },
+        axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11], interval: 0, rotate: 15 },
+        axisLine: { lineStyle: { color: dt.color.neutral[200] } },
       },
       yAxis: {
         type: "value",
-        axisLabel: { color: "#5c6b82", fontSize: 11 },
-        splitLine: { lineStyle: { type: "dashed", opacity: 0.35 } },
+        axisLabel: { color: dt.color.neutral[600], fontSize: dt.fontSize[11] },
+        splitLine: { lineStyle: { color: dt.color.neutral[200], type: "dashed", opacity: 0.35 } },
       },
       series: [
         {
           type: "bar",
           name: "损益影响",
-          barMaxWidth: 48,
+          barMaxWidth: dt.space[9],
           data: scenarios.map((s) => {
             const v = bondNumericRaw(s.pnl_impact);
             return {
               value: Number.isFinite(v) ? v : 0,
-              itemStyle: { color: v >= 0 ? "#cf1322" : "#3f8600" },
+              itemStyle: { color: v >= 0 ? dt.color.semantic.loss : dt.color.semantic.profit },
             };
           }),
         },
@@ -581,15 +675,15 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         option: ratingTenorHeatmapOption(heat.seriesData, heat.maxPct),
       };
     }
-    const ratingOpt = concentrationBarOption(data.concentration_by_rating, "#1f5eff", "市值占比");
-    const tenorOpt = concentrationBarOption(data.concentration_by_tenor, "#ff7a45", "市值占比");
+    const ratingOpt = concentrationBarOption(data.concentration_by_rating, dt.color.primary[500], "市值占比");
+    const tenorOpt = concentrationBarOption(data.concentration_by_tenor, dt.color.warning[400], "市值占比");
     if (ratingOpt || tenorOpt) {
       return { kind: "bars" as const, ratingOption: ratingOpt, tenorOption: tenorOpt };
     }
     return { kind: "empty" as const };
   }, [data]);
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (loading) return <Spin style={{ display: "block", margin: `${dt.space[8]}px auto` }} />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
@@ -608,7 +702,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   const historicalContext = detailData?.historical_context;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[4] }}>
       <SectionLead
         eyebrow="Credit Spread"
         title="信用利差概览"
@@ -665,7 +759,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       {data.spread_scenarios.length > 0 && (
         <Card title="利差情景冲击" size="small">
           {spreadChartOption && (
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: dt.space[4] }}>
               <ReactECharts
                 option={spreadChartOption}
                 style={{ height: 280, width: "100%" }}
@@ -696,9 +790,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Col xs={24} lg={12}>
               <div
                 style={{
-                  marginBottom: 8,
-                  fontSize: 12,
-                  color: "rgba(0,0,0,0.65)",
+                  marginBottom: dt.space[2],
+                  fontSize: dt.fontSize[12],
+                  color: dt.color.neutral[700],
                   textAlign: "center",
                 }}
               >
@@ -717,7 +811,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "rgba(0,0,0,0.45)",
+                    color: dt.color.neutral[500],
                   }}
                 >
                   暂无评级分布
@@ -727,9 +821,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Col xs={24} lg={12}>
               <div
                 style={{
-                  marginBottom: 8,
-                  fontSize: 12,
-                  color: "rgba(0,0,0,0.65)",
+                  marginBottom: dt.space[2],
+                  fontSize: dt.fontSize[12],
+                  color: dt.color.neutral[700],
                   textAlign: "center",
                 }}
               >
@@ -748,7 +842,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "rgba(0,0,0,0.45)",
+                    color: dt.color.neutral[500],
                   }}
                 >
                   暂无期限分布
@@ -764,7 +858,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "rgba(0,0,0,0.45)",
+              color: dt.color.neutral[500],
             }}
           >
             暂无评级×期限明细或集中度数据，无法展示分布图
@@ -794,7 +888,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "rgba(0,0,0,0.45)",
+                  color: dt.color.neutral[500],
                 }}
               >
                 暂无期限结构数据
@@ -866,9 +960,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                 <>
                   <div
                     style={{
-                      marginBottom: 8,
-                      fontSize: 12,
-                      color: "rgba(0,0,0,0.65)",
+                      marginBottom: dt.space[2],
+                      fontSize: dt.fontSize[12],
+                      color: dt.color.neutral[700],
                       textAlign: "center",
                     }}
                   >
@@ -887,7 +981,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                     </Col>
                     <Col xs={24} md={12}>
                       {issuerConcentrationPieOption && (
-                        <div style={{ marginTop: 16 }}>
+                        <div style={{ marginTop: dt.space[4] }}>
                           <ReactECharts
                             option={issuerConcentrationPieOption}
                             style={{ height: 280, width: "100%" }}

@@ -1,29 +1,33 @@
+import { designTokens } from "../../../theme/designSystem";
+
+const dt = designTokens;
+
 const sectionLeadWrapStyle = {
   display: "grid",
-  gap: 6,
+  gap: dt.space[2],
 } as const;
 
 const sectionEyebrowStyle = {
-  fontSize: 11,
+  fontSize: dt.fontSize[11],
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: dt.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
-  fontSize: 18,
+  fontSize: dt.fontSize[18],
   fontWeight: 600,
-  color: "#162033",
+  color: dt.color.primary[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
+  color: dt.color.neutral[600],
+  fontSize: dt.fontSize[13],
+  lineHeight: dt.lineHeight.relaxed,
 } as const;
 
 type SectionLeadProps = {
