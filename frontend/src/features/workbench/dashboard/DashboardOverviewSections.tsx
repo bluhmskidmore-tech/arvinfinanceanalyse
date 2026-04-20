@@ -3,10 +3,19 @@ import { Link } from "react-router-dom";
 
 import { shellTokens } from "../../../theme/tokens";
 import { TONE_COLOR, type Tone } from "../../../utils/tone";
-import {
-  DASHBOARD_MOCK_CALENDAR,
-  DASHBOARD_MOCK_TASKS,
-} from "./dashboardHubMock";
+export type DashboardHubTask = {
+  id: string;
+  title: string;
+  due: string;
+  priority: "high" | "medium" | "low";
+};
+
+export type DashboardHubCalendarItem = {
+  id: string;
+  title: string;
+  time: string;
+  kind: "macro" | "supply" | "internal";
+};
 
 export type DashboardHeroMetric = {
   id: string;
@@ -478,12 +487,17 @@ export function DashboardAlertCenterPanel({
   );
 }
 
-function TodoPanel() {
+function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
   return (
     <section style={panelStyle}>
       <DashboardSectionHeader eyebrow="Today" title="今日待办" />
       <div style={{ display: "grid", gap: 12 }}>
-        {DASHBOARD_MOCK_TASKS.map((task) => {
+        {tasks.length === 0 ? (
+          <p style={{ ...bodyTextStyle, margin: 0 }}>
+            暂无待办条目。治理预警或任务类数据接入 executive 读链路后将显示在此。
+          </p>
+        ) : null}
+        {tasks.map((task) => {
           const palette = severityPalette[task.priority];
           return (
             <article
@@ -536,12 +550,17 @@ function TodoPanel() {
   );
 }
 
-function CalendarPanel() {
+function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
   return (
     <section style={panelStyle}>
       <DashboardSectionHeader eyebrow="Calendar" title="关键日历" />
       <div style={{ display: "grid", gap: 12 }}>
-        {DASHBOARD_MOCK_CALENDAR.map((item, index) => {
+        {items.length === 0 ? (
+          <p style={{ ...bodyTextStyle, margin: 0 }}>
+            暂无日历事件。宏观与供给类日程接入后将显示在此。
+          </p>
+        ) : null}
+        {items.map((item, index) => {
           const severity = index === 0 ? "high" : index === 1 ? "medium" : "low";
           const palette = severityPalette[severity];
           return (
@@ -564,7 +583,7 @@ function CalendarPanel() {
                   fontVariantNumeric: "tabular-nums",
                 }}
               >
-                {item.time.slice(5, 10)}
+                {item.time.length >= 10 ? item.time.slice(5, 10) : item.time}
               </span>
               <div style={{ display: "grid", gap: 4 }}>
                 <span style={{ color: shellTokens.colorTextPrimary, fontWeight: 700 }}>{item.title}</span>
@@ -593,7 +612,13 @@ function CalendarPanel() {
   );
 }
 
-export function DashboardTasksCalendarPanels() {
+export function DashboardTasksCalendarPanels({
+  tasks = [],
+  calendarItems = [],
+}: {
+  tasks?: DashboardHubTask[];
+  calendarItems?: DashboardHubCalendarItem[];
+}) {
   return (
     <div
       data-testid="dashboard-tasks-calendar"
@@ -603,8 +628,8 @@ export function DashboardTasksCalendarPanels() {
         height: "100%",
       }}
     >
-      <TodoPanel />
-      <CalendarPanel />
+      <TodoPanel tasks={tasks} />
+      <CalendarPanel items={calendarItems} />
     </div>
   );
 }
