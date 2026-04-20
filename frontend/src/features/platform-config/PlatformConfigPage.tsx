@@ -6,7 +6,6 @@ import type { HealthCheckStatus, HealthResponse, SourcePreviewSummary } from "..
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
-import { PlaceholderCard } from "../workbench/components/PlaceholderCard";
 
 const summaryGridStyle = {
   display: "grid",
@@ -77,10 +76,7 @@ const sectionDescriptionStyle = {
   lineHeight: 1.7,
 } as const;
 
-function resolveCheck(
-  data: HealthResponse,
-  key: "duckdb" | "redis" | "postgresql",
-): HealthCheckStatus {
+function resolveCheck(data: HealthResponse, key: string): HealthCheckStatus {
   const c = data.checks ?? {};
   const direct = c[key];
   if (direct) {
@@ -166,6 +162,7 @@ export default function PlatformConfigPage() {
   const duck = health ? resolveCheck(health, "duckdb") : null;
   const redis = health ? resolveCheck(health, "redis") : null;
   const pg = health ? resolveCheck(health, "postgresql") : null;
+  const objectStore = health ? resolveCheck(health, "object_store") : null;
   const envLabel = health ? environmentLabel(health) : "—";
   const overallStatusLabel = health?.status ? String(health.status) : "—";
   const sourceCount = sources.length;
@@ -240,7 +237,12 @@ export default function PlatformConfigPage() {
       />
       <div style={summaryGridStyle}>
         <div data-testid="platform-config-overall-status">
-          <KpiCard title="系统状态" value={overallStatusLabel} detail="后端 health 总状态" valueVariant="text" />
+          <KpiCard
+            title="系统状态"
+            value={overallStatusLabel}
+            detail="GET /health/ready 返回的聚合状态（就绪检查）"
+            valueVariant="text"
+          />
         </div>
         <div data-testid="platform-config-environment-kpi">
           <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
@@ -260,7 +262,7 @@ export default function PlatformConfigPage() {
         <SectionLead
           eyebrow="Health"
           title="系统健康状态"
-          description="健康区保持现有后端检查语义，只在前端整理层级与阅读节奏，不新增任何推导逻辑。"
+          description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；未单独请求 /health/live 与 GET /health。"
         />
         <AsyncSection
           title="系统健康状态"
@@ -269,35 +271,42 @@ export default function PlatformConfigPage() {
           isEmpty={false}
           onRetry={() => void healthQuery.refetch()}
         >
-          {health && duck && redis && pg ? (
+          {health && duck && redis && pg && objectStore ? (
             <div style={healthGridStyle}>
-              <PlaceholderCard
+              <KpiCard
                 title="DuckDB 状态"
                 value={duck.ok ? "正常" : "异常"}
                 detail={duck.detail}
                 valueVariant="text"
-                surfaceTone={duck.ok ? "ok" : "error"}
+                tone={duck.ok ? "positive" : "error"}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="Redis 状态"
                 value={redis.ok ? "正常" : "异常"}
                 detail={redis.detail}
                 valueVariant="text"
-                surfaceTone={redis.ok ? "ok" : "error"}
+                tone={redis.ok ? "positive" : "error"}
               />
-              <PlaceholderCard
+              <KpiCard
                 title="PostgreSQL 状态"
                 value={pg.ok ? "正常" : "异常"}
                 detail={pg.detail}
                 valueVariant="text"
-                surfaceTone={pg.ok ? "ok" : "error"}
+                tone={pg.ok ? "positive" : "error"}
               />
-              <PlaceholderCard
+              <KpiCard
+                title="对象存储"
+                value={objectStore.ok ? "正常" : "异常"}
+                detail={objectStore.detail}
+                valueVariant="text"
+                tone={objectStore.ok ? "positive" : "error"}
+              />
+              <KpiCard
                 title="系统环境"
                 value={envLabel}
                 detail="部署/运行环境标识（后端返回时展示）。"
                 valueVariant="text"
-                surfaceTone="default"
+                tone="default"
               />
             </div>
           ) : null}
