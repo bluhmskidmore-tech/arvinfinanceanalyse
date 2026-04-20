@@ -26,12 +26,7 @@ import type {
 import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import {
-  PageFilterTray,
-  pageInsetCardStyle,
-  PageHeader,
-  PageSectionLead,
-} from "../../../components/page/PagePrimitives";
+import { PageFilterTray, PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../workbench/components/KpiCard";
@@ -39,244 +34,42 @@ import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 16,
-} as const;
-
-const firstScreenGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.45fr) minmax(300px, 0.95fr)",
-  gap: 18,
-  alignItems: "start",
-} as const;
-
-const formalHeroStyle = {
-  display: "grid",
-  gap: 18,
-  padding: "22px 24px",
-  borderRadius: 28,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background:
-    "linear-gradient(140deg, rgba(255,255,255,0.94) 0%, rgba(244,247,244,0.96) 52%, rgba(232,239,242,0.86) 100%)",
-  boxShadow: "0 18px 32px rgba(22, 35, 46, 0.07)",
-} as const;
-
-const heroMetaRowStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-} as const;
-
-const heroDetailGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-  gap: 12,
-} as const;
-
-const heroDetailCardStyle = {
-  padding: "14px 16px",
-  borderRadius: 18,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "rgba(255,255,255,0.72)",
-  display: "grid",
-  gap: 4,
-} as const;
-
-const priorityBoardStyle = {
-  display: "grid",
-  gap: 12,
-  padding: "20px 20px 18px",
-  borderRadius: 26,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(248,249,247,0.96) 100%)",
-  boxShadow: "0 14px 30px rgba(22, 35, 46, 0.06)",
-} as const;
-
-const priorityCardStyle = {
-  display: "grid",
-  gap: 8,
-  padding: "14px 16px",
-  borderRadius: 18,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
-} as const;
-
-const stagedScenarioShellStyle = {
-  display: "grid",
-  gap: 16,
-  marginTop: 24,
-  padding: "18px 20px 0",
-  borderRadius: 26,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "linear-gradient(180deg, rgba(248, 249, 247, 0.96) 0%, rgba(255,255,255,0.92) 100%)",
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
-} as const;
-
-const controlStyle = {
-  minWidth: 180,
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
-} as const;
-
-const actionButtonStyle = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #cddcff",
-  background: "#edf3ff",
-  color: "#1f5eff",
-  fontWeight: 600,
-  cursor: "pointer",
-} as const;
+import {
+  summaryGridStyle,
+  firstScreenGridStyle,
+  formalHeroStyle,
+  heroMetaRowStyle,
+  heroDetailGridStyle,
+  heroDetailCardStyle,
+  priorityBoardStyle,
+  priorityCardStyle,
+  stagedScenarioShellStyle,
+  controlBarStyle,
+  controlStyle,
+  actionButtonStyle,
+  tableShellStyle,
+  workbookPrimaryGridStyle,
+  workbookPanelStyle,
+  workbookPanelHeaderStyle,
+  workbookPanelBadgeStyle,
+  workbookSecondaryGridStyle,
+  workbookSecondaryPanelGridStyle,
+  workbookCockpitLayoutStyle,
+  workbookMainRailStyle,
+  workbookRightRailStyle,
+  rightRailFilterRowStyle,
+  rightRailFilterStyle,
+  rightRailItemButtonStyle,
+  decisionActionRowStyle,
+  decisionActionButtonStyle,
+  currentUserCardStyle,
+  barTrackStyle,
+} from "./BalanceAnalysisPage.styles";
+import { heroMetaChipStyle, signalAccentStyle, severityTone } from "./BalanceAnalysisPage.helpers";
 
 const PAGE_SIZE = 2;
-
-const tableShellStyle = {
-  overflowX: "auto",
-  borderRadius: 16,
-  border: "1px solid #e4ebf5",
-  background: "#ffffff",
-} as const;
-
-const workbookPrimaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
-  alignItems: "start",
-} as const;
-
-const workbookPanelStyle = {
-  borderRadius: 18,
-  border: "1px solid #dfe7f2",
-  background: "linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%)",
-  padding: 16,
-  boxShadow: "0 10px 24px rgba(19, 37, 70, 0.05)",
-} as const;
-
-const workbookPanelHeaderStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 12,
-  marginBottom: 14,
-} as const;
-
-const workbookPanelBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "4px 8px",
-  borderRadius: 999,
-  background: "#f3f6fb",
-  color: "#6c7b90",
-  fontSize: 12,
-  fontWeight: 600,
-} as const;
-
-const workbookSecondaryGridStyle = {
-  display: "grid",
-  gap: 18,
-  marginTop: 18,
-} as const;
-
-const workbookSecondaryPanelGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: 16,
-  alignItems: "start",
-} as const;
-
-const workbookCockpitLayoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.8fr) minmax(320px, 0.95fr)",
-  gap: 18,
-  marginTop: 18,
-  alignItems: "start",
-} as const;
-
-const workbookMainRailStyle = {
-  display: "grid",
-  gap: 18,
-} as const;
-
-const workbookRightRailStyle = {
-  display: "grid",
-  gap: 14,
-  alignContent: "start",
-} as const;
-
-const rightRailFilterRowStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-} as const;
-
-const rightRailFilterStyle = {
-  minWidth: 120,
-  padding: "8px 10px",
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
-} as const;
-
-const rightRailItemButtonStyle = {
-  width: "100%",
-  textAlign: "left",
-  border: "none",
-  background: "transparent",
-  padding: 0,
-  cursor: "pointer",
-} as const;
-
-const decisionActionRowStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 8,
-} as const;
-
-const decisionActionButtonStyle = {
-  padding: "8px 12px",
-  borderRadius: 10,
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
-  color: "#162033",
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-} as const;
-
-const currentUserCardStyle = {
-  marginBottom: 12,
-  ...pageInsetCardStyle,
-  borderRadius: 12,
-  border: "1px solid #d7dfea",
-  background: "#f7f9fc",
-  color: "#334155",
-  padding: 12,
-  fontSize: 12,
-  lineHeight: 1.6,
-} as const;
-
-const barTrackStyle = {
-  width: "100%",
-  height: 8,
-  borderRadius: 999,
-  background: "#e9eef6",
-  overflow: "hidden",
-} as const;
 
 const primaryWorkbookTableKeys = [
   "bond_business_types",
@@ -316,7 +109,14 @@ const workbookRightRailNotes: Record<(typeof rightRailWorkbookKeys)[number], str
 
 const decisionRailNote = "规则驱动的运营建议项通过治理状态流确认、忽略和跟踪，不把状态写回 formal facts。";
 
-const ratingBlockPalette = ["#2fbf93", "#5792ff", "#ff9c43", "#8f7cf7", "#ff6b6b", "#7cc4fa"];
+const ratingBlockPalette = [
+  designTokens.color.success[400],
+  designTokens.color.info[400],
+  designTokens.color.warning[400],
+  designTokens.color.primary[400],
+  designTokens.color.danger[400],
+  designTokens.color.info[300],
+] as const;
 
 function downloadBlobFile(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -380,74 +180,6 @@ function formatCurrencyBasisLabel(basis: BalanceCurrencyBasis | string | undefin
   return "未设定";
 }
 
-function heroMetaChipStyle(
-  tone: "accent" | "positive" | "warning" | "neutral" = "neutral",
-) {
-  if (tone === "accent") {
-    return {
-      background: shellTokens.colorAccentSoft,
-      color: shellTokens.colorAccent,
-      border: `1px solid ${shellTokens.colorBorderSoft}`,
-    } as const;
-  }
-
-  if (tone === "positive") {
-    return {
-      background: shellTokens.colorBgSuccessSoft,
-      color: shellTokens.colorSuccess,
-      border: `1px solid ${shellTokens.colorBorderSoft}`,
-    } as const;
-  }
-
-  if (tone === "warning") {
-    return {
-      background: shellTokens.colorBgWarningSoft,
-      color: shellTokens.colorWarning,
-      border: `1px solid ${shellTokens.colorBorderWarning}`,
-    } as const;
-  }
-
-  return {
-    background: shellTokens.colorBgMuted,
-    color: shellTokens.colorTextSecondary,
-    border: `1px solid ${shellTokens.colorBorderSoft}`,
-  } as const;
-}
-
-function signalAccentStyle(tone: "danger" | "warning" | "info") {
-  if (tone === "danger") {
-    return {
-      background: "#fff1f0",
-      color: shellTokens.colorDanger,
-      border: "1px solid #f3c7c1",
-    } as const;
-  }
-
-  if (tone === "warning") {
-    return {
-      background: shellTokens.colorBgWarningSoft,
-      color: shellTokens.colorWarning,
-      border: `1px solid ${shellTokens.colorBorderWarning}`,
-    } as const;
-  }
-
-  return {
-    background: shellTokens.colorAccentSoft,
-    color: shellTokens.colorAccent,
-    border: `1px solid ${shellTokens.colorBorderSoft}`,
-  } as const;
-}
-
-function severityTone(severity: BalanceAnalysisSeverity | undefined) {
-  if (severity === "high") {
-    return "danger" as const;
-  }
-  if (severity === "medium") {
-    return "warning" as const;
-  }
-  return "info" as const;
-}
-
 function thousandsValueFormatter(params: ValueFormatterParams) {
   const v = params.value;
   if (v === null || v === undefined || v === "") {
@@ -480,6 +212,8 @@ const balanceAnalysisGridDefaultColDef: ColDef = {
   resizable: true,
   flex: 1,
   minWidth: 100,
+  cellStyle: (params) =>
+    params.colDef?.cellClass === "ag-right-aligned-cell" ? { ...tabularNumsStyle } : undefined,
 };
 
 const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
@@ -657,6 +391,7 @@ function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColumn[]): 
     field: col.key,
     headerName: col.label,
     valueFormatter: workbookCellFormatter,
+    cellStyle: { ...tabularNumsStyle },
   }));
 }
 
@@ -669,9 +404,9 @@ function renderWorkbookContractMismatch(
       data-testid={`balance-analysis-workbook-table-${table.key}`}
       style={{
         borderRadius: 16,
-        border: "1px solid #ffd8bf",
-        background: "#fff7f0",
-        color: "#a14a14",
+        border: `1px solid ${designTokens.color.warning[200]}`,
+        background: designTokens.color.warning[50],
+        color: designTokens.color.warning[700],
         padding: 14,
         fontSize: 13,
         lineHeight: 1.6,
@@ -687,9 +422,9 @@ function renderWorkbookEmptyState(message: string) {
     <div
       style={{
         borderRadius: 16,
-        border: "1px dashed #d7dfea",
-        background: "#f7f9fc",
-        color: "#8090a8",
+        border: `1px dashed ${designTokens.color.neutral[300]}`,
+        background: designTokens.color.info[50],
+        color: designTokens.color.neutral[600],
         padding: 14,
         fontSize: 13,
       }}
@@ -731,10 +466,10 @@ function renderDistributionPanel(
         return (
           <div key={`${table.key}-${index}`} style={{ display: "grid", gap: 6 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <span style={{ color: "#162033", fontWeight: 600 }}>
+              <span style={{ color: designTokens.color.neutral[900], fontWeight: 600 }}>
                 {formatWorkbookValue(row[labelKey])}
               </span>
-              <span style={{ color: "#5c6b82", fontVariantNumeric: "tabular-nums" }}>
+              <span style={{ color: designTokens.color.neutral[700], ...tabularNumsStyle }}>
                 {formatWorkbookValue(row[valueKey])}
               </span>
             </div>
@@ -780,7 +515,7 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
               borderRadius: 16,
               padding: 14,
               background: ratingBlockPalette[index % ratingBlockPalette.length],
-              color: "#ffffff",
+              color: designTokens.color.primary[50],
               minHeight: 88,
               opacity: 0.55 + ratio * 0.45,
               display: "flex",
@@ -817,19 +552,21 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
               gap: 8,
               padding: "12px 14px",
               borderRadius: 16,
-              border: positive ? "1px solid #d7e5ff" : "1px solid #ffd8bf",
-              background: positive ? "#f6f9ff" : "#fff7f0",
+              border: positive
+                ? `1px solid ${designTokens.color.info[200]}`
+                : `1px solid ${designTokens.color.warning[200]}`,
+              background: positive ? designTokens.color.info[50] : designTokens.color.warning[50],
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ color: "#162033", fontWeight: 700, fontSize: 13 }}>
+              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700, fontSize: 13 }}>
                 {formatWorkbookValue(row.bucket)}
               </div>
               <div
                 style={{
-                  color: positive ? "#1f5eff" : "#d9622b",
+                  color: positive ? designTokens.color.info[600] : designTokens.color.warning[600],
                   fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
+                  ...tabularNumsStyle,
                 }}
               >
                 {formatWorkbookValue(row.gap_amount)}
@@ -842,12 +579,12 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                   height: "100%",
                   borderRadius: 999,
                   background: positive
-                    ? "linear-gradient(90deg, #91c4ff 0%, #1f5eff 100%)"
-                    : "linear-gradient(90deg, #ffbe76 0%, #ff7a45 100%)",
+                    ? `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`
+                    : `linear-gradient(90deg, ${designTokens.color.warning[300]} 0%, ${designTokens.color.warning[400]} 100%)`,
                 }}
               />
             </div>
-            <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.6 }}>
+            <div style={{ color: designTokens.color.neutral[700], fontSize: 12, lineHeight: 1.6 }}>
               {positive
                 ? "该期限桶为正缺口，可作为缓冲区观察。"
                 : "该期限桶为负缺口，应优先结合右侧治理信号处理。"}
@@ -871,18 +608,18 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
           key={`${table.key}-${index}`}
           style={{
             borderRadius: 16,
-            border: "1px solid #e4ebf5",
-            background: "#ffffff",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.primary[50],
             padding: 14,
             display: "grid",
             gap: 8,
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.bond_type)}</div>
-            <div style={{ color: "#1f5eff", fontWeight: 700 }}>{formatWorkbookValue(row.balance_amount)}</div>
+            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.bond_type)}</div>
+            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.balance_amount)}</div>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: "#5c6b82", fontSize: 12 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: designTokens.color.neutral[700], fontSize: 12 }}>
             <span>笔数 {formatWorkbookValue(row.count)}</span>
             <span>利率 {formatWorkbookValue(row.weighted_rate_pct)}</span>
             <span>期限 {formatWorkbookValue(row.weighted_term_years)}</span>
@@ -898,7 +635,7 @@ function renderWorkbookPrimaryPanel(table: BalanceAnalysisWorkbookTable) {
     return renderDistributionPanel(table, {
       labelKey: "bond_type",
       valueKey: "balance_amount",
-      color: "linear-gradient(90deg, #91c4ff 0%, #1f5eff 100%)",
+      color: `linear-gradient(90deg, ${designTokens.color.info[300]} 0%, ${designTokens.color.info[600]} 100%)`,
     });
   }
   if (table.key === "rating_analysis") {
@@ -917,7 +654,7 @@ function renderIndustryPanel(table: BalanceAnalysisWorkbookTable) {
   return renderDistributionPanel(table, {
     labelKey: "industry_name",
     valueKey: "balance_amount",
-    color: "linear-gradient(90deg, #8ad7b0 0%, #2fbf93 100%)",
+    color: `linear-gradient(90deg, ${designTokens.color.success[200]} 0%, ${designTokens.color.success[500]} 100%)`,
   });
 }
 
@@ -939,14 +676,14 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
           key={`${table.key}-${index}`}
           style={{
             borderRadius: 16,
-            border: "1px solid #e4ebf5",
-            background: "#ffffff",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.primary[50],
             padding: 14,
             display: "grid",
             gap: 8,
           }}
         >
-          <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.bucket)}</div>
+          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.bucket)}</div>
           <div
             style={{
               display: "grid",
@@ -956,18 +693,18 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
             }}
           >
             <div>
-              <div style={{ color: "#8090a8" }}>债券</div>
-              <div style={{ color: "#1f5eff", fontWeight: 700 }}>{formatWorkbookValue(row.bond_amount)}</div>
+              <div style={{ color: designTokens.color.neutral[600] }}>债券</div>
+              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.bond_amount)}</div>
             </div>
             <div>
-              <div style={{ color: "#8090a8" }}>同业资产</div>
-              <div style={{ color: "#2fbf93", fontWeight: 700 }}>
+              <div style={{ color: designTokens.color.neutral[600] }}>同业资产</div>
+              <div style={{ color: designTokens.color.success[400], fontWeight: 700 }}>
                 {formatWorkbookValue(row.interbank_asset_amount)}
               </div>
             </div>
             <div>
-              <div style={{ color: "#8090a8" }}>同业负债</div>
-              <div style={{ color: "#ff7a45", fontWeight: 700 }}>
+              <div style={{ color: designTokens.color.neutral[600] }}>同业负债</div>
+              <div style={{ color: designTokens.color.warning[400], fontWeight: 700 }}>
                 {formatWorkbookValue(row.interbank_liability_amount)}
               </div>
             </div>
@@ -996,18 +733,18 @@ function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
           key={`${table.key}-${index}`}
           style={{
             borderRadius: 16,
-            border: "1px solid #e4ebf5",
-            background: "#ffffff",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.primary[50],
             padding: 14,
             display: "grid",
             gap: 8,
           }}
         >
-          <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.counterparty_type)}</div>
+          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.counterparty_type)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
-            <span style={{ color: "#1f5eff" }}>资产 {formatWorkbookValue(row.asset_amount)}</span>
-            <span style={{ color: "#ff7a45" }}>负债 {formatWorkbookValue(row.liability_amount)}</span>
-            <span style={{ color: "#162033" }}>净头寸 {formatWorkbookValue(row.net_position_amount)}</span>
+            <span style={{ color: designTokens.color.info[600] }}>资产 {formatWorkbookValue(row.asset_amount)}</span>
+            <span style={{ color: designTokens.color.warning[400] }}>负债 {formatWorkbookValue(row.liability_amount)}</span>
+            <span style={{ color: designTokens.color.neutral[900] }}>净头寸 {formatWorkbookValue(row.net_position_amount)}</span>
           </div>
         </article>
       ))}
@@ -1064,27 +801,30 @@ function renderDecisionItemsPanel(
           style={{
             borderRadius: 16,
             border:
-              selectedKey === row.decision_key ? "1px solid #1f5eff" : "1px solid #e4ebf5",
-            background: selectedKey === row.decision_key ? "#edf3ff" : "#ffffff",
+              selectedKey === row.decision_key
+                ? `1px solid ${designTokens.color.info[600]}`
+                : `1px solid ${designTokens.color.neutral[200]}`,
+            background:
+              selectedKey === row.decision_key ? designTokens.color.info[50] : designTokens.color.primary[50],
             padding: 14,
             display: "grid",
             gap: 10,
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
             <span style={workbookPanelBadgeStyle}>{formatWorkbookValue(row.severity)}</span>
           </div>
-          <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.6 }}>
+          <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
             {formatWorkbookValue(row.reason)}
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
             <span>{formatWorkbookValue(row.action_label)}</span>
             <span>{formatWorkbookValue(row.source_section)}</span>
             <span>{formatWorkbookValue(row.rule_id)}</span>
             <span>{formatWorkbookValue(row.rule_version)}</span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#5c6b82" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[700] }}>
             <span>Status: {row.latest_status.status}</span>
             <span>
               Updated by: {row.latest_status.updated_by ? row.latest_status.updated_by : "Not updated"}
@@ -1163,19 +903,24 @@ function renderEventCalendarPanel(
             style={{
               borderRadius: 16,
               border:
-                selectedKey === `${row.event_date}:${row.title}` ? "1px solid #1f5eff" : "1px solid #e4ebf5",
-              background: selectedKey === `${row.event_date}:${row.title}` ? "#edf3ff" : "#ffffff",
+                selectedKey === `${row.event_date}:${row.title}`
+                  ? `1px solid ${designTokens.color.info[600]}`
+                  : `1px solid ${designTokens.color.neutral[200]}`,
+              background:
+                selectedKey === `${row.event_date}:${row.title}`
+                  ? designTokens.color.info[50]
+                  : designTokens.color.primary[50],
               padding: 14,
               display: "grid",
               gap: 8,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-              <div style={{ color: "#1f5eff", fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
+              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+              <div style={{ color: designTokens.color.info[600], fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
             </div>
-            <div style={{ color: "#5c6b82", fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+            <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
               <span>{formatWorkbookValue(row.event_type)}</span>
               <span>{formatWorkbookValue(row.source)}</span>
               <span>{formatWorkbookValue(row.source_section)}</span>
@@ -1226,23 +971,34 @@ function renderRiskAlertsPanel(
             style={{
               borderRadius: 16,
               border:
-                selectedKey === `${row.severity}:${row.title}` ? "1px solid #d9622b" : "1px solid #ffd8bf",
-              background: selectedKey === `${row.severity}:${row.title}` ? "#fff0e4" : "#fff7f0",
+                selectedKey === `${row.severity}:${row.title}`
+                  ? `1px solid ${designTokens.color.warning[600]}`
+                  : `1px solid ${designTokens.color.warning[200]}`,
+              background:
+                selectedKey === `${row.severity}:${row.title}`
+                  ? designTokens.color.warning[100]
+                  : designTokens.color.warning[50],
               padding: 14,
               display: "grid",
               gap: 8,
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ color: "#162033", fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-              <span style={{ ...workbookPanelBadgeStyle, background: "#ffe7d6", color: "#d9622b" }}>
+              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+              <span
+                style={{
+                  ...workbookPanelBadgeStyle,
+                  background: designTokens.color.warning[100],
+                  color: designTokens.color.warning[600],
+                }}
+              >
                 {formatWorkbookValue(row.severity)}
               </span>
             </div>
-            <div style={{ color: "#a14a14", fontSize: 13, lineHeight: 1.6 }}>
+            <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
               {formatWorkbookValue(row.reason)}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
               <span>{formatWorkbookValue(row.source_section)}</span>
               <span>{formatWorkbookValue(row.rule_id)}</span>
               <span>{formatWorkbookValue(row.rule_version)}</span>
@@ -1823,7 +1579,7 @@ export default function BalanceAnalysisPage() {
         <PageFilterTray>
           <FilterBar style={controlBarStyle}>
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>报告日</span>
               <select
                 aria-label="balance-report-date"
                 value={selectedReportDate}
@@ -1839,7 +1595,7 @@ export default function BalanceAnalysisPage() {
             </label>
 
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>头寸范围</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>头寸范围</span>
               <select
                 aria-label="balance-position-scope"
                 value={positionScope}
@@ -1853,7 +1609,7 @@ export default function BalanceAnalysisPage() {
             </label>
 
             <label>
-              <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>币种口径</span>
+              <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700] }}>币种口径</span>
               <select
                 aria-label="balance-currency-basis"
                 value={currencyBasis}
@@ -1902,9 +1658,9 @@ export default function BalanceAnalysisPage() {
             marginTop: 16,
             padding: 14,
             borderRadius: 14,
-            border: "1px solid #e4ebf5",
-            background: refreshError ? "#fff2f0" : "#f7f9fc",
-            color: refreshError ? "#c83b3b" : "#5c6b82",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: refreshError ? designTokens.color.danger[50] : designTokens.color.info[50],
+            color: refreshError ? designTokens.color.danger[600] : designTokens.color.neutral[700],
           }}
         >
           {refreshError ?? refreshStatus}
@@ -2185,7 +1941,7 @@ export default function BalanceAnalysisPage() {
           onRetry={() => void advancedAttributionQuery.refetch()}
         >
           {advancedAttributionQuery.data?.result ? (
-            <div style={{ display: "grid", gap: 10, fontSize: 13, color: "#31425b" }}>
+            <div style={{ display: "grid", gap: 10, fontSize: 13, color: designTokens.color.neutral[800] }}>
               <div>
                 <strong>状态</strong>：{advancedAttributionQuery.data.result.status} ·{" "}
                 {advancedAttributionQuery.data.result.mode}
@@ -2287,12 +2043,12 @@ export default function BalanceAnalysisPage() {
             </button>
           </div>
           <div style={{ marginTop: 18 }}>
-            <div style={{ color: "#8090a8", fontSize: 12, marginBottom: 8 }}>明细下钻预留</div>
+            <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>明细下钻预留</div>
             {!detailQuery.isLoading &&
             !detailQuery.isError &&
             (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
               <div style={{ marginBottom: 14 }}>
-                <div style={{ color: "#8090a8", fontSize: 12, marginBottom: 8 }}>
+                <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>
                   明细接口返回的汇总切片（summary[]）
                 </div>
                 <div
@@ -2315,9 +2071,9 @@ export default function BalanceAnalysisPage() {
               <div
                 style={{
                   borderRadius: 14,
-                  border: "1px solid #ffd8bf",
-                  background: "#fff7f0",
-                  color: "#a14a14",
+                  border: `1px solid ${designTokens.color.warning[200]}`,
+                  background: designTokens.color.warning[50],
+                  color: designTokens.color.warning[700],
                   padding: 14,
                   fontSize: 13,
                 }}
@@ -2325,7 +2081,7 @@ export default function BalanceAnalysisPage() {
                 明细下钻暂时不可用，汇总驾驶舱仍可继续使用。
               </div>
             ) : detailQuery.isLoading ? (
-              <div style={{ color: "#8090a8", fontSize: 13 }}>明细下钻加载中…</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13 }}>明细下钻加载中…</div>
             ) : (
               <div
                 className="ag-theme-alpine"
@@ -2383,12 +2139,12 @@ export default function BalanceAnalysisPage() {
                   >
                     <div style={workbookPanelHeaderStyle}>
                       <div>
-                        <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                        <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
                         <p
                           style={{
                             marginTop: 6,
                             marginBottom: 0,
-                            color: "#5c6b82",
+                            color: designTokens.color.neutral[700],
                             fontSize: 13,
                             lineHeight: 1.6,
                           }}
@@ -2415,12 +2171,12 @@ export default function BalanceAnalysisPage() {
                   >
                     <div style={workbookPanelHeaderStyle}>
                       <div>
-                        <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                        <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
                         <p
                           style={{
                             marginTop: 6,
                             marginBottom: 0,
-                            color: "#5c6b82",
+                            color: designTokens.color.neutral[700],
                             fontSize: 13,
                             lineHeight: 1.6,
                           }}
@@ -2443,12 +2199,12 @@ export default function BalanceAnalysisPage() {
               >
                 <div style={workbookPanelHeaderStyle}>
                   <div>
-                    <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>决策事项</div>
+                    <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>决策事项</div>
                     <p
                       style={{
                         marginTop: 6,
                         marginBottom: 0,
-                        color: "#5c6b82",
+                        color: designTokens.color.neutral[700],
                         fontSize: 13,
                         lineHeight: 1.6,
                       }}
@@ -2464,9 +2220,9 @@ export default function BalanceAnalysisPage() {
                     style={{
                       marginBottom: 12,
                       borderRadius: 12,
-                      border: "1px solid #ffd8bf",
-                      background: "#fff7f0",
-                      color: "#a14a14",
+                      border: `1px solid ${designTokens.color.warning[200]}`,
+                      background: designTokens.color.warning[50],
+                      color: designTokens.color.warning[700],
                       padding: 12,
                       fontSize: 13,
                     }}
@@ -2480,7 +2236,7 @@ export default function BalanceAnalysisPage() {
                     gap: 6,
                     marginBottom: 12,
                     fontSize: 12,
-                    color: "#5c6b82",
+                    color: designTokens.color.neutral[700],
                   }}
                 >
                   <span>决策备注（可选，随确认/忽略提交）</span>
@@ -2491,7 +2247,7 @@ export default function BalanceAnalysisPage() {
                     style={{
                       width: "100%",
                       borderRadius: 10,
-                      border: "1px solid #d7dfea",
+                      border: `1px solid ${designTokens.color.neutral[300]}`,
                       padding: "8px 10px",
                       fontSize: 13,
                       resize: "vertical",
@@ -2526,12 +2282,12 @@ export default function BalanceAnalysisPage() {
                 >
                   <div style={workbookPanelHeaderStyle}>
                     <div>
-                      <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>{table.title}</div>
+                      <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>{table.title}</div>
                       <p
                         style={{
                           marginTop: 6,
                           marginBottom: 0,
-                          color: "#5c6b82",
+                          color: designTokens.color.neutral[700],
                           fontSize: 13,
                           lineHeight: 1.6,
                         }}
@@ -2545,7 +2301,7 @@ export default function BalanceAnalysisPage() {
                     <>
                       <div style={rightRailFilterRowStyle}>
                         <label>
-                          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82", fontSize: 12 }}>
+                          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700], fontSize: 12 }}>
                             事件类型
                           </span>
                           <select
@@ -2576,7 +2332,7 @@ export default function BalanceAnalysisPage() {
                     <>
                       <div style={rightRailFilterRowStyle}>
                         <label>
-                          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82", fontSize: 12 }}>
+                          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[700], fontSize: 12 }}>
                             预警等级
                           </span>
                           <select
@@ -2611,12 +2367,12 @@ export default function BalanceAnalysisPage() {
               <article data-testid="balance-analysis-right-rail-drilldown" style={workbookPanelStyle}>
                 <div style={workbookPanelHeaderStyle}>
                   <div>
-                    <div style={{ color: "#162033", fontSize: 18, fontWeight: 600 }}>详情下钻</div>
+                    <div style={{ color: designTokens.color.neutral[900], fontSize: 18, fontWeight: 600 }}>详情下钻</div>
                     <p
                       style={{
                         marginTop: 6,
                         marginBottom: 0,
-                        color: "#5c6b82",
+                        color: designTokens.color.neutral[700],
                         fontSize: 13,
                         lineHeight: 1.6,
                       }}
@@ -2628,19 +2384,19 @@ export default function BalanceAnalysisPage() {
                 </div>
                 {selectedDecision ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-decision" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedDecision.title}</div>
-                    <div style={{ color: "#1f5eff", fontSize: 13 }}>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedDecision.title}</div>
+                    <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>
                       Latest status: {selectedDecision.latest_status.status}
                     </div>
-                    <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.6 }}>
+                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
                       {selectedDecision.reason}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{selectedDecision.source_section}</span>
                       <span>{selectedDecision.rule_id}</span>
                       <span>{selectedDecision.rule_version}</span>
                     </div>
-                    <div style={{ display: "grid", gap: 4, fontSize: 12, color: "#5c6b82" }}>
+                    <div style={{ display: "grid", gap: 4, fontSize: 12, color: designTokens.color.neutral[700] }}>
                       <span>
                         Updated by:{" "}
                         {selectedDecision.latest_status.updated_by
@@ -2660,10 +2416,10 @@ export default function BalanceAnalysisPage() {
                   </div>
                 ) : selectedEventCalendar ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-event" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedEventCalendar.title}</div>
-                    <div style={{ color: "#1f5eff", fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
-                    <div style={{ color: "#5c6b82", fontSize: 13 }}>{selectedEventCalendar.impact_hint}</div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#8090a8" }}>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedEventCalendar.title}</div>
+                    <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
+                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{selectedEventCalendar.impact_hint}</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{selectedEventCalendar.event_type}</span>
                       <span>{selectedEventCalendar.source}</span>
                       <span>{selectedEventCalendar.source_section}</span>
@@ -2671,12 +2427,12 @@ export default function BalanceAnalysisPage() {
                   </div>
                 ) : selectedRiskAlert ? (
                   <div data-testid="balance-analysis-right-rail-drilldown-risk" style={{ display: "grid", gap: 8 }}>
-                    <div style={{ color: "#162033", fontWeight: 700 }}>{selectedRiskAlert.title}</div>
-                    <div style={{ color: "#d9622b", fontSize: 13 }}>{selectedRiskAlert.severity}</div>
-                    <div style={{ color: "#a14a14", fontSize: 13, lineHeight: 1.6 }}>
+                    <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedRiskAlert.title}</div>
+                    <div style={{ color: designTokens.color.warning[600], fontSize: 13 }}>{selectedRiskAlert.severity}</div>
+                    <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
                       {selectedRiskAlert.reason}
                     </div>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: "#b46a3c" }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
                       <span>{selectedRiskAlert.source_section}</span>
                       <span>{selectedRiskAlert.rule_id}</span>
                       <span>{selectedRiskAlert.rule_version}</span>
@@ -2694,7 +2450,7 @@ export default function BalanceAnalysisPage() {
           <div data-testid="balance-analysis-workbook-secondary-grid" style={workbookSecondaryGridStyle}>
             {secondaryWorkbookTables.map((table) => (
               <div key={table.key} data-testid={`balance-analysis-workbook-table-${table.key}`}>
-                <div style={{ marginBottom: 8, color: "#162033", fontWeight: 600 }}>{table.title}</div>
+                <div style={{ marginBottom: 8, color: designTokens.color.neutral[900], fontWeight: 600 }}>{table.title}</div>
                 <div
                   className="ag-theme-alpine"
                   style={{ ...tableShellStyle, height: 280, width: "100%", padding: 0 }}
