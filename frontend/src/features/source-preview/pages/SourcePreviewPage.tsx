@@ -6,7 +6,6 @@ import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { SourcePreviewColumn } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
 import { KpiCard } from "../../workbench/components/KpiCard";
 import {
   buildSourcePreviewHistoryQuery,
@@ -537,13 +536,17 @@ export default function SourcePreviewPage() {
                 .join(" / ");
 
               return (
-                <PlaceholderCard
+                <div
                   key={`${source.source_family}:${source.ingest_batch_id ?? source.report_date ?? source.source_version}`}
-                  title={source.source_family.toUpperCase()}
-                  value={`共 ${source.total_rows} 行`}
-                  detail={`报告日期：${source.report_date ?? "—"} · ${groups || "暂无分组"} · 待人工复核 ${source.manual_review_count} 行`}
-                  valueVariant="text"
-                />
+                  data-testid={`source-preview-summary-${source.source_family}`}
+                >
+                  <KpiCard
+                    title={source.source_family.toUpperCase()}
+                    value={`共 ${source.total_rows} 行`}
+                    detail={`报告日期：${source.report_date ?? "—"} · ${groups || "暂无分组"} · 待人工复核 ${source.manual_review_count} 行`}
+                    valueVariant="text"
+                  />
+                </div>
               );
             })}
           </div>
