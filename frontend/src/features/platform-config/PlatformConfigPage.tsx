@@ -2,7 +2,12 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
-import type { HealthCheckStatus, HealthResponse, SourcePreviewSummary } from "../../api/contracts";
+import type {
+  HealthCheckStatus,
+  HealthResponse,
+  HealthStatusResponse,
+  SourcePreviewSummary,
+} from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -103,6 +108,25 @@ function sourceRowOk(summary: SourcePreviewSummary): boolean {
   return summary.total_rows > 0 && summary.manual_review_count === 0;
 }
 
+function healthProbeDisplay(q: {
+  isLoading: boolean;
+  isError: boolean;
+  data?: HealthStatusResponse;
+}): { value: string; tone: "default" | "positive" | "error" } {
+  if (q.isLoading) {
+    return { value: "加载中…", tone: "default" };
+  }
+  if (q.isError) {
+    return { value: "请求失败", tone: "error" };
+  }
+  const s = q.data?.status;
+  if (s === undefined || String(s).trim() === "") {
+    return { value: "—", tone: "default" };
+  }
+  const text = String(s);
+  return { value: text, tone: text === "ok" ? "positive" : "default" };
+}
+
 function StatusBadge({ ok }: { ok: boolean }) {
   return (
     <span
@@ -146,6 +170,18 @@ export default function PlatformConfigPage() {
     retry: false,
   });
 
+  const healthLiveQuery = useQuery({
+    queryKey: ["platform-config", "health-live", client.mode],
+    queryFn: () => client.getHealthLive(),
+    retry: false,
+  });
+
+  const healthSummaryQuery = useQuery({
+    queryKey: ["platform-config", "health-summary", client.mode],
+    queryFn: () => client.getHealthSummary(),
+    retry: false,
+  });
+
   const sourcesQuery = useQuery({
     queryKey: ["platform-config", "source-foundation", client.mode],
     queryFn: () => client.getSourceFoundation(),
@@ -174,6 +210,9 @@ export default function PlatformConfigPage() {
     () => sources.reduce((sum, summary) => sum + summary.manual_review_count, 0),
     [sources],
   );
+
+  const liveProbe = healthProbeDisplay(healthLiveQuery);
+  const summaryProbe = healthProbeDisplay(healthSummaryQuery);
 
   return (
     <section>
@@ -244,6 +283,24 @@ export default function PlatformConfigPage() {
             valueVariant="text"
           />
         </div>
+        <div data-testid="platform-config-health-live">
+          <KpiCard
+            title="存活探测"
+            value={liveProbe.value}
+            detail="GET /health/live — 仅展示 status"
+            valueVariant="text"
+            tone={liveProbe.tone}
+          />
+        </div>
+        <div data-testid="platform-config-health-summary">
+          <KpiCard
+            title="简易状态"
+            value={summaryProbe.value}
+            detail="GET /health — 仅展示 status"
+            valueVariant="text"
+            tone={summaryProbe.tone}
+          />
+        </div>
         <div data-testid="platform-config-environment-kpi">
           <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
         </div>
@@ -262,7 +319,7 @@ export default function PlatformConfigPage() {
         <SectionLead
           eyebrow="Health"
           title="系统健康状态"
-          description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；未单独请求 /health/live 与 GET /health。"
+          description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
         <AsyncSection
           title="系统健康状态"

@@ -70,6 +70,7 @@ import type {
   FormalPnlRefreshPayload,
   GetHomeSnapshotOptions,
   HealthResponse,
+  HealthStatusResponse,
   HomeSnapshotPayload,
   IndustryDistPayload,
   IndustryStatsResponse,
@@ -267,6 +268,8 @@ export type ApiClient = {
   }) => Promise<void>;
   getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
   executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
+  getHealthLive: () => Promise<HealthStatusResponse>;
+  getHealthSummary: () => Promise<HealthStatusResponse>;
 };
 
 type ApiClientOptions = {
@@ -2888,6 +2891,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return { status: "ok" };
     },
+    async getHealthLive() {
+      await delay();
+      return { status: "ok" };
+    },
+    async getHealthSummary() {
+      await delay();
+      return { status: "ok" };
+    },
     async getOverview(_reportDate?: string) {
       await delay();
       return buildMockApiEnvelope("executive.overview", overviewPayload);
@@ -5109,6 +5120,28 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       }
 
       return (await response.json()) as HealthResponse;
+    },
+    async getHealthLive() {
+      const response = await fetchImpl(`${baseUrl}/health/live`, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed: /health/live (${response.status})`);
+      }
+
+      return (await response.json()) as HealthStatusResponse;
+    },
+    async getHealthSummary() {
+      const response = await fetchImpl(`${baseUrl}/health`, {
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed: /health (${response.status})`);
+      }
+
+      return (await response.json()) as HealthStatusResponse;
     },
     getOverview: (reportDate?: string) =>
       requestJson<OverviewPayload>(

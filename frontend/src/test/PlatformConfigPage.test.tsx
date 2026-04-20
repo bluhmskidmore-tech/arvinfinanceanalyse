@@ -98,6 +98,8 @@ describe("PlatformConfigPage", () => {
     };
 
     const getHealth = vi.fn(async () => health);
+    const getHealthLive = vi.fn(async () => ({ status: "ok" }));
+    const getHealthSummary = vi.fn(async () => ({ status: "ok" }));
     const getSourceFoundation = vi.fn(async () => ({
       result_meta: buildMeta("preview.source-foundation", "tr_src_foundation"),
       result: sourcesPayload,
@@ -106,6 +108,8 @@ describe("PlatformConfigPage", () => {
     renderPlatformConfig({
       ...base,
       getHealth,
+      getHealthLive,
+      getHealthSummary,
       getSourceFoundation,
     });
 
@@ -117,6 +121,8 @@ describe("PlatformConfigPage", () => {
 
     expect(await screen.findByText("DuckDB 状态")).toBeInTheDocument();
     expect(screen.getByTestId("platform-config-overall-status")).toHaveTextContent("degraded");
+    expect(screen.getByTestId("platform-config-health-live")).toHaveTextContent("ok");
+    expect(screen.getByTestId("platform-config-health-summary")).toHaveTextContent("ok");
     expect(screen.getByTestId("platform-config-environment-kpi")).toHaveTextContent("test");
     expect(screen.getByTestId("platform-config-source-count")).toHaveTextContent("2");
     expect(screen.getByTestId("platform-config-abnormal-sources")).toHaveTextContent("1");
@@ -134,6 +140,8 @@ describe("PlatformConfigPage", () => {
 
     await waitFor(() => {
       expect(getHealth).toHaveBeenCalled();
+      expect(getHealthLive).toHaveBeenCalled();
+      expect(getHealthSummary).toHaveBeenCalled();
       expect(getSourceFoundation).toHaveBeenCalled();
     });
   });

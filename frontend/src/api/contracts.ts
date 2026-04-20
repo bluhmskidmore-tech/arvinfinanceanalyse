@@ -30,6 +30,11 @@ export type HealthResponse = {
   checks?: Record<string, HealthCheckStatus>;
 };
 
+/** GET /health/live 与 GET /health — 后端返回的最简 `{ status: string }` 载荷。 */
+export type HealthStatusResponse = {
+  status: string;
+};
+
 export type ResultMeta = {
   trace_id: string;
   basis: ApiBasis;
