@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { TONE_COLOR, type Tone } from "../../../utils/tone";
 export type DashboardHubTask = {
@@ -46,22 +47,20 @@ export type DashboardAlert = {
   severity: "high" | "medium" | "low";
 };
 
-const DISPLAY_FONT =
-  '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
+const sectionTitleFont = designTokens.fontFamily.sans;
 
 const panelStyle: CSSProperties = {
   display: "grid",
-  gap: 16,
-  padding: "22px clamp(18px, 1.4vw, 24px)",
-  borderRadius: 28,
+  gap: designTokens.space[4],
+  padding: `${designTokens.space[5] + designTokens.space[2]}px clamp(${designTokens.space[4] + designTokens.space[2]}px, 1.4vw, ${designTokens.space[6]}px)`,
+  borderRadius: designTokens.space[6] + designTokens.space[1],
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background:
-    "linear-gradient(180deg, rgba(252, 251, 248, 0.98) 0%, rgba(247, 247, 242, 0.98) 100%)",
-  boxShadow: "0 24px 60px rgba(22, 35, 46, 0.06)",
+  background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
+  boxShadow: designTokens.shadow.card,
 };
 
 const sectionLabelStyle: CSSProperties = {
-  fontSize: 11,
+  fontSize: designTokens.fontSize[11],
   fontWeight: 700,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
@@ -71,36 +70,36 @@ const sectionLabelStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
   margin: 0,
   color: shellTokens.colorTextPrimary,
-  fontSize: 18,
+  fontSize: designTokens.fontSize[18],
   fontWeight: 800,
   letterSpacing: "-0.03em",
-  fontFamily: DISPLAY_FONT,
+  fontFamily: sectionTitleFont,
 };
 
 const bodyTextStyle: CSSProperties = {
   margin: 0,
   color: shellTokens.colorTextSecondary,
-  fontSize: 13,
-  lineHeight: 1.75,
+  fontSize: designTokens.fontSize[13],
+  lineHeight: designTokens.lineHeight.relaxed,
 };
 
 const severityPalette = {
   high: {
-    bg: "#fdeceb",
-    fg: "#be4137",
-    border: "#f0c8c4",
+    bg: designTokens.color.danger[50],
+    fg: designTokens.color.danger[600],
+    border: designTokens.color.danger[200],
     label: "高",
   },
   medium: {
-    bg: "#fff4e4",
-    fg: "#b76a12",
-    border: "#f0d3ab",
+    bg: designTokens.color.warning[50],
+    fg: designTokens.color.warning[600],
+    border: designTokens.color.warning[200],
     label: "中",
   },
   low: {
-    bg: "#edf4ff",
-    fg: "#2c67c9",
-    border: "#d7e6fb",
+    bg: designTokens.color.info[50],
+    fg: designTokens.color.info[600],
+    border: designTokens.color.info[200],
     label: "低",
   },
 } as const;
@@ -112,10 +111,26 @@ const calendarKindLabel = {
 } as const;
 
 const modulePalette = [
-  { bg: "#edf4ff", fg: "#2c67c9", border: "#d8e6fb" },
-  { bg: "#fff5e8", fg: "#c87917", border: "#f4dcc0" },
-  { bg: "#f1ecff", fg: "#6f4bc4", border: "#e0d8f7" },
-  { bg: "#eaf7ee", fg: "#2a8a57", border: "#d4e9da" },
+  {
+    bg: designTokens.color.info[50],
+    fg: designTokens.color.info[600],
+    border: designTokens.color.info[200],
+  },
+  {
+    bg: designTokens.color.warning[50],
+    fg: designTokens.color.warning[600],
+    border: designTokens.color.warning[200],
+  },
+  {
+    bg: designTokens.color.primary[50],
+    fg: designTokens.color.primary[700],
+    border: designTokens.color.primary[200],
+  },
+  {
+    bg: designTokens.color.success[50],
+    fg: designTokens.color.success[600],
+    border: designTokens.color.success[200],
+  },
 ] as const;
 
 const moduleEntries = [
@@ -193,10 +208,10 @@ function DashboardSectionHeader(props: {
         display: "flex",
         justifyContent: "space-between",
         alignItems: "flex-start",
-        gap: 12,
+        gap: designTokens.space[3],
       }}
     >
-      <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "grid", gap: designTokens.space[2] }}>
         <span style={sectionLabelStyle}>{props.eyebrow}</span>
         <h2 style={sectionTitleStyle}>{props.title}</h2>
       </div>
@@ -222,13 +237,13 @@ export function DashboardOverviewHeroStrip({
             position: "relative",
             overflow: "hidden",
             display: "grid",
-            gap: 6,
-            padding: "16px 16px 14px",
-            minHeight: 126,
-            borderRadius: 22,
+            gap: designTokens.space[2],
+            padding: `${designTokens.space[4]}px ${designTokens.space[4]}px ${designTokens.space[3]}px`,
+            minHeight: designTokens.space[7] * 4,
+            borderRadius: designTokens.radius.lg + designTokens.space[1],
             border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "rgba(255,255,255,0.86)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.82)",
+            background: designTokens.color.primary[50],
+            boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
           }}
         >
           <div
@@ -236,13 +251,13 @@ export function DashboardOverviewHeroStrip({
               display: "flex",
               alignItems: "flex-start",
               justifyContent: "space-between",
-              gap: 12,
+              gap: designTokens.space[3],
             }}
           >
-            <div style={{ display: "grid", gap: 4 }}>
+            <div style={{ display: "grid", gap: designTokens.space[1] }}>
               <span
                 style={{
-                  fontSize: 12,
+                  fontSize: designTokens.fontSize[12],
                   color: shellTokens.colorTextMuted,
                   fontWeight: 700,
                 }}
@@ -251,11 +266,11 @@ export function DashboardOverviewHeroStrip({
               </span>
               <strong
                 style={{
+                  ...tabularNumsStyle,
                   color: shellTokens.colorTextPrimary,
-                  fontSize: 20,
-                  lineHeight: 1.1,
+                  fontSize: designTokens.fontSize[20],
+                  lineHeight: designTokens.lineHeight.tight,
                   letterSpacing: "-0.04em",
-                  fontVariantNumeric: "tabular-nums",
                 }}
               >
                 {metric.value}
@@ -287,11 +302,11 @@ export function DashboardOverviewHeroStrip({
               display: "inline-flex",
               width: "fit-content",
               alignItems: "center",
-              padding: "3px 8px",
+              padding: `${designTokens.space[1]}px ${designTokens.space[2]}px`,
               borderRadius: 999,
               background: `${TONE_COLOR[metric.tone]}14`,
               color: TONE_COLOR[metric.tone],
-              fontSize: 11,
+              fontSize: designTokens.fontSize[11],
               fontWeight: 700,
             }}
           >
@@ -300,7 +315,7 @@ export function DashboardOverviewHeroStrip({
           <span
             style={{
               color: shellTokens.colorTextSecondary,
-              fontSize: 12,
+              fontSize: designTokens.fontSize[12],
               lineHeight: 1.55,
             }}
           >
@@ -320,8 +335,8 @@ export function DashboardGlobalJudgmentPanel({
   return (
     <section data-testid="dashboard-global-judgment" style={panelStyle}>
       <DashboardSectionHeader eyebrow="First-screen Verdict" title={judgment.title} />
-      <p style={{ ...bodyTextStyle, fontSize: 14 }}>{judgment.body}</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+      <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[14] }}>{judgment.body}</p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: designTokens.space[2] + designTokens.space[1] }}>
         {judgment.tags.map((tag) => (
           <span
             key={tag.label}
@@ -329,9 +344,9 @@ export function DashboardGlobalJudgmentPanel({
               ...tagStyle(tag.tone),
               display: "inline-flex",
               alignItems: "center",
-              padding: "6px 12px",
+              padding: `${designTokens.space[1] + designTokens.space[2]}px ${designTokens.space[3]}px`,
               borderRadius: 999,
-              fontSize: 12,
+              fontSize: designTokens.fontSize[12],
               fontWeight: 700,
             }}
           >
@@ -342,12 +357,12 @@ export function DashboardGlobalJudgmentPanel({
       <ul
         style={{
           margin: 0,
-          paddingLeft: 18,
+          paddingLeft: designTokens.space[4] + designTokens.space[2],
           display: "grid",
-          gap: 10,
+          gap: designTokens.space[2] + designTokens.space[1],
           color: shellTokens.colorTextSecondary,
-          fontSize: 13,
-          lineHeight: 1.6,
+          fontSize: designTokens.fontSize[13],
+          lineHeight: designTokens.lineHeight.normal,
         }}
       >
         {judgment.bullets.map((bullet) => (
@@ -366,7 +381,7 @@ export function DashboardModuleSnapshotPanel() {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: 12,
+          gap: designTokens.space[3],
         }}
       >
         {moduleEntries.map((entry, index) => {
@@ -377,12 +392,12 @@ export function DashboardModuleSnapshotPanel() {
               to={entry.to}
               style={{
                 display: "grid",
-                gap: 8,
-                minHeight: 118,
-                padding: 16,
-                borderRadius: 20,
+                gap: designTokens.space[2],
+                minHeight: designTokens.space[7] * 4 - designTokens.space[2],
+                padding: designTokens.space[4],
+                borderRadius: designTokens.radius.md + designTokens.space[2],
                 border: `1px solid ${palette.border}`,
-                background: "#ffffff",
+                background: designTokens.color.primary[50],
               }}
             >
               <span
@@ -390,20 +405,32 @@ export function DashboardModuleSnapshotPanel() {
                   display: "inline-flex",
                   width: "fit-content",
                   alignItems: "center",
-                  padding: "4px 10px",
+                  padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
                   borderRadius: 999,
                   background: palette.bg,
                   color: palette.fg,
-                  fontSize: 12,
+                  fontSize: designTokens.fontSize[12],
                   fontWeight: 700,
                 }}
               >
                 {entry.title}
               </span>
-              <span style={{ color: shellTokens.colorTextPrimary, fontSize: 16, fontWeight: 700 }}>
+              <span
+                style={{
+                  color: shellTokens.colorTextPrimary,
+                  fontSize: designTokens.fontSize[16],
+                  fontWeight: 700,
+                }}
+              >
                 {entry.eyebrow}
               </span>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12, lineHeight: 1.55 }}>
+              <span
+                style={{
+                  color: shellTokens.colorTextSecondary,
+                  fontSize: designTokens.fontSize[12],
+                  lineHeight: 1.55,
+                }}
+              >
                 {entry.output}
               </span>
             </Link>
@@ -422,7 +449,7 @@ export function DashboardAlertCenterPanel({
   return (
     <section data-testid="dashboard-alert-center" style={panelStyle}>
       <DashboardSectionHeader eyebrow="Priority Watch" title="预警中心" />
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {alerts.map((alert) => {
           const palette = severityPalette[alert.severity];
           return (
@@ -430,8 +457,8 @@ export function DashboardAlertCenterPanel({
               key={alert.id}
               style={{
                 display: "grid",
-                gap: 6,
-                paddingBottom: 12,
+                gap: designTokens.space[2],
+                paddingBottom: designTokens.space[3],
                 borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
               }}
             >
@@ -440,14 +467,14 @@ export function DashboardAlertCenterPanel({
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  gap: 12,
+                  gap: designTokens.space[3],
                 }}
               >
                 <div
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    gap: 10,
+                    gap: designTokens.space[2] + designTokens.space[1],
                     color: shellTokens.colorTextPrimary,
                     fontWeight: 700,
                   }}
@@ -455,8 +482,8 @@ export function DashboardAlertCenterPanel({
                   <span
                     aria-hidden="true"
                     style={{
-                      width: 12,
-                      height: 12,
+                      width: designTokens.space[3],
+                      height: designTokens.space[3],
                       borderRadius: 999,
                       background: palette.fg,
                     }}
@@ -465,12 +492,12 @@ export function DashboardAlertCenterPanel({
                 </div>
                 <span
                   style={{
-                    padding: "4px 10px",
+                    padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
                     borderRadius: 999,
                     background: palette.bg,
                     color: palette.fg,
                     border: `1px solid ${palette.border}`,
-                    fontSize: 12,
+                    fontSize: designTokens.fontSize[12],
                     fontWeight: 700,
                     whiteSpace: "nowrap",
                   }}
@@ -478,7 +505,14 @@ export function DashboardAlertCenterPanel({
                   {palette.label}
                 </span>
               </div>
-              <p style={{ ...bodyTextStyle, marginLeft: 22 }}>{alert.detail}</p>
+              <p
+                style={{
+                  ...bodyTextStyle,
+                  marginLeft: designTokens.space[5] + designTokens.space[2],
+                }}
+              >
+                {alert.detail}
+              </p>
             </article>
           );
         })}
@@ -491,7 +525,7 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
   return (
     <section style={panelStyle}>
       <DashboardSectionHeader eyebrow="Today" title="今日待办" />
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {tasks.length === 0 ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
             暂无待办条目。治理预警或任务类数据接入 executive 读链路后将显示在此。
@@ -504,8 +538,8 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
               key={task.id}
               style={{
                 display: "grid",
-                gap: 8,
-                paddingBottom: 12,
+                gap: designTokens.space[2],
+                paddingBottom: designTokens.space[3],
                 borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
               }}
             >
@@ -514,7 +548,7 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
-                  gap: 10,
+                  gap: designTokens.space[2] + designTokens.space[1],
                 }}
               >
                 <span
@@ -528,12 +562,12 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
                 </span>
                 <span
                   style={{
-                    padding: "4px 10px",
+                    padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
                     borderRadius: 999,
                     background: palette.bg,
                     color: palette.fg,
                     border: `1px solid ${palette.border}`,
-                    fontSize: 12,
+                    fontSize: designTokens.fontSize[12],
                     fontWeight: 700,
                     whiteSpace: "nowrap",
                   }}
@@ -541,7 +575,9 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
                   {palette.label}
                 </span>
               </div>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>{task.due}</span>
+              <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
+                {task.due}
+              </span>
             </article>
           );
         })}
@@ -554,7 +590,7 @@ function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
   return (
     <section style={panelStyle}>
       <DashboardSectionHeader eyebrow="Calendar" title="关键日历" />
-      <div style={{ display: "grid", gap: 12 }}>
+      <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {items.length === 0 ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
             暂无日历事件。宏观与供给类日程接入后将显示在此。
@@ -568,37 +604,37 @@ function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
               key={item.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "84px minmax(0, 1fr) auto",
+                gridTemplateColumns: `${designTokens.space[10] + designTokens.space[5]}px minmax(0, 1fr) auto`,
                 alignItems: "center",
-                gap: 14,
-                paddingBottom: 12,
+                gap: designTokens.space[4] + designTokens.space[1],
+                paddingBottom: designTokens.space[3],
                 borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
               }}
             >
               <span
                 style={{
+                  ...tabularNumsStyle,
                   color: shellTokens.colorTextPrimary,
-                  fontSize: 13,
+                  fontSize: designTokens.fontSize[13],
                   fontWeight: 700,
-                  fontVariantNumeric: "tabular-nums",
                 }}
               >
                 {item.time.length >= 10 ? item.time.slice(5, 10) : item.time}
               </span>
-              <div style={{ display: "grid", gap: 4 }}>
+              <div style={{ display: "grid", gap: designTokens.space[1] }}>
                 <span style={{ color: shellTokens.colorTextPrimary, fontWeight: 700 }}>{item.title}</span>
-                <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
+                <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
                   {calendarKindLabel[item.kind]}
                 </span>
               </div>
               <span
                 style={{
-                  padding: "4px 10px",
+                  padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
                   borderRadius: 999,
                   background: palette.bg,
                   color: palette.fg,
                   border: `1px solid ${palette.border}`,
-                  fontSize: 12,
+                  fontSize: designTokens.fontSize[12],
                   fontWeight: 700,
                 }}
               >
@@ -624,7 +660,7 @@ export function DashboardTasksCalendarPanels({
       data-testid="dashboard-tasks-calendar"
       style={{
         display: "grid",
-        gap: 18,
+        gap: designTokens.space[4] + designTokens.space[2],
         height: "100%",
       }}
     >
@@ -640,7 +676,7 @@ export function DashboardModuleEntryGrid() {
       data-testid="dashboard-module-entry-grid"
       style={{
         ...panelStyle,
-        gap: 18,
+        gap: designTokens.space[4] + designTokens.space[2],
       }}
     >
       <DashboardSectionHeader eyebrow="Next Drill" title="模块联动入口" />
@@ -653,70 +689,84 @@ export function DashboardModuleEntryGrid() {
               to={entry.to}
               style={{
                 display: "grid",
-                gap: 16,
+                gap: designTokens.space[4],
                 alignContent: "start",
-                minHeight: 218,
-                padding: 18,
-                borderRadius: 24,
+                minHeight: designTokens.space[8] * 5 + designTokens.space[3] + designTokens.space[2],
+                padding: designTokens.space[4] + designTokens.space[2],
+                borderRadius: designTokens.radius.xl,
                 border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background: "#ffffff",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.82)",
+                background: designTokens.color.primary[50],
+                boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
               }}
             >
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 12,
+                  gap: designTokens.space[3],
                 }}
               >
                 <span
                   style={{
                     display: "grid",
                     placeItems: "center",
-                    width: 36,
-                    height: 36,
-                    borderRadius: 14,
+                    width: designTokens.space[4] + designTokens.space[5],
+                    height: designTokens.space[4] + designTokens.space[5],
+                    borderRadius: designTokens.radius.sm + designTokens.space[2],
                     background: palette.bg,
                     color: palette.fg,
                     fontWeight: 800,
-                    fontVariantNumeric: "tabular-nums",
+                    ...tabularNumsStyle,
                   }}
                 >
                   {index + 1}
                 </span>
-                <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ display: "grid", gap: designTokens.space[1] }}>
                   <span
                     style={{
                       color: shellTokens.colorTextPrimary,
-                      fontSize: 18,
+                      fontSize: designTokens.fontSize[18],
                       fontWeight: 800,
-                      fontFamily: DISPLAY_FONT,
+                      fontFamily: sectionTitleFont,
                     }}
                   >
                     {entry.title}
                   </span>
-                  <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
+                  <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
                     {entry.eyebrow}
                   </span>
                 </div>
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: shellTokens.colorTextMuted, fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: "grid", gap: designTokens.space[2] }}>
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: designTokens.fontSize[12],
+                    fontWeight: 700,
+                  }}
+                >
                   回答什么？
                 </span>
-                <p style={{ ...bodyTextStyle, minHeight: 56 }}>{entry.question}</p>
+                <p style={{ ...bodyTextStyle, minHeight: designTokens.space[7] * 2 }}>
+                  {entry.question}
+                </p>
               </div>
-              <div style={{ display: "grid", gap: 8 }}>
-                <span style={{ color: shellTokens.colorTextMuted, fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: "grid", gap: designTokens.space[2] }}>
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: designTokens.fontSize[12],
+                    fontWeight: 700,
+                  }}
+                >
                   进入后先看
                 </span>
                 <span
                   style={{
                     color: palette.fg,
-                    fontSize: 13,
+                    fontSize: designTokens.fontSize[13],
                     fontWeight: 700,
-                    lineHeight: 1.6,
+                    lineHeight: designTokens.lineHeight.normal,
                   }}
                 >
                   {entry.output}

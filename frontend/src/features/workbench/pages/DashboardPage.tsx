@@ -5,6 +5,7 @@ import type { ResultMeta } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import type { Tone } from "../../../utils/tone";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
@@ -107,15 +108,15 @@ function resolveReturnedDateLabel(
 function headerButtonStyle(kind: "primary" | "secondary") {
   const isPrimary = kind === "primary";
   return {
-    height: 38,
-    padding: "0 16px",
+    height: designTokens.space[8],
+    padding: `0 ${designTokens.space[4]}px`,
     borderRadius: 999,
     border: isPrimary
       ? `1px solid ${shellTokens.colorAccent}`
       : `1px solid ${shellTokens.colorBorderSoft}`,
-    background: isPrimary ? shellTokens.colorAccentSoft : "#ffffff",
+    background: isPrimary ? shellTokens.colorAccentSoft : designTokens.color.primary[50],
     color: isPrimary ? shellTokens.colorAccent : shellTokens.colorTextSecondary,
-    fontSize: 13,
+    fontSize: designTokens.fontSize[13],
     fontWeight: 700,
     cursor: "pointer",
   } as const;
@@ -448,16 +449,27 @@ export default function DashboardPage() {
         badgeLabel={client.mode === "real" ? "管理视角" : "演示视角"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
         style={{
-          padding: "28px clamp(20px, 2vw, 30px)",
-          borderRadius: 32,
+          padding: `${designTokens.space[6] + designTokens.space[1]}px clamp(${designTokens.space[5]}px, 2vw, ${designTokens.space[7] - designTokens.space[1]}px)`,
+          borderRadius: designTokens.space[7],
           border: `1px solid ${shellTokens.colorBorder}`,
-          background:
-            "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.96) 100%)",
-          boxShadow: shellTokens.shadowPanel,
+          background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
+          boxShadow: designTokens.shadow.panel,
         }}
         actions={
-          <div style={{ display: "grid", gap: 14, justifyItems: "end" }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "grid",
+              gap: designTokens.space[4] - designTokens.space[1],
+              justifyItems: "end",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: designTokens.space[2] + designTokens.space[1],
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 type="button"
                 onClick={() => void snapshotQuery.refetch()}
@@ -477,32 +489,42 @@ export default function DashboardPage() {
                 导出
               </button>
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 16, alignItems: "end" }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>报告日</span>
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: designTokens.space[4],
+                alignItems: "end",
+              }}
+            >
+              <label style={{ display: "grid", gap: designTokens.space[2] }}>
+                <span style={{ color: shellTokens.colorTextMuted, fontSize: designTokens.fontSize[12] }}>
+                  报告日
+                </span>
                 <input
                   aria-label="报告日"
                   type="date"
                   value={reportDate}
                   onChange={(event) => setReportDate(event.target.value)}
                   style={{
-                    minWidth: 176,
-                    padding: "11px 14px",
-                    borderRadius: 14,
+                    minWidth: designTokens.space[4] * 11,
+                    padding: `${designTokens.space[3]}px ${designTokens.space[3]}px`,
+                    borderRadius: designTokens.radius.sm + designTokens.space[2],
                     border: `1px solid ${shellTokens.colorBorder}`,
                     background: shellTokens.colorBgCanvas,
                     color: shellTokens.colorTextPrimary,
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+                    boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
+                    ...tabularNumsStyle,
                   }}
                 />
               </label>
               <label
                 style={{
                   display: "flex",
-                  gap: 8,
+                  gap: designTokens.space[2],
                   alignItems: "center",
                   color: shellTokens.colorTextPrimary,
-                  fontSize: 13,
+                  fontSize: designTokens.fontSize[13],
                   cursor: "pointer",
                 }}
               >
@@ -518,8 +540,14 @@ export default function DashboardPage() {
           </div>
         }
       >
-        <div style={{ display: "grid", gap: 18 }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "grid", gap: designTokens.space[4] + designTokens.space[2] }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: designTokens.space[2] + designTokens.space[1],
+            }}
+          >
             {[
               "范围 / 驾驶舱首屏",
               "口径 / 受治理快照",
@@ -531,12 +559,12 @@ export default function DashboardPage() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  padding: "7px 12px",
+                  padding: `${designTokens.space[2]}px ${designTokens.space[3]}px`,
                   borderRadius: 999,
-                  background: "rgba(255,255,255,0.84)",
+                  background: designTokens.color.primary[50],
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
                   color: shellTokens.colorTextSecondary,
-                  fontSize: 12,
+                  fontSize: designTokens.fontSize[12],
                   fontWeight: 700,
                 }}
               >
@@ -550,44 +578,51 @@ export default function DashboardPage() {
 
       <div className="dashboard-gov-grid">
         {client.mode !== "real" || attentionItems.length > 0 || snapshotPartialNote ? (
-          <section data-testid="dashboard-data-warning" style={{
-            display: "grid",
-            gap: 10,
-            padding: 20,
-            borderRadius: 24,
-            border: `1px solid ${shellTokens.colorBorderWarning}`,
-            background: shellTokens.colorBgWarningSoft,
-            color: shellTokens.colorTextWarning,
-            minHeight: "100%",
-          }}>
-            <div style={{ fontWeight: 800, fontSize: 15 }}>Data Status</div>
+          <section
+            data-testid="dashboard-data-warning"
+            style={{
+              display: "grid",
+              gap: designTokens.space[2] + designTokens.space[1],
+              padding: designTokens.space[5],
+              borderRadius: designTokens.radius.xl,
+              border: `1px solid ${shellTokens.colorBorderWarning}`,
+              background: shellTokens.colorBgWarningSoft,
+              color: shellTokens.colorTextWarning,
+              minHeight: "100%",
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: designTokens.fontSize[16] }}>Data Status</div>
             {client.mode !== "real" ? (
-              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+              <div style={{ fontSize: designTokens.fontSize[13], lineHeight: designTokens.lineHeight.relaxed }}>
                 当前页面正在使用 mock 数据源。此时首页数字只用于界面演示，不应直接作为业务判断依据。
               </div>
             ) : null}
             {attentionItems.length > 0 ? (
-              <div style={{ fontSize: 13, lineHeight: 1.7 }}>
+              <div style={{ fontSize: designTokens.fontSize[13], lineHeight: designTokens.lineHeight.relaxed }}>
                 当前首页存在需要人工留意的数据状态：{attentionItems.join("；")}
               </div>
             ) : null}
             {snapshotPartialNote ? (
-              <div style={{ fontSize: 13, lineHeight: 1.7 }}>{snapshotPartialNote}</div>
+              <div style={{ fontSize: designTokens.fontSize[13], lineHeight: designTokens.lineHeight.relaxed }}>
+                {snapshotPartialNote}
+              </div>
             ) : null}
           </section>
         ) : (
-          <section style={{
-            display: "grid",
-            gap: 12,
-            padding: 20,
-            borderRadius: 24,
-            border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "linear-gradient(180deg, rgba(252,251,248,0.96) 0%, rgba(247,247,242,0.96) 100%)",
-          }}>
+          <section
+            style={{
+              display: "grid",
+              gap: designTokens.space[3],
+              padding: designTokens.space[5],
+              borderRadius: designTokens.radius.xl,
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
+              background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
+            }}
+          >
             <span
               style={{
                 color: shellTokens.colorTextMuted,
-                fontSize: 11,
+                fontSize: designTokens.fontSize[11],
                 fontWeight: 700,
                 letterSpacing: "0.08em",
                 textTransform: "uppercase",
@@ -595,27 +630,42 @@ export default function DashboardPage() {
             >
               Decision Focus
             </span>
-            <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 18, fontWeight: 800 }}>
+            <strong
+              style={{
+                color: shellTokens.colorTextPrimary,
+                fontSize: designTokens.fontSize[18],
+                fontWeight: 800,
+              }}
+            >
               Keep the first screen verdict-driven
             </strong>
-            <p style={{ margin: 0, color: shellTokens.colorTextSecondary, fontSize: 13, lineHeight: 1.7 }}>
+            <p
+              style={{
+                margin: 0,
+                color: shellTokens.colorTextSecondary,
+                fontSize: designTokens.fontSize[13],
+                lineHeight: designTokens.lineHeight.relaxed,
+              }}
+            >
               先确认首页读链路和日期一致，再用首屏数字做方向性判断。原因链条、持仓结构和盘中上下文，都在对应专题页继续展开。
             </p>
           </section>
         )}
 
-        <section style={{
-          display: "grid",
-          gap: 14,
-          padding: 20,
-          borderRadius: 24,
-          border: `1px solid ${shellTokens.colorBorderSoft}`,
-          background: "linear-gradient(180deg, rgba(252,251,248,0.96) 0%, rgba(247,247,242,0.96) 100%)",
-        }}>
+        <section
+          style={{
+            display: "grid",
+            gap: designTokens.space[4] - designTokens.space[1],
+            padding: designTokens.space[5],
+            borderRadius: designTokens.radius.xl,
+            border: `1px solid ${shellTokens.colorBorderSoft}`,
+            background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
+          }}
+        >
           <div
             style={{
               color: shellTokens.colorTextMuted,
-              fontSize: 11,
+              fontSize: designTokens.fontSize[11],
               fontWeight: 700,
               letterSpacing: "0.08em",
               textTransform: "uppercase",
@@ -636,17 +686,17 @@ export default function DashboardPage() {
                 key={item.title}
                 style={{
                   display: "grid",
-                  gap: 8,
-                  padding: 16,
-                  borderRadius: 18,
+                  gap: designTokens.space[2],
+                  padding: designTokens.space[4],
+                  borderRadius: designTokens.radius.lg + designTokens.space[1],
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
                   background: shellTokens.colorBgCanvas,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.72)",
+                  boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
                 }}
               >
                 <div
                   style={{
-                    fontSize: 12,
+                    fontSize: designTokens.fontSize[12],
                     fontWeight: 700,
                     color: shellTokens.colorTextPrimary,
                     letterSpacing: "0.04em",
@@ -654,16 +704,16 @@ export default function DashboardPage() {
                 >
                   {item.title}
                 </div>
-                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                <div style={{ ...tabularNumsStyle, fontSize: designTokens.fontSize[12], color: shellTokens.colorTextSecondary }}>
                   quality: {item.status.quality}
                 </div>
-                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                <div style={{ ...tabularNumsStyle, fontSize: designTokens.fontSize[12], color: shellTokens.colorTextSecondary }}>
                   {item.date.label}: {item.date.value}
                 </div>
-                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                <div style={{ ...tabularNumsStyle, fontSize: designTokens.fontSize[12], color: shellTokens.colorTextSecondary }}>
                   generated_at: {item.status.generatedAt}
                 </div>
-                <div style={{ fontSize: 12, color: shellTokens.colorTextSecondary }}>
+                <div style={{ ...tabularNumsStyle, fontSize: designTokens.fontSize[12], color: shellTokens.colorTextSecondary }}>
                   fallback: {item.status.fallback}
                 </div>
               </article>
@@ -683,11 +733,11 @@ export default function DashboardPage() {
           data-testid="dashboard-governed-surface"
           style={{
             display: "grid",
-            gap: 16,
-            padding: 22,
-            borderRadius: 28,
+            gap: designTokens.space[4],
+            padding: designTokens.space[6] + designTokens.space[1],
+            borderRadius: designTokens.space[6] + designTokens.space[1],
             border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.96) 100%)",
+            background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
           }}
         >
           <PageSectionLead
