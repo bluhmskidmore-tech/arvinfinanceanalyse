@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
+import { designTokens } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 type Row = {
@@ -27,10 +28,12 @@ const DATA: Row[] = [
   { key: "8", time: "10:26:11", name: "23 苏交通 MTN005", tenor: "3.67Y", price: "101.228", yieldPct: "2.72", volume: "1,890", side: "卖出", rating: "AAA" },
 ];
 
+const s = designTokens.space;
+
 const sideStyle = (side: Row["side"]) =>
   side === "买入"
-    ? { background: "#fff0f0", color: "#a02626" }
-    : { background: "#edf8f2", color: "#1f6b45" };
+    ? { background: designTokens.color.danger[50], color: designTokens.color.danger[700] }
+    : { background: designTokens.color.success[50], color: designTokens.color.success[600] };
 
 export function CreditBondTradesTable() {
   const columns: ColumnsType<Row> = useMemo(
@@ -51,9 +54,9 @@ export function CreditBondTradesTable() {
           <span
             style={{
               display: "inline-block",
-              padding: "2px 8px",
-              borderRadius: 6,
-              fontSize: 12,
+              padding: `${s[1]}px ${s[2]}px`,
+              borderRadius: designTokens.radius.sm,
+              fontSize: designTokens.fontSize[12],
               fontWeight: 600,
               ...sideStyle(side),
             }}

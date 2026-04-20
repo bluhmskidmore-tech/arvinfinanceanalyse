@@ -32,39 +32,44 @@ import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
 import { NewsAndCalendar } from "../components/NewsAndCalendar";
 import { RateQuoteTable } from "../components/RateQuoteTable";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+
+const s = designTokens.space;
+const fs = designTokens.fontSize;
+const c = designTokens.color;
 
 const summaryGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
+  gap: s[4],
 } as const;
 
 const observationGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
-  marginTop: 16,
+  gap: s[4],
+  marginTop: s[4],
 } as const;
 
 const sectionGridStyle = {
   display: "grid",
   gridTemplateColumns: "minmax(0, 1.3fr) minmax(320px, 1fr)",
-  gap: 18,
-  marginTop: 18,
+  gap: s[5],
+  marginTop: s[5],
 } as const;
 
 const detailPanelStyle = pageSurfacePanelStyle;
 
 const blockTitleStyle = {
-  margin: "24px 0 0",
-  fontSize: 16,
+  margin: `${s[6]}px 0 0`,
+  fontSize: fs[16],
   fontWeight: 600,
-  color: "#162033",
+  color: c.neutral[900],
 } as const;
 
 const macroChartShellStyle = {
   ...detailPanelStyle,
-  marginTop: 18,
+  marginTop: s[5],
 } as const;
 
 const terminalRowGridStyle = {
@@ -74,19 +79,19 @@ const terminalRowGridStyle = {
 
 const filterLabelStyle = {
   display: "grid",
-  gap: 6,
-  fontSize: 12,
+  gap: s[2],
+  fontSize: fs[12],
   fontWeight: 600,
-  color: "#5c6b82",
+  color: c.neutral[600],
 } as const;
 
 const filterControlStyle = {
   width: "100%",
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: "1px solid #d7dfea",
-  fontSize: 13,
-  color: "#162033",
+  padding: `${s[2]}px ${s[2] + s[1]}px`,
+  borderRadius: designTokens.radius.sm + s[1],
+  border: `1px solid ${c.primary[300]}`,
+  fontSize: fs[13],
+  color: c.neutral[900],
 } as const;
 
 /** 利率走势：国债 10Y / 国开 5Y / SHIBOR 隔夜（Choice series_id） */
@@ -149,7 +154,7 @@ function buildRateTrendChartOption(series: ChoiceMacroLatestPoint[]): EChartsOpt
     data: categories.map((d) => maps[i].get(d) ?? null),
   }));
   return {
-    color: ["#1f5eff", "#2f8f63", "#e67e22"],
+    color: [c.info[500], c.semantic.up, c.warning[400]],
     tooltip: { trigger: "axis" },
     legend: { bottom: 0 },
     grid: { left: 52, right: 20, top: 28, bottom: 52 },
@@ -236,7 +241,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
       key={`${point.series_id}:${point.target_family}:${point.target_tenor ?? "none"}`}
       style={{
         display: "grid",
-        gap: 10,
+        gap: s[3],
         ...pageInsetCardStyle,
       }}
     >
@@ -244,35 +249,35 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         style={{
           display: "flex",
           justifyContent: "space-between",
-          gap: 12,
+          gap: s[3],
           alignItems: "flex-start",
           flexWrap: "wrap",
         }}
       >
         <div>
-          <div style={{ fontWeight: 600, color: "#162033" }}>{point.series_name}</div>
-          <div style={{ color: "#8090a8", fontSize: 12 }}>{point.series_id}</div>
+          <div style={{ fontWeight: 600, color: c.neutral[900] }}>{point.series_name}</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>{point.series_id}</div>
         </div>
         <div
           style={{
             display: "inline-flex",
             alignItems: "center",
-            gap: 8,
-            padding: "6px 10px",
+            gap: s[2],
+            padding: `${s[2]}px ${s[2] + s[1]}px`,
             borderRadius: 999,
             background:
               point.direction === "positive"
-                ? "#edf8f2"
+                ? c.success[50]
                 : point.direction === "negative"
-                  ? "#fff3ee"
-                  : "#f3f6fb",
+                  ? c.warning[50]
+                  : c.primary[50],
             color:
               point.direction === "positive"
-                ? "#2f8f63"
+                ? c.semantic.up
                 : point.direction === "negative"
-                  ? "#b85b2b"
-                  : "#31425b",
-            fontSize: 12,
+                  ? c.warning[600]
+                  : c.neutral[800],
+            fontSize: fs[12],
             fontWeight: 600,
           }}
         >
@@ -280,7 +285,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         </div>
       </div>
 
-      <div style={{ color: "#31425b", fontSize: 13, lineHeight: 1.65 }}>
+      <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.normal }}>
         目标维度：{familyLabel(point.target_family)}
         {point.target_tenor ? ` / ${point.target_tenor}` : " / tenor unavailable"}
       </div>
@@ -289,24 +294,24 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-          gap: 12,
+          gap: s[3],
         }}
       >
         <div>
-          <div style={{ color: "#8090a8", fontSize: 12 }}>corr 3M</div>
-          <div>{formatCorrelation(point.correlation_3m)}</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 3M</div>
+          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_3m)}</div>
         </div>
         <div>
-          <div style={{ color: "#8090a8", fontSize: 12 }}>corr 6M</div>
-          <div>{formatCorrelation(point.correlation_6m)}</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 6M</div>
+          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_6m)}</div>
         </div>
         <div>
-          <div style={{ color: "#8090a8", fontSize: 12 }}>corr 1Y</div>
-          <div>{formatCorrelation(point.correlation_1y)}</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 1Y</div>
+          <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_1y)}</div>
         </div>
         <div>
-          <div style={{ color: "#8090a8", fontSize: 12 }}>lead / lag</div>
-          <div>{`${point.lead_lag_days} 天`}</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>lead / lag</div>
+          <div style={tabularNumsStyle}>{`${point.lead_lag_days} 天`}</div>
         </div>
       </div>
     </div>
@@ -324,14 +329,14 @@ function renderSeriesCards(
   const testIdPrefix = options?.testIdPrefix ?? "market-data-series";
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div style={{ display: "grid", gap: s[3] }}>
       {series.map((point) => (
         <div
           key={point.series_id}
           data-testid={`${testIdPrefix}-${point.series_id}`}
           style={{
             display: "grid",
-            gap: 10,
+            gap: s[3],
             ...pageInsetCardStyle,
           }}
         >
@@ -340,24 +345,24 @@ function renderSeriesCards(
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              gap: 12,
+              gap: s[3],
               flexWrap: "wrap",
             }}
           >
             <div>
               <div style={{ fontWeight: 600 }}>{point.series_name}</div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>{point.series_id}</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>{point.series_id}</div>
             </div>
             <div
               style={{
                 display: "inline-flex",
                 alignItems: "center",
-                gap: 8,
-                padding: "6px 10px",
+                gap: s[2],
+                padding: `${s[2]}px ${s[2] + s[1]}px`,
                 borderRadius: 999,
-                background: "#f3f6fb",
-                color: "#31425b",
-                fontSize: 12,
+                background: c.primary[50],
+                color: c.neutral[800],
+                fontSize: fs[12],
                 fontWeight: 600,
               }}
             >
@@ -371,49 +376,49 @@ function renderSeriesCards(
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-              gap: 12,
+              gap: s[3],
             }}
           >
             <div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>trade_date</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>trade_date</div>
               <div>{point.trade_date}</div>
             </div>
             <div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>latest</div>
-              <div style={{ fontWeight: 600, color: "#162033" }}>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>latest</div>
+              <div style={{ fontWeight: 600, color: c.neutral[900], ...tabularNumsStyle }}>
                 {formatPointValue(point.value_numeric, point.unit)}
               </div>
             </div>
             <div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>delta</div>
-              <div>{formatDelta(point.latest_change, point.unit)}</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>delta</div>
+              <div style={tabularNumsStyle}>{formatDelta(point.latest_change, point.unit)}</div>
             </div>
             <div>
-              <div style={{ color: "#8090a8", fontSize: 12 }}>fetch</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>fetch</div>
               <div>{seriesFetchModeLabel(point)}</div>
             </div>
           </div>
 
-          <div style={{ color: "#5c6b82", fontSize: 12, lineHeight: 1.7 }}>
+          <div style={{ color: c.neutral[600], fontSize: fs[12], lineHeight: designTokens.lineHeight.relaxed }}>
             source {point.source_version} 路 vendor {point.vendor_version}
           </div>
-          <div style={{ color: "#31425b", fontSize: 13, lineHeight: 1.7 }}>
+          <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
             {seriesPolicyNote(point)}
           </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: s[2], flexWrap: "wrap" }}>
             {seriesRecentPoints(point).map((recentPoint) => (
               <span
                 key={`${point.series_id}:${recentPoint.trade_date}:${recentPoint.vendor_version}`}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  padding: "6px 10px",
+                  padding: `${s[2]}px ${s[2] + s[1]}px`,
                   borderRadius: 999,
-                  background: "#f8fafc",
-                  border: "1px solid #e4ebf5",
-                  color: "#5c6b82",
-                  fontSize: 12,
+                  background: c.neutral[50],
+                  border: `1px solid ${c.primary[200]}`,
+                  color: c.neutral[600],
+                  fontSize: fs[12],
                 }}
               >
                 {formatRecentPoint(recentPoint)}
@@ -442,14 +447,14 @@ function MetadataPanel({
       <h2
         style={{
           marginTop: 0,
-          marginBottom: 12,
-          fontSize: 18,
+          marginBottom: s[3],
+          fontSize: fs[18],
           fontWeight: 600,
         }}
       >
         {title}
       </h2>
-      <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
+      <div style={{ display: "grid", gap: s[2], color: c.neutral[600], fontSize: fs[14] }}>
         <div>trace_id: {meta?.trace_id ?? "pending"}</div>
         <div>basis: {meta?.basis ?? "pending"}</div>
         <div>formal_use_allowed: {meta ? String(meta.formal_use_allowed) : "pending"}</div>
@@ -662,12 +667,12 @@ export default function MarketDataPage() {
             disabled={isRefreshing}
             onClick={() => void handleRefresh()}
             style={{
-              padding: "8px 18px",
+              padding: `${s[2]}px ${s[5]}px`,
               borderRadius: 999,
               border: "none",
-              background: isRefreshing ? "#c5d0e0" : "#1f5eff",
-              color: "#fff",
-              fontSize: 13,
+              background: isRefreshing ? c.neutral[400] : c.info[500],
+              color: "#ffffff",
+              fontSize: fs[13],
               fontWeight: 600,
               cursor: isRefreshing ? "not-allowed" : "pointer",
               whiteSpace: "nowrap",
@@ -677,12 +682,12 @@ export default function MarketDataPage() {
           </button>
         }
       >
-        <div style={{ display: "grid", gap: 16 }}>
+        <div style={{ display: "grid", gap: s[4] }}>
           <p
             style={{
               margin: 0,
-              color: "#64748b",
-              fontSize: 13,
+              color: c.neutral[600],
+              fontSize: fs[13],
             }}
           >
             观察日期 {watchDate}
@@ -690,11 +695,11 @@ export default function MarketDataPage() {
           {(refreshStatus || refreshError) && (
             <div
               style={{
-                padding: "10px 16px",
-                borderRadius: 12,
-                fontSize: 13,
-                background: refreshError ? "#fff3ee" : "#edf3ff",
-                color: refreshError ? "#b85b2b" : "#1f5eff",
+                padding: `${s[2] + s[1]}px ${s[4]}px`,
+                borderRadius: s[3],
+                fontSize: fs[13],
+                background: refreshError ? c.warning[50] : c.info[50],
+                color: refreshError ? c.warning[600] : c.info[500],
               }}
             >
               {refreshError || refreshStatus}
@@ -851,36 +856,44 @@ export default function MarketDataPage() {
                 children: (
                   <div data-testid="market-data-macro-tab-curve">
                     <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>收益率曲线</h2>
-                    <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
+                    <p
+                      style={{
+                        marginTop: s[2],
+                        marginBottom: 0,
+                        color: c.neutral[600],
+                        fontSize: fs[14],
+                        lineHeight: designTokens.lineHeight.normal,
+                      }}
+                    >
                       国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
                       SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
                     </p>
                     {latestQuery.isLoading ? (
                       <div
                         style={{
-                          marginTop: 16,
-                          padding: 24,
-                          color: "#5c6b82",
-                          fontSize: 14,
+                          marginTop: s[4],
+                          padding: s[6],
+                          color: c.neutral[600],
+                          fontSize: fs[14],
                         }}
                       >
                         加载宏观序列中…
                       </div>
                     ) : rateTrendChartOption ? (
-                      <div data-testid="market-data-rate-trend-chart" style={{ marginTop: 16 }}>
+                      <div data-testid="market-data-rate-trend-chart" style={{ marginTop: s[4] }}>
                         <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
                       </div>
                     ) : (
                       <div
                         data-testid="market-data-rate-trend-empty"
                         style={{
-                          marginTop: 16,
-                          padding: 20,
-                          borderRadius: 16,
-                          border: "1px solid #e4ebf5",
+                          marginTop: s[4],
+                          padding: s[5],
+                          borderRadius: s[4],
+                          border: `1px solid ${c.primary[200]}`,
                           background: "#ffffff",
-                          color: "#8090a8",
-                          fontSize: 14,
+                          color: c.neutral[500],
+                          fontSize: fs[14],
                         }}
                       >
                         当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
@@ -893,7 +906,7 @@ export default function MarketDataPage() {
                 key: "spreads",
                 label: "信用利差",
                 children: (
-                  <div data-testid="market-data-macro-tab-spreads" style={{ marginTop: 8 }}>
+                  <div data-testid="market-data-macro-tab-spreads" style={{ marginTop: s[2] }}>
                     <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
                   </div>
                 ),
@@ -902,8 +915,15 @@ export default function MarketDataPage() {
                 key: "linkage",
                 label: "压力与情景（M11/M15）",
                 children: (
-                  <div data-testid="market-data-macro-tab-linkage" style={{ marginTop: 8 }}>
-                    <p style={{ margin: "0 0 12px", color: "#5c6b82", fontSize: 13, lineHeight: 1.65 }}>
+                  <div data-testid="market-data-macro-tab-linkage" style={{ marginTop: s[2] }}>
+                    <p
+                      style={{
+                        margin: `0 0 ${s[3]}px`,
+                        color: c.neutral[600],
+                        fontSize: fs[13],
+                        lineHeight: designTokens.lineHeight.normal,
+                      }}
+                    >
                       摘要来自 <code>getMacroBondLinkageAnalysis</code> 的 <code>environment_score</code> 与{" "}
                       <code>portfolio_impact</code>；完整相关性矩阵仍在下文「宏观-债市联动」折叠区。
                     </p>
@@ -980,7 +1000,7 @@ export default function MarketDataPage() {
         title="宏观序列与分析观察"
         description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
       />
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: s[5] }}>
         <AsyncSection
           title="宏观序列观察"
           isLoading={latestQuery.isLoading}
@@ -988,11 +1008,11 @@ export default function MarketDataPage() {
           isEmpty={!latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0}
           onRetry={() => void latestQuery.refetch()}
         >
-          <div style={{ display: "grid", gap: 24 }}>
+          <div style={{ display: "grid", gap: s[6] }}>
             <section data-testid="market-data-stable-section">
-              <div style={{ marginBottom: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>稳定主链路</h2>
-                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+              <div style={{ marginBottom: s[3] }}>
+                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
+                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
                   面向日常分析的主 refresh 读面，只显示稳定可取的序列。
                 </p>
               </div>
@@ -1000,32 +1020,32 @@ export default function MarketDataPage() {
             </section>
 
             <section data-testid="market-data-missing-stable-section">
-              <div style={{ marginBottom: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>待补齐 stable</h2>
-                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+              <div style={{ marginBottom: s[3] }}>
+                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐 stable</h2>
+                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
                   目录中归属 stable，但当前 refresh 尚未回收的序列。
                 </p>
               </div>
               {missingStableSeries.length > 0 ? (
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: s[3] }}>
                   {missingStableSeries.map((series) => (
                     <div
                       key={series.series_id}
                       style={{
                         display: "grid",
-                        gap: 6,
-                        padding: 14,
-                        borderRadius: 16,
-                        border: "1px solid #e4ebf5",
+                        gap: s[2],
+                        padding: s[4],
+                        borderRadius: s[4],
+                        border: `1px solid ${c.primary[200]}`,
                         background: "#ffffff",
                       }}
                     >
                       <strong>{series.series_name}</strong>
-                      <div style={{ color: "#5c6b82", fontSize: 13 }}>
+                      <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
                         {series.series_id} 路 {catalogRefreshTier(series)} 路 {series.fetch_mode ?? "date_slice"} /{" "}
                         {series.fetch_granularity ?? "batch"}
                       </div>
-                      <div style={{ color: "#31425b", fontSize: 13 }}>
+                      <div style={{ color: c.neutral[800], fontSize: fs[13] }}>
                         {series.policy_note ?? "main refresh date-slice lane"}
                       </div>
                     </div>
@@ -1034,12 +1054,12 @@ export default function MarketDataPage() {
               ) : (
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid #e4ebf5",
+                    padding: s[4],
+                    borderRadius: s[4],
+                    border: `1px solid ${c.primary[200]}`,
                     background: "#ffffff",
-                    color: "#5c6b82",
-                    fontSize: 14,
+                    color: c.neutral[600],
+                    fontSize: fs[14],
                   }}
                 >
                   当前 stable 目录已全部回收。
@@ -1048,9 +1068,9 @@ export default function MarketDataPage() {
             </section>
 
             <section data-testid="market-data-fallback-section">
-              <div style={{ marginBottom: 12 }}>
-                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>降级 latest-only</h2>
-                <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+              <div style={{ marginBottom: s[3] }}>
+                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>降级 latest-only</h2>
+                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
                   低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
                 </p>
               </div>
@@ -1059,12 +1079,12 @@ export default function MarketDataPage() {
               ) : (
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 16,
-                    border: "1px solid #e4ebf5",
+                    padding: s[4],
+                    borderRadius: s[4],
+                    border: `1px solid ${c.primary[200]}`,
                     background: "#ffffff",
-                    color: "#5c6b82",
-                    fontSize: 14,
+                    color: c.neutral[600],
+                    fontSize: fs[14],
                   }}
                 >
                   当前无降级 latest-only 序列。
@@ -1075,7 +1095,7 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
-      <div style={{ marginTop: 18 }}>
+      <div style={{ marginTop: s[5] }}>
         <AsyncSection
           title="FX analytical 观察"
           isLoading={fxAnalyticalQuery.isLoading}
@@ -1087,21 +1107,21 @@ export default function MarketDataPage() {
           }
           onRetry={() => void fxAnalyticalQuery.refetch()}
         >
-          <div style={{ display: "grid", gap: 24 }}>
+          <div style={{ display: "grid", gap: s[6] }}>
             {fxAnalyticalGroups.map((group) => (
               <section
                 key={group.group_key}
                 data-testid={`market-data-fx-group-${group.group_key}`}
               >
-                <div style={{ marginBottom: 12 }}>
-                  <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>{group.title}</h2>
+                <div style={{ marginBottom: s[3] }}>
+                  <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>{group.title}</h2>
                   <p
                     style={{
-                      marginTop: 8,
+                      marginTop: s[2],
                       marginBottom: 0,
-                      color: "#5c6b82",
-                      fontSize: 14,
-                      lineHeight: 1.7,
+                      color: c.neutral[600],
+                      fontSize: fs[14],
+                      lineHeight: designTokens.lineHeight.relaxed,
                     }}
                   >
                     {group.description}
@@ -1123,7 +1143,7 @@ export default function MarketDataPage() {
       />
       <Collapse
         data-testid="market-data-linkage-collapse"
-        style={{ marginTop: 18 }}
+        style={{ marginTop: s[5] }}
         bordered={false}
         defaultActiveKey={[]}
         items={[
@@ -1144,24 +1164,23 @@ export default function MarketDataPage() {
                 }
                 onRetry={() => void macroBondLinkageQuery.refetch()}
               >
-                <div style={{ display: "grid", gap: 18 }}>
+                <div style={{ display: "grid", gap: s[5] }}>
             <section
               data-testid="market-data-linkage-caveat"
               style={{
-                padding: 18,
-                borderRadius: 18,
-                border: "1px solid #d7e3f3",
-                background:
-                  "linear-gradient(180deg, rgba(250,252,255,1) 0%, rgba(241,246,252,1) 100%)",
+                padding: s[4] + s[1],
+                borderRadius: s[4] + s[1],
+                border: `1px solid ${c.info[200]}`,
+                background: `linear-gradient(180deg, ${c.neutral[50]} 0%, ${c.primary[50]} 100%)`,
                 display: "grid",
-                gap: 10,
+                gap: s[3],
               }}
             >
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
+                  gap: s[2],
                   flexWrap: "wrap",
                 }}
               >
@@ -1169,11 +1188,11 @@ export default function MarketDataPage() {
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    padding: "5px 10px",
+                    padding: `${s[1] + s[1]}px ${s[2] + s[1]}px`,
                     borderRadius: 999,
-                    background: "#edf3ff",
-                    color: "#1f5eff",
-                    fontSize: 12,
+                    background: c.info[50],
+                    color: c.info[500],
+                    fontSize: fs[12],
                     fontWeight: 700,
                     letterSpacing: "0.04em",
                     textTransform: "uppercase",
@@ -1185,18 +1204,18 @@ export default function MarketDataPage() {
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    padding: "5px 10px",
+                    padding: `${s[1] + s[1]}px ${s[2] + s[1]}px`,
                     borderRadius: 999,
-                    background: "#fff2e9",
-                    color: "#b85b2b",
-                    fontSize: 12,
+                    background: c.warning[50],
+                    color: c.warning[600],
+                    fontSize: fs[12],
                     fontWeight: 700,
                   }}
                 >
                   non-formal
                 </span>
               </div>
-              <div style={{ color: "#31425b", fontSize: 14, lineHeight: 1.7 }}>
+              <div style={{ color: c.neutral[800], fontSize: fs[14], lineHeight: designTokens.lineHeight.relaxed }}>
                 本区为宏观联动分析口径。组合影响仅用于研究和配置讨论，属于分析估算，不代表账本口径下的损益（PnL）、
                 不代表正式估值归因，也不替代 bond analytics 的正式读面。
               </div>
@@ -1205,10 +1224,10 @@ export default function MarketDataPage() {
                   data-testid="market-data-linkage-warning-list"
                   style={{
                     margin: 0,
-                    paddingLeft: 20,
-                    color: "#5c6b82",
-                    fontSize: 13,
-                    lineHeight: 1.8,
+                    paddingLeft: s[5],
+                    color: c.neutral[600],
+                    fontSize: fs[13],
+                    lineHeight: designTokens.lineHeight.relaxed,
                   }}
                 >
                   {macroBondLinkageWarnings.map((warning) => (
@@ -1217,7 +1236,7 @@ export default function MarketDataPage() {
                 </ul>
               ) : (
                 <div
-                  style={{ color: "#5c6b82", fontSize: 13 }}
+                  style={{ color: c.neutral[600], fontSize: fs[13] }}
                   data-testid="market-data-linkage-warning-empty"
                 >
                   当前无额外方法警示。
@@ -1300,10 +1319,10 @@ export default function MarketDataPage() {
               data-testid="market-data-linkage-portfolio-impact"
               style={detailPanelStyle}
             >
-              <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 18, fontWeight: 600 }}>
+              <h2 style={{ marginTop: 0, marginBottom: s[2], fontSize: fs[18], fontWeight: 600 }}>
                 组合影响估算
               </h2>
-              <p style={{ marginTop: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+              <p style={{ marginTop: 0, color: c.neutral[600], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
                 以下数值为 analytical estimate，基于宏观环境评分与组合在利率、利差维度上的敏感度静态映射，不代表正式损益。
               </p>
               {hasPortfolioImpact ? (
@@ -1311,44 +1330,48 @@ export default function MarketDataPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: 12,
+                    gap: s[3],
                   }}
                 >
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>rate change</div>
-                    <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>rate change</div>
+                    <div style={tabularNumsStyle}>
+                      {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}
+                    </div>
                   </div>
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>spread widening</div>
-                    <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>spread widening</div>
+                    <div style={tabularNumsStyle}>
+                      {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}
+                    </div>
                   </div>
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>rate impact</div>
-                    <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>rate impact</div>
+                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>spread impact</div>
-                    <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>spread impact</div>
+                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>total estimate</div>
-                    <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>total estimate</div>
+                    <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: "#8090a8", fontSize: 12 }}>impact ratio</div>
-                    <div>{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>impact ratio</div>
+                    <div style={tabularNumsStyle}>{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
                   </div>
                 </div>
               ) : (
                 <div
                   data-testid="market-data-linkage-portfolio-impact-unavailable"
                   style={{
-                    padding: 16,
-                    borderRadius: 14,
-                    border: "1px dashed #d7dfea",
+                    padding: s[4],
+                    borderRadius: designTokens.radius.md + s[1],
+                    border: `1px dashed ${c.primary[300]}`,
                     background: "#ffffff",
-                    color: "#8090a8",
-                    fontSize: 14,
+                    color: c.neutral[500],
+                    fontSize: fs[14],
                   }}
                 >
                   当前报告日未返回组合影响估算，状态按 unavailable 处理，不在前端补零。
@@ -1357,17 +1380,17 @@ export default function MarketDataPage() {
             </section>
 
             <section data-testid="market-data-linkage-spread-tenors" style={detailPanelStyle}>
-              <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 18, fontWeight: 600 }}>
+              <h2 style={{ marginTop: 0, marginBottom: s[2], fontSize: fs[18], fontWeight: 600 }}>
                 信用利差显式维度
               </h2>
-              <p style={{ marginTop: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+              <p style={{ marginTop: 0, color: c.neutral[600], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
                 仅按结构化字段 `target_family / target_tenor` 渲染，不从 label 或 target_yield 反推 tenor。
               </p>
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: 12,
+                  gap: s[3],
                 }}
               >
                 {spreadSlots.map(({ tenor, point }) => (
@@ -1375,23 +1398,23 @@ export default function MarketDataPage() {
                     key={tenor}
                     data-testid={`market-data-linkage-spread-slot-${tenor}`}
                     style={{
-                      padding: 16,
-                      borderRadius: 16,
-                      border: "1px solid #e4ebf5",
+                      padding: s[4],
+                      borderRadius: s[4],
+                      border: `1px solid ${c.primary[200]}`,
                       background: "#ffffff",
                       display: "grid",
-                      gap: 8,
+                      gap: s[2],
                     }}
                   >
-                    <div style={{ fontWeight: 600, color: "#162033" }}>{`credit_spread_${tenor}`}</div>
+                    <div style={{ fontWeight: 600, color: c.neutral[900] }}>{`credit_spread_${tenor}`}</div>
                     {point ? (
                       <>
-                        <div style={{ color: "#5c6b82", fontSize: 13 }}>{point.series_name}</div>
-                        <div>{`corr 1Y ${formatCorrelation(point.correlation_1y)}`}</div>
-                        <div>{`lead / lag ${point.lead_lag_days} 天`}</div>
+                        <div style={{ color: c.neutral[600], fontSize: fs[13] }}>{point.series_name}</div>
+                        <div style={tabularNumsStyle}>{`corr 1Y ${formatCorrelation(point.correlation_1y)}`}</div>
+                        <div style={tabularNumsStyle}>{`lead / lag ${point.lead_lag_days} 天`}</div>
                       </>
                     ) : (
-                      <div style={{ color: "#8090a8", fontSize: 13, lineHeight: 1.7 }}>
+                      <div style={{ color: c.neutral[500], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
                         unavailable：当前 payload 未返回该 tenor 的结构化相关性，不在前端推断。
                       </div>
                     )}
@@ -1401,12 +1424,12 @@ export default function MarketDataPage() {
             </section>
 
             <section data-testid="market-data-linkage-top-correlations" style={detailPanelStyle}>
-              <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 18, fontWeight: 600 }}>
+              <h2 style={{ marginTop: 0, marginBottom: s[2], fontSize: fs[18], fontWeight: 600 }}>
                 相关性 Top 10
               </h2>
               {(nonSpreadTopCorrelations.length > 0 ||
                 spreadSlots.some((slot) => slot.point !== null)) ? (
-                <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "grid", gap: s[3] }}>
                   {(macroBondLinkage.top_correlations ?? []).map((point) =>
                     renderCorrelationCard(point),
                   )}
@@ -1414,12 +1437,12 @@ export default function MarketDataPage() {
               ) : (
                 <div
                   style={{
-                    padding: 16,
-                    borderRadius: 14,
-                    border: "1px dashed #d7dfea",
+                    padding: s[4],
+                    borderRadius: designTokens.radius.md + s[1],
+                    border: `1px dashed ${c.primary[300]}`,
                     background: "#ffffff",
-                    color: "#8090a8",
-                    fontSize: 14,
+                    color: c.neutral[500],
+                    fontSize: fs[14],
                   }}
                 >
                   当前无可展示的结构化相关性结果。
@@ -1446,24 +1469,24 @@ export default function MarketDataPage() {
           isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
           onRetry={() => void catalogQuery.refetch()}
         >
-          <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "grid", gap: s[3] }}>
             {catalog.map((series) => (
               <div
                 key={series.series_id}
                 style={{
                   display: "grid",
-                  gap: 6,
-                  padding: 14,
-                  borderRadius: 16,
-                  border: "1px solid #e4ebf5",
+                  gap: s[2],
+                  padding: s[4],
+                  borderRadius: s[4],
+                  border: `1px solid ${c.primary[200]}`,
                   background: "#ffffff",
                 }}
               >
                 <strong>{series.series_name}</strong>
-                <div style={{ color: "#5c6b82", fontSize: 13 }}>
+                <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
                   {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
                 </div>
-                <div style={{ color: "#8090a8", fontSize: 12 }}>
+                <div style={{ color: c.neutral[500], fontSize: fs[12] }}>
                   vendor_version {series.vendor_version}
                 </div>
               </div>

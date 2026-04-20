@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 type CurveKind = "treasury" | "cdb";
@@ -34,12 +35,12 @@ const CDB_ROWS: RateQuoteRow[] = [
 
 function deltaBpColor(bp: number) {
   if (bp < 0) {
-    return "#2f8f63";
+    return designTokens.color.semantic.up;
   }
   if (bp > 0) {
-    return "#c0392b";
+    return designTokens.color.semantic.loss;
   }
-  return "#31425b";
+  return designTokens.color.neutral[800];
 }
 
 export function RateQuoteTable() {
@@ -50,7 +51,14 @@ export function RateQuoteTable() {
     () => [
       { title: "品种", dataIndex: "variety", key: "variety", width: 72 },
       { title: "期限", dataIndex: "tenor", key: "tenor", width: 56 },
-      { title: "利率%", dataIndex: "ratePct", key: "ratePct", align: "right", width: 88 },
+      {
+        title: "利率%",
+        dataIndex: "ratePct",
+        key: "ratePct",
+        align: "right",
+        width: 88,
+        render: (v: string) => <span style={tabularNumsStyle}>{v}</span>,
+      },
       {
         title: "涨跌bp",
         dataIndex: "deltaBp",
@@ -58,7 +66,7 @@ export function RateQuoteTable() {
         align: "right",
         width: 88,
         render: (v: number) => (
-          <span style={{ color: deltaBpColor(v), fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ color: deltaBpColor(v), ...tabularNumsStyle }}>
             {v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1)}
           </span>
         ),
@@ -68,7 +76,7 @@ export function RateQuoteTable() {
         dataIndex: "volume",
         key: "volume",
         align: "right",
-        render: (v: number) => <span style={{ fontVariantNumeric: "tabular-nums" }}>{v.toLocaleString()}</span>,
+        render: (v: number) => <span style={tabularNumsStyle}>{v.toLocaleString()}</span>,
       },
       { title: "区间", dataIndex: "range", key: "range", ellipsis: true },
     ],

@@ -5,6 +5,7 @@ import { Spin, Tabs } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { ChoiceNewsEvent } from "../../../api/contracts";
 
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 function summarizeNewsLine(event: ChoiceNewsEvent) {
@@ -32,7 +33,13 @@ function formatReceivedTime(iso: string) {
   }
 }
 
-const emptyHintStyle = { margin: 0, padding: "16px 4px", color: "#5c6b82", fontSize: 13, lineHeight: 1.55 };
+const emptyHintStyle = {
+  margin: 0,
+  padding: `${designTokens.space[4]}px ${designTokens.space[1]}px`,
+  color: designTokens.color.neutral[600],
+  fontSize: designTokens.fontSize[13],
+  lineHeight: designTokens.lineHeight.normal,
+} as const;
 
 export function NewsAndCalendar() {
   const client = useApiClient();
@@ -62,7 +69,7 @@ export function NewsAndCalendar() {
             children: (
               <div style={{ minHeight: 200 }}>
                 {newsQuery.isLoading ? (
-                  <div style={{ padding: 24, textAlign: "center" }}>
+                  <div style={{ padding: designTokens.space[6], textAlign: "center" }}>
                     <Spin />
                   </div>
                 ) : newsQuery.isError ? (
@@ -73,17 +80,23 @@ export function NewsAndCalendar() {
                   <ul
                     style={{
                       margin: 0,
-                      padding: "0 0 0 18px",
+                      padding: `0 0 0 ${designTokens.space[5]}px`,
                       display: "grid",
-                      gap: 10,
-                      fontSize: 13,
-                      color: "#162033",
-                      lineHeight: 1.55,
+                      gap: designTokens.space[3],
+                      fontSize: designTokens.fontSize[13],
+                      color: designTokens.color.neutral[900],
+                      lineHeight: designTokens.lineHeight.normal,
                     }}
                   >
                     {headlineRows.map((row, idx) => (
                       <li key={`${row.time}-${idx}`}>
-                        <span style={{ fontVariantNumeric: "tabular-nums", color: "#5c6b82", marginRight: 8 }}>
+                        <span
+                          style={{
+                            ...tabularNumsStyle,
+                            color: designTokens.color.neutral[600],
+                            marginRight: designTokens.space[2],
+                          }}
+                        >
                           {row.time}
                         </span>
                         {row.title}

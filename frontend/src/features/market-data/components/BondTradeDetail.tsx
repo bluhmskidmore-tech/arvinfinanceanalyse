@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
+import { designTokens } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 type TabKey = "main" | "cash";
@@ -36,10 +37,12 @@ const CASH_ROWS: TradeRow[] = [
   { key: "c8", time: "10:25:19", name: "21 国开 08", tenor: "8.40Y", price: "104.100", yieldPct: "2.305", volume: "3,400", side: "卖出" },
 ];
 
+const s = designTokens.space;
+
 const sideStyle = (side: TradeRow["side"]) =>
   side === "买入"
-    ? { background: "#fff0f0", color: "#a02626" }
-    : { background: "#edf8f2", color: "#1f6b45" };
+    ? { background: designTokens.color.danger[50], color: designTokens.color.danger[700] }
+    : { background: designTokens.color.success[50], color: designTokens.color.success[600] };
 
 export function BondTradeDetail() {
   const [tab, setTab] = useState<TabKey>("cash");
@@ -62,9 +65,9 @@ export function BondTradeDetail() {
           <span
             style={{
               display: "inline-block",
-              padding: "2px 8px",
-              borderRadius: 6,
-              fontSize: 12,
+              padding: `${s[1]}px ${s[2]}px`,
+              borderRadius: designTokens.radius.sm,
+              fontSize: designTokens.fontSize[12],
               fontWeight: 600,
               ...sideStyle(side),
             }}

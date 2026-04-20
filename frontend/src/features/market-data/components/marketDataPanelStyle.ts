@@ -1,14 +1,19 @@
+import { designTokens } from "../../../theme/designSystem";
+
+const s = designTokens.space;
+const c = designTokens.color;
+
 export const marketDataPanelStyle = {
-  padding: 24,
-  borderRadius: 20,
-  background: "#fbfcfe",
-  border: "1px solid #e4ebf5",
-  boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+  padding: s[6],
+  borderRadius: s[5],
+  background: c.primary[50],
+  border: `1px solid ${c.primary[200]}`,
+  boxShadow: designTokens.shadow.card,
 } as const;
 
 export const marketDataBlockTitleStyle = {
-  margin: "0 0 12px",
-  fontSize: 16,
+  margin: `0 0 ${s[3]}px`,
+  fontSize: designTokens.fontSize[16],
   fontWeight: 600,
-  color: "#162033",
+  color: c.neutral[900],
 } as const;

@@ -4,6 +4,7 @@ import type { ColumnsType } from "antd/es/table";
 
 import type { MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 export type SpreadTenorSlot = {
@@ -51,7 +52,14 @@ export function LinkageSpreadTenorTable({
     () => [
       { title: "期限", dataIndex: "tenor", key: "tenor", width: 56 },
       { title: "代表序列", dataIndex: "seriesName", key: "seriesName", ellipsis: true },
-      { title: "corr 1Y", dataIndex: "corr1y", key: "corr1y", align: "right", width: 72 },
+      {
+        title: "corr 1Y",
+        dataIndex: "corr1y",
+        key: "corr1y",
+        align: "right",
+        width: 72,
+        render: (v: string) => <span style={tabularNumsStyle}>{v}</span>,
+      },
       { title: "lead/lag", dataIndex: "leadLag", key: "leadLag", align: "right", width: 88 },
       { title: "方向", dataIndex: "direction", key: "direction", width: 88 },
     ],
@@ -61,7 +69,14 @@ export function LinkageSpreadTenorTable({
   return (
     <section data-testid="market-data-linkage-spread-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>信用利差</h2>
-      <p style={{ margin: "0 0 12px", color: "#5c6b82", fontSize: 12, lineHeight: 1.5 }}>
+      <p
+        style={{
+          margin: `0 0 ${designTokens.space[3]}px`,
+          color: designTokens.color.neutral[600],
+          fontSize: designTokens.fontSize[12],
+          lineHeight: designTokens.lineHeight.normal,
+        }}
+      >
         来自宏观-债市联动的 credit_spread 结构化维度；无数据时表格为空。
       </p>
       <Table<Row>
