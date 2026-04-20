@@ -88,6 +88,10 @@ const COPY = {
   revokeFailed: "\u64a4\u9500\u5931\u8d25",
   restoreFailed: "\u6062\u590d\u5931\u8d25",
   exportFailed: "\u5bfc\u51fa\u5ba1\u8ba1\u5931\u8d25",
+  mappingAccountPlaceholder:
+    "\u79d1\u76ee\u4ee3\u7801\uff08GL \u5c3e\u5e16\u7801\uff0c\u4e0e\u540e\u7aef\u7ea6\u675f\u4e00\u81f4\uff09",
+  adjustmentValuePlaceholder:
+    "\u6307\u6807\u503c\u6216\u6620\u5c04\u540e\u6587\u672c\uff08\u4e0e\u540e\u7aef\u7ea6\u675f\u4e00\u81f4\uff09",
   requiredValue: "\u8bf7\u586b\u5199\u8c03\u6574\u503c\u3002",
   requiredMapping: "\u8bf7\u5b8c\u6574\u586b\u5199\u6620\u5c04\u8c03\u6574\u7684\u79d1\u76ee\u4ee3\u7801\u548c\u6620\u5c04\u5b57\u6bb5\u3002",
   requiredAnalysis:
@@ -323,7 +327,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
         </div>
         <FilterBar style={{ justifyContent: "flex-end" }}>
           <span style={modeBadgeStyle}>
-            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <label style={{ display: "grid", gap: 8 }}>
             {COPY.reportMonth}
@@ -411,7 +415,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
                       field: String(draft.target.field ?? "industry_name"),
                     })
                   }
-                  placeholder="如 12301 或 14001000001"
+                  placeholder={COPY.mappingAccountPlaceholder}
                 />
               </label>
               <label style={{ display: "grid", gap: 6 }}>
@@ -511,7 +515,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
               data-testid="monthly-operating-analysis-adjustment-value"
               value={draft.value}
               onChange={(event) => updateDraft("value", event.target.value)}
-              placeholder="value"
+              placeholder={COPY.adjustmentValuePlaceholder}
             />
           </label>
           <div style={{ display: "flex", alignItems: "end" }}>

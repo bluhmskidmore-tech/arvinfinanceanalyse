@@ -144,7 +144,7 @@ export default function MonthlyOperatingAnalysisBranch() {
     });
     setDisplayedSheets(payload.result.sheets);
     setScenarioSummary(
-      `${payload.result.scenario_name}: ${Object.keys(payload.result.applied_overrides).join(", ") || "no overrides"}`,
+      `${payload.result.scenario_name}: ${Object.keys(payload.result.applied_overrides).join(", ") || "无情景覆盖项"}`,
     );
   }
 
@@ -162,7 +162,7 @@ export default function MonthlyOperatingAnalysisBranch() {
         </div>
         <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
           <span style={modeBadgeStyle}>
-            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <label style={{ display: "grid", gap: 8 }}>
             报告月份

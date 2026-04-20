@@ -513,7 +513,7 @@ export default function ProductCategoryPnlPage() {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <span style={modeBadgeStyle}>
-            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
             查看调整审计

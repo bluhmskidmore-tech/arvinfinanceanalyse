@@ -440,7 +440,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         </div>
         <FilterBar style={{ justifyContent: "flex-end" }}>
           <span style={modeBadgeStyle}>
-            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <a href="/product-category-pnl">返回产品损益页</a>
           <button
@@ -628,7 +628,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           created_at from (UTC)
           <input
             data-testid="audit-created-at-from"
-            placeholder="2026-04-10T00:00:00Z"
+            placeholder="UTC，ISO 8601，例 2006-01-02T15:04:05Z"
             value={filterDraft.createdAtFrom ?? ""}
             onChange={(event) => updateFilter("createdAtFrom", event.target.value)}
           />
@@ -637,7 +637,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           created_at to (UTC)
           <input
             data-testid="audit-created-at-to"
-            placeholder="2026-04-10T23:59:59Z"
+            placeholder="UTC，ISO 8601，例 2006-01-02T23:59:59Z"
             value={filterDraft.createdAtTo ?? ""}
             onChange={(event) => updateFilter("createdAtTo", event.target.value)}
           />
