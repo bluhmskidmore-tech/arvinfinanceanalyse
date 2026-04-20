@@ -1,8 +1,11 @@
 import { Button, Card, Tag } from "antd";
 
+import { designTokens } from "../../../theme/designSystem";
 import type { BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { EYEBROW, panelStyle, promotionLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
+
+const dt = designTokens;
 
 function ReadinessRow({
   item,
@@ -19,21 +22,21 @@ function ReadinessRow({
       style={{
         border: `1px solid ${surface.borderColor}`,
         background: surface.background,
-        borderRadius: 18,
-        padding: 14,
+        borderRadius: dt.radius.lg,
+        padding: dt.space[4],
         display: "grid",
-        gap: 10,
+        gap: dt.space[3],
       }}
       data-testid={`bond-analysis-readiness-${item.key}`}
       data-promotion-destination={item.promotionDestination}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#16304f" }}>{item.label}</div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3], flexWrap: "wrap" }}>
+        <div style={{ display: "grid", gap: dt.space[2], minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: dt.space[2], flexWrap: "wrap" }}>
+            <div style={{ fontSize: dt.fontSize[14], fontWeight: 700, color: dt.color.primary[900] }}>{item.label}</div>
             <span
               style={{
-                fontSize: 11,
+                fontSize: dt.fontSize[11],
                 color: surface.accent,
                 fontWeight: 700,
                 textTransform: "uppercase",
@@ -43,31 +46,31 @@ function ReadinessRow({
               {promotionLabel(item.promotionDestination)}
             </span>
           </div>
-          <div style={{ color: "#52657f", fontSize: 12 }}>{item.description}</div>
+          <div style={{ color: dt.color.neutral[700], fontSize: dt.fontSize[12] }}>{item.description}</div>
         </div>
         <Tag color={readinessTagColor(item.statusLabel)}>{item.statusLabel}</Tag>
       </div>
-      <div style={{ color: surface.text, fontSize: 12, lineHeight: 1.6 }}>{item.statusReason}</div>
-      <div style={{ color: "#73859e", fontSize: 12, lineHeight: 1.6 }}>{item.detailHint}</div>
+      <div style={{ color: surface.text, fontSize: dt.fontSize[12], lineHeight: 1.6 }}>{item.statusReason}</div>
+      <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12], lineHeight: 1.6 }}>{item.detailHint}</div>
       {warningText ? (
         <div
           style={{
-            borderRadius: 14,
-            padding: "9px 11px",
-            background: "rgba(255,255,255,0.72)",
+            borderRadius: dt.radius.md,
+            padding: `${dt.space[2]}px ${dt.space[3]}px`,
+            background: `${dt.color.neutral[50]}B8`,
             color: surface.text,
-            fontSize: 12,
+            fontSize: dt.fontSize[12],
             lineHeight: 1.5,
           }}
         >
           {warningText}
         </div>
       ) : null}
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3], flexWrap: "wrap" }}>
         <Button size="small" type="default" onClick={() => onOpenModuleDetail(item.key)} data-testid={`bond-analysis-open-${item.key}`}>
           Open detail
         </Button>
-        <div style={{ color: "#7f90a6", fontSize: 11 }}>
+        <div style={{ color: dt.color.neutral[500], fontSize: dt.fontSize[11] }}>
           Current lane: {item.promotionDestination === "headline" ? "governed headline" : "drill"}
         </div>
       </div>
@@ -82,17 +85,17 @@ export interface BondAnalyticsReadinessMatrixProps {
 
 export function BondAnalyticsReadinessMatrix({ readinessItems, onOpenModuleDetail }: BondAnalyticsReadinessMatrixProps) {
   return (
-    <Card size="small" data-testid="bond-analysis-readiness-matrix" style={panelStyle("#ffffff")}>
-      <div style={{ display: "grid", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gap: 6 }}>
+    <Card size="small" data-testid="bond-analysis-readiness-matrix" style={panelStyle(dt.color.neutral[50])}>
+      <div style={{ display: "grid", gap: dt.space[3] }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: dt.space[3], flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: dt.space[2] }}>
             <div style={EYEBROW}>Module readiness</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>Drill queue and promotion boundary</div>
+            <div style={{ fontSize: dt.fontSize[18], fontWeight: 700, color: dt.color.primary[900] }}>Drill queue and promotion boundary</div>
           </div>
-          <div style={{ color: "#7a8da5", fontSize: 12 }}>{readinessItems.length} overview-linked module(s)</div>
+          <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12] }}>{readinessItems.length} overview-linked module(s)</div>
         </div>
 
-        <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "grid", gap: dt.space[3] }}>
           {readinessItems.map((item) => (
             <ReadinessRow key={item.key} item={item} onOpenModuleDetail={onOpenModuleDetail} />
           ))}

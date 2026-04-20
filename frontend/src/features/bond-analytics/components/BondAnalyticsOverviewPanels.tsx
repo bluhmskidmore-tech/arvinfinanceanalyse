@@ -1,3 +1,4 @@
+import { designTokens } from "../../../theme/designSystem";
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type {
@@ -13,6 +14,8 @@ import { BondAnalyticsMarketContextStrip } from "./BondAnalyticsMarketContextStr
 import PerformanceComparison from "./PerformanceComparison";
 import RiskTrendChart from "./RiskTrendChart";
 import BondEventCalendar from "./BondEventCalendar";
+
+const dt = designTokens;
 
 export interface BondAnalyticsOverviewPanelsProps {
   dateOptions: Array<{ value: string; label: string }>;
@@ -60,8 +63,8 @@ export function BondAnalyticsOverviewPanels({
   lastAnalyticsRefreshRunId = null,
 }: BondAnalyticsOverviewPanelsProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "grid", gap: 12 }} data-testid="bond-analysis-top-cockpit">
+    <div style={{ display: "flex", flexDirection: "column", gap: dt.space[3] }}>
+      <div style={{ display: "grid", gap: dt.space[3] }} data-testid="bond-analysis-top-cockpit">
         <BondAnalyticsMarketContextStrip
           reportDate={reportDate}
           periodType={periodType}
@@ -103,7 +106,7 @@ export function BondAnalyticsOverviewPanels({
           style={{
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-            gap: 12,
+            gap: dt.space[3],
             alignItems: "start",
           }}
         >
