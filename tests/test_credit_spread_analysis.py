@@ -193,6 +193,8 @@ def test_api_returns_real_data(tmp_path, monkeypatch):
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             stdin=subprocess.DEVNULL,
             env={
                 **os.environ,

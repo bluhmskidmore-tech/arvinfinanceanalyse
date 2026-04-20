@@ -262,6 +262,42 @@ describe("BondAnalyticsView", () => {
     });
   });
 
+  it("keeps the homepage stable when portfolio headlines and top holdings both fail", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsPortfolioHeadlines: vi.fn(async () => {
+        throw new Error("backend 503 for portfolio headlines");
+      }),
+      getBondAnalyticsTopHoldings: vi.fn(async () => {
+        throw new Error("backend 503 for top holdings");
+      }),
+    };
+
+    renderBondAnalyticsView(client);
+
+    const topCockpit = await screen.findByTestId(
+      "bond-analysis-top-cockpit",
+      {},
+      { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
+    );
+
+    expect(topCockpit).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(within(topCockpit).queryByText("backend 503 for portfolio headlines")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("backend 503 for top holdings")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("Request error")).not.toBeInTheDocument();
+      expect(within(topCockpit).queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(
+        within(topCockpit).getByText("组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。"),
+      ).toBeInTheDocument();
+      expect(
+        within(topCockpit).getByText("前十大持仓暂未返回，首页先保留组合规模与浮盈快照。"),
+      ).toBeInTheDocument();
+      expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
+    });
+  });
+
   it("uses homepage action buttons to drive drill switching", async () => {
     const user = userEvent.setup();
     const fetchMock = vi.fn(async (input: string | URL | Request) => {
@@ -356,6 +392,38 @@ describe("BondAnalyticsView", () => {
       expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
         "data-module-key",
         "credit-spread",
+      );
+    });
+  });
+
+  it("uses homepage structure and holdings actions to drive drill switching", async () => {
+    const user = userEvent.setup();
+
+    renderBondAnalyticsView();
+
+    await user.click(
+      await screen.findByTestId("bond-analysis-home-open-portfolio-headlines", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        "portfolio-headlines",
+      );
+    });
+
+    await user.click(
+      await screen.findByTestId("bond-analysis-home-open-top-holdings", {}, {
+        timeout: BOND_ANALYTICS_FIND_TIMEOUT,
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        "top-holdings",
       );
     });
   });

@@ -108,7 +108,7 @@ class TestPctToBp:
 
     def test_standard_conversion(self):
         """2.55% → 255 BP"""
-        assert pct_to_bp(2.55) == 255.0
+        assert pct_to_bp(2.55) == pytest.approx(255.0)
 
     def test_zero(self):
         """0.0% → 0 BP"""

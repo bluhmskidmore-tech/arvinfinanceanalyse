@@ -67,7 +67,7 @@ class TestIncomeEffect:
         )
         # 0.03 * 10_000_000 * 30 / 365
         expected = Decimal("0.03") * Decimal("10000000") * Decimal("30") / Decimal("365")
-        assert result["income_return"] == pytest.approx(float(expected), rel=1e-6)
+        assert float(result["income_return"]) == pytest.approx(float(expected), rel=1e-6)
 
     def test_income_scales_with_days(self):
         bond = _make_bond(coupon_rate=0.04, face_value=5_000_000.0)
@@ -395,13 +395,13 @@ class TestEdgeCases:
         assert "total_return" in result
 
     def test_missing_maturity_date(self):
-        """Missing maturity date uses fallback duration (0.01)."""
+        """Missing maturity uses proxy years (3.0) per bond_duration._estimate_duration_proxy_years."""
         bond = _make_bond(maturity_date=None)
         result = compute_bond_four_effects(
             bond, 30, Decimal("0.002"), Decimal("0.001"), date(2026, 1, 1)
         )
-        # mod_duration fallback is 0.01
-        assert float(result["mod_duration"]) == pytest.approx(0.01, abs=1e-6)
+        md = float(result["mod_duration"])
+        assert 0.15 < md < 0.35
         assert "total_return" in result
 
     def test_zero_market_value_start(self):

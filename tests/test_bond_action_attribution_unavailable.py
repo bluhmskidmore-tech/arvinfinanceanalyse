@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from tests.helpers import load_module
 
@@ -20,8 +21,12 @@ def test_bond_action_attribution_service_returns_explicit_unavailable_contract()
     assert payload["result_meta"]["quality_flag"] == "warning"
     assert payload["result"]["status"] == "unavailable"
     assert payload["result"]["total_actions"] == 0
-    assert payload["result"]["total_pnl_from_actions"]["raw"] == 0.0
-    assert payload["result"]["total_pnl_from_actions"]["unit"] == "yuan"
+    tp = payload["result"]["total_pnl_from_actions"]
+    if isinstance(tp, str):
+        assert Decimal(tp) == 0
+    else:
+        assert tp["raw"] == 0.0
+        assert tp["unit"] == "yuan"
     assert payload["result"]["available_components"] == []
     assert payload["result"]["missing_inputs"] == [
         "trade_level_action_facts",

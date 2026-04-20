@@ -232,4 +232,30 @@ describe("LiabilityAnalyticsPage", () => {
     expect(await screen.findByTestId("liability-page-state")).toHaveTextContent("所选报告日暂无负债分析数据");
     expect(screen.queryByTestId("liability-conclusion")).not.toBeInTheDocument();
   });
+
+  it("renders the fifth-page asset liability cockpit sections from the mockup", async () => {
+    const base = createApiClient({ mode: "real" });
+
+    renderLiabilityPage({
+      ...base,
+      getBalanceAnalysisDates: vi.fn(async () => balanceDates(["2025-12-31"])),
+      getLiabilityRiskBuckets: vi.fn(async () => riskPayload("2025-12-31")),
+      getLiabilityYieldMetrics: vi.fn(async () => yieldPayload("2025-12-31")),
+      getLiabilityCounterparty: vi.fn(async () => counterpartyPayload("2025-12-31")),
+      getLiabilitiesMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_total_liabilities: null, ytd_avg_liability_cost: null })),
+      getLiabilityAdbMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_assets: 0, ytd_avg_liabilities: 0, ytd_asset_yield: null, ytd_liability_cost: null, ytd_nim: null, unit: "percent" })),
+    });
+
+    expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
+    await screen.findByTestId("liability-conclusion");
+    expect(screen.getByText("本期资产负债摘要")).toBeInTheDocument();
+    expect(screen.getByText("收益成本分解（静态口径）")).toBeInTheDocument();
+    expect(screen.getByText("风险全景")).toBeInTheDocument();
+    expect(screen.getByText("资产 / 负债 / 缺口贡献")).toBeInTheDocument();
+    expect(screen.getByText("待关注事项")).toBeInTheDocument();
+    expect(screen.getByText("预警与事件")).toBeInTheDocument();
+    expect(screen.getByText("期限结构（资产 / 负债 / 净缺口）")).toBeInTheDocument();
+    expect(screen.getByText("风险指标")).toBeInTheDocument();
+    expect(screen.getByText("关键日历（负债到期关注）")).toBeInTheDocument();
+  });
 });

@@ -324,6 +324,8 @@ def test_balance_analysis_materialize_fails_when_required_fx_rate_is_missing(tmp
     # Use controlled vendor failures instead of live Choice calls.
     monkeypatch = pytest.MonkeyPatch()
     try:
+        monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", "")
+        monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", "")
         _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
         monkeypatch.setattr(
             fx_mod,
@@ -535,6 +537,8 @@ def test_balance_analysis_materialize_fails_when_only_prior_business_day_fx_exis
 
     monkeypatch = pytest.MonkeyPatch()
     try:
+        monkeypatch.setenv("MOSS_FX_MID_CSV_PATH", "")
+        monkeypatch.setenv("MOSS_FX_OFFICIAL_SOURCE_PATH", "")
         _patch_usd_only_formal_fx_candidates(fx_mod, monkeypatch)
         monkeypatch.setattr(
             fx_mod,

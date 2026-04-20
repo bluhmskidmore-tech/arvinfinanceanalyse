@@ -25,7 +25,6 @@ from backend.app.schemas.bond_analytics import (
     ScenarioResult,
     SpreadScenarioResult,
 )
-from backend.app.schemas.common_numeric import Numeric
 from tests.helpers import load_module
 
 
@@ -46,7 +45,7 @@ def test_asset_class_breakdown_defaults():
         "backend/app/schemas/bond_analytics.py",
     )
     row = schema_module.AssetClassBreakdown(asset_class="rate")
-    assert isinstance(row.carry, Numeric)
+    assert isinstance(row.carry, schema_module.Numeric)
     assert row.carry.raw == 0.0
     assert row.roll_down.unit == "yuan"
     assert row.convexity_effect.sign_aware is True

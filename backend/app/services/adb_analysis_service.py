@@ -16,8 +16,19 @@ from typing import Any
 import duckdb
 import pandas as pd
 
+from backend.app.core_finance.adb_analytics import (
+    aggregate_daily_totals,
+    build_comparison_rows,
+    build_rate_map,
+    compute_adb_trend,
+    compute_mom_changes,
+    compute_nim,
+    compute_weighted_rate,
+    enrich_breakdown,
+    month_date_range,
+)
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
-from backend.app.core_finance.adb_rate_normalize import normalize_rate_series_pd, normalize_rate_values
+from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
 from backend.app.governance.settings import get_settings
 from backend.app.services.formal_result_runtime import build_result_envelope
 
@@ -115,6 +126,92 @@ def _empty_adb_response() -> dict[str, Any]:
     }
 
 
+def _classify_zqtz_rows(
+    rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Split raw ZQTZ rows into (asset_rows, liability_rows) using position_scope + is_issuance_like."""
+    concrete = [r for r in rows if str(r.get("position_scope") or "") in {"asset", "liability"}]
+    scoped = concrete if concrete else rows
+    assets, liabilities = [], []
+    for row in scoped:
+        if str(row.get("position_scope") or "") == "liability" or bool(row.get("is_issuance_like")):
+            liabilities.append(row)
+        else:
+            assets.append(row)
+    return assets, liabilities
+
+
+def _classify_tyw_rows(
+    rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Split raw TYW rows into (asset_rows, liability_rows) using position_scope + position_side."""
+    concrete = [r for r in rows if str(r.get("position_scope") or "") in {"asset", "liability"}]
+    scoped = concrete if concrete else rows
+    assets, liabilities = [], []
+    for row in scoped:
+        scope = str(row.get("position_scope") or "").lower()
+        side = str(row.get("position_side") or "").lower()
+        is_asset = scope == "asset" or (scope not in {"asset", "liability"} and "asset" in side)
+        (assets if is_asset else liabilities).append(row)
+    return assets, liabilities
+
+
+def _build_bonds_df(
+    asset_rows: list[dict[str, object]],
+    liability_rows: list[dict[str, object]],
+) -> pd.DataFrame:
+    """Construct normalised bonds DataFrame from classified ZQTZ row dicts."""
+    def _bond_record(row: dict[str, object], is_issuance: bool) -> dict[str, object]:
+        return {
+            "report_date": row["report_date"],
+            "market_value": row["market_value_amount"],
+            "yield_to_maturity": row["ytm_value"],
+            "coupon_rate": row["coupon_rate"],
+            "interest_rate": 0.0,
+            "asset_class": row.get("asset_class") or "",
+            "sub_type": row.get("bond_type") or "",
+            "is_issuance_like": is_issuance,
+        }
+
+    records = [_bond_record(r, False) for r in asset_rows] + [_bond_record(r, True) for r in liability_rows]
+    df = pd.DataFrame(records)
+    return _normalize_adb_frame(
+        df,
+        date_columns=("report_date",),
+        numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
+    )
+
+
+def _build_ib_df(
+    asset_rows: list[dict[str, object]],
+    liability_rows: list[dict[str, object]],
+) -> pd.DataFrame:
+    """Construct normalised interbank DataFrame from classified TYW row dicts."""
+    def _ib_record(row: dict[str, object], direction: str) -> dict[str, object]:
+        return {
+            "report_date": row["report_date"],
+            "amount": row["principal_amount"],
+            "interest_rate": row["funding_cost_rate"],
+            "product_type": row["product_type"],
+            "direction": direction,
+        }
+
+    records = [_ib_record(r, "ASSET") for r in asset_rows] + [_ib_record(r, "LIABILITY") for r in liability_rows]
+    df = pd.DataFrame(records)
+    return _normalize_adb_frame(
+        df,
+        date_columns=("report_date",),
+        numeric_columns=("amount", "interest_rate"),
+    )
+
+
+def _collect_version_strings(
+    *row_lists: list[dict[str, object]],
+    field: str,
+) -> list[str]:
+    return [str(row.get(field) or "") for rows in row_lists for row in rows]
+
+
 def _load_adb_raw_data(
     duckdb_path: str,
     start_date: date,
@@ -131,116 +228,21 @@ def _load_adb_raw_data(
     conn = _conn_ro(duckdb_path)
     try:
         if _table_exists(conn, "fact_formal_zqtz_balance_daily"):
-            zqtz_rows = [
-                _dict_from_row(description, row)
-                for description, row in _fetch_formal_zqtz_rows(conn, start_date, end_date)
-            ]
-            concrete_zqtz_rows = [
-                row for row in zqtz_rows if str(row.get("position_scope") or "") in {"asset", "liability"}
-            ]
-            scoped_zqtz_rows = concrete_zqtz_rows if concrete_zqtz_rows else zqtz_rows
-            for row in scoped_zqtz_rows:
-                if str(row.get("position_scope") or "") == "liability" or bool(row.get("is_issuance_like")):
-                    zqtz_liability_rows.append(row)
-                else:
-                    zqtz_asset_rows.append(row)
+            raw = [_dict_from_row(d, r) for d, r in _fetch_formal_zqtz_rows(conn, start_date, end_date)]
+            zqtz_asset_rows, zqtz_liability_rows = _classify_zqtz_rows(raw)
 
         if _table_exists(conn, "fact_formal_tyw_balance_daily"):
-            tyw_rows = [
-                _dict_from_row(description, row)
-                for description, row in _fetch_formal_tyw_rows(conn, start_date, end_date)
-            ]
-            concrete_tyw_rows = [
-                row for row in tyw_rows if str(row.get("position_scope") or "") in {"asset", "liability"}
-            ]
-            scoped_tyw_rows = concrete_tyw_rows if concrete_tyw_rows else tyw_rows
-            for row in scoped_tyw_rows:
-                position_scope = str(row.get("position_scope") or "").lower()
-                position_side = str(row.get("position_side") or "").lower()
-                is_asset = position_scope == "asset" or (
-                    position_scope not in {"asset", "liability"} and "asset" in position_side
-                )
-                if is_asset:
-                    tyw_asset_rows.append(row)
-                else:
-                    tyw_liability_rows.append(row)
+            raw = [_dict_from_row(d, r) for d, r in _fetch_formal_tyw_rows(conn, start_date, end_date)]
+            tyw_asset_rows, tyw_liability_rows = _classify_tyw_rows(raw)
     finally:
         conn.close()
 
-    source_versions = [
-        *[str(row.get("source_version") or "") for row in zqtz_asset_rows],
-        *[str(row.get("source_version") or "") for row in zqtz_liability_rows],
-        *[str(row.get("source_version") or "") for row in tyw_asset_rows],
-        *[str(row.get("source_version") or "") for row in tyw_liability_rows],
-    ]
-    rule_versions = [
-        *[str(row.get("rule_version") or "") for row in zqtz_asset_rows],
-        *[str(row.get("rule_version") or "") for row in zqtz_liability_rows],
-        *[str(row.get("rule_version") or "") for row in tyw_asset_rows],
-        *[str(row.get("rule_version") or "") for row in tyw_liability_rows],
-    ]
+    all_row_lists = (zqtz_asset_rows, zqtz_liability_rows, tyw_asset_rows, tyw_liability_rows)
+    source_versions = _collect_version_strings(*all_row_lists, field="source_version")
+    rule_versions = _collect_version_strings(*all_row_lists, field="rule_version")
 
-    bonds_df = pd.DataFrame(
-        [
-            {
-                "report_date": row["report_date"],
-                "market_value": row["market_value_amount"],
-                "yield_to_maturity": row["ytm_value"],
-                "coupon_rate": row["coupon_rate"],
-                "interest_rate": 0.0,
-                "asset_class": row.get("asset_class") or "",
-                "sub_type": row.get("bond_type") or "",
-                "is_issuance_like": False,
-            }
-            for row in zqtz_asset_rows
-        ]
-        + [
-            {
-                "report_date": row["report_date"],
-                "market_value": row["market_value_amount"],
-                "yield_to_maturity": row["ytm_value"],
-                "coupon_rate": row["coupon_rate"],
-                "interest_rate": 0.0,
-                "asset_class": row.get("asset_class") or "",
-                "sub_type": row.get("bond_type") or "",
-                "is_issuance_like": True,
-            }
-            for row in zqtz_liability_rows
-        ]
-    )
-    ib_df = pd.DataFrame(
-        [
-            {
-                "report_date": row["report_date"],
-                "amount": row["principal_amount"],
-                "interest_rate": row["funding_cost_rate"],
-                "product_type": row["product_type"],
-                "direction": "ASSET",
-            }
-            for row in tyw_asset_rows
-        ]
-        + [
-            {
-                "report_date": row["report_date"],
-                "amount": row["principal_amount"],
-                "interest_rate": row["funding_cost_rate"],
-                "product_type": row["product_type"],
-                "direction": "LIABILITY",
-            }
-            for row in tyw_liability_rows
-        ]
-    )
-
-    bonds_df = _normalize_adb_frame(
-        bonds_df,
-        date_columns=("report_date",),
-        numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
-    )
-    ib_df = _normalize_adb_frame(
-        ib_df,
-        date_columns=("report_date",),
-        numeric_columns=("amount", "interest_rate"),
-    )
+    bonds_df = _build_bonds_df(zqtz_asset_rows, zqtz_liability_rows)
+    ib_df = _build_ib_df(tyw_asset_rows, tyw_liability_rows)
 
     return bonds_df, ib_df, source_versions, rule_versions
 
@@ -561,6 +563,28 @@ def _adb_breakdown_from_frames(
     return out
 
 
+def _split_bonds_ib_by_side(
+    bonds_df: pd.DataFrame,
+    interbank_df: pd.DataFrame,
+) -> tuple[dict[date, Decimal], dict[date, Decimal], dict[date, Decimal], dict[date, Decimal]]:
+    """Return (bonds_assets, bonds_liabilities, ib_assets, ib_liabilities) as date→Decimal maps."""
+    bonds_assets: dict[date, Decimal] = {}
+    bonds_liabilities: dict[date, Decimal] = {}
+    ib_assets: dict[date, Decimal] = {}
+    ib_liabilities: dict[date, Decimal] = {}
+
+    if not bonds_df.empty:
+        issued_mask = _issued_mask(bonds_df)
+        bonds_assets = _frame_sum_by_date(bonds_df[~issued_mask], "market_value")
+        bonds_liabilities = _frame_sum_by_date(bonds_df[issued_mask], "market_value")
+
+    if not interbank_df.empty:
+        ib_assets = _frame_sum_by_date(interbank_df[interbank_df["direction"] == "ASSET"], "amount")
+        ib_liabilities = _frame_sum_by_date(interbank_df[interbank_df["direction"] == "LIABILITY"], "amount")
+
+    return bonds_assets, bonds_liabilities, ib_assets, ib_liabilities
+
+
 def calculate_adb(
     duckdb_path: str,
     start_date: date,
@@ -575,71 +599,104 @@ def calculate_adb(
     if bonds_df.empty and interbank_df.empty:
         return _empty_adb_response(), source_versions, rule_versions
 
-    bonds_assets: dict[date, Decimal] = {}
-    bonds_liabilities: dict[date, Decimal] = {}
-    ib_assets: dict[date, Decimal] = {}
-    ib_liabilities: dict[date, Decimal] = {}
-
-    if not bonds_df.empty:
-        issued_mask = _issued_mask(bonds_df)
-        bonds_assets_df = bonds_df[~issued_mask].copy()
-        bonds_liab_df = bonds_df[issued_mask].copy()
-        bonds_assets = _frame_sum_by_date(bonds_assets_df, "market_value")
-        bonds_liabilities = _frame_sum_by_date(bonds_liab_df, "market_value")
-
-    if not interbank_df.empty:
-        ib_assets_df = interbank_df[interbank_df["direction"] == "ASSET"].copy()
-        ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
-        ib_assets = _frame_sum_by_date(ib_assets_df, "amount")
-        ib_liabilities = _frame_sum_by_date(ib_liab_df, "amount")
-
-    daily_assets: dict[date, Decimal] = {}
-    daily_liabilities: dict[date, Decimal] = {}
-    total_assets_sum = Decimal("0")
-    total_liabilities_sum = Decimal("0")
-    for current_day in all_days:
-        assets_amount = bonds_assets.get(current_day, Decimal("0")) + ib_assets.get(current_day, Decimal("0"))
-        liabilities_amount = bonds_liabilities.get(current_day, Decimal("0")) + ib_liabilities.get(current_day, Decimal("0"))
-        daily_assets[current_day] = assets_amount
-        daily_liabilities[current_day] = liabilities_amount
-        total_assets_sum += assets_amount
-        total_liabilities_sum += liabilities_amount
+    bonds_assets, bonds_liabilities, ib_assets, ib_liabilities = _split_bonds_ib_by_side(bonds_df, interbank_df)
+    daily_assets, daily_liabilities, total_assets_sum, total_liabilities_sum = aggregate_daily_totals(
+        all_days, bonds_assets, bonds_liabilities, ib_assets, ib_liabilities
+    )
 
     nd = Decimal(str(num_days)) if num_days else Decimal("0")
     avg_assets = (total_assets_sum / nd) if nd else Decimal("0")
     avg_liabilities = (total_liabilities_sum / nd) if nd else Decimal("0")
-    end_spot_assets = daily_assets.get(end_date, Decimal("0"))
-    end_spot_liabilities = daily_liabilities.get(end_date, Decimal("0"))
-
-    trend: list[dict[str, float]] = []
-    window: list[Decimal] = []
-    window_sum = Decimal("0")
-    for current_day in all_days:
-        spot = daily_assets[current_day]
-        window.append(spot)
-        window_sum += spot
-        if len(window) > 30:
-            window_sum -= window.pop(0)
-        moving_average = (window_sum / Decimal(str(len(window)))) if window else Decimal("0")
-        trend.append(
-            {
-                "date": current_day.strftime("%Y-%m-%d"),
-                "daily_balance": float(spot),
-                "moving_average_30d": float(moving_average),
-            }
-        )
 
     payload = {
         "summary": {
             "total_avg_assets": float(avg_assets),
             "total_avg_liabilities": float(avg_liabilities),
-            "end_spot_assets": float(end_spot_assets),
-            "end_spot_liabilities": float(end_spot_liabilities),
+            "end_spot_assets": float(daily_assets.get(end_date, Decimal("0"))),
+            "end_spot_liabilities": float(daily_liabilities.get(end_date, Decimal("0"))),
         },
-        "trend": trend,
+        "trend": compute_adb_trend(all_days, daily_assets),
         "breakdown": _adb_breakdown_from_frames(bonds_df, interbank_df, num_days),
     }
     return payload, source_versions, rule_versions
+
+
+def _build_comparison_spot_sum_maps(
+    bonds_df: pd.DataFrame,
+    interbank_df: pd.DataFrame,
+    end_date: date,
+) -> tuple[dict[str, Decimal], dict[str, Decimal], dict[str, Decimal], dict[str, Decimal]]:
+    """Accumulate spot (end_date) and period-sum maps for assets and liabilities."""
+    spot_assets: dict[str, Decimal] = {}
+    spot_liabilities: dict[str, Decimal] = {}
+    sum_assets: dict[str, Decimal] = {}
+    sum_liabilities: dict[str, Decimal] = {}
+
+    if not bonds_df.empty:
+        issued_mask = _issued_mask(bonds_df)
+        _accumulate_spot_and_sum_maps(
+            bonds_df[~issued_mask],
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "sub_type", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _accumulate_spot_and_sum_maps(
+            bonds_df[issued_mask],
+            amount_attr="market_value",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "sub_type", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
+
+    if not interbank_df.empty:
+        _accumulate_spot_and_sum_maps(
+            interbank_df[interbank_df["direction"] == "ASSET"],
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_assets,
+            sum_map=sum_assets,
+        )
+        _accumulate_spot_and_sum_maps(
+            interbank_df[interbank_df["direction"] == "LIABILITY"],
+            amount_attr="amount",
+            end_date=end_date,
+            category_resolver=lambda row: getattr(row, "product_type", None),
+            spot_map=spot_liabilities,
+            sum_map=sum_liabilities,
+        )
+
+    return spot_assets, spot_liabilities, sum_assets, sum_liabilities
+
+
+def _empty_comparison_response(
+    start_date: date,
+    end_date: date,
+    num_days: int,
+    detail: str | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "report_date": end_date.strftime("%Y-%m-%d"),
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "num_days": num_days,
+        "simulated": False,
+        "total_spot_assets": 0.0,
+        "total_avg_assets": 0.0,
+        "total_spot_liabilities": 0.0,
+        "total_avg_liabilities": 0.0,
+        "asset_yield": None,
+        "liability_cost": None,
+        "net_interest_margin": None,
+        "assets_breakdown": [],
+        "liabilities_breakdown": [],
+    }
+    if detail:
+        payload["detail"] = detail
+    return payload
 
 
 def get_adb_comparison(
@@ -655,134 +712,30 @@ def get_adb_comparison(
     num_days = int((end_date - start_date).days) + 1
     num_days_dec = Decimal(str(max(num_days, 1)))
 
-    def empty_response(detail: str | None = None) -> dict[str, Any]:
-        payload: dict[str, Any] = {
-            "report_date": end_date.strftime("%Y-%m-%d"),
-            "start_date": start_date.strftime("%Y-%m-%d"),
-            "end_date": end_date.strftime("%Y-%m-%d"),
-            "num_days": num_days,
-            "simulated": False,
-            "total_spot_assets": 0.0,
-            "total_avg_assets": 0.0,
-            "total_spot_liabilities": 0.0,
-            "total_avg_liabilities": 0.0,
-            "asset_yield": None,
-            "liability_cost": None,
-            "net_interest_margin": None,
-            "assets_breakdown": [],
-            "liabilities_breakdown": [],
-        }
-        if detail:
-            payload["detail"] = detail
-        return payload
-
     bonds_df, interbank_df, source_versions, rule_versions = _load_adb_raw_data(duckdb_path, start_date, end_date)
     if bonds_df.empty and interbank_df.empty:
-        return empty_response(), source_versions, rule_versions
+        return _empty_comparison_response(start_date, end_date, num_days), source_versions, rule_versions
 
-    spot_assets: dict[str, Decimal] = {}
-    spot_liabilities: dict[str, Decimal] = {}
-    sum_assets: dict[str, Decimal] = {}
-    sum_liabilities: dict[str, Decimal] = {}
-
-    if not bonds_df.empty:
-        issued_mask = _issued_mask(bonds_df)
-        bonds_assets_df = bonds_df[~issued_mask].copy()
-        bonds_liab_df = bonds_df[issued_mask].copy()
-        _accumulate_spot_and_sum_maps(
-            bonds_assets_df,
-            amount_attr="market_value",
-            end_date=end_date,
-            category_resolver=lambda row: getattr(row, "sub_type", None),
-            spot_map=spot_assets,
-            sum_map=sum_assets,
-        )
-        _accumulate_spot_and_sum_maps(
-            bonds_liab_df,
-            amount_attr="market_value",
-            end_date=end_date,
-            category_resolver=lambda row: getattr(row, "sub_type", None),
-            spot_map=spot_liabilities,
-            sum_map=sum_liabilities,
-        )
-
-    if not interbank_df.empty:
-        ib_assets_df = interbank_df[interbank_df["direction"] == "ASSET"].copy()
-        ib_liab_df = interbank_df[interbank_df["direction"] == "LIABILITY"].copy()
-        _accumulate_spot_and_sum_maps(
-            ib_assets_df,
-            amount_attr="amount",
-            end_date=end_date,
-            category_resolver=lambda row: getattr(row, "product_type", None),
-            spot_map=spot_assets,
-            sum_map=sum_assets,
-        )
-        _accumulate_spot_and_sum_maps(
-            ib_liab_df,
-            amount_attr="amount",
-            end_date=end_date,
-            category_resolver=lambda row: getattr(row, "product_type", None),
-            spot_map=spot_liabilities,
-            sum_map=sum_liabilities,
-        )
+    spot_assets, spot_liabilities, sum_assets, sum_liabilities = _build_comparison_spot_sum_maps(
+        bonds_df, interbank_df, end_date
+    )
 
     simulated = bool(simulate_if_single_snapshot and num_days <= 1)
+    assets = build_comparison_rows(
+        "Asset", spot_assets, sum_assets, num_days_dec, top_n, simulated, end_date, _stable_factor
+    )
+    liabilities = build_comparison_rows(
+        "Liability", spot_liabilities, sum_liabilities, num_days_dec, top_n, simulated, end_date, _stable_factor
+    )
 
-    def build_rows(side: str, spot_map: dict[str, Decimal], sum_map: dict[str, Decimal]) -> list[dict[str, float]]:
-        categories = set(spot_map.keys()) | set(sum_map.keys())
-        rows: list[dict[str, float]] = []
-        for category in categories:
-            clean_key = _clean_cat(category)
-            spot_value = spot_map.get(clean_key, Decimal("0")) or Decimal("0")
-            if simulated:
-                avg_value = spot_value * _stable_factor(f"{side}:{end_date}:{clean_key}")
-            else:
-                avg_value = (sum_map.get(clean_key, Decimal("0")) or Decimal("0")) / num_days_dec
-            deviation = spot_value - avg_value
-            if spot_value == 0 and avg_value == 0:
-                continue
-            rows.append(
-                {
-                    "category": clean_key,
-                    "spot": float(spot_value),
-                    "avg": float(avg_value),
-                    "deviation": float(deviation),
-                }
-            )
-        rows.sort(key=lambda row: (abs(row.get("deviation") or 0.0), row.get("spot") or 0.0), reverse=True)
-        return rows[: max(int(top_n), 0)]
-
-    assets = build_rows("Asset", spot_assets, sum_assets)
-    liabilities = build_rows("Liability", spot_liabilities, sum_liabilities)
     total_spot_assets = float(sum(item["spot"] for item in assets))
     total_avg_assets = float(sum(item["avg"] for item in assets))
     total_spot_liabilities = float(sum(item["spot"] for item in liabilities))
     total_avg_liabilities = float(sum(item["avg"] for item in liabilities))
 
     asset_frames, liability_frames, *_ = _split_rate_frames(bonds_df, interbank_df)
-    asset_rate_map, asset_yield = _build_rate_map(asset_frames)
-    liability_rate_map, liability_cost = _build_rate_map(liability_frames)
-    net_interest_margin = (
-        round(asset_yield - liability_cost, 4)
-        if asset_yield is not None and liability_cost is not None
-        else None
-    )
-
-    def enrich_breakdown(
-        rows: list[dict[str, float]],
-        total_avg: float,
-        rate_map: dict[str, float | None],
-    ) -> list[dict[str, Any]]:
-        return [
-            {
-                "category": row["category"],
-                "spot_balance": float(row["spot"]),
-                "avg_balance": float(row["avg"]),
-                "proportion": round(float(row["avg"]) / total_avg * 100, 2) if total_avg > 0 else 0.0,
-                "weighted_rate": rate_map.get(row["category"]),
-            }
-            for row in rows
-        ]
+    asset_rate_map, asset_yield = build_rate_map(asset_frames)
+    liability_rate_map, liability_cost = build_rate_map(liability_frames)
 
     payload = {
         "report_date": end_date.strftime("%Y-%m-%d"),
@@ -796,11 +749,139 @@ def get_adb_comparison(
         "total_avg_liabilities": total_avg_liabilities,
         "asset_yield": asset_yield,
         "liability_cost": liability_cost,
-        "net_interest_margin": net_interest_margin,
+        "net_interest_margin": compute_nim(asset_yield, liability_cost),
         "assets_breakdown": enrich_breakdown(assets, total_avg_assets, asset_rate_map),
         "liabilities_breakdown": enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map),
     }
     return payload, source_versions, rule_versions
+
+
+def _build_month_breakdowns(
+    month_bonds_assets: pd.DataFrame,
+    month_bonds_liab: pd.DataFrame,
+    month_ib_assets: pd.DataFrame,
+    month_ib_liab: pd.DataFrame,
+    num_days: int,
+    avg_assets: float,
+    avg_liabilities: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Build and annotate asset/liability breakdown rows for a single month."""
+    breakdown_assets = _frame_breakdown_rows(
+        month_bonds_assets, category_attr="sub_type", amount_attr="market_value", num_days=num_days
+    )
+    breakdown_assets.extend(
+        _frame_breakdown_rows(
+            month_ib_assets, category_attr="product_type", amount_attr="amount", num_days=num_days, prefix="同业-"
+        )
+    )
+    breakdown_liabilities = _frame_breakdown_rows(
+        month_ib_liab, category_attr="product_type", amount_attr="amount", num_days=num_days, prefix="同业-"
+    )
+    breakdown_liabilities.extend(
+        _frame_breakdown_rows(
+            month_bonds_liab, category_attr="sub_type", amount_attr="market_value", num_days=num_days, prefix="发行债券-"
+        )
+    )
+    for item in breakdown_assets:
+        item["proportion"] = round(item["avg_balance"] / avg_assets * 100, 2) if avg_assets > 0 else 0
+        item["side"] = "Asset"
+    for item in breakdown_liabilities:
+        item["proportion"] = round(item["avg_balance"] / avg_liabilities * 100, 2) if avg_liabilities > 0 else 0
+        item["side"] = "Liability"
+    breakdown_assets.sort(key=lambda row: row["avg_balance"], reverse=True)
+    breakdown_liabilities.sort(key=lambda row: row["avg_balance"], reverse=True)
+    return breakdown_assets, breakdown_liabilities
+
+
+def _process_single_month(
+    month_year: int,
+    month_number: int,
+    bonds_assets_df: pd.DataFrame,
+    bonds_liab_df: pd.DataFrame,
+    ib_assets_df: pd.DataFrame,
+    ib_liab_df: pd.DataFrame,
+    prev_avg_assets: float | None,
+    prev_avg_liabilities: float | None,
+) -> dict[str, Any] | None:
+    """Process a single month's ADB data; return None if no data for that month."""
+    month_start, month_end = month_date_range(month_year, month_number)
+    if month_start > date.today():
+        return None
+
+    month_bonds_assets = _filter_frame_between_dates(bonds_assets_df, month_start, month_end)
+    month_bonds_liab = _filter_frame_between_dates(bonds_liab_df, month_start, month_end)
+    month_ib_assets = _filter_frame_between_dates(ib_assets_df, month_start, month_end)
+    month_ib_liab = _filter_frame_between_dates(ib_liab_df, month_start, month_end)
+
+    all_month_dates: set[date] = set()
+    for frame in (month_bonds_assets, month_bonds_liab, month_ib_assets, month_ib_liab):
+        all_month_dates.update(_frame_unique_dates(frame))
+    if not all_month_dates:
+        return None
+
+    num_days = len(all_month_dates)
+    total_assets, total_assets_weighted = 0.0, 0.0
+    for frame, col in ((month_bonds_assets, "market_value"), (month_ib_assets, "amount")):
+        ft, fw = _frame_total_amounts(frame, col)
+        total_assets += ft
+        total_assets_weighted += fw
+
+    total_liabilities, total_liabilities_weighted = 0.0, 0.0
+    for frame, col in ((month_bonds_liab, "market_value"), (month_ib_liab, "amount")):
+        ft, fw = _frame_total_amounts(frame, col)
+        total_liabilities += ft
+        total_liabilities_weighted += fw
+
+    if total_assets == 0 and total_liabilities == 0:
+        return None
+
+    avg_assets = total_assets / num_days if num_days > 0 else 0.0
+    avg_liabilities = total_liabilities / num_days if num_days > 0 else 0.0
+
+    breakdown_assets, breakdown_liabilities = _build_month_breakdowns(
+        month_bonds_assets, month_bonds_liab, month_ib_assets, month_ib_liab,
+        num_days, avg_assets, avg_liabilities,
+    )
+
+    last_data_date = max(all_month_dates)
+    end_spot_assets = (
+        _frame_spot_total_for_date(month_bonds_assets, "market_value", last_data_date)
+        + _frame_spot_total_for_date(month_ib_assets, "amount", last_data_date)
+    )
+    end_spot_liabilities = (
+        _frame_spot_total_for_date(month_bonds_liab, "market_value", last_data_date)
+        + _frame_spot_total_for_date(month_ib_liab, "amount", last_data_date)
+    )
+
+    assets_mom, assets_mom_pct, liabilities_mom, liabilities_mom_pct = compute_mom_changes(
+        avg_assets, avg_liabilities, prev_avg_assets, prev_avg_liabilities
+    )
+    asset_yield = compute_weighted_rate(total_assets_weighted, total_assets)
+    liability_cost = compute_weighted_rate(total_liabilities_weighted, total_liabilities)
+
+    return {
+        "month": f"{month_year}-{month_number:02d}",
+        "month_label": f"{month_year}年{month_number}月",
+        "avg_assets": avg_assets,
+        "avg_liabilities": avg_liabilities,
+        "end_spot_assets": end_spot_assets,
+        "end_spot_liabilities": end_spot_liabilities,
+        "mom_change_assets": assets_mom,
+        "mom_change_pct_assets": assets_mom_pct,
+        "mom_change_liabilities": liabilities_mom,
+        "mom_change_pct_liabilities": liabilities_mom_pct,
+        "asset_yield": asset_yield,
+        "liability_cost": liability_cost,
+        "net_interest_margin": compute_nim(asset_yield, liability_cost),
+        "breakdown_assets": breakdown_assets,
+        "breakdown_liabilities": breakdown_liabilities,
+        "num_days": num_days,
+        # YTD accumulators — stripped by caller before appending to months_data
+        "total_assets": total_assets,
+        "total_assets_weighted": total_assets_weighted,
+        "total_liabilities": total_liabilities,
+        "total_liabilities_weighted": total_liabilities_weighted,
+    }
 
 
 def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], list[str], list[str]]:
@@ -822,8 +903,7 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         return empty, source_versions, rule_versions
 
     asset_frames, liability_frames, bonds_assets_df, bonds_liab_df, ib_assets_df, ib_liab_df = _split_rate_frames(
-        bonds_df,
-        interbank_df,
+        bonds_df, interbank_df
     )
     all_dates: set[date] = set()
     all_dates.update(_frame_unique_dates(bonds_df))
@@ -843,149 +923,47 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     ytd_days = 0
 
     for month_year, month_number in available_months:
-        month_start = date(month_year, month_number, 1)
-        if month_number == 12:
-            month_end = date(month_year, 12, 31)
-        else:
-            month_end = date(month_year, month_number + 1, 1) - timedelta(days=1)
-        month_end = min(month_end, date.today())
-        if month_start > date.today():
+        month_result = _process_single_month(
+            month_year,
+            month_number,
+            bonds_assets_df,
+            bonds_liab_df,
+            ib_assets_df,
+            ib_liab_df,
+            prev_avg_assets,
+            prev_avg_liabilities,
+        )
+        if month_result is None:
             continue
 
-        month_bonds_assets = _filter_frame_between_dates(bonds_assets_df, month_start, month_end)
-        month_bonds_liab = _filter_frame_between_dates(bonds_liab_df, month_start, month_end)
-        month_ib_assets = _filter_frame_between_dates(ib_assets_df, month_start, month_end)
-        month_ib_liab = _filter_frame_between_dates(ib_liab_df, month_start, month_end)
+        ytd_total_assets += Decimal(str(month_result["total_assets"]))
+        ytd_total_liabilities += Decimal(str(month_result["total_liabilities"]))
+        ytd_assets_weighted += Decimal(str(month_result["total_assets_weighted"]))
+        ytd_liabilities_weighted += Decimal(str(month_result["total_liabilities_weighted"]))
+        ytd_days += month_result["num_days"]
 
-        all_month_dates: set[date] = set()
-        for frame in (month_bonds_assets, month_bonds_liab, month_ib_assets, month_ib_liab):
-            all_month_dates.update(_frame_unique_dates(frame))
-        if not all_month_dates:
-            continue
+        month_result.pop("total_assets")
+        month_result.pop("total_assets_weighted")
+        month_result.pop("total_liabilities")
+        month_result.pop("total_liabilities_weighted")
 
-        num_days = len(all_month_dates)
-        total_assets = 0.0
-        total_assets_weighted = 0.0
-        for frame, amount_col in ((month_bonds_assets, "market_value"), (month_ib_assets, "amount")):
-            frame_total, frame_weighted = _frame_total_amounts(frame, amount_col)
-            total_assets += frame_total
-            total_assets_weighted += frame_weighted
+        months_data.append(month_result)
+        prev_avg_assets = month_result["avg_assets"]
+        prev_avg_liabilities = month_result["avg_liabilities"]
 
-        total_liabilities = 0.0
-        total_liabilities_weighted = 0.0
-        for frame, amount_col in ((month_bonds_liab, "market_value"), (month_ib_liab, "amount")):
-            frame_total, frame_weighted = _frame_total_amounts(frame, amount_col)
-            total_liabilities += frame_total
-            total_liabilities_weighted += frame_weighted
-
-        if total_assets == 0 and total_liabilities == 0:
-            continue
-
-        avg_assets = total_assets / num_days if num_days > 0 else 0.0
-        avg_liabilities = total_liabilities / num_days if num_days > 0 else 0.0
-
-        breakdown_assets = _frame_breakdown_rows(
-            month_bonds_assets,
-            category_attr="sub_type",
-            amount_attr="market_value",
-            num_days=num_days,
-        )
-        breakdown_assets.extend(
-            _frame_breakdown_rows(
-                month_ib_assets,
-                category_attr="product_type",
-                amount_attr="amount",
-                num_days=num_days,
-                prefix="同业-",
-            )
-        )
-        breakdown_liabilities = _frame_breakdown_rows(
-            month_ib_liab,
-            category_attr="product_type",
-            amount_attr="amount",
-            num_days=num_days,
-            prefix="同业-",
-        )
-        breakdown_liabilities.extend(
-            _frame_breakdown_rows(
-                month_bonds_liab,
-                category_attr="sub_type",
-                amount_attr="market_value",
-                num_days=num_days,
-                prefix="发行债券-",
-            )
-        )
-        for item in breakdown_assets:
-            item["proportion"] = round(item["avg_balance"] / avg_assets * 100, 2) if avg_assets > 0 else 0
-            item["side"] = "Asset"
-        for item in breakdown_liabilities:
-            item["proportion"] = round(item["avg_balance"] / avg_liabilities * 100, 2) if avg_liabilities > 0 else 0
-            item["side"] = "Liability"
-        breakdown_assets.sort(key=lambda row: row["avg_balance"], reverse=True)
-        breakdown_liabilities.sort(key=lambda row: row["avg_balance"], reverse=True)
-
-        last_data_date = max(all_month_dates)
-        end_spot_assets = _frame_spot_total_for_date(month_bonds_assets, "market_value", last_data_date)
-        end_spot_assets += _frame_spot_total_for_date(month_ib_assets, "amount", last_data_date)
-        end_spot_liabilities = _frame_spot_total_for_date(month_bonds_liab, "market_value", last_data_date)
-        end_spot_liabilities += _frame_spot_total_for_date(month_ib_liab, "amount", last_data_date)
-
-        ytd_total_assets += Decimal(str(total_assets))
-        ytd_total_liabilities += Decimal(str(total_liabilities))
-        ytd_assets_weighted += Decimal(str(total_assets_weighted))
-        ytd_liabilities_weighted += Decimal(str(total_liabilities_weighted))
-        ytd_days += num_days
-
-        assets_mom = None
-        assets_mom_pct = None
-        liabilities_mom = None
-        liabilities_mom_pct = None
-        if prev_avg_assets is not None and prev_avg_assets != 0:
-            assets_mom = round(avg_assets - prev_avg_assets, 2)
-            assets_mom_pct = round((avg_assets - prev_avg_assets) / prev_avg_assets * 100, 2)
-        if prev_avg_liabilities is not None and prev_avg_liabilities != 0:
-            liabilities_mom = round(avg_liabilities - prev_avg_liabilities, 2)
-            liabilities_mom_pct = round((avg_liabilities - prev_avg_liabilities) / prev_avg_liabilities * 100, 2)
-
-        asset_yield = round(float(total_assets_weighted / total_assets * 100), 4) if total_assets > 0 else None
-        liability_cost = round(float(total_liabilities_weighted / total_liabilities * 100), 4) if total_liabilities > 0 else None
-        nim = round(asset_yield - liability_cost, 4) if asset_yield is not None and liability_cost is not None else None
-
-        months_data.append(
-            {
-                "month": f"{month_year}-{month_number:02d}",
-                "month_label": f"{month_year}年{month_number}月",
-                "avg_assets": avg_assets,
-                "avg_liabilities": avg_liabilities,
-                "end_spot_assets": end_spot_assets,
-                "end_spot_liabilities": end_spot_liabilities,
-                "mom_change_assets": assets_mom,
-                "mom_change_pct_assets": assets_mom_pct,
-                "mom_change_liabilities": liabilities_mom,
-                "mom_change_pct_liabilities": liabilities_mom_pct,
-                "asset_yield": asset_yield,
-                "liability_cost": liability_cost,
-                "net_interest_margin": nim,
-                "breakdown_assets": breakdown_assets,
-                "breakdown_liabilities": breakdown_liabilities,
-                "num_days": num_days,
-            }
-        )
-        prev_avg_assets = avg_assets
-        prev_avg_liabilities = avg_liabilities
+    ytd_asset_yield = compute_weighted_rate(float(ytd_assets_weighted), float(ytd_total_assets))
+    ytd_liability_cost = compute_weighted_rate(float(ytd_liabilities_weighted), float(ytd_total_liabilities))
 
     payload = {
         "year": year,
         "months": months_data,
         "ytd_avg_assets": float(ytd_total_assets / ytd_days) if ytd_days > 0 else 0.0,
         "ytd_avg_liabilities": float(ytd_total_liabilities / ytd_days) if ytd_days > 0 else 0.0,
-        "ytd_asset_yield": round(float(ytd_assets_weighted / ytd_total_assets * 100), 4) if ytd_total_assets > 0 else None,
-        "ytd_liability_cost": round(float(ytd_liabilities_weighted / ytd_total_liabilities * 100), 4) if ytd_total_liabilities > 0 else None,
-        "ytd_nim": None,
+        "ytd_asset_yield": ytd_asset_yield,
+        "ytd_liability_cost": ytd_liability_cost,
+        "ytd_nim": compute_nim(ytd_asset_yield, ytd_liability_cost),
         "unit": "percent",
     }
-    if payload["ytd_asset_yield"] is not None and payload["ytd_liability_cost"] is not None:
-        payload["ytd_nim"] = round(payload["ytd_asset_yield"] - payload["ytd_liability_cost"], 4)
     return payload, source_versions, rule_versions
 
 

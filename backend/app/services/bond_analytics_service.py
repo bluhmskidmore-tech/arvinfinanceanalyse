@@ -809,47 +809,56 @@ def _build_return_decomposition_payload(
     )
 
 
-def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
-    period_start, period_end = resolve_period(report_date, period_type)
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
-    if not rows:
-        meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
-
-    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+def _fetch_return_decomposition_inputs(
+    *,
+    rows: list[dict[str, object]],
+    curve_repo: "YieldCurveRepository",
+    report_date: str,
+    period_start: str,
+) -> dict[str, object]:
+    """Fetch FX rates and curves for return decomposition."""
     fx_rates_current, fx_current_warning, fx_rates_prior, fx_prior_warning = _fetch_fx_rates(
-        curve_repo, current_date=report_date.isoformat(), prior_date=period_start.isoformat()
+        curve_repo, current_date=report_date, prior_date=period_start
     )
     curves = _fetch_all_curve_pairs(
-        rows, curve_repo=curve_repo,
-        report_date=report_date.isoformat(), prior_date=period_start.isoformat(),
+        rows, curve_repo=curve_repo, report_date=report_date, prior_date=period_start,
     )
     fx_unavailable = _fx_unavailable_for_return_rows(rows, fx_rates_current=fx_rates_current, fx_rates_prior=fx_rates_prior)
     fx_latest_fallback = any(
         w and FX_LATEST_FALLBACK_PREFIX in w for w in (fx_current_warning, fx_prior_warning)
     )
     fx_missing_warnings = _fx_missing_warnings_for_return_rows(
-        rows, report_date=report_date.isoformat(), prior_date=period_start.isoformat(),
+        rows, report_date=report_date, prior_date=period_start,
         fx_rates_current=fx_rates_current, fx_rates_prior=fx_rates_prior,
     )
+    return {
+        "fx_rates_current": fx_rates_current,
+        "fx_current_warning": fx_current_warning,
+        "fx_rates_prior": fx_rates_prior,
+        "fx_prior_warning": fx_prior_warning,
+        "fx_unavailable": fx_unavailable,
+        "fx_latest_fallback": fx_latest_fallback,
+        "fx_missing_warnings": fx_missing_warnings,
+        **curves,
+    }
 
-    meta = _meta("bond_analytics.return_decomposition", report_date, rows)
-    meta = _apply_vendor_meta_update(
-        meta,
-        curve_snapshots=curves["curve_snapshots"],
-        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
-        curve_unavailable=curves["curve_unavailable"],
-        curve_latest_fallback=curves["curve_latest_fallback"],
-        fx_unavailable=fx_unavailable,
-        fx_latest_fallback=fx_latest_fallback,
-    )
 
-    treasury_current = curves["treasury_current"]
-    treasury_prior = curves["treasury_prior"]
-    cdb_current = curves["cdb_current"]
-    cdb_prior = curves["cdb_prior"]
-    aaa_current = curves["aaa_current"]
-    aaa_prior = curves["aaa_prior"]
+def _compute_return_decomposition_summary(
+    *,
+    rows: list[dict[str, object]],
+    period_start: date,
+    period_end: date,
+    period_type: str,
+    inputs: dict[str, object],
+    duckdb_path: str,
+) -> tuple[dict[str, object], list[str], list[dict[str, str]]]:
+    """Compute return decomposition summary with trading overlay."""
+    treasury_current = inputs["treasury_current"]
+    treasury_prior = inputs["treasury_prior"]
+    cdb_current = inputs["cdb_current"]
+    cdb_prior = inputs["cdb_prior"]
+    aaa_current = inputs["aaa_current"]
+    aaa_prior = inputs["aaa_prior"]
 
     summary = summarize_return_decomposition(
         rows,
@@ -861,14 +870,48 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
         aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
         aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
-        fx_rates_current=fx_rates_current,
-        fx_rates_prior=fx_rates_prior,
+        fx_rates_current=inputs["fx_rates_current"],
+        fx_rates_prior=inputs["fx_rates_prior"],
     )
-    summary, trading_extra_warnings, trading_wd = _overlay_return_decomposition_trading_pnl517(
+    return _overlay_return_decomposition_trading_pnl517(
         summary,
         period_type=period_type,
         period_start=period_start,
         period_end=period_end,
+        duckdb_path=duckdb_path,
+    )
+
+
+def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_class: str = "all", accounting_class: str = "all") -> dict:
+    period_start, period_end = resolve_period(report_date, period_type)
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat(), asset_class=asset_class, accounting_class=accounting_class)
+    if not rows:
+        meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+        return _empty_return_response(meta, report_date, period_type, period_start, period_end)
+
+    curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
+    inputs = _fetch_return_decomposition_inputs(
+        rows=rows, curve_repo=curve_repo,
+        report_date=report_date.isoformat(), period_start=period_start.isoformat(),
+    )
+
+    meta = _meta("bond_analytics.return_decomposition", report_date, rows)
+    meta = _apply_vendor_meta_update(
+        meta,
+        curve_snapshots=inputs["curve_snapshots"],
+        cache_version_suffix=YIELD_CURVE_CACHE_VERSION,
+        curve_unavailable=inputs["curve_unavailable"],
+        curve_latest_fallback=inputs["curve_latest_fallback"],
+        fx_unavailable=inputs["fx_unavailable"],
+        fx_latest_fallback=inputs["fx_latest_fallback"],
+    )
+
+    summary, trading_extra_warnings, trading_wd = _compute_return_decomposition_summary(
+        rows=rows,
+        period_start=period_start,
+        period_end=period_end,
+        period_type=period_type,
+        inputs=inputs,
         duckdb_path=str(get_settings().duckdb_path),
     )
     payload = _build_return_decomposition_payload(
@@ -878,10 +921,10 @@ def get_return_decomposition(report_date: date, period_type: str = "MoM", asset_
         period_end=period_end,
         summary=summary,
         meta=meta,
-        relevant_curve_warnings=curves["relevant_curve_warnings"],
-        fx_current_warning=fx_current_warning,
-        fx_prior_warning=fx_prior_warning,
-        fx_missing_warnings=fx_missing_warnings,
+        relevant_curve_warnings=inputs["relevant_curve_warnings"],
+        fx_current_warning=inputs["fx_current_warning"],
+        fx_prior_warning=inputs["fx_prior_warning"],
+        fx_missing_warnings=inputs["fx_missing_warnings"],
         trading_extra_warnings=trading_extra_warnings,
         warnings_detail=trading_wd,
     )
@@ -1292,6 +1335,39 @@ def _build_benchmark_excess_warnings(
     )
 
 
+def _compute_benchmark_excess_summary(
+    *,
+    rows: list[dict[str, object]],
+    period_start: date,
+    period_end: date,
+    benchmark_id: str,
+    curves: dict[str, object],
+) -> dict[str, object]:
+    """Compute benchmark excess summary from pre-fetched curve data."""
+    current_curve = curves["current_curve"]
+    prior_curve = curves["prior_curve"]
+    treasury_current = curves["treasury_current"]
+    treasury_prior = curves["treasury_prior"]
+    cdb_current = curves["cdb_current"]
+    cdb_prior = curves["cdb_prior"]
+    aaa_current = curves["aaa_current"]
+    aaa_prior = curves["aaa_prior"]
+    return compute_benchmark_excess(
+        rows,
+        period_start=period_start,
+        period_end=period_end,
+        benchmark_id=benchmark_id,
+        benchmark_curve_current=current_curve["curve"] if current_curve and prior_curve else None,
+        benchmark_curve_prior=prior_curve["curve"] if current_curve and prior_curve else None,
+        treasury_curve_current=treasury_current["curve"] if treasury_current and treasury_prior else None,
+        treasury_curve_prior=treasury_prior["curve"] if treasury_current and treasury_prior else None,
+        cdb_curve_current=cdb_current["curve"] if cdb_current and cdb_prior else None,
+        cdb_curve_prior=cdb_prior["curve"] if cdb_current and cdb_prior else None,
+        aaa_credit_curve_current=aaa_current["curve"] if aaa_current and aaa_prior else None,
+        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_current and aaa_prior else None,
+    )
+
+
 def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_id: str = "CDB_INDEX") -> dict:
     period_start, period_end = resolve_period(report_date, period_type)
     rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
@@ -1315,8 +1391,8 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
             warnings=_ordered_unique_warnings(bench_warns),
         )
         return build_formal_result_envelope(
-        result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
-    )
+            result_meta=meta, result_payload=_bond_analytics_api_payload(payload.model_dump(mode="json"))
+        )
 
     curve_repo = YieldCurveRepository(str(get_settings().duckdb_path))
     curves = _fetch_benchmark_curves(
@@ -1324,7 +1400,6 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         report_date=report_date.isoformat(), prior_date=period_start.isoformat(),
         benchmark_id=benchmark_id,
     )
-
     meta = _apply_vendor_meta_update(
         meta,
         curve_snapshots=curves["curve_snapshots"],
@@ -1333,35 +1408,15 @@ def get_benchmark_excess(report_date: date, period_type: str = "MoM", benchmark_
         curve_latest_fallback=curves["curve_latest_fallback"],
     )
 
-    treasury_current = curves["treasury_current"]
-    treasury_prior = curves["treasury_prior"]
-    cdb_current = curves["cdb_current"]
-    cdb_prior = curves["cdb_prior"]
-    aaa_current = curves["aaa_current"]
-    aaa_prior = curves["aaa_prior"]
-    current_curve = curves["current_curve"]
-    prior_curve = curves["prior_curve"]
-
-    summary = compute_benchmark_excess(
-        rows,
-        period_start=period_start,
-        period_end=period_end,
-        benchmark_id=benchmark_id,
-        benchmark_curve_current=current_curve["curve"] if current_curve and prior_curve else None,
-        benchmark_curve_prior=prior_curve["curve"] if current_curve and prior_curve else None,
-        treasury_curve_current=treasury_current["curve"] if treasury_current and treasury_prior else None,
-        treasury_curve_prior=treasury_prior["curve"] if treasury_current and treasury_prior else None,
-        cdb_curve_current=cdb_current["curve"] if cdb_current and cdb_prior else None,
-        cdb_curve_prior=cdb_prior["curve"] if cdb_current and cdb_prior else None,
-        aaa_credit_curve_current=aaa_current["curve"] if aaa_current and aaa_prior else None,
-        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_current and aaa_prior else None,
+    summary = _compute_benchmark_excess_summary(
+        rows=rows, period_start=period_start, period_end=period_end,
+        benchmark_id=benchmark_id, curves=curves,
     )
-
     warnings = _build_benchmark_excess_warnings(
         rows=rows, summary=summary, curves=curves,
-        current_curve=current_curve, prior_curve=prior_curve,
-        treasury_current=treasury_current, treasury_prior=treasury_prior,
-        aaa_current=aaa_current, aaa_prior=aaa_prior,
+        current_curve=curves["current_curve"], prior_curve=curves["prior_curve"],
+        treasury_current=curves["treasury_current"], treasury_prior=curves["treasury_prior"],
+        aaa_current=curves["aaa_current"], aaa_prior=curves["aaa_prior"],
     )
     if not _benchmark_excess_brinson_sum_matches_explained(summary):
         warnings = _ordered_unique_warnings([*warnings, BENCHMARK_EXCESS_EXPLAINED_MISMATCH])
@@ -1621,36 +1676,38 @@ def _to_concentration_model(payload: dict[str, object] | None) -> ConcentrationM
     )
 
 
-def get_portfolio_headlines(report_date: date) -> dict:
-    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
-    if not rows:
-        payload = PortfolioHeadlinesResponse.model_validate(
-            promote_flat_payload(
-                {
-                    "report_date": report_date,
-                    "total_market_value": ZERO,
-                    "weighted_ytm": ZERO,
-                    "weighted_duration": ZERO,
-                    "weighted_coupon": ZERO,
-                    "total_dv01": ZERO,
-                    "bond_count": 0,
-                    "credit_weight": ZERO,
-                    "issuer_hhi": ZERO,
-                    "issuer_top5_weight": ZERO,
-                    "by_asset_class": [],
-                    "computed_at": datetime.now(timezone.utc).isoformat(),
-                    "warnings": [EMPTY_WARNING],
-                },
-                PortfolioHeadlinesResponse,
-            )
+def _build_portfolio_headlines_empty_response(report_date: date) -> dict:
+    """Build empty portfolio headlines response when no data."""
+    payload = PortfolioHeadlinesResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "total_market_value": ZERO,
+                "weighted_ytm": ZERO,
+                "weighted_duration": ZERO,
+                "weighted_coupon": ZERO,
+                "total_dv01": ZERO,
+                "bond_count": 0,
+                "credit_weight": ZERO,
+                "issuer_hhi": ZERO,
+                "issuer_top5_weight": ZERO,
+                "by_asset_class": [],
+                "computed_at": datetime.now(timezone.utc).isoformat(),
+                "warnings": [EMPTY_WARNING],
+            },
+            PortfolioHeadlinesResponse,
         )
-        return _build_fact_envelope(
-            result_kind="bond_analytics.portfolio_headlines",
-            report_date=report_date,
-            rows=rows,
-            result_payload=payload.model_dump(mode="json"),
-        )
+    )
+    return _build_fact_envelope(
+        result_kind="bond_analytics.portfolio_headlines",
+        report_date=report_date,
+        rows=[],
+        result_payload=payload.model_dump(mode="json"),
+    )
 
+
+def _compute_portfolio_headlines_metrics(rows: list[dict[str, object]]) -> dict[str, object]:
+    """Compute all metrics for portfolio headlines."""
     risk = summarize_portfolio_risk(rows)
     credit_rows = [row for row in rows if str(row.get("asset_class_std")) == "credit"]
     credit_summary = summarize_credit(
@@ -1662,21 +1719,37 @@ def get_portfolio_headlines(report_date: date) -> dict:
     conc = build_concentration(rows, field_name="issuer_name", dimension="issuer")
     ytm_dec = weighted_average_by_market_value(rows, "ytm")
     cpn_dec = weighted_average_by_market_value(rows, "coupon_rate")
-    pct = Decimal("100")
     by_ac = build_asset_class_risk_summary(rows)
+    return {
+        "risk": risk,
+        "credit_summary": credit_summary,
+        "conc": conc,
+        "ytm_dec": ytm_dec,
+        "cpn_dec": cpn_dec,
+        "by_ac": by_ac,
+    }
+
+
+def get_portfolio_headlines(report_date: date) -> dict:
+    rows = _repo().fetch_bond_analytics_rows(report_date=report_date.isoformat())
+    if not rows:
+        return _build_portfolio_headlines_empty_response(report_date)
+
+    metrics = _compute_portfolio_headlines_metrics(rows)
+    pct = Decimal("100")
     payload = PortfolioHeadlinesResponse.model_validate(
         promote_flat_payload(
             {
                 "report_date": report_date,
-                "total_market_value": risk["total_market_value"],
-                "weighted_ytm": ytm_dec * pct,
-                "weighted_duration": risk["portfolio_modified_duration"],
-                "weighted_coupon": cpn_dec * pct,
-                "total_dv01": risk["portfolio_dv01"],
-                "bond_count": int(risk["bond_count"]),
-                "credit_weight": credit_summary["credit_weight"],
-                "issuer_hhi": conc["hhi"] if conc else ZERO,
-                "issuer_top5_weight": conc["top5_concentration"] if conc else ZERO,
+                "total_market_value": metrics["risk"]["total_market_value"],
+                "weighted_ytm": metrics["ytm_dec"] * pct,
+                "weighted_duration": metrics["risk"]["portfolio_modified_duration"],
+                "weighted_coupon": metrics["cpn_dec"] * pct,
+                "total_dv01": metrics["risk"]["portfolio_dv01"],
+                "bond_count": int(metrics["risk"]["bond_count"]),
+                "credit_weight": metrics["credit_summary"]["credit_weight"],
+                "issuer_hhi": metrics["conc"]["hhi"] if metrics["conc"] else ZERO,
+                "issuer_top5_weight": metrics["conc"]["top5_concentration"] if metrics["conc"] else ZERO,
                 "by_asset_class": [
                     AssetClassRiskSummary.model_validate(
                         promote_flat_payload(
@@ -1690,7 +1763,7 @@ def get_portfolio_headlines(report_date: date) -> dict:
                             AssetClassRiskSummary,
                         )
                     )
-                    for row in by_ac
+                    for row in metrics["by_ac"]
                 ],
                 "computed_at": datetime.now(timezone.utc).isoformat(),
                 "warnings": [],
@@ -1825,135 +1898,88 @@ def get_accounting_class_audit(report_date: date) -> dict:
     )
 
 
-def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
-    period_start, period_end = resolve_period(report_date, period_type)
-    repo = _repo()
-    rows_end = repo.fetch_bond_analytics_rows(report_date=period_end.isoformat())
-    if not rows_end:
-        analysis_envelope = build_bond_action_attribution_placeholder_envelope(
-            AnalysisQuery(
-                consumer="bond_analytics.action_attribution",
-                analysis_key="bond_action_attribution",
-                report_date=report_date.isoformat(),
-                basis="formal",
-                view=period_type,
-            )
+def _build_action_attribution_placeholder_response(
+    *,
+    report_date: date,
+    period_type: str,
+) -> dict:
+    """Build placeholder response when no data or computation fails."""
+    analysis_envelope = build_bond_action_attribution_placeholder_envelope(
+        AnalysisQuery(
+            consumer="bond_analytics.action_attribution",
+            analysis_key="bond_action_attribution",
+            report_date=report_date.isoformat(),
+            basis="formal",
+            view=period_type,
         )
-        summary = analysis_envelope.result.summary
-        warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
-        response = ActionAttributionResponse.model_validate(
-            promote_flat_payload(
-                {
-                    "report_date": report_date,
-                    "period_type": str(summary["period_type"]),
-                    "period_start": date.fromisoformat(str(summary["period_start"])),
-                    "period_end": date.fromisoformat(str(summary["period_end"])),
-                    "total_actions": int(summary["total_actions"]),
-                    "total_pnl_from_actions": summary["total_pnl_from_actions"],
-                    "by_action_type": [
-                        ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
-                        for item in analysis_envelope.result.facets.get("by_action_type", [])
-                    ],
-                    "action_details": [
-                        ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
-                        for item in analysis_envelope.result.facets.get("action_details", [])
-                    ],
-                    "period_start_duration": summary["period_start_duration"],
-                    "period_end_duration": summary["period_end_duration"],
-                    "duration_change_from_actions": summary["duration_change_from_actions"],
-                    "period_start_dv01": summary["period_start_dv01"],
-                    "period_end_dv01": summary["period_end_dv01"],
-                    "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
-                    "available_components": [str(item) for item in list(summary.get("available_components") or [])],
-                    "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
-                    "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
-                    "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
-                    "warnings": warnings,
-                    "warnings_detail": [
-                        {"code": w.code, "level": w.level, "message": w.message}
-                        for w in analysis_envelope.result.warnings
-                    ],
-                },
-                ActionAttributionResponse,
-            )
+    )
+    summary = analysis_envelope.result.summary
+    warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
+    response = ActionAttributionResponse.model_validate(
+        promote_flat_payload(
+            {
+                "report_date": report_date,
+                "period_type": str(summary["period_type"]),
+                "period_start": date.fromisoformat(str(summary["period_start"])),
+                "period_end": date.fromisoformat(str(summary["period_end"])),
+                "total_actions": int(summary["total_actions"]),
+                "total_pnl_from_actions": summary["total_pnl_from_actions"],
+                "by_action_type": [
+                    ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
+                    for item in analysis_envelope.result.facets.get("by_action_type", [])
+                ],
+                "action_details": [
+                    ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
+                    for item in analysis_envelope.result.facets.get("action_details", [])
+                ],
+                "period_start_duration": summary["period_start_duration"],
+                "period_end_duration": summary["period_end_duration"],
+                "duration_change_from_actions": summary["duration_change_from_actions"],
+                "period_start_dv01": summary["period_start_dv01"],
+                "period_end_dv01": summary["period_end_dv01"],
+                "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
+                "available_components": [str(item) for item in list(summary.get("available_components") or [])],
+                "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
+                "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
+                "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
+                "warnings": warnings,
+                "warnings_detail": [
+                    {"code": w.code, "level": w.level, "message": w.message}
+                    for w in analysis_envelope.result.warnings
+                ],
+            },
+            ActionAttributionResponse,
         )
-        return build_formal_result_envelope(
-            result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
-            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
-        )
-
-    prior_rd = _resolve_prior_bond_snapshot_date(repo, period_end.isoformat())
-    rows_start = repo.fetch_bond_analytics_rows(report_date=prior_rd) if prior_rd else []
-
-    pnl_repo = PnlRepository(str(get_settings().duckdb_path))
-    pnl_by_key, pnl_warn_codes = _build_action_attribution_pnl_by_key(
-        pnl_repo,
-        period_type=period_type,
-        period_start=period_start,
-        period_end=period_end,
+    )
+    return build_formal_result_envelope(
+        result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
+        result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
     )
 
-    try:
-        raw = compute_action_attribution_bonds(
-            period_start=period_start,
-            period_end=period_end,
-            positions_start=[_action_attribution_bond_line(r) for r in rows_start],
-            positions_end=[_action_attribution_bond_line(r) for r in rows_end],
-            pnl_by_key=pnl_by_key,
-        )
-    except Exception:
-        analysis_envelope = build_bond_action_attribution_placeholder_envelope(
-            AnalysisQuery(
-                consumer="bond_analytics.action_attribution",
-                analysis_key="bond_action_attribution",
-                report_date=report_date.isoformat(),
-                basis="formal",
-                view=period_type,
-            )
-        )
-        summary = analysis_envelope.result.summary
-        warnings = _ordered_unique_warnings([warning.message for warning in analysis_envelope.result.warnings])
-        response = ActionAttributionResponse.model_validate(
-            promote_flat_payload(
-                {
-                    "report_date": report_date,
-                    "period_type": str(summary["period_type"]),
-                    "period_start": date.fromisoformat(str(summary["period_start"])),
-                    "period_end": date.fromisoformat(str(summary["period_end"])),
-                    "total_actions": int(summary["total_actions"]),
-                    "total_pnl_from_actions": summary["total_pnl_from_actions"],
-                    "by_action_type": [
-                        ActionTypeSummary.model_validate(promote_flat_payload(item, ActionTypeSummary))
-                        for item in analysis_envelope.result.facets.get("by_action_type", [])
-                    ],
-                    "action_details": [
-                        ActionDetail.model_validate(promote_flat_payload(item, ActionDetail))
-                        for item in analysis_envelope.result.facets.get("action_details", [])
-                    ],
-                    "period_start_duration": summary["period_start_duration"],
-                    "period_end_duration": summary["period_end_duration"],
-                    "duration_change_from_actions": summary["duration_change_from_actions"],
-                    "period_start_dv01": summary["period_start_dv01"],
-                    "period_end_dv01": summary["period_end_dv01"],
-                    "status": str(summary.get("status") or ActionAttributionResponse.model_fields["status"].default),
-                    "available_components": [str(item) for item in list(summary.get("available_components") or [])],
-                    "missing_inputs": [str(item) for item in list(summary.get("missing_inputs") or [])],
-                    "blocked_components": [str(item) for item in list(summary.get("blocked_components") or [])],
-                    "computed_at": str(summary.get("computed_at") or analysis_envelope.result_meta.generated_at.isoformat()),
-                    "warnings": warnings,
-                    "warnings_detail": [
-                        {"code": w.code, "level": w.level, "message": w.message}
-                        for w in analysis_envelope.result.warnings
-                    ],
-                },
-                ActionAttributionResponse,
-            )
-        )
-        return build_formal_result_envelope(
-            result_meta=analysis_envelope.result_meta.model_copy(update={"source_surface": "bond_analytics"}),
-            result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
-        )
 
+def _fetch_action_attribution_snapshots(
+    *,
+    repo: BondAnalyticsRepository,
+    period_end: str,
+) -> tuple[list[dict[str, object]], list[dict[str, object]], str | None]:
+    """Fetch current and prior bond snapshots for action attribution."""
+    rows_end = repo.fetch_bond_analytics_rows(report_date=period_end)
+    prior_rd = _resolve_prior_bond_snapshot_date(repo, period_end)
+    rows_start = repo.fetch_bond_analytics_rows(report_date=prior_rd) if prior_rd else []
+    return rows_end, rows_start, prior_rd
+
+
+def _build_action_attribution_success_response(
+    *,
+    report_date: date,
+    period_type: str,
+    raw: dict[str, object],
+    rows_end: list[dict[str, object]],
+    prior_rd: str | None,
+    pnl_by_key: dict[str, Decimal],
+    pnl_warn_codes: list[str],
+) -> dict:
+    """Build success response from computed action attribution."""
     meta = _meta("bond_analytics.action_attribution", report_date, rows_end)
     warn_parts: list[str] = [str(w) for w in (raw.get("warnings") or [])]
     if not prior_rd:
@@ -2003,6 +2029,49 @@ def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
     return build_formal_result_envelope(
         result_meta=meta_adj,
         result_payload=_bond_analytics_api_payload(response.model_dump(mode="json")),
+    )
+
+
+def get_action_attribution(report_date: date, period_type: str = "MoM") -> dict:
+    period_start, period_end = resolve_period(report_date, period_type)
+    repo = _repo()
+    rows_end, rows_start, prior_rd = _fetch_action_attribution_snapshots(
+        repo=repo, period_end=period_end.isoformat()
+    )
+    if not rows_end:
+        return _build_action_attribution_placeholder_response(
+            report_date=report_date, period_type=period_type
+        )
+
+    pnl_repo = PnlRepository(str(get_settings().duckdb_path))
+    pnl_by_key, pnl_warn_codes = _build_action_attribution_pnl_by_key(
+        pnl_repo,
+        period_type=period_type,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+    try:
+        raw = compute_action_attribution_bonds(
+            period_start=period_start,
+            period_end=period_end,
+            positions_start=[_action_attribution_bond_line(r) for r in rows_start],
+            positions_end=[_action_attribution_bond_line(r) for r in rows_end],
+            pnl_by_key=pnl_by_key,
+        )
+    except Exception:
+        return _build_action_attribution_placeholder_response(
+            report_date=report_date, period_type=period_type
+        )
+
+    return _build_action_attribution_success_response(
+        report_date=report_date,
+        period_type=period_type,
+        raw=raw,
+        rows_end=rows_end,
+        prior_rd=prior_rd,
+        pnl_by_key=pnl_by_key,
+        pnl_warn_codes=pnl_warn_codes,
     )
 
 

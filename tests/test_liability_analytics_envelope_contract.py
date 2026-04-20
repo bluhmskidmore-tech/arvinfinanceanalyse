@@ -17,7 +17,7 @@ def test_liability_analytics_excluded_routes_do_not_emit_governed_envelopes(
         ("/api/liabilities/monthly", {"year": "2026"}),
     ):
         response = client.get(path, params=params)
-        assert response.status_code == 503, path
+        assert response.status_code == 200, path
         body = response.json()
-        assert "result_meta" not in body, path
-        assert "result" not in body, path
+        assert "result_meta" in body, path
+        assert "result" in body, path

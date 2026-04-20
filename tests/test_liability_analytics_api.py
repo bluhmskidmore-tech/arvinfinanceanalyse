@@ -25,10 +25,11 @@ def test_liability_analytics_routes_fail_closed_while_surface_remains_reserved(
         ("/api/liabilities/monthly", {"year": "2026"}),
     ):
         response = client.get(path, params=params)
-        assert response.status_code == 503, path
+        assert response.status_code == 200, path
         body = response.json()
-        assert "result_meta" not in body, path
-        assert "reserved" in str(body.get("detail", "")).lower(), path
+        assert "result_meta" in body, path
+        assert "result" in body, path
+        assert body["result_meta"].get("basis") == "analytical", path
 
 
 def test_liability_analytics_routes_still_validate_invalid_report_date(

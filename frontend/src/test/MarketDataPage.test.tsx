@@ -230,7 +230,7 @@ describe("MarketDataPage", () => {
     expect(screen.getByText("FX analytical 观察")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "结果元数据" })).toBeInTheDocument();
 
-    expect(screen.getByText("利率走势图")).toBeInTheDocument();
+    expect(screen.getByText("收益率曲线")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-rate-quote-table")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-money-market-table")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-rate-trend-empty")).toBeInTheDocument();
@@ -650,5 +650,19 @@ describe("MarketDataPage", () => {
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
     });
   });
-});
 
+  it("renders the sixth-page market-data cockpit sections from the mockup", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(screen.getByText("利率行情")).toBeInTheDocument();
+    expect(screen.getByText("收益率曲线")).toBeInTheDocument();
+    expect(screen.getByText("信用利差")).toBeInTheDocument();
+    expect(screen.getByText("资金市场")).toBeInTheDocument();
+    expect(screen.getByText("国债期货")).toBeInTheDocument();
+    expect(screen.getByText("同业存单")).toBeInTheDocument();
+    expect(screen.getByText("债券成交明细（现券）")).toBeInTheDocument();
+    expect(screen.getByText("信用债成交明细")).toBeInTheDocument();
+    expect(screen.getByText("资讯与日历")).toBeInTheDocument();
+  });
+});

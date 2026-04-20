@@ -3,14 +3,18 @@ explicit Numeric-dicts at the service layer; the schema coerce
 validator is defense-in-depth, not the live code path."""
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 import pytest
 
-from backend.app.services import pnl_attribution_service as svc
-
 
 NUMERIC_KEYS = {"raw", "unit", "display", "precision", "sign_aware"}
+
+
+def _pnl_svc():
+    """Resolve at call time so tests stay aligned if other suites reload the module."""
+    return importlib.import_module("backend.app.services.pnl_attribution_service")
 
 
 class _EmptyRepo:
@@ -33,9 +37,10 @@ class _EmptyRepo:
 @pytest.fixture(autouse=True)
 def _stub_repos(monkeypatch: pytest.MonkeyPatch):
     stub = _EmptyRepo()
-    monkeypatch.setattr(svc, "_pnl_repo", lambda: stub)
-    monkeypatch.setattr(svc, "_bond_repo", lambda: stub)
-    monkeypatch.setattr(svc, "_curve_repo", lambda: stub)
+    mod = _pnl_svc()
+    monkeypatch.setattr(mod, "_pnl_repo", lambda: stub)
+    monkeypatch.setattr(mod, "_bond_repo", lambda: stub)
+    monkeypatch.setattr(mod, "_curve_repo", lambda: stub)
 
 
 def _assert_numeric_dict(value: Any) -> None:
@@ -45,7 +50,7 @@ def _assert_numeric_dict(value: Any) -> None:
 
 
 def test_volume_rate_envelope_empty_produces_numeric_dicts():
-    env = svc.volume_rate_attribution_envelope(report_date=None, compare_type="mom")
+    env = _pnl_svc().volume_rate_attribution_envelope(report_date=None, compare_type="mom")
     result = env["result"]
     for k in ("total_current_pnl",):
         _assert_numeric_dict(result[k])
@@ -56,13 +61,13 @@ def test_volume_rate_envelope_empty_produces_numeric_dicts():
 
 
 def test_tpl_market_envelope_empty_produces_numeric_dicts():
-    env = svc.tpl_market_correlation_envelope(months=12)
+    env = _pnl_svc().tpl_market_correlation_envelope(months=12)
     result = env["result"]
     _assert_numeric_dict(result["total_tpl_fv_change"])
 
 
 def test_composition_envelope_empty_produces_numeric_dicts():
-    env = svc.pnl_composition_envelope(report_date=None)
+    env = _pnl_svc().pnl_composition_envelope(report_date=None)
     result = env["result"]
     for k in (
         "total_pnl",
@@ -79,12 +84,12 @@ def test_composition_envelope_empty_produces_numeric_dicts():
 
 
 def test_attribution_analysis_summary_envelope_empty():
-    env = svc.attribution_analysis_summary_envelope(report_date=None)
+    env = _pnl_svc().attribution_analysis_summary_envelope(report_date=None)
     _assert_numeric_dict(env["result"]["primary_driver_pct"])
 
 
 def test_carry_roll_down_envelope_empty():
-    env = svc.carry_roll_down_envelope(report_date=None)
+    env = _pnl_svc().carry_roll_down_envelope(report_date=None)
     result = env["result"]
     for k in (
         "total_market_value",
@@ -100,28 +105,28 @@ def test_carry_roll_down_envelope_empty():
 
 
 def test_spread_envelope_empty():
-    env = svc.spread_attribution_envelope(report_date=None, lookback_days=30)
+    env = _pnl_svc().spread_attribution_envelope(report_date=None, lookback_days=30)
     result = env["result"]
     for k in ("total_market_value", "portfolio_duration", "total_treasury_effect", "total_spread_effect", "total_price_change"):
         _assert_numeric_dict(result[k])
 
 
 def test_krd_envelope_empty():
-    env = svc.krd_attribution_envelope(report_date=None, lookback_days=30)
+    env = _pnl_svc().krd_attribution_envelope(report_date=None, lookback_days=30)
     result = env["result"]
     for k in ("total_market_value", "portfolio_duration", "portfolio_dv01", "total_duration_effect", "max_contribution_value"):
         _assert_numeric_dict(result[k])
 
 
 def test_advanced_summary_envelope_empty():
-    env = svc.advanced_attribution_summary_envelope(report_date=None)
+    env = _pnl_svc().advanced_attribution_summary_envelope(report_date=None)
     result = env["result"]
     for k in ("portfolio_carry", "portfolio_rolldown", "static_return_annualized", "treasury_effect_total", "spread_effect_total"):
         _assert_numeric_dict(result[k])
 
 
 def test_campisi_envelope_empty():
-    env = svc.campisi_attribution_envelope(start_date=None, end_date=None, lookback_days=30)
+    env = _pnl_svc().campisi_attribution_envelope(start_date=None, end_date=None, lookback_days=30)
     result = env["result"]
     for k in (
         "total_market_value",
@@ -153,7 +158,7 @@ def test_promote_helper_passthrough_already_promoted():
         "items": [],
         "has_previous_data": False,
     }
-    promoted = svc._promote_payload_numerics(payload, VolumeRateAttributionPayload)
+    promoted = _pnl_svc()._promote_payload_numerics(payload, VolumeRateAttributionPayload)
     assert promoted["total_current_pnl"] == already
 
 
@@ -176,7 +181,7 @@ def test_promote_helper_handles_nested_item_list():
         ],
         "has_previous_data": True,
     }
-    promoted = svc._promote_payload_numerics(payload, VolumeRateAttributionPayload)
+    promoted = _pnl_svc()._promote_payload_numerics(payload, VolumeRateAttributionPayload)
     assert isinstance(promoted["total_current_pnl"], dict)
     assert NUMERIC_KEYS <= set(promoted["total_current_pnl"].keys())
     item = promoted["items"][0]

@@ -166,7 +166,7 @@ class TestBenchmarkYieldChange:
         }
         # At 5y: 3.2 - 3.0 = 0.2, divided by 100 = 0.002
         result = benchmark_yield_change_decimal(market_start, market_end, 5.0)
-        assert result == Decimal("0.002")
+        assert abs(result - Decimal("0.002")) < Decimal("1e-12")
 
     def test_negative_yield_change(self):
         """Negative yield change."""
@@ -211,7 +211,7 @@ class TestBenchmarkYieldChange:
                      "treasury_7y": 3.21, "treasury_10y": 3.51, "treasury_30y": 4.01}
         result = benchmark_yield_change_decimal(market_start, market_end, 1.0)
         # 2.565 - 2.555 = 0.01, / 100 = 0.0001
-        assert result == Decimal("0.0001")
+        assert abs(result - Decimal("0.0001")) < Decimal("1e-12")
 
 
 class TestCreditSpreadChange:

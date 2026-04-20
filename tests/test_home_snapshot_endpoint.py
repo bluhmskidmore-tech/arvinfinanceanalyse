@@ -1,14 +1,19 @@
 """W4.1 tests for /ui/home/snapshot endpoint and home_snapshot_envelope service."""
 from __future__ import annotations
 
+import importlib
 from unittest.mock import patch
 
 from backend.app.schemas.executive_dashboard import HomeSnapshotPayload
 from backend.app.services.executive_service import (
     _compute_unified_report_date,
     _HOME_SNAPSHOT_DOMAINS,
-    home_snapshot_envelope,
 )
+
+
+def _executive_service():
+    """Always use the canonical `sys.modules` entry (golden tests may reload this module)."""
+    return importlib.import_module("backend.app.services.executive_service")
 
 
 class TestComputeUnifiedReportDate:
@@ -94,7 +99,7 @@ class TestHomeSnapshotEnvelope:
     def test_returns_envelope_shape(self) -> None:
         # Run with default env (real duckdb); if repos can't open, it still must
         # return a valid envelope (possibly with empty payload).
-        env = home_snapshot_envelope(report_date=None, allow_partial=False)
+        env = _executive_service().home_snapshot_envelope(report_date=None, allow_partial=False)
         assert "result_meta" in env
         assert "result" in env
         # result payload is HomeSnapshotPayload-compatible dict
@@ -110,29 +115,31 @@ class TestHomeSnapshotEnvelope:
         assert env["result_meta"]["result_kind"] == "home.snapshot"
 
     def test_strict_empty_returns_explicit_miss_envelope(self) -> None:
-        with patch("backend.app.services.executive_service._list_domain_dates") as mock_dates:
+        es = _executive_service()
+        with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
                 "balance": set(),
                 "pnl": set(),
                 "liability": set(),
                 "bond": set(),
             }
-            env = home_snapshot_envelope(report_date=None, allow_partial=False)
+            env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
             assert env["result_meta"]["quality_flag"] == "error"
             assert env["result_meta"]["vendor_status"] == "vendor_unavailable"
             assert env["result"]["report_date"] == ""
             assert set(env["result"]["domains_missing"]) == set(_HOME_SNAPSHOT_DOMAINS)
 
     def test_strict_intersection_returns_unified_date(self) -> None:
-        with patch("backend.app.services.executive_service._list_domain_dates") as mock_dates:
+        es = _executive_service()
+        with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
                 "balance": {"2026-04-08"},
                 "pnl": {"2026-04-08"},
                 "liability": {"2026-04-08"},
                 "bond": {"2026-04-08"},
             }
-            with patch("backend.app.services.executive_service.executive_overview") as mock_ov:
-                with patch("backend.app.services.executive_service.executive_pnl_attribution") as mock_attr:
+            with patch.object(es, "executive_overview") as mock_ov:
+                with patch.object(es, "executive_pnl_attribution") as mock_attr:
                     mock_ov.return_value = {
                         "result_meta": {},
                         "result": {"title": "经营总览", "metrics": []},
@@ -145,22 +152,23 @@ class TestHomeSnapshotEnvelope:
                             "segments": [],
                         },
                     }
-                    env = home_snapshot_envelope(report_date=None, allow_partial=False)
+                    env = es.home_snapshot_envelope(report_date=None, allow_partial=False)
                     assert env["result"]["report_date"] == "2026-04-08"
                     assert env["result"]["mode"] == "strict"
                     assert env["result"]["domains_missing"] == []
                     assert env["result_meta"]["quality_flag"] == "ok"
 
     def test_partial_mode_labels_missing(self) -> None:
-        with patch("backend.app.services.executive_service._list_domain_dates") as mock_dates:
+        es = _executive_service()
+        with patch.object(es, "_list_domain_dates") as mock_dates:
             mock_dates.return_value = {
                 "balance": {"2026-04-08"},
                 "pnl": {"2026-04-08"},
                 "liability": set(),  # missing entirely
                 "bond": {"2026-04-08"},
             }
-            with patch("backend.app.services.executive_service.executive_overview") as mock_ov:
-                with patch("backend.app.services.executive_service.executive_pnl_attribution") as mock_attr:
+            with patch.object(es, "executive_overview") as mock_ov:
+                with patch.object(es, "executive_pnl_attribution") as mock_attr:
                     mock_ov.return_value = {
                         "result_meta": {},
                         "result": {"title": "经营总览", "metrics": []},
@@ -173,7 +181,7 @@ class TestHomeSnapshotEnvelope:
                             "segments": [],
                         },
                     }
-                    env = home_snapshot_envelope(
+                    env = es.home_snapshot_envelope(
                         report_date="2026-04-08", allow_partial=True
                     )
                     assert env["result"]["mode"] == "partial"

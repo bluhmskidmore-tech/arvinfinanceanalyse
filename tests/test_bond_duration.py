@@ -178,7 +178,7 @@ class TestConvexity:
         ytm = Decimal("0.05")
         frequency = 2
 
-        convexity = estimate_convexity_bond(duration, ytm, frequency=frequency)
+        convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
         assert convexity > Decimal("0")
 
@@ -188,7 +188,7 @@ class TestConvexity:
         ytm = Decimal("0.0")
         frequency = 2
 
-        convexity = estimate_convexity_bond(duration, ytm, frequency=frequency)
+        convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
         assert convexity > Decimal("0")
 
@@ -198,7 +198,7 @@ class TestConvexity:
         ytm = Decimal("-0.01")
         frequency = 2
 
-        convexity = estimate_convexity_bond(duration, ytm, frequency=frequency)
+        convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
         assert convexity > Decimal("0")
 
@@ -219,7 +219,7 @@ class TestConvexity:
         ytm = Decimal("0.05")
         frequency = 1
 
-        convexity = estimate_convexity_bond(duration, ytm, frequency=frequency)
+        convexity = estimate_convexity_bond(duration, ytm, coupon_frequency=frequency)
 
         assert convexity > Decimal("0")
 
