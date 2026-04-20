@@ -68,7 +68,7 @@ export function CreditBondTradesTable() {
 
   return (
     <section data-testid="market-data-credit-bond-trades" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>信用债成交</h2>
+      <h2 style={marketDataBlockTitleStyle}>信用债成交明细</h2>
       <div style={{ maxHeight: 320, overflow: "auto" }}>
         <Table<Row>
           size="small"

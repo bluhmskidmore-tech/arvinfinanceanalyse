@@ -79,7 +79,7 @@ export function BondTradeDetail() {
 
   return (
     <section data-testid="market-data-bond-trade-detail" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>债券成交明细</h2>
+      <h2 style={marketDataBlockTitleStyle}>债券成交明细（现券）</h2>
       <Tabs
         size="small"
         activeKey={tab}

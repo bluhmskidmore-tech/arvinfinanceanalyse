@@ -60,9 +60,9 @@ export function LinkageSpreadTenorTable({
 
   return (
     <section data-testid="market-data-linkage-spread-table" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>信用利差（结构化 tenor）</h2>
+      <h2 style={marketDataBlockTitleStyle}>信用利差</h2>
       <p style={{ margin: "0 0 12px", color: "#5c6b82", fontSize: 12, lineHeight: 1.5 }}>
-        来自宏观-债市联动的 credit_spread 结构化维度；无数据时显示占位符。
+        来自宏观-债市联动的 credit_spread 结构化维度；无数据时表格为空。
       </p>
       <Table<Row>
         size="small"
@@ -71,7 +71,7 @@ export function LinkageSpreadTenorTable({
         columns={columns}
         dataSource={dataSource}
         rowKey="key"
-        locale={{ emptyText: "暂无利差相关性数据" }}
+        locale={{ emptyText: "当前报告日下未返回利差相关性。" }}
       />
     </section>
   );

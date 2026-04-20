@@ -517,7 +517,7 @@ export default function MarketDataPage() {
   }, [stableCatalogSeries, stableSeries]);
   const stableLatestTradeDate = useMemo(() => {
     if (stableSeries.length === 0) {
-      return "暂无";
+      return "—";
     }
     return stableSeries
       .map((point) => point.trade_date)
@@ -653,7 +653,7 @@ export default function MarketDataPage() {
         titleTestId="market-data-page-title"
         eyebrow="Overview"
         description="当前页按“市场观察、分析观察、结果证据”三层阅读顺序展示内容。宏观观察与 analytical FX 观察继续共存，但 formal FX 中间价状态和 result metadata 仍保持为独立后端读面，不在前端补算、不混入口径。"
-        badgeLabel={client.mode === "real" ? "真实 DuckDB 读路径" : "本地演示数据"}
+        badgeLabel={client.mode === "real" ? "真实 DuckDB 读路径" : "本地离线契约回放"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
         actions={
           <button
@@ -794,7 +794,7 @@ export default function MarketDataPage() {
             value={stableLatestTradeDate}
             detail="稳定主链路中可见序列的最大交易日期。"
             valueVariant="text"
-            tone={stableLatestTradeDate === "暂无" ? "warning" : "default"}
+            tone={stableSeries.length === 0 ? "warning" : "default"}
           />
         </div>
         <div data-testid="market-data-missing-stable-count">
@@ -824,7 +824,7 @@ export default function MarketDataPage() {
         <div data-testid="market-data-linkage-report-date">
           <KpiCard
             title="联动报告日"
-            value={linkageReportDate || "暂无"}
+            value={linkageReportDate || "—"}
             detail="宏观-债市联动分析使用的报告日期。"
             valueVariant="text"
             tone={linkageReportDate ? "default" : "warning"}
@@ -850,7 +850,7 @@ export default function MarketDataPage() {
                 label: "曲线（M8）",
                 children: (
                   <div data-testid="market-data-macro-tab-curve">
-                    <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>利率走势图</h2>
+                    <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>收益率曲线</h2>
                     <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14, lineHeight: 1.65 }}>
                       国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
                       SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
@@ -891,7 +891,7 @@ export default function MarketDataPage() {
               },
               {
                 key: "spreads",
-                label: "信用利差（M9）",
+                label: "信用利差",
                 children: (
                   <div data-testid="market-data-macro-tab-spreads" style={{ marginTop: 8 }}>
                     <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
@@ -1474,7 +1474,7 @@ export default function MarketDataPage() {
         <MetadataPanel
           title="结果元数据"
           meta={macroMeta}
-          extraLine={`visible_vendor_versions: ${vendorVersions.join(", ") || "暂无"}`}
+          extraLine={`visible_vendor_versions: ${vendorVersions.join(", ") || "—"}`}
           testId="market-data-result-meta"
         />
 

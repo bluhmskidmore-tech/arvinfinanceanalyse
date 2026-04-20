@@ -77,7 +77,7 @@ export function RateQuoteTable() {
 
   return (
     <section data-testid="market-data-rate-quote-table" style={marketDataPanelStyle}>
-      <h2 style={marketDataBlockTitleStyle}>关键期限利率行情</h2>
+      <h2 style={marketDataBlockTitleStyle}>利率行情</h2>
       <Tabs
         size="small"
         activeKey={curve}
