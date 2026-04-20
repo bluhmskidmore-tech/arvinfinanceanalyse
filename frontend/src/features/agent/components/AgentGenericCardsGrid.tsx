@@ -1,5 +1,4 @@
 import { shellTokens as t } from "../../../theme/tokens";
-import { PlaceholderCard } from "../../workbench/components/PlaceholderCard";
 
 type AgentGenericCard = {
   title: string;
@@ -119,6 +118,51 @@ function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unkno
   );
 }
 
+function renderScalarCard(card: AgentGenericCard) {
+  return (
+    <div
+      key={`${card.title}-${card.type}`}
+      style={{
+        padding: 16,
+        borderRadius: 16,
+        border: `1px solid ${t.colorBorderSoft}`,
+        background: t.colorBgCanvas,
+      }}
+    >
+      <div
+        style={{
+          color: t.colorTextPrimary,
+          fontSize: 15,
+          fontWeight: 600,
+          marginBottom: 6,
+        }}
+      >
+        {card.title}
+      </div>
+      <div
+        style={{
+          color: t.colorTextSecondary,
+          fontSize: 14,
+          marginBottom: 8,
+          wordBreak: "break-all",
+          lineHeight: 1.5,
+        }}
+      >
+        {String(card.value ?? "--")}
+      </div>
+      <div
+        style={{
+          color: t.colorTextMuted,
+          fontSize: 12,
+          letterSpacing: "0.02em",
+        }}
+      >
+        {card.type}
+      </div>
+    </div>
+  );
+}
+
 export function AgentGenericCardsGrid({
   cards,
   formatValue,
@@ -142,14 +186,7 @@ export function AgentGenericCardsGrid({
         if (card.type === "table" || card.type === "resource" || card.data !== undefined) {
           return renderStructuredCard(card, formatValue);
         }
-        return (
-          <PlaceholderCard
-            key={`${card.title}-${card.type}`}
-            title={card.title}
-            value={String(card.value ?? "--")}
-            detail={card.type}
-          />
-        );
+        return renderScalarCard(card);
       })}
     </div>
   );
