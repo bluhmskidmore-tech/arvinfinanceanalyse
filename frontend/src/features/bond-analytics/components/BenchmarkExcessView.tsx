@@ -6,8 +6,13 @@ import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, BenchmarkExcessResponse } from "../types";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatBp, formatPct } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
+
+const CN_MARKET_UP = designTokens.color.danger[500];
+const CN_MARKET_DOWN = designTokens.color.success[600];
+const CHART_ACCENT = designTokens.color.info[500];
 
 interface Props {
   reportDate: string;
@@ -29,7 +34,7 @@ const WATERFALL_CATEGORIES = [
   "超额收益",
 ] as const;
 
-const CHART_TEXT = { fontSize: 13, color: "#5c6b82" } as const;
+const CHART_TEXT = { fontSize: designTokens.fontSize[13], color: designTokens.color.neutral[700] } as const;
 
 const TRANSPARENT_BAR = {
   borderColor: "transparent",
@@ -70,19 +75,19 @@ function buildBenchmarkExcessWaterfallOption(d: BenchmarkExcessResponse) {
     if (v >= 0) {
       helperRaw.push(running);
       valueRaw.push(v);
-      barColors.push("#cf1322");
+      barColors.push(CN_MARKET_UP);
       running += v;
     } else {
       helperRaw.push(running + v);
       valueRaw.push(-v);
-      barColors.push("#3f8600");
+      barColors.push(CN_MARKET_DOWN);
       running += v;
     }
   }
 
   helperRaw.push(0);
   valueRaw.push(Number.isFinite(excessReturn) ? excessReturn : 0);
-  barColors.push("#1f5eff");
+  barColors.push(CHART_ACCENT);
 
   const displayStrings = [
     d.duration_effect.display,
@@ -176,12 +181,12 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
     [data],
   );
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (loading) return <Spin style={{ display: "block", margin: `${designTokens.space[8]}px auto` }} />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
   const excessNum = bondNumericRaw(data.excess_return);
-  const excessColor = excessNum >= 0 ? "#cf1322" : "#3f8600";
+  const excessColor = excessNum >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
 
   const decomp = [
     { label: "久期效应", value: data.duration_effect },
@@ -196,24 +201,32 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
     hasDisplayMetric(data.information_ratio);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <Space direction="vertical" size={4}>
+    <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: designTokens.space[2],
+        }}
+      >
+        <Space direction="vertical" size={designTokens.space[1]}>
           <SectionLead
             eyebrow="Benchmark"
             title="基准超额收益"
             description="按报告日、期间和基准指数读取后端归因结果；页面只展示 benchmark excess read model，不在前端重算超额收益。"
             testId="benchmark-excess-shell-lead"
           />
-          <span style={{ color: "#5c6b82", fontSize: 13 }}>
+          <span style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[13] }}>
             {data.benchmark_name ? `基准：${data.benchmark_name}` : null}
           </span>
-          <span style={{ color: "#8090a8", fontSize: 12 }}>
+          <span style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
             区间 {data.period_start} — {data.period_end} · 报表日 {data.report_date}
           </span>
         </Space>
         <FilterBar>
-          <span style={{ color: "#5c6b82", fontSize: 13 }}>切换基准</span>
+          <span style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[13] }}>切换基准</span>
           <Select
             value={benchmarkId}
             onChange={setBenchmarkId}
@@ -293,19 +306,19 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
         testId="benchmark-excess-attribution-lead"
       />
       <Card title="超额收益分解" size="small">
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {decomp.map((d) => {
             const num = bondNumericRaw(d.value);
-            const color = num >= 0 ? "#cf1322" : "#3f8600";
+            const color = num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={d.label} style={{ textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: 12, color: "#8090a8" }}>{d.label}</div>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{d.label}</div>
                 <div
                   style={{
-                    fontSize: 18,
+                    fontSize: designTokens.fontSize[18],
                     fontWeight: 600,
                     color,
-                    fontVariantNumeric: "tabular-nums",
+                    ...tabularNumsStyle,
                   }}
                 >
                   {formatBp(d.value)}
@@ -315,7 +328,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
           })}
         </div>
         {waterfallOption && (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: designTokens.space[4] }}>
             <ReactECharts
               option={waterfallOption}
               style={{ height: 280, width: "100%" }}
@@ -346,7 +359,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
                 flexDirection: "column",
                 gap: 4,
                 padding: "8px 0",
-                borderBottom: "1px solid rgba(0,0,0,0.06)",
+                borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -354,7 +367,9 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
                 <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatBp(s.contribution)}</span>
               </div>
               {s.description ? (
-                <span style={{ fontSize: 12, color: "#8090a8" }}>{s.description}</span>
+                <span style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>
+                  {s.description}
+                </span>
               ) : null}
             </div>
           ))}
@@ -373,7 +388,9 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       )}
 
       {data.computed_at ? (
-        <div style={{ fontSize: 12, color: "#8090a8" }}>计算时间：{data.computed_at}</div>
+        <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>
+          计算时间：{data.computed_at}
+        </div>
       ) : null}
     </div>
   );

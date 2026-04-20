@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Alert, Card, Space, Spin, Statistic, Table } from "antd";
 import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
+import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { formatPct, formatWan } from "../utils/formatters";
 
@@ -76,9 +77,12 @@ export function TopHoldingsView({ reportDate }: Props) {
   }
 
   return (
-    <div data-testid="top-holdings-view" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div
+      data-testid="top-holdings-view"
+      style={{ display: "flex", flexDirection: "column", gap: designTokens.space[3] }}
+    >
       <Space align="center" wrap data-testid="bond-analytics-top-holdings-toolbar">
-        <span style={{ color: "rgba(0,0,0,0.55)" }}>展示条数</span>
+        <span style={{ color: designTokens.color.neutral[600] }}>展示条数</span>
         <select
           aria-label="bond-analytics-top-holdings-topn"
           data-testid="bond-analytics-top-holdings-topn"
@@ -87,11 +91,11 @@ export function TopHoldingsView({ reportDate }: Props) {
           style={{
             minWidth: 88,
             height: 32,
-            border: "1px solid #d9d9d9",
-            borderRadius: 6,
-            background: "#fff",
-            color: "#162033",
-            fontSize: 14,
+            border: `1px solid ${designTokens.color.neutral[300]}`,
+            borderRadius: designTokens.radius.sm,
+            background: designTokens.color.neutral[50],
+            color: designTokens.color.neutral[900],
+            fontSize: designTokens.fontSize[14],
           }}
         >
           {TOP_N_OPTIONS.map((n) => (

@@ -13,29 +13,43 @@ import {
 } from "../lib/bondAnalyticsHomeCalculations";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type { ActionAttributionResponse } from "../types";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatBp, formatPct, formatWan, formatYi, toneColor } from "../utils/formatters";
 import { FIELD, panelStyle } from "./bondAnalyticsCockpitTokens";
 
 const { Text } = Typography;
 
+const dt = designTokens;
+const inkStrong = dt.color.primary[900];
+const ink = dt.color.primary[800];
+const muted = dt.color.neutral[700];
+const sub = dt.color.neutral[600];
+const borderHair = dt.color.neutral[200];
+const trackBg = dt.color.primary[100];
+const cnUp = dt.color.danger[500];
+const cnDown = dt.color.success[600];
+const infoAccent = dt.color.info[500];
+const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
+const cockpitHeroBg = `linear-gradient(135deg, ${dt.color.primary[50]} 0%, ${dt.color.info[50]} 55%, ${dt.color.primary[100]} 100%)`;
+
 const statusGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: 12,
+  gap: dt.space[3],
 } as const;
 
 const compactListStyle = {
   display: "grid",
-  gap: 10,
+  gap: dt.space[3],
 } as const;
 
 const moduleNoteStyle = {
-  color: "#6a7d95",
-  fontSize: 12,
-  lineHeight: 1.6,
+  color: sub,
+  fontSize: dt.fontSize[12],
+  lineHeight: dt.lineHeight.normal,
 } as const;
 
-const dashboardCardStyle = panelStyle("#ffffff");
+const dashboardCardStyle = panelStyle(dt.color.primary[50]);
 
 const PORTFOLIO_HEADLINES_HOME_NOTE = "组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。";
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
@@ -138,31 +152,29 @@ function DashboardMetric({
   return (
     <div
       style={{
-        borderRadius: 16,
-        border: "1px solid #dbe4f0",
-        background: "#fbfcfe",
-        padding: "12px 14px",
+        borderRadius: dt.radius.lg,
+        border: `1px solid ${dt.color.neutral[200]}`,
+        background: dt.color.primary[50],
+        padding: `${dt.space[3]}px ${dt.space[3] + 2}px`,
         display: "grid",
-        gap: 5,
+        gap: dt.space[1] + 1,
       }}
     >
       <div style={{ ...FIELD, marginBottom: 0 }}>{label}</div>
       <div
         style={{
-          fontSize: 22,
+          fontSize: dt.fontSize[20],
           fontWeight: 700,
           letterSpacing: "-0.03em",
-          color:
-            tone === "positive"
-              ? "#cf1322"
-              : tone === "negative"
-                ? "#3f8600"
-                : "#18314d",
+          color: tone === "positive" ? cnUp : tone === "negative" ? cnDown : inkStrong,
+          ...tabularNumsStyle,
         }}
       >
         {value}
       </div>
-      <div style={{ color: "#627791", fontSize: 12, lineHeight: 1.55 }}>{detail}</div>
+      <div style={{ color: muted, fontSize: dt.fontSize[12], lineHeight: dt.lineHeight.snug }}>
+        {detail}
+      </div>
     </div>
   );
 }
@@ -183,29 +195,29 @@ function SignalCell({
   return (
     <div
       style={{
-        borderRadius: 16,
-        border: "1px solid #dde6f2",
-        background: "#fbfcfe",
-        padding: "14px 14px 12px",
+        borderRadius: dt.radius.lg,
+        border: `1px solid ${dt.color.neutral[200]}`,
+        background: dt.color.primary[50],
+        padding: `${dt.space[3] + 2}px ${dt.space[3] + 2}px ${dt.space[3]}px`,
         display: "grid",
-        gap: 6,
+        gap: dt.space[2],
       }}
     >
       <div style={{ ...FIELD, marginBottom: 0 }}>{label}</div>
       <div
         style={{
-          color:
-            tone === "positive" ? "#cf1322" : tone === "negative" ? "#3f8600" : "#1c3554",
-          fontSize: 18,
+          color: tone === "positive" ? cnUp : tone === "negative" ? cnDown : ink,
+          fontSize: dt.fontSize[18],
           fontWeight: 800,
-          lineHeight: 1.2,
+          lineHeight: dt.lineHeight.tight,
           letterSpacing: "-0.03em",
+          ...tabularNumsStyle,
         }}
       >
         {summary}
       </div>
-      <div style={{ color: "#52657f", fontSize: 12, fontWeight: 700 }}>{value}</div>
-      <div style={{ color: "#6a7d95", fontSize: 12, lineHeight: 1.55 }}>{detail}</div>
+      <div style={{ color: muted, fontSize: dt.fontSize[12], fontWeight: 700 }}>{value}</div>
+      <div style={{ color: sub, fontSize: dt.fontSize[12], lineHeight: dt.lineHeight.snug }}>{detail}</div>
     </div>
   );
 }
@@ -220,10 +232,10 @@ function scoreBarRows(
       {items.map((item) => (
         <div key={item.key} style={{ display: "grid", gap: 6 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <span style={{ color: "#18314d", fontWeight: 700, fontSize: 13 }}>{item.label}</span>
-            <span style={{ color: item.color, fontWeight: 700, fontSize: 12 }}>{item.caption}</span>
+            <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.label}</span>
+            <span style={{ color: item.color, fontWeight: 700, fontSize: dt.fontSize[12] }}>{item.caption}</span>
           </div>
-          <div style={{ width: "100%", height: 7, borderRadius: 999, background: "#eaf0f6", overflow: "hidden" }}>
+          <div style={{ width: "100%", height: 7, borderRadius: 999, background: trackBg, overflow: "hidden" }}>
             <div
               style={{
                 width: `${Math.max(14, (Math.abs(item.value) / maxValue) * 100)}%`,
@@ -395,7 +407,7 @@ export function BondAnalyticsInstitutionalCockpit({
         label: item.maturity_bucket,
         value: numOr(item.total_market_value),
         caption: formatYi(item.total_market_value),
-        color: "#2f8f63",
+        color: dt.color.success[500],
       }));
   }, [maturityQ.data]);
 
@@ -432,7 +444,7 @@ export function BondAnalyticsInstitutionalCockpit({
   const spreadDeltaBp = computeBpDelta(k?.credit_spread_median ?? null, p?.credit_spread_median ?? null);
 
   return (
-    <section data-testid="bond-analysis-phase3-cockpit" style={{ display: "grid", gap: 12 }}>
+    <section data-testid="bond-analysis-phase3-cockpit" style={{ display: "grid", gap: dt.space[3] }}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
       <Card
@@ -446,29 +458,37 @@ export function BondAnalyticsInstitutionalCockpit({
           <HeadlineKpis data={headline} loading={headlineQ.isPending} />
         </div>
         {isDashboardDateFallback ? (
-          <div style={{ marginTop: 10, fontSize: 11, color: "#6f84a0", lineHeight: 1.5 }}>
+          <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
             仪表盘快照使用 {dashboardReportDate}
           </div>
         ) : null}
-        <div style={{ marginTop: 10, fontSize: 11, color: "#8a9bb0", lineHeight: 1.5 }}>
+        <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
           指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
 {formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
 {isFiniteNumber(spreadDeltaBp) ? `${spreadDeltaBp.toFixed(1)}bp` : "—"}）均按 raw 数值计算。切换上方「报表日期」可更新全页对比基准。
         </div>
       </Card>
 
-      <Row gutter={[12, 12]}>
+      <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} xl={16}>
           <Card
             size="small"
             data-testid="bond-analysis-cockpit-conclusion"
-            style={panelStyle("linear-gradient(135deg, #ffffff 0%, #f7fbff 55%, #eef4fb 100%)")}
-            styles={{ body: { padding: 16 } }}
+            style={panelStyle(cockpitHeroBg)}
+            styles={{ body: { padding: dt.space[4] } }}
           >
-            <div style={{ display: "grid", gap: 14 }}>
-              <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "grid", gap: dt.space[3] + 2 }}>
+              <div style={{ display: "grid", gap: dt.space[2] }}>
                 <div style={FIELD}>市场状态（一句话）</div>
-                <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.18, letterSpacing: "-0.04em", color: "#18314d" }}>
+                <div
+                  style={{
+                    fontSize: dt.fontSize[30],
+                    fontWeight: 800,
+                    lineHeight: 1.18,
+                    letterSpacing: "-0.04em",
+                    color: inkStrong,
+                  }}
+                >
                   {conclusion.body}
                 </div>
                 <Text type="secondary">{conclusion.detail}</Text>
@@ -534,10 +554,16 @@ export function BondAnalyticsInstitutionalCockpit({
               {focusItems.map((item, index) => (
                 <div
                   key={`${item}-${index}`}
-                  style={{ display: "flex", gap: 10, alignItems: "flex-start", paddingBottom: 10, borderBottom: "1px solid #eef2f6" }}
+                  style={{
+                    display: "flex",
+                    gap: dt.space[2] + 2,
+                    alignItems: "flex-start",
+                    paddingBottom: dt.space[2] + 2,
+                    borderBottom: `1px solid ${borderHair}`,
+                  }}
                 >
-                  <span style={{ color: "#2f6fff", fontSize: 18, lineHeight: 1 }}>•</span>
-                  <span style={{ color: "#314a66", fontSize: 13, lineHeight: 1.7 }}>{item}</span>
+                  <span style={{ color: infoAccent, fontSize: dt.fontSize[18], lineHeight: 1 }}>•</span>
+                  <span style={{ color: ink, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>{item}</span>
                 </div>
               ))}
             </div>
@@ -545,7 +571,7 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
       </Row>
 
-      <Row gutter={[12, 12]}>
+      <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={14}>
           <Card
             size="small"
@@ -555,7 +581,7 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: { padding: 14 } }}
           >
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ color: "#314a66", fontSize: 13, lineHeight: 1.8 }}>
+              <div style={{ color: ink, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
                 {buildSummaryNarrative({
                   duration: dur,
                   creditWeight,
@@ -563,14 +589,41 @@ export function BondAnalyticsInstitutionalCockpit({
                   marketValueText: k ? formatYi(k.total_market_value) : "—",
                 })}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <span style={{ padding: "4px 10px", borderRadius: 999, background: "#eef6ff", color: "#2954b8", fontSize: 12, fontWeight: 700 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: dt.space[2] }}>
+                <span
+                  style={{
+                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
+                    borderRadius: 999,
+                    background: dt.color.info[50],
+                    color: dt.color.info[700],
+                    fontSize: dt.fontSize[12],
+                    fontWeight: 700,
+                  }}
+                >
                   久期 {Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"}
                 </span>
-                <span style={{ padding: "4px 10px", borderRadius: 999, background: "#eef8f2", color: "#25724d", fontSize: 12, fontWeight: 700 }}>
+                <span
+                  style={{
+                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
+                    borderRadius: 999,
+                    background: dt.color.success[50],
+                    color: dt.color.success[700],
+                    fontSize: dt.fontSize[12],
+                    fontWeight: 700,
+                  }}
+                >
                   信用 {portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
                 </span>
-                <span style={{ padding: "4px 10px", borderRadius: 999, background: "#fff5e8", color: "#9f5b0b", fontSize: 12, fontWeight: 700 }}>
+                <span
+                  style={{
+                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
+                    borderRadius: 999,
+                    background: dt.color.warning[50],
+                    color: dt.color.warning[700],
+                    fontSize: dt.fontSize[12],
+                    fontWeight: 700,
+                  }}
+                >
                   利差 {k ? formatCompactValue(k.credit_spread_median, "bp") : "—"}
                 </span>
               </div>
@@ -601,20 +654,20 @@ export function BondAnalyticsInstitutionalCockpit({
                 {assetClassItems.map((item) => (
                   <div key={item.asset_class} style={{ display: "grid", gap: 6 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ color: "#18314d", fontWeight: 700, fontSize: 13 }}>{item.asset_class}</span>
-                      <span style={{ color: "#5c6b82", fontSize: 12 }}>{item.weight.display}</span>
+                      <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.asset_class}</span>
+                      <span style={{ color: muted, fontSize: dt.fontSize[12] }}>{item.weight.display}</span>
                     </div>
-                    <div style={{ width: "100%", height: 7, borderRadius: 999, background: "#eaf0f6", overflow: "hidden" }}>
+                    <div style={{ width: "100%", height: 7, borderRadius: 999, background: trackBg, overflow: "hidden" }}>
                       <div
                         style={{
                           width: `${Math.max(10, Math.min(100, bondNumericRaw(item.weight) * 100))}%`,
                           height: "100%",
                           borderRadius: 999,
-                          background: "linear-gradient(90deg, #7aa7ff 0%, #2f6fff 100%)",
+                          background: gradBar,
                         }}
                       />
                     </div>
-                    <div style={{ color: "#6a7d95", fontSize: 12 }}>
+                    <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
                       市值 {formatYi(item.market_value)} · 久期 {item.duration.display}
                     </div>
                   </div>
@@ -629,17 +682,17 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
       </Row>
 
-      <Row gutter={[12, 12]}>
+      <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={8}>
           <Card size="small" title="收益率与久期分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>加权收益率</span>
-                <span style={{ color: "#18314d", fontWeight: 700 }}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权收益率</span>
+                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>加权久期</span>
-                <span style={{ color: "#18314d", fontWeight: 700 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权久期</span>
+                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
                   {Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"}
                 </span>
               </div>
@@ -651,15 +704,15 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} lg={8}>
           <Card size="small" title="利差分析（中位数，bp）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>信用权重</span>
-                <span style={{ color: "#18314d", fontWeight: 700 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>信用权重</span>
+                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
                   {portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
                 </span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>利差中位数</span>
-                <span style={{ color: "#18314d", fontWeight: 700 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>利差中位数</span>
+                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
                   {k ? formatCompactValue(k.credit_spread_median, "bp") : "—"}
                 </span>
               </div>
@@ -668,13 +721,13 @@ export function BondAnalyticsInstitutionalCockpit({
                   {spreadItems.map((item) => (
                     <div
                       key={item.bond_type}
-                      style={{ display: "grid", gap: 4, paddingBottom: 10, borderBottom: "1px solid #eef2f6" }}
+                      style={{ display: "grid", gap: dt.space[1], paddingBottom: dt.space[2] + 2, borderBottom: `1px solid ${borderHair}` }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <span style={{ color: "#18314d", fontWeight: 700, fontSize: 13 }}>{item.bond_type}</span>
-                        <span style={{ color: "#5c6b82", fontSize: 12 }}>{formatYi(item.total_market_value)}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.bond_type}</span>
+                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.total_market_value)}</span>
                       </div>
-                      <div style={{ color: "#61758f", fontSize: 12 }}>
+                      <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
                         中位收益率 {item.median_yield ? formatPct(item.median_yield) : "—"} · 只数 {item.bond_count}
                       </div>
                     </div>
@@ -705,16 +758,17 @@ export function BondAnalyticsInstitutionalCockpit({
             styles={{ body: { padding: 14 } }}
           >
             <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>组合市值</span>
-                <span style={{ color: "#18314d", fontWeight: 700 }}>{k ? formatYi(k.total_market_value) : "—"}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>组合市值</span>
+                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatYi(k.total_market_value) : "—"}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>浮动盈亏</span>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>浮动盈亏</span>
                 <span
                   style={{
-                    color: k ? toneColor(numOr(k.unrealized_pnl)) : "#18314d",
+                    color: k ? toneColor(numOr(k.unrealized_pnl)) : inkStrong,
                     fontWeight: 700,
+                    ...tabularNumsStyle,
                   }}
                 >
                   {k ? formatYi(k.unrealized_pnl) : "—"}
@@ -725,13 +779,13 @@ export function BondAnalyticsInstitutionalCockpit({
                   {topHoldings.map((item) => (
                     <div
                       key={item.instrument_code}
-                      style={{ display: "grid", gap: 4, paddingBottom: 10, borderBottom: "1px solid #eef2f6" }}
+                      style={{ display: "grid", gap: dt.space[1], paddingBottom: dt.space[2] + 2, borderBottom: `1px solid ${borderHair}` }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                        <span style={{ color: "#18314d", fontWeight: 700, fontSize: 13 }}>{item.instrument_name}</span>
-                        <span style={{ color: "#5c6b82", fontSize: 12 }}>{formatWan(item.face_value)}</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.instrument_name}</span>
+                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatWan(item.face_value)}</span>
                       </div>
-                      <div style={{ color: "#61758f", fontSize: 12 }}>
+                      <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
                         收益率 {formatPct(item.ytm)} · 久期 {item.modified_duration.display} · {item.rating}
                       </div>
                     </div>
@@ -747,11 +801,11 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
       </Row>
 
-      <Row gutter={[12, 12]}>
+      <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={8}>
           <Card size="small" title="信用等级分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: dt.space[2] + 2 }}>
                 <DashboardMetric
                   label="债券只数"
                   value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
@@ -781,9 +835,9 @@ export function BondAnalyticsInstitutionalCockpit({
               ) : ratingDistribution.length > 0 ? (
                 <div style={compactListStyle}>
                   {ratingDistribution.map((item) => (
-                    <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                      <span style={{ color: "#61758f", fontSize: 12 }}>{item.rating}</span>
-                      <span style={{ color: "#18314d", fontWeight: 700, fontSize: 12 }}>
+                    <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
+                      <span style={{ color: sub, fontSize: dt.fontSize[12] }}>{item.rating}</span>
+                      <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
                         {item.count} bonds · {formatWan(item.faceValue)}
                       </span>
                     </div>
@@ -797,7 +851,7 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} lg={8}>
           <Card size="small" title="组合收益归因（本期）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: dt.space[2] + 2 }}>
                 <DashboardMetric
                   label="动作数量"
                   value={actionAttribution ? formatNumericString(actionAttribution.total_actions) : "—"}
@@ -817,10 +871,16 @@ export function BondAnalyticsInstitutionalCockpit({
                     return (
                       <div
                         key={item.action_type}
-                        style={{ display: "flex", justifyContent: "space-between", gap: 12, paddingBottom: 10, borderBottom: "1px solid #eef2f6" }}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: dt.space[3],
+                          paddingBottom: dt.space[2] + 2,
+                          borderBottom: `1px solid ${borderHair}`,
+                        }}
                       >
-                        <span style={{ color: "#18314d", fontWeight: 700, fontSize: 13 }}>{item.action_type_name}</span>
-                        <span style={{ color: toneColor(pnl), fontWeight: 700, fontSize: 12 }}>
+                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.action_type_name}</span>
+                        <span style={{ color: toneColor(pnl), fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
                           {formatWan(item.total_pnl_economic)}
                         </span>
                       </div>
@@ -837,10 +897,10 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} lg={8}>
           <Card size="small" title="决策事项" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
-              <div style={{ color: "#52657f", fontSize: 13, lineHeight: 1.7 }}>
+              <div style={{ color: muted, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
                 首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应 drill。
               </div>
-              <ul style={{ margin: 0, paddingLeft: 18, color: "#314a66", lineHeight: 1.8 }}>
+              <ul style={{ margin: 0, paddingLeft: 18, color: ink, lineHeight: dt.lineHeight.relaxed }}>
                 <li>{Number.isFinite(dur) && dur >= 3.8 ? "先看久期和期限结构，再决定是否做久期调整。" : "先看收益率分布和期限桶，确认久期是否仍在舒适区。"}</li>
                 <li>{Number.isFinite(creditWeight) && creditWeight >= 0.35 ? "信用权重偏高，优先复核利差和行业集中度。" : "信用权重可控，但仍需关注利差收窄后的回撤风险。"}</li>
                 <li>{actionAttribution ? `本期动作 ${actionAttribution.total_actions} 笔，可先看动作归因再下钻明细。` : "动作归因未返回时，不在首页补造操作建议。 "}</li>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { designTokens } from "../theme/designSystem";
 import {
   formatBp,
   formatPct,
@@ -51,9 +52,9 @@ describe("bond analytics formatters", () => {
 
   describe("toneColor", () => {
     it("uses China convention: nonnegative red, negative green", () => {
-      expect(toneColor(0)).toBe("#cf1322");
-      expect(toneColor(1)).toBe("#cf1322");
-      expect(toneColor(-0.01)).toBe("#3f8600");
+      expect(toneColor(0)).toBe(designTokens.color.danger[500]);
+      expect(toneColor(1)).toBe(designTokens.color.danger[500]);
+      expect(toneColor(-0.01)).toBe(designTokens.color.success[600]);
     });
   });
 });

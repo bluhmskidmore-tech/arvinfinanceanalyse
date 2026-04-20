@@ -13,8 +13,14 @@ import {
   returnDecompositionWaterfallDisplayStrings,
   returnDecompositionWaterfallRawSteps,
 } from "../adapters/bondAnalyticsAdapter";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatWan } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
+
+const CN_MARKET_UP = designTokens.color.danger[500];
+const CN_MARKET_DOWN = designTokens.color.success[600];
+const CHART_ACCENT = designTokens.color.info[500];
+const CHART_AXIS = { color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[11] };
 
 const WATERFALL_CATEGORIES = [
   "Carry",
@@ -47,23 +53,25 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
     if (v >= 0) {
       helperRaw.push(running);
       valueRaw.push(v);
-      barColors.push("#cf1322");
+      barColors.push(CN_MARKET_UP);
       running += v;
     } else {
       helperRaw.push(running + v);
       valueRaw.push(-v);
-      barColors.push("#3f8600");
+      barColors.push(CN_MARKET_DOWN);
       running += v;
     }
   }
 
   helperRaw.push(0);
   valueRaw.push(Number.isFinite(explained) ? explained : 0);
-  barColors.push("#1f5eff");
+  barColors.push(CHART_ACCENT);
 
   const displayStrings = returnDecompositionWaterfallDisplayStrings(d);
 
   return {
+    backgroundColor: "transparent",
+    textStyle: { color: designTokens.color.neutral[700] },
     tooltip: {
       trigger: "axis",
       axisPointer: { type: "shadow" },
@@ -79,9 +87,14 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
     xAxis: {
       type: "category",
       data: [...WATERFALL_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 0 },
+      axisLabel: { interval: 0, rotate: 0, ...CHART_AXIS },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[200] } },
     },
-    yAxis: { type: "value" },
+    yAxis: {
+      type: "value",
+      axisLabel: CHART_AXIS,
+      splitLine: { lineStyle: { color: designTokens.color.neutral[200], type: "dashed" } },
+    },
     series: [
       {
         name: "辅助",
@@ -214,7 +227,7 @@ export function ReturnDecompositionView({
     [data],
   );
 
-  if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
+  if (loading) return <Spin style={{ display: "block", margin: `${designTokens.space[8]}px auto` }} />;
   if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
@@ -231,7 +244,7 @@ export function ReturnDecompositionView({
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}>
       <SectionLead
         eyebrow="Return Decomposition"
         title="收益分解概览"
@@ -239,10 +252,14 @@ export function ReturnDecompositionView({
         testId="return-decomposition-shell-lead"
       />
       <Card size="small" title="报告期间" data-testid="return-decomposition-period">
-        <div style={{ fontSize: 13, color: "#5c6b82" }}>{periodLabel}</div>
+        <div style={{ fontSize: designTokens.fontSize[13], color: designTokens.color.neutral[700] }}>{periodLabel}</div>
         {data.computed_at ? (
           <div
-            style={{ fontSize: 12, color: "#8090a8", marginTop: 6 }}
+            style={{
+              fontSize: designTokens.fontSize[12],
+              color: designTokens.color.neutral[600],
+              marginTop: designTokens.space[2],
+            }}
             data-testid="return-decomposition-computed-at"
           >
             计算时间：{data.computed_at}
@@ -286,14 +303,14 @@ export function ReturnDecompositionView({
         testId="return-decomposition-effects-lead"
       />
       <Card title="收益效应分解" size="small">
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {effects.map((e) => {
             const num = bondNumericRaw(e.value);
-            const color = num >= 0 ? "#cf1322" : "#3f8600";
+            const color = num >= 0 ? CN_MARKET_UP : CN_MARKET_DOWN;
             return (
               <div key={e.label} style={{ textAlign: "center", minWidth: 100 }}>
-                <div style={{ fontSize: 12, color: "#8090a8" }}>{e.label}</div>
-                <div style={{ fontSize: 18, fontWeight: 600, color, fontVariantNumeric: "tabular-nums" }}>
+                <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{e.label}</div>
+                <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 600, color, ...tabularNumsStyle }}>
                   {formatWan(e.value)}
                 </div>
               </div>
@@ -301,7 +318,7 @@ export function ReturnDecompositionView({
           })}
         </div>
         {waterfallOption && (
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: designTokens.space[4] }}>
             <ReactECharts
               option={waterfallOption}
               style={{ height: 380, width: "100%" }}

@@ -1,6 +1,7 @@
 import { Card, Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { formatPct, formatYi, toneColor } from "../utils/formatters";
 
@@ -43,21 +44,46 @@ function Tile({
   valueColor?: string;
 }) {
   return (
-    <Card size="small" style={{ borderRadius: 16, borderColor: "#e1e8f0", height: "100%" }}>
-      <div style={{ fontSize: 11, color: "#7185a0", fontWeight: 700, letterSpacing: "0.06em" }}>{label}</div>
+    <Card
+      size="small"
+      style={{
+        borderRadius: designTokens.radius.lg,
+        borderColor: designTokens.color.neutral[200],
+        height: "100%",
+      }}
+    >
       <div
         style={{
-          fontSize: 20,
+          fontSize: designTokens.fontSize[11],
+          color: designTokens.color.neutral[600],
           fontWeight: 700,
-          marginTop: 8,
-          color: valueColor ?? "#162033",
-          fontVariantNumeric: "tabular-nums",
+          letterSpacing: "0.06em",
+        }}
+      >
+        {label}
+      </div>
+      <div
+        style={{
+          fontSize: designTokens.fontSize[20],
+          fontWeight: 700,
+          marginTop: designTokens.space[2],
+          color: valueColor ?? designTokens.color.neutral[900],
+          ...tabularNumsStyle,
         }}
       >
         {value}
       </div>
       {foot ? (
-        <div style={{ fontSize: 12, color: "#5c6b82", marginTop: 6, lineHeight: 1.45 }}>{foot}</div>
+        <div
+          style={{
+            fontSize: designTokens.fontSize[12],
+            color: designTokens.color.neutral[700],
+            marginTop: designTokens.space[2],
+            lineHeight: designTokens.lineHeight.snug,
+          }}
+        >
+          {foot}
+        </div>
       ) : null}
     </Card>
   );
@@ -71,7 +97,7 @@ export interface BondKpiRowProps {
 
 export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRowProps) {
   if (loading) {
-    return <Spin style={{ display: "block", margin: "24px auto" }} />;
+    return <Spin style={{ display: "block", margin: `${designTokens.space[6]}px auto` }} />;
   }
   if (!headline) return null;
 
@@ -106,7 +132,7 @@ export function BondKpiRow({ headline, portfolioHeadlines, loading }: BondKpiRow
     : "—";
 
   return (
-    <Row gutter={[12, 12]}>
+    <Row gutter={[designTokens.space[3], designTokens.space[3]]}>
       <Col xs={24} sm={12} md={12} lg={6}>
         <Tile label="债券持仓规模" value={formatYi(k.total_market_value)} foot={mvFoot} />
       </Col>

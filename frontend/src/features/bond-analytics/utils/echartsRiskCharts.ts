@@ -1,26 +1,39 @@
 import type { EChartsOption } from "echarts";
 import type { Numeric } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, KRDBucket } from "../types";
 import { formatWan } from "./formatters";
 
-export const ECHARTS_RISK_TEXT = "#5c6b82";
-export const ECHARTS_RISK_GRID_LINE = "#e4ebf5";
+export const ECHARTS_RISK_TEXT = designTokens.color.neutral[700];
+export const ECHARTS_RISK_GRID_LINE = designTokens.color.neutral[200];
 
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
-  rate: "#1f5eff",
-  credit: "#ff7a45",
-  other: "#8c8c8c",
+  rate: designTokens.color.info[500],
+  credit: designTokens.color.warning[400],
+  other: designTokens.color.neutral[500],
 };
+
+function hexToRgbTriple(hex: string): readonly [number, number, number] {
+  const n = hex.replace("#", "");
+  return [
+    Number.parseInt(n.slice(0, 2), 16),
+    Number.parseInt(n.slice(2, 4), 16),
+    Number.parseInt(n.slice(4, 6), 16),
+  ];
+}
 
 function lerpByte(a: number, b: number, t: number) {
   return Math.round(a + (b - a) * t);
 }
 
+const DV01_GRADIENT_LO = hexToRgbTriple(designTokens.color.primary[200]);
+const DV01_GRADIENT_HI = hexToRgbTriple(designTokens.color.primary[700]);
+
 /** 浅蓝 → 深蓝，按 DV01 数值在分桶内的相对大小着色。 */
 function dv01GradientColor(dv01: number, min: number, max: number): string {
-  const lo = [191, 219, 254] as const;
-  const hi = [29, 78, 178] as const;
+  const lo = DV01_GRADIENT_LO;
+  const hi = DV01_GRADIENT_HI;
   let t = max > min ? (dv01 - min) / (max - min) : 0.5;
   t = Math.max(0, Math.min(1, t));
   const r = lerpByte(lo[0], hi[0], t);
@@ -91,7 +104,9 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
     marketValueRaw: row.market_value,
     weight: row.weight,
     itemStyle: {
-      color: ASSET_CLASS_SLICE_COLORS[row.asset_class.trim().toLowerCase()] ?? "#bfbfbf",
+      color:
+        ASSET_CLASS_SLICE_COLORS[row.asset_class.trim().toLowerCase()] ??
+        designTokens.color.neutral[400],
     },
   }));
   return {

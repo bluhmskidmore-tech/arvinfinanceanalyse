@@ -14,6 +14,7 @@ import { bondAnalyticsQueryKeyRoot } from "../lib/bondAnalyticsQueryKeys";
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useSearchParams } from "react-router-dom";
+import { designTokens } from "../../../theme/designSystem";
 
 const BondAnalyticsOverviewPanels = lazy(() => import("./BondAnalyticsOverviewPanels"));
 
@@ -142,30 +143,35 @@ export function BondAnalyticsViewContent() {
     return (
       <section
         style={{
-          padding: 24,
-          borderRadius: 20,
-          background: "#fbfcfe",
-          border: "1px solid #e4ebf5",
-          boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+          padding: designTokens.space[6],
+          borderRadius: designTokens.radius.lg,
+          background: designTokens.color.primary[50],
+          border: `1px solid ${designTokens.color.neutral[200]}`,
+          boxShadow: designTokens.shadow.card,
           display: "grid",
-          gap: 12,
+          gap: designTokens.space[3],
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#162033" }}>债券分析日期载入失败。</div>
-        <div style={{ color: "#5c6b82", lineHeight: 1.7 }}>
+        <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 700, color: designTokens.color.neutral[900] }}>
+          债券分析日期载入失败。
+        </div>
+        <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
           无法确定可用报告日，当前不启动 Bond Analytics 默认首屏查询。请重试或通过 URL 显式传入
-          <code style={{ fontSize: 12, marginLeft: 4 }}>?report_date=YYYY-MM-DD</code>。
+          <code style={{ fontSize: designTokens.fontSize[12], marginLeft: designTokens.space[1] }}>
+            ?report_date=YYYY-MM-DD
+          </code>
+          。
         </div>
         <button
           type="button"
           onClick={() => void datesQuery.refetch()}
           style={{
             width: "fit-content",
-            border: "1px solid #d7dfea",
-            background: "#ffffff",
-            borderRadius: 12,
-            padding: "10px 16px",
-            color: "#162033",
+            border: `1px solid ${designTokens.color.neutral[300]}`,
+            background: designTokens.color.neutral[50],
+            borderRadius: designTokens.radius.md,
+            padding: `${designTokens.space[2] + 2}px ${designTokens.space[4]}px`,
+            color: designTokens.color.neutral[900],
             cursor: "pointer",
           }}
         >
@@ -179,17 +185,19 @@ export function BondAnalyticsViewContent() {
     return (
       <section
         style={{
-          padding: 24,
-          borderRadius: 20,
-          background: "#fbfcfe",
-          border: "1px solid #e4ebf5",
-          boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+          padding: designTokens.space[6],
+          borderRadius: designTokens.radius.lg,
+          background: designTokens.color.primary[50],
+          border: `1px solid ${designTokens.color.neutral[200]}`,
+          boxShadow: designTokens.shadow.card,
           display: "grid",
-          gap: 12,
+          gap: designTokens.space[3],
         }}
       >
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#162033" }}>债券分析暂无可用报告日。</div>
-        <div style={{ color: "#5c6b82", lineHeight: 1.7 }}>
+        <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 700, color: designTokens.color.neutral[900] }}>
+          债券分析暂无可用报告日。
+        </div>
+        <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
           后端尚未返回可消费的 Bond Analytics 报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
         </div>
         <button
@@ -197,11 +205,11 @@ export function BondAnalyticsViewContent() {
           onClick={() => void datesQuery.refetch()}
           style={{
             width: "fit-content",
-            border: "1px solid #d7dfea",
-            background: "#ffffff",
-            borderRadius: 12,
-            padding: "10px 16px",
-            color: "#162033",
+            border: `1px solid ${designTokens.color.neutral[300]}`,
+            background: designTokens.color.neutral[50],
+            borderRadius: designTokens.radius.md,
+            padding: `${designTokens.space[2] + 2}px ${designTokens.space[4]}px`,
+            color: designTokens.color.neutral[900],
             cursor: "pointer",
           }}
         >
@@ -213,12 +221,15 @@ export function BondAnalyticsViewContent() {
 
   return (
     <div
-      style={{ display: "flex", flexDirection: "column", gap: 16 }}
+      style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}
       data-testid="bond-analysis-overview"
     >
       <Suspense
         fallback={
-          <div style={{ color: "#8090a8", fontSize: 13 }} data-testid="bond-analysis-overview-loading">
+          <div
+            style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[13] }}
+            data-testid="bond-analysis-overview-loading"
+          >
             Loading overview...
           </div>
         }
@@ -247,11 +258,14 @@ export function BondAnalyticsViewContent() {
         />
       </Suspense>
       <section
-        style={{ display: "flex", flexDirection: "column", gap: 12 }}
+        style={{ display: "flex", flexDirection: "column", gap: designTokens.space[3] }}
       >
         <Suspense
           fallback={
-            <div style={{ color: "#8090a8", fontSize: 13 }} data-testid="bond-analysis-detail-loading">
+            <div
+              style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[13] }}
+              data-testid="bond-analysis-detail-loading"
+            >
               Loading detail module...
             </div>
           }

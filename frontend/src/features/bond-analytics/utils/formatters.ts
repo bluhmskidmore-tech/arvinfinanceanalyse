@@ -1,4 +1,5 @@
 import type { Numeric } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 
 function coerceRaw(value: Numeric | string | number): number {
   if (typeof value === "number") {
@@ -57,4 +58,4 @@ export const formatBp = (value: Numeric | string): string => {
 
 /** Color for positive/negative values (China standard: red=up, green=down) */
 export const toneColor = (value: number): string =>
-  value >= 0 ? "#cf1322" : "#3f8600";
+  value >= 0 ? designTokens.color.danger[500] : designTokens.color.success[600];
