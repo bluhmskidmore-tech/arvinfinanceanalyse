@@ -1,4 +1,7 @@
 import { SectionCard } from "../../../components/SectionCard";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+
+const t = designTokens;
 
 /** Mock信号：黄 / 绿 / 红圆点（与 atomic 文档一致） */
 const SIGNAL = {
@@ -16,22 +19,53 @@ const ROWS: { name: string; current: string; pctLabel: string; signal: string }[
 export function WatchList() {
   return (
     <SectionCard title="观察名单">
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: t.fontSize[13] }}>
         <thead>
-          <tr style={{ color: "#94a3b8", textAlign: "left" }}>
-            <th style={{ padding: "8px 8px 8px 0", fontWeight: 600 }}>品种</th>
-            <th style={{ padding: "8px 8px", fontWeight: 600 }}>当前</th>
-            <th style={{ padding: "8px 8px", fontWeight: 600 }}>分位</th>
-            <th style={{ padding: "8px 0 8px 8px", fontWeight: 600, width: 48 }}>信号</th>
+          <tr style={{ color: t.color.neutral[500], textAlign: "left" }}>
+            <th style={{ padding: `${t.space[2]}px ${t.space[2]}px ${t.space[2]}px 0`, fontWeight: 600 }}>品种</th>
+            <th style={{ padding: t.space[2], fontWeight: 600 }}>当前</th>
+            <th style={{ padding: t.space[2], fontWeight: 600 }}>分位</th>
+            <th
+              style={{
+                padding: `${t.space[2]}px 0 ${t.space[2]}px ${t.space[2]}px`,
+                fontWeight: 600,
+                width: t.space[9],
+              }}
+            >
+              信号
+            </th>
           </tr>
         </thead>
         <tbody>
           {ROWS.map((row) => (
-            <tr key={row.name} style={{ borderTop: "1px solid #f1f5f9" }}>
-              <td style={{ padding: "10px 8px 10px 0", fontWeight: 600, color: "#1e293b" }}>{row.name}</td>
-              <td style={{ padding: "10px 8px", color: "#475569" }}>{row.current}</td>
-              <td style={{ padding: "10px 8px", color: "#64748b", lineHeight: 1.5 }}>{row.pctLabel}</td>
-              <td style={{ padding: "10px 0 10px 8px", fontSize: 16, lineHeight: 1 }} aria-hidden>
+            <tr key={row.name} style={{ borderTop: `1px solid ${t.color.neutral[100]}` }}>
+              <td
+                style={{
+                  padding: `${t.space[3]}px ${t.space[2]}px ${t.space[3]}px 0`,
+                  fontWeight: 600,
+                  color: t.color.neutral[800],
+                }}
+              >
+                {row.name}
+              </td>
+              <td style={{ ...tabularNumsStyle, padding: t.space[3], color: t.color.neutral[700] }}>{row.current}</td>
+              <td
+                style={{
+                  padding: t.space[3],
+                  color: t.color.neutral[600],
+                  lineHeight: t.lineHeight.normal,
+                }}
+              >
+                {row.pctLabel}
+              </td>
+              <td
+                style={{
+                  padding: `${t.space[3]}px 0 ${t.space[3]}px ${t.space[2]}px`,
+                  fontSize: t.fontSize[16],
+                  lineHeight: 1,
+                }}
+                aria-hidden
+              >
                 {row.signal}
               </td>
             </tr>

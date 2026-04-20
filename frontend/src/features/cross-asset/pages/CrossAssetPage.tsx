@@ -20,44 +20,47 @@ import {
 } from "../lib/crossAssetKpiModel";
 import { buildDriverColumns, buildEnvironmentTags, driverStanceStyle } from "../lib/crossAssetDriversModel";
 import { buildCrossAssetTrendOption } from "../lib/crossAssetTrendChart";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 
-const pageBg = "#f5f7fa";
+const t = designTokens;
+
+const pageBg = t.color.neutral[50];
 
 const detailPanelStyle = {
-  padding: 20,
-  borderRadius: 16,
-  background: "#ffffff",
-  border: "1px solid #e2e8f0",
-  boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05)",
+  padding: t.space[5],
+  borderRadius: t.radius.md,
+  background: t.color.primary[50],
+  border: `1px solid ${t.color.neutral[200]}`,
+  boxShadow: t.shadow.card,
 } as const;
 
 const sectionLeadWrapStyle = {
   display: "grid",
-  gap: 6,
-  marginTop: 24,
+  gap: t.space[2],
+  marginTop: t.space[6],
 } as const;
 
 const sectionEyebrowStyle = {
-  fontSize: 11,
+  fontSize: t.fontSize[11],
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: t.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
-  fontSize: 18,
+  fontSize: t.fontSize[18],
   fontWeight: 600,
-  color: "#0f172a",
+  color: t.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 860,
-  color: "#64748b",
-  fontSize: 13,
-  lineHeight: 1.7,
+  color: t.color.neutral[600],
+  fontSize: t.fontSize[13],
+  lineHeight: t.lineHeight.relaxed,
 } as const;
 
 function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
@@ -92,10 +95,10 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
 }
 
 const sparkStroke: Record<ResolvedCrossAssetKpi["changeTone"], string> = {
-  positive: "#52c41a",
-  negative: "#f5222d",
-  warning: "#fa8c16",
-  default: "#1890ff",
+  positive: t.color.semantic.profit,
+  negative: t.color.semantic.loss,
+  warning: t.color.warning[500],
+  default: t.color.primary[600],
 };
 
 function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
@@ -104,33 +107,52 @@ function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
   return (
     <div
       style={{
-        padding: "14px 14px 12px",
-        borderRadius: 12,
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
-        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05)",
+        padding: `${t.space[4]}px ${t.space[4]}px ${t.space[3]}px`,
+        borderRadius: t.radius.md,
+        background: t.color.primary[50],
+        border: `1px solid ${t.color.neutral[200]}`,
+        boxShadow: t.shadow.card,
         minHeight: 132,
         display: "flex",
         flexDirection: "column",
       }}
     >
-      <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, lineHeight: 1.3 }}>{kpi.label}</div>
       <div
         style={{
-          fontSize: 20,
+          fontSize: t.fontSize[11],
+          color: t.color.neutral[600],
+          fontWeight: 600,
+          lineHeight: t.lineHeight.snug,
+        }}
+      >
+        {kpi.label}
+      </div>
+      <div
+        style={{
+          ...tabularNumsStyle,
+          fontSize: t.fontSize[20],
           fontWeight: 700,
-          color: "#1e293b",
-          marginTop: 8,
+          color: t.color.neutral[800],
+          marginTop: t.space[2],
           letterSpacing: "-0.02em",
         }}
       >
         {kpi.valueLabel}
       </div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: changeColor, marginTop: 4 }}>{kpi.changeLabel}</div>
-      <div style={{ marginTop: "auto", paddingTop: 8 }}>
+      <div
+        style={{
+          fontSize: t.fontSize[12],
+          fontWeight: 600,
+          color: changeColor,
+          marginTop: t.space[1],
+        }}
+      >
+        {kpi.changeLabel}
+      </div>
+      <div style={{ marginTop: "auto", paddingTop: t.space[2] }}>
         <CrossAssetSparkline values={kpi.sparkline} stroke={stroke} height={26} />
       </div>
-      <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 6 }}>{kpi.tag}</div>
+      <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500], marginTop: t.space[2] }}>{kpi.tag}</div>
     </div>
   );
 }
@@ -214,47 +236,59 @@ export default function CrossAssetPage() {
   );
 
   const evalColor = {
-    bull: "#52c41a",
-    bear: "#f5222d",
-    warning: "#fa8c16",
+    bull: t.color.semantic.profit,
+    bear: t.color.semantic.loss,
+    warning: t.color.warning[500],
   } as const;
 
   return (
     <section
       data-testid="cross-asset-page"
-      style={{ background: pageBg, minHeight: "100%", borderRadius: 18, padding: 16 }}
+      style={{
+        background: pageBg,
+        minHeight: "100%",
+        borderRadius: t.radius.lg,
+        padding: t.space[4],
+      }}
     >
       <header
         style={{
           display: "flex",
           alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: 16,
+          gap: t.space[4],
           flexWrap: "wrap",
-          marginBottom: 20,
+          marginBottom: t.space[5],
         }}
       >
         <div>
           <h1
             style={{
               margin: 0,
-              fontSize: 32,
+              fontSize: t.fontSize[30],
               fontWeight: 600,
               letterSpacing: "-0.03em",
-              color: "#0f172a",
+              color: t.color.neutral[900],
             }}
           >
             跨资产驱动
           </h1>
-          <p style={{ margin: "8px 0 0", color: "#64748b", fontSize: 13 }}>
+          <p style={{ margin: `${t.space[2]}px 0 0`, color: t.color.neutral[600], fontSize: t.fontSize[13] }}>
             数据日期{" "}
-            <strong style={{ color: "#334155" }}>
+            <strong style={{ ...tabularNumsStyle, color: t.color.neutral[800] }}>
               {crossAssetDataDate || linkageReportDate || "—"}
             </strong>
           </p>
-          <p style={{ margin: "10px 0 0", color: "#64748b", fontSize: 15, lineHeight: 1.75 }}>
+          <p
+            style={{
+              margin: `${t.space[3]}px 0 0`,
+              color: t.color.neutral[600],
+              fontSize: t.fontSize[16],
+              lineHeight: t.lineHeight.relaxed,
+            }}
+          >
             当前页按“环境概览、驱动判断、走势观察、分析输出”顺序阅读。完整宏观序列仍在{" "}
-            <Link to="/market-data" style={{ color: "#1890ff", fontWeight: 600 }}>
+            <Link to="/market-data" style={{ color: t.color.primary[600], fontWeight: 600 }}>
               市场数据
             </Link>{" "}
             查看，这里只保留跨资产驱动判断与 analytical 联动输出。
@@ -264,11 +298,11 @@ export default function CrossAssetPage() {
           style={{
             display: "inline-flex",
             alignItems: "center",
-            padding: "8px 12px",
+            padding: `${t.space[2]}px ${t.space[3]}px`,
             borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-            fontSize: 12,
+            background: client.mode === "real" ? t.color.success[100] : t.color.primary[100],
+            color: client.mode === "real" ? t.color.success[600] : t.color.primary[600],
+            fontSize: t.fontSize[12],
             fontWeight: 600,
             letterSpacing: "0.04em",
             textTransform: "uppercase",
@@ -287,17 +321,17 @@ export default function CrossAssetPage() {
         style={{
           display: "grid",
           gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 360px)",
-          gap: 16,
+          gap: t.space[4],
           alignItems: "start",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: t.space[4], minWidth: 0 }}>
           <div
             data-testid="cross-asset-kpi-band"
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: 12,
+              gap: t.space[3],
             }}
           >
             {kpis.map((kpi) => (
@@ -314,25 +348,41 @@ export default function CrossAssetPage() {
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 12,
+              gap: t.space[3],
             }}
           >
             <div style={detailPanelStyle}>
-              <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>市场判断</h2>
-              <p style={{ margin: 0, color: "#475569", fontSize: 13, lineHeight: 1.75 }}>
+              <h2
+                style={{
+                  margin: `0 0 ${t.space[3]}px`,
+                  fontSize: t.fontSize[16],
+                  fontWeight: 600,
+                  color: t.color.neutral[900],
+                }}
+              >
+                市场判断
+              </h2>
+              <p
+                style={{
+                  margin: 0,
+                  color: t.color.neutral[700],
+                  fontSize: t.fontSize[13],
+                  lineHeight: t.lineHeight.relaxed,
+                }}
+              >
                 {macroBondLinkageQuery.isLoading || latestQuery.isLoading
                   ? "加载联动分析…"
                   : env.signal_description ??
                     "暂无摘要文本：请结合上方 KPI 与驱动拆解阅读；若管线告警请先排查数据就绪情况。"}
               </p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: t.space[2], marginTop: t.space[4] }}>
                 <span
                   style={{
-                    padding: "4px 10px",
+                    padding: `${t.space[1]}px ${t.space[3]}px`,
                     borderRadius: 999,
-                    background: "rgba(82, 196, 26, 0.12)",
-                    color: "#52c41a",
-                    fontSize: 12,
+                    background: t.color.success[50],
+                    color: t.color.success[600],
+                    fontSize: t.fontSize[12],
                     fontWeight: 600,
                   }}
                 >
@@ -340,11 +390,11 @@ export default function CrossAssetPage() {
                 </span>
                 <span
                   style={{
-                    padding: "4px 10px",
+                    padding: `${t.space[1]}px ${t.space[3]}px`,
                     borderRadius: 999,
-                    background: "rgba(250, 140, 22, 0.12)",
-                    color: "#fa8c16",
-                    fontSize: 12,
+                    background: t.color.warning[50],
+                    color: t.color.warning[600],
+                    fontSize: t.fontSize[12],
                     fontWeight: 600,
                   }}
                 >
@@ -352,11 +402,11 @@ export default function CrossAssetPage() {
                 </span>
                 <span
                   style={{
-                    padding: "4px 10px",
+                    padding: `${t.space[1]}px ${t.space[3]}px`,
                     borderRadius: 999,
-                    background: "rgba(24, 144, 255, 0.1)",
-                    color: "#1890ff",
-                    fontSize: 12,
+                    background: t.color.info[50],
+                    color: t.color.info[600],
+                    fontSize: t.fontSize[12],
                     fontWeight: 600,
                   }}
                 >
@@ -366,12 +416,21 @@ export default function CrossAssetPage() {
             </div>
 
             <div style={detailPanelStyle}>
-              <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>驱动拆解</h2>
+              <h2
+                style={{
+                  margin: `0 0 ${t.space[3]}px`,
+                  fontSize: t.fontSize[16],
+                  fontWeight: 600,
+                  color: t.color.neutral[900],
+                }}
+              >
+                驱动拆解
+              </h2>
               <div
                 style={{
                   display: "grid",
                   gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                  gap: 10,
+                  gap: t.space[3],
                 }}
               >
                 {drivers.map((col) => {
@@ -380,26 +439,33 @@ export default function CrossAssetPage() {
                     <div
                       key={col.title}
                       style={{
-                        borderRadius: 12,
-                        border: "1px solid #f1f5f9",
-                        padding: 10,
-                        background: "#fafbfc",
+                        borderRadius: t.radius.md,
+                        border: `1px solid ${t.color.neutral[100]}`,
+                        padding: t.space[3],
+                        background: t.color.neutral[50],
                         minHeight: 160,
                       }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                      <div
+                        style={{
+                          fontSize: t.fontSize[12],
+                          fontWeight: 600,
+                          color: t.color.neutral[600],
+                          marginBottom: t.space[2],
+                        }}
+                      >
                         {col.title}
                       </div>
                       <div
                         style={{
                           display: "inline-block",
-                          padding: "2px 8px",
-                          borderRadius: 8,
-                          fontSize: 12,
+                          padding: `2px ${t.space[2]}px`,
+                          borderRadius: t.radius.sm,
+                          fontSize: t.fontSize[12],
                           fontWeight: 700,
                           background: st.bg,
                           color: st.color,
-                          marginBottom: 8,
+                          marginBottom: t.space[2],
                         }}
                       >
                         {col.stance}
@@ -407,10 +473,10 @@ export default function CrossAssetPage() {
                       <ul
                         style={{
                           margin: 0,
-                          paddingLeft: 18,
-                          color: "#475569",
-                          fontSize: 11,
-                          lineHeight: 1.65,
+                          paddingLeft: t.space[5],
+                          color: t.color.neutral[700],
+                          fontSize: t.fontSize[11],
+                          lineHeight: t.lineHeight.normal,
                         }}
                       >
                         {col.bullets.map((b) => (
@@ -432,16 +498,43 @@ export default function CrossAssetPage() {
             description="在完成环境判断后，再看归一化走势、事件日历和观察清单，避免把事件噪音提前放到结论层。"
           />
           <div style={detailPanelStyle}>
-            <h2 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产走势（近20日，统一基准 = 100）</h2>
-            <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: 12 }}>近 20 个交易日，统一归一到基准 = 100</p>
+            <h2
+              style={{
+                margin: `0 0 ${t.space[2]}px`,
+                fontSize: t.fontSize[16],
+                fontWeight: 600,
+                color: t.color.neutral[900],
+              }}
+            >
+              跨资产走势（近20日，统一基准 = 100）
+            </h2>
+            <p
+              style={{
+                margin: `0 0 ${t.space[2]}px`,
+                color: t.color.neutral[500],
+                fontSize: t.fontSize[12],
+              }}
+            >
+              近 20 个交易日，统一归一到基准 = 100
+            </p>
             {latestQuery.isLoading ? (
-              <div style={{ height: 320, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
+              <div
+                style={{
+                  height: 320,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: t.color.neutral[500],
+                }}
+              >
                 加载宏观序列…
               </div>
             ) : trendOption ? (
               <ReactECharts option={trendOption} style={{ height: 320, width: "100%" }} notMerge lazyUpdate />
             ) : (
-              <div style={{ height: 200, color: "#94a3b8", fontSize: 13 }}>缺少带历史点的序列，无法绘制联动图。</div>
+              <div style={{ height: 200, color: t.color.neutral[500], fontSize: t.fontSize[13] }}>
+                缺少带历史点的序列，无法绘制联动图。
+              </div>
             )}
           </div>
 
@@ -449,7 +542,7 @@ export default function CrossAssetPage() {
             style={{
               display: "grid",
               gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-              gap: 12,
+              gap: t.space[3],
               alignItems: "start",
             }}
           >
@@ -457,14 +550,38 @@ export default function CrossAssetPage() {
             <WatchList />
           </div>
 
-          <div style={{ ...detailPanelStyle, padding: 18 }}>
-            <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产传导链（这页应该怎么用）</h2>
-            <ol style={{ margin: 0, paddingLeft: 20, color: "#475569", fontSize: 13, lineHeight: 1.85 }}>
+          <div style={{ ...detailPanelStyle, padding: t.space[5] }}>
+            <h2
+              style={{
+                margin: `0 0 ${t.space[3]}px`,
+                fontSize: t.fontSize[16],
+                fontWeight: 600,
+                color: t.color.neutral[900],
+              }}
+            >
+              跨资产传导链（这页应该怎么用）
+            </h2>
+            <ol
+              style={{
+                margin: 0,
+                paddingLeft: t.space[5],
+                color: t.color.neutral[700],
+                fontSize: t.fontSize[13],
+                lineHeight: t.lineHeight.relaxed,
+              }}
+            >
               <li>先看顶部 KPI：利率锚、海外约束、风险资产与汇率是否同向。</li>
               <li>再看驱动拆解：流动性 / 海外 / 增长 / 通胀四象限是否互相抵消。</li>
               <li>最后结合估值分位与组合约束，落到久期、利差与对冲工具。</li>
             </ol>
-            <p style={{ margin: "14px 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.7 }}>
+            <p
+              style={{
+                margin: `${t.space[4]}px 0 0`,
+                fontSize: t.fontSize[12],
+                color: t.color.neutral[600],
+                lineHeight: t.lineHeight.relaxed,
+              }}
+            >
               原则：跨资产信号只做环境标注与候选清单，执行仍需回缚到正式估值、限额与风控流程。
             </p>
           </div>
@@ -485,20 +602,20 @@ export default function CrossAssetPage() {
             }}
           >
             {!linkageReportDate ? (
-              <p style={{ color: "#5c6b82", fontSize: 14 }}>
+              <p style={{ color: t.color.neutral[600], fontSize: t.fontSize[14] }}>
                 缺少可用的宏观最新交易日，无法计算联动。请稍后重试或检查市场数据管线。
               </p>
             ) : (
-              <div style={{ display: "grid", gap: 14 }}>
+              <div style={{ display: "grid", gap: t.space[4] }}>
                 {macroBondLinkageWarnings.length > 0 ? (
                   <ul
                     data-testid="cross-asset-linkage-warning-list"
                     style={{
                       margin: 0,
-                      paddingLeft: 20,
-                      color: "#5c6b82",
-                      fontSize: 13,
-                      lineHeight: 1.8,
+                      paddingLeft: t.space[5],
+                      color: t.color.neutral[600],
+                      fontSize: t.fontSize[13],
+                      lineHeight: t.lineHeight.relaxed,
                     }}
                   >
                     {macroBondLinkageWarnings.map((warning) => (
@@ -511,7 +628,7 @@ export default function CrossAssetPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-                    gap: 12,
+                    gap: t.space[3],
                   }}
                 >
                   <div data-testid="cross-asset-linkage-composite-score">
@@ -561,8 +678,25 @@ export default function CrossAssetPage() {
                 </div>
 
                 <section data-testid="cross-asset-linkage-portfolio-impact" style={detailPanelStyle}>
-                  <h2 style={{ marginTop: 0, marginBottom: 8, fontSize: 16, fontWeight: 600 }}>组合影响估算</h2>
-                  <p style={{ marginTop: 0, color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+                  <h2
+                    style={{
+                      marginTop: 0,
+                      marginBottom: t.space[2],
+                      fontSize: t.fontSize[16],
+                      fontWeight: 600,
+                      color: t.color.neutral[900],
+                    }}
+                  >
+                    组合影响估算
+                  </h2>
+                  <p
+                    style={{
+                      marginTop: 0,
+                      color: t.color.neutral[600],
+                      fontSize: t.fontSize[13],
+                      lineHeight: t.lineHeight.relaxed,
+                    }}
+                  >
                     以下数值为 analytical estimate，不代表正式损益。
                   </p>
                   {hasPortfolioImpact ? (
@@ -570,18 +704,18 @@ export default function CrossAssetPage() {
                       style={{
                         display: "grid",
                         gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                        gap: 12,
+                        gap: t.space[3],
                       }}
                     >
                       <div>
-                        <div style={{ color: "#8090a8", fontSize: 12 }}>rate change</div>
-                        <div>
+                        <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>rate change</div>
+                        <div style={tabularNumsStyle}>
                           {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}
                         </div>
                       </div>
                       <div>
-                        <div style={{ color: "#8090a8", fontSize: 12 }}>spread widening</div>
-                        <div>
+                        <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>spread widening</div>
+                        <div style={tabularNumsStyle}>
                           {formatSignedNumber(
                             macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps,
                             " bp",
@@ -589,12 +723,14 @@ export default function CrossAssetPage() {
                         </div>
                       </div>
                       <div>
-                        <div style={{ color: "#8090a8", fontSize: 12 }}>total estimate</div>
-                        <div>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
+                        <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>total estimate</div>
+                        <div style={tabularNumsStyle}>
+                          {formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}
+                        </div>
                       </div>
                     </div>
                   ) : (
-                    <div style={{ color: "#8090a8", fontSize: 14 }}>当前无组合影响估算。</div>
+                    <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[14] }}>当前无组合影响估算。</div>
                   )}
                 </section>
               </div>
@@ -613,30 +749,71 @@ export default function CrossAssetPage() {
           />
         </div>
 
-        <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16 }}>
+        <aside
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: t.space[3],
+            position: "sticky",
+            top: t.space[4],
+          }}
+        >
           <div style={detailPanelStyle}>
-            <h2 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#0f172a" }}>
+            <h2
+              style={{
+                margin: `0 0 ${t.space[3]}px`,
+                fontSize: t.fontSize[14],
+                fontWeight: 600,
+                color: t.color.neutral[900],
+              }}
+            >
               宏观—债市相关性（Top）
             </h2>
-            <p style={{ margin: "0 0 10px", fontSize: 11, color: "#94a3b8", lineHeight: 1.55 }}>
+            <p
+              style={{
+                margin: `0 0 ${t.space[3]}px`,
+                fontSize: t.fontSize[11],
+                color: t.color.neutral[500],
+                lineHeight: t.lineHeight.snug,
+              }}
+            >
               来源：联动分析接口返回的序列相关；列为滚动窗口 Pearson ρ，非估值分位。
             </p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: t.fontSize[12] }}>
               <thead>
-                <tr style={{ color: "#94a3b8", textAlign: "left" }}>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>指标</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>ρ(3M)</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>ρ(6M)</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>方向</th>
+                <tr style={{ color: t.color.neutral[500], textAlign: "left" }}>
+                  <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>指标</th>
+                  <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>ρ(3M)</th>
+                  <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>ρ(6M)</th>
+                  <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>方向</th>
                 </tr>
               </thead>
               <tbody>
                 {heatmapRows.map((row) => (
-                  <tr key={row.indicator} style={{ borderTop: "1px solid #f1f5f9" }}>
-                    <td style={{ padding: "8px 4px", color: "#334155" }}>{row.indicator}</td>
-                    <td style={{ padding: "8px 4px", color: "#0f172a", fontWeight: 600 }}>{row.current}</td>
-                    <td style={{ padding: "8px 4px", color: "#64748b" }}>{row.mid}</td>
-                    <td style={{ padding: "8px 4px", color: evalColor[row.evalTone], fontWeight: 600 }}>
+                  <tr key={row.indicator} style={{ borderTop: `1px solid ${t.color.neutral[100]}` }}>
+                    <td style={{ padding: `${t.space[2]}px ${t.space[1]}px`, color: t.color.neutral[800] }}>
+                      {row.indicator}
+                    </td>
+                    <td
+                      style={{
+                        ...tabularNumsStyle,
+                        padding: `${t.space[2]}px ${t.space[1]}px`,
+                        color: t.color.neutral[900],
+                        fontWeight: 600,
+                      }}
+                    >
+                      {row.current}
+                    </td>
+                    <td
+                      style={{
+                        ...tabularNumsStyle,
+                        padding: `${t.space[2]}px ${t.space[1]}px`,
+                        color: t.color.neutral[600],
+                      }}
+                    >
+                      {row.mid}
+                    </td>
+                    <td style={{ padding: `${t.space[2]}px ${t.space[1]}px`, color: evalColor[row.evalTone], fontWeight: 600 }}>
                       {row.eval}
                     </td>
                   </tr>

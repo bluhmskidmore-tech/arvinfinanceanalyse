@@ -1,11 +1,14 @@
 import { SectionCard } from "../../../components/SectionCard";
+import { designTokens } from "../../../theme/designSystem";
+
+const t = designTokens;
 
 type ActionTone = "bull" | "warning" | "bear";
 
 const TONE_DOT: Record<ActionTone, { bg: string; label: string }> = {
-  bull: { bg: "#52c41a", label: "关注" },
-  warning: { bg: "#faad14", label: "观察" },
-  bear: { bg: "#f5222d", label: "谨慎" },
+  bull: { bg: t.color.success[500], label: "关注" },
+  warning: { bg: t.color.warning[500], label: "观察" },
+  bear: { bg: t.color.danger[500], label: "谨慎" },
 };
 
 const ROWS: { tone: ActionTone; action: string; reason: string; trigger: string }[] = [
@@ -39,38 +42,64 @@ export function MarketCandidateActions() {
   return (
     <SectionCard title="市场候选动作">
       <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: t.fontSize[13] }}>
           <thead>
-            <tr style={{ color: "#94a3b8", textAlign: "left" }}>
-              <th style={{ padding: "8px 10px 8px 0", fontWeight: 600, width: 36 }} aria-hidden>
+            <tr style={{ color: t.color.neutral[500], textAlign: "left" }}>
+              <th
+                style={{ padding: `${t.space[2]}px ${t.space[3]}px ${t.space[2]}px 0`, fontWeight: 600, width: 36 }}
+                aria-hidden
+              >
                 {/* dot column */}
               </th>
-              <th style={{ padding: "8px 10px 8px 0", fontWeight: 600 }}>动作</th>
-              <th style={{ padding: "8px 10px", fontWeight: 600 }}>理由</th>
-              <th style={{ padding: "8px 0 8px 10px", fontWeight: 600 }}>触发条件</th>
+              <th style={{ padding: `${t.space[2]}px ${t.space[3]}px ${t.space[2]}px 0`, fontWeight: 600 }}>动作</th>
+              <th style={{ padding: `${t.space[2]}px ${t.space[3]}px`, fontWeight: 600 }}>理由</th>
+              <th style={{ padding: `${t.space[2]}px 0 ${t.space[2]}px ${t.space[3]}px`, fontWeight: 600 }}>触发条件</th>
             </tr>
           </thead>
           <tbody>
             {ROWS.map((row) => (
-              <tr key={row.action} style={{ borderTop: "1px solid #f1f5f9", verticalAlign: "top" }}>
-                <td style={{ padding: "10px 10px 10px 0" }}>
+              <tr key={row.action} style={{ borderTop: `1px solid ${t.color.neutral[100]}`, verticalAlign: "top" }}>
+                <td style={{ padding: `${t.space[3]}px ${t.space[3]}px ${t.space[3]}px 0` }}>
                   <span
                     title={TONE_DOT[row.tone].label}
                     style={{
                       display: "inline-block",
-                      width: 10,
-                      height: 10,
+                      width: t.space[2],
+                      height: t.space[2],
                       borderRadius: "50%",
                       background: TONE_DOT[row.tone].bg,
                       flexShrink: 0,
                     }}
                   />
                 </td>
-                <td style={{ padding: "10px 10px 10px 0", fontWeight: 600, color: "#1e293b", whiteSpace: "nowrap" }}>
+                <td
+                  style={{
+                    padding: `${t.space[3]}px ${t.space[3]}px ${t.space[3]}px 0`,
+                    fontWeight: 600,
+                    color: t.color.neutral[800],
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {row.action}
                 </td>
-                <td style={{ padding: "10px 10px", color: "#475569", lineHeight: 1.55 }}>{row.reason}</td>
-                <td style={{ padding: "10px 0 10px 10px", color: "#64748b", lineHeight: 1.55 }}>{row.trigger}</td>
+                <td
+                  style={{
+                    padding: t.space[3],
+                    color: t.color.neutral[700],
+                    lineHeight: t.lineHeight.normal,
+                  }}
+                >
+                  {row.reason}
+                </td>
+                <td
+                  style={{
+                    padding: `${t.space[3]}px 0 ${t.space[3]}px ${t.space[3]}px`,
+                    color: t.color.neutral[600],
+                    lineHeight: t.lineHeight.normal,
+                  }}
+                >
+                  {row.trigger}
+                </td>
               </tr>
             ))}
           </tbody>

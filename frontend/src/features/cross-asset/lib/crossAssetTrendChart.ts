@@ -1,9 +1,19 @@
 import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import type { EChartsOption } from "../../../lib/echarts";
+import { designTokens } from "../../../theme/designSystem";
 
 import { crossAssetTrendLines } from "./crossAssetKpiModel";
 
-const CHART_COLORS = ["#1890ff", "#f5222d", "#52c41a", "#fa8c16", "#722ed1", "#13c2c2", "#eb2f96"];
+const { color: c } = designTokens;
+const CHART_COLORS = [
+  c.primary[500],
+  c.danger[500],
+  c.success[500],
+  c.warning[500],
+  c.primary[700],
+  c.info[400],
+  c.danger[400],
+];
 
 function normalizedAligned(values: (number | null)[]): (number | null)[] {
   const first = values.find((v) => v != null && !Number.isNaN(v));
@@ -46,13 +56,15 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
     };
   });
 
+  const s = designTokens.space;
+  const fs = designTokens.fontSize;
   return {
     color: CHART_COLORS,
-    grid: { left: 48, right: 16, top: 40, bottom: 28 },
+    grid: { left: s[9], right: s[4], top: s[8], bottom: s[7] },
     legend: {
       type: "scroll",
-      top: 4,
-      textStyle: { fontSize: 11, color: "#64748b" },
+      top: s[1],
+      textStyle: { fontSize: fs[11], color: c.neutral[600] },
     },
     tooltip: {
       trigger: "axis",
@@ -60,15 +72,15 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
     xAxis: {
       type: "category",
       data: axisDates,
-      axisLabel: { fontSize: 10, color: "#94a3b8" },
-      axisLine: { lineStyle: { color: "#e2e8f0" } },
+      axisLabel: { fontSize: fs[11], color: c.neutral[500] },
+      axisLine: { lineStyle: { color: c.neutral[200] } },
     },
     yAxis: {
       type: "value",
       name: "基期=100",
-      nameTextStyle: { fontSize: 11, color: "#94a3b8" },
-      axisLabel: { fontSize: 10, color: "#94a3b8" },
-      splitLine: { lineStyle: { color: "#f1f5f9" } },
+      nameTextStyle: { fontSize: fs[11], color: c.neutral[500] },
+      axisLabel: { fontSize: fs[11], color: c.neutral[500] },
+      splitLine: { lineStyle: { color: c.neutral[100] } },
     },
     series: echartsSeries,
   };

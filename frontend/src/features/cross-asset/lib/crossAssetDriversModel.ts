@@ -1,4 +1,5 @@
 import type { MacroBondLinkageEnvironmentScore } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 
 export type DriverTone = "bull" | "bear" | "neutral";
 
@@ -10,9 +11,9 @@ export type DriverColumn = {
 };
 
 const STANCE: Record<DriverTone, { bg: string; color: string }> = {
-  bull: { bg: "rgba(82, 196, 26, 0.12)", color: "#52c41a" },
-  bear: { bg: "rgba(245, 34, 45, 0.1)", color: "#f5222d" },
-  neutral: { bg: "rgba(250, 140, 22, 0.12)", color: "#fa8c16" },
+  bull: { bg: designTokens.color.success[50], color: designTokens.color.success[600] },
+  bear: { bg: designTokens.color.danger[50], color: designTokens.color.danger[600] },
+  neutral: { bg: designTokens.color.warning[50], color: designTokens.color.warning[600] },
 };
 
 export function driverStanceStyle(tone: DriverTone) {
