@@ -49,10 +49,25 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-kpi-band")).toBeInTheDocument();
     expect(screen.getByText("市场判断")).toBeInTheDocument();
     expect(screen.getByText("驱动拆解")).toBeInTheDocument();
-    expect(screen.getByText("跨资产走势")).toBeInTheDocument();
-    expect(screen.getByText("跨资产传导链")).toBeInTheDocument();
-    expect(screen.getByText("估值 / 分位热图")).toBeInTheDocument();
+    expect(screen.getByText("跨资产走势（近20日，统一基准 = 100）")).toBeInTheDocument();
+    expect(screen.getByText("跨资产传导链（这页应该怎么用）")).toBeInTheDocument();
+    expect(screen.getByText("宏观—债市相关性（Top）")).toBeInTheDocument();
 
     expect(screen.getByText("宏观 — 债券联动（评分与组合影响）")).toBeInTheDocument();
+  });
+
+  it("renders the fourth-page cross-asset cockpit sections from the mockup", async () => {
+    renderPage();
+
+    expect(await screen.findByTestId("cross-asset-page")).toBeInTheDocument();
+    expect(screen.getByText("市场判断")).toBeInTheDocument();
+    expect(screen.getByText("驱动拆解")).toBeInTheDocument();
+    expect(screen.getByText("宏观—债市相关性（Top）")).toBeInTheDocument();
+    expect(screen.getByText("市场候选动作")).toBeInTheDocument();
+    expect(screen.getByText("跨资产走势（近20日，统一基准 = 100）")).toBeInTheDocument();
+    expect(screen.getByText("事件与供给日历（示例）")).toBeInTheDocument();
+    expect(screen.getByText("观察名单")).toBeInTheDocument();
+    expect(screen.getByText("跨资产传导链（这页应该怎么用）")).toBeInTheDocument();
+    expect(screen.getByText("页面输出")).toBeInTheDocument();
   });
 });

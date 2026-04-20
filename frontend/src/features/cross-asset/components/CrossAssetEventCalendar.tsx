@@ -35,7 +35,7 @@ const EVENTS: CalendarItem[] = [
 
 export function CrossAssetEventCalendar() {
   return (
-    <SectionCard title="事件与供给日历">
+    <SectionCard title="事件与供给日历（示例）">
       <CalendarList items={EVENTS} />
     </SectionCard>
   );

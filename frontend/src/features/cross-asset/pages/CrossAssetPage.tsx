@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import type { MacroBondLinkagePayload } from "../../../api/contracts";
+import type { MacroBondLinkagePayload, MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 import ReactECharts from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../../workbench/components/KpiCard";
@@ -59,6 +59,37 @@ const sectionDescriptionStyle = {
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
+
+function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
+  if (correlations.length === 0) {
+    return [
+      {
+        indicator: "暂无可用排名",
+        current: "—",
+        mid: "—",
+        eval: "等待数据",
+        evalTone: "warning" as const,
+      },
+    ];
+  }
+  return correlations.slice(0, 8).map((row) => {
+    const indicator = `${row.series_name} → ${row.target_family}${
+      row.target_tenor ? ` (${row.target_tenor})` : ""
+    }`;
+    const current = row.correlation_3m != null ? row.correlation_3m.toFixed(2) : "—";
+    const mid = row.correlation_6m != null ? row.correlation_6m.toFixed(2) : "—";
+    let evalLabel = "中性";
+    let evalTone: "bull" | "bear" | "warning" = "warning";
+    if (row.direction === "positive") {
+      evalLabel = "同向";
+      evalTone = "bull";
+    } else if (row.direction === "negative") {
+      evalLabel = "反向";
+      evalTone = "bear";
+    }
+    return { indicator, current, mid, eval: evalLabel, evalTone };
+  });
+}
 
 const sparkStroke: Record<ResolvedCrossAssetKpi["changeTone"], string> = {
   positive: "#52c41a",
@@ -177,13 +208,10 @@ export default function CrossAssetPage() {
   const drivers = useMemo(() => buildDriverColumns(env), [env]);
   const envTags = useMemo(() => buildEnvironmentTags(env), [env]);
 
-  const heatmapRows = [
-    { indicator: "10Y国债收益率", current: "1.94%", pct: "18%", eval: "中性", evalTone: "warning" as const },
-    { indicator: "5Y国开-国债", current: "12bp", pct: "72%", eval: "偏贵宜", evalTone: "bull" as const },
-    { indicator: "AAA 3Y", current: "45bp", pct: "10%", eval: "偏拥挤", evalTone: "bear" as const },
-    { indicator: "1Y AAA存单", current: "28bp", pct: "81%", eval: "可配", evalTone: "bull" as const },
-    { indicator: "中美国债利差", current: "-210bp", pct: "5%", eval: "倒挂", evalTone: "bear" as const },
-  ];
+  const heatmapRows = useMemo(
+    () => linkageHeatmapRows(macroBondLinkage.top_correlations ?? []),
+    [macroBondLinkage.top_correlations],
+  );
 
   const evalColor = {
     bull: "#52c41a",
@@ -292,8 +320,10 @@ export default function CrossAssetPage() {
             <div style={detailPanelStyle}>
               <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>市场判断</h2>
               <p style={{ margin: 0, color: "#475569", fontSize: 13, lineHeight: 1.75 }}>
-                {env.signal_description ??
-                  "加载联动分析后可在此查看环境评分生成的判断摘要；当前为占位说明。"}
+                {macroBondLinkageQuery.isLoading || latestQuery.isLoading
+                  ? "加载联动分析…"
+                  : env.signal_description ??
+                    "暂无摘要文本：请结合上方 KPI 与驱动拆解阅读；若管线告警请先排查数据就绪情况。"}
               </p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
                 <span
@@ -402,8 +432,8 @@ export default function CrossAssetPage() {
             description="在完成环境判断后，再看归一化走势、事件日历和观察清单，避免把事件噪音提前放到结论层。"
           />
           <div style={detailPanelStyle}>
-            <h2 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产走势</h2>
-            <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: 12 }}>近 20 个交易日，归一化至基期=100</p>
+            <h2 style={{ margin: "0 0 8px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产走势（近20日，统一基准 = 100）</h2>
+            <p style={{ margin: "0 0 8px", color: "#94a3b8", fontSize: 12 }}>近 20 个交易日，统一归一到基准 = 100</p>
             {latestQuery.isLoading ? (
               <div style={{ height: 320, display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8" }}>
                 加载宏观序列…
@@ -428,7 +458,7 @@ export default function CrossAssetPage() {
           </div>
 
           <div style={{ ...detailPanelStyle, padding: 18 }}>
-            <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产传导链</h2>
+            <h2 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 600, color: "#0f172a" }}>跨资产传导链（这页应该怎么用）</h2>
             <ol style={{ margin: 0, paddingLeft: 20, color: "#475569", fontSize: 13, lineHeight: 1.85 }}>
               <li>先看顶部 KPI：利率锚、海外约束、风险资产与汇率是否同向。</li>
               <li>再看驱动拆解：流动性 / 海外 / 增长 / 通胀四象限是否互相抵消。</li>
@@ -571,21 +601,33 @@ export default function CrossAssetPage() {
             )}
           </AsyncSection>
 
-          <PageOutput />
+          <PageOutput
+            envTags={envTags}
+            signalPreview={env.signal_description ?? null}
+            linkageWarnings={macroBondLinkageWarnings}
+            topCorrelationSummary={
+              macroBondLinkage.top_correlations?.[0]
+                ? `${macroBondLinkage.top_correlations[0].series_name} → ${macroBondLinkage.top_correlations[0].target_family}`
+                : null
+            }
+          />
         </div>
 
         <aside style={{ display: "flex", flexDirection: "column", gap: 12, position: "sticky", top: 16 }}>
           <div style={detailPanelStyle}>
             <h2 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 600, color: "#0f172a" }}>
-              估值 / 分位热图
+              宏观—债市相关性（Top）
             </h2>
+            <p style={{ margin: "0 0 10px", fontSize: 11, color: "#94a3b8", lineHeight: 1.55 }}>
+              来源：联动分析接口返回的序列相关；列为滚动窗口 Pearson ρ，非估值分位。
+            </p>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ color: "#94a3b8", textAlign: "left" }}>
                   <th style={{ padding: "6px 4px", fontWeight: 600 }}>指标</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>当前</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>分位</th>
-                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>评估</th>
+                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>ρ(3M)</th>
+                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>ρ(6M)</th>
+                  <th style={{ padding: "6px 4px", fontWeight: 600 }}>方向</th>
                 </tr>
               </thead>
               <tbody>
@@ -593,7 +635,7 @@ export default function CrossAssetPage() {
                   <tr key={row.indicator} style={{ borderTop: "1px solid #f1f5f9" }}>
                     <td style={{ padding: "8px 4px", color: "#334155" }}>{row.indicator}</td>
                     <td style={{ padding: "8px 4px", color: "#0f172a", fontWeight: 600 }}>{row.current}</td>
-                    <td style={{ padding: "8px 4px", color: "#64748b" }}>{row.pct}</td>
+                    <td style={{ padding: "8px 4px", color: "#64748b" }}>{row.mid}</td>
                     <td style={{ padding: "8px 4px", color: evalColor[row.evalTone], fontWeight: 600 }}>
                       {row.eval}
                     </td>
