@@ -102,12 +102,12 @@ describe("buildBondAnalyticsOverviewModel", () => {
       expect.arrayContaining([
         expect.objectContaining({
           key: "return-decomposition",
-          statusLabel: "not-fetched-in-overview",
+          statusLabel: "detail-surface",
           promotionDestination: "readiness-only",
         }),
         expect.objectContaining({
           key: "accounting-audit",
-          statusLabel: "not-fetched-in-overview",
+          statusLabel: "detail-surface",
           promotionDestination: "readiness-only",
         }),
       ]),

@@ -107,7 +107,11 @@ function formatBasis(meta: ResultMeta | null | undefined): string {
     return "Scenario";
   }
 
-  return "Mock";
+  if (meta.basis === "mock") {
+    return "演示口径";
+  }
+
+  return "其他口径";
 }
 
 function formatIsoMoment(value: string | null | undefined): string {

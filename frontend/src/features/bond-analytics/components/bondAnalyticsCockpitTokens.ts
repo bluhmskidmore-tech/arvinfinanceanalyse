@@ -55,7 +55,7 @@ export const FIELD: CSSProperties = {
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  return { borderRadius: 20, borderColor: BORDER, boxShadow: SHADOW, background };
+  return { borderRadius: 24, borderColor: BORDER, boxShadow: SHADOW, background };
 }
 
 export function toneColor(tone: BondAnalyticsTruthTone) {

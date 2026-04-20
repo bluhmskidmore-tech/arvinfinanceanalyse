@@ -210,9 +210,9 @@ export function deriveActionAttributionReadiness(
 export function createDetailEntryReadiness(): BondAnalyticsModuleReadiness {
   return {
     tier: "status",
-    statusLabel: "not-fetched-in-overview",
+    statusLabel: "detail-surface",
     statusReason:
-      "This module remains a governed detail-first surface while overview fetching stays narrow.",
+      "该模块在下方明细区按当前筛选请求后端；概览层仅预取动作归因，不在此误报为占位或未实现。",
     warnings: [],
   };
 }

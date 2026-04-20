@@ -29,7 +29,19 @@ const compactListStyle = {
   gap: 10,
 } as const;
 
+const moduleNoteStyle = {
+  color: "#6a7d95",
+  fontSize: 12,
+  lineHeight: 1.6,
+} as const;
+
 const dashboardCardStyle = panelStyle("#ffffff");
+
+const PORTFOLIO_HEADLINES_HOME_NOTE = "组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。";
+const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
+const PORTFOLIO_HEADLINES_CREDIT_NOTE = "组合信用摘要暂未返回，债券只数、集中度和 DV01 稍后补齐。";
+const TOP_HOLDINGS_HOME_NOTE = "前十大持仓暂未返回，首页先保留组合规模与浮盈快照。";
+const TOP_HOLDINGS_RATING_NOTE = "持仓明细暂未返回，评级分布稍后补齐。";
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return value !== null && value !== undefined && Number.isFinite(value);
@@ -327,6 +339,8 @@ export function BondAnalyticsInstitutionalCockpit({
   const headline = headlineQ.data?.result;
   const portfolioHl = portfolioHlQ.data?.result;
   const err = headlineQ.isError ? ((headlineQ.error as Error)?.message ?? "驾驶舱数据加载失败") : null;
+  const portfolioHeadlinesUnavailable = portfolioHlQ.isError;
+  const topHoldingsUnavailable = holdingsQ.isError;
 
   const dur = headline ? numOr(headline.kpis.weighted_duration) : Number.NaN;
   const creditWeight = portfolioHl ? numOr(portfolioHl.credit_weight) : Number.NaN;
@@ -483,7 +497,9 @@ export function BondAnalyticsInstitutionalCockpit({
                       : "—"
                   }
                   detail={
-                    Number.isFinite(spreadMomPct)
+                    portfolioHeadlinesUnavailable
+                      ? PORTFOLIO_HEADLINES_HOME_NOTE
+                      : Number.isFinite(spreadMomPct)
                       ? `信用权重 ${portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"} · 较上期 ${formatSignedPct(spreadMomPct)}`
                       : portfolioHl
                         ? `信用权重 ${formatPct(portfolioHl.credit_weight)}`
@@ -566,6 +582,16 @@ export function BondAnalyticsInstitutionalCockpit({
           <Card
             size="small"
             title="债券资产结构"
+            extra={
+              <Button
+                size="small"
+                type="text"
+                data-testid="bond-analysis-home-open-portfolio-headlines"
+                onClick={() => onOpenModuleDetail?.("portfolio-headlines")}
+              >
+                查看组合详情
+              </Button>
+            }
             data-testid="bond-analysis-asset-structure"
             style={dashboardCardStyle}
             styles={{ body: { padding: 14 } }}
@@ -595,7 +621,9 @@ export function BondAnalyticsInstitutionalCockpit({
                 ))}
               </div>
             ) : (
-              <Text type="secondary">暂无资产结构</Text>
+              <Text type="secondary">
+                {portfolioHeadlinesUnavailable ? PORTFOLIO_HEADLINES_STRUCTURE_NOTE : "暂无资产结构"}
+              </Text>
             )}
           </Card>
         </Col>
@@ -660,7 +688,22 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card size="small" title="持仓明细（前10）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
+          <Card
+            size="small"
+            title="持仓明细（前10）"
+            extra={
+              <Button
+                size="small"
+                type="text"
+                data-testid="bond-analysis-home-open-top-holdings"
+                onClick={() => onOpenModuleDetail?.("top-holdings")}
+              >
+                查看完整持仓
+              </Button>
+            }
+            style={dashboardCardStyle}
+            styles={{ body: { padding: 14 } }}
+          >
             <div style={compactListStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                 <span style={{ color: "#5c6b82", fontSize: 12 }}>组合市值</span>
@@ -695,7 +738,9 @@ export function BondAnalyticsInstitutionalCockpit({
                   ))}
                 </div>
               ) : (
-                <Text type="secondary">暂无持仓明细</Text>
+                <Text type="secondary">
+                  {topHoldingsUnavailable ? TOP_HOLDINGS_HOME_NOTE : "暂无持仓明细"}
+                </Text>
               )}
             </div>
           </Card>
@@ -728,7 +773,12 @@ export function BondAnalyticsInstitutionalCockpit({
                   detail="组合利率敏感度"
                 />
               </div>
-              {ratingDistribution.length > 0 ? (
+              {portfolioHeadlinesUnavailable ? (
+                <div style={moduleNoteStyle}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div>
+              ) : null}
+              {topHoldingsUnavailable ? (
+                <div style={moduleNoteStyle}>{TOP_HOLDINGS_RATING_NOTE}</div>
+              ) : ratingDistribution.length > 0 ? (
                 <div style={compactListStyle}>
                   {ratingDistribution.map((item) => (
                     <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
