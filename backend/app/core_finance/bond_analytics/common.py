@@ -104,6 +104,16 @@ def infer_accounting_class(asset_class: str) -> str:
 
 
 def get_accounting_rule_trace(asset_class: str) -> tuple[str, str | None]:
+    """Return (rule_id, representative_pattern) for the asset_class match.
+
+    The Chinese-label *return values* below are output-side trace literals
+    that name the matched canonical bucket; they are NOT input-side
+    classifiers (those live in ``classification_rules.infer_invest_type``).
+    Audit ``hat_mapping/accounting_class_substring`` flags them as a regex
+    false positive — see W-final-2026-04-21 docstring on
+    ``calibers.rules.hat_mapping``.
+    Human: caliber-hat_mapping-justified (output trace literals, not filters).
+    """
     if not asset_class:
         return "R999", None
     invest = infer_invest_type(None, None, asset_class)

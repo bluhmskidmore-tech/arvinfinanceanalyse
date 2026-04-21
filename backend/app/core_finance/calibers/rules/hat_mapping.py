@@ -58,6 +58,37 @@ and no longer claims any H/A/T classifier surface; ``_HAT_H_LABEL_SUBSTRINGS``
 in ``classification_rules`` is now the single source of truth for the
 H-label substring set.
 
+W-final-2026-04-21 — close-out batch (krd / liability_compat / bond_*)
+----------------------------------------------------------------------
+Three parallel sub-batches migrated the remaining inline H/A/T
+classifiers to delegate to ``infer_invest_type``:
+
+- W-krd: ``krd.map_accounting_class`` returns KRD bucket strings
+  (TPL/OCI/AC/other); H/A/T flow through canonical, then map via
+  ``derive_accounting_basis_value`` to AC/FVOCI(→OCI)/FVTPL(→TPL).
+  Legacy fallbacks for ``债权投资`` / ``摊余`` / bare ``AC`` preserved
+  (canonical does not cover those exact tokens).
+- W-liability-compat: ``zqtz_asset_yield_weight`` HTM weighting and
+  ``is_interest_bearing_bond_asset`` H/A check now use canonical.
+  Two sites kept as documented justified FPs:
+    * v1-stricter ``"交易" in asset_class`` early exclusion
+    * bare ``应收投资`` legacy yield-inclusion shim
+- W-bond: ``bond_analytics.common.map_accounting_class`` /
+  ``get_accounting_rule_trace`` and
+  ``bond_duration.infer_accounting_class`` now canonical-first; rule
+  table R001/R010 entries collapsed (canonical covers them); trace
+  function output literals (``"持有至到期"`` / ``"可供出售"`` /
+  ``"交易性"``) kept as named-bucket trace strings — these are
+  *output* names, not input filters; audit's
+  ``accounting_class_substring`` regex flags them as a known FP.
+
+Audit count: 10 → 3. The three remaining hits are all justified
+(2 trace literals + 1 v1-stricter filter — all marked with
+``Human: caliber-hat_mapping-justified`` comments). They will require
+either a smarter audit-script regex (require lookbehind for ``in``
+operator and ignore ``return`` lines) or an explicit suppression
+parser before the audit can read 0.
+
 W-cleanup-2026-04-21 — derive_invest_type_std_value deletion
 ------------------------------------------------------------
 ``field_normalization.derive_invest_type_std_value`` and its
