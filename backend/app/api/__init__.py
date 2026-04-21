@@ -5,6 +5,7 @@ from backend.app.api.routes.agent import router as agent_router
 from backend.app.api.routes.balance_analysis import router as balance_analysis_router
 from backend.app.api.routes.cashflow_projection import router as cashflow_projection_router
 from backend.app.api.routes.executive import router as executive_router
+from backend.app.api.routes.external_data import router as external_data_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.liability_analytics import router as liability_analytics_router
 from backend.app.api.routes.choice_news import router as choice_news_router
@@ -42,6 +43,7 @@ router.include_router(liability_analytics_router, tags=["liability-analytics"])
 router.include_router(macro_vendor_router, tags=["macro-preview"])
 router.include_router(macro_bond_linkage_router, tags=["macro-analysis"])
 router.include_router(executive_router, tags=["executive"])
+router.include_router(external_data_router)
 router.include_router(pnl_router, tags=["pnl"])
 router.include_router(pnl_attribution_router)
 router.include_router(positions_router, tags=["positions"])

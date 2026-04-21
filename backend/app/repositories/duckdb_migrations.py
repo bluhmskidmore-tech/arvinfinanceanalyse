@@ -101,6 +101,10 @@ def _v12_news_warehouse(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "13_news_warehouse.sql")
 
 
+def _v13_external_data_catalog(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "14_external_data_catalog.sql")
+
+
 def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(1, "baseline snapshot tables", _v1_snapshot_tables)
     registry.register(2, "baseline bond analytics", _v2_bond_analytics)
@@ -114,6 +118,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(10, "baseline materialize runs", _v10_materialize_runs)
     registry.register(11, "baseline Choice news", _v11_choice_news)
     registry.register(12, "news warehouse fact_news_event", _v12_news_warehouse)
+    registry.register(13, "external data catalog", _v13_external_data_catalog)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

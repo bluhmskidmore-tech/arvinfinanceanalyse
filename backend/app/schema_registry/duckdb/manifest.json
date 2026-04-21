@@ -66,6 +66,11 @@
       "path": "13_news_warehouse.sql",
       "ensure_module": "backend.app.repositories.news_warehouse_repo",
       "ensure_symbol": "ensure_news_warehouse_schema"
+    },
+    {
+      "path": "14_external_data_catalog.sql",
+      "ensure_module": "backend.app.repositories.external_data_catalog_repo",
+      "ensure_symbol": "ensure_external_data_catalog_schema"
     }
   ]
 }
