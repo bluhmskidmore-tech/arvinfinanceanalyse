@@ -1,0 +1,102 @@
+"""
+Caliber rule: H / A / T investment-type mapping (per FVTPL classification).
+
+Background
+----------
+Every fixed-income position must be classified into one of three
+accounting categories:
+
+- ``H`` — held-to-maturity (HTM)
+- ``A`` — available-for-sale (AFS)
+- ``T`` — trading
+
+The mapping flows from the *formal accounting* cell only. Management
+and external-exposure views, as well as scenario / analytical bases, all
+inherit the same H/A/T tag — diverging would let the same bond appear
+as ``H`` in one report and ``T`` in another on the same date, which is
+exactly the inconsistency that triggered the global-caliber-unification
+work (transcript 2026-04-21, user Round 3).
+
+Resolution matrix
+-----------------
+
+           accounting              management   external_exposure
+formal     COMPUTE_VIA_CANONICAL   INHERIT      INHERIT
+scenario   INHERIT                 INHERIT      INHERIT
+analytical INHERIT                 INHERIT      INHERIT
+
+- The single ``COMPUTE_VIA_CANONICAL`` cell delegates to
+  ``infer_invest_type``; every other cell is ``INHERIT_FROM_FORMAL``,
+  which formally means "look up the formal/accounting answer and use
+  it verbatim".
+- This shape is intentionally narrow: H/A/T is an *accounting*
+  classification. Re-deriving it from a scenario or management lens
+  would invent classifications that the ledger never made.
+
+Canonical callable selection (PRD Q-PRD-2)
+------------------------------------------
+Two implementations currently coexist in the codebase:
+
+- A: ``field_normalization.derive_invest_type_std_value``
+- B: ``classification_rules.infer_invest_type``
+
+PRD Q-PRD-2 default = **B** (selected). Reasons:
+
+1. B handles the ``is_nonstd`` branch (non-standard assets are mapped to
+   H or T based on whether interest income is positive).
+2. B does not misclassify liabilities as ``H`` (A had this defect, which
+   would compound the issuance-exclusion bug).
+3. B is colocated with the other classification rules in
+   ``classification_rules.py``, keeping the canonical surface compact.
+
+Function A is not deleted by this rule; it will be marked deprecated in
+a follow-up phase (W4 migration step) and eventually thinned to a pure
+field-normalization helper that no longer claims to be the H/A/T source.
+
+This skeleton-only registration binds the policy to the registry; no
+behaviour changes ship with W4.
+"""
+
+from __future__ import annotations
+
+from backend.app.core_finance.calibers.descriptor import CaliberRuleDescriptor
+from backend.app.core_finance.calibers.enums import Basis, Resolution, View
+from backend.app.core_finance.calibers.registry import ensure_caliber_rule
+
+DESCRIPTOR: CaliberRuleDescriptor = CaliberRuleDescriptor(
+    rule_id="hat_mapping",
+    rule_version="v1.0",
+    canonical_module="backend.app.core_finance.config.classification_rules",
+    canonical_callable="infer_invest_type",
+    matrix={
+        (Basis.FORMAL, View.ACCOUNTING): Resolution.COMPUTE_VIA_CANONICAL,
+        (Basis.FORMAL, View.MANAGEMENT): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.FORMAL, View.EXTERNAL_EXPOSURE): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.SCENARIO, View.ACCOUNTING): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.SCENARIO, View.MANAGEMENT): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.SCENARIO, View.EXTERNAL_EXPOSURE): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.ANALYTICAL, View.ACCOUNTING): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.ANALYTICAL, View.MANAGEMENT): Resolution.INHERIT_FROM_FORMAL,
+        (Basis.ANALYTICAL, View.EXTERNAL_EXPOSURE): Resolution.INHERIT_FROM_FORMAL,
+    },
+    applies_to=(
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_bond_analytics_daily",
+        "fact_formal_pnl_fi_daily",
+    ),
+    rationale=(
+        "H/A/T is an accounting-side classification owned by the formal "
+        "basis under the accounting view. All other (basis, view) cells "
+        "must INHERIT_FROM_FORMAL so the same bond never appears as 'H' "
+        "in one page and 'T' in another on the same date. Q-PRD-2 selected "
+        "classification_rules.infer_invest_type as canonical (it has the "
+        "is_nonstd branch and does not misclassify liabilities as H, "
+        "unlike field_normalization.derive_invest_type_std_value, which "
+        "will be thinned to a pure normalization helper in a follow-up "
+        "phase)."
+    ),
+    source_doc=".omx/specs/deep-interview-global-caliber-unification.md",
+)
+
+
+ensure_caliber_rule(DESCRIPTOR)
