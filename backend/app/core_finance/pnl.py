@@ -9,7 +9,10 @@ from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
     infer_invest_type,
 )
-from backend.app.core_finance.field_normalization import derive_accounting_basis_value
+from backend.app.core_finance.field_normalization import (
+    ACCOUNTING_BASIS_FVTPL,
+    derive_accounting_basis_value,
+)
 
 
 InvestTypeStd = Literal["H", "A", "T"]
@@ -424,7 +427,7 @@ def _recognized_pnl_components(row: FiPnlRecord) -> RecognizedPnlComponents:
     return RecognizedPnlComponents(
         interest_income_514=row.interest_income_514,
         fair_value_change_516=(
-            row.fair_value_change_516 if row.accounting_basis == "FVTPL" else ZERO
+            row.fair_value_change_516 if row.accounting_basis == ACCOUNTING_BASIS_FVTPL else ZERO
         ),
         capital_gain_517=(
             row.capital_gain_517 if _is_517_formal_allowed(row) else ZERO

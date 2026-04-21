@@ -25,9 +25,9 @@ def test_known_rules_registry_has_at_least_five() -> None:
     assert len(KNOWN_RULES) >= 5
 
 
-def test_accounting_basis_is_informational_in_ci_gate() -> None:
+def test_accounting_basis_is_gate_enforced() -> None:
     assert "accounting_basis" in KNOWN_RULES
-    assert "accounting_basis" not in _GATE_ENFORCED_RULES
+    assert "accounting_basis" in _GATE_ENFORCED_RULES
 
 
 @pytest.mark.parametrize("rule_id", tuple(sorted(_GATE_ENFORCED_RULES)))

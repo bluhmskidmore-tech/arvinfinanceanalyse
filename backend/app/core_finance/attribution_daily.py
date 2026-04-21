@@ -21,6 +21,7 @@ from typing import Any
 
 from .bond_duration import infer_accounting_class
 from .bond_four_effects import compute_bond_four_effects
+from .field_normalization import ACCOUNTING_BASIS_AC
 from .campisi import (
     _coupon_freq,
     _years_to_maturity,
@@ -81,7 +82,7 @@ def compute_daily_attribution_row(
     spread = float(fx["spread_effect"])
     mod_dur = fx["mod_duration"]
     mv_start_dec = safe_decimal(merged_position.get("market_value_start"))
-    if infer_accounting_class(merged_position.get("asset_class_start")) == "AC":
+    if infer_accounting_class(merged_position.get("asset_class_start")) == ACCOUNTING_BASIS_AC:
         rolldown = 0.0
     elif not market_end or mat_d is None:
         rolldown = 0.0

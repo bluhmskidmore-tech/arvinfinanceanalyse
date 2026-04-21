@@ -5,7 +5,11 @@ from decimal import Decimal
 from typing import Any, Iterable, Mapping
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
-from backend.app.core_finance.field_normalization import derive_accounting_basis_value
+from backend.app.core_finance.field_normalization import (
+    ACCOUNTING_BASIS_AC,
+    ACCOUNTING_BASIS_FVOCI,
+    derive_accounting_basis_value,
+)
 
 from .attribution_core import get_tenor_bucket
 from .bond_duration import (
@@ -175,12 +179,16 @@ def map_accounting_class(asset_class: str | None) -> str:
     invest = infer_invest_type(None, None, asset_class)
     if invest is not None:
         basis = derive_accounting_basis_value(invest)  # type: ignore[arg-type]
-        if basis == "AC":
+        if basis == ACCOUNTING_BASIS_AC:
             return "AC"
-        if basis == "FVOCI":
+        if basis == ACCOUNTING_BASIS_FVOCI:
             return "OCI"
         return "TPL"
-    if "债权投资" in asset_class or "摊余" in asset_class or str(asset_class).strip() == "AC":
+    if (
+        "债权投资" in asset_class
+        or "摊余" in asset_class
+        or str(asset_class).strip() == ACCOUNTING_BASIS_AC
+    ):
         return "AC"
     return "other"
 

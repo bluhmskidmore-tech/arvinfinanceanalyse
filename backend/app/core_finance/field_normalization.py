@@ -4,9 +4,18 @@ from typing import Literal
 
 from backend.app.core_finance.config import CNY_CURRENCIES, USD_CURRENCIES
 
+from .accounting_basis_constants import (
+    ACCOUNTING_BASIS_AC,
+    ACCOUNTING_BASIS_FVOCI,
+    ACCOUNTING_BASIS_FVTPL,
+)
+
 NormalizedInvestTypeStd = Literal["H", "A", "T"]
 NormalizedAccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 NormalizedCurrencyBasis = Literal["CNY", "CNX"]
+
+# Re-export: canonical tokens live in ``accounting_basis_constants`` (leaf module)
+# to avoid import cycles with ``config.classification_rules``.
 
 def is_approved_status(value: str | None) -> bool:
     return str(value or "").strip().lower() == "approved"

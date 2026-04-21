@@ -8,6 +8,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Optional
 
+from backend.app.core_finance.accounting_basis_constants import (
+    ACCOUNTING_BASIS_FVOCI,
+    ACCOUNTING_BASIS_FVTPL,
+)
+
 CNY_CURRENCIES: tuple[str, ...] = ("人民币", "CNY", "RMB", "CNH")
 USD_CURRENCIES: tuple[str, ...] = ("美元", "USD")
 
@@ -134,14 +139,14 @@ def _match_invest_type_by_substring(value: str) -> str | None:
         "可供出售" in normalized
         or "其他债权" in normalized
         or "AFS" in upper
-        or "FVOCI" in upper
+        or ACCOUNTING_BASIS_FVOCI in upper
         or "OCI" in upper
     ):
         return "A"
     if (
         "交易" in normalized
         or "TRADING" in upper
-        or "FVTPL" in upper
+        or ACCOUNTING_BASIS_FVTPL in upper
         or "TPL" in upper
         or upper in {"T", "TRADING_ASSET_RAW"}
     ):

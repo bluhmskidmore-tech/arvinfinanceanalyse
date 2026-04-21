@@ -9,6 +9,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Dict
 
+from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
+
 from .bond_duration import (
     estimate_convexity_bond,
     estimate_duration,
@@ -120,7 +122,7 @@ def compute_bond_four_effects(
     selection_effect = total_return - income_return - treasury_effect - spread_effect
 
     ac_class = infer_accounting_class(asset_class)
-    if ac_class == "AC":
+    if ac_class == ACCOUNTING_BASIS_AC:
         treasury_effect = Decimal("0")
         spread_effect = Decimal("0")
         selection_effect = Decimal("0")
@@ -165,7 +167,7 @@ def compute_bond_six_effects(
         coupon_frequency=coupon_frequency,
     )
     asset_class = _get_bond_field(bond, "asset_class_start", "asset_class", default="")
-    if infer_accounting_class(asset_class) == "AC":
+    if infer_accounting_class(asset_class) == ACCOUNTING_BASIS_AC:
         return {
             "income_return": fx["income_return"],
             "treasury_effect": Decimal("0"),

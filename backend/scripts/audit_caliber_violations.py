@@ -34,6 +34,7 @@ KNOWN_RULES: tuple[str, ...] = (
 # until their consumer migration batch lands (e.g. accounting_basis → W-accounting-basis-migration).
 _GATE_ENFORCED_RULES: frozenset[str] = frozenset(
     {
+        "accounting_basis",
         "formal_scenario_gate",
         "fx_mid_conversion",
         "hat_mapping",

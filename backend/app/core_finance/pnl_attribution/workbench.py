@@ -10,6 +10,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
+from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_FVTPL
+
 from backend.app.core_finance.bond_analytics.read_models import (
     build_asset_class_risk_summary,
     build_krd_distribution,
@@ -53,7 +55,7 @@ def _period_label_cn(ym: str) -> str:
 def is_tpl_accounting(accounting_basis: str) -> bool:
     u = (accounting_basis or "").upper()
     raw = accounting_basis or ""
-    return "TPL" in u or "FVTPL" in u or "交易性" in raw
+    return "TPL" in u or ACCOUNTING_BASIS_FVTPL in u or "交易性" in raw
 
 
 def _category_type_for_invest(inv: str) -> str:

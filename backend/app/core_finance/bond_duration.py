@@ -13,7 +13,11 @@ from decimal import Decimal
 from typing import Any
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
-from backend.app.core_finance.field_normalization import derive_accounting_basis_value
+from backend.app.core_finance.field_normalization import (
+    ACCOUNTING_BASIS_AC,
+    ACCOUNTING_BASIS_FVOCI,
+    derive_accounting_basis_value,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -152,13 +156,13 @@ def infer_accounting_class(asset_class: str | None) -> str:
     invest = infer_invest_type(None, None, str(asset_class))
     if invest is not None:
         basis = derive_accounting_basis_value(invest)  # type: ignore[arg-type]
-        if basis == "AC":
+        if basis == ACCOUNTING_BASIS_AC:
             return "AC"
-        if basis == "FVOCI":
+        if basis == ACCOUNTING_BASIS_FVOCI:
             return "OCI"
         return "TPL"
     s = str(asset_class)
-    if "债权投资" in s or "摊余" in s or "AC" in s:
+    if "债权投资" in s or "摊余" in s or ACCOUNTING_BASIS_AC in s:
         return "AC"
     if "出售" in s or "OCI" in s or "可供" in s:
         return "OCI"
