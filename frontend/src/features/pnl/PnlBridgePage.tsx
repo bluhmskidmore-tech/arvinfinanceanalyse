@@ -483,24 +483,37 @@ export default function PnlBridgePage() {
               letterSpacing: "-0.03em",
             }}
           >
-            损益桥接
+            正式损益解释
           </h1>
           <p
             data-testid="pnl-bridge-page-subtitle"
             style={pageSubtitleStyle}
           >
-            正式口径损益桥接由后端 <code>/api/pnl/bridge</code> 提供；本页仅展示返回结果与汇总图表，不在浏览器端做金融重算。
+            查看 actual PnL 与 explained PnL 的差异，以及 carry、roll-down、利率、利差等桥接效应。
           </p>
         </div>
-        <span
-          style={{
-            ...modeBadgeStyle,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
-          }}
-        >
-          {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
-        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <span
+            data-testid="pnl-bridge-page-role-badge"
+            style={{
+              ...modeBadgeStyle,
+              background: "#f7f9fc",
+              color: "#162033",
+              border: "1px solid #d7dfea",
+            }}
+          >
+            Formal Explain
+          </span>
+          <span
+            style={{
+              ...modeBadgeStyle,
+              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
+              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            }}
+          >
+            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+          </span>
+        </div>
       </div>
 
       <FilterBar style={controlBarStyle}>

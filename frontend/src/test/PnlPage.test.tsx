@@ -156,8 +156,10 @@ describe("PnlPage", () => {
     });
 
     const dateSelect = await screen.findByLabelText("pnl-report-date");
-    expect(screen.getByTestId("pnl-page-title")).toHaveTextContent("损益明细");
-    expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("不在浏览器端做金融重算");
+    expect(screen.getByTestId("pnl-page-title")).toHaveTextContent("正式损益明细");
+    expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("查看正式口径损益汇总与明细");
+    expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("不在前端重算");
+    expect(screen.getByTestId("pnl-page-role-badge")).toHaveTextContent("Formal Detail");
     await waitFor(() => {
       expect(screen.getByTestId("pnl-ledger-link")).toHaveAttribute(
         "href",

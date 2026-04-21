@@ -478,7 +478,7 @@ export default function ProductCategoryPnlPage() {
               letterSpacing: "-0.03em",
             }}
           >
-            产品类别损益分析
+            产品分类损益
           </h1>
           <p
             data-testid="product-category-page-subtitle"
@@ -490,10 +490,10 @@ export default function ProductCategoryPnlPage() {
               lineHeight: 1.7,
             }}
           >
-            基于总账对账和日均数据的产品类别损益分析表
+            按业务分类查看损益、FTP 和净收入。用于经营分析，不等同于逐笔损益明细。
           </p>
           <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
-            formal read model drives the baseline table; scenario preview only applies after the explicit apply action.
+            系统层经营口径：正式基线来自 formal read model；情景预览仅在显式应用后生效。
           </p>
           {lastRefreshRunId ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
@@ -512,6 +512,9 @@ export default function ProductCategoryPnlPage() {
           ) : null}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          <span data-testid="product-category-role-badge" style={modeBadgeStyle}>
+            System Layer
+          </span>
           <span style={modeBadgeStyle}>
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>

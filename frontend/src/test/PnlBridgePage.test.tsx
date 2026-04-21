@@ -142,8 +142,9 @@ describe("PnlBridgePage", () => {
     });
 
     const dateSelect = await screen.findByLabelText("pnl-bridge-report-date");
-    expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("损益桥接");
-    expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("不在浏览器端做金融重算");
+    expect(screen.getByTestId("pnl-bridge-page-title")).toHaveTextContent("正式损益解释");
+    expect(screen.getByTestId("pnl-bridge-page-subtitle")).toHaveTextContent("查看 actual PnL 与 explained PnL 的差异");
+    expect(screen.getByTestId("pnl-bridge-page-role-badge")).toHaveTextContent("Formal Explain");
     expect(screen.getByTestId("pnl-bridge-formal-only-note")).toHaveTextContent("formal-only");
     expect(screen.getByRole("heading", { name: "正式桥接汇总" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "桥接明细与归因瀑布" })).toBeInTheDocument();

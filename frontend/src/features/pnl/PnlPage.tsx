@@ -417,16 +417,27 @@ export default function PnlPage() {
               letterSpacing: "-0.03em",
             }}
           >
-            损益明细
+            正式损益明细
           </h1>
           <p
             data-testid="pnl-page-subtitle"
             style={pageSubtitleStyle}
           >
-            正式口径 PnL 明细与汇总，数据由后端 API 提供；页面仅展示返回值，不在浏览器端做金融重算。
+            查看正式口径损益汇总与明细，包括 FI 明细和非标桥接行。页面只展示后端结果，不在前端重算。
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <span
+            data-testid="pnl-page-role-badge"
+            style={{
+              ...modeBadgeStyle,
+              background: "#f7f9fc",
+              color: "#162033",
+              border: "1px solid #d7dfea",
+            }}
+          >
+            Formal Detail
+          </span>
           <span
             style={{
               ...modeBadgeStyle,
