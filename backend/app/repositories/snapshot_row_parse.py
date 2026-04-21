@@ -33,6 +33,8 @@ ZQTZ_YTM = "到期收益率"
 ZQTZ_MATURITY = "到期日"
 ZQTZ_NEXT_CALL = "下一行权日/逾期资产到期日"
 ZQTZ_OVERDUE_DAYS = "本金逾期天数"
+ZQTZ_CUSTOMER_ATTRIBUTE = "授信客户属性"
+ZQTZ_VALUE_DATE = "起息日"
 ZQTZ_CURRENCY = "币种"
 
 TYW_SERIAL = "流水号"
@@ -162,6 +164,8 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "overdue_days": overdue_days,
                 "is_issuance_like": bool(is_issuance_like),
                 "interest_mode": _text(raw_row, ZQTZ_INTEREST_MODE),
+                "value_date": _cell_to_iso_date(book, raw_row.get(ZQTZ_VALUE_DATE)),
+                "customer_attribute": _text(raw_row, ZQTZ_CUSTOMER_ATTRIBUTE),
                 "source_version": source_version,
                 "rule_version": rule_version,
                 "ingest_batch_id": ingest_batch_id,

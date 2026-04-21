@@ -21,6 +21,29 @@ from backend.app.repositories.snapshot_row_parse import (
 from tests.helpers import ROOT
 
 
+class _FakeSheet:
+    def __init__(self, rows: list[list[object]]):
+        self._rows = rows
+        self.nrows = len(rows)
+        self.ncols = max((len(row) for row in rows), default=0)
+
+    def cell_value(self, rowx: int, colx: int) -> object:
+        row = self._rows[rowx]
+        if colx >= len(row):
+            return ""
+        return row[colx]
+
+
+class _FakeBook:
+    def __init__(self, rows: list[list[object]]):
+        self.datemode = 0
+        self._sheet = _FakeSheet(rows)
+
+    def sheet_by_index(self, index: int) -> _FakeSheet:
+        assert index == 0
+        return self._sheet
+
+
 def test_text_helper():
     assert _text({"k": "  x "}, "k") == "x"
     assert _text({"k": None}, "k") == ""
@@ -176,3 +199,105 @@ def test_parse_zqtz_prefers_source_file_report_date_over_stale_sheet_date():
     )
     assert rows
     assert {row["report_date"] for row in rows} == {"2025-11-20"}
+
+
+def test_parse_zqtz_maps_value_date_and_customer_attribute(monkeypatch):
+    rows = [
+        [],
+        [
+            snapshot_row_parse_mod.ZQTZ_BOND_CODE,
+            snapshot_row_parse_mod.ZQTZ_BOND_NAME,
+            snapshot_row_parse_mod.ZQTZ_PORTFOLIO,
+            snapshot_row_parse_mod.ZQTZ_COST_CENTER,
+            snapshot_row_parse_mod.ZQTZ_BUSINESS_KIND,
+            snapshot_row_parse_mod.ZQTZ_ACCOUNT_CATEGORY,
+            snapshot_row_parse_mod.ZQTZ_ASSET_CLASS,
+            snapshot_row_parse_mod.ZQTZ_ISSUER,
+            snapshot_row_parse_mod.ZQTZ_INDUSTRY,
+            snapshot_row_parse_mod.ZQTZ_RATING,
+            snapshot_row_parse_mod.ZQTZ_CURRENCY,
+            snapshot_row_parse_mod.ZQTZ_FACE_VALUE,
+            snapshot_row_parse_mod.ZQTZ_FAIR_VALUE,
+            snapshot_row_parse_mod.ZQTZ_AMORTIZED,
+            snapshot_row_parse_mod.ZQTZ_ACCRUED,
+            snapshot_row_parse_mod.ZQTZ_COUPON,
+            snapshot_row_parse_mod.ZQTZ_YTM,
+            snapshot_row_parse_mod.ZQTZ_MATURITY,
+            snapshot_row_parse_mod.ZQTZ_INTEREST_MODE,
+            snapshot_row_parse_mod.ZQTZ_OVERDUE_DAYS,
+            snapshot_row_parse_mod.ZQTZ_CUSTOMER_ATTRIBUTE,
+            snapshot_row_parse_mod.ZQTZ_VALUE_DATE,
+        ],
+        [
+            "240001.IB",
+            "债券A",
+            "组合A",
+            "CC100",
+            "国债",
+            "可供出售债券",
+            "债券类",
+            "发行人A",
+            "金融业",
+            "AAA",
+            "人民币",
+            "100",
+            "100",
+            "90",
+            "5",
+            "2.50",
+            "2.40",
+            "2027-12-31",
+            "固定",
+            "12",
+            "内部客户",
+            "2024-01-05",
+        ],
+    ]
+
+    monkeypatch.setattr(
+        snapshot_row_parse_mod.xlrd,
+        "open_workbook",
+        lambda **kwargs: _FakeBook(rows),
+    )
+
+    parsed = parse_zqtz_snapshot_rows_from_bytes(
+        file_bytes=b"fake",
+        ingest_batch_id="ib-extra",
+        source_version="sv-extra",
+        source_file="ZQTZSHOW-20251231.xls",
+        rule_version="rv-extra",
+    )
+
+    assert parsed == [
+        {
+            "report_date": "2025-12-31",
+            "instrument_code": "240001.IB",
+            "instrument_name": "债券A",
+            "portfolio_name": "组合A",
+            "cost_center": "CC100",
+            "account_category": "可供出售债券",
+            "asset_class": "债券类",
+            "bond_type": "国债",
+            "issuer_name": "发行人A",
+            "industry_name": "金融业",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "amortized_cost_native": Decimal("90"),
+            "accrued_interest_native": Decimal("5"),
+            "coupon_rate": Decimal("2.5"),
+            "ytm_value": Decimal("2.4"),
+            "maturity_date": "2027-12-31",
+            "next_call_date": None,
+            "overdue_days": 12,
+            "is_issuance_like": False,
+            "interest_mode": "固定",
+            "value_date": "2024-01-05",
+            "customer_attribute": "内部客户",
+            "source_version": "sv-extra",
+            "rule_version": "rv-extra",
+            "ingest_batch_id": "ib-extra",
+            "trace_id": parsed[0]["trace_id"],
+        }
+    ]
