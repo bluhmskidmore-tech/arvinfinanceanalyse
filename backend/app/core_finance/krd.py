@@ -4,6 +4,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Iterable, Mapping
 
+from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.field_normalization import derive_accounting_basis_value
+
 from .attribution_core import get_tenor_bucket
 from .bond_duration import (
     estimate_convexity_bond,
@@ -156,23 +159,28 @@ def classify_asset_class(bond_type: str | None) -> str:
 
 
 def map_accounting_class(asset_class: str | None) -> str:
+    """Map raw accounting label to KRD bucket (TPL / OCI / AC / other).
+
+    W-krd-2026-04-21: H/A/T classification delegates to canonical
+    ``classification_rules.infer_invest_type`` (caliber ``hat_mapping``),
+    then maps ``derive_accounting_basis_value`` outputs to legacy KRD
+    strings (``OCI`` for FVOCI, ``TPL`` for FVTPL).
+
+    When the canonical matcher returns ``None``, the historical fallbacks
+    for ``债权投资``, substring ``摊余``, and exact ``AC`` remain — these
+    are not expressible solely via ``_match_invest_type_by_substring``.
+    """
     if not asset_class:
         return "other"
-    if "交易" in asset_class or "TPL" in asset_class or "FVTPL" in asset_class:
+    invest = infer_invest_type(None, None, asset_class)
+    if invest is not None:
+        basis = derive_accounting_basis_value(invest)  # type: ignore[arg-type]
+        if basis == "AC":
+            return "AC"
+        if basis == "FVOCI":
+            return "OCI"
         return "TPL"
-    if (
-        "其他债权" in asset_class
-        or "可供出售" in asset_class
-        or "OCI" in asset_class
-        or "FVOCI" in asset_class
-    ):
-        return "OCI"
-    if (
-        "债权投资" in asset_class
-        or "持有至到期" in asset_class
-        or "摊余" in asset_class
-        or asset_class == "AC"
-    ):
+    if "债权投资" in asset_class or "摊余" in asset_class or str(asset_class).strip() == "AC":
         return "AC"
     return "other"
 
