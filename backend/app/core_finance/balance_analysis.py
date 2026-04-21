@@ -5,26 +5,15 @@ from datetime import date
 from decimal import Decimal
 from typing import Literal
 
+from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.field_normalization import (
+    derive_accounting_basis_value,
+)
+
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 BalanceCurrencyBasis = Literal["native", "CNY", "CNX"]
 BalancePositionScope = Literal["asset", "liability", "all"]
-
-_H_LABELS = frozenset(
-    {
-        "应收投资款项",
-        "发行类债劵",
-        "发行类债券",
-        "拆放同业",
-        "买入返售证券",
-        "存放同业",
-        "同业拆入",
-        "同业存放",
-        "卖出回购证券",
-        "卖出回购票据",
-        "持有至到期同业存单",
-    }
-)
 
 
 @dataclass(slots=True, frozen=True)
@@ -143,27 +132,25 @@ class FormalTywBalanceFactRow:
 
 
 def derive_invest_type_std(invest_type_raw: str) -> InvestTypeStd:
-    normalized = str(invest_type_raw or "").strip().lower()
-    if not normalized:
-        raise ValueError("invest_type_raw is required")
-    if "可供出售" in normalized or "afs" in normalized:
-        return "A"
-    if "交易" in normalized or "trading" in normalized:
-        return "T"
-    if "持有至到期" in normalized or "htm" in normalized:
-        return "H"
-    if any(label.lower() in normalized for label in _H_LABELS):
-        return "H"
-    raise ValueError(f"Unrecognized invest_type_raw={invest_type_raw!r}")
+    """Normalize an accounting label to H/A/T (caliber rule ``hat_mapping``).
+
+    W-balance-2026-04-21
+    --------------------
+    Thin wrapper over canonical ``classification_rules.infer_invest_type``.
+    Canonical was enriched in the same migration to subsume the bare-label
+    normalization formerly served by
+    ``field_normalization.derive_invest_type_std_value``; this wrapper
+    keeps the historical ``ValueError`` contract that ``project_*_balance_row``
+    call sites depend on.
+    """
+    result = infer_invest_type(None, invest_type_raw, None)
+    if result is None:
+        raise ValueError(f"Unrecognized invest_type_raw={invest_type_raw!r}")
+    return result  # type: ignore[return-value]
 
 
 def derive_accounting_basis(invest_type_std: InvestTypeStd) -> AccountingBasis:
-    mapping: dict[InvestTypeStd, AccountingBasis] = {
-        "H": "AC",
-        "A": "FVOCI",
-        "T": "FVTPL",
-    }
-    return mapping[invest_type_std]
+    return derive_accounting_basis_value(invest_type_std)
 
 
 def average_daily_cny_amounts(daily_native_and_fx: list[tuple[Decimal, Decimal]]) -> Decimal:

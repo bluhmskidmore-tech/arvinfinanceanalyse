@@ -53,6 +53,18 @@ Function A is not deleted by this rule; it will be marked deprecated in
 a follow-up phase (W4 migration step) and eventually thinned to a pure
 field-normalization helper that no longer claims to be the H/A/T source.
 
+W-balance-2026-04-21 — balance_analysis trial migration
+-------------------------------------------------------
+``balance_analysis.derive_invest_type_std`` was refactored from a
+self-contained accounting-label classifier (with its own ``_H_LABELS``
+set including the ``发行类债劵`` 劵-variant) into a thin wrapper that
+delegates to ``infer_invest_type``. To preserve byte-for-byte output
+the canonical ``_HAT_H_LABEL_SUBSTRINGS`` was enriched in the same
+commit with all H-label substrings previously owned by
+``balance_analysis._H_LABELS`` *and* by
+``field_normalization._H_LABELS``, including the 劵 variant. Audit count
+on this rule dropped 21 → 17 (3H + 1M cleared from balance_analysis).
+
 This skeleton-only registration binds the policy to the registry; no
 behaviour changes ship with W4.
 """

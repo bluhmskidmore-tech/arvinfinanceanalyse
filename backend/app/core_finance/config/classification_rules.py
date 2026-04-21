@@ -101,6 +101,58 @@ def is_interbank_liability_core(product_type: Optional[str]) -> bool:
     return any(_contains_sql_like_substring(text, kw) for kw in INTERBANK_LIABILITY_CORE_KEYWORDS)
 
 
+_HAT_H_LABEL_SUBSTRINGS: tuple[str, ...] = (
+    "应收投资款项",
+    "发行类债务",
+    "发行类债券",
+    "发行类债劵",
+    "拆放同业",
+    "买入返售证券",
+    "存放同业",
+    "同业拆入",
+    "同业存放",
+    "卖出回购证券",
+    "卖出回购票据",
+    "持有至到期同业存单",
+)
+
+
+def _match_invest_type_by_substring(value: str) -> str | None:
+    """Match H/A/T from a Chinese accounting label or English alias substring.
+
+    Consolidated into ``infer_invest_type`` as part of W-balance-2026-04-21
+    trial migration so that ``hat_mapping`` has a single canonical entry
+    point that subsumes the bare-label normalization previously served by
+    ``field_normalization.derive_invest_type_std_value``. Pure helper:
+    returns ``None`` when no rule matches (caller decides whether to raise).
+    """
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    upper = normalized.upper()
+    if (
+        "可供出售" in normalized
+        or "其他债权" in normalized
+        or "AFS" in upper
+        or "FVOCI" in upper
+        or "OCI" in upper
+    ):
+        return "A"
+    if (
+        "交易" in normalized
+        or "TRADING" in upper
+        or "FVTPL" in upper
+        or "TPL" in upper
+        or upper in {"T", "TRADING_ASSET_RAW"}
+    ):
+        return "T"
+    if "持有至到期" in normalized or "摊余成本" in normalized or "HTM" in upper:
+        return "H"
+    if any(label in normalized for label in _HAT_H_LABEL_SUBSTRINGS):
+        return "H"
+    return None
+
+
 def infer_invest_type(
     portfolio: Optional[str],
     asset_type: Optional[str],
@@ -118,13 +170,10 @@ def infer_invest_type(
             return text
         if text and text[-1] in ("A", "T", "H"):
             return text[-1]
-    if asset_class:
-        normalized = str(asset_class).strip()
-        upper = normalized.upper()
-        if "可供出售" in normalized or "AFS" in upper:
-            return "A"
-        if "交易" in normalized or "TRADING" in upper:
-            return "T"
-        if "持有至到期" in normalized or "HTM" in upper:
-            return "H"
+    for value in (asset_type, asset_class, portfolio):
+        if not value:
+            continue
+        tag = _match_invest_type_by_substring(value)
+        if tag is not None:
+            return tag
     return None
