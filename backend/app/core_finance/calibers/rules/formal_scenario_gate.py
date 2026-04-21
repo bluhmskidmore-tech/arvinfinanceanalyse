@@ -30,6 +30,29 @@ analytical EXCLUDE      INCLUDE      EXCLUDE
   to mix bases (because management dashboards do scenario comparison).
 - ``accounting`` and ``external_exposure`` columns reject anything that is
   not a formal-basis result.
+
+W-formal-gate-2026-04-21 — adapter close-out
+--------------------------------------------
+The four W2-W3-deferred re-implementations in
+``schemas/analysis_service.py`` and ``services/analysis_adapters.py``
+were migrated:
+
+- ``AnalysisQuery`` validator: bare ``"scenario"`` literals replaced with
+  ``Basis.SCENARIO.value``; ``AnalysisBasis`` Literal members now have a
+  runtime lockstep ``assert`` against ``{b.value for b in Basis}`` (PEP
+  586 prevents sourcing Literal members from the enum directly).
+- ``ProductCategoryPnlAnalysisAdapter.execute``: now calls
+  ``assert_basis_view_allowed(Basis(query.basis), View.MANAGEMENT)`` at
+  request entry, immediately after the adapter-level ``{formal,
+  scenario}`` whitelist (which intentionally narrows the gate further
+  for this analysis_key). The ``query.view`` field (monthly/qtd/ytd) is
+  a presentation period, NOT the governance ``View`` enum — they
+  name-collide but are semantically distinct; the adapter pins the
+  governance view to ``View.MANAGEMENT`` because it accepts both
+  formal and scenario bases (only management permits scenario per the
+  matrix above).
+
+Audit count on this rule dropped 4 → 0 with no justified residuals.
 """
 
 from __future__ import annotations

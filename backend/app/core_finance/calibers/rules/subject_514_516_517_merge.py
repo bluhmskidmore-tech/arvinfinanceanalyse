@@ -63,6 +63,11 @@ lockstep guard. Audit hits on this single line are documented FPs.
 To clear the audit count to 0, the audit script regex would need an
 allowlist parser for ``# Human: caliber-…-justified`` markers (a
 W-audit-tooling concern, deliberately out of scope).
+
+W-audit-tooling-2026-04-21 update: the audit script now honours the
+``# Human: caliber-<rule_id>-justified`` marker (lookback 10 lines,
+case-insensitive). The ``JournalType`` Literal site was annotated and
+the audit count for this rule dropped 2 → 0 (suppressed=2).
 """
 
 from __future__ import annotations

@@ -15,7 +15,7 @@ from backend.app.core_finance.field_normalization import derive_accounting_basis
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 CurrencyBasis = Literal["CNY", "CNX"]
-# W-subject-2026-04-21: caliber-subject_514_516_517_merge-justified.
+# W-subject-2026-04-21: Human: caliber-subject_514_516_517_merge-justified.
 # typing.Literal[...] requires literal forms (PEP 586), so the three
 # prefix strings cannot be sourced from LEDGER_PNL_ACCOUNT_PREFIXES.
 # The runtime assert below is the canonical lockstep guard.
