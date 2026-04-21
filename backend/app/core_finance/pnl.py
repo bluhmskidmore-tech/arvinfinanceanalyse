@@ -5,6 +5,9 @@ from datetime import date
 from decimal import Decimal
 from typing import Iterable, Literal, Mapping
 
+from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.field_normalization import derive_accounting_basis_value
+
 
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
@@ -359,14 +362,21 @@ def _normalize_nonstd_signed_amount(
 
 
 def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasis]:
-    normalized = value.strip().upper()
-    if normalized in {"H", "HTM"} or "持有至到期" in value or "摊余成本" in value:
-        return "H", "AC"
-    if normalized in {"A", "AFS"} or "可供出售" in value or "FVOCI" in normalized or "OCI" in normalized or "其他债权" in value:
-        return "A", "FVOCI"
-    if normalized in {"T", "TRADING_ASSET_RAW"} or "交易性" in value or "FVTPL" in normalized or "TPL" in normalized:
-        return "T", "FVTPL"
-    raise ValueError(f"Unsupported invest_type_raw={value}")
+    """Normalize a fixed-income invest-type label to (H/A/T, accounting basis).
+
+    W-pnl-2026-04-21
+    ----------------
+    Thin wrapper over canonical ``classification_rules.infer_invest_type``
+    (caliber rule ``hat_mapping``). The wrapper preserves the historical
+    ``Unsupported invest_type_raw=<value>`` error contract that PnL ledger
+    callers depend on.
+    """
+    if not str(value or "").strip():
+        raise ValueError(f"Unsupported invest_type_raw={value}")
+    invest_type_std = infer_invest_type(None, value, None)
+    if invest_type_std is None:
+        raise ValueError(f"Unsupported invest_type_raw={value}")
+    return invest_type_std, derive_accounting_basis_value(invest_type_std)  # type: ignore[arg-type]
 
 
 def _normalize_currency_basis(value: str) -> CurrencyBasis:

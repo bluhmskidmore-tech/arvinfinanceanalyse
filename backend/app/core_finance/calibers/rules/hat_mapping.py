@@ -53,6 +53,16 @@ Function A is not deleted by this rule; it will be marked deprecated in
 a follow-up phase (W4 migration step) and eventually thinned to a pure
 field-normalization helper that no longer claims to be the H/A/T source.
 
+W-pnl-2026-04-21 — pnl trial migration
+--------------------------------------
+``pnl._normalize_fi_invest_type`` was refactored from a thin wrapper over
+``field_normalization.derive_invest_type_std_value`` into a thin wrapper
+over the canonical ``infer_invest_type``. The dead
+``_legacy_normalize_fi_invest_type`` backup was removed, and the legacy
+import was dropped from ``pnl.py``. ``derive_invest_type_std_value`` now
+has no production callers and can be deleted in the next phase. Audit
+count on this rule dropped 17 → 14 (3H cleared from pnl).
+
 W-balance-2026-04-21 — balance_analysis trial migration
 -------------------------------------------------------
 ``balance_analysis.derive_invest_type_std`` was refactored from a
