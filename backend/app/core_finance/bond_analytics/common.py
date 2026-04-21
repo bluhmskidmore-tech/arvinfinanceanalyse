@@ -1,10 +1,11 @@
 """Shared utilities for bond analytics calculations."""
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal
-from typing import Optional
 
+from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.field_normalization import derive_accounting_basis_value
 
 # --- Decimal helpers ---
 
@@ -64,12 +65,13 @@ def infer_curve_type(*surfaces: object) -> str:
 
 # --- Accounting classification ---
 
+# Fallback patterns when ``infer_invest_type`` returns None (e.g. bare ``AC`` token).
+# W-bond-2026-04-21: H/A/T labels delegate to canonical ``hat_mapping`` via
+# ``infer_invest_type``; rows for 持有至到期 / 可供出售 were removed as redundant.
 ACCOUNTING_RULES = [
-    {"rule_id": "R001", "pattern": "持有至到期", "result": "AC"},
     {"rule_id": "R002", "pattern": "摊余成本", "result": "AC"},
     {"rule_id": "R003", "pattern": "HTM", "result": "AC"},
     {"rule_id": "R004", "pattern": "AC", "result": "AC"},
-    {"rule_id": "R010", "pattern": "可供出售", "result": "OCI"},
     {"rule_id": "R011", "pattern": "其他债权", "result": "OCI"},
     {"rule_id": "R012", "pattern": "FVOCI", "result": "OCI"},
     {"rule_id": "R013", "pattern": "OCI", "result": "OCI"},
@@ -82,6 +84,14 @@ ACCOUNTING_RULES = [
 def map_accounting_class(asset_class: str) -> str:
     if not asset_class:
         return "other"
+    invest = infer_invest_type(None, None, asset_class)
+    if invest is not None:
+        basis = derive_accounting_basis_value(invest)  # type: ignore[arg-type]
+        if basis == "AC":
+            return "AC"
+        if basis == "FVOCI":
+            return "OCI"
+        return "TPL"
     upper = asset_class.upper()
     for rule in ACCOUNTING_RULES:
         if rule["pattern"].upper() in upper:
@@ -93,9 +103,16 @@ def infer_accounting_class(asset_class: str) -> str:
     return map_accounting_class(asset_class)
 
 
-def get_accounting_rule_trace(asset_class: str) -> tuple[str, Optional[str]]:
+def get_accounting_rule_trace(asset_class: str) -> tuple[str, str | None]:
     if not asset_class:
         return "R999", None
+    invest = infer_invest_type(None, None, asset_class)
+    if invest == "H":
+        return "R001", "持有至到期"
+    if invest == "A":
+        return "R010", "可供出售"
+    if invest == "T":
+        return "R020", "交易性"
     upper = asset_class.upper()
     for rule in ACCOUNTING_RULES:
         if rule["pattern"].upper() in upper:
@@ -143,8 +160,8 @@ def compute_macaulay_duration(
 
 
 def estimate_duration(
-    maturity_date: Optional[date],
-    report_date: Optional[date],
+    maturity_date: date | None,
+    report_date: date | None,
     coupon_rate: Decimal = Decimal("0"),
     ytm: Decimal = Decimal("0"),
     bond_code: str = "",

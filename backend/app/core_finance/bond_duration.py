@@ -10,12 +10,15 @@ import logging
 import math
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
+
+from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.field_normalization import derive_accounting_basis_value
 
 logger = logging.getLogger(__name__)
 
 
-def _coerce_date_like(value: Optional[object]) -> Optional[date]:
+def _coerce_date_like(value: object | None) -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
@@ -36,7 +39,7 @@ def _coerce_date_like(value: Optional[object]) -> Optional[date]:
 
 
 def _estimate_duration_proxy_years(
-    maturity_date: Optional[object],
+    maturity_date: object | None,
     report_date: object,
     bond_code: str = "",
 ) -> float:
@@ -115,7 +118,7 @@ def _estimate_macaulay_duration_years(
     maturity_date: date,
     report_date: date,
     coupon_rate: Decimal,
-    ytm: Optional[Decimal] = None,
+    ytm: Decimal | None = None,
     coupon_frequency: int = 1,
 ) -> Decimal:
     remaining_days = (maturity_date - report_date).days
@@ -136,26 +139,39 @@ def _estimate_macaulay_duration_years(
     return years_to_maturity
 
 
-def infer_accounting_class(asset_class: Optional[str]) -> str:
+def infer_accounting_class(asset_class: str | None) -> str:
+    """Map accounting label to AC / OCI / TPL (legacy bond_duration buckets).
+
+    W-bond-2026-04-21: delegates H/A/T to ``classification_rules.infer_invest_type``
+    (caliber ``hat_mapping``), then ``derive_accounting_basis_value``. Preserves
+    fallbacks for substrings not fully covered by the canonical matcher (e.g.
+    ``摊余`` without ``摊余成本``, bare ``AC`` token).
+    """
     if not asset_class:
         return "TPL"
-    s = str(asset_class)
-    if "持有至到期" in s or "摊余" in s or "AC" in s or "债权投资" in s:
-        return "AC"
-    if "交易" in s or "TPL" in s:
+    invest = infer_invest_type(None, None, str(asset_class))
+    if invest is not None:
+        basis = derive_accounting_basis_value(invest)  # type: ignore[arg-type]
+        if basis == "AC":
+            return "AC"
+        if basis == "FVOCI":
+            return "OCI"
         return "TPL"
+    s = str(asset_class)
+    if "债权投资" in s or "摊余" in s or "AC" in s:
+        return "AC"
     if "出售" in s or "OCI" in s or "可供" in s:
         return "OCI"
     return "TPL"
 
 
 def estimate_duration(
-    maturity_date: Optional[date],
+    maturity_date: date | None,
     report_date: date,
     coupon_rate: Decimal,
     bond_code: str = "",
-    ytm: Optional[Decimal] = None,
-    wind_metrics: Optional[Dict[str, Any]] = None,
+    ytm: Decimal | None = None,
+    wind_metrics: dict[str, Any] | None = None,
     coupon_frequency: int = 1,
 ) -> Decimal:
     code = str(bond_code or "").upper()
@@ -182,7 +198,7 @@ def modified_duration_from_macaulay(
     duration: Decimal,
     ytm: Decimal,
     coupon_frequency: int = 1,
-    wind_mod_dur: Optional[Decimal] = None,
+    wind_mod_dur: Decimal | None = None,
 ) -> Decimal:
     """Macaulay → 修正久期；与旧 common.estimate_modified_duration(duration, ytm, ...) 一致。"""
     if wind_mod_dur is not None and wind_mod_dur > Decimal("0"):
@@ -201,7 +217,7 @@ def modified_duration_from_macaulay(
 def estimate_convexity_bond(
     duration: Decimal,
     ytm: Decimal,
-    wind_convexity: Optional[Decimal] = None,
+    wind_convexity: Decimal | None = None,
     coupon_frequency: int = 2,
 ) -> Decimal:
     """与旧 common.estimate_convexity 公式一致（供后续迁移 quantitative 测试）。"""
