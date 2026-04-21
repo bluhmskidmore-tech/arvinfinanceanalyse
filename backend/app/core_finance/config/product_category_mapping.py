@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from backend.app.core_finance.config.classification_rules import (
+    LEDGER_PNL_ACCOUNT_PREFIXES,
+)
+
 DEFAULT_FTP_RATE_PCT = Decimal("1.75")
 
 DERIVATIVE_PNL_ACCOUNTS = [
@@ -69,7 +73,7 @@ def build_default_product_category_config(
             "side": "asset",
             "level": 0,
             "scale_accounts": ["141", "142", "143", "-14301010001", "-14301010002", "144"],
-            "pnl_accounts": ["514", "-51401000001", "-51401000002"],
+            "pnl_accounts": [LEDGER_PNL_ACCOUNT_PREFIXES[0], "-51401000001", "-51401000002"],
             "ftp_rate_pct": rate,
             "children": [
                 "bond_tpl",

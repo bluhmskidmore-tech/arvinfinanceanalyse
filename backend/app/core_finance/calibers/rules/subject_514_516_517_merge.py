@@ -30,6 +30,39 @@ Notes
   three sub-families is permitted (drill-down attribution dashboards).
 - ``external_exposure`` views always inherit from the formal cell to avoid
   publishing scenario-tuned subject groupings to regulators / auditors.
+
+W-subject-2026-04-21 — trial migration close-out
+------------------------------------------------
+Cleanup pass that moved every reducible bare-prefix literal onto the
+canonical tuple:
+
+- ``backend/app/core_finance/config/product_category_mapping.py``: the
+  bond-investment ``pnl_accounts`` root entry now references
+  ``LEDGER_PNL_ACCOUNT_PREFIXES[0]`` instead of inlining ``"514"``.
+- ``backend/app/core_finance/pnl.py``:
+    * Added a runtime ``assert`` that ``JournalType`` Literal members
+      stay in lockstep with ``LEDGER_PNL_ACCOUNT_PREFIXES + {'adjustment'}``
+      (PEP 586 forbids variable-source Literal members, so the literal
+      itself is irreducible — see *Justified residuals* below).
+    * Introduced ``SIGN_FLIP_JOURNAL_TYPES`` derived as
+      ``frozenset(LEDGER_PNL_ACCOUNT_PREFIXES) - {LEDGER_PNL_ACCOUNT_PREFIXES[0]}``
+      and switched the inline ``{"516", "517"}`` set in
+      ``_normalize_nonstd_signed_amount`` to use it.
+
+Audit count on this rule dropped 4 → 2 (the residual two are the same
+``JournalType`` line counted by both regex variants).
+
+Justified residuals
+-------------------
+``pnl.py`` line declaring ``JournalType = Literal["514", "516", "517",
+"adjustment"]`` is intrinsically irreducible: PEP 586 requires
+``Literal[...]`` members to be literal forms (string / int / Enum /
+None / Final str alias). The runtime assert above is the canonical
+lockstep guard. Audit hits on this single line are documented FPs.
+
+To clear the audit count to 0, the audit script regex would need an
+allowlist parser for ``# Human: caliber-…-justified`` markers (a
+W-audit-tooling concern, deliberately out of scope).
 """
 
 from __future__ import annotations

@@ -3,16 +3,35 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Iterable, Literal, Mapping
+from typing import Iterable, Literal, Mapping, get_args
 
-from backend.app.core_finance.config.classification_rules import infer_invest_type
+from backend.app.core_finance.config.classification_rules import (
+    LEDGER_PNL_ACCOUNT_PREFIXES,
+    infer_invest_type,
+)
 from backend.app.core_finance.field_normalization import derive_accounting_basis_value
 
 
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 CurrencyBasis = Literal["CNY", "CNX"]
+# W-subject-2026-04-21: caliber-subject_514_516_517_merge-justified.
+# typing.Literal[...] requires literal forms (PEP 586), so the three
+# prefix strings cannot be sourced from LEDGER_PNL_ACCOUNT_PREFIXES.
+# The runtime assert below is the canonical lockstep guard.
 JournalType = Literal["514", "516", "517", "adjustment"]
+assert set(get_args(JournalType)) - {"adjustment"} == set(LEDGER_PNL_ACCOUNT_PREFIXES), (
+    "JournalType prefix members must equal LEDGER_PNL_ACCOUNT_PREFIXES "
+    "(caliber rule subject_514_516_517_merge)."
+)
+# W-subject-2026-04-21: ledger prefixes that flip sign under
+# `direct_*` dc_flag normalization. The interest-income prefix
+# (LEDGER_PNL_ACCOUNT_PREFIXES[0]) never flips; the fair-value-change
+# and investment-income prefixes do. Derived from the canonical tuple
+# to keep the set in lockstep without inlining bare prefix literals.
+SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES) - {
+    LEDGER_PNL_ACCOUNT_PREFIXES[0]
+}
 
 ZERO = Decimal("0")
 
@@ -350,7 +369,7 @@ def _normalize_nonstd_signed_amount(
 ) -> Decimal:
     normalized_dc = dc_flag.strip().lower()
     if normalized_dc.startswith("direct_"):
-        if journal_type in {"516", "517"}:
+        if journal_type in SIGN_FLIP_JOURNAL_TYPES:
             return raw_amount * Decimal("-1")
         return raw_amount
 
