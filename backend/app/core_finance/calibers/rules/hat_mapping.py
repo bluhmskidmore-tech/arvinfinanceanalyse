@@ -49,9 +49,22 @@ PRD Q-PRD-2 default = **B** (selected). Reasons:
 3. B is colocated with the other classification rules in
    ``classification_rules.py``, keeping the canonical surface compact.
 
-Function A is not deleted by this rule; it will be marked deprecated in
-a follow-up phase (W4 migration step) and eventually thinned to a pure
-field-normalization helper that no longer claims to be the H/A/T source.
+Function A was deleted in W-cleanup-2026-04-21 once it had zero
+production callers (after W-balance and W-pnl migrated their consumers
+onto B). ``field_normalization`` retains only the pure normalization
+helpers (``is_approved_status``, ``derive_accounting_basis_value``,
+``normalize_currency_basis_value``, ``resolve_pnl_source_currency``)
+and no longer claims any H/A/T classifier surface; ``_HAT_H_LABEL_SUBSTRINGS``
+in ``classification_rules`` is now the single source of truth for the
+H-label substring set.
+
+W-cleanup-2026-04-21 — derive_invest_type_std_value deletion
+------------------------------------------------------------
+``field_normalization.derive_invest_type_std_value`` and its
+``_H_LABELS`` constant were removed. Two equivalence tests that
+referenced ``_H_LABELS`` were repointed at canonical
+``_HAT_H_LABEL_SUBSTRINGS``. Audit count on this rule dropped 14 → 10
+(4 more cleared from field_normalization).
 
 W-pnl-2026-04-21 — pnl trial migration
 --------------------------------------

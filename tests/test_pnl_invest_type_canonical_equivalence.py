@@ -9,8 +9,11 @@ from __future__ import annotations
 import pytest
 
 from backend.app.core_finance import pnl
-from backend.app.core_finance.config.classification_rules import infer_invest_type
-from backend.app.core_finance.field_normalization import _H_LABELS, derive_accounting_basis_value
+from backend.app.core_finance.config.classification_rules import (
+    _HAT_H_LABEL_SUBSTRINGS,
+    infer_invest_type,
+)
+from backend.app.core_finance.field_normalization import derive_accounting_basis_value
 from backend.app.core_finance.pnl import _normalize_fi_invest_type
 
 
@@ -21,7 +24,7 @@ def _canonical_invest_type_pair(raw: str) -> tuple[str, str]:
     return it, derive_accounting_basis_value(it)  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("label", sorted(_H_LABELS))
+@pytest.mark.parametrize("label", sorted(_HAT_H_LABEL_SUBSTRINGS))
 def test_h_labels_equivalence_to_h_ac(label: str) -> None:
     assert _normalize_fi_invest_type(label) == ("H", "AC")
 

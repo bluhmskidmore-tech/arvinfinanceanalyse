@@ -18,10 +18,11 @@ from backend.app.core_finance.config.classification_rules import (
     _match_invest_type_by_substring,
     infer_invest_type,
 )
-from backend.app.core_finance.field_normalization import _H_LABELS
-
 # Pre-migration inline `_H_LABELS` from balance_analysis (before W-balance-2026-04-21).
 # Includes 发行类债劵 (劵) so regressions if canonical drops that variant are caught.
+# This snapshot is intentionally hardcoded — `field_normalization._H_LABELS` was
+# deleted as part of W-cleanup-2026-04-21 once the canonical
+# `_HAT_H_LABEL_SUBSTRINGS` became the single source of truth.
 _LEGACY_BALANCE_ANALYSIS_H_LABELS: frozenset[str] = frozenset(
     {
         "应收投资款项",
@@ -39,8 +40,8 @@ _LEGACY_BALANCE_ANALYSIS_H_LABELS: frozenset[str] = frozenset(
 )
 
 
-def test_field_normalization_h_labels_round_trip_through_canonical() -> None:
-    for label in sorted(_H_LABELS):
+def test_canonical_h_label_substrings_round_trip_through_wrapper() -> None:
+    for label in sorted(_HAT_H_LABEL_SUBSTRINGS):
         assert derive_invest_type_std(label) == "H"
         assert infer_invest_type(None, label, None) == "H"
 

@@ -4,7 +4,6 @@ import pytest
 
 from backend.app.core_finance.field_normalization import (
     derive_accounting_basis_value,
-    derive_invest_type_std_value,
     is_approved_status,
     normalize_currency_basis_value,
     resolve_pnl_source_currency,
@@ -19,30 +18,14 @@ def test_is_approved_status_is_case_and_whitespace_insensitive() -> None:
 
 
 @pytest.mark.parametrize(
-    ("raw", "expected_type", "expected_basis"),
-    [
-        ("交易性金融资产", "T", "FVTPL"),
-        ("TRADING_ASSET_RAW", "T", "FVTPL"),
-        ("可供出售债券", "A", "FVOCI"),
-        ("FVOCI", "A", "FVOCI"),
-        ("持有至到期投资", "H", "AC"),
-        ("应收投资款项", "H", "AC"),
-        ("摊余成本", "H", "AC"),
-    ],
+    ("invest_type", "expected_basis"),
+    [("T", "FVTPL"), ("A", "FVOCI"), ("H", "AC")],
 )
-def test_invest_type_and_accounting_basis_use_shared_mapping(
-    raw: str,
-    expected_type: str,
+def test_derive_accounting_basis_value_maps_each_invest_type(
+    invest_type: str,
     expected_basis: str,
 ) -> None:
-    invest_type = derive_invest_type_std_value(raw)
-    assert invest_type == expected_type
-    assert derive_accounting_basis_value(invest_type) == expected_basis
-
-
-def test_invest_type_shared_mapping_rejects_unknown_value() -> None:
-    with pytest.raises(ValueError, match="Unrecognized invest_type_raw"):
-        derive_invest_type_std_value("未知口径")
+    assert derive_accounting_basis_value(invest_type) == expected_basis  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
