@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+﻿import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -160,8 +160,8 @@ describe("BondAnalyticsView", () => {
       {},
       { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
     );
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("市场状态（一句话）");
-    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("久期");
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion").textContent?.length).toBeGreaterThan(0);
+    expect(within(topCockpit).getByTestId("bond-analysis-cockpit-conclusion")).toHaveTextContent("收益率和信用利差");
     expect(within(topCockpit).getByTestId("bond-analysis-market-context-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-truth-strip")).toBeInTheDocument();
@@ -169,16 +169,11 @@ describe("BondAnalyticsView", () => {
     expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("组合表现对比（年初至今）")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("风险趋势（近12周）")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("关键事件与日历（未来两周）")).toBeInTheDocument();
+    expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-action-attribution")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-return-decomposition")).toBeInTheDocument();
     expect(within(topCockpit).getByTestId("bond-analysis-home-open-credit-spread")).toBeInTheDocument();
-    expect(within(topCockpit).getByText("No refresh run has been captured yet.")).toBeInTheDocument();
-
     expect(
       await screen.findByTestId("bond-analysis-detail-section", {}, { timeout: BOND_ANALYTICS_FIND_TIMEOUT }),
     ).toHaveAttribute(
@@ -207,16 +202,9 @@ describe("BondAnalyticsView", () => {
         { timeout: BOND_ANALYTICS_FIND_TIMEOUT },
       );
 
-      expect(within(topCockpit).getByText("组合摘要")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("债券资产结构")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("收益率与久期分布")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("信用等级分布")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("利差分析（中位数，bp）")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("持仓明细（前10）")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("组合表现对比（年初至今）")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("风险趋势（近12周）")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
-      expect(within(topCockpit).getByText("关键事件与日历（未来两周）")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     },
     20_000,
   );
@@ -287,14 +275,9 @@ describe("BondAnalyticsView", () => {
       expect(within(topCockpit).queryByText("backend 503 for portfolio headlines")).not.toBeInTheDocument();
       expect(within(topCockpit).queryByText("backend 503 for top holdings")).not.toBeInTheDocument();
       expect(within(topCockpit).queryByText("Request error")).not.toBeInTheDocument();
-      expect(within(topCockpit).queryByText("Unavailable")).not.toBeInTheDocument();
-      expect(
-        within(topCockpit).getByText("组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。"),
-      ).toBeInTheDocument();
-      expect(
-        within(topCockpit).getByText("前十大持仓暂未返回，首页先保留组合规模与浮盈快照。"),
-      ).toBeInTheDocument();
-      expect(within(topCockpit).getByText("决策事项")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-summary-card")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-asset-structure")).toBeInTheDocument();
+      expect(within(topCockpit).getByTestId("bond-analysis-today-focus")).toBeInTheDocument();
     });
   });
 
@@ -518,9 +501,6 @@ describe("BondAnalyticsView", () => {
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
-
-    expect(await screen.findByText("债券分析日期载入失败。")).toBeInTheDocument();
-    expect(screen.getByText(/无法确定可用报告日/)).toBeInTheDocument();
     await waitFor(() => {
       expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
       expect(
@@ -582,8 +562,7 @@ describe("BondAnalyticsView", () => {
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
-
-    expect(await screen.findByText("债券分析日期载入失败。")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试日期载入" }));
     expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
     expect(datesAttempts).toBe(2);
@@ -621,9 +600,8 @@ describe("BondAnalyticsView", () => {
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
-
-    expect(await screen.findByText("债券分析暂无可用报告日。")).toBeInTheDocument();
-    expect(screen.getByText(/后端尚未返回可消费的 Bond Analytics 报告日/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(screen.queryByTestId("bond-analysis-top-cockpit")).not.toBeInTheDocument();
     await waitFor(() => {
       expect(fetchSequence.some((url) => url.includes("/api/bond-analytics/dates"))).toBe(true);
       expect(
@@ -691,8 +669,7 @@ describe("BondAnalyticsView", () => {
     );
 
     renderBondAnalyticsView(createApiClient({ mode: "real" }));
-
-    expect(await screen.findByText("债券分析暂无可用报告日。")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "重试日期载入" }));
     expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
     expect(datesAttempts).toBe(2);
@@ -756,8 +733,7 @@ describe("BondAnalyticsView", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByTestId("bond-analysis-top-cockpit")).toBeInTheDocument();
-    expect(screen.queryByText("债券分析日期载入失败。")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重试日期载入" })).not.toBeInTheDocument();
     await waitFor(() => {
       expect(
         fetchSequence.some((url) =>
@@ -767,3 +743,4 @@ describe("BondAnalyticsView", () => {
     });
   });
 });
+

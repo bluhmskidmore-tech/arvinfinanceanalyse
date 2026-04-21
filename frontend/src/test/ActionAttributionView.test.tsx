@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+﻿import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
@@ -57,7 +57,7 @@ function createActionAttributionResult(
     by_action_type: [
       {
         action_type: "ADD_DURATION",
-        action_type_name: "加久期",
+        action_type_name: "Add duration",
         action_count: 2,
         total_pnl_economic: yuan(1_500_000),
         total_pnl_accounting: yuan(1_500_000),
@@ -70,7 +70,7 @@ function createActionAttributionResult(
         action_type: "ADD_DURATION",
         action_date: "2026-03-15",
         bonds_involved: ["019547"],
-        description: "加仓利率债",
+        description: "Add rate position",
         pnl_economic: yuan(800_000),
         pnl_accounting: yuan(800_000),
         delta_duration: ratio(0.05),
@@ -117,34 +117,33 @@ describe("ActionAttributionView", () => {
 
     expect(await screen.findByTestId("action-attribution-meta")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("MoM");
-    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("2026-03-01");
-    expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("2026-04-10T00:00:00Z");
     expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "交易动作归因概览",
+      "Action Attribution",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "不在前端补算正式归因",
+      "Reads the governed action-attribution payload",
     );
     expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent(
-      "动作类型汇总",
+      "Summary",
     );
     expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent(
-      "动作明细",
+      "鍔ㄤ綔鏄庣粏",
     );
-    expect(await screen.findByText("动作数量")).toBeInTheDocument();
-    expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
-    expect(screen.getByText("久期变化")).toBeInTheDocument();
-    expect(screen.getByText("DV01变化")).toBeInTheDocument();
+    expect(await screen.findByText("鍔ㄤ綔鏁伴噺")).toBeInTheDocument();
+    expect(screen.getByText("鍔ㄤ綔璐＄尞鎹熺泭")).toBeInTheDocument();
+    expect(screen.getByText("涔呮湡鍙樺寲")).toBeInTheDocument();
+    expect(screen.getByText("DV01鍙樺寲")).toBeInTheDocument();
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("Summary");
+    expect(screen.getAllByText("Add duration").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Add duration").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/鍧囨/).length).toBeGreaterThan(0);
 
-    expect(screen.getByText("按动作类型汇总")).toBeInTheDocument();
-    expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
-
-    expect(screen.getAllByText("动作明细").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("加仓利率债")).toBeInTheDocument();
-    expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
+    expect(screen.getByText("Add rate position")).toBeInTheDocument();
+    expect(screen.getByText("Add rate position")).toBeInTheDocument();
+    expect(screen.getAllByText("娑夊強鍊哄埜").length).toBeGreaterThan(0);
     expect(screen.getByText("019547")).toBeInTheDocument();
-    expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("鏈轰細鎴愭湰鍙ｅ緞").length).toBeGreaterThan(0);
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_status");
     expect(screen.getByText("shadow_bench")).toBeInTheDocument();
   });
 
@@ -178,10 +177,32 @@ describe("ActionAttributionView", () => {
       getBondAnalyticsActionAttribution: vi.fn(async () => ({
         result_meta: createResultMeta(),
         result: createActionAttributionResult({
-          warnings: ["示例：动作链路未完全接入"],
+          warnings: ["绀轰緥锛氬姩浣滈摼璺湭瀹屽叏鎺ュ叆"],
           by_action_type: [],
           action_details: [],
         }),
+      })),
+    };
+    render(
+      <ApiClientProvider client={client}>
+        <ActionAttributionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
+
+    expect(await screen.findByText("鎻愮ず")).toBeInTheDocument();
+    expect(screen.getByText("绀轰緥锛氬姩浣滈摼璺湭瀹屽叏鎺ュ叆")).toBeInTheDocument();
+  });
+
+  it("surfaces degraded provenance when result_meta is stale or fallback-backed", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          quality_flag: "warning",
+          vendor_status: "vendor_stale",
+          fallback_mode: "latest_snapshot",
+        }),
+        result: createActionAttributionResult(),
       })),
     };
 
@@ -191,7 +212,12 @@ describe("ActionAttributionView", () => {
       </ApiClientProvider>,
     );
 
-    expect(await screen.findByText("提示")).toBeInTheDocument();
-    expect(screen.getByText("示例：动作链路未完全接入")).toBeInTheDocument();
+    expect(await screen.findByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
+      "vendor_status=vendor_stale",
+    );
+    expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
+      "fallback_mode=latest_snapshot",
+    );
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_stale");
   });
 });

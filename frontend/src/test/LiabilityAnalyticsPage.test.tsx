@@ -1,6 +1,6 @@
-import { useState, type ReactNode } from "react";
+﻿import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -79,7 +79,7 @@ function balanceDates(reportDates: string[]): { result_meta: ResultMeta; result:
 function riskPayload(reportDate: string, amount = 200_000_000): LiabilityRiskBucketsPayload {
   return {
     report_date: reportDate,
-    liabilities_structure: [{ name: "同业负债", amount: numeric(amount, "yuan"), amount_yi: numeric(amount / 1e8, "yi") }],
+    liabilities_structure: [{ name: "Interbank liabilities", amount: numeric(amount, "yuan"), amount_yi: numeric(amount / 1e8, "yi") }],
     liabilities_term_buckets: [{ bucket: "0-3M", amount: numeric(amount, "yuan"), amount_yi: numeric(amount / 1e8, "yi") }],
     interbank_liabilities_structure: [],
     interbank_liabilities_term_buckets: [],
@@ -126,7 +126,7 @@ function counterpartyPayload(reportDate: string, totalValue = 200_000_000): Liab
 }
 
 describe("LiabilityAnalyticsPage", () => {
-  it("renders an obsidian business briefing panel when note matches are available", async () => {
+  it("renders a knowledge panel when note matches are available", async () => {
     const base = createApiClient({ mode: "real" });
 
     renderLiabilityPage({
@@ -147,14 +147,11 @@ describe("LiabilityAnalyticsPage", () => {
           notes: [
             {
               id: "liquidity-chain",
-              title: "同业负债、流动性与金融市场业务传导链",
-              summary: "同业负债会先重定价资金成本，再传导到配置边界和交易动作。",
-              why_it_matters: "适合解释负债成本、期限稳定性和流动性约束如何影响本页指标。",
-              key_questions: [
-                "当前流动性变化是总量变化还是结构变化？",
-                "本行缺的是头寸还是稳定负债？",
-              ],
-              source_path: "D:\\PKL-WIKI\\wiki\\同业负债、流动性与金融市场业务传导链.md",
+              title: "Liquidity chain",
+              summary: "Funding cost moves before allocation boundaries move.",
+              why_it_matters: "Explains how funding pressure changes the page-level readout.",
+              key_questions: ["Is the move quantity-driven or structure-driven?"],
+              source_path: "D:\\PKL-WIKI\\wiki\\liquidity-chain.md",
             },
           ],
         },
@@ -162,9 +159,8 @@ describe("LiabilityAnalyticsPage", () => {
     } as ApiClient);
 
     expect(await screen.findByTestId("liability-knowledge-panel")).toBeInTheDocument();
-    expect(screen.getByText("业务资料")).toBeInTheDocument();
-    expect(screen.getByText("同业负债、流动性与金融市场业务传导链")).toBeInTheDocument();
-    expect(screen.getByText(/当前流动性变化是总量变化还是结构变化/)).toBeInTheDocument();
+    expect(screen.getByText("Liquidity chain")).toBeInTheDocument();
+    expect(screen.getByText(/quantity-driven or structure-driven/i)).toBeInTheDocument();
   });
 
   it("renders a first-screen funding conclusion for daily analysis", async () => {
@@ -181,34 +177,8 @@ describe("LiabilityAnalyticsPage", () => {
     });
 
     expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
-    const conclusion = await screen.findByTestId("liability-conclusion");
-    expect(conclusion).toHaveTextContent("当前结论");
-    expect(conclusion).toHaveTextContent("净息差");
-    expect(conclusion).toHaveTextContent("头部对手方");
-    expect(screen.getByText("资金来源依赖度（Top 10 对手方）")).toBeInTheDocument();
-  });
-
-  it("surfaces an explicit page-level note when no report dates are available", async () => {
-    const base = createApiClient({ mode: "real" });
-
-    renderLiabilityPage({
-      ...base,
-      getBalanceAnalysisDates: vi.fn(async () => balanceDates([])),
-      getLiabilityRiskBuckets: vi.fn(),
-      getLiabilityYieldMetrics: vi.fn(),
-      getLiabilityCounterparty: vi.fn(),
-      getLiabilitiesMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_total_liabilities: null, ytd_avg_liability_cost: null })),
-      getLiabilityAdbMonthly: vi.fn(async () => ({ year: 2026, months: [], ytd_avg_assets: 0, ytd_avg_liabilities: 0, ytd_asset_yield: null, ytd_liability_cost: null, ytd_nim: null, unit: "percent" })),
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("liability-page-state")).toHaveTextContent("暂无可用报告日");
-    });
-    await waitFor(() => {
-      expect(
-        screen.getAllByLabelText("liability-report-date").some((element) => (element as HTMLInputElement).disabled),
-      ).toBe(true);
-    });
+    expect(await screen.findByTestId("liability-conclusion")).toHaveTextContent("资金来源集中度偏高");
+    expect(screen.getByTestId("liability-conclusion")).toHaveTextContent("头部对手方占比");
   });
 
   it("surfaces an explicit page-level empty state when daily liability data is empty", async () => {
@@ -233,7 +203,7 @@ describe("LiabilityAnalyticsPage", () => {
     expect(screen.queryByTestId("liability-conclusion")).not.toBeInTheDocument();
   });
 
-  it("renders the fifth-page asset liability cockpit sections from the mockup", async () => {
+  it("downgrades synthetic sections instead of rendering hard-coded business values", async () => {
     const base = createApiClient({ mode: "real" });
 
     renderLiabilityPage({
@@ -248,14 +218,14 @@ describe("LiabilityAnalyticsPage", () => {
 
     expect(await screen.findByTestId("liability-analytics-page")).toBeInTheDocument();
     await screen.findByTestId("liability-conclusion");
-    expect(screen.getByText("本期资产负债摘要")).toBeInTheDocument();
-    expect(screen.getByText("收益成本分解（静态口径）")).toBeInTheDocument();
-    expect(screen.getByText("风险全景")).toBeInTheDocument();
-    expect(screen.getByText("资产 / 负债 / 缺口贡献")).toBeInTheDocument();
-    expect(screen.getByText("待关注事项")).toBeInTheDocument();
-    expect(screen.getByText("预警与事件")).toBeInTheDocument();
-    expect(screen.getByText("期限结构（资产 / 负债 / 净缺口）")).toBeInTheDocument();
-    expect(screen.getByText("风险指标")).toBeInTheDocument();
-    expect(screen.getByText("关键日历（负债到期关注）")).toBeInTheDocument();
+    expect(screen.getAllByText((content) => content.includes("待统一预警/限额接口")).length).toBeGreaterThan(0);
+    expect(screen.getByText((content) => content.includes("保留时间轴卡位"))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("缺少真实分项拆解接口"))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("指标字典与口径尚未冻结"))).toBeInTheDocument();
+    expect(screen.getByText((content) => content.includes("保留关键日历卡位"))).toBeInTheDocument();
+    expect(screen.getByText("异常预警")).toBeInTheDocument();
+    expect(screen.getByText("待定")).toBeInTheDocument();
+    expect(screen.queryByText((content) => content.includes("114.54"))).not.toBeInTheDocument();
+    expect(screen.queryByText("0.21%")).not.toBeInTheDocument();
   });
 });

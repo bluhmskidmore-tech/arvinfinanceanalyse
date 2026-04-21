@@ -303,6 +303,16 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     )
     monkeypatch.setattr(
         exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": 2,
+            "year": 2030,
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
         "resolve_executive_kpi_metrics",
         lambda **_kwargs: [
             {
@@ -1368,6 +1378,16 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
             "kpi": {"nim": 0.01},
         },
     )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
     monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", lambda **_kwargs: [])
 
     out = exec_mod.executive_overview(report_date="2026-02-28")
@@ -1396,6 +1416,108 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
             "currency_basis": "CNY",
         },
     ) in calls
+    assert out["result_meta"]["filters_applied"]["kpi_gate"] == {
+        "status": "blocked",
+        "reason": "no-active-owners",
+        "owner_count": 0,
+        "year": 2026,
+    }
+
+
+def test_executive_overview_exposes_kpi_resolution_error_after_available_gate(monkeypatch, exec_mod):
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_formal_overview(self, **kwargs):
+            return {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 10,
+                "summary_row_count": 10,
+                "total_market_value_amount": 3572.76e8,
+                "total_amortized_cost_amount": 3572.76e8,
+                "total_accrued_interest_amount": 0.0,
+                "source_version": "sv_balance_union",
+                "rule_version": "rv_balance_union",
+            }
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2026-02-28"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 4.69e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 13826218.0,
+            }
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {"nim": 0.01},
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": 1,
+            "year": 2026,
+        },
+    )
+
+    def _boom(**_kwargs):
+        raise RuntimeError("summary failed")
+
+    monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", _boom)
+
+    out = exec_mod.executive_overview(report_date="2026-02-28")
+
+    assert out["result_meta"]["filters_applied"]["kpi_gate"] == {
+        "status": "blocked",
+        "reason": "metrics-resolution-error",
+        "owner_count": 0,
+        "year": 2026,
+    }
 
 
 def test_formal_balance_metrics_repo_lists_report_dates(tmp_path):

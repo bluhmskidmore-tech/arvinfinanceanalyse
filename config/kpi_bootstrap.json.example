@@ -1,0 +1,44 @@
+{
+  "owners": [
+    {
+      "owner_name": "Fixed Income",
+      "org_unit": "Trading",
+      "person_name": null,
+      "year": 2026,
+      "scope_type": "department",
+      "scope_key": {
+        "scope": "fi"
+      },
+      "is_active": true,
+      "metrics": [
+        {
+          "metric_code": "GOAL_FI",
+          "major_category": "Business Goal",
+          "indicator_category": "Completion",
+          "metric_name": "Goal Completion",
+          "target_value": "100",
+          "target_text": null,
+          "score_weight": "60",
+          "unit": "%",
+          "scoring_text": null,
+          "scoring_rule_type": "MANUAL",
+          "data_source_type": "MANUAL",
+          "progress_plan": null,
+          "remarks": "Example only. Replace with authoritative KPI source data.",
+          "is_active": true,
+          "values": [
+            {
+              "as_of_date": "2026-03-31",
+              "actual_value": "95",
+              "actual_text": null,
+              "completion_ratio": "95",
+              "progress_pct": "95",
+              "score_value": "57",
+              "source": "bootstrap-example"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

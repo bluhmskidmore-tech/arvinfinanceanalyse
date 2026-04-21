@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from tests.helpers import load_module
 
 
@@ -24,6 +26,108 @@ def test_resolve_executive_kpi_metrics_returns_empty_when_repository_bootstrap_f
         dsn="postgresql://example.invalid/moss",
         report_date="2026-03-31",
     ) == []
+
+
+def test_resolve_kpi_authority_gate_blocks_when_no_active_owners(monkeypatch):
+    module = _load_kpi_service_module()
+
+    class EmptyRepo:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_owners(self, *, year=None, is_active=None):
+            assert is_active is True
+            return []
+
+    monkeypatch.setattr(module, "KpiRepository", EmptyRepo)
+
+    gate = module.resolve_kpi_authority_gate(
+        dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+        year=2026,
+    )
+
+    assert gate["status"] == "blocked"
+    assert gate["reason"] == "no-active-owners"
+    assert gate["owner_count"] == 0
+
+
+def test_resolve_kpi_authority_gate_blocks_when_dsn_missing():
+    module = _load_kpi_service_module()
+
+    gate = module.resolve_kpi_authority_gate(dsn="", year=2026)
+
+    assert gate["status"] == "blocked"
+    assert gate["reason"] == "missing-dsn"
+
+
+def test_kpi_owners_payload_raises_when_authority_is_blocked(monkeypatch):
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+
+    with pytest.raises(module.KpiAuthorityBlockedError, match="authority unavailable"):
+        module.kpi_owners_payload(
+            dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+            year=2026,
+            is_active=True,
+        )
+
+
+def test_kpi_owners_payload_allows_inactive_lookup_without_active_gate(monkeypatch):
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+
+    class InactiveRepo:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_owners(self, *, year=None, is_active=None):
+            assert year == 2026
+            assert is_active is False
+            return [
+                {
+                    "owner_id": 9,
+                    "owner_name": "Inactive Owner",
+                    "org_unit": "Trading",
+                    "person_name": None,
+                    "year": 2026,
+                    "scope_type": "department",
+                    "scope_key": None,
+                    "is_active": False,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "updated_at": "2026-01-02T00:00:00+00:00",
+                }
+            ]
+
+    monkeypatch.setattr(module, "KpiRepository", InactiveRepo)
+
+    payload = module.kpi_owners_payload(
+        dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+        year=2026,
+        is_active=False,
+    )
+
+    assert payload["total"] == 1
+    assert payload["owners"][0]["owner_name"] == "Inactive Owner"
 
 
 def test_resolve_executive_kpi_metrics_aggregates_active_owners_within_target_year(monkeypatch):
@@ -136,3 +240,100 @@ def test_resolve_executive_kpi_metrics_uses_latest_active_year_when_report_date_
     by_id = {item["id"]: item for item in metrics}
     assert by_id["goal"]["value"] == "80.00%"
     assert summary_calls == [30, 31]
+
+
+def test_resolve_executive_kpi_metrics_raises_when_summary_breaks_after_gate(monkeypatch):
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": 1,
+            "year": 2026,
+        },
+    )
+
+    class BrokenRepo:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_owners(self, *, year=None, is_active=None):
+            return [{"owner_id": 1, "owner_name": "Fixed Income", "year": 2026}]
+
+        def fetch_period_summary(self, *, owner_id, year, period_type):
+            raise RuntimeError("summary failed")
+
+    monkeypatch.setattr(module, "KpiRepository", BrokenRepo)
+
+    with pytest.raises(RuntimeError, match="metrics resolution failed"):
+        module.resolve_executive_kpi_metrics(
+            dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+            report_date="2026-03-31",
+        )
+
+
+def test_resolve_executive_kpi_metrics_returns_empty_on_malformed_report_date(monkeypatch):
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": 1,
+            "year": 2026,
+        },
+    )
+
+    class Repo:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def list_owners(self, *, year=None, is_active=None):
+            assert year is None
+            assert is_active is True
+            return [{"owner_id": 1, "owner_name": "Fixed Income", "year": 2026}]
+
+        def fetch_period_summary(self, *, owner_id, year, period_type):
+            assert year == 2026
+            return {
+                "total_weight": "10",
+                "total_score": "9",
+                "metrics": [],
+            }
+
+    monkeypatch.setattr(module, "KpiRepository", Repo)
+
+    result = module.resolve_executive_kpi_metrics(
+        dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+        report_date="2026/03/31",
+    )
+
+    assert result == []
+
+
+def test_kpi_period_summary_payload_raises_when_authority_is_blocked(monkeypatch):
+    module = _load_kpi_service_module()
+
+    monkeypatch.setattr(
+        module,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+
+    with pytest.raises(module.KpiAuthorityBlockedError, match="authority unavailable"):
+        module.kpi_period_summary_payload(
+            dsn="postgresql://moss:moss@127.0.0.1:55432/moss",
+            owner_id=1,
+            year=2026,
+            period_type="YEAR",
+        )

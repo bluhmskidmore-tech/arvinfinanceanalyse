@@ -13,6 +13,15 @@ from backend.app.models.base import Base
 from backend.app.models.kpi import KpiMetric, KpiMetricValue, KpiOwner
 
 
+def _normalize_sqlalchemy_dsn(dsn: str) -> str:
+    normalized = str(dsn or "").strip()
+    if normalized.startswith("postgresql+psycopg://"):
+        return normalized
+    if normalized.startswith("postgresql://"):
+        return "postgresql+psycopg://" + normalized[len("postgresql://") :]
+    return normalized
+
+
 def _to_decimal_string(value: object | None) -> str | None:
     if value is None:
         return None
@@ -49,7 +58,7 @@ class KpiRepository:
     dsn: str
 
     def __post_init__(self) -> None:
-        self.engine = create_engine(self.dsn, future=True)
+        self.engine = create_engine(_normalize_sqlalchemy_dsn(self.dsn), future=True)
         self._session_factory = sessionmaker(self.engine, future=True)
         if self.engine.dialect.name == "sqlite":
             Base.metadata.create_all(

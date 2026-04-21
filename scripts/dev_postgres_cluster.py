@@ -23,6 +23,10 @@ SMOKE_FILES = (
     "ZQTZSHOW-20251231.xls",
     "TYWLSHOW-20251231.xls",
 )
+KPI_BOOTSTRAP_CANDIDATES = (
+    Path("config") / "kpi_bootstrap.json",
+    Path("data_input") / "kpi_bootstrap.json",
+)
 RUNTIME_DUCKDB_SEED_TABLES = (
     "fact_formal_bond_analytics_daily",
     "zqtz_bond_daily_snapshot",
@@ -150,6 +154,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
     _ensure_role_and_database(config)
     _wait_for_postgres_ready(config, database=config.database)
     _apply_alembic_migrations_and_grants(config)
+    _bootstrap_kpi_if_available(config)
     _prepare_runtime_clean_paths(config)
 
     status = command_status(config)
@@ -396,6 +401,37 @@ def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
         if source.exists() and not target.exists():
             shutil.copy2(source, target)
     _seed_runtime_duckdb_from_repo_if_needed(config)
+
+
+def _find_kpi_bootstrap_file(config: DevPostgresClusterConfig) -> Path | None:
+    env_path = str(os.environ.get("MOSS_KPI_BOOTSTRAP_FILE", "") or "").strip()
+    if env_path:
+        candidate = Path(env_path).expanduser()
+        resolved = candidate.resolve() if candidate.is_absolute() else (config.repo_root / candidate).resolve()
+        return resolved if resolved.exists() else None
+    for candidate in KPI_BOOTSTRAP_CANDIDATES:
+        resolved = (config.repo_root / candidate).resolve()
+        if resolved.exists():
+            return resolved
+    return None
+
+
+def _bootstrap_kpi_if_available(config: DevPostgresClusterConfig) -> None:
+    seed_file = _find_kpi_bootstrap_file(config)
+    if seed_file is None:
+        return
+    script_path = (config.repo_root / "scripts" / "bootstrap_kpi_postgres.py").resolve()
+    _run_checked(
+        [
+            _resolve_python_executable(),
+            str(script_path),
+            "--dsn",
+            config.postgres_dsn,
+            "--seed-file",
+            str(seed_file),
+            "--if-empty",
+        ]
+    )
 
 
 def _seed_runtime_duckdb_from_repo_if_needed(config: DevPostgresClusterConfig) -> None:

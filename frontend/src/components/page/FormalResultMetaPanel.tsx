@@ -139,10 +139,16 @@ export function FormalResultMetaPanel({
                   <dd style={{ margin: 0 }}>{formatValue(meta.scenario_flag)}</dd>
                   <dt>quality_flag</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.quality_flag)}</dd>
+                  <dt>vendor_status</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.vendor_status)}</dd>
+                  <dt>fallback_mode</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.fallback_mode)}</dd>
                   <dt>trace_id</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.trace_id)}</dd>
                   <dt>source_version</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.source_version)}</dd>
+                  <dt>vendor_version</dt>
+                  <dd style={{ margin: 0 }}>{formatValue(meta.vendor_version)}</dd>
                   <dt>rule_version</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.rule_version)}</dd>
                   <dt>cache_version</dt>

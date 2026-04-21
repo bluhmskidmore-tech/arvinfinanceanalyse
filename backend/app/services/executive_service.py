@@ -33,7 +33,10 @@ from backend.app.schemas.executive_dashboard import (
     SummaryPoint,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
-from backend.app.services.kpi_service import resolve_executive_kpi_metrics
+from backend.app.services.kpi_service import (
+    resolve_executive_kpi_metrics,
+    resolve_kpi_authority_gate,
+)
 from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
 
 PNL_JOB_NAME = "pnl_materialize"
@@ -48,6 +51,15 @@ def _normalize_report_date(report_date: str | None) -> str | None:
     if report_date is None:
         return None
     return date.fromisoformat(str(report_date).strip()).isoformat()
+
+
+def _safe_report_year(report_date: str | None) -> int | None:
+    if not report_date:
+        return None
+    try:
+        return date.fromisoformat(str(report_date).strip()).year
+    except ValueError:
+        return None
 
 
 def _envelope(
@@ -799,19 +811,38 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 ),
             )
         )
-    try:
-        metrics.extend(
-            ExecutiveMetric.model_validate(item)
-            for item in resolve_executive_kpi_metrics(
-                dsn=str(
-                    getattr(settings, "governance_sql_dsn", "")
-                    or getattr(settings, "postgres_dsn", "")
-                ),
-                report_date=current_pnl_report_date or normalized_report_date,
+    kpi_dsn = str(
+        getattr(settings, "governance_sql_dsn", "")
+        or getattr(settings, "postgres_dsn", "")
+    )
+    kpi_gate = resolve_kpi_authority_gate(
+        dsn=kpi_dsn,
+        year=(
+            _safe_report_year(current_pnl_report_date)
+            if current_pnl_report_date
+            else (
+                _safe_report_year(normalized_report_date)
+                if normalized_report_date is not None
+                else None
             )
-        )
-    except (RuntimeError, ValueError, TypeError, KeyError):
-        pass
+        ),
+    )
+    if kpi_gate["status"] == "available":
+        try:
+            metrics.extend(
+                ExecutiveMetric.model_validate(item)
+                for item in resolve_executive_kpi_metrics(
+                    dsn=kpi_dsn,
+                    report_date=current_pnl_report_date or normalized_report_date,
+                )
+            )
+        except (RuntimeError, ValueError, TypeError, KeyError):
+            kpi_gate = {
+                "status": "blocked",
+                "reason": "metrics-resolution-error",
+                "owner_count": 0,
+                "year": kpi_gate.get("year"),
+            }
 
     payload = OverviewPayload(title="经营总览", metrics=metrics)
     has_missing_governed_metrics = (
@@ -843,6 +874,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 "liability": liability_report_date,
                 "risk": current_bond_report_date,
             },
+            "kpi_gate": kpi_gate,
         },
     )
 
@@ -1252,7 +1284,6 @@ def home_snapshot_envelope(
     attribution_env = executive_pnl_attribution(report_date=target_date)
     overview_result = OverviewPayload.model_validate(overview_env["result"])
     attribution_result = PnlAttributionPayload.model_validate(attribution_env["result"])
-
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",

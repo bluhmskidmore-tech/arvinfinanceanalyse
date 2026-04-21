@@ -46,8 +46,11 @@ describe("FormalResultMetaPanel", () => {
     expect(panel).toHaveTextContent("正式明细");
     expect(panel).toHaveTextContent("tr_formal_meta");
     expect(panel).toHaveTextContent("sv_formal_meta");
+    expect(panel).toHaveTextContent("vv_none");
     expect(panel).toHaveTextContent("rv_formal_meta");
     expect(panel).toHaveTextContent("cv_formal_meta");
+    expect(panel).toHaveTextContent("vendor_status");
+    expect(panel).toHaveTextContent("fallback_mode");
     expect(panel).toHaveTextContent("fact_formal_pnl_fi");
     expect(panel).toHaveTextContent('"report_date":"2025-12-31"');
     expect(panel).toHaveTextContent("42");

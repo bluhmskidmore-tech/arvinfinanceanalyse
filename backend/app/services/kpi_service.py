@@ -7,12 +7,85 @@ from backend.app.repositories.kpi_repo import KpiRepository
 from backend.app.schemas.kpi import KpiOwnerListPayload, KpiOwnerPayload, KpiPeriodMetricSummaryPayload, KpiPeriodSummaryPayload
 
 
+class KpiAuthorityBlockedError(RuntimeError):
+    """Raised when KPI cannot be treated as a governed source in the current runtime."""
+
+
+def _safe_report_year(report_date: str | None) -> int | None:
+    if not report_date:
+        return None
+    try:
+        return date.fromisoformat(report_date).year
+    except ValueError:
+        return None
+
+
+def _load_active_owners(
+    *,
+    dsn: str,
+    year: int | None = None,
+) -> tuple[dict[str, object], KpiRepository | None, list[dict[str, object]]]:
+    if not str(dsn or "").strip():
+        return (
+            {"status": "blocked", "reason": "missing-dsn", "owner_count": 0, "year": year},
+            None,
+            [],
+        )
+    try:
+        repo = KpiRepository(dsn)
+        owners = repo.list_owners(year=year, is_active=True)
+    except Exception as exc:
+        return (
+            {
+                "status": "blocked",
+                "reason": f"repository-error:{exc.__class__.__name__}",
+                "owner_count": 0,
+                "year": year,
+            },
+            None,
+            [],
+        )
+    if not owners:
+        return (
+            {"status": "blocked", "reason": "no-active-owners", "owner_count": 0, "year": year},
+            repo,
+            [],
+        )
+    selected_year = year if year is not None else max(int(owner["year"]) for owner in owners)
+    return (
+        {
+            "status": "available",
+            "reason": "active-owners-present",
+            "owner_count": len(owners),
+            "year": selected_year,
+        },
+        repo,
+        owners,
+    )
+
+
+def resolve_kpi_authority_gate(
+    *,
+    dsn: str,
+    year: int | None = None,
+) -> dict[str, object]:
+    gate, _, _ = _load_active_owners(dsn=dsn, year=year)
+    return gate
+
+
 def kpi_owners_payload(
     *,
     dsn: str,
     year: int | None = None,
     is_active: bool | None = None,
 ) -> dict[str, object]:
+    if is_active is not False:
+        gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
+        if gate["status"] != "available":
+            raise KpiAuthorityBlockedError(
+                f"KPI authority unavailable: {gate['reason']}. "
+                "Load an authoritative KPI source before treating this surface as governed."
+            )
     repo = KpiRepository(dsn)
     owners = repo.list_owners(year=year, is_active=is_active)
     return KpiOwnerListPayload(
@@ -29,6 +102,12 @@ def kpi_period_summary_payload(
     period_type: str,
     period_value: int | None = None,
 ) -> dict[str, object]:
+    gate = resolve_kpi_authority_gate(dsn=dsn, year=year)
+    if gate["status"] != "available":
+        raise KpiAuthorityBlockedError(
+            f"KPI authority unavailable: {gate['reason']}. "
+            "Load an authoritative KPI source before treating this surface as governed."
+        )
     repo = KpiRepository(dsn)
     payload = repo.fetch_period_summary(
         owner_id=owner_id,
@@ -60,28 +139,17 @@ def resolve_executive_kpi_metrics(
     dsn: str,
     report_date: str | None,
 ) -> list[dict[str, object]]:
-    if not str(dsn or "").strip():
+    target_year = _safe_report_year(report_date)
+    if report_date and target_year is None:
         return []
-    try:
-        repo = KpiRepository(dsn)
-        target_year = date.fromisoformat(report_date).year if report_date else None
-        if target_year is not None:
-            owners = repo.list_owners(year=target_year, is_active=True)
-            if not owners:
-                return []
-            selected_year = target_year
-        else:
-            owners = repo.list_owners(is_active=True)
-            if not owners:
-                return []
-            selected_year = max(int(owner["year"]) for owner in owners)
-            owners = [
-                owner
-                for owner in owners
-                if int(owner["year"]) == selected_year
-            ]
-    except Exception:
+    gate, repo, owners = _load_active_owners(dsn=dsn, year=target_year)
+    if gate["status"] != "available" or repo is None:
         return []
+    if target_year is not None:
+        selected_year = target_year
+    else:
+        selected_year = int(gate["year"])
+        owners = [owner for owner in owners if int(owner["year"]) == selected_year]
     total_weight = Decimal("0")
     total_score = Decimal("0")
     owner_count = len(owners)
@@ -96,8 +164,8 @@ def resolve_executive_kpi_metrics(
             summaries.append(summary)
             total_weight += Decimal(str(summary["total_weight"] or "0"))
             total_score += Decimal(str(summary["total_score"] or "0"))
-    except Exception:
-        return []
+    except Exception as exc:
+        raise RuntimeError("KPI metrics resolution failed after authority gate passed.") from exc
     goal_completion = None
     if total_weight > 0:
         goal_completion = (total_score / total_weight) * Decimal("100")

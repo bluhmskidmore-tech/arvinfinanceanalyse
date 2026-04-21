@@ -188,7 +188,6 @@ class TestHomeSnapshotEnvelope:
                     assert "liability" in env["result"]["domains_missing"]
                     assert env["result_meta"]["quality_flag"] == "warning"
 
-
 class TestHomeSnapshotPayloadSchema:
     def test_roundtrip(self) -> None:
         from backend.app.schemas.executive_dashboard import (

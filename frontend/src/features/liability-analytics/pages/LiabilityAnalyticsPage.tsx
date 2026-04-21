@@ -1,14 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Row, Select, Skeleton, Space, Tabs, Tag, Typography } from "antd";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
-import { AlertList } from "../../../components/AlertList";
-import { CalendarList } from "../../../components/CalendarList";
 import { KpiCard } from "../../../components/KpiCard";
 import type { LiabilityYieldKpi } from "../../../api/contracts";
-import { adaptLiabilityCounterparty } from "../adapters/liabilityAdapter";
+import { adaptLiabilityCounterparty, getLiabilitySyntheticSectionStates } from "../adapters/liabilityAdapter";
 import { LiabilityCounterpartyBlock, type LiabilityCpRow } from "../components/LiabilityCounterpartyBlock";
 import { LiabilityCustomerTable } from "../components/LiabilityCustomerTable";
 import { LiabilityKnowledgePanel } from "../components/LiabilityKnowledgePanel";
@@ -434,41 +432,9 @@ export default function LiabilityAnalyticsPage() {
   }, [assetTotalYi, liabilityTotalYi]);
   const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? "—";
   // TODO(orchestrator-review): backend gap — 待关注事项为 cockpit 示意文案，待统一预警/限额 API
-  const watchItems = useMemo(
-    () => [
-      {
-        level: "danger" as const,
-        title: "4月前滚续压力较大",
-        detail: `1年内压力 ${firstYearPressureYi.toFixed(2)} 亿，需继续关注滚续安排。`,
-      },
-      {
-        level: "warning" as const,
-        title: "发行类负债集中度高",
-        detail: `头部对手方占比 ${topCounterpartyShare}，同业存单占发行负债比重仍高。`,
-      },
-      {
-        level: "danger" as const,
-        title: "短端缺口仍承压",
-        detail: `静态利差 ${yieldKpi?.nim?.display ?? "—"}，短端桶仍需优先复核。`,
-      },
-      {
-        level: "caution" as const,
-        title: "异常债项需处置",
-        detail: "本页只做提醒，正式异常清单仍以专题页和治理面板为准。",
-      },
-    ],
-    [firstYearPressureYi, topCounterpartyShare, yieldKpi?.nim?.display],
-  );
-  // TODO(orchestrator-review): backend gap — 预警时间轴为占位示例，待事件/日历 API
-  const alertEvents = useMemo(
-    () => [
-      { time: "10:15", title: "短端缺口预警", detail: `1年内净缺口/压力 ${yieldKpi?.nim?.display ?? "—"}` },
-      { time: "09:20", title: "03-02 大额到期", detail: "114.54 亿负债到期" },
-      { time: "09:05", title: "发行负债滚续敏感", detail: "同业存单占发行负债 81.8%" },
-      { time: "08:50", title: "异常资产跟踪", detail: "本金额逾期 6.91 亿" },
-    ],
-    [yieldKpi?.nim?.display],
-  );
+  const watchItems = [] as const;
+  const alertEvents = [] as const;
+  const syntheticSections = getLiabilitySyntheticSectionStates();
   /** 风险全景：维度来自真实桶/对手方衍生；展示列为前端聚合文案 */
   const riskOverviewRows = useMemo(
     () => [
@@ -481,38 +447,9 @@ export default function LiabilityAnalyticsPage() {
     [assetTotalYi, balanceOverviewQuery.data?.result.report_date, firstYearPressureYi, liabilityTotalYi, topCounterpartyShare],
   );
   // TODO(orchestrator-review): backend gap — 分项资产负债贡献仍为示意拆分；债券/同业行为 balance overview + 负债桶，合计行为真实接口
-  const contributionRows = useMemo(
-    () => [
-      { item: "债券投资", asset: assetTotalYi, assetShare: assetTotalYi && liabilityTotalYi ? (assetTotalYi / assetTotalYi) * 100 : null, liability: 1204.54, liabilityShare: 66.3, gap: assetTotalYi !== null ? assetTotalYi - 1204.54 : null },
-      { item: "同业资产", asset: 237.92, assetShare: 6.7, liability: 613.37, liabilityShare: 33.7, gap: 237.92 - 613.37 },
-      { item: "合计", asset: assetTotalYi, assetShare: 100, liability: liabilityTotalYi, liabilityShare: 100, gap: floatingGapYi },
-    ],
-    [assetTotalYi, floatingGapYi, liabilityTotalYi],
-  );
-  // TODO(orchestrator-review): backend gap — 「异常资产占比」为占位常量，待资产质量 API
-  const riskIndicators = useMemo(
-    () => [
-      { label: "资产 / 负债比", value: assetTotalYi && liabilityTotalYi ? `${(assetTotalYi / liabilityTotalYi).toFixed(2)}x` : "—" },
-      { label: "短期负债占比", value: liabilityTotalYi > 0 ? `${((firstYearPressureYi / liabilityTotalYi) * 100).toFixed(1)}%` : "—" },
-      { label: "发行负债集中度", value: topCounterpartyShare },
-      { label: "异常资产占比", value: "0.21%" },
-      { label: "浮盈覆盖率", value: floatingGapYi !== null && firstYearPressureYi > 0 ? `${((floatingGapYi / firstYearPressureYi) * 100).toFixed(1)}%` : "—" },
-      { label: "1年内缺口/负债比", value: liabilityTotalYi > 0 ? `${((firstYearPressureYi / liabilityTotalYi) * 100).toFixed(1)}%` : "—" },
-    ],
-    [assetTotalYi, firstYearPressureYi, floatingGapYi, liabilityTotalYi, topCounterpartyShare],
-  );
-  // TODO(orchestrator-review): backend gap — 关键日历为示例到期清单，待现金流/合约到期 API
-  const calendarItems = useMemo(
-    () => [
-      { date: "03-02", event: "负债到期", amount: "114.54 亿", level: "high" as const, note: "重点滚续" },
-      { date: "03-04", event: "负债到期", amount: "11.00 亿", level: "medium" as const, note: "关注成本" },
-      { date: "03-05", event: "负债到期", amount: "10.00 亿", level: "medium" as const, note: "关注成本" },
-      { date: "03-09", event: "负债到期", amount: "10.00 亿", level: "medium" as const, note: "关注成本" },
-      { date: "03-10", event: "负债到期", amount: "10.00 亿", level: "medium" as const, note: "关注成本" },
-      { date: "03-17", event: "负债到期", amount: "20.98 亿", level: "high" as const, note: "重点滚续" },
-    ],
-    [],
-  );
+  const contributionRows = [] as const;
+  const riskIndicators = [] as const;
+  const calendarItems = [] as const;
   const liabilityHeadlineCards = useMemo(
     () => [
       { label: "市场资产", value: assetTotalYi !== null ? assetTotalYi.toFixed(2) : "—", unit: "亿", detail: "balance overview" },
@@ -522,9 +459,14 @@ export default function LiabilityAnalyticsPage() {
       { label: "静态利差", value: staticSpreadBp !== null ? `${staticSpreadBp.toFixed(1)}bp` : "—", detail: "资产收益-负债成本" },
       { label: "1年内到期负债", value: firstYearPressureYi.toFixed(2), unit: "亿", detail: "短端承压" },
       { label: "净估值差额", value: floatingGapYi !== null ? `${floatingGapYi >= 0 ? "+" : ""}${floatingGapYi.toFixed(2)}` : "—", unit: "亿", detail: "资产-负债" },
-      { label: "异常预警", value: String(watchItems.length), unit: "项", detail: "缺口/滚续/逾期/集中度" },
+      {
+        label: "异常预警",
+        value: "待定",
+        detail: `${syntheticSections.watchItems.detail}（当前隐藏 ${watchItems.length} 条示意项）`,
+        valueVariant: "text" as const,
+      },
     ],
-    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, watchItems.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
+    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, syntheticSections.watchItems.detail, watchItems.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
   );
   return (
     <section data-testid="liability-analytics-page">
@@ -744,7 +686,7 @@ export default function LiabilityAnalyticsPage() {
                       value={card.value}
                       unit={card.unit}
                       detail={card.detail}
-                      valueVariant="metric"
+                      valueVariant={card.valueVariant ?? "metric"}
                       status={card.label === "异常预警" ? "warning" : "normal"}
                     />
                   ))}
@@ -826,96 +768,30 @@ export default function LiabilityAnalyticsPage() {
 
                 <div style={threeColumnGridStyle}>
                   <Card title="资产 / 负债 / 缺口贡献" style={sectionCardStyle}>
-                    <div style={{ overflowX: "auto" }}>
-                      <table
-                        style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: designTokens.fontSize[13],
-                          ...numericTabularStyle,
-                        }}
-                      >
-                        <thead>
-                          <tr style={{ textAlign: "left", color: designTokens.color.neutral[600] }}>
-                            <th style={{ paddingBottom: 8 }}>项目</th>
-                            <th style={{ paddingBottom: 8 }}>资产余额</th>
-                            <th style={{ paddingBottom: 8 }}>占比</th>
-                            <th style={{ paddingBottom: 8 }}>负债余额</th>
-                            <th style={{ paddingBottom: 8 }}>占比</th>
-                            <th style={{ paddingBottom: 8 }}>净缺口</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {contributionRows.map((row) => (
-                            <tr
-                              key={row.item}
-                              style={{ borderTop: `1px solid ${designTokens.color.neutral[200]}` }}
-                            >
-                              <td
-                                style={{
-                                  padding: "10px 0",
-                                  color: designTokens.color.neutral[900],
-                                  fontWeight: 600,
-                                }}
-                              >
-                                {row.item}
-                              </td>
-                              <td style={{ padding: "10px 0" }}>{row.asset !== null ? row.asset.toFixed(2) : "—"}</td>
-                              <td style={{ padding: "10px 0" }}>{row.assetShare !== null ? `${row.assetShare.toFixed(1)}%` : "—"}</td>
-                              <td style={{ padding: "10px 0" }}>
-                                {row.liability != null ? row.liability.toFixed(2) : "—"}
-                              </td>
-                              <td style={{ padding: "10px 0" }}>{row.liabilityShare !== null ? `${row.liabilityShare.toFixed(1)}%` : "—"}</td>
-                              <td
-                                style={{
-                                  padding: "10px 0",
-                                  color:
-                                    row.gap !== null && row.gap < 0
-                                      ? designTokens.color.semantic.loss
-                                      : designTokens.color.semantic.profit,
-                                }}
-                              >
-                                {row.gap !== null ? `${row.gap >= 0 ? "+" : ""}${row.gap.toFixed(2)}` : "—"}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <Alert
+                      type="warning"
+                      showIcon
+                      message={syntheticSections.contributionRows.title}
+                      description={`${syntheticSections.contributionRows.detail}（当前隐藏 ${contributionRows.length} 条示意行）`}
+                    />
                   </Card>
 
                   <Card title="待关注事项" style={sectionCardStyle}>
-                    <AlertList items={watchItems} />
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={syntheticSections.watchItems.title}
+                      description={`${syntheticSections.watchItems.detail}（当前隐藏 ${watchItems.length} 条示意项）`}
+                    />
                   </Card>
 
                   <Card title="预警与事件" style={sectionCardStyle}>
-                    <div style={{ display: "grid", gap: designTokens.space[3] }}>
-                      {alertEvents.map((event) => (
-                        <div
-                          key={`${event.time}-${event.title}`}
-                          style={{
-                            borderTop: `1px solid ${designTokens.color.neutral[200]}`,
-                            paddingTop: designTokens.space[3],
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", gap: designTokens.space[3] }}>
-                            <span style={{ color: designTokens.color.neutral[900], fontWeight: 600 }}>
-                              {event.title}
-                            </span>
-                            <span style={{ color: designTokens.color.neutral[600] }}>{event.time}</span>
-                          </div>
-                          <div
-                            style={{
-                              color: designTokens.color.neutral[700],
-                              fontSize: designTokens.fontSize[13],
-                              marginTop: designTokens.space[1],
-                            }}
-                          >
-                            {event.detail}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={syntheticSections.alertEvents.title}
+                      description={`${syntheticSections.alertEvents.detail}（当前隐藏 ${alertEvents.length} 条示意事件）`}
+                    />
                   </Card>
                 </div>
 
@@ -932,27 +808,21 @@ export default function LiabilityAnalyticsPage() {
 
                 <div style={twoColumnGridStyle}>
                   <Card title="风险指标" style={sectionCardStyle}>
-                    <div style={{ display: "grid", gap: designTokens.space[3], ...numericTabularStyle }}>
-                      {riskIndicators.map((item) => (
-                        <div
-                          key={item.label}
-                          style={{
-                            display: "flex",
-                            justifyContent: "space-between",
-                            gap: designTokens.space[3],
-                            borderTop: `1px solid ${designTokens.color.neutral[200]}`,
-                            paddingTop: designTokens.space[3],
-                          }}
-                        >
-                          <span style={{ color: designTokens.color.neutral[700] }}>{item.label}</span>
-                          <span style={{ color: designTokens.color.neutral[900], fontWeight: 600 }}>{item.value}</span>
-                        </div>
-                      ))}
-                    </div>
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={syntheticSections.riskIndicators.title}
+                      description={`${syntheticSections.riskIndicators.detail}（当前隐藏 ${riskIndicators.length} 个混合指标）`}
+                    />
                   </Card>
 
                   <Card title="关键日历（负债到期关注）" style={sectionCardStyle}>
-                    <CalendarList items={calendarItems} />
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={syntheticSections.calendarItems.title}
+                      description={`${syntheticSections.calendarItems.detail}（当前隐藏 ${calendarItems.length} 条示意日历）`}
+                    />
                   </Card>
                 </div>
 
@@ -1087,3 +957,4 @@ export default function LiabilityAnalyticsPage() {
     </section>
   );
 }
+

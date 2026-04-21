@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from unittest.mock import Mock
 from datetime import date, datetime, timezone
 
 from sqlalchemy.orm import sessionmaker
@@ -115,3 +116,26 @@ def test_kpi_repository_lists_active_owners_and_period_summary(tmp_path):
     assert summary["total_weight"] == "100.000000"
     assert summary["total_score"] == "92.200000"
     assert {row["metric_code"] for row in summary["metrics"]} == {"GOAL_FI", "RISK_BUDGET"}
+
+
+def test_kpi_repository_normalizes_postgres_dsn_to_psycopg(monkeypatch):
+    repo_module = load_module(
+        "backend.app.repositories.kpi_repo",
+        "backend/app/repositories/kpi_repo.py",
+    )
+
+    captured = {}
+
+    class DummyEngine:
+        dialect = type("Dialect", (), {"name": "postgresql"})()
+
+    def fake_create_engine(dsn, future=True):
+        captured["dsn"] = dsn
+        return DummyEngine()
+
+    monkeypatch.setattr(repo_module, "create_engine", fake_create_engine)
+    monkeypatch.setattr(repo_module, "sessionmaker", lambda *args, **kwargs: Mock())
+
+    repo_module.KpiRepository("postgresql://moss:moss@127.0.0.1:55432/moss")
+
+    assert captured["dsn"] == "postgresql+psycopg://moss:moss@127.0.0.1:55432/moss"

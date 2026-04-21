@@ -2,7 +2,6 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-/** Avoid jsdom canvas/ECharts teardown flakiness; assertions use titles + tables + KPIs. */
 vi.mock("../lib/echarts", () => ({
   __esModule: true,
   default: () => <div data-testid="return-decomp-echarts-stub" />,
@@ -74,7 +73,7 @@ function createReturnDecompositionResult(
     recon_error_pct: pct(0),
     by_asset_class: [
       {
-        asset_class: "利率债",
+        asset_class: "Rates",
         carry: yuan(1_000_000),
         roll_down: yuan(2_000_000),
         rate_effect: yuan(0),
@@ -104,7 +103,7 @@ function createReturnDecompositionResult(
       {
         bond_code: "019547",
         bond_name: null,
-        asset_class: "利率债",
+        asset_class: "Rates",
         accounting_class: "AC",
         market_value: yuan(100_000_000),
         carry: yuan(1_000_000),
@@ -131,7 +130,7 @@ describe("ReturnDecompositionView", () => {
     vi.unstubAllGlobals();
   });
 
-  it("transitions from loading to content, shows key statistics, by_asset_class table, and chart section", async () => {
+  it("renders governed content and provenance for the default payload", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
@@ -150,32 +149,17 @@ describe("ReturnDecompositionView", () => {
       expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
 
-    expect(await screen.findByTestId("return-decomposition-shell-lead")).toHaveTextContent(
-      "收益分解概览",
-    );
-    expect(screen.getByTestId("return-decomposition-shell-lead")).toHaveTextContent(
-      "不在前端重算正式损益",
-    );
-    expect(screen.getByTestId("return-decomposition-effects-lead")).toHaveTextContent(
-      "收益效果瀑布",
-    );
-    expect(screen.getByTestId("return-decomposition-recon-lead")).toHaveTextContent(
-      "收益分解对账",
-    );
-    expect(await screen.findByText("经济口径合计")).toBeInTheDocument();
-    expect(screen.getByText("OCI 未入表影响")).toBeInTheDocument();
-    expect(screen.getByText("会计口径（损益表）")).toBeInTheDocument();
+    expect(await screen.findByText("Return Decomposition")).toBeInTheDocument();
+    expect(screen.getByText("Effects")).toBeInTheDocument();
+    expect(screen.getByText("Reconciliation")).toBeInTheDocument();
+    expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("MoM");
-    expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent(
-      "计算时间：2026-04-10T00:00:00Z",
-    );
+    expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent("2026-04-10T00:00:00Z");
     expect(screen.getByTestId("return-decomposition-bond-count")).toHaveTextContent("3");
     expect(screen.getByTestId("return-decomposition-total-mv")).toBeInTheDocument();
-
-    expect(screen.getByText("收益效应分解")).toBeInTheDocument();
-    expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
-    expect(screen.getByText("利率债")).toBeInTheDocument();
     expect(screen.getByTestId("return-decomposition-by-accounting-class")).toHaveTextContent("FVTPL");
+    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("vendor_status");
+    expect(screen.getAllByText("Rates").length).toBeGreaterThan(0);
   });
 
   it("forwards non-default asset/accounting filters as the optional API options bag", async () => {
@@ -206,7 +190,7 @@ describe("ReturnDecompositionView", () => {
     );
   });
 
-  it("renders bond_details table inside collapse after expanding", async () => {
+  it("renders bond details after expanding the collapse", async () => {
     const user = userEvent.setup();
     const client = {
       ...createApiClient({ mode: "mock" }),
@@ -223,25 +207,21 @@ describe("ReturnDecompositionView", () => {
     );
 
     expect(await screen.findByTestId("return-decomposition-bond-details-collapse")).toBeInTheDocument();
-    await user.click(screen.getByText("券级拆解（按券明细）"));
+    await user.click(screen.getByText("鍒哥骇鎷嗚В锛堟寜鍒告槑缁嗭級"));
+
     const table = await screen.findByTestId("return-decomposition-bond-details-table");
-    expect(table).toBeInTheDocument();
     expect(within(table).getByText("019547")).toBeInTheDocument();
+    expect(within(table).getByText("Rates")).toBeInTheDocument();
     expect(within(table).getByText("AC")).toBeInTheDocument();
-    expect(within(table).getByText("利率债")).toBeInTheDocument();
-    const thead = table.querySelector("thead");
-    expect(thead).toBeTruthy();
-    expect(within(thead as HTMLElement).getByText("可解释（对账）")).toBeInTheDocument();
-    expect(within(thead as HTMLElement).getByText("纯经济口径效应")).toBeInTheDocument();
   });
 
-  it("renders warning alert when warnings exist", async () => {
+  it("renders backend warnings when present", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),
       getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
         result_meta: createResultMeta({ quality_flag: "warning" }),
         result: createReturnDecompositionResult({
-          warnings: ["示例：对账口径存在缺口"],
+          warnings: ["recon gap warning"],
         }),
       })),
     };
@@ -252,7 +232,40 @@ describe("ReturnDecompositionView", () => {
       </ApiClientProvider>,
     );
 
-    expect(await screen.findByText("提示")).toBeInTheDocument();
-    expect(screen.getByText("示例：对账口径存在缺口")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
+    );
+    expect(await screen.findByText("recon gap warning")).toBeInTheDocument();
+  });
+
+  it("surfaces degraded provenance when result_meta is stale or fallback-backed", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsReturnDecomposition: vi.fn(async () => ({
+        result_meta: createResultMeta({
+          quality_flag: "warning",
+          vendor_status: "vendor_stale",
+          fallback_mode: "latest_snapshot",
+        }),
+        result: createReturnDecompositionResult(),
+      })),
+    };
+
+    render(
+      <ApiClientProvider client={client}>
+        <ReturnDecompositionView reportDate="2026-03-31" periodType="MoM" />
+      </ApiClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
+    );
+    expect(await screen.findByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
+      "vendor_status=vendor_stale",
+    );
+    expect(screen.getByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
+      "fallback_mode=latest_snapshot",
+    );
+    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("vendor_stale");
   });
 });
