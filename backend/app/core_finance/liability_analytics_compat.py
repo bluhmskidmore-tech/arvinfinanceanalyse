@@ -6,6 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.rate_units import pct_to_decimal
 
 ZERO = Decimal("0")
@@ -139,7 +140,8 @@ def zqtz_asset_amount(row: dict[str, Any]) -> Decimal:
 
 def zqtz_asset_yield_weight(row: dict[str, Any]) -> Decimal:
     asset_class = str(row.get("asset_class") or "").strip()
-    if "持有至到期" in asset_class:
+    invest = infer_invest_type(row.get("portfolio"), row.get("asset_type"), asset_class or None)
+    if invest == "H":
         amortized = row.get("amortized_cost_native")
         if amortized not in (None, ""):
             return to_decimal(amortized)
@@ -248,12 +250,20 @@ def is_interest_bearing_bond_asset(row: dict[str, Any]) -> bool:
     if bool(row.get("is_issuance_like")):
         return False
     asset_class = str(row.get("asset_class") or "").strip()
-    if not asset_class or "交易" in asset_class:
+    if not asset_class:
         return False
-    return any(
-        token in asset_class
-        for token in ("可供出售", "持有至到期", "应收投资款项", "应收投资")
-    )
+    # v1 negative filter: any「交易」substring historically excluded the row before H/A matching,
+    # even when infer_invest_type would return A first on compound legacy labels (e.g. 可供出售…交易…).
+    # Human: caliber-hat_mapping-justified (not a ruff noqa — v1 compat, not redundant with infer==T).
+    if "交易" in asset_class:
+        return False
+    invest = infer_invest_type(row.get("portfolio"), row.get("asset_type"), asset_class)
+    if invest in ("H", "A"):
+        return True
+    # Legacy v1 token: bare「应收投资」matched the pre-canonical list but is not covered by
+    # infer_invest_type (canonical H labels use「应收投资款项」). Keep shim parity for yield inclusion.
+    # Human: caliber-hat_mapping-justified (not a ruff noqa — canonical gap for bare 应收投资).
+    return "应收投资" in asset_class
 
 
 def classify_counterparty(name: str) -> str:
