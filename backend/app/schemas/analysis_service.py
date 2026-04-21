@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from backend.app.core_finance.calibers.enums import Basis
 from backend.app.schemas.result_meta import ResultMeta
 
 
 AnalysisBasis = Literal["formal", "scenario", "analytical"]
+assert set(get_args(AnalysisBasis)) == {b.value for b in Basis}, (
+    "AnalysisBasis Literal must stay lockstep with Basis enum values"
+)
 
 
 class AnalysisQuery(BaseModel):
@@ -23,9 +27,9 @@ class AnalysisQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_basis_inputs(self) -> "AnalysisQuery":
-        if self.basis == "scenario" and self.scenario_rate_pct is None:
+        if self.basis == Basis.SCENARIO.value and self.scenario_rate_pct is None:
             raise ValueError("scenario_rate_pct is required when basis=scenario")
-        if self.basis != "scenario" and self.scenario_rate_pct is not None:
+        if self.basis != Basis.SCENARIO.value and self.scenario_rate_pct is not None:
             raise ValueError("scenario_rate_pct is only allowed when basis=scenario")
         return self
 

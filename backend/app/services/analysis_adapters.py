@@ -4,6 +4,8 @@ from datetime import date
 from decimal import Decimal
 
 from backend.app.core_finance.bond_analytics.common import resolve_period
+from backend.app.core_finance.calibers.enums import Basis, View
+from backend.app.core_finance.calibers.rules.formal_scenario_gate import assert_basis_view_allowed
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.analysis_service import (
     AnalysisQuery,
@@ -37,17 +39,28 @@ class ProductCategoryPnlAnalysisAdapter:
         self._repo = ProductCategoryPnlRepository(duckdb_path)
 
     def execute(self, query: AnalysisQuery) -> AnalysisResultEnvelope:
-        if query.basis not in {"formal", "scenario"}:
+        # Adapter narrows to formal+scenario only; analytical+management is INCLUDE in the
+        # caliber matrix but this read-model path does not serve analytical basis yet.
+        if query.basis not in {Basis.FORMAL.value, Basis.SCENARIO.value}:
             raise ValueError(
                 f"Unsupported basis={query.basis} for analysis_key={self.analysis_key}"
             )
-        if query.scenario_rate_pct is not None and query.basis != "scenario":
+        try:
+            basis_enum = Basis(query.basis)
+        except ValueError as exc:
+            raise ValueError(
+                f"Unsupported basis={query.basis} for analysis_key={self.analysis_key}"
+            ) from exc
+        # Governance view: management (dashboard / comparison surfaces). Both formal and
+        # scenario bases used here are legitimate only under management per formal_scenario_gate.
+        assert_basis_view_allowed(basis_enum, View.MANAGEMENT)
+        if query.scenario_rate_pct is not None and query.basis != Basis.SCENARIO.value:
             raise ValueError(
                 "scenario_rate_pct is only allowed when basis is 'scenario' "
                 f"(got basis={query.basis!r} for analysis_key={self.analysis_key})"
             )
         view = query.view or "monthly"
-        # Single storage path: formal read model. basis=="scenario" applies core_finance.apply_scenario_to_rows on top.
+        # Single storage path: formal read model. Scenario basis applies apply_scenario_to_rows on top.
         rows = self._repo.fetch_rows(query.report_date, view)
         if not rows:
             raise ValueError(
@@ -55,7 +68,7 @@ class ProductCategoryPnlAnalysisAdapter:
             )
 
         typed_rows = [_to_product_category_row(row) for row in rows]
-        if query.basis == "scenario" and query.scenario_rate_pct is not None:
+        if query.basis == Basis.SCENARIO.value and query.scenario_rate_pct is not None:
             from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows
 
             typed_rows = [
@@ -84,7 +97,7 @@ class ProductCategoryPnlAnalysisAdapter:
                 cache_version="cv_product_category_pnl_v1",
                 quality_flag="ok",
             )
-            if query.basis == "scenario"
+            if query.basis == Basis.SCENARIO.value
             else build_formal_result_meta(
                 trace_id=f"tr_{query.consumer}_{query.report_date}_{view}",
                 result_kind=result_kind,
