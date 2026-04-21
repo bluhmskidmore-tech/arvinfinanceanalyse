@@ -4,11 +4,22 @@ from __future__ import annotations
 import importlib
 from unittest.mock import patch
 
+import pytest
+
 from backend.app.schemas.executive_dashboard import HomeSnapshotPayload
 from backend.app.services.executive_service import (
     _compute_unified_report_date,
     _HOME_SNAPSHOT_DOMAINS,
+    invalidate_home_snapshot_cache,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_home_snapshot_cache():
+    """每个用例都从空缓存开始，避免上一条用例的 envelope 污染本条 mock。"""
+    invalidate_home_snapshot_cache()
+    yield
+    invalidate_home_snapshot_cache()
 
 
 def _executive_service():

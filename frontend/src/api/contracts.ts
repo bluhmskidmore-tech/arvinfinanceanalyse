@@ -68,6 +68,8 @@ export type ExecutiveMetric = {
   delta: Numeric;
   tone: "positive" | "neutral" | "warning" | "negative";
   detail: string;
+  /** 后端契约字段；旧 mock 可能缺省，由 adapter 归一为 null */
+  history?: number[] | null;
 };
 
 export type OverviewPayload = {
@@ -101,6 +103,22 @@ export type PnlAttributionPayload = {
   segments: AttributionSegment[];
 };
 
+export type VerdictReason = {
+  label: string;
+  value: string;
+  detail: string;
+  tone: "positive" | "neutral" | "warning" | "negative";
+};
+
+export type VerdictSuggestion = { text: string; link: string | null };
+
+export type VerdictPayload = {
+  conclusion: string;
+  tone: "positive" | "neutral" | "warning" | "negative";
+  reasons: VerdictReason[];
+  suggestions: VerdictSuggestion[];
+};
+
 export type HomeSnapshotPayload = {
   report_date: string;
   mode: "strict" | "partial";
@@ -109,6 +127,7 @@ export type HomeSnapshotPayload = {
   attribution: PnlAttributionPayload;
   domains_missing: string[];
   domains_effective_date: Record<string, string>;
+  verdict?: VerdictPayload | null;
 };
 
 export type GetHomeSnapshotOptions = {

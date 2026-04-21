@@ -1,9 +1,12 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 
+import type { VerdictPayload } from "../../../api/contracts";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { TONE_COLOR, type Tone } from "../../../utils/tone";
+
+import { buildSparkPath } from "./sparklinePath";
 export type DashboardHubTask = {
   id: string;
   title: string;
@@ -25,19 +28,7 @@ export type DashboardHeroMetric = {
   note: string;
   delta: string;
   tone: Tone;
-  spark: "softUp" | "softDown" | "swing" | "flat";
-};
-
-export type DashboardJudgmentTag = {
-  label: string;
-  tone: "accent" | Tone;
-};
-
-export type DashboardJudgment = {
-  title: string;
-  body: string;
-  bullets: string[];
-  tags: DashboardJudgmentTag[];
+  history: number[] | null;
 };
 
 export type DashboardAlert = {
@@ -51,16 +42,15 @@ const sectionTitleFont = designTokens.fontFamily.sans;
 
 const panelStyle: CSSProperties = {
   display: "grid",
-  gap: designTokens.space[4],
-  padding: `${designTokens.space[5] + designTokens.space[2]}px clamp(${designTokens.space[4] + designTokens.space[2]}px, 1.4vw, ${designTokens.space[6]}px)`,
-  borderRadius: designTokens.space[6] + designTokens.space[1],
+  gap: designTokens.space[3],
+  padding: `${designTokens.space[4]}px ${designTokens.space[4]}px`,
+  borderRadius: designTokens.radius.md,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `linear-gradient(180deg, ${designTokens.color.primary[50]} 0%, ${designTokens.color.neutral[50]} 100%)`,
-  boxShadow: designTokens.shadow.card,
+  background: "#ffffff",
 };
 
 const sectionLabelStyle: CSSProperties = {
-  fontSize: designTokens.fontSize[11],
+  fontSize: 10,
   fontWeight: 700,
   letterSpacing: "0.14em",
   textTransform: "uppercase",
@@ -70,17 +60,17 @@ const sectionLabelStyle: CSSProperties = {
 const sectionTitleStyle: CSSProperties = {
   margin: 0,
   color: shellTokens.colorTextPrimary,
-  fontSize: designTokens.fontSize[18],
-  fontWeight: 800,
-  letterSpacing: "-0.03em",
+  fontSize: designTokens.fontSize[14],
+  fontWeight: 700,
+  letterSpacing: "-0.01em",
   fontFamily: sectionTitleFont,
 };
 
 const bodyTextStyle: CSSProperties = {
   margin: 0,
   color: shellTokens.colorTextSecondary,
-  fontSize: designTokens.fontSize[13],
-  lineHeight: designTokens.lineHeight.relaxed,
+  fontSize: designTokens.fontSize[12],
+  lineHeight: designTokens.lineHeight.normal,
 };
 
 const severityPalette = {
@@ -168,35 +158,6 @@ const moduleEntries = [
   },
 ] as const;
 
-function tagStyle(tone: DashboardJudgmentTag["tone"]): CSSProperties {
-  if (tone === "accent") {
-    return {
-      background: shellTokens.colorAccentSoft,
-      color: shellTokens.colorAccent,
-      border: `1px solid ${shellTokens.colorBorderSoft}`,
-    };
-  }
-
-  return {
-    background: `${TONE_COLOR[tone]}18`,
-    color: TONE_COLOR[tone],
-    border: `1px solid ${TONE_COLOR[tone]}33`,
-  };
-}
-
-function sparkPath(kind: DashboardHeroMetric["spark"]) {
-  switch (kind) {
-    case "softUp":
-      return "M4 22 C 14 19, 22 14, 34 12 S 56 8, 82 4";
-    case "softDown":
-      return "M4 4 C 16 7, 26 14, 40 16 S 62 22, 82 20";
-    case "swing":
-      return "M4 18 C 16 22, 24 6, 38 8 S 58 24, 82 10";
-    default:
-      return "M4 13 C 18 13, 30 12, 44 13 S 62 13, 82 13";
-  }
-}
-
 function DashboardSectionHeader(props: {
   eyebrow: string;
   title: string;
@@ -230,145 +191,269 @@ export function DashboardOverviewHeroStrip({
       data-testid="dashboard-overview-hero-strip"
       className="dashboard-overview-hero-strip"
     >
-      {metrics.map((metric) => (
-        <article
-          key={metric.id}
-          style={{
-            position: "relative",
-            overflow: "hidden",
-            display: "grid",
-            gap: designTokens.space[2],
-            padding: `${designTokens.space[4]}px ${designTokens.space[4]}px ${designTokens.space[3]}px`,
-            minHeight: designTokens.space[7] * 4,
-            borderRadius: designTokens.radius.lg + designTokens.space[1],
-            border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: designTokens.color.primary[50],
-            boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
-          }}
-        >
-          <div
+      {metrics.map((metric) => {
+        const toneColor = TONE_COLOR[metric.tone];
+        const hist = metric.history;
+        const hasRealHistory = hist != null && hist.length >= 2;
+        const sparkD = buildSparkPath(metric.history ?? [], 78, 22);
+        return (
+          <article
+            key={metric.id}
             style={{
-              display: "flex",
-              alignItems: "flex-start",
-              justifyContent: "space-between",
-              gap: designTokens.space[3],
+              position: "relative",
+              overflow: "hidden",
+              display: "grid",
+              gap: 6,
+              padding: "14px 14px 12px",
+              minHeight: 116,
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
+              background: "#ffffff",
             }}
           >
-            <div style={{ display: "grid", gap: designTokens.space[1] }}>
+            <span
+              aria-hidden="true"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 3,
+                background: toneColor,
+                opacity: 0.85,
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: designTokens.space[2],
+              }}
+            >
               <span
                 style={{
                   fontSize: designTokens.fontSize[12],
                   color: shellTokens.colorTextMuted,
-                  fontWeight: 700,
+                  fontWeight: 600,
+                  letterSpacing: "0.02em",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
+                title={metric.label}
               >
                 {metric.label}
               </span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  padding: "1px 6px",
+                  borderRadius: 4,
+                  background: `${toneColor}14`,
+                  color: toneColor,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  ...tabularNumsStyle,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {metric.delta}
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "space-between",
+                gap: designTokens.space[2],
+              }}
+            >
               <strong
                 style={{
                   ...tabularNumsStyle,
                   color: shellTokens.colorTextPrimary,
-                  fontSize: designTokens.fontSize[20],
-                  lineHeight: designTokens.lineHeight.tight,
-                  letterSpacing: "-0.04em",
+                  fontSize: 26,
+                  lineHeight: 1.1,
+                  letterSpacing: "-0.02em",
+                  fontWeight: 700,
                 }}
               >
                 {metric.value}
               </strong>
+              <svg
+                width="78"
+                height="22"
+                viewBox="0 0 78 22"
+                aria-hidden="true"
+                style={{ flexShrink: 0, marginBottom: 2 }}
+              >
+                <title>{hasRealHistory ? "近 30 日趋势" : "近 30 日历史尚未接入"}</title>
+                <path
+                  d={sparkD}
+                  fill="none"
+                  stroke={hasRealHistory ? toneColor : "#c9d4d2"}
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeDasharray={hasRealHistory ? undefined : "3 3"}
+                  opacity={hasRealHistory ? 0.85 : 0.6}
+                />
+              </svg>
             </div>
-            <svg
-              width="92"
-              height="26"
-              viewBox="0 0 86 26"
-              aria-hidden="true"
+            <span
+              style={{
+                color: shellTokens.colorTextMuted,
+                fontSize: 11,
+                lineHeight: 1.45,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+              }}
+              title={metric.note}
             >
-              <path
-                d={sparkPath(metric.spark)}
-                fill="none"
-                stroke={TONE_COLOR[metric.tone]}
-                strokeWidth="2.5"
-                strokeLinecap="round"
-              />
-              <circle
-                cx="82"
-                cy={metric.spark === "softDown" ? 20 : metric.spark === "flat" ? 13 : 4}
-                r="3.6"
-                fill={TONE_COLOR[metric.tone]}
-              />
-            </svg>
-          </div>
-          <span
-            style={{
-              display: "inline-flex",
-              width: "fit-content",
-              alignItems: "center",
-              padding: `${designTokens.space[1]}px ${designTokens.space[2]}px`,
-              borderRadius: 999,
-              background: `${TONE_COLOR[metric.tone]}14`,
-              color: TONE_COLOR[metric.tone],
-              fontSize: designTokens.fontSize[11],
-              fontWeight: 700,
-            }}
-          >
-            {metric.delta}
-          </span>
-          <span
-            style={{
-              color: shellTokens.colorTextSecondary,
-              fontSize: designTokens.fontSize[12],
-              lineHeight: 1.55,
-            }}
-          >
-            {metric.note}
-          </span>
-        </article>
-      ))}
+              {metric.note}
+            </span>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
-export function DashboardGlobalJudgmentPanel({
-  judgment,
-}: {
-  judgment: DashboardJudgment;
-}) {
+const suggestionEyebrowStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.12em",
+  color: shellTokens.colorTextMuted,
+};
+
+export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayload }) {
+  const badgeTone = verdict.tone as Tone;
   return (
     <section data-testid="dashboard-global-judgment" style={panelStyle}>
-      <DashboardSectionHeader eyebrow="First-screen Verdict" title={judgment.title} />
-      <p style={{ ...bodyTextStyle, fontSize: designTokens.fontSize[14] }}>{judgment.body}</p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: designTokens.space[2] + designTokens.space[1] }}>
-        {judgment.tags.map((tag) => (
+      <DashboardSectionHeader
+        eyebrow="VERDICT"
+        title="今日定调"
+        extra={
           <span
-            key={tag.label}
+            aria-label={`定调 ${verdict.tone}`}
+            title={verdict.tone}
             style={{
-              ...tagStyle(tag.tone),
-              display: "inline-flex",
-              alignItems: "center",
-              padding: `${designTokens.space[1] + designTokens.space[2]}px ${designTokens.space[3]}px`,
-              borderRadius: 999,
-              fontSize: designTokens.fontSize[12],
-              fontWeight: 700,
+              width: 10,
+              height: 10,
+              borderRadius: 3,
+              background: TONE_COLOR[badgeTone],
+              flexShrink: 0,
+              marginTop: 2,
             }}
-          >
-            {tag.label}
-          </span>
-        ))}
-      </div>
-      <ul
+          />
+        }
+      />
+      <strong
         style={{
           margin: 0,
-          paddingLeft: designTokens.space[4] + designTokens.space[2],
-          display: "grid",
-          gap: designTokens.space[2] + designTokens.space[1],
-          color: shellTokens.colorTextSecondary,
-          fontSize: designTokens.fontSize[13],
-          lineHeight: designTokens.lineHeight.normal,
+          display: "block",
+          color: shellTokens.colorTextPrimary,
+          fontSize: designTokens.fontSize[14],
+          fontWeight: 700,
+          letterSpacing: "-0.02em",
+          lineHeight: designTokens.lineHeight.snug,
         }}
       >
-        {judgment.bullets.map((bullet) => (
-          <li key={bullet}>{bullet}</li>
-        ))}
-      </ul>
+        {verdict.conclusion}
+      </strong>
+      {verdict.reasons.length > 0 ? (
+        <div
+          style={{
+            display: "grid",
+            gap: designTokens.space[3],
+          }}
+        >
+          {verdict.reasons.map((reason, index) => (
+            <div
+              key={`${reason.label}-${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "10px minmax(0, 1fr)",
+                gap: designTokens.space[2],
+                alignItems: "start",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 8,
+                  height: 8,
+                  marginTop: 5,
+                  borderRadius: "50%",
+                  background: TONE_COLOR[reason.tone as Tone],
+                  flexShrink: 0,
+                }}
+              />
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    lineHeight: designTokens.lineHeight.normal,
+                    color: shellTokens.colorTextPrimary,
+                  }}
+                >
+                  <strong style={{ fontWeight: 700 }}>{reason.label}</strong>{" "}
+                  <strong
+                    style={{
+                      ...tabularNumsStyle,
+                      fontSize: designTokens.fontSize[14],
+                      fontWeight: 700,
+                      letterSpacing: "-0.02em",
+                    }}
+                  >
+                    {reason.value}
+                  </strong>
+                  <span style={{ color: shellTokens.colorTextSecondary }}> — {reason.detail}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div style={{ display: "grid", gap: designTokens.space[2] }}>
+        <div style={suggestionEyebrowStyle}>建议</div>
+        <ul
+          style={{
+            margin: 0,
+            paddingLeft: designTokens.space[4],
+            display: "grid",
+            gap: 8,
+            color: shellTokens.colorTextSecondary,
+            fontSize: designTokens.fontSize[12],
+            lineHeight: designTokens.lineHeight.relaxed,
+          }}
+        >
+          {verdict.suggestions.map((s, index) => (
+            <li key={`${s.text}-${index}`} style={{ paddingLeft: 2 }}>
+              <span style={{ color: shellTokens.colorTextPrimary }}>{s.text}</span>
+              {s.link ? (
+                <>
+                  {" "}
+                  <Link
+                    to={s.link}
+                    style={{
+                      fontWeight: 700,
+                      color: shellTokens.colorAccent,
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    → 下钻
+                  </Link>
+                </>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -391,26 +476,42 @@ export function DashboardModuleSnapshotPanel() {
               key={entry.id}
               to={entry.to}
               style={{
+                position: "relative",
                 display: "grid",
                 gap: designTokens.space[2],
-                minHeight: designTokens.space[7] * 4 - designTokens.space[2],
-                padding: designTokens.space[4],
-                borderRadius: designTokens.radius.md + designTokens.space[2],
-                border: `1px solid ${palette.border}`,
-                background: designTokens.color.primary[50],
+                minHeight: 112,
+                padding: designTokens.space[3] + 2,
+                borderRadius: designTokens.radius.md,
+                border: `1px solid ${shellTokens.colorBorderSoft}`,
+                background: "#ffffff",
+                overflow: "hidden",
+                textDecoration: "none",
               }}
             >
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  bottom: 0,
+                  width: 3,
+                  background: palette.fg,
+                  opacity: 0.7,
+                }}
+              />
               <span
                 style={{
                   display: "inline-flex",
                   width: "fit-content",
                   alignItems: "center",
-                  padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
-                  borderRadius: 999,
+                  padding: "2px 8px",
+                  borderRadius: 4,
                   background: palette.bg,
                   color: palette.fg,
-                  fontSize: designTokens.fontSize[12],
+                  fontSize: 11,
                   fontWeight: 700,
+                  letterSpacing: "0.02em",
                 }}
               >
                 {entry.title}
@@ -418,8 +519,9 @@ export function DashboardModuleSnapshotPanel() {
               <span
                 style={{
                   color: shellTokens.colorTextPrimary,
-                  fontSize: designTokens.fontSize[16],
+                  fontSize: designTokens.fontSize[13],
                   fontWeight: 700,
+                  lineHeight: 1.35,
                 }}
               >
                 {entry.eyebrow}
@@ -427,8 +529,8 @@ export function DashboardModuleSnapshotPanel() {
               <span
                 style={{
                   color: shellTokens.colorTextSecondary,
-                  fontSize: designTokens.fontSize[12],
-                  lineHeight: 1.55,
+                  fontSize: 11,
+                  lineHeight: 1.45,
                 }}
               >
                 {entry.output}
@@ -688,17 +790,31 @@ export function DashboardModuleEntryGrid() {
               key={entry.id}
               to={entry.to}
               style={{
+                position: "relative",
                 display: "grid",
-                gap: designTokens.space[4],
+                gap: designTokens.space[3],
                 alignContent: "start",
-                minHeight: designTokens.space[8] * 5 + designTokens.space[3] + designTokens.space[2],
-                padding: designTokens.space[4] + designTokens.space[2],
-                borderRadius: designTokens.radius.xl,
+                minHeight: 220,
+                padding: designTokens.space[4],
+                borderRadius: designTokens.radius.md,
                 border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background: designTokens.color.primary[50],
-                boxShadow: `inset 0 1px 0 ${designTokens.color.neutral[100]}`,
+                background: "#ffffff",
+                overflow: "hidden",
+                textDecoration: "none",
               }}
             >
+              <span
+                aria-hidden="true"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 3,
+                  background: palette.fg,
+                  opacity: 0.7,
+                }}
+              />
               <div
                 style={{
                   display: "flex",
@@ -721,18 +837,18 @@ export function DashboardModuleEntryGrid() {
                 >
                   {index + 1}
                 </span>
-                <div style={{ display: "grid", gap: designTokens.space[1] }}>
+                <div style={{ display: "grid", gap: 2 }}>
                   <span
                     style={{
                       color: shellTokens.colorTextPrimary,
-                      fontSize: designTokens.fontSize[18],
-                      fontWeight: 800,
+                      fontSize: designTokens.fontSize[14],
+                      fontWeight: 700,
                       fontFamily: sectionTitleFont,
                     }}
                   >
                     {entry.title}
                   </span>
-                  <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
+                  <span style={{ color: shellTokens.colorTextMuted, fontSize: 11 }}>
                     {entry.eyebrow}
                   </span>
                 </div>

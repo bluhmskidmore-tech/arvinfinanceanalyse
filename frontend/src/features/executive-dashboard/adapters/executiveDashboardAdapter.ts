@@ -16,9 +16,11 @@ import type {
   OverviewPayload,
   PnlAttributionPayload,
   ResultMeta,
+  VerdictPayload,
 } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Tone } from "../../../utils/tone";
+import { sanitizeMetricDetail, sanitizeMetricLabel } from "../lib/sanitizeMetricCopy";
 
 type MetricTone = "positive" | "neutral" | "warning" | "negative";
 
@@ -29,6 +31,7 @@ export type DashboardOverviewMetricVM = {
   delta: Numeric;
   tone: MetricTone;
   detail: string;
+  history: number[] | null;
 };
 
 export type DashboardOverviewVM = {
@@ -56,6 +59,7 @@ export type DashboardAdapterInput = {
   overviewError: boolean;
   attributionLoading: boolean;
   attributionError: boolean;
+  verdictPayload?: VerdictPayload | null;
 };
 
 export type DashboardAdapterOutput = {
@@ -69,6 +73,7 @@ export type DashboardAdapterOutput = {
     state: DataSectionState;
     meta: ResultMeta | null;
   };
+  verdict: VerdictPayload | null;
 };
 
 export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOutput {
@@ -100,6 +105,23 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
       state: attributionState,
       meta: input.attributionEnv?.result_meta ?? null,
     },
+    verdict: sanitizeVerdict(input.verdictPayload ?? null),
+  };
+}
+
+/**
+ * 把后端 verdict 中的 reasons 也过一遍显示净化器，
+ * 避免 hero strip 已经净化、但 verdict 仍然漏出表名/字段名/英文术语。
+ */
+function sanitizeVerdict(verdict: VerdictPayload | null): VerdictPayload | null {
+  if (!verdict) return null;
+  return {
+    ...verdict,
+    reasons: verdict.reasons.map((r) => ({
+      ...r,
+      label: sanitizeMetricLabel(r.label),
+      detail: sanitizeMetricDetail(r.detail),
+    })),
   };
 }
 
@@ -114,6 +136,7 @@ function buildOverviewVM(result: OverviewPayload | undefined): DashboardOverview
       delta: m.delta,
       tone: (m.tone as MetricTone) ?? "neutral",
       detail: m.detail,
+      history: m.history ?? null,
     })),
   };
 }

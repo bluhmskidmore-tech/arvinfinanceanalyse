@@ -7,6 +7,7 @@ import type {
   PnlAttributionPayload,
   RiskOverviewPayload,
   SummaryPayload,
+  VerdictPayload,
 } from "../api/contracts";
 
 export const overviewPayload: OverviewPayload = {
@@ -95,6 +96,23 @@ export const pnlAttributionPayload: PnlAttributionPayload = {
       amount: { raw: null, unit: "yuan", display: "—", precision: 2, sign_aware: true },
       tone: "neutral",
     },
+  ],
+};
+
+export const mockVerdictPayload: VerdictPayload = {
+  conclusion: "演示：首屏定调结论占位，用于展示 Pyramid 叙事结构。",
+  tone: "neutral",
+  reasons: [
+    {
+      label: "示例指标一",
+      value: "—",
+      detail: "静态演示字段，不代表任何业务口径。",
+      tone: "neutral",
+    },
+  ],
+  suggestions: [
+    { text: "进入对应专题页继续下钻原因链条", link: null },
+    { text: "关注信用利差与久期暴露", link: "/bond-analysis" },
   ],
 };
 
@@ -261,4 +279,5 @@ export const mockHomeSnapshot: HomeSnapshotPayload = {
     liability: "2026-04-18",
     bond: "2026-04-18",
   },
+  verdict: mockVerdictPayload,
 };

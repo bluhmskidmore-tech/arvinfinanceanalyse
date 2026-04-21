@@ -19,6 +19,26 @@ type DashboardBondHeadlineSectionProps = {
   reportDate: string;
 };
 
+function parseHeadlineValue(
+  value: unknown,
+  unit: "pct" | "plain" = "plain",
+): number {
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+    // Bond-dashboard legacy real payloads may still emit percent-point strings
+    // like "2.06109220" for 2.06%. The homepage cards expect pct raw values in
+    // decimal-ratio form (0.020610922), matching repo-wide Numeric pct rules.
+    if (unit === "pct" && Math.abs(parsed) > 1) {
+      return parsed / 100;
+    }
+    return parsed;
+  }
+  return nativeToNumber(value as Parameters<typeof nativeToNumber>[0]);
+}
+
 type HeadlineCell = {
   label: string;
   value: string;
@@ -61,14 +81,14 @@ export function DashboardBondHeadlineSection({
       return { leadText: "", cells: [] as HeadlineCell[] };
     }
 
-    const totalMarketValue = nativeToNumber(kpis.total_market_value);
-    const unrealizedPnl = nativeToNumber(kpis.unrealized_pnl);
-    const weightedYtm = nativeToNumber(kpis.weighted_ytm);
-    const weightedDuration = nativeToNumber(kpis.weighted_duration);
-    const weightedCoupon = nativeToNumber(kpis.weighted_coupon);
-    const spreadMedian = nativeToNumber(kpis.credit_spread_median);
-    const rateSensitivity = nativeToNumber(kpis.total_dv01) / 10_000;
-    const bondCount = nativeToNumber(kpis.bond_count);
+    const totalMarketValue = parseHeadlineValue(kpis.total_market_value);
+    const unrealizedPnl = parseHeadlineValue(kpis.unrealized_pnl);
+    const weightedYtm = parseHeadlineValue(kpis.weighted_ytm, "pct");
+    const weightedDuration = parseHeadlineValue(kpis.weighted_duration);
+    const weightedCoupon = parseHeadlineValue(kpis.weighted_coupon, "pct");
+    const spreadMedian = parseHeadlineValue(kpis.credit_spread_median, "pct");
+    const rateSensitivity = parseHeadlineValue(kpis.total_dv01) / 10_000;
+    const bondCount = parseHeadlineValue(kpis.bond_count);
 
     const leadText = [
       `市场值 ${formatNumeric(formatRawAsNumeric({ raw: totalMarketValue, unit: "yuan", sign_aware: false }))}`,
@@ -151,18 +171,11 @@ export function DashboardBondHeadlineSection({
       }
     >
       <div style={{ display: "grid", gap: 14 }}>
-        <div
-          data-testid="dashboard-bond-headline-lead"
-          style={{
-            ...cockpitInsetCardStyle,
-            gap: 6,
-            background: "linear-gradient(135deg, rgba(240,246,255,0.88) 0%, rgba(255,255,255,0.96) 100%)",
-          }}
-        >
-          <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 16 }}>
+        <div data-testid="dashboard-bond-headline-lead" style={cockpitInsetCardStyle}>
+          <strong style={{ color: shellTokens.colorTextPrimary, fontSize: 13 }}>
             首页先看债券组合状态
           </strong>
-          <p style={cockpitBodyStyle}>
+          <p style={{ ...cockpitBodyStyle, fontSize: 12 }}>
             {leadText || "等待报告日后再生成债券组合的首屏状态判断。"}
           </p>
         </div>
@@ -174,32 +187,70 @@ export function DashboardBondHeadlineSection({
             gap: 12,
           }}
         >
-          {cells.map((cell) => (
-            <div key={cell.label} data-testid="dashboard-bond-headline-kpi" style={cockpitInsetCardStyle}>
-              <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, fontWeight: 700 }}>
-                {cell.label}
-              </span>
-              <strong
+          {cells.map((cell) => {
+            const toneColor =
+              cell.tone === "positive"
+                ? shellTokens.colorSuccess
+                : cell.tone === "negative"
+                  ? shellTokens.colorDanger
+                  : "#c9d4d2";
+            return (
+              <div
+                key={cell.label}
+                data-testid="dashboard-bond-headline-kpi"
                 style={{
-                  color:
-                    cell.tone === "positive"
-                      ? shellTokens.colorSuccess
-                      : cell.tone === "negative"
-                        ? shellTokens.colorDanger
-                        : shellTokens.colorTextPrimary,
-                  fontSize: 22,
-                  lineHeight: 1.1,
-                  fontVariantNumeric: "tabular-nums",
-                  letterSpacing: "-0.03em",
+                  ...cockpitInsetCardStyle,
+                  position: "relative",
+                  overflow: "hidden",
+                  gap: 4,
+                  minHeight: 100,
                 }}
               >
-                {cell.value}
-              </strong>
-              <span style={{ color: shellTokens.colorTextSecondary, fontSize: 12 }}>
-                {cell.detail}
-              </span>
-            </div>
-          ))}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 3,
+                    background: toneColor,
+                    opacity: 0.85,
+                  }}
+                />
+                <span
+                  style={{
+                    color: shellTokens.colorTextMuted,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {cell.label}
+                </span>
+                <strong
+                  style={{
+                    color:
+                      cell.tone === "positive"
+                        ? shellTokens.colorSuccess
+                        : cell.tone === "negative"
+                          ? shellTokens.colorDanger
+                          : shellTokens.colorTextPrimary,
+                    fontSize: 26,
+                    lineHeight: 1.1,
+                    fontVariantNumeric: "tabular-nums",
+                    letterSpacing: "-0.02em",
+                    fontWeight: 700,
+                  }}
+                >
+                  {cell.value}
+                </strong>
+                <span style={{ color: shellTokens.colorTextMuted, fontSize: 11, lineHeight: 1.45 }}>
+                  {cell.detail}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </DashboardCockpitSection>

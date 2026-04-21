@@ -44,6 +44,7 @@ class ExecutiveMetric(BaseModel):
     delta: Numeric
     tone: str
     detail: str
+    history: list[float] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -184,6 +185,34 @@ class AlertsPayload(BaseModel):
     items: list[AlertItem]
 
 
+VerdictTone = Literal["positive", "neutral", "warning", "negative"]
+
+
+class VerdictReason(BaseModel):
+    """单条支撑事实（Pyramid · Reasons）。"""
+
+    label: str
+    value: str
+    detail: str
+    tone: VerdictTone
+
+
+class VerdictSuggestion(BaseModel):
+    """可下钻的建议（Pyramid · Suggestions）。"""
+
+    text: str
+    link: str | None = None
+
+
+class VerdictPayload(BaseModel):
+    """首屏定调：结论 + 支撑 + 建议（SCQA / Pyramid）。"""
+
+    conclusion: str
+    tone: VerdictTone
+    reasons: list[VerdictReason]
+    suggestions: list[VerdictSuggestion]
+
+
 class HomeSnapshotPayload(BaseModel):
     """Authoritative unified home snapshot payload.
 
@@ -206,3 +235,4 @@ class HomeSnapshotPayload(BaseModel):
     attribution: PnlAttributionPayload
     domains_missing: list[str]
     domains_effective_date: dict[str, str]
+    verdict: VerdictPayload | None = None

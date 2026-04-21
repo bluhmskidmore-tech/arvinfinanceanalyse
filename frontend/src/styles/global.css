@@ -72,29 +72,29 @@ select {
 
 .dashboard-gov-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
   align-items: start;
-  margin-bottom: 20px;
+  margin-bottom: 12px;
 }
 
 .dashboard-status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .dashboard-primary-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr);
-  gap: 20px;
+  gap: 16px;
   align-items: start;
 }
 
 .dashboard-secondary-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  gap: 16px;
   align-items: start;
 }
 
@@ -105,37 +105,59 @@ select {
 .overview-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 18px;
+  gap: 12px;
 }
 
 .dashboard-overview-hero-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
+  gap: 10px;
+}
+
+.dashboard-overview-hero-strip > article {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-overview-hero-strip > article:hover {
+  border-color: #c9d4d2;
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  transform: translateY(-1px);
+}
+
+.dashboard-module-entry-grid > a,
+.dashboard-overview-command-grid a {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.dashboard-module-entry-grid > a:hover,
+.dashboard-overview-command-grid a:hover {
+  border-color: #c9d4d2;
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  transform: translateY(-1px);
 }
 
 .dashboard-overview-command-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(340px, 0.9fr) minmax(320px, 0.9fr);
-  gap: 18px;
+  gap: 12px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .dashboard-overview-support-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.95fr);
-  gap: 18px;
+  gap: 12px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .dashboard-overview-live-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 12px;
   align-items: start;
-  margin-top: 20px;
+  margin-top: 12px;
 }
 
 .dashboard-overview-live-grid .dashboard-span-wide {
@@ -145,7 +167,7 @@ select {
 .dashboard-module-entry-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
+  gap: 12px;
 }
 
 @media (max-width: 1180px) {
@@ -176,4 +198,15 @@ select {
   .dashboard-module-entry-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* V1-style hover for cockpit inset KPI cards */
+[data-testid="dashboard-bond-headline-kpi"] {
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+[data-testid="dashboard-bond-headline-kpi"]:hover {
+  border-color: #c9d4d2;
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  transform: translateY(-1px);
 }

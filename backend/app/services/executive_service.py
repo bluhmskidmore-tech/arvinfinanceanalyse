@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import time
 from datetime import date, datetime
+from threading import RLock
 from typing import Literal
 
 from backend.app.core_finance.alert_engine import evaluate_alerts
@@ -31,6 +33,10 @@ from backend.app.schemas.executive_dashboard import (
     RiskSignal,
     SummaryPayload,
     SummaryPoint,
+    VerdictPayload,
+    VerdictReason,
+    VerdictSuggestion,
+    VerdictTone,
 )
 from backend.app.services.formal_result_runtime import build_result_envelope
 from backend.app.services.kpi_service import (
@@ -546,6 +552,161 @@ def _build_contribution_from_repo(
     )
 
 
+def _fetch_aum_history(
+    balance_repo: FormalZqtzBalanceMetricsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> list[float] | None:
+    """逐日取 _fetch_executive_aum_row(...)['total_market_value_amount']，按时间正序返回最近 n 个。
+    单日异常跳过；整体异常返回 None。"""
+    try:
+        if not report_dates:
+            return None
+        if current_report_date is None:
+            slice_dates = report_dates[:n]
+        else:
+            try:
+                idx = report_dates.index(current_report_date)
+            except ValueError:
+                return None
+            slice_dates = report_dates[idx : idx + n]
+        values: list[float] = []
+        for d in slice_dates:
+            try:
+                row = _fetch_executive_aum_row(
+                    balance_repo,
+                    report_date=d,
+                    currency_basis="CNY",
+                )
+                if row is None:
+                    continue
+                v = row.get("total_market_value_amount")
+                if v is not None:
+                    values.append(float(v))
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                continue
+        if not values:
+            return None
+        values.reverse()
+        return values
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        return None
+
+
+def _fetch_ytd_history(
+    pnl_repo: PnlRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> list[float] | None:
+    """逐日取 pnl_repo.sum_formal_total_pnl_through_report_date(date)。"""
+    try:
+        if not report_dates:
+            return None
+        if current_report_date is None:
+            slice_dates = report_dates[:n]
+        else:
+            try:
+                idx = report_dates.index(current_report_date)
+            except ValueError:
+                return None
+            slice_dates = report_dates[idx : idx + n]
+        values: list[float] = []
+        for d in slice_dates:
+            try:
+                v = pnl_repo.sum_formal_total_pnl_through_report_date(d)
+                if v is not None:
+                    values.append(float(v))
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                continue
+        if not values:
+            return None
+        values.reverse()
+        return values
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        return None
+
+
+def _fetch_nim_history(
+    liability_repo: LiabilityAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> list[float] | None:
+    """逐日 fetch_zqtz_rows + fetch_tyw_rows → compute_liability_yield_metrics → kpi.nim。"""
+    try:
+        if not report_dates:
+            return None
+        if current_report_date is None:
+            slice_dates = report_dates[:n]
+        else:
+            try:
+                idx = report_dates.index(current_report_date)
+            except ValueError:
+                return None
+            slice_dates = report_dates[idx : idx + n]
+        values: list[float] = []
+        for d in slice_dates:
+            try:
+                zqtz_rows = liability_repo.fetch_zqtz_rows(d)
+                tyw_rows = liability_repo.fetch_tyw_rows(d)
+                payload = compute_liability_yield_metrics(d, zqtz_rows, tyw_rows)
+                kpi = payload.get("kpi") if isinstance(payload, dict) else None
+                v = kpi.get("nim") if isinstance(kpi, dict) else None
+                if v is not None:
+                    values.append(float(v))
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                continue
+        if not values:
+            return None
+        values.reverse()
+        return values
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        return None
+
+
+def _fetch_dv01_history(
+    bond_repo: BondAnalyticsRepository,
+    *,
+    report_dates: list[str],
+    current_report_date: str | None,
+    n: int = 20,
+) -> list[float] | None:
+    """逐日 fetch_risk_overview_snapshot(date)['portfolio_dv01']。"""
+    try:
+        if not report_dates:
+            return None
+        if current_report_date is None:
+            slice_dates = report_dates[:n]
+        else:
+            try:
+                idx = report_dates.index(current_report_date)
+            except ValueError:
+                return None
+            slice_dates = report_dates[idx : idx + n]
+        values: list[float] = []
+        for d in slice_dates:
+            try:
+                snapshot = bond_repo.fetch_risk_overview_snapshot(report_date=d)
+                if snapshot is None:
+                    continue
+                v = snapshot.get("portfolio_dv01")
+                if v is not None:
+                    values.append(float(v))
+            except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+                continue
+        if not values:
+            return None
+        values.reverse()
+        return values
+    except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
+        return None
+
+
 def executive_overview(report_date: str | None = None) -> dict[str, object]:
     settings = get_settings()
     governance_dir = str(getattr(settings, "governance_path", "") or "").strip()
@@ -564,6 +725,10 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     ytd_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
     nim_delta: Numeric = Numeric(raw=None, unit="bp", display="无环比", precision=2, sign_aware=True)
     dv01_delta: Numeric = Numeric(raw=None, unit="pct", display="无环比", precision=2, sign_aware=True)
+    aum_history: list[float] | None = None
+    ytd_history: list[float] | None = None
+    nim_history: list[float] | None = None
+    dv01_history: list[float] | None = None
 
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
@@ -599,6 +764,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                         aum_raw,
                         float(previous_row["total_market_value_amount"]),
                     )
+        if aum_raw is not None:
+            aum_history = _fetch_aum_history(
+                balance_repo,
+                report_dates=balance_report_dates,
+                current_report_date=current_balance_report_date,
+            )
     except (RuntimeError, OSError, TypeError, ValueError):
         aum_raw = None
 
@@ -645,6 +816,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 ytd_raw,
                 float(pnl_repo.sum_formal_total_pnl_through_report_date(previous_pnl_report_date)),
             )
+        if ytd_raw is not None:
+            ytd_history = _fetch_ytd_history(
+                pnl_repo,
+                report_dates=pnl_report_dates,
+                current_report_date=current_pnl_report_date,
+            )
     except (RuntimeError, OSError, TypeError, ValueError):
         ytd_raw = None
 
@@ -687,6 +864,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                         nim_raw,
                         previous_payload.get("kpi", {}).get("nim"),
                     )
+        if nim_raw is not None:
+            nim_history = _fetch_nim_history(
+                liability_repo,
+                report_dates=liability_report_dates,
+                current_report_date=liability_report_date,
+            )
     except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
         nim_raw = None
 
@@ -730,6 +913,12 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                         dv01_raw,
                         float(previous_snapshot["portfolio_dv01"]),
                     )
+        if dv01_raw is not None:
+            dv01_history = _fetch_dv01_history(
+                bond_repo,
+                report_dates=bond_report_dates,
+                current_report_date=current_bond_report_date,
+            )
     except (RuntimeError, OSError, TypeError, ValueError, KeyError, AttributeError):
         dv01_raw = None
 
@@ -758,6 +947,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                 delta=aum_delta,
                 tone="positive",
                 detail=aum_detail,
+                history=aum_history,
             )
         )
     if ytd_raw is not None:
@@ -773,6 +963,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     if normalized_report_date is not None
                     else f"来自 fact_formal_pnl_fi 截至 {current_pnl_report_date} 的年内 total_pnl 合计。"
                 ),
+                history=ytd_history,
             )
         )
     if nim_raw is not None:
@@ -788,6 +979,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     if normalized_report_date is not None
                     else f"来自受治理负债分析收益指标，在 {liability_report_date} 的 NIM 读面。"
                 ),
+                history=nim_history,
             )
         )
     if dv01_raw is not None:
@@ -809,6 +1001,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                     if normalized_report_date is not None
                     else f"来自 bond analytics 风险快照，在 {current_bond_report_date} 的组合 DV01。"
                 ),
+                history=dv01_history,
             )
         )
     kpi_dsn = str(
@@ -1235,6 +1428,80 @@ def _compute_unified_report_date(
     return (target, missing, effective)
 
 
+_VERDICT_TONES: frozenset[str] = frozenset({"positive", "neutral", "warning", "negative"})
+
+
+def _coerce_verdict_tone(raw: str) -> VerdictTone:
+    if raw in _VERDICT_TONES:
+        return raw  # type: ignore[return-value]
+    return "neutral"
+
+
+def executive_verdict(
+    *,
+    overview: OverviewPayload,
+    attention_count: int,
+    partial_note: str | None,
+    client_mode: str = "real",
+) -> VerdictPayload:
+    """首屏 Pyramid 定调：结论、支撑事实与下钻建议（确定性、可测试）。"""
+
+    metrics = overview.metrics
+    reasons: list[VerdictReason] = []
+    for m in metrics[:3]:
+        reasons.append(
+            VerdictReason(
+                label=m.label,
+                value=m.value.display,
+                detail=m.detail,
+                tone=_coerce_verdict_tone(m.tone),
+            )
+        )
+
+    tones = [_coerce_verdict_tone(m.tone) for m in metrics]
+    pos = sum(1 for t in tones if t == "positive")
+    neg = sum(1 for t in tones if t == "negative")
+    warn = sum(1 for t in tones if t == "warning")
+
+    if client_mode != "real" or partial_note:
+        conclusion = "数据状态需先复核，再做方向性判断"
+        tone: VerdictTone = "warning"
+    elif not metrics:
+        conclusion = "当前指标平稳，等待下一组观测"
+        tone = "neutral"
+    elif len(tones) > 0 and all(t == "neutral" for t in tones):
+        conclusion = "当前指标平稳，等待下一组观测"
+        tone = "neutral"
+    elif pos >= neg + warn:
+        conclusion = "首屏整体偏多，可基于规模与收益做方向性判断"
+        tone = "positive"
+    elif neg + warn > pos:
+        conclusion = "首屏存在压力点，需进入专题页确认原因"
+        tone = "warning"
+    else:
+        conclusion = "当前指标平稳，等待下一组观测"
+        tone = "neutral"
+
+    suggestions: list[VerdictSuggestion] = [
+        VerdictSuggestion(text="进入对应专题页继续下钻原因链条", link=None),
+    ]
+    if any(_coerce_verdict_tone(m.tone) in ("warning", "negative") for m in metrics):
+        suggestions.append(
+            VerdictSuggestion(text="关注信用利差与久期暴露", link="/bond-analysis"),
+        )
+    if attention_count > 0 or partial_note:
+        suggestions.append(
+            VerdictSuggestion(text="复核治理状态后再做正式结论", link="/governance"),
+        )
+
+    return VerdictPayload(
+        conclusion=conclusion,
+        tone=tone,
+        reasons=reasons,
+        suggestions=suggestions,
+    )
+
+
 def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
     return HomeSnapshotPayload(
         report_date="",
@@ -1244,10 +1511,70 @@ def _empty_home_snapshot_payload() -> HomeSnapshotPayload:
         attribution=_pnl_attribution_unavailable_payload(),
         domains_missing=list(_HOME_SNAPSHOT_DOMAINS),
         domains_effective_date={},
+        verdict=None,
     )
 
 
+# ---------------------------------------------------------------------------
+# Home snapshot 内存 TTL 缓存
+# ---------------------------------------------------------------------------
+# 单进程进程内缓存，按 (report_date, allow_partial) 维度独立存储；
+# TTL 过期或显式 invalidate 才会重新构造（一次约 80+ 次 DuckDB 查询 + 派生）。
+# 设计权衡：
+#   - 驾驶舱用户量小（管理层），日常 TTL 5 分钟足够；
+#   - 不引入 Redis/外部存储，零依赖增加；
+#   - 写场景（治理刷库、补数任务）应显式调用 invalidate_home_snapshot_cache();
+#   - 多 worker 部署下每个 worker 独立缓存，可接受（TTL 短）。
+
+_HOME_SNAPSHOT_CACHE_TTL_SECONDS: float = 300.0
+_HOME_SNAPSHOT_CACHE: dict[tuple[str | None, bool], tuple[float, dict[str, object]]] = {}
+_HOME_SNAPSHOT_CACHE_LOCK = RLock()
+
+
+def invalidate_home_snapshot_cache() -> None:
+    """显式清空 home_snapshot 缓存。
+
+    适用场景：
+      - 治理流程完成补数 / 刷库后；
+      - 后台任务希望强制下次请求拿到新数据；
+      - 测试隔离。
+    """
+    with _HOME_SNAPSHOT_CACHE_LOCK:
+        _HOME_SNAPSHOT_CACHE.clear()
+
+
 def home_snapshot_envelope(
+    *,
+    report_date: str | None = None,
+    allow_partial: bool = False,
+) -> dict[str, object]:
+    """home snapshot envelope 入口（带 TTL 缓存）。
+
+    缓存命中：直接返回上次构造的 envelope（dict 引用，调用方不应 mutate）。
+    缓存未命中或过期：执行 ``_compute_home_snapshot_envelope`` 并写回缓存。
+    """
+    cache_key = (report_date, allow_partial)
+    now = time.monotonic()
+    with _HOME_SNAPSHOT_CACHE_LOCK:
+        cached = _HOME_SNAPSHOT_CACHE.get(cache_key)
+        if cached is not None:
+            cached_at, cached_envelope = cached
+            if now - cached_at < _HOME_SNAPSHOT_CACHE_TTL_SECONDS:
+                return cached_envelope
+            del _HOME_SNAPSHOT_CACHE[cache_key]
+
+    envelope = _compute_home_snapshot_envelope(
+        report_date=report_date,
+        allow_partial=allow_partial,
+    )
+
+    with _HOME_SNAPSHOT_CACHE_LOCK:
+        _HOME_SNAPSHOT_CACHE[cache_key] = (time.monotonic(), envelope)
+
+    return envelope
+
+
+def _compute_home_snapshot_envelope(
     *,
     report_date: str | None = None,
     allow_partial: bool = False,
@@ -1284,6 +1611,16 @@ def home_snapshot_envelope(
     attribution_env = executive_pnl_attribution(report_date=target_date)
     overview_result = OverviewPayload.model_validate(overview_env["result"])
     attribution_result = PnlAttributionPayload.model_validate(attribution_env["result"])
+    attention_count = len(domains_missing)
+    partial_note = (
+        "部分业务域不可用: " + ", ".join(domains_missing) if domains_missing else None
+    )
+    verdict = executive_verdict(
+        overview=overview_result,
+        attention_count=attention_count,
+        partial_note=partial_note,
+        client_mode="real",
+    )
     payload = HomeSnapshotPayload(
         report_date=target_date,
         mode="partial" if allow_partial else "strict",
@@ -1292,6 +1629,7 @@ def home_snapshot_envelope(
         attribution=attribution_result,
         domains_missing=domains_missing,
         domains_effective_date=effective,
+        verdict=verdict,
     )
 
     quality_flag: Literal["ok", "warning", "error", "stale"] = (
