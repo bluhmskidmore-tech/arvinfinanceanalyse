@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import duckdb
-
 from backend.app.services.formal_result_runtime import build_result_envelope
 
 RULE_VERSION = "rv_choice_news_v1"
@@ -21,6 +20,7 @@ def choice_news_latest_envelope(
     received_to: str | None = None,
 ) -> dict[str, object]:
     duckdb_file = Path(duckdb_path)
+    rows: list[tuple[object, ...]]
     if not duckdb_file.exists():
         total_rows = 0
         rows = []
@@ -39,10 +39,11 @@ def choice_news_latest_envelope(
                     received_from=received_from,
                     received_to=received_to,
                 )
-                total_rows = conn.execute(
+                total_row = conn.execute(
                     f"select count(*) from choice_news_event {where_clause}",
                     params,
-                ).fetchone()[0]
+                ).fetchone()
+                total_rows = int(total_row[0]) if total_row is not None else 0
                 rows = conn.execute(
                     """
                     select event_key, received_at, group_id, content_type, serial_id, request_id, error_code, error_msg, topic_code, item_index, payload_text, payload_json
@@ -67,12 +68,12 @@ def choice_news_latest_envelope(
             "received_at": str(received_at),
             "group_id": str(group_id),
             "content_type": str(content_type),
-            "serial_id": int(serial_id),
-            "request_id": int(request_id),
-            "error_code": int(error_code),
+            "serial_id": int(str(serial_id)),
+            "request_id": int(str(request_id)),
+            "error_code": int(str(error_code)),
             "error_msg": str(error_msg),
             "topic_code": str(topic_code),
-            "item_index": int(item_index),
+            "item_index": int(str(item_index)),
             "payload_text": payload_text,
             "payload_json": payload_json,
         }

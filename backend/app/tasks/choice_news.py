@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-import json
 import hashlib
-from datetime import datetime, timezone
+import json
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
-
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
+from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, CACHE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.schemas.choice_news import ChoiceNewsTopicsAsset
 from backend.app.schemas.materialize import CacheBuildRunRecord, CacheManifestRecord
@@ -19,6 +18,8 @@ from backend.app.tasks.build_runs import BuildRunRecord
 
 MAX_CNQ_TOPIC_CODES = 4
 CHOICE_NEWS_EVENT_STREAM = "choice_news_event"
+CHOICE_NEWS_PULL_MODE_END_COUNT = 2
+CHOICE_NEWS_VENDOR_TZ = timezone(timedelta(hours=8))
 
 
 def _subscribe_choice_sectornews(
@@ -61,6 +62,64 @@ def _subscribe_choice_sectornews(
     }
 
 
+def _pull_choice_sectornews_snapshot(
+    duckdb_path: str | None = None,
+    governance_dir: str | None = None,
+    topics_file: str | None = None,
+    count: int = 20,
+) -> dict[str, object]:
+    _init_runtime()
+    settings = get_settings()
+    governance_path = Path(governance_dir or settings.governance_path)
+    repo = GovernanceRepository(base_dir=governance_path)
+    asset = load_choice_news_topics(Path(topics_file or settings.choice_news_topics_file))
+    client = ChoiceClient()
+
+    count = max(1, int(count))
+    fetched_row_count = 0
+    inserted_count = 0
+    fetches: list[dict[str, object]] = []
+
+    for group in asset.groups:
+        for topic in group.topics:
+            result = client.cfn(
+                topic.topic_code,
+                asset.content_type,
+                CHOICE_NEWS_PULL_MODE_END_COUNT,
+                options=f"count={count},Ispandas=1,RECVtimeout=5",
+            )
+            topic_rows = _persist_choice_news_cfn_result(
+                repo=repo,
+                result=result,
+                group_id=group.group_id,
+                content_type=asset.content_type,
+                requested_topic_code=topic.topic_code,
+            )
+            fetched_row_count += topic_rows
+            inserted_count += topic_rows
+            fetches.append(
+                {
+                    "group_id": group.group_id,
+                    "topic_code": topic.topic_code,
+                    "fetched_row_count": topic_rows,
+                    "error_code": int(getattr(result, "ErrorCode", 0)),
+                    "error_msg": str(getattr(result, "ErrorMsg", "")),
+                }
+            )
+
+    materialize = _materialize_choice_news_events(
+        duckdb_path=duckdb_path,
+        governance_dir=str(governance_path),
+    )
+    return {
+        "status": "completed",
+        "fetched_row_count": fetched_row_count,
+        "inserted_count": inserted_count,
+        "fetches": fetches,
+        "materialize": materialize,
+    }
+
+
 def load_choice_news_topics(path: Path) -> ChoiceNewsTopicsAsset:
     return ChoiceNewsTopicsAsset.model_validate_json(path.read_text(encoding="utf-8"))
 
@@ -94,10 +153,11 @@ def _materialize_choice_news_events(
         ensure_choice_news_event_schema(conn)
         for event in events:
             event_key = str(event.get("event_key") or _build_choice_news_event_key(event))
-            exists = conn.execute(
+            exists_row = conn.execute(
                 "select count(*) from choice_news_event where event_key = ?",
                 [event_key],
-            ).fetchone()[0]
+            ).fetchone()
+            exists = int(exists_row[0]) if exists_row is not None else 0
             if exists:
                 continue
             conn.execute(
@@ -121,7 +181,8 @@ def _materialize_choice_news_events(
             )
             inserted_count += 1
     finally:
-        total_rows = int(conn.execute("select count(*) from choice_news_event").fetchone()[0])
+        total_row = conn.execute("select count(*) from choice_news_event").fetchone()
+        total_rows = int(total_row[0]) if total_row is not None else 0
         conn.close()
 
     source_version = f"sv_choice_news_{total_rows}"
@@ -168,6 +229,10 @@ materialize_choice_news_events = register_actor_once(
     "materialize_choice_news_events",
     _materialize_choice_news_events,
 )
+pull_choice_sectornews_snapshot = register_actor_once(
+    "pull_choice_sectornews_snapshot",
+    _pull_choice_sectornews_snapshot,
+)
 
 
 def build_choice_news_callback(
@@ -190,7 +255,7 @@ def build_choice_news_callback(
                 repo.append(
                     CHOICE_NEWS_EVENT_STREAM,
                     {
-                        "received_at": datetime.now(timezone.utc).isoformat(),
+                        "received_at": datetime.now(UTC).isoformat(),
                         "event_key": _build_choice_news_event_key(
                             {
                                 "group_id": group_id,
@@ -220,7 +285,7 @@ def build_choice_news_callback(
             repo.append(
                 CHOICE_NEWS_EVENT_STREAM,
                 {
-                    "received_at": datetime.now(timezone.utc).isoformat(),
+                    "received_at": datetime.now(UTC).isoformat(),
                     "event_key": _build_choice_news_event_key(
                         {
                             "group_id": group_id,
@@ -248,6 +313,113 @@ def build_choice_news_callback(
         return 1
 
     return _callback
+
+
+def _persist_choice_news_cfn_result(
+    repo: GovernanceRepository,
+    result,
+    group_id: str,
+    content_type: str,
+    requested_topic_code: str,
+) -> int:
+    error_code = int(getattr(result, "ErrorCode", 0))
+    error_msg = str(getattr(result, "ErrorMsg", ""))
+    if error_code != 0:
+        repo.append(
+            CHOICE_NEWS_EVENT_STREAM,
+            {
+                "received_at": datetime.now(UTC).isoformat(),
+                "event_key": _build_choice_news_event_key(
+                    {
+                        "group_id": group_id,
+                        "content_type": content_type,
+                        "error_code": error_code,
+                        "error_msg": error_msg,
+                        "topic_code": requested_topic_code,
+                        "item_index": -1,
+                        "payload_text": None,
+                        "payload_json": None,
+                    }
+                ),
+                "group_id": group_id,
+                "content_type": content_type,
+                "serial_id": int(getattr(result, "SerialID", 0)),
+                "request_id": int(getattr(result, "RequestID", 0)),
+                "error_code": error_code,
+                "error_msg": error_msg,
+                "topic_code": requested_topic_code,
+                "item_index": -1,
+                "payload_text": None,
+                "payload_json": None,
+            },
+        )
+        return 1
+
+    indicators = [str(item) for item in (getattr(result, "Indicators", None) or [])]
+    payloads = getattr(result, "Data", {}) or {}
+    inserted = 0
+    for topic_code, items in payloads.items():
+        for index, item in enumerate(items):
+            row = _coerce_choice_news_cfn_row(indicators, item)
+            payload_text = str(row.get("TITLE") or row.get("title") or "").strip() or None
+            payload_json = json.dumps(row, ensure_ascii=False, separators=(",", ":"))
+            repo.append(
+                CHOICE_NEWS_EVENT_STREAM,
+                {
+                    "received_at": _normalize_choice_news_received_at(
+                        row.get("DATETIME") or row.get("EITIME")
+                    ),
+                    "event_key": _build_choice_news_event_key(
+                        {
+                            "group_id": group_id,
+                            "content_type": content_type,
+                            "error_code": 0,
+                            "error_msg": error_msg,
+                            "topic_code": str(topic_code),
+                            "item_index": index,
+                            "payload_text": payload_text,
+                            "payload_json": payload_json,
+                        }
+                    ),
+                    "group_id": group_id,
+                    "content_type": content_type,
+                    "serial_id": int(getattr(result, "SerialID", 0)),
+                    "request_id": int(getattr(result, "RequestID", 0)),
+                    "error_code": 0,
+                    "error_msg": error_msg,
+                    "topic_code": str(topic_code),
+                    "item_index": index,
+                    "payload_text": payload_text,
+                    "payload_json": payload_json,
+                },
+            )
+            inserted += 1
+    return inserted
+
+
+def _coerce_choice_news_cfn_row(indicators: list[str], item) -> dict[str, object]:
+    if isinstance(item, dict):
+        return {str(key): value for key, value in item.items()}
+    if isinstance(item, (list, tuple)):
+        return {
+            indicators[index] if index < len(indicators) else f"FIELD_{index}": value
+            for index, value in enumerate(item)
+        }
+    return {"VALUE": item}
+
+
+def _normalize_choice_news_received_at(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return datetime.now(UTC).isoformat()
+    candidate = raw.replace(" ", "T")
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return raw
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=CHOICE_NEWS_VENDOR_TZ)
+    return parsed.isoformat()
 
 
 def _build_choice_news_event_key(event: dict[str, object]) -> str:

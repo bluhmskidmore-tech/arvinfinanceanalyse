@@ -61,6 +61,11 @@
       "path": "12_choice_news.sql",
       "ensure_module": "backend.app.tasks.choice_news",
       "ensure_symbol": "ensure_choice_news_event_schema"
+    },
+    {
+      "path": "13_news_warehouse.sql",
+      "ensure_module": "backend.app.repositories.news_warehouse_repo",
+      "ensure_symbol": "ensure_news_warehouse_schema"
     }
   ]
 }
