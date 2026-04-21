@@ -21,11 +21,25 @@ from backend.app.core_finance.calibers import get_caliber_rule
 # Registration order is not guaranteed; KNOWN_RULES is lexicographically sorted rule_ids
 # matching list_caliber_rules().
 KNOWN_RULES: tuple[str, ...] = (
+    "accounting_basis",
     "formal_scenario_gate",
     "fx_mid_conversion",
     "hat_mapping",
     "issuance_exclusion",
     "subject_514_516_517_merge",
+)
+
+# Subset of KNOWN_RULES that the CI gate enforces at zero unjustified violations.
+# Informational-only rules stay in KNOWN_RULES (audit + registry) but are excluded here
+# until their consumer migration batch lands (e.g. accounting_basis → W-accounting-basis-migration).
+_GATE_ENFORCED_RULES: frozenset[str] = frozenset(
+    {
+        "formal_scenario_gate",
+        "fx_mid_conversion",
+        "hat_mapping",
+        "issuance_exclusion",
+        "subject_514_516_517_merge",
+    }
 )
 
 _DEFAULT_SCANNED_DIR_RELS: tuple[str, ...] = (
@@ -118,7 +132,36 @@ def _formal_scenario_gate_patterns() -> tuple[PatternDef, ...]:
     )
 
 
+def _accounting_basis_patterns() -> tuple[PatternDef, ...]:
+    """Flag inline AC/FVOCI/FVTPL comparisons and ``'AC' in x``-style probes.
+
+    Deliberately omits a bare-literal sweep: it duplicates the equality patterns on
+    the same physical line (e.g. ``return "AC"`` after ``if basis == "AC"``) and
+    floods Literal declarations; migration tracking focuses on branching/filter
+    comparisons instead.
+    """
+    _BASIS = r"(?:AC|FVOCI|FVTPL)"
+    return (
+        {
+            "pattern_id": "accounting_basis_eq_right_literal",
+            "regex": re.compile(rf"(?:==|!=)\s*['\"]{_BASIS}['\"]"),
+            "confidence": "high",
+        },
+        {
+            "pattern_id": "accounting_basis_eq_left_literal",
+            "regex": re.compile(rf"['\"]{_BASIS}['\"]\s*(?:==|!=)"),
+            "confidence": "high",
+        },
+        {
+            "pattern_id": "accounting_basis_quoted_in_operand",
+            "regex": re.compile(rf"['\"]{_BASIS}['\"]\s+in\b"),
+            "confidence": "high",
+        },
+    )
+
+
 PATTERNS: dict[str, tuple[PatternDef, ...]] = {
+    "accounting_basis": _accounting_basis_patterns(),
     "subject_514_516_517_merge": (
         {
             "pattern_id": "prefix_tuple_inline",
@@ -226,6 +269,7 @@ def _canonical_files_to_skip(rule_id: str) -> set[str]:
 def _scanned_dir_relatives_for_rule(rule_id: str) -> tuple[str, ...]:
     base = _DEFAULT_SCANNED_DIR_RELS
     if rule_id in {
+        "accounting_basis",
         "subject_514_516_517_merge",
         "hat_mapping",
         "fx_mid_conversion",

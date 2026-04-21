@@ -8,6 +8,7 @@ Add new rules by importing them in this module; the registry's
 """
 
 from backend.app.core_finance.calibers.rules import (  # noqa: F401
+    accounting_basis,
     formal_scenario_gate,
     fx_mid_conversion,
     hat_mapping,
@@ -16,6 +17,7 @@ from backend.app.core_finance.calibers.rules import (  # noqa: F401
 )
 
 __all__ = [
+    "accounting_basis",
     "formal_scenario_gate",
     "fx_mid_conversion",
     "hat_mapping",

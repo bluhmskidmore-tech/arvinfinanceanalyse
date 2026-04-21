@@ -92,7 +92,7 @@ def test_main_writes_markdown_and_json_sidecar(tmp_path: Path) -> None:
                 p.unlink()
 
 
-def test_known_rules_constant_lists_all_5_registered_rule_ids() -> None:
+def test_known_rules_constant_lists_all_registered_rule_ids() -> None:
     mod = _load_audit_module()
     registered = sorted(r.rule_id for r in list_caliber_rules())
     assert list(mod.KNOWN_RULES) == registered

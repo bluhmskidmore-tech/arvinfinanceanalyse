@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pytest
 
-from backend.scripts.audit_caliber_violations import KNOWN_RULES, scan_violations
+from backend.scripts.audit_caliber_violations import (
+    KNOWN_RULES,
+    _GATE_ENFORCED_RULES,
+    scan_violations,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -21,7 +25,12 @@ def test_known_rules_registry_has_at_least_five() -> None:
     assert len(KNOWN_RULES) >= 5
 
 
-@pytest.mark.parametrize("rule_id", KNOWN_RULES)
+def test_accounting_basis_is_informational_in_ci_gate() -> None:
+    assert "accounting_basis" in KNOWN_RULES
+    assert "accounting_basis" not in _GATE_ENFORCED_RULES
+
+
+@pytest.mark.parametrize("rule_id", tuple(sorted(_GATE_ENFORCED_RULES)))
 def test_caliber_audit_zero_unjustified_violations(rule_id: str) -> None:
     violations, _suppressed = scan_violations(rule_id, project_root=ROOT)
     if violations:
