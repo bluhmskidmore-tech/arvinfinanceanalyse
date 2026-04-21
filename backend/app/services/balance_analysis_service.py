@@ -207,10 +207,8 @@ def balance_analysis_overview_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    build_lineage = resolve_completed_formal_build_lineage(
+    build_lineage = _resolve_balance_build_lineage(
         governance_dir=governance_dir,
-        cache_key=CACHE_KEY,
-        job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
     return build_formal_result_envelope_from_lineage(
@@ -262,10 +260,8 @@ def balance_analysis_summary_envelope(
         limit=limit,
         offset=offset,
     )
-    build_lineage = resolve_completed_formal_build_lineage(
+    build_lineage = _resolve_balance_build_lineage(
         governance_dir=governance_dir,
-        cache_key=CACHE_KEY,
-        job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
     return build_formal_result_envelope_from_lineage(
@@ -314,10 +310,8 @@ def balance_analysis_basis_breakdown_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    build_lineage = resolve_completed_formal_build_lineage(
+    build_lineage = _resolve_balance_build_lineage(
         governance_dir=governance_dir,
-        cache_key=CACHE_KEY,
-        job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
     return build_formal_result_envelope_from_lineage(
@@ -409,10 +403,8 @@ def balance_analysis_detail_envelope(
         *[_to_tyw_detail_row(row) for row in tyw_rows],
     ]
     summary = _build_summary_rows(details)
-    build_lineage = resolve_completed_formal_build_lineage(
+    build_lineage = _resolve_balance_build_lineage(
         governance_dir=governance_dir,
-        cache_key=CACHE_KEY,
-        job_name=BALANCE_ANALYSIS_JOB_NAME,
         report_date=report_date,
     )
 
@@ -687,7 +679,7 @@ def _build_balance_workbook_payload(
         currency_basis=currency_basis,
         cache_key=CACHE_KEY,
         job_name=BALANCE_ANALYSIS_JOB_NAME,
-        resolve_completed_formal_build_lineage_fn=resolve_completed_formal_build_lineage,
+        resolve_completed_formal_build_lineage_fn=_resolve_balance_build_lineage_for_workbook,
         repo_cls=BalanceAnalysisRepository,
         import_module_fn=importlib.import_module,
         reload_module_fn=importlib.reload,
@@ -705,6 +697,43 @@ def _build_decision_key(row: dict[str, object]) -> str:
             str(row.get("source_section") or "").strip(),
             str(row.get("title") or "").strip(),
         ]
+    )
+
+
+def _resolve_balance_build_lineage(
+    *,
+    governance_dir: str,
+    report_date: str,
+) -> dict[str, object] | None:
+    build_lineage = resolve_completed_formal_build_lineage(
+        governance_dir=governance_dir,
+        cache_key=CACHE_KEY,
+        job_name=BALANCE_ANALYSIS_JOB_NAME,
+        report_date=report_date,
+    )
+    if build_lineage is not None:
+        return build_lineage
+
+    manifest_lineage = GovernanceRepository(base_dir=governance_dir).read_latest_manifest(
+        CACHE_KEY,
+        report_date=report_date,
+    )
+    if not str((manifest_lineage or {}).get("source_version") or "").strip():
+        return None
+    return manifest_lineage
+
+
+def _resolve_balance_build_lineage_for_workbook(
+    *,
+    governance_dir: str,
+    cache_key: str,
+    job_name: str,
+    report_date: str,
+) -> dict[str, object] | None:
+    del cache_key, job_name
+    return _resolve_balance_build_lineage(
+        governance_dir=governance_dir,
+        report_date=report_date,
     )
 
 

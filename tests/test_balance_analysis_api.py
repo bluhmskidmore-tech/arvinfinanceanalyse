@@ -1,8 +1,9 @@
 from __future__ import annotations
-
+import json
 import csv
 from datetime import datetime, timedelta, timezone
 from io import StringIO
+from pathlib import Path
 
 import duckdb
 
@@ -212,6 +213,28 @@ def _seed_overview_orphan_lineage_fixture(duckdb_path, governance_dir) -> None:
             "vendor_version": "vv_none",
             "rule_version": "rv_balance_analysis_formal_materialize_v1",
         },
+    )
+
+
+def _remove_completed_balance_analysis_build_runs(governance_dir: Path) -> None:
+    path = governance_dir / "cache_build_run.jsonl"
+    if not path.exists():
+        return
+
+    kept: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        payload = json.loads(line)
+        if (
+            str(payload.get("cache_key") or "").strip() == "balance_analysis:materialize:formal"
+            and str(payload.get("job_name") or "").strip() == "balance_analysis_materialize"
+            and str(payload.get("status") or "").strip() == "completed"
+        ):
+            continue
+        kept.append(line)
+
+    path.write_text(
+        ("\n".join(kept) + "\n") if kept else "",
+        encoding="utf-8",
     )
 
 
@@ -820,6 +843,68 @@ def test_balance_analysis_overview_returns_503_when_report_date_lineage_is_missi
     assert response.json()["detail"] == (
         "Canonical balance-analysis source_version unavailable for report_date=2025-10-31."
     )
+
+    get_settings.cache_clear()
+
+
+def test_balance_analysis_surfaces_fall_back_to_report_date_manifest_when_completed_run_is_missing(
+    tmp_path,
+    monkeypatch,
+):
+    _duckdb_path, governance_dir, _task_mod = _configure_and_materialize(tmp_path, monkeypatch)
+    _remove_completed_balance_analysis_build_runs(governance_dir)
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    overview_response = client.get(
+        "/ui/balance-analysis/overview",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    assert overview_response.status_code == 200
+    overview_payload = overview_response.json()
+    assert overview_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+
+    summary_response = client.get(
+        "/ui/balance-analysis/summary",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+            "limit": 1,
+            "offset": 0,
+        },
+    )
+    assert summary_response.status_code == 200
+    summary_payload = summary_response.json()
+    assert summary_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+
+    workbook_response = client.get(
+        "/ui/balance-analysis/workbook",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    assert workbook_response.status_code == 200
+    workbook_payload = workbook_response.json()
+    assert workbook_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
+
+    decision_response = client.get(
+        "/ui/balance-analysis/decision-items",
+        params={
+            "report_date": "2025-12-31",
+            "position_scope": "all",
+            "currency_basis": "CNY",
+        },
+    )
+    assert decision_response.status_code == 200
+    decision_payload = decision_response.json()
+    assert decision_payload["result_meta"]["source_version"] == "sv-fx-1__sv-t-1__sv-z-1"
 
     get_settings.cache_clear()
 

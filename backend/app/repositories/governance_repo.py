@@ -232,13 +232,21 @@ class GovernanceRepository:
             raise RuntimeError(f"SQL governance read failed for stream={stream}") from exc
         return [json.loads(str(row[0])) for row in rows]
 
-    def read_latest_manifest(self, cache_key: str) -> dict[str, object] | None:
+    def read_latest_manifest(
+        self,
+        cache_key: str,
+        *,
+        report_date: str | None = None,
+    ) -> dict[str, object] | None:
         cache_key_text = str(cache_key or "").strip()
         if not cache_key_text:
             return None
+        report_date_text = str(report_date or "").strip()
         rows = self.read_all(CACHE_MANIFEST_STREAM)
         for row in reversed(rows):
             if str(row.get("cache_key") or "").strip() == cache_key_text:
+                if report_date_text and str(row.get("report_date") or "").strip() != report_date_text:
+                    continue
                 return row
         return None
 
