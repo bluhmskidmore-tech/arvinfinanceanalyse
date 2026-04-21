@@ -34,13 +34,14 @@ def build_summary(project_root: Path | None = None) -> dict[str, Any]:
     )
     rules_payload: dict[str, Any] = {}
     for rid in KNOWN_RULES:
-        violations = scan_violations(rule_id=rid, project_root=root)
+        violations, suppressed = scan_violations(rule_id=rid, project_root=root)
         totals = count_by_confidence(violations)
         rule = get_caliber_rule(rid)
         rules_payload[rid] = {
             "rule_id": rid,
             "canonical_module": rule.canonical_module,
             "canonical_callable": rule.canonical_callable,
+            "suppressed": suppressed,
             "totals": {
                 "high": totals["high"],
                 "medium": totals["medium"],

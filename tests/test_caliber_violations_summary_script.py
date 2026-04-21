@@ -116,8 +116,8 @@ def test_main_ci_mode_returns_one_when_high_count_regressed(tmp_path: Path) -> N
     mod = _load_summary_mod()
     dest = tmp_path / mod.SUMMARY_FILENAME
     summary = mod.build_summary(project_root=ROOT)
-    # Artificially lower formal high count so live scan is always "worse"
-    rid = "formal_scenario_gate"
+    # Artificially lower subject-rule high count so live scan shows a high-severity increase
+    rid = "subject_514_516_517_merge"
     summary["rules"][rid]["totals"]["high"] = 0
     mod.write_summary(summary, dest)
     try:

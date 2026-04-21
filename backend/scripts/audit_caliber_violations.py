@@ -41,6 +41,40 @@ _SCANNED_DIR_RELS: tuple[str, ...] = _DEFAULT_SCANNED_DIR_RELS
 
 _SNIPPET_MAX = 160
 
+JUSTIFIED_LOOKBACK_LINES = 10
+_JUSTIFIED_MARKER_RE = re.compile(
+    r"Human:\s*caliber-([a-z0-9_]+)-justified", re.IGNORECASE
+)
+
+
+def _rule_marked_justified_on_line(line: str, rule_id: str) -> bool:
+    rid = rule_id.casefold()
+    for m in _JUSTIFIED_MARKER_RE.finditer(line):
+        if m.group(1).casefold() == rid:
+            return True
+    return False
+
+
+def _is_suppressed_by_justified_comment(
+    rule_id: str, line_no: int, lines: list[str]
+) -> bool:
+    """True if this line or up to LOOKBACK physical lines above contain the marker.
+
+    Markers may appear in ``#`` comments, same-line trailing comments, or
+    docstrings (e.g. ``Human: caliber-<rule_id>-justified``).
+    """
+    if line_no < 1 or line_no > len(lines):
+        return False
+    if _rule_marked_justified_on_line(lines[line_no - 1], rule_id):
+        return True
+    for offset in range(1, JUSTIFIED_LOOKBACK_LINES + 1):
+        idx = line_no - 1 - offset
+        if idx < 0:
+            break
+        if _rule_marked_justified_on_line(lines[idx], rule_id):
+            return True
+    return False
+
 
 class PatternDef(TypedDict):
     pattern_id: str
@@ -222,13 +256,15 @@ def _collect_violations_for_file(
     project_root: Path,
     py_path: Path,
     patterns: tuple[PatternDef, ...],
-) -> list[dict[str, Any]]:
+    rule_id: str,
+) -> tuple[list[dict[str, Any]], int]:
     rel = py_path.relative_to(project_root).as_posix()
     text = py_path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     line_patterns = [p for p in patterns if not p.get("full_file")]
     file_patterns = [p for p in patterns if p.get("full_file")]
     out: list[dict[str, Any]] = []
+    suppressed = 0
 
     for line_no, line in enumerate(lines, start=1):
         stripped = line.strip()
@@ -237,6 +273,9 @@ def _collect_violations_for_file(
         snippet = stripped[:_SNIPPET_MAX]
         for p in line_patterns:
             if p["regex"].search(line):
+                if _is_suppressed_by_justified_comment(rule_id, line_no, lines):
+                    suppressed += 1
+                    continue
                 out.append(
                     {
                         "file": rel,
@@ -252,6 +291,9 @@ def _collect_violations_for_file(
             line_no = text.count("\n", 0, m.start()) + 1
             line_text = lines[line_no - 1] if 0 < line_no <= len(lines) else ""
             snippet = line_text.strip()[:_SNIPPET_MAX]
+            if _is_suppressed_by_justified_comment(rule_id, line_no, lines):
+                suppressed += 1
+                continue
             out.append(
                 {
                     "file": rel,
@@ -262,7 +304,7 @@ def _collect_violations_for_file(
                 }
             )
 
-    return out
+    return out, suppressed
 
 
 def count_by_confidence(violations: list[dict[str, Any]]) -> dict[str, int]:
@@ -278,13 +320,15 @@ _count_by_confidence = count_by_confidence
 def scan_violations(
     rule_id: str = "formal_scenario_gate",
     project_root: Path | None = None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], int]:
     """
     Scan configured backend subtrees for inline patterns for one rule.
 
     Default ``rule_id`` keeps W2 call sites working without changes.
 
-    Returns violations sorted by (file, line, pattern_id, snippet).
+    Returns ``(violations, suppressed)`` where *violations* is sorted by
+    (file, line, pattern_id, snippet) and *suppressed* counts regex hits
+    skipped due to ``# Human: caliber-<rule_id>-justified`` markers.
     """
     if rule_id not in PATTERNS:
         raise ValueError(f"unknown rule_id: {rule_id!r}; expected one of {KNOWN_RULES!r}")
@@ -292,6 +336,7 @@ def scan_violations(
     patterns = PATTERNS[rule_id]
     skip_rels = _canonical_files_to_skip(rule_id)
     raw: list[dict[str, Any]] = []
+    suppressed_total = 0
     for rel in _scanned_dir_relatives_for_rule(rule_id):
         for py_path in _iter_py_files(root, rel):
             if _should_skip_file(py_path):
@@ -299,14 +344,16 @@ def scan_violations(
             rel_file = py_path.relative_to(root).as_posix()
             if rel_file in skip_rels:
                 continue
-            raw.extend(_collect_violations_for_file(root, py_path, patterns))
+            batch, sup = _collect_violations_for_file(root, py_path, patterns, rule_id)
+            raw.extend(batch)
+            suppressed_total += sup
     raw.sort(key=lambda v: (v["file"], v["line"], v["pattern_id"], v["snippet"]))
-    return raw
+    return raw, suppressed_total
 
 
 def scan_all_violations(
     project_root: Path | None = None,
-) -> dict[str, list[dict[str, Any]]]:
+) -> dict[str, tuple[list[dict[str, Any]], int]]:
     """Run :func:`scan_violations` for every :data:`KNOWN_RULES` entry."""
     return {
         rid: scan_violations(rule_id=rid, project_root=project_root)
@@ -321,6 +368,7 @@ def _markdown_report(
     totals: dict[str, int],
     violations: list[dict[str, Any]],
     scanned_dirs: tuple[str, ...],
+    suppressed: int,
 ) -> str:
     lines: list[str] = [
         f"# Caliber audit — {rule_id}",
@@ -328,6 +376,7 @@ def _markdown_report(
         f"- Generated (UTC): `{generated_at_utc}`",
         f"- Scanned: `{', '.join(scanned_dirs)}`",
         f"- Totals: high={totals['high']}, medium={totals['medium']}, low={totals['low']}, all={totals['all']}",
+        f"- Suppressed (Human justified): {suppressed}",
         "",
     ]
     for tier in ("high", "medium", "low"):
@@ -357,6 +406,7 @@ def write_rule_baseline_outputs(
     output_dir: Path,
     violations: list[dict[str, Any]],
     generated_at_utc: str,
+    suppressed: int = 0,
 ) -> tuple[Path, Path]:
     """Write MD + JSON for one rule; used by :func:`main` and CLI."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -367,6 +417,7 @@ def write_rule_baseline_outputs(
         "rule_id": rule_id,
         "generated_at_utc": generated_at_utc,
         "scanned_dirs": list(scanned_dirs),
+        "suppressed": suppressed,
         "totals": {
             "high": totals["high"],
             "medium": totals["medium"],
@@ -393,6 +444,7 @@ def write_rule_baseline_outputs(
             totals=totals,
             violations=violations,
             scanned_dirs=scanned_dirs,
+            suppressed=suppressed,
         ),
         encoding="utf-8",
     )
@@ -419,7 +471,7 @@ def main(
         datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     )
     rule_id = "formal_scenario_gate"
-    violations = scan_violations(rule_id=rule_id, project_root=root)
+    violations, suppressed = scan_violations(rule_id=rule_id, project_root=root)
     totals = count_by_confidence(violations)
     # W2 expects filenames _MD_NAME / _JSON_NAME at output_dir root
     out.mkdir(parents=True, exist_ok=True)
@@ -428,6 +480,7 @@ def main(
         "rule_id": rule_id,
         "generated_at_utc": generated_at_utc,
         "scanned_dirs": list(scanned_dirs),
+        "suppressed": suppressed,
         "totals": {
             "high": totals["high"],
             "medium": totals["medium"],
@@ -454,15 +507,17 @@ def main(
             totals=totals,
             violations=violations,
             scanned_dirs=scanned_dirs,
+            suppressed=suppressed,
         ),
         encoding="utf-8",
     )
     json_path.write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
+    sup_txt = f" suppressed={suppressed}" if suppressed else ""
     print(
         f"[caliber-audit] {rule_id}: {totals['high']}H + {totals['medium']}M + {totals['low']}L "
-        f"violations -> {md_path.as_posix()}"
+        f"all={totals['all']}{sup_txt} -> {md_path.as_posix()}"
     )
 
 
@@ -501,17 +556,19 @@ def cli_main(argv: list[str] | None = None) -> int:
         rules = KNOWN_RULES
 
     for rid in rules:
-        violations = scan_violations(rule_id=rid, project_root=root)
+        violations, suppressed = scan_violations(rule_id=rid, project_root=root)
         totals = count_by_confidence(violations)
         md_path, _jp = write_rule_baseline_outputs(
             rule_id=rid,
             output_dir=out,
             violations=violations,
             generated_at_utc=generated_at_utc,
+            suppressed=suppressed,
         )
+        sup_txt = f" suppressed={suppressed}" if suppressed else ""
         print(
             f"[caliber-audit] {rid}: {totals['high']}H + {totals['medium']}M + {totals['low']}L "
-            f"all={totals['all']} -> {md_path.as_posix()}"
+            f"all={totals['all']}{sup_txt} -> {md_path.as_posix()}"
         )
     return 0
 
