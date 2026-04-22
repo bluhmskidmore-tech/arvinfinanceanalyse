@@ -1205,6 +1205,202 @@ def test_choice_macro_refresh_splits_single_fetch_catalog_batches(tmp_path, monk
     assert observed[2][2] == "IsLatest=1,RowIndex=1,Ispandas=1,RECVtimeout=5"
 
 
+def test_choice_macro_refresh_falls_back_to_single_series_when_batch_ids_cannot_be_mixed(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_COMMANDS_FILE", "")
+    monkeypatch.setenv(
+        "MOSS_CHOICE_MACRO_SERIES_JSON",
+        json.dumps(
+            [
+                {
+                    "series_id": "EMM00058124",
+                    "series_name": "中间价:美元兑人民币",
+                    "vendor_series_code": "EMM00058124",
+                    "frequency": "daily",
+                    "unit": "CNY",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "fx"],
+                },
+                {
+                    "series_id": "EMM00166455",
+                    "series_name": "中债国债到期收益率:3个月",
+                    "vendor_series_code": "EMM00166455",
+                    "frequency": "daily",
+                    "unit": "%",
+                    "theme": "macro_market",
+                    "is_core": True,
+                    "tags": ["choice", "macro", "market", "rates"],
+                },
+            ],
+            ensure_ascii=False,
+        ),
+    )
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    monkeypatch.setattr(task_module, "_choice_macro_run_date", lambda: "2026-04-11")
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    observed: list[list[str]] = []
+
+    def fake_fetch(self, series, timeout_seconds=10.0, request_options: str = ""):
+        codes = [item.vendor_series_code for item in series]
+        observed.append(codes)
+        if len(codes) > 1:
+            raise RuntimeError("parameter error")
+        item = series[0]
+        return macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version=f"vv_{item.vendor_series_code}",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id=item.series_id,
+                    series_name=item.series_name,
+                    vendor_series_code=item.vendor_series_code,
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=1.0,
+                    frequency=item.frequency,
+                    unit=item.unit,
+                    vendor_version=f"vv_{item.vendor_series_code}",
+                )
+            ],
+            raw_payload={
+                "vendor_version": f"vv_{item.vendor_series_code}",
+                "captured_at": "2026-04-11T09:00:00Z",
+                "series": [],
+            },
+        )
+
+    monkeypatch.setattr(task_module.VendorAdapter, "fetch_macro_snapshot", fake_fetch)
+
+    payload = task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["series_count"] == 2
+    assert observed == [
+        ["EMM00058124", "EMM00166455"],
+        ["EMM00058124"],
+        ["EMM00166455"],
+    ]
+
+
+def test_public_cross_asset_headline_refresh_materializes_history_and_latest_rows(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    monkeypatch.setattr(
+        task_module,
+        "_load_public_cross_asset_history_rows",
+        lambda **_: [
+            {
+                "series_id": "E1003238",
+                "trade_date": "2026-04-09",
+                "value_numeric": 4.20,
+                "vendor_version": "vv_public_bond",
+                "source_version": "sv_public_bond",
+            },
+            {
+                "series_id": "E1003238",
+                "trade_date": "2026-04-10",
+                "value_numeric": 4.26,
+                "vendor_version": "vv_public_bond",
+                "source_version": "sv_public_bond",
+            },
+            {
+                "series_id": "CA.BRENT",
+                "trade_date": "2026-04-10",
+                "value_numeric": 64.8,
+                "vendor_version": "vv_public_fred",
+                "source_version": "sv_public_fred",
+            },
+        ],
+    )
+
+    payload = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(tmp_path / "moss.duckdb"),
+        report_date="2026-04-10",
+        lookback_days=60,
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["series_count"] == 2
+    assert payload["row_count"] == 3
+
+    conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
+    try:
+        fact_rows = conn.execute(
+            """
+            select series_id, trade_date, value_numeric
+            from fact_choice_macro_daily
+            order by series_id, trade_date
+            """
+        ).fetchall()
+        latest_rows = conn.execute(
+            """
+            select series_id, trade_date, value_numeric
+            from choice_market_snapshot
+            order by series_id
+            """
+        ).fetchall()
+        catalog_rows = conn.execute(
+            """
+            select series_id, vendor_name, refresh_tier, policy_note
+            from phase1_macro_vendor_catalog
+            order by series_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert fact_rows == [
+        ("CA.BRENT", "2026-04-10", 64.8),
+        ("E1003238", "2026-04-09", 4.2),
+        ("E1003238", "2026-04-10", 4.26),
+    ]
+    assert latest_rows == [
+        ("CA.BRENT", "2026-04-10", 64.8),
+        ("E1003238", "2026-04-10", 4.26),
+    ]
+    assert catalog_rows == [
+        ("CA.BRENT", "fred", "stable", "public cross-asset headline supplement via FRED Brent spot series"),
+        (
+            "E1003238",
+            "public_bond_zh_us_rate",
+            "stable",
+            "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+        ),
+    ]
+    get_settings.cache_clear()
+
+
 def test_choice_macro_refresh_skips_isolated_catalog_batches(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))

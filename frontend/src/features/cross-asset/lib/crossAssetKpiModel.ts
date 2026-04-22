@@ -343,9 +343,10 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
+  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
   return {
     key: slot.key,
-    label: slot.label,
+    label,
     format: slot.format,
     tag: slot.tag,
     resolvedSeriesId: id,

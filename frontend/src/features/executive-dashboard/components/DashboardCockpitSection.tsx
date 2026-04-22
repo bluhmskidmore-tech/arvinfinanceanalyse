@@ -24,6 +24,8 @@ export function DashboardCockpitSection(props: {
   title: string;
   eyebrow: string;
   extra?: ReactNode;
+  /** Rendered below the empty-state hint (e.g. a secondary action button). */
+  emptyFooter?: ReactNode;
   state: DataSectionState;
   onRetry: () => void;
   children: ReactNode;
@@ -46,7 +48,7 @@ export function DashboardCockpitSection(props: {
         </div>
         {props.extra}
       </div>
-      {renderSectionBody(props.state, props.onRetry, props.children)}
+      {renderSectionBody(props.state, props.onRetry, props.children, props.emptyFooter)}
     </section>
   );
 }
@@ -55,6 +57,7 @@ function renderSectionBody(
   state: DataSectionState,
   onRetry: () => void,
   children: ReactNode,
+  emptyFooter?: ReactNode,
 ) {
   if (state.kind === "loading") {
     return (
@@ -92,7 +95,12 @@ function renderSectionBody(
   }
 
   if (state.kind === "empty") {
-    return <p style={cockpitBodyStyle}>{state.hint ?? "当前暂无可展示内容。"}</p>;
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <p style={cockpitBodyStyle}>{state.hint ?? "当前暂无可展示内容。"}</p>
+        {emptyFooter}
+      </div>
+    );
   }
 
   if (state.kind === "vendor_unavailable") {

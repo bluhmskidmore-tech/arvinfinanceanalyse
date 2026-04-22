@@ -221,7 +221,7 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("tier stable");
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("date_slice / batch");
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("main refresh date-slice lane");
-    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("+0.20 %");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("+20 bp");
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("2026-04-09");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("tier fallback");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("latest / single");

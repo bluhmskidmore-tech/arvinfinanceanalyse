@@ -1,6 +1,7 @@
 import os
 from decimal import Decimal
 from pathlib import Path
+from typing import Any, cast
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -106,6 +107,8 @@ class Settings(BaseSettings):
     choice_macro_commands_file: str = ""
     choice_news_topics_file: str = "config/choice_news_topics.json"
     choice_timeout_seconds: float = 10.0
+    tushare_token: str = ""
+    tushare_news_src: str = "sina"
     fx_official_source_path: str = ""
     fx_mid_csv_path: str = ""
     product_category_source_dir: Path = _DEFAULT_PRODUCT_CATEGORY_REL
@@ -183,4 +186,4 @@ def _cache_clear() -> None:
     return None
 
 
-get_settings.cache_clear = _cache_clear
+cast(Any, get_settings).cache_clear = _cache_clear

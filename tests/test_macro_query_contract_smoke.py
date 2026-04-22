@@ -1,4 +1,3 @@
-from pathlib import Path
 
 import duckdb
 from backend.app.governance.settings import get_settings
@@ -468,6 +467,101 @@ def test_macro_foundation_preview_exposes_policy_metadata_from_catalog(
     assert payload["result"]["series"][0]["fetch_mode"] == "date_slice"
     assert payload["result"]["series"][0]["fetch_granularity"] == "batch"
     assert payload["result"]["series"][0]["policy_note"] == "main refresh date-slice lane"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_returns_up_to_twenty_recent_points(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-recent-points.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              vendor_series_code varchar,
+              batch_id varchar,
+              catalog_version varchar,
+              theme varchar,
+              is_core boolean,
+              tags_json varchar,
+              request_options varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        values = []
+        for day in range(1, 7):
+            values.append(
+                "('cn_repo_7d', 'CN Repo 7D', '2026-04-0{d}', {v}, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run')".format(
+                    d=day,
+                    v=1.7 + day / 100,
+                )
+            )
+        conn.execute(f"insert into fact_choice_macro_daily values {', '.join(values)}")
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv',
+                'daily',
+                'pct',
+                'EDB_REPO_7D',
+                'stable_daily',
+                '2026-04-11.choice-macro.v2',
+                'liquidity',
+                true,
+                '["china","rates","liquidity"]',
+                'IsLatest=0,StartDate=2026-04-06,EndDate=2026-04-06,Ispandas=1,RECVtimeout=5',
+                'date_slice',
+                'batch',
+                'stable',
+                'main refresh date-slice lane'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+    series = payload["result"]["series"][0]
+    assert len(series["recent_points"]) == 6
+    assert series["recent_points"][0]["trade_date"] == "2026-04-06"
+    assert series["recent_points"][-1]["trade_date"] == "2026-04-01"
     get_settings.cache_clear()
 
 

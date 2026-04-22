@@ -3375,6 +3375,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
     },
+    async ingestTushareNprNews(_options?: { limit?: number }) {
+      await delay();
+      return {
+        status: "completed",
+        inserted: 0,
+        skipped_duplicates: 0,
+        fetched: 0,
+        npr: { inserted: 0, skipped_duplicates: 0, fetched: 0 },
+        news: { inserted: 0, skipped_duplicates: 0, fetched: 0, src: "mock" },
+      };
+    },
     async getProductCategoryDates() {
       await delay();
       return buildMockApiEnvelope(
@@ -5936,6 +5947,21 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/ui/news/choice-events/latest?${params.toString()}`,
       );
+    },
+    ingestTushareNprNews: (options?: { limit?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.limit != null) {
+        params.set("limit", String(options.limit));
+      }
+      const q = params.toString();
+      return requestActionJson<{
+        status: string;
+        inserted: number;
+        skipped_duplicates: number;
+        fetched: number;
+        npr: { inserted: number; skipped_duplicates: number; fetched: number };
+        news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
+      }>(fetchImpl, baseUrl, `/api/news/tushare-npr/ingest${q ? `?${q}` : ""}`, { method: "POST" });
     },
     getProductCategoryDates: () =>
       requestJson<ProductCategoryDatesPayload>(

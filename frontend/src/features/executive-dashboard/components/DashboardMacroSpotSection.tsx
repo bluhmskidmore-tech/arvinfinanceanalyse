@@ -6,9 +6,7 @@ import type { ChoiceMacroLatestPoint } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import { shellTokens } from "../../../theme/tokens";
 import { formatNumeric, formatRawAsNumeric } from "../../../utils/format";
-import {
-  DashboardCockpitSection,
-} from "./DashboardCockpitSection";
+import { DashboardCockpitSection } from "./DashboardCockpitSection";
 import { cockpitInsetCardStyle } from "./DashboardCockpitSection.styles";
 
 function pickSpotSeries(series: ChoiceMacroLatestPoint[]) {
@@ -17,11 +15,39 @@ function pickSpotSeries(series: ChoiceMacroLatestPoint[]) {
     .slice(0, 6);
 }
 
+function isIndexUnit(unit: string): boolean {
+  const normalized = unit.trim().toLowerCase();
+  if (!normalized) return false;
+  return normalized.includes("index") || normalized.includes("point");
+}
+
+function defaultRatioPrecision(value: number): number {
+  const abs = Math.abs(value);
+  if (abs >= 1000) return 1;
+  if (abs >= 10) return 2;
+  return 3;
+}
+
+function normalizeDisplayUnit(point: ChoiceMacroLatestPoint): string {
+  const normalized = point.unit?.trim();
+  if (!normalized) return "";
+  if (normalized.toLowerCase() === "unknown") return "";
+  if (point.series_name.startsWith("中间价:")) return "";
+  return normalized;
+}
+
 function formatMacroValue(point: ChoiceMacroLatestPoint): string {
   const value = point.value_numeric;
-  const unit = (point.unit ?? "").toLowerCase();
+  const suffix = normalizeDisplayUnit(point);
+  const unit = suffix.toLowerCase();
   if (!Number.isFinite(value)) {
     return "—";
+  }
+  if (point.series_id === "EMM00000015" && suffix === "亿元") {
+    const converted = formatNumeric(
+      formatRawAsNumeric({ raw: value / 10_000, unit: "ratio", sign_aware: false, precision: 2 }),
+    );
+    return `${converted} 万亿元`;
   }
   if (unit.includes("bp") && !unit.includes("bps")) {
     return formatNumeric(formatRawAsNumeric({ raw: value, unit: "bp", sign_aware: false }));
@@ -29,13 +55,20 @@ function formatMacroValue(point: ChoiceMacroLatestPoint): string {
   if (unit.includes("%")) {
     return formatNumeric(formatRawAsNumeric({ raw: value / 100, unit: "pct", sign_aware: false }));
   }
-  if (Math.abs(value) >= 200) {
-    return formatNumeric(formatRawAsNumeric({ raw: value, unit: "count", sign_aware: false }));
-  }
+
   const core = formatNumeric(
-    formatRawAsNumeric({ raw: value, unit: "ratio", sign_aware: false, precision: 3 }),
+    formatRawAsNumeric({
+      raw: value,
+      unit: "ratio",
+      sign_aware: false,
+      precision: defaultRatioPrecision(value),
+    }),
   );
-  const suffix = point.unit?.trim();
+
+  if (isIndexUnit(suffix)) {
+    return suffix ? `${core} ${suffix}` : core;
+  }
+
   return suffix && !suffix.includes("%") ? `${core} ${suffix}` : core;
 }
 

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import inspect
 import json
 import logging
 from datetime import date, timedelta
+from io import StringIO
 from pathlib import Path
 
 import dramatiq
 import duckdb
+import requests
 from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
@@ -25,6 +28,7 @@ from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroBatchConfig,
     ChoiceMacroCatalogAsset,
+    ChoiceMacroPoint,
     ChoiceMacroSeriesConfig,
     ChoiceMacroSnapshot,
 )
@@ -38,6 +42,113 @@ CHOICE_MACRO_LOCK = LockDefinition(key="lock:duckdb:choice-macro", ttl_seconds=9
 RULE_VERSION = "rv_choice_macro_thin_slice_v1"
 STABLE_DATE_SLICE_SHORT_LOOKBACK_DAYS = 7
 STABLE_DATE_SLICE_EXTENDED_LOOKBACK_DAYS = 31
+PUBLIC_HEADLINE_RULE_VERSION = "rv_public_cross_asset_headline_v1"
+PUBLIC_HEADLINE_BATCH_ID = "public_cross_asset_headline"
+PUBLIC_HEADLINE_LOOKBACK_DAYS = 90
+PUBLIC_HEADLINE_CATALOG_VERSION = "2026-04-21.public-cross-asset-headline.v1"
+FRED_BRENT_SERIES_ID = "DCOILBRENTEU"
+
+_PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
+    "E1000180": {
+        "series_name": "中债国债到期收益率:10年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:china_10y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "EMM00166466": {
+        "series_name": "中债国债到期收益率:10年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:china_10y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "chinabond", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "E1003238": {
+        "series_name": "美国国债收益率:10年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:us_10y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "us_treasury", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "EMG00001310": {
+        "series_name": "美国:国债收益率:10年",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:us_10y",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "us_treasury", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via Eastmoney bond_zh_us_rate",
+    },
+    "EM1": {
+        "series_name": "中美国债利差(10Y)",
+        "vendor_name": "public_bond_zh_us_rate",
+        "vendor_series_code": "bond_zh_us_rate:cn_us_spread_10y",
+        "frequency": "daily",
+        "unit": "bp",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "spreads", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement computed from Eastmoney bond_zh_us_rate",
+    },
+    "CA.DR007": {
+        "series_name": "存款类机构质押式回购加权利率:DR007",
+        "vendor_name": "public_repo_rate_query",
+        "vendor_series_code": "repo_rate_query:FDR007",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "rates", "liquidity", "cross_asset"],
+        "policy_note": "public fallback headline lane via repo_rate_query FDR007; not the exact Choice weighted interbank lending 7D series",
+    },
+    "CA.BRENT": {
+        "series_name": "Brent spot price",
+        "vendor_name": "fred",
+        "vendor_series_code": FRED_BRENT_SERIES_ID,
+        "frequency": "daily",
+        "unit": "USD/bbl",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "commodity", "oil", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via FRED Brent spot series",
+    },
+    "CA.STEEL": {
+        "series_name": "螺纹钢现货价格",
+        "vendor_name": "public_spot_price_qh",
+        "vendor_series_code": "spot_price_qh:螺纹钢:现货价格",
+        "frequency": "daily",
+        "unit": "CNY/t",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "commodity", "steel", "cross_asset"],
+        "policy_note": "public cross-asset headline supplement via 99qh spot_price_qh",
+    },
+    "EMM00058124": {
+        "series_name": "中间价:美元兑人民币",
+        "vendor_name": "fx_daily_mid",
+        "vendor_series_code": "fx_daily_mid:USD/CNY",
+        "frequency": "daily",
+        "unit": "CNY/USD",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["public", "macro", "market", "fx", "cross_asset"],
+        "policy_note": "cross-asset headline history supplement from local fx_daily_mid materialized table",
+    },
+}
 
 
 @dramatiq.actor
@@ -301,6 +412,149 @@ def refresh_choice_macro_snapshot(
     }
 
 
+def refresh_public_cross_asset_headlines(
+    duckdb_path: str | None = None,
+    lookback_days: int = PUBLIC_HEADLINE_LOOKBACK_DAYS,
+    report_date: str | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    target_date = date.fromisoformat(report_date) if report_date else date.today()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+
+    warnings: list[str] = []
+    history_rows = _load_public_cross_asset_history_rows(
+        duckdb_path=str(duckdb_file),
+        report_date=target_date,
+        lookback_days=lookback_days,
+        warnings=warnings,
+    )
+    if not history_rows:
+        raise RuntimeError("No public cross-asset headline rows were fetched.")
+
+    latest_rows = _latest_public_cross_asset_rows(history_rows)
+    series_ids = sorted({row["series_id"] for row in history_rows})
+    run_id = f"public_cross_asset_refresh:{target_date.isoformat()}"
+
+    with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            _ensure_tables(conn)
+            conn.execute("begin transaction")
+            placeholders = ", ".join(["?"] * len(series_ids))
+            conn.execute(
+                f"delete from fact_choice_macro_daily where series_id in ({placeholders})",
+                series_ids,
+            )
+            conn.execute(
+                f"delete from choice_market_snapshot where series_id in ({placeholders})",
+                series_ids,
+            )
+            conn.execute(
+                f"delete from phase1_macro_vendor_catalog where series_id in ({placeholders})",
+                series_ids,
+            )
+
+            for row in history_rows:
+                meta = _PUBLIC_HEADLINE_SERIES_META[row["series_id"]]
+                conn.execute(
+                    """
+                    insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        str(meta["series_name"]),
+                        row["trade_date"],
+                        row["value_numeric"],
+                        str(meta["frequency"]),
+                        str(meta["unit"]),
+                        row["source_version"],
+                        row["vendor_version"],
+                        PUBLIC_HEADLINE_RULE_VERSION,
+                        "ok",
+                        run_id,
+                    ],
+                )
+
+            for row in latest_rows:
+                meta = _PUBLIC_HEADLINE_SERIES_META[row["series_id"]]
+                conn.execute(
+                    """
+                    insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        str(meta["series_name"]),
+                        str(meta["vendor_series_code"]),
+                        str(meta["vendor_name"]),
+                        row["trade_date"],
+                        row["value_numeric"],
+                        str(meta["frequency"]),
+                        str(meta["unit"]),
+                        row["source_version"],
+                        row["vendor_version"],
+                        PUBLIC_HEADLINE_RULE_VERSION,
+                        run_id,
+                    ],
+                )
+                conn.execute(
+                    """
+                    insert into phase1_macro_vendor_catalog (
+                      series_id,
+                      series_name,
+                      vendor_name,
+                      vendor_version,
+                      frequency,
+                      unit,
+                      vendor_series_code,
+                      batch_id,
+                      catalog_version,
+                      theme,
+                      is_core,
+                      tags_json,
+                      request_options,
+                      fetch_mode,
+                      fetch_granularity,
+                      refresh_tier,
+                      policy_note
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        str(meta["series_name"]),
+                        str(meta["vendor_name"]),
+                        row["vendor_version"],
+                        str(meta["frequency"]),
+                        str(meta["unit"]),
+                        str(meta["vendor_series_code"]),
+                        PUBLIC_HEADLINE_BATCH_ID,
+                        PUBLIC_HEADLINE_CATALOG_VERSION,
+                        str(meta["theme"]),
+                        bool(meta["is_core"]),
+                        json.dumps(meta["tags"], ensure_ascii=False, separators=(",", ":")),
+                        f"lookback_days={lookback_days}",
+                        "latest",
+                        "batch",
+                        "stable",
+                        str(meta["policy_note"]),
+                    ],
+                )
+            conn.execute("commit")
+        except Exception:
+            conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
+
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "series_count": len(latest_rows),
+        "row_count": len(history_rows),
+        "warnings": warnings,
+    }
+
+
 def _build_source_version(raw_payload: dict[str, object]) -> str:
     digest = hashlib.sha256(
         json.dumps(raw_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
@@ -460,6 +714,22 @@ def _fetch_choice_macro_batch_snapshot(
                 request_options=request_options,
             )
         except RuntimeError as exc:
+            if _is_choice_mixed_ids_error(exc) and len(batch.series) > 1:
+                return merge_choice_macro_snapshots(
+                    [
+                        _fetch_choice_macro_batch_snapshot(
+                            adapter=adapter,
+                            batch=batch.model_copy(
+                                update={
+                                    "series": [series],
+                                    "fetch_granularity": "single",
+                                }
+                            ),
+                            timeout_seconds=timeout_seconds,
+                        )
+                        for series in batch.series
+                    ]
+                )
             if not _is_choice_no_data_error(exc):
                 raise
             last_error = exc
@@ -500,6 +770,11 @@ def _should_retry_previous_trading_day(batch: ChoiceMacroBatchConfig) -> bool:
 def _is_choice_no_data_error(exc: RuntimeError) -> bool:
     text = str(exc).lower()
     return "no data" in text or "no rows" in text
+
+
+def _is_choice_mixed_ids_error(exc: RuntimeError) -> bool:
+    text = str(exc).lower()
+    return "parameter error" in text or "can't be mixed" in text or "cannot be mixed" in text
 
 
 def _parse_choice_request_options_string(request_options: str) -> dict[str, str]:
@@ -679,3 +954,232 @@ def _fetch_backfill_snapshots(
 
     merged = merge_choice_macro_snapshots(all_snapshots)
     return merged, series_registry
+
+
+def _load_public_cross_asset_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+    warnings: list[str],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for loader in (
+        _fetch_public_bond_zh_us_history_rows,
+        _fetch_public_dr007_history_rows,
+        _fetch_public_brent_history_rows,
+        _fetch_public_steel_history_rows,
+        _fetch_public_fx_history_rows,
+    ):
+        try:
+            rows.extend(
+                loader(
+                    duckdb_path=duckdb_path,
+                    report_date=report_date,
+                    lookback_days=lookback_days,
+                )
+            )
+        except Exception as exc:
+            warnings.append(f"{loader.__name__}: {exc}")
+    deduped: dict[tuple[str, str], dict[str, object]] = {}
+    for row in rows:
+        deduped[(str(row["series_id"]), str(row["trade_date"]))] = row
+    return sorted(deduped.values(), key=lambda item: (str(item["series_id"]), str(item["trade_date"])))
+
+
+def _fetch_public_bond_zh_us_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    import akshare as ak  # type: ignore
+
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).strftime("%Y%m%d")
+    frame = ak.bond_zh_us_rate(start_date=start_date)
+    rows: list[dict[str, object]] = []
+    vendor_version = f"vv_public_bond_zh_us_rate_{report_date.isoformat().replace('-', '')}"
+    source_version = f"sv_public_bond_zh_us_rate_{report_date.isoformat().replace('-', '')}"
+    for record in frame.to_dict(orient="records"):
+        trade_date = _coerce_public_trade_date(record.get("日期"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        cn10y = _coerce_public_number(record.get("中国国债收益率10年"))
+        us10y = _coerce_public_number(record.get("美国国债收益率10年"))
+        if cn10y is not None:
+            rows.append(_public_history_row("E1000180", trade_date, cn10y, vendor_version, source_version))
+            rows.append(_public_history_row("EMM00166466", trade_date, cn10y, vendor_version, source_version))
+        if us10y is not None:
+            rows.append(_public_history_row("E1003238", trade_date, us10y, vendor_version, source_version))
+            rows.append(_public_history_row("EMG00001310", trade_date, us10y, vendor_version, source_version))
+        if cn10y is not None and us10y is not None:
+            rows.append(
+                _public_history_row(
+                    "EM1",
+                    trade_date,
+                    round((cn10y - us10y) * 100, 6),
+                    vendor_version,
+                    source_version,
+                )
+            )
+    return rows
+
+
+def _fetch_public_dr007_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path, lookback_days
+    import akshare as ak  # type: ignore
+
+    frame = ak.repo_rate_query(symbol="\u94f6\u94f6\u95f4\u56de\u8d2d\u5b9a\u76d8\u5229\u7387")
+    vendor_version = f"vv_public_repo_rate_query_{report_date.isoformat().replace('-', '')}"
+    source_version = f"sv_public_repo_rate_query_{report_date.isoformat().replace('-', '')}"
+    rows: list[dict[str, object]] = []
+    for record in frame.to_dict(orient="records"):
+        trade_date = _coerce_public_trade_date(record.get("date"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        value = _coerce_public_number(record.get("FDR007"))
+        if value is None:
+            continue
+        rows.append(_public_history_row("CA.DR007", trade_date, value, vendor_version, source_version))
+    return rows
+
+
+def _fetch_public_brent_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).isoformat()
+    response = requests.get(
+        f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED_BRENT_SERIES_ID}",
+        timeout=20,
+    )
+    response.raise_for_status()
+    reader = csv.DictReader(StringIO(response.text))
+    vendor_version = f"vv_public_fred_{FRED_BRENT_SERIES_ID}_{report_date.isoformat().replace('-', '')}"
+    source_digest = hashlib.sha256(response.text.encode("utf-8")).hexdigest()[:12]
+    source_version = f"sv_public_fred_{source_digest}"
+    rows: list[dict[str, object]] = []
+    for record in reader:
+        trade_date = _coerce_public_trade_date(record.get("observation_date"))
+        if trade_date is None or trade_date > report_date.isoformat() or trade_date < start_date:
+            continue
+        value = _coerce_public_number(record.get(FRED_BRENT_SERIES_ID))
+        if value is None:
+            continue
+        rows.append(_public_history_row("CA.BRENT", trade_date, value, vendor_version, source_version))
+    return rows
+
+
+def _fetch_public_steel_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).isoformat()
+    import akshare as ak  # type: ignore
+
+    frame = ak.spot_price_qh(symbol="\u87ba\u7eb9\u94a2")
+    vendor_version = f"vv_public_spot_price_qh_{report_date.isoformat().replace('-', '')}"
+    source_version = f"sv_public_spot_price_qh_{report_date.isoformat().replace('-', '')}"
+    rows: list[dict[str, object]] = []
+    for record in frame.to_dict(orient="records"):
+        trade_date = _coerce_public_trade_date(record.get("日期"))
+        if trade_date is None or trade_date > report_date.isoformat() or trade_date < start_date:
+            continue
+        value = _coerce_public_number(record.get("现货价格"))
+        if value is None:
+            continue
+        rows.append(_public_history_row("CA.STEEL", trade_date, value, vendor_version, source_version))
+    return rows
+
+
+def _fetch_public_fx_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).isoformat()
+    import akshare as ak  # type: ignore
+
+    frame = ak.currency_boc_safe()
+    vendor_version = f"vv_public_currency_boc_safe_{report_date.isoformat().replace('-', '')}"
+    source_version = f"sv_public_currency_boc_safe_{report_date.isoformat().replace('-', '')}"
+    result: list[dict[str, object]] = []
+    for record in frame.to_dict(orient="records"):
+        trade_date = _coerce_public_trade_date(record.get("日期"))
+        if trade_date is None or trade_date > report_date.isoformat() or trade_date < start_date:
+            continue
+        value = _coerce_public_number(record.get("美元"))
+        if value is None:
+            continue
+        result.append(
+            _public_history_row(
+                "EMM00058124",
+                trade_date,
+                round(value / 100, 6),
+                vendor_version,
+                source_version,
+            )
+        )
+    return result
+
+
+def _public_history_row(
+    series_id: str,
+    trade_date: str,
+    value_numeric: float,
+    vendor_version: str,
+    source_version: str,
+) -> dict[str, object]:
+    return {
+        "series_id": series_id,
+        "trade_date": trade_date,
+        "value_numeric": float(value_numeric),
+        "vendor_version": vendor_version,
+        "source_version": source_version,
+    }
+
+
+def _latest_public_cross_asset_rows(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    latest: dict[str, dict[str, object]] = {}
+    for row in rows:
+        current = latest.get(str(row["series_id"]))
+        if current is None or str(row["trade_date"]) > str(current["trade_date"]):
+            latest[str(row["series_id"])] = row
+    return [latest[key] for key in sorted(latest)]
+
+
+def _coerce_public_trade_date(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return None
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    normalized = text.replace("/", "-")
+    if len(normalized) >= 10 and normalized[4] == "-" and normalized[7] == "-":
+        return normalized[:10]
+    return normalized
+
+
+def _coerce_public_number(value: object) -> float | None:
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "null"} or text == ".":
+        return None
+    return float(text)

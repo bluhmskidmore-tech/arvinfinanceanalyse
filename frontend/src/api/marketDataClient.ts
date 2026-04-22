@@ -57,4 +57,12 @@ export type MarketDataClientMethods = {
     receivedFrom?: string;
     receivedTo?: string;
   }) => Promise<ApiEnvelope<ChoiceNewsEventsPayload>>;
+  ingestTushareNprNews: (options?: { limit?: number }) => Promise<{
+    status: string;
+    inserted: number;
+    skipped_duplicates: number;
+    fetched: number;
+    npr: { inserted: number; skipped_duplicates: number; fetched: number };
+    news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
+  }>;
 };

@@ -1,4 +1,5 @@
 import type { ChoiceMacroLatestPoint } from "../api/contracts";
+import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 
 type ShellTickerTone = "up" | "down";
 
@@ -86,35 +87,12 @@ const shellTickerSeriesIdsByKey: Record<ShellTickerKey, string[]> = {
   "usd-cny": ["CA.USDCNY", "EMM00058124"],
 };
 
-function formatShellTickerNumber(value: number, digits = 2) {
-  return value.toFixed(digits).replace(/\.?0+$/, "");
-}
-
 function formatShellTickerValue(point: ChoiceMacroLatestPoint) {
-  if (point.unit === "%") {
-    return `${formatShellTickerNumber(point.value_numeric)}%`;
-  }
-
-  if (point.unit === "bp") {
-    return `${formatShellTickerNumber(point.value_numeric, 0)}bp`;
-  }
-
-  return formatShellTickerNumber(point.value_numeric);
+  return formatChoiceMacroValue(point, { spaceBeforeUnit: false });
 }
 
 function formatShellTickerDelta(point: ChoiceMacroLatestPoint) {
-  if (point.latest_change == null) {
-    return "--";
-  }
-
-  if (point.unit === "%") {
-    const deltaBp = point.latest_change * 100;
-    const sign = deltaBp > 0 ? "+" : "";
-    return `${sign}${formatShellTickerNumber(deltaBp, Math.abs(deltaBp) < 1 ? 1 : 0)}bp`;
-  }
-
-  const sign = point.latest_change > 0 ? "+" : "";
-  return `${sign}${formatShellTickerNumber(point.latest_change)}`;
+  return formatChoiceMacroDelta(point, { spaceBeforeUnit: false });
 }
 
 export function buildShellTickerItems(

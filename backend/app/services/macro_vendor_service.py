@@ -662,6 +662,9 @@ def _load_latest_fx_mid_rows(
     return result
 
 
+_CHOICE_MACRO_RECENT_POINT_LIMIT = 20
+
+
 def _load_choice_macro_recent_rows(
     conn: duckdb.DuckDBPyConnection,
     tables: set[str],
@@ -672,7 +675,7 @@ def _load_choice_macro_recent_rows(
         ).fetchone()
         if snapshot_count and int(snapshot_count[0]) > 0:
             return conn.execute(
-                """
+                f"""
                 with active_series as (
                   select distinct series_id
                   from choice_market_snapshot
@@ -704,13 +707,13 @@ def _load_choice_macro_recent_rows(
                   quality_flag,
                   rn
                 from ranked
-                where rn <= 3
+                where rn <= {_CHOICE_MACRO_RECENT_POINT_LIMIT}
                 order by series_id, rn
                 """
             ).fetchall()
 
     return conn.execute(
-        """
+        f"""
         with ranked as (
           select
             series_id,
@@ -737,7 +740,7 @@ def _load_choice_macro_recent_rows(
           quality_flag,
           rn
         from ranked
-        where rn <= 3
+        where rn <= {_CHOICE_MACRO_RECENT_POINT_LIMIT}
         order by series_id, rn
         """
     ).fetchall()

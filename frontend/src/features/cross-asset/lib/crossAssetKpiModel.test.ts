@@ -136,4 +136,16 @@ describe("crossAssetKpiModel", () => {
     ];
     expect(maxCrossAssetHeadlineTradeDate(series)).toBe("2026-03-02");
   });
+
+  it("renames money market fallback to DR007 when CA.DR007 is used", () => {
+    const series = [
+      macroPoint("CA.DR007", 1.82, [
+        ["2026-02-28", 1.8],
+        ["2026-03-01", 1.82],
+      ]),
+    ];
+    const liquidity = resolveCrossAssetKpis(series).find((k) => k.key === "money_market_7d");
+    expect(liquidity?.label).toBe("DR007");
+    expect(liquidity?.resolvedSeriesId).toBe("CA.DR007");
+  });
 });

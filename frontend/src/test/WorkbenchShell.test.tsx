@@ -212,9 +212,13 @@ describe("WorkbenchShell", () => {
     await waitFor(() => {
       expect(pageContext).toHaveTextContent("2026-02-28");
       expect(marketTicker).toHaveTextContent("1.88%");
+      expect(marketTicker).toHaveTextContent("-2bp");
       expect(marketTicker).toHaveTextContent("1.81%");
+      expect(marketTicker).toHaveTextContent("-5bp");
       expect(marketTicker).toHaveTextContent("1.75%");
+      expect(marketTicker).toHaveTextContent("+1bp");
       expect(marketTicker).toHaveTextContent("7.18");
+      expect(marketTicker).toHaveTextContent("+0.02CNY/USD");
     });
   });
 
@@ -323,9 +327,9 @@ describe("WorkbenchShell", () => {
     );
 
     expect(items).toEqual([
-      expect.objectContaining({ key: "policyBank10y", value: "2.09%" }),
-      expect.objectContaining({ key: "us10y", value: "4.12%" }),
-      expect.objectContaining({ key: "cnUs10ySpread", value: "-205bp" }),
+      expect.objectContaining({ key: "policyBank10y", value: "2.09%", delta: "+1bp" }),
+      expect.objectContaining({ key: "us10y", value: "4.12%", delta: "+3bp" }),
+      expect.objectContaining({ key: "cnUs10ySpread", value: "-205bp", delta: "-4bp" }),
     ]);
   });
 

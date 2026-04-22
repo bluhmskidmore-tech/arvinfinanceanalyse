@@ -33,6 +33,7 @@ import { NcdMatrix } from "../components/NcdMatrix";
 import { NewsAndCalendar } from "../components/NewsAndCalendar";
 import { RateQuoteTable } from "../components/RateQuoteTable";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 
 const s = designTokens.space;
 const fs = designTokens.fontSize;
@@ -169,10 +170,6 @@ function buildRateTrendChartOption(series: ChoiceMacroLatestPoint[]): EChartsOpt
   };
 }
 
-function formatPointValue(value: number, unit: string) {
-  return `${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
-}
-
 function formatSignedNumber(value: number | string | null | undefined, suffix = "") {
   if (value == null || value === "") {
     return "不可用";
@@ -186,16 +183,8 @@ function formatSignedNumber(value: number | string | null | undefined, suffix = 
   return `${sign}${numericValue.toFixed(2)}${suffix}`;
 }
 
-function formatDelta(value: number | null | undefined, unit: string) {
-  if (value == null) {
-    return "n/a";
-  }
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}${value.toFixed(2)}${unit ? ` ${unit}` : ""}`;
-}
-
 function formatRecentPoint(point: ChoiceMacroRecentPoint) {
-  return `${point.trade_date} ${formatPointValue(point.value_numeric, "")}`;
+  return `${point.trade_date} ${point.value_numeric.toFixed(2)}`;
 }
 
 function seriesRecentPoints(point: MarketObservationPoint) {
@@ -386,12 +375,12 @@ function renderSeriesCards(
             <div>
               <div style={{ color: c.neutral[500], fontSize: fs[12] }}>latest</div>
               <div style={{ fontWeight: 600, color: c.neutral[900], ...tabularNumsStyle }}>
-                {formatPointValue(point.value_numeric, point.unit)}
+                {formatChoiceMacroValue(point)}
               </div>
             </div>
             <div>
               <div style={{ color: c.neutral[500], fontSize: fs[12] }}>delta</div>
-              <div style={tabularNumsStyle}>{formatDelta(point.latest_change, point.unit)}</div>
+              <div style={tabularNumsStyle}>{formatChoiceMacroDelta(point, { emptyDisplay: "n/a" })}</div>
             </div>
             <div>
               <div style={{ color: c.neutral[500], fontSize: fs[12] }}>fetch</div>
