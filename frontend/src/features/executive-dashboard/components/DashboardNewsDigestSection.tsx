@@ -130,13 +130,18 @@ function toState(
   isLoading: boolean,
   isError: boolean,
   count: number,
+  digestKind: NewsKindKey,
 ): DataSectionState {
   if (isLoading) return { kind: "loading" };
   if (isError) return { kind: "error", message: "资讯加载失败" };
   if (count === 0) {
+    const hintAll =
+      "当前库中没有资讯条目（Choice 推送未入库、尚未执行 Tushare 拉取，或 DuckDB 为空）。可在下方从 Tushare 拉取要闻。";
+    const hintFiltered =
+      "当前分类下没有资讯。可切换到「全部」查看其它来源，或使用下方按钮从 Tushare 拉取该分类数据。";
     return {
       kind: "empty",
-      hint: "当前没有资讯条目（Choice 未同步或暂无数据）。可在下方从 Tushare 拉取要闻。",
+      hint: digestKind === "all" ? hintAll : hintFiltered,
     };
   }
   return { kind: "ok" };
@@ -173,8 +178,8 @@ export function DashboardNewsDigestSection() {
   }, [kind]);
 
   const state = useMemo(
-    () => toState(query.isLoading, query.isError, events.length),
-    [query.isLoading, query.isError, events.length],
+    () => toState(query.isLoading, query.isError, events.length, kind),
+    [query.isLoading, query.isError, events.length, kind],
   );
 
   const emptyFooter =

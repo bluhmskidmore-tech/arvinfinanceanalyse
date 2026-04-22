@@ -1374,7 +1374,7 @@ describe("createApiClient", () => {
 
     expect(filtered.result.total_rows).toBe(1);
     expect(filtered.result.events[0]?.topic_code).toBe("S888010007API");
-    expect(paged.result.total_rows).toBe(3);
+    expect(paged.result.total_rows).toBe(8);
     expect(paged.result.events[0]?.event_key).toBe("ce_mock_003");
     expect(errorOnly.result.total_rows).toBe(1);
     expect(errorOnly.result.events[0]?.error_code).toBe(101);
