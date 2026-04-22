@@ -1,14 +1,11 @@
 """
-Tushare vendor adapter skeleton.
+Tushare vendor adapter: `VendorAdapter` + `fetch_macro_snapshot(series_id)`.
 
-Status: scaffold only. Implements `VendorAdapter` contract (`preflight`, `fetch_snapshot`)
-so that the Tushare vendor is recognised by the system. No `fetch_macro_snapshot` yet —
-it will be added together with the Choice EDB code -> Tushare API mapping table in a
-follow-up task.
+`fetch_macro_snapshot` uses lazy `import tushare` and calls `pro_api` + macro helpers
+(``cn_cpi``, ``cn_gdp``). Series routing comes from `tushare_catalog_seed`.
 
-Auth: reads `MOSS_TUSHARE_TOKEN` from the environment (aligned with the akshare adapter's
-env-driven pattern). Tushare itself is imported lazily, so the package is not required
-unless live fetch is exercised.
+Auth: `MOSS_TUSHARE_TOKEN`. Missing token or import failure raises `RuntimeError` (no
+silent fixture fallback in live fetch).
 """
 
 from __future__ import annotations
@@ -16,9 +13,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from backend.app.repositories.external_data_catalog_repo import ExternalDataCatalogRepository
 from backend.app.repositories.raw_zone_repo import RawZoneRepository
+from backend.app.repositories.tushare_catalog_seed import get_m2a_series_by_id
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
 from backend.app.schemas.vendor import (
     VendorAdapter as VendorAdapterBase,
@@ -29,6 +28,73 @@ from backend.app.schemas.vendor import (
 )
 
 TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
+
+
+def _require_tushare_token() -> str:
+    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    if not token:
+        msg = f"{TUSHARE_TOKEN_ENV} is not set; export it or add to config before calling Tushare macro fetch."
+        raise RuntimeError(msg)
+    return token
+
+
+def _import_tushare_pro():
+    try:
+        import tushare as ts  # noqa: PLC0415
+    except Exception as exc:
+        msg = "The `tushare` package is not installed or cannot be imported; install it for live Tushare macro fetch."
+        raise RuntimeError(msg) from exc
+    return ts
+
+
+def _month_to_trade_date(month: str) -> str:
+    m = str(month or "").strip()
+    if len(m) == 6 and m.isdigit():
+        return f"{m[:4]}-{m[4:6]}-01"
+    return m
+
+
+def _quarter_to_trade_date(quarter: str) -> str:
+    q = str(quarter or "").strip().upper()
+    if len(q) >= 6 and "Q" in q:
+        year = int(q[:4])
+        qn = q[5:6]
+        ends = {"1": "-03-31", "2": "-06-30", "3": "-09-30", "4": "-12-31"}
+        if qn in ends:
+            return f"{year}{ends[qn]}"
+    return q
+
+
+def _rows_from_cn_cpi(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        month = record.get("month")
+        value = record.get("nt_yoy")
+        if value is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _month_to_trade_date(str(month)),
+                "value": float(value),
+            }
+        )
+    return rows
+
+
+def _rows_from_cn_gdp(df: Any) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for record in df.to_dict(orient="records"):
+        quarter = record.get("quarter")
+        value = record.get("gdp_yoy")
+        if value is None or quarter is None:
+            continue
+        rows.append(
+            {
+                "trade_date": _quarter_to_trade_date(str(quarter)),
+                "value": float(value),
+            }
+        )
+    return rows
 
 
 @dataclass
@@ -77,6 +143,39 @@ class VendorAdapter(VendorAdapterBase):
                 {"trade_date": "2026-01-01", "series_id": "GDP.Y", "value": 5.2},
             ],
             "note": "Fixture only; real Tushare API not implemented.",
+        }
+
+    def fetch_macro_snapshot(self, series_id: str) -> dict[str, object]:
+        """Call Tushare pro API for a registered M2a series; returns JSON-serializable payload."""
+        cfg = get_m2a_series_by_id(series_id)
+        if cfg is None:
+            msg = f"Unknown Tushare M2a series_id: {series_id!r}"
+            raise ValueError(msg)
+
+        token = _require_tushare_token()
+        ts = _import_tushare_pro()
+        pro = ts.pro_api(token)
+        api = cfg["tushare_api"]
+        if api == "cn_cpi":
+            frame = pro.cn_cpi()
+        elif api == "cn_gdp":
+            frame = pro.cn_gdp()
+        else:
+            msg = f"Unsupported tushare_api {api!r} for {series_id}"
+            raise ValueError(msg)
+
+        if frame is None or len(frame) == 0:
+            rows: list[dict[str, object]] = []
+        elif api == "cn_cpi":
+            rows = _rows_from_cn_cpi(frame)
+        else:
+            rows = _rows_from_cn_gdp(frame)
+
+        return {
+            "vendor_kind": "tushare_macro",
+            "series_id": series_id,
+            "fetched_at": datetime.now(UTC).replace(microsecond=0).isoformat(),
+            "rows": rows,
         }
 
     def register_to_catalog(
