@@ -14,6 +14,12 @@ create table if not exists fx_daily_mid (
   observed_trade_date date
 )
 -- MOSS:STMT
+alter table fx_daily_mid add column if not exists source_name varchar
+-- MOSS:STMT
+alter table fx_daily_mid add column if not exists is_business_day boolean
+-- MOSS:STMT
+alter table fx_daily_mid add column if not exists is_carry_forward boolean
+-- MOSS:STMT
 alter table fx_daily_mid add column if not exists vendor_name varchar
 -- MOSS:STMT
 alter table fx_daily_mid add column if not exists vendor_version varchar

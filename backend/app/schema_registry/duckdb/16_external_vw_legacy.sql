@@ -57,7 +57,7 @@ select
   (
     'legacy.fx.' || coalesce(vendor_name, 'src') || '.' || coalesce(base_currency, 'base') || '.' || coalesce(quote_currency, 'quote')
   ) as series_id,
-  strftime(trade_date, '%Y-%m-%d') as trade_date,
+  coalesce(strftime(try_cast(trade_date as date), '%Y-%m-%d'), cast(trade_date as varchar)) as trade_date,
   cast(mid_rate as double) as value_numeric,
   trade_date as trade_date_raw,
   base_currency,
