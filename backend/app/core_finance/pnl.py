@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Iterable, Literal, Mapping, get_args
+from typing import Literal, get_args
 
 from backend.app.core_finance.config.classification_rules import (
     LEDGER_PNL_ACCOUNT_PREFIXES,
@@ -12,28 +13,26 @@ from backend.app.core_finance.config.classification_rules import (
 from backend.app.core_finance.field_normalization import (
     ACCOUNTING_BASIS_FVTPL,
     derive_accounting_basis_value,
+    is_approved_status,
+    normalize_currency_basis_value,
 )
-
 
 InvestTypeStd = Literal["H", "A", "T"]
 AccountingBasis = Literal["AC", "FVOCI", "FVTPL"]
 CurrencyBasis = Literal["CNY", "CNX"]
-# W-subject-2026-04-21: Human: caliber-subject_514_516_517_merge-justified.
-# typing.Literal[...] requires literal forms (PEP 586), so the three
-# prefix strings cannot be sourced from LEDGER_PNL_ACCOUNT_PREFIXES.
-# The runtime assert below is the canonical lockstep guard.
+_INTEREST_INCOME_PREFIX = "514"
+_MANUAL_ADJUSTMENT_TOKEN = "adjustment"
 JournalType = Literal["514", "516", "517", "adjustment"]
-assert set(get_args(JournalType)) - {"adjustment"} == set(LEDGER_PNL_ACCOUNT_PREFIXES), (
-    "JournalType prefix members must equal LEDGER_PNL_ACCOUNT_PREFIXES "
-    "(caliber rule subject_514_516_517_merge)."
+assert set(get_args(JournalType)) == set(LEDGER_PNL_ACCOUNT_PREFIXES) | {
+    _MANUAL_ADJUSTMENT_TOKEN
+}, (
+    "JournalType Literal members must stay in lockstep with "
+    "LEDGER_PNL_ACCOUNT_PREFIXES (caliber rule subject_514_516_517_merge). "
+    "Literal cannot reference a tuple variable structurally, so this runtime "
+    "assert via typing.get_args is the canonical guard."
 )
-# W-subject-2026-04-21: ledger prefixes that flip sign under
-# `direct_*` dc_flag normalization. The interest-income prefix
-# (LEDGER_PNL_ACCOUNT_PREFIXES[0]) never flips; the fair-value-change
-# and investment-income prefixes do. Derived from the canonical tuple
-# to keep the set in lockstep without inlining bare prefix literals.
 SIGN_FLIP_JOURNAL_TYPES: frozenset[str] = frozenset(LEDGER_PNL_ACCOUNT_PREFIXES) - {
-    LEDGER_PNL_ACCOUNT_PREFIXES[0]
+    _INTEREST_INCOME_PREFIX
 }
 
 ZERO = Decimal("0")
@@ -277,16 +276,25 @@ def normalize_nonstd_journal_entries(
 
 def normalize_fi_pnl_records(
     rows: Iterable[Mapping[str, object]],
+    *,
+    fx_rates_by_currency: Mapping[str, tuple[Decimal, str]] | None = None,
 ) -> list[FiPnlRecord]:
     normalized: list[FiPnlRecord] = []
     for row in rows:
         report_date = _coerce_date(row["report_date"])
         invest_type_raw = str(row["invest_type_raw"])
         invest_type_std, accounting_basis = _normalize_fi_invest_type(invest_type_raw)
-        interest_income_514 = _coerce_decimal(row.get("interest_income_514", ZERO))
-        fair_value_change_516 = _coerce_decimal(row.get("fair_value_change_516", ZERO))
-        capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO))
-        manual_adjustment = _coerce_decimal(row.get("manual_adjustment", ZERO))
+        currency_basis = _normalize_currency_basis(str(row.get("currency_basis", "CNY")))
+        fx_base_currency = _coerce_optional_text(row.get("fx_base_currency"))
+        fx_rate, fx_source_version = _resolve_fi_fx_conversion(
+            currency_basis=currency_basis,
+            fx_base_currency=fx_base_currency,
+            fx_rates_by_currency=fx_rates_by_currency,
+        )
+        interest_income_514 = _coerce_decimal(row.get("interest_income_514", ZERO)) * fx_rate
+        fair_value_change_516 = _coerce_decimal(row.get("fair_value_change_516", ZERO)) * fx_rate
+        capital_gain_517 = _coerce_decimal(row.get("capital_gain_517", ZERO)) * fx_rate
+        manual_adjustment = _coerce_decimal(row.get("manual_adjustment", ZERO)) * fx_rate
         total_pnl = interest_income_514 + fair_value_change_516 + capital_gain_517 + manual_adjustment
 
         normalized.append(
@@ -303,8 +311,11 @@ def normalize_fi_pnl_records(
                 capital_gain_517=capital_gain_517,
                 manual_adjustment=manual_adjustment,
                 total_pnl=total_pnl,
-                currency_basis=_normalize_currency_basis(str(row.get("currency_basis", "CNY"))),
-                source_version=str(row.get("source_version", "")),
+                currency_basis=currency_basis,
+                source_version=_merge_lineage_versions(
+                    str(row.get("source_version", "")),
+                    fx_source_version,
+                ),
                 rule_version=str(row.get("rule_version", "")),
                 ingest_batch_id=str(row.get("ingest_batch_id", "")),
                 trace_id=str(row.get("trace_id", "")),
@@ -380,7 +391,7 @@ def _normalize_nonstd_signed_amount(
         return raw_amount
     if normalized_dc in {"\u501f", "debit", "dr"}:
         return raw_amount * Decimal("-1")
-    return raw_amount
+    raise ValueError(f"Unsupported dc_flag={dc_flag!r} for journal_type={journal_type}")
 
 
 def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasis]:
@@ -389,9 +400,11 @@ def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasi
     W-pnl-2026-04-21
     ----------------
     Thin wrapper over canonical ``classification_rules.infer_invest_type``
-    (caliber rule ``hat_mapping``). The wrapper preserves the historical
-    ``Unsupported invest_type_raw=<value>`` error contract that PnL ledger
-    callers depend on.
+    (caliber rule ``hat_mapping``). Replaces the prior delegation to
+    ``field_normalization.derive_invest_type_std_value`` and removes the
+    dead ``_legacy_normalize_fi_invest_type`` backup. The wrapper preserves
+    the historical ``Unsupported invest_type_raw=<value>`` error contract
+    that PnL ledger callers depend on.
     """
     if not str(value or "").strip():
         raise ValueError(f"Unsupported invest_type_raw={value}")
@@ -402,10 +415,39 @@ def _normalize_fi_invest_type(value: str) -> tuple[InvestTypeStd, AccountingBasi
 
 
 def _normalize_currency_basis(value: str) -> CurrencyBasis:
-    normalized = value.strip().upper()
-    if normalized in {"CNY", "CNX"}:
-        return normalized  # type: ignore[return-value]
-    raise ValueError(f"Unsupported currency_basis={value}")
+    return normalize_currency_basis_value(value)
+
+
+def _resolve_fi_fx_conversion(
+    *,
+    currency_basis: CurrencyBasis,
+    fx_base_currency: str,
+    fx_rates_by_currency: Mapping[str, tuple[Decimal, str]] | None,
+) -> tuple[Decimal, str]:
+    if currency_basis == "CNX" or not fx_base_currency:
+        return Decimal("1"), ""
+    if fx_rates_by_currency is None:
+        raise ValueError(
+            f"Missing fx_rates_by_currency for fx_base_currency={fx_base_currency!r}"
+        )
+    key = fx_base_currency.strip().upper()
+    try:
+        return fx_rates_by_currency[key]
+    except KeyError as exc:
+        raise ValueError(f"Missing fx rate for fx_base_currency={fx_base_currency!r}") from exc
+
+
+def _merge_lineage_versions(*values: str) -> str:
+    ordered: list[str] = []
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        for token in text.split("__"):
+            normalized = token.strip()
+            if normalized and normalized not in ordered:
+                ordered.append(normalized)
+    return "__".join(ordered)
 
 
 def _entry_in_scope(entry_date: date, *, target_date: date, is_month_end: bool) -> bool:
@@ -449,4 +491,4 @@ def _is_517_formal_allowed(row: FiPnlRecord) -> bool:
 
 
 def _is_manual_adjustment_formal_allowed(row: FiPnlRecord) -> bool:
-    return row.approval_status.strip().lower() == "approved" or row.governance_status.strip().lower() == "approved"
+    return is_approved_status(row.approval_status) or is_approved_status(row.governance_status)

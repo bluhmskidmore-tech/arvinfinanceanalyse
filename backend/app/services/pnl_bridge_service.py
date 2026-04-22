@@ -3,17 +3,18 @@ from __future__ import annotations
 from decimal import Decimal
 
 from backend.app.core_finance.bond_analytics.common import classify_asset_class, infer_curve_type
-from backend.app.governance.formal_compute_lineage import (
-    resolve_completed_formal_build_lineage,
-    resolve_formal_manifest_lineage,
-)
-from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.core_finance.pnl_bridge import (
     PnlBridgeRow,
     build_pnl_bridge_rows,
     required_curve_types_for_pnl_bridge,
 )
+from backend.app.governance.formal_compute_lineage import (
+    resolve_completed_formal_build_lineage,
+    resolve_formal_manifest_lineage,
+)
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.pnl_repo import PnlRepository
+
 try:
     from backend.app.repositories.yield_curve_repo import (
         YIELD_CURVE_LATEST_FALLBACK_PREFIX,
@@ -57,15 +58,18 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
-from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
-from backend.app.tasks.pnl_materialize import PNL_RESULT_CACHE_VERSION
 from backend.app.tasks.balance_analysis_materialize import (
     CACHE_KEY as BALANCE_ANALYSIS_CACHE_KEY,
+)
+from backend.app.tasks.balance_analysis_materialize import (
     CACHE_VERSION as BALANCE_ANALYSIS_CACHE_VERSION,
+)
+from backend.app.tasks.balance_analysis_materialize import (
     RULE_VERSION as BALANCE_ANALYSIS_RULE_VERSION,
 )
+from backend.app.tasks.pnl_materialize import CACHE_KEY as PNL_CACHE_KEY
+from backend.app.tasks.pnl_materialize import PNL_RESULT_CACHE_VERSION
 from backend.app.tasks.yield_curve_materialize import CACHE_VERSION as YIELD_CURVE_CACHE_VERSION
-
 
 PHASE3_WARNING = (
     "Phase 3 partial delivery: roll_down / treasury_curve / credit_spread use governed curves when available."
@@ -130,9 +134,9 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
     treasury_prior = treasury_current.get("_prior_snapshot") if treasury_current else None
     cdb_prior = cdb_current.get("_prior_snapshot") if cdb_current else None
     aaa_prior = aaa_current.get("_prior_snapshot") if aaa_current else None
-    treasury_prior_warning = treasury_current.get("_prior_warning") if treasury_current else None
-    cdb_prior_warning = cdb_current.get("_prior_warning") if cdb_current else None
-    aaa_prior_warning = aaa_current.get("_prior_warning") if aaa_current else None
+    treasury_prior_warning = _optional_warning(treasury_current, "_prior_warning")
+    cdb_prior_warning = _optional_warning(cdb_current, "_prior_warning")
+    aaa_prior_warning = _optional_warning(aaa_current, "_prior_warning")
     relevant_curve_warnings = _curve_warnings_for_bridge_rows(
         current_balance_rows=current_balance_rows,
         prior_balance_rows=prior_balance_rows,
@@ -156,12 +160,12 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         pnl_fi_rows=pnl_fi_rows,
         balance_rows_current=current_balance_rows,
         balance_rows_prior=prior_balance_rows,
-        treasury_curve_current=treasury_current["curve"] if treasury_current else None,
-        treasury_curve_prior=treasury_prior["curve"] if treasury_prior else None,
-        cdb_curve_current=cdb_current["curve"] if cdb_current else None,
-        cdb_curve_prior=cdb_prior["curve"] if cdb_prior else None,
-        aaa_credit_curve_current=aaa_current["curve"] if aaa_current else None,
-        aaa_credit_curve_prior=aaa_prior["curve"] if aaa_prior else None,
+        treasury_curve_current=_curve_points(treasury_current),
+        treasury_curve_prior=_curve_points(_snapshot_dict(treasury_prior)),
+        cdb_curve_current=_curve_points(cdb_current),
+        cdb_curve_prior=_curve_points(_snapshot_dict(cdb_prior)),
+        aaa_credit_curve_current=_curve_points(aaa_current),
+        aaa_credit_curve_prior=_curve_points(_snapshot_dict(aaa_prior)),
         fx_rates_current=fx_current,
         fx_rates_prior=fx_prior,
     )
@@ -173,7 +177,7 @@ def pnl_bridge_envelope(*, duckdb_path: str, governance_dir: str, report_date: s
         current_balance_rows=current_balance_rows,
         prior_balance_rows=prior_balance_rows,
         curve_snapshots=[
-            snapshot
+            _snapshot_dict(snapshot)
             for snapshot in (treasury_current, treasury_prior, cdb_current, cdb_prior, aaa_current, aaa_prior)
             if snapshot is not None
         ],
@@ -530,6 +534,26 @@ def _resolve_curve_pair_if_needed(
             "_prior_warning": prior_warning,
         }
     return current_snapshot, current_warning
+
+
+def _optional_warning(snapshot: dict[str, object] | None, key: str) -> str | None:
+    if snapshot is None:
+        return None
+    value = snapshot.get(key)
+    return str(value) if isinstance(value, str) else None
+
+
+def _snapshot_dict(value: object) -> dict[str, object]:
+    return value if isinstance(value, dict) else {}
+
+
+def _curve_points(snapshot: dict[str, object] | None) -> list[dict[str, object]] | None:
+    if snapshot is None:
+        return None
+    value = snapshot.get("curve")
+    if not isinstance(value, list):
+        return None
+    return [item for item in value if isinstance(item, dict)]
 
 
 def _resolve_pnl_lineage(*, governance_dir: str, report_date: str) -> dict[str, object]:

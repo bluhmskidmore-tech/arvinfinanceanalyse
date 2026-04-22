@@ -9,6 +9,7 @@ from typing import Any
 ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
+TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
 
 
 @dataclass(slots=True, frozen=True)
@@ -138,42 +139,95 @@ def project_liability_cashflows(
     for row in tyw_rows:
         if not _is_liability_row(row):
             continue
+        events.extend(_project_tyw_row_cashflows(row, report_date, horizon_end))
+    return sorted(events, key=lambda event: (event.event_date, event.event_type, event.instrument_code))
 
+
+def project_zqtz_cashflows(
+    zqtz_rows: list[dict[str, Any]],
+    report_date: date,
+    horizon_months: int = 24,
+) -> list[CashflowEvent]:
+    """Project bond-like asset and issuance-liability cashflows within the horizon."""
+
+    horizon_end = _add_months(report_date, horizon_months)
+    events: list[CashflowEvent] = []
+    for row in zqtz_rows:
         maturity_date = _coerce_date(_get_value(row, "maturity_date"))
-        if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
+        if maturity_date is None or maturity_date <= report_date:
             continue
 
-        principal = _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
-        if principal <= ZERO:
+        side = _row_scope(row)
+        if side not in {"asset", "liability"}:
             continue
+        sign = Decimal("1") if side == "asset" else Decimal("-1")
 
-        days = max(0, (maturity_date - report_date).days)
-        funding_cost_rate = _coerce_decimal(_get_value(row, "funding_cost_rate"))
-        if funding_cost_rate > ZERO and days > 0:
+        principal = _coerce_decimal(_get_value(row, "face_value", "face_value_amount", "face_value_native"))
+        coupon_rate = _coerce_decimal(_get_value(row, "coupon_rate"))
+        interest_mode = _get_text(row, "interest_mode")
+        interval_months = _coupon_interval_months(interest_mode)
+
+        if _is_bullet_repayment(interest_mode):
+            if maturity_date <= horizon_end and principal > ZERO and coupon_rate > ZERO:
+                events.append(
+                    CashflowEvent(
+                        event_date=maturity_date,
+                        event_type="coupon",
+                        instrument_code=_get_text(row, "instrument_code"),
+                        instrument_name=_get_text(row, "instrument_name"),
+                        side=side,
+                        amount=sign * principal * coupon_rate,
+                        currency_code=_get_text(row, "currency_code", default="CNY"),
+                    )
+                )
+        else:
+            for coupon_date in _coupon_dates_between(
+                report_date=report_date,
+                horizon_end=horizon_end,
+                maturity_date=maturity_date,
+                interval_months=interval_months,
+            ):
+                if principal <= ZERO or coupon_rate <= ZERO:
+                    continue
+                events.append(
+                    CashflowEvent(
+                        event_date=coupon_date,
+                        event_type="coupon",
+                        instrument_code=_get_text(row, "instrument_code"),
+                        instrument_name=_get_text(row, "instrument_name"),
+                        side=side,
+                        amount=sign * _coupon_amount(principal, coupon_rate, interval_months),
+                        currency_code=_get_text(row, "currency_code", default="CNY"),
+                    )
+                )
+
+        if maturity_date <= horizon_end and principal > ZERO:
             events.append(
                 CashflowEvent(
                     event_date=maturity_date,
-                    event_type="funding_cost",
-                    instrument_code=_get_text(row, "position_id", default=_get_text(row, "instrument_code")),
-                    instrument_name=_get_text(row, "counterparty_name", default=_get_text(row, "instrument_name")),
-                    side="liability",
-                    amount=-(principal * funding_cost_rate * Decimal(days) / DAYS_IN_YEAR),
+                    event_type="principal",
+                    instrument_code=_get_text(row, "instrument_code"),
+                    instrument_name=_get_text(row, "instrument_name"),
+                    side=side,
+                    amount=sign * principal,
                     currency_code=_get_text(row, "currency_code", default="CNY"),
                 )
             )
 
-        events.append(
-            CashflowEvent(
-                event_date=maturity_date,
-                event_type="maturity",
-                instrument_code=_get_text(row, "position_id", default=_get_text(row, "instrument_code")),
-                instrument_name=_get_text(row, "counterparty_name", default=_get_text(row, "instrument_name")),
-                side="liability",
-                amount=-principal,
-                currency_code=_get_text(row, "currency_code", default="CNY"),
-            )
-        )
+    return sorted(events, key=lambda event: (event.event_date, event.event_type, event.instrument_code))
 
+
+def project_tyw_cashflows(
+    tyw_rows: list[dict[str, Any]],
+    report_date: date,
+    horizon_months: int = 24,
+) -> list[CashflowEvent]:
+    """Project interbank asset/liability cashflows within the horizon."""
+
+    horizon_end = _add_months(report_date, horizon_months)
+    events: list[CashflowEvent] = []
+    for row in tyw_rows:
+        events.extend(_project_tyw_row_cashflows(row, report_date, horizon_end))
     return sorted(events, key=lambda event: (event.event_date, event.event_type, event.instrument_code))
 
 
@@ -230,58 +284,76 @@ def build_monthly_buckets(
 
 
 def compute_duration_gap(
-    bond_rows: list[dict[str, Any]],
+    zqtz_rows: list[dict[str, Any]],
     tyw_rows: list[dict[str, Any]],
     report_date: date,
     horizon_months: int = 24,
 ) -> DurationGapResult:
     """
-    Compute duration gap, projected monthly cashflows, and 12-month reinvestment risk.
+    Compute full-scope term-proxy duration gap, projected monthly cashflows,
+    and 12-month reinvestment risk from formal balance facts.
     """
 
     warnings: list[str] = []
 
     total_asset_market_value = ZERO
+    total_liability_value = ZERO
     asset_duration_numerator = ZERO
+    liability_duration_numerator = ZERO
     asset_duration_weight = ZERO
-    for row in bond_rows:
+    liability_duration_weight = ZERO
+
+    for row in zqtz_rows:
+        scope = _row_scope(row)
         market_value = _coerce_decimal(_get_value(row, "market_value", "market_value_amount", "market_value_native"))
         if market_value <= ZERO:
             continue
-        total_asset_market_value += market_value
-        modified_duration = _coerce_optional_decimal(_get_value(row, "modified_duration"))
-        if modified_duration is None:
+        if scope == "asset":
+            total_asset_market_value += market_value
+        elif scope == "liability":
+            total_liability_value += market_value
+        else:
+            continue
+        duration = _coerce_asset_duration(row, report_date) if scope == "asset" else _coerce_years_to_maturity(row, report_date)
+        if duration is None:
             _append_warning(
                 warnings,
-                f"Asset {(_get_text(row, 'instrument_code') or 'unknown')} missing modified_duration and was excluded from weighted duration.",
+                f"{scope.title()} {(_get_text(row, 'instrument_code') or 'unknown')} missing duration information and was excluded from weighted duration.",
             )
             continue
-        asset_duration_numerator += modified_duration * market_value
-        asset_duration_weight += market_value
+        if scope == "asset":
+            asset_duration_numerator += duration * market_value
+            asset_duration_weight += market_value
+        else:
+            liability_duration_numerator += duration * market_value
+            liability_duration_weight += market_value
 
-    total_liability_value = ZERO
-    liability_duration_numerator = ZERO
-    liability_duration_weight = ZERO
     for row in tyw_rows:
-        if not _is_liability_row(row):
-            continue
+        scope = _row_scope(row)
         principal = _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
         if principal <= ZERO:
             continue
-        total_liability_value += principal
-        years_to_maturity = _coerce_years_to_maturity(row, report_date)
-        if years_to_maturity is None:
+        if scope == "asset":
+            total_asset_market_value += principal
+        elif scope == "liability":
+            total_liability_value += principal
+        else:
+            continue
+        duration = _coerce_tyw_years_to_maturity(row, report_date)
+        if duration is None:
             _append_warning(
                 warnings,
-                f"Liability {(_get_text(row, 'position_id') or 'unknown')} missing maturity information and was excluded from weighted duration.",
+                f"{scope.title()} {(_get_text(row, 'position_id') or 'unknown')} missing maturity information and was excluded from weighted duration.",
             )
             continue
-        liability_duration_numerator += years_to_maturity * principal
-        liability_duration_weight += principal
+        if scope == "asset":
+            asset_duration_numerator += duration * principal
+            asset_duration_weight += principal
+        else:
+            liability_duration_numerator += duration * principal
+            liability_duration_weight += principal
 
-    asset_weighted_duration = (
-        asset_duration_numerator / asset_duration_weight if asset_duration_weight > ZERO else ZERO
-    )
+    asset_weighted_duration = asset_duration_numerator / asset_duration_weight if asset_duration_weight > ZERO else ZERO
     liability_weighted_duration = (
         liability_duration_numerator / liability_duration_weight if liability_duration_weight > ZERO else ZERO
     )
@@ -305,29 +377,31 @@ def compute_duration_gap(
             _append_warning(warnings, "Equity is negative; equity duration should be interpreted with caution.")
 
     projected_cashflows = [
-        *project_bond_cashflows(bond_rows, report_date, horizon_months=horizon_months),
-        *project_liability_cashflows(tyw_rows, report_date, horizon_months=horizon_months),
+        *project_zqtz_cashflows(zqtz_rows, report_date, horizon_months=horizon_months),
+        *project_tyw_cashflows(tyw_rows, report_date, horizon_months=horizon_months),
     ]
-    monthly_buckets = build_monthly_buckets(
-        projected_cashflows,
-        report_date,
-        horizon_months=horizon_months,
-    )
+    monthly_buckets = build_monthly_buckets(projected_cashflows, report_date, horizon_months=horizon_months)
 
     reinvestment_horizon_end = _add_months(report_date, 12)
     maturing_asset_face_value_12m = ZERO
-    for row in bond_rows:
+    for row in zqtz_rows:
+        if _row_scope(row) != "asset":
+            continue
         maturity_date = _coerce_date(_get_value(row, "maturity_date"))
         if maturity_date is None or maturity_date <= report_date or maturity_date > reinvestment_horizon_end:
             continue
         maturing_asset_face_value_12m += _coerce_decimal(
             _get_value(row, "face_value", "face_value_amount", "face_value_native")
         )
-    reinvestment_risk_12m = (
-        maturing_asset_face_value_12m / total_asset_market_value
-        if total_asset_market_value > ZERO
-        else ZERO
-    )
+    for row in tyw_rows:
+        if _row_scope(row) != "asset":
+            continue
+        maturity_date = _effective_tyw_maturity_date(row, report_date)
+        if maturity_date is None or maturity_date <= report_date or maturity_date > reinvestment_horizon_end:
+            continue
+        maturing_asset_face_value_12m += _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
+
+    reinvestment_risk_12m = maturing_asset_face_value_12m / total_asset_market_value if total_asset_market_value > ZERO else ZERO
 
     return DurationGapResult(
         report_date=report_date,
@@ -343,6 +417,53 @@ def compute_duration_gap(
         reinvestment_risk_12m=reinvestment_risk_12m,
         warnings=warnings,
     )
+
+
+def _project_tyw_row_cashflows(row: dict[str, Any], report_date: date, horizon_end: date) -> list[CashflowEvent]:
+    scope = _row_scope(row)
+    if scope not in {"asset", "liability"}:
+        return []
+
+    maturity_date = _effective_tyw_maturity_date(row, report_date)
+    if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
+        return []
+
+    principal = _coerce_decimal(_get_value(row, "principal_amount", "principal_native"))
+    if principal <= ZERO:
+        return []
+
+    code = _get_text(row, "position_id", default=_get_text(row, "instrument_code"))
+    name = _get_text(row, "counterparty_name", default=_get_text(row, "instrument_name"))
+    sign = Decimal("1") if scope == "asset" else Decimal("-1")
+    funding_rate = _coerce_decimal(_get_value(row, "funding_cost_rate"))
+    days = max(0, (maturity_date - report_date).days)
+
+    events: list[CashflowEvent] = []
+    if funding_rate > ZERO and days > 0:
+        events.append(
+            CashflowEvent(
+                event_date=maturity_date,
+                event_type="funding_income" if scope == "asset" else "funding_cost",
+                instrument_code=code,
+                instrument_name=name,
+                side=scope,
+                amount=sign * principal * funding_rate * Decimal(days) / DAYS_IN_YEAR,
+                currency_code=_get_text(row, "currency_code", default="CNY"),
+            )
+        )
+
+    events.append(
+        CashflowEvent(
+            event_date=maturity_date,
+            event_type="maturity",
+            instrument_code=code,
+            instrument_name=name,
+            side=scope,
+            amount=sign * principal,
+            currency_code=_get_text(row, "currency_code", default="CNY"),
+        )
+    )
+    return events
 
 
 def _append_warning(warnings: list[str], message: str) -> None:
@@ -396,14 +517,47 @@ def _coerce_years_to_maturity(row: dict[str, Any], report_date: date) -> Decimal
     return Decimal((maturity_date - report_date).days) / DAYS_IN_YEAR
 
 
+def _coerce_tyw_years_to_maturity(row: dict[str, Any], report_date: date) -> Decimal | None:
+    explicit_value = _coerce_optional_decimal(_get_value(row, "years_to_maturity"))
+    if explicit_value is not None and explicit_value >= ZERO:
+        return explicit_value
+    maturity_date = _effective_tyw_maturity_date(row, report_date)
+    if maturity_date is None or maturity_date <= report_date:
+        return None
+    return Decimal((maturity_date - report_date).days) / DAYS_IN_YEAR
+
+
+def _coerce_asset_duration(row: dict[str, Any], report_date: date) -> Decimal | None:
+    macaulay_duration = _coerce_optional_decimal(_get_value(row, "macaulay_duration"))
+    if macaulay_duration is not None and macaulay_duration >= ZERO:
+        return macaulay_duration
+    return _coerce_years_to_maturity(row, report_date)
+
+
+def _effective_tyw_maturity_date(row: dict[str, Any], report_date: date) -> date | None:
+    maturity_date = _coerce_date(_get_value(row, "maturity_date"))
+    if maturity_date is not None:
+        return maturity_date
+    product_type = _get_text(row, "product_type").strip()
+    if product_type in TYWL_DEMAND_PRODUCTS:
+        return _add_months(report_date, 1)
+    return None
+
+
+def _row_scope(row: dict[str, Any]) -> str:
+    position_scope = _get_text(row, "position_scope", "position_side")
+    if not position_scope:
+        return "asset"
+    normalized = position_scope.lower()
+    if "asset" in normalized or "璧勪骇" in normalized:
+        return "asset"
+    if "liab" in normalized or "liability" in normalized or "璐熷€?" in normalized:
+        return "liability"
+    return normalized
+
+
 def _is_liability_row(row: dict[str, Any]) -> bool:
-    position_side = _get_text(row, "position_side", "position_scope")
-    if not position_side:
-        return True
-    normalized = position_side.lower()
-    if "asset" in normalized or "资产" in normalized:
-        return False
-    return "liab" in normalized or "负" in normalized or normalized == "liability"
+    return _row_scope(row) == "liability"
 
 
 def _add_months(value: date, months: int) -> date:

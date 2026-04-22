@@ -1,4 +1,4 @@
-"""Contract tests for positions HTTP API (envelope + snapshot read behaviors)."""
+﻿"""Contract tests for positions HTTP API (envelope + snapshot read behaviors)."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -33,7 +33,7 @@ def _insert_zqtz(
     face_value: Decimal | None = None,
     amortized_cost: Decimal | None = None,
     rating: str = "AAA",
-    industry: str = "银行",
+    industry: str = "閾惰",
 ) -> None:
     conn.execute(
         """
@@ -53,7 +53,7 @@ def _insert_zqtz(
             "p1",
             "cc1",
             "cat",
-            "债券类",
+            "bond-asset-class",
             bond_type,
             issuer_name,
             industry,
@@ -69,7 +69,7 @@ def _insert_zqtz(
             None,
             0,
             is_issuance_like,
-            "固定",
+            "鍥哄畾",
             "sv-pos-test",
             "rv-pos-test",
             "ib-pos",
@@ -131,8 +131,8 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-10",
             instrument_code="B001",
-            bond_type="国债",
-            issuer_name="发行人甲",
+            bond_type="GOV",
+            issuer_name="鍙戣浜虹敳",
             market_value=Decimal("100"),
             ytm=Decimal("0.03"),
             coupon=Decimal("0.025"),
@@ -142,8 +142,8 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-12",
             instrument_code="B001",
-            bond_type="国债",
-            issuer_name="发行人甲",
+            bond_type="GOV",
+            issuer_name="鍙戣浜虹敳",
             market_value=Decimal("120"),
             ytm=Decimal("0.031"),
             coupon=Decimal("0.025"),
@@ -153,8 +153,8 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-10",
             instrument_code="B002",
-            bond_type="信用债",
-            issuer_name="发行人乙",
+            bond_type="CREDIT",
+            issuer_name="鍙戣浜轰箼",
             market_value=Decimal("200"),
             ytm=Decimal("0.04"),
             coupon=Decimal("0.035"),
@@ -164,8 +164,8 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-10",
             instrument_code="B003",
-            bond_type="信用债",
-            issuer_name="发行人乙",
+            bond_type="CREDIT",
+            issuer_name="鍙戣浜轰箼",
             market_value=Decimal("50"),
             ytm=Decimal("0.045"),
             coupon=Decimal("0.04"),
@@ -175,9 +175,9 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-10",
             position_id="T1",
-            product_type="拆借",
-            position_side="资产",
-            counterparty="同业甲",
+            product_type="REPO",
+            position_side="Asset",
+            counterparty="CP_ASSET",
             principal=Decimal("1000"),
             rate=Decimal("0.02"),
         )
@@ -185,9 +185,9 @@ def _seed_positions_db(path: Path) -> None:
             conn,
             report_date="2026-01-12",
             position_id="T2",
-            product_type="拆借",
-            position_side="负债",
-            counterparty="同业乙",
+            product_type="REPO",
+            position_side="Liability",
+            counterparty="CP_LIAB",
             principal=Decimal("500"),
             rate=Decimal("0.025"),
         )
@@ -218,7 +218,7 @@ def test_positions_endpoints_envelope_and_empty_db(tmp_path, monkeypatch) -> Non
 
     r2 = client.get(
         "/api/positions/bonds",
-        params={"report_date": "2026-01-10", "sub_type": "国债", "page": 1, "page_size": 10},
+        params={"report_date": "2026-01-10", "sub_type": "GOV", "page": 1, "page_size": 10},
     )
     assert r2.status_code == 200
     _assert_envelope(r2.json(), result_kind="positions.bonds.list")
@@ -234,13 +234,13 @@ def test_positions_bonds_filters_issuance_and_pagination(tmp_path, monkeypatch) 
 
     sub = client.get("/api/positions/bonds/sub_types", params={"report_date": "2026-01-10"})
     assert sub.status_code == 200
-    assert set(sub.json()["result"]["sub_types"]) == {"国债", "信用债"}
+    assert set(sub.json()["result"]["sub_types"]) == {"GOV", "CREDIT"}
 
     with_issued = client.get(
         "/api/positions/bonds",
         params={
             "report_date": "2026-01-10",
-            "sub_type": "信用债",
+            "sub_type": "CREDIT",
             "page": 1,
             "page_size": 10,
             "include_issued": "true",
@@ -253,7 +253,7 @@ def test_positions_bonds_filters_issuance_and_pagination(tmp_path, monkeypatch) 
         "/api/positions/bonds",
         params={
             "report_date": "2026-01-10",
-            "sub_type": "信用债",
+            "sub_type": "CREDIT",
             "page": 1,
             "page_size": 10,
         },
@@ -266,7 +266,7 @@ def test_positions_bonds_filters_issuance_and_pagination(tmp_path, monkeypatch) 
         "/api/positions/bonds",
         params={
             "report_date": "2026-01-10",
-            "sub_type": "国债",
+            "sub_type": "GOV",
             "page": 2,
             "page_size": 1,
         },
@@ -287,7 +287,7 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
         params={
             "start_date": "2026-01-01",
             "end_date": "2026-01-31",
-            "sub_type": "国债",
+            "sub_type": "GOV",
             "top_n": 10,
             "page": 1,
             "page_size": 10,
@@ -302,13 +302,13 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
 
     pt = client.get("/api/positions/interbank/product_types", params={"report_date": "2026-01-10"})
     assert pt.status_code == 200
-    assert pt.json()["result"]["product_types"] == ["拆借"]
+    assert pt.json()["result"]["product_types"] == ["REPO"]
 
     ib = client.get(
         "/api/positions/interbank",
         params={
             "report_date": "2026-01-10",
-            "product_type": "拆借",
+            "product_type": "REPO",
             "direction": "Asset",
             "page": 1,
             "page_size": 10,
@@ -320,13 +320,42 @@ def test_positions_counterparty_and_interbank(tmp_path, monkeypatch) -> None:
 
     split = client.get(
         "/api/positions/counterparty/interbank/split",
-        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "product_type": "拆借"},
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "product_type": "REPO"},
     )
     assert split.status_code == 200
     sp = split.json()["result"]
     assert sp["num_days"] == 2
     assert len(sp["asset_items"]) >= 1
     assert len(sp["liability_items"]) >= 1
+
+
+def test_positions_counterparty_bonds_excludes_issuance_like_from_asset_scope(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos.duckdb"
+    _seed_positions_db(db)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    cp = client.get(
+        "/api/positions/counterparty/bonds",
+        params={
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "top_n": 10,
+            "page": 1,
+            "page_size": 10,
+        },
+    )
+    assert cp.status_code == 200
+    body = cp.json()["result"]
+
+    assert body["total_amount"] == "270.00000000"
+    assert body["total_avg_daily"] == "135.00000000"
+    assert body["total_customers"] == 2
+    items_by_customer = {item["customer_name"]: item for item in body["items"]}
+    assert set(items_by_customer) == {"鍙戣浜虹敳", "鍙戣浜轰箼"}
+    assert items_by_customer["鍙戣浜虹敳"]["total_amount"] == "220.00000000"
+    assert items_by_customer["鍙戣浜轰箼"]["total_amount"] == "50.00000000"
+    assert items_by_customer["鍙戣浜轰箼"]["avg_daily_balance"] == "25.00000000"
 
 
 def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None:
@@ -337,7 +366,7 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
 
     rt = client.get(
         "/api/positions/stats/rating",
-        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "信用债"},
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "CREDIT"},
     )
     assert rt.status_code == 200
     assert rt.json()["result"]["items"]
@@ -351,18 +380,93 @@ def test_positions_stats_rating_industry_customer(tmp_path, monkeypatch) -> None
 
     det = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "发行人乙", "report_date": "2026-01-10"},
+        params={"customer_name": "鍙戣浜轰箼", "report_date": "2026-01-10"},
     )
     assert det.status_code == 200
     assert det.json()["result"]["bond_count"] == 2
 
     tr = client.get(
         "/api/positions/customer/trend",
-        params={"customer_name": "发行人甲", "end_date": "2026-01-12", "days": 30},
+        params={"customer_name": "鍙戣浜虹敳", "end_date": "2026-01-12", "days": 30},
     )
     assert tr.status_code == 200
     assert len(tr.json()["result"]["items"]) == 2
 
+
+
+def test_positions_rating_and_industry_stats_exclude_issuance_like_from_asset_scope(tmp_path, monkeypatch) -> None:
+    db = tmp_path / "pos.duckdb"
+    conn = duckdb.connect(str(db), read_only=False)
+    try:
+        _ensure_tables(conn)
+        conn.execute("delete from zqtz_bond_daily_snapshot")
+        conn.execute("delete from tyw_interbank_daily_snapshot")
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="A001",
+            bond_type="TEST",
+            issuer_name="Issuer-Asset",
+            market_value=Decimal("100"),
+            ytm=Decimal("0.03"),
+            coupon=Decimal("0.02"),
+            is_issuance_like=False,
+            rating="AAA",
+            industry="Bank",
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-11",
+            instrument_code="A001",
+            bond_type="TEST",
+            issuer_name="Issuer-Asset",
+            market_value=Decimal("120"),
+            ytm=Decimal("0.031"),
+            coupon=Decimal("0.02"),
+            is_issuance_like=False,
+            rating="AAA",
+            industry="Bank",
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2026-01-10",
+            instrument_code="L001",
+            bond_type="TEST",
+            issuer_name="Issuer-Liability",
+            market_value=Decimal("200"),
+            ytm=Decimal("0.08"),
+            coupon=Decimal("0.07"),
+            is_issuance_like=True,
+            rating="BBB",
+            industry="Broker",
+        )
+    finally:
+        conn.close()
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(db))
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    rating = client.get(
+        "/api/positions/stats/rating",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "TEST"},
+    )
+    assert rating.status_code == 200
+    rating_body = rating.json()["result"]
+    assert rating_body["total_amount"] == "220.00000000"
+    assert rating_body["total_avg_daily"] == "110.00000000"
+    assert [item["rating"] for item in rating_body["items"]] == ["AAA"]
+    assert rating_body["items"][0]["bond_count"] == 2
+
+    industry = client.get(
+        "/api/positions/stats/industry",
+        params={"start_date": "2026-01-01", "end_date": "2026-01-31", "sub_type": "TEST", "top_n": 5},
+    )
+    assert industry.status_code == 200
+    industry_body = industry.json()["result"]
+    assert industry_body["total_amount"] == "220.00000000"
+    assert industry_body["total_avg_daily"] == "110.00000000"
+    items_by_industry = {item["industry"]: item for item in industry_body["items"]}
+    assert set(items_by_industry) == {"Bank"}
+    assert items_by_industry["Bank"]["bond_count"] == 2
 
 def test_positions_routes_registered() -> None:
     from backend.app.main import app
@@ -496,12 +600,13 @@ def test_positions_optional_report_date_routes_fall_back_to_latest_snapshot_date
 
     subtypes = client.get("/api/positions/bonds/sub_types")
     assert subtypes.status_code == 200
-    assert subtypes.json()["result"]["sub_types"] == ["\u56fd\u503a"]
+    assert subtypes.json()["result"]["sub_types"] == ["GOV"]
 
     details = client.get(
         "/api/positions/customer/details",
-        params={"customer_name": "\u53d1\u884c\u4eba\u7532"},
+        params={"customer_name": "鍙戣浜虹敳"},
     )
     assert details.status_code == 200
     assert details.json()["result"]["report_date"] == "2026-01-12"
     assert details.json()["result"]["bond_count"] == 1
+

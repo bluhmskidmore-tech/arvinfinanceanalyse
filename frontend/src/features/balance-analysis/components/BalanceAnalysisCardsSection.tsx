@@ -1,4 +1,4 @@
-import type { BalanceAnalysisOverviewPayload, BalanceAnalysisWorkbookPayload } from "../../../api/contracts";
+﻿import type { BalanceAnalysisOverviewPayload, BalanceAnalysisWorkbookPayload } from "../../../api/contracts";
 import { KpiCard } from "../../workbench/components/KpiCard";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";

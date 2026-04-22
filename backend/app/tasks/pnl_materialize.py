@@ -3,9 +3,13 @@ from __future__ import annotations
 import json
 import logging
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+from backend.app.core_finance.config.classification_rules import (
+    LEDGER_PNL_ACCOUNT_PREFIXES,
+)
 from backend.app.core_finance.pnl import (
     build_formal_pnl_fi_fact_rows,
     build_nonstd_pnl_bridge_rows,
@@ -25,6 +29,10 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.build_runs import BuildRunRecord
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_NONSTD_JOURNAL_TYPES: frozenset[str] = frozenset(
+    LEDGER_PNL_ACCOUNT_PREFIXES
+) | {"adjustment"}
 
 
 # Basis-scoped PnL materialize identity (CACHE_SPEC §3: basis must participate in cache_key / locks).
@@ -80,10 +88,18 @@ def _materialize_pnl_facts(
     source_version = "sv_pnl_running"
 
     try:
-        normalized_fi = normalize_fi_pnl_records(fi_rows)
+        fx_rates_by_currency = _load_pnl_fx_rates(
+            duckdb_path=duckdb_file,
+            report_date=report_date,
+            fi_rows=fi_rows,
+        )
+        normalized_fi = normalize_fi_pnl_records(
+            fi_rows,
+            fx_rates_by_currency=fx_rates_by_currency,
+        )
         normalized_nonstd = []
         for journal_type, rows in sorted(nonstd_rows_by_type.items()):
-            if journal_type not in {"514", "516", "517", "adjustment"}:
+            if journal_type not in ALLOWED_NONSTD_JOURNAL_TYPES:
                 raise ValueError(f"Unsupported journal_type={journal_type}")
             normalized_nonstd.extend(
                 normalize_nonstd_journal_entries(rows, journal_type=journal_type)
@@ -259,6 +275,76 @@ run_pnl_materialize_sync = _materialize_pnl_facts
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+
+
+def _load_pnl_fx_rates(
+    *,
+    duckdb_path: Path,
+    report_date: str,
+    fi_rows: list[dict[str, object]],
+) -> dict[str, tuple[Decimal, str]]:
+    required = sorted(
+        {
+            str(row.get("fx_base_currency") or "").strip().upper()
+            for row in fi_rows
+            if str(row.get("fx_base_currency") or "").strip()
+        }
+    )
+    if not required:
+        return {}
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        if not _table_exists(conn, "fx_daily_mid"):
+            raise ValueError("Missing fx_daily_mid table required for FI FX conversion.")
+        placeholders = ", ".join(["?"] * len(required))
+        rows = conn.execute(
+            f"""
+            with ranked as (
+              select
+                upper(base_currency) as base_currency,
+                cast(mid_rate as decimal(24, 8)) as mid_rate,
+                coalesce(source_version, '') as source_version,
+                row_number() over (
+                  partition by upper(base_currency)
+                  order by try_cast(trade_date as date) desc nulls last, cast(trade_date as varchar) desc
+                ) as rn
+              from fx_daily_mid
+              where try_cast(trade_date as date) <= ?::date
+                and upper(quote_currency) = 'CNY'
+                and upper(base_currency) in ({placeholders})
+            )
+            select base_currency, mid_rate, source_version
+            from ranked
+            where rn = 1
+            """,
+            [report_date, *required],
+        ).fetchall()
+    finally:
+        conn.close()
+
+    rates = {
+        str(base_currency): (Decimal(str(mid_rate)), str(source_version or ""))
+        for base_currency, mid_rate, source_version in rows
+        if base_currency is not None and mid_rate is not None
+    }
+    missing = [code for code in required if code not in rates]
+    if missing:
+        raise ValueError(f"Missing fx rates for report_date={report_date}: {missing}")
+    return rates
+
+
+def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
+    row = conn.execute(
+        """
+        select 1
+        from information_schema.tables
+        where table_name = ?
+        limit 1
+        """,
+        [table_name],
+    ).fetchone()
+    return row is not None
 
 
 def _assert_partition_matches(

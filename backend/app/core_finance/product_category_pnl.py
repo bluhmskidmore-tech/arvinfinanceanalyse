@@ -5,6 +5,8 @@ from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 
+from backend.app.core_finance.field_normalization import is_approved_status
+
 
 ZERO = Decimal("0")
 DAYS_IN_YEAR = Decimal("365")
@@ -53,7 +55,7 @@ def apply_manual_adjustments(
     rows: list[CanonicalFactRow],
     adjustments: list[ManualAdjustment],
 ) -> list[CanonicalFactRow]:
-    approved = [item for item in adjustments if item.approval_status == "approved"]
+    approved = [item for item in adjustments if _is_approved_status(item.approval_status)]
     by_key = {(row.account_code, row.currency): row for row in rows}
 
     for operator in ("ADD", "DELTA", "OVERRIDE"):
@@ -465,3 +467,7 @@ def _build_total_row(
         "is_total": True,
         "children": [],
     }
+
+
+def _is_approved_status(value: str) -> bool:
+    return is_approved_status(value)

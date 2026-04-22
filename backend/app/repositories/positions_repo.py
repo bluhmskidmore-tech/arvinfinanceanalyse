@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from decimal import Decimal, ROUND_HALF_UP
-
-import duckdb
+from decimal import ROUND_HALF_UP, Decimal
+from typing import cast
 
 from backend.app.repositories.duckdb_repo import DuckDBRepository
 
@@ -292,7 +291,14 @@ class PositionsRepository(DuckDBRepository):
             )
         return items, total
 
-    def _bond_range_where(self, start_date: str, end_date: str, sub_type: str | None) -> tuple[str, list[object]]:
+    def _bond_range_where(
+        self,
+        start_date: str,
+        end_date: str,
+        sub_type: str | None,
+        *,
+        exclude_issued: bool = False,
+    ) -> tuple[str, list[object]]:
         where = [
             "report_date BETWEEN ?::date AND ?::date",
             "issuer_name IS NOT NULL",
@@ -302,6 +308,8 @@ class PositionsRepository(DuckDBRepository):
         if sub_type:
             where.append("bond_type = ?")
             params.append(sub_type)
+        if exclude_issued:
+            where.append("NOT COALESCE(is_issuance_like, FALSE)")
         return " AND ".join(where), params
 
     def _tyw_range_where(
@@ -333,7 +341,9 @@ class PositionsRepository(DuckDBRepository):
     ) -> dict[str, object]:
         if not self._table_exists("zqtz_bond_daily_snapshot"):
             return self._empty_counterparty_bonds(start_date, end_date)
-        where_sql, params = self._bond_range_where(start_date, end_date, sub_type)
+        # "债券资产对手方" must follow the repo-wide asset rule: issuance-like rows belong
+        # to liability scope and should not be counted in asset counterparty aggregates.
+        where_sql, params = self._bond_range_where(start_date, end_date, sub_type, exclude_issued=True)
         nd_rows = self._fetch_rows(
             f"select count(distinct report_date) from zqtz_bond_daily_snapshot where {where_sql}",
             params,
@@ -415,7 +425,6 @@ class PositionsRepository(DuckDBRepository):
         denom = Decimal(num_days) if num_days else Decimal(0)
         for row in agg_rows:
             name, total_amt, txn, w_ytm_n, w_cpn_n, mv_sum = row
-            mv = Decimal(str(mv_sum or 0))
             avg_daily = (Decimal(str(total_amt or 0)) / denom) if denom else Decimal(0)
             items.append(
                 {
@@ -515,11 +524,11 @@ class PositionsRepository(DuckDBRepository):
             "asset_total_amount": str(asset["total_amount"]),
             "asset_total_avg_daily": str(asset["total_avg_daily"]),
             "asset_total_weighted_rate": asset["total_weighted_rate"],
-            "asset_customer_count": int(asset["customer_count"]),
+            "asset_customer_count": cast(int, asset["customer_count"]),
             "liability_total_amount": str(liability["total_amount"]),
             "liability_total_avg_daily": str(liability["total_avg_daily"]),
             "liability_total_weighted_rate": liability["total_weighted_rate"],
-            "liability_customer_count": int(liability["customer_count"]),
+            "liability_customer_count": cast(int, liability["customer_count"]),
             "asset_items": asset["items"],
             "liability_items": liability["items"],
         }
@@ -546,7 +555,7 @@ class PositionsRepository(DuckDBRepository):
     ) -> dict[str, object]:
         if not self._table_exists("zqtz_bond_daily_snapshot"):
             return self._empty_rating_industry(start_date, end_date, "rating")
-        where_sql, params = self._bond_range_where(start_date, end_date, sub_type)
+        where_sql, params = self._bond_range_where(start_date, end_date, sub_type, exclude_issued=True)
         nd_rows = self._fetch_rows(
             f"select count(distinct report_date) from zqtz_bond_daily_snapshot where {where_sql}",
             params,
@@ -607,7 +616,7 @@ class PositionsRepository(DuckDBRepository):
     ) -> dict[str, object]:
         if not self._table_exists("zqtz_bond_daily_snapshot"):
             return self._empty_rating_industry(start_date, end_date, "industry")
-        where_sql, params = self._bond_range_where(start_date, end_date, sub_type)
+        where_sql, params = self._bond_range_where(start_date, end_date, sub_type, exclude_issued=True)
         nd_rows = self._fetch_rows(
             f"select count(distinct report_date) from zqtz_bond_daily_snapshot where {where_sql}",
             params,

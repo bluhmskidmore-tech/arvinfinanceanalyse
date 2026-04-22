@@ -156,6 +156,58 @@ def test_compute_bond_analytics_rows_uses_rate_classification_and_zero_spread_dv
     assert row.spread_dv01 == Decimal("0")
 
 
+def test_compute_bond_analytics_rows_normalizes_percent_rates_before_duration_math() -> None:
+    module = _module()
+    report_date = date(2026, 3, 31)
+    snapshot_rows = [
+        {
+            "report_date": report_date,
+            "instrument_code": "TB-PCT-001",
+            "instrument_name": "百分数利率债",
+            "portfolio_name": "组合百分数",
+            "cost_center": "CC-PCT",
+            "account_category": "持有至到期投资",
+            "asset_class": "债券资产",
+            "bond_type": "国债",
+            "issuer_name": "财政部",
+            "industry_name": "政府",
+            "rating": "AAA",
+            "currency_code": "CNY",
+            "face_value_native": Decimal("100"),
+            "market_value_native": Decimal("100"),
+            "amortized_cost_native": Decimal("100"),
+            "accrued_interest_native": Decimal("0"),
+            "coupon_rate": Decimal("3.00"),
+            "ytm_value": Decimal("3.50"),
+            "maturity_date": date(2031, 3, 31),
+            "interest_mode": "年付",
+            "is_issuance_like": False,
+            "source_version": "sv_snapshot_pct",
+            "rule_version": "rv_snapshot_pct",
+            "ingest_batch_id": "ib_pct",
+            "trace_id": "trace_pct",
+        }
+    ]
+
+    rows = module.compute_bond_analytics_rows(snapshot_rows, report_date)
+
+    assert len(rows) == 1
+    row = rows[0]
+    expected_macaulay = common.estimate_duration(
+        date(2031, 3, 31),
+        report_date,
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        bond_code="TB-PCT-001",
+    )
+    expected_modified = common.estimate_modified_duration(expected_macaulay, Decimal("0.035"))
+
+    assert row.coupon_rate == Decimal("0.03")
+    assert row.ytm == Decimal("0.035")
+    assert row.macaulay_duration == expected_macaulay
+    assert row.modified_duration == expected_modified
+
+
 def test_compute_bond_analytics_rows_backfills_missing_lineage_with_deterministic_defaults() -> None:
     module = _module()
     report_date = date(2026, 3, 31)

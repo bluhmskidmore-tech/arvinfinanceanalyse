@@ -57,4 +57,71 @@ describe("DashboardBondHeadlineSection", () => {
     expect(screen.getByText("利率敏感度合计")).toBeInTheDocument();
     expect(screen.queryByText(/DV01/i)).not.toBeInTheDocument();
   });
+
+  it("renders non-zero values when real payload numeric fields arrive as strings", async () => {
+    const client = createApiClient({ mode: "real" });
+    client.getBondDashboardHeadlineKpis = async () =>
+      ({
+        result_meta: {
+          trace_id: "tr_dashboard_bond_headline_real_payload",
+          basis: "formal",
+          result_kind: "bond_dashboard.headline",
+          formal_use_allowed: true,
+          source_version: "sv_headline_real",
+          vendor_version: "vv_headline_real",
+          rule_version: "rv_headline_real",
+          cache_version: "cv_headline_real",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-21T00:00:00Z",
+        },
+        result: {
+          report_date: "2026-02-28",
+          prev_report_date: "2026-02-27",
+          kpis: {
+            total_market_value: "328833397224.30999974",
+            unrealized_pnl: "6761163825.55999970",
+            weighted_ytm: "2.06109220",
+            weighted_duration: "0.42046272",
+            weighted_coupon: "2.08692340",
+            credit_spread_median: "2.47770000",
+            total_dv01: "13826218.47759703",
+            bond_count: 1711,
+          },
+          prev_kpis: {
+            total_market_value: "329263622255.68999977",
+            unrealized_pnl: "6818769466.07000023",
+            weighted_ytm: "2.06017928",
+            weighted_duration: "0.42080160",
+            weighted_coupon: "2.08720678",
+            credit_spread_median: "2.47380000",
+            total_dv01: "13855465.99421573",
+            bond_count: 1706,
+          },
+        },
+      }) as never;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0, refetchOnWindowFocus: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ApiClientProvider client={client}>
+          <DashboardBondHeadlineSection reportDate="2026-02-28" />
+        </ApiClientProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId("dashboard-bond-headline-kpi")).toHaveLength(8));
+    expect(screen.getByTestId("dashboard-bond-headline-lead")).toHaveTextContent("3288.33 亿");
+    expect(screen.getByTestId("dashboard-bond-headline-lead")).toHaveTextContent("YTM 2.06%");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("67.61 亿");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.06%");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.09%");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("2.48%");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("1382.62 万元");
+    expect(screen.getByTestId("dashboard-bond-headline-grid")).toHaveTextContent("1,711");
+  });
 });

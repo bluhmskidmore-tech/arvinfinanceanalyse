@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
 import { AgGridReact } from "ag-grid-react";
@@ -155,6 +155,34 @@ function formatOverviewNumber(raw: string | number | null | undefined): string {
     return String(raw);
   }
   return n.toLocaleString("zh-CN");
+}
+
+function formatAmountToYiFromYuan(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") {
+    return "—";
+  }
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) {
+    return String(raw);
+  }
+  return (n / 100000000).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function formatAmountToYiFromWan(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") {
+    return "—";
+  }
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) {
+    return String(raw);
+  }
+  return (n / 10000).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function formatBalanceScopeLabel(scope: BalancePositionScope | string | undefined): string {
@@ -1355,21 +1383,24 @@ export default function BalanceAnalysisPage() {
     {
       key: "total-market-value",
       label: "总市值合计",
-      value: formatOverviewNumber(overview?.total_market_value_amount),
+      value: formatAmountToYiFromYuan(overview?.total_market_value_amount),
+      unit: "亿元",
       detail: "overview.total_market_value_amount · formal",
       valueVariant: "text" as const,
     },
     {
       key: "total-amortized-cost",
       label: "摊余成本合计",
-      value: formatOverviewNumber(overview?.total_amortized_cost_amount),
+      value: formatAmountToYiFromYuan(overview?.total_amortized_cost_amount),
+      unit: "亿元",
       detail: "overview.total_amortized_cost_amount · formal",
       valueVariant: "text" as const,
     },
     {
       key: "total-accrued-interest",
       label: "应计利息合计",
-      value: formatOverviewNumber(overview?.total_accrued_interest_amount),
+      value: formatAmountToYiFromYuan(overview?.total_accrued_interest_amount),
+      unit: "亿元",
       detail: "overview.total_accrued_interest_amount · formal",
       valueVariant: "text" as const,
     },
@@ -1390,7 +1421,8 @@ export default function BalanceAnalysisPage() {
     ...(workbook?.cards ?? []).map((card) => ({
       key: `workbook-card-${card.key}`,
       label: card.label,
-      value: formatOverviewNumber(card.value),
+      value: formatAmountToYiFromWan(card.value),
+      unit: "亿元",
       detail: `${card.note ?? "workbook.cards"} · workbook`,
       valueVariant: "text" as const,
     })),
@@ -1889,6 +1921,7 @@ export default function BalanceAnalysisPage() {
             key={card.key}
             label={card.label}
             value={card.value}
+            unit={card.unit}
             detail={card.detail}
             valueVariant={card.valueVariant}
           />
@@ -1969,9 +2002,9 @@ export default function BalanceAnalysisPage() {
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {String(overview?.total_market_value_amount ?? "0.00")}{" "}
-        {String(overview?.total_amortized_cost_amount ?? "0.00")}{" "}
-        {String(overview?.total_accrued_interest_amount ?? "0.00")}
+        {formatAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
+        {formatAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
+        {formatAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
       </div>
 
       <div style={{ marginTop: 24 }}>

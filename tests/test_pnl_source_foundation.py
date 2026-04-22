@@ -115,3 +115,27 @@ def test_load_latest_pnl_refresh_input_keeps_manifest_report_date_for_archived_f
     assert refresh.report_date == "2026-02-28"
     assert refresh.fi_rows
     assert refresh.fi_rows[0]["report_date"] == "2026-02-28"
+
+
+def test_load_latest_pnl_refresh_input_marks_usd_rows_for_fx_conversion(tmp_path) -> None:
+    source_module = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+
+    data_root = tmp_path / "data_input" / "pnl"
+    data_root.mkdir(parents=True, exist_ok=True)
+    source_fi = Path(__file__).resolve().parents[1] / "data_input" / "pnl" / "FI损益202602.xls"
+    target_fi = data_root / source_fi.name
+    target_fi.write_bytes(source_fi.read_bytes())
+
+    refresh = source_module.load_latest_pnl_refresh_input(
+        governance_dir=tmp_path / "governance",
+        data_root=tmp_path / "data_input",
+        report_date="2026-02-28",
+    )
+
+    assert refresh.fi_rows
+    usd_rows = [row for row in refresh.fi_rows if row.get("fx_base_currency") == "USD"]
+    assert usd_rows
+    assert all(row["currency_basis"] == "CNY" for row in usd_rows)

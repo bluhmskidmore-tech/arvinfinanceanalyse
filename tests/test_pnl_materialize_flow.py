@@ -148,6 +148,92 @@ def test_pnl_materialize_task_writes_fact_tables_and_governance_records(tmp_path
     assert manifests[-1]["source_version"] == payload["source_version"]
 
 
+def test_pnl_materialize_task_converts_usd_fi_rows_with_month_end_fx(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.pnl_materialize",
+            "backend/app/tasks/pnl_materialize.py",
+        )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fx_daily_mid (
+              trade_date varchar,
+              base_currency varchar,
+              quote_currency varchar,
+              mid_rate decimal(24, 8),
+              source_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fx_daily_mid values
+            ('2025-12-31', 'USD', 'CNY', 7.20000000, 'sv_fx_usd')
+            """
+        )
+    finally:
+        conn.close()
+
+    task_module.materialize_pnl_facts.fn(
+        report_date="2025-12-31",
+        is_month_end=True,
+        fi_rows=[
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "240002.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": "10.00",
+                "fair_value_change_516": "-2.00",
+                "capital_gain_517": "1.00",
+                "manual_adjustment": "0.50",
+                "currency_basis": "CNY",
+                "fx_base_currency": "USD",
+                "source_version": "src-v-usd",
+                "approval_status": "approved",
+                "event_semantics": "realized_formal",
+                "realized_flag": True,
+            }
+        ],
+        nonstd_rows_by_type={},
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+        formal_pnl_enabled=True,
+        formal_pnl_scope_json='["*"]',
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        rows = conn.execute(
+            """
+            select instrument_code, interest_income_514, fair_value_change_516, capital_gain_517,
+                   manual_adjustment, total_pnl, source_version
+            from fact_formal_pnl_fi
+            where report_date = '2025-12-31'
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        (
+            "240002.IB",
+            Decimal("72.00000000"),
+            Decimal("-14.40000000"),
+            Decimal("7.20000000"),
+            Decimal("3.60000000"),
+            Decimal("68.40000000"),
+            "src-v-usd__sv_fx_usd",
+        )
+    ]
+
+
 def test_pnl_materialize_task_rebuilds_same_report_date_without_duplicate_rows(tmp_path):
     task_module = sys.modules.get("backend.app.tasks.pnl_materialize")
     if task_module is None:

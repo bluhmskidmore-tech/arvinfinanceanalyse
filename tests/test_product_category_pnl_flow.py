@@ -1870,7 +1870,7 @@ def _write_average_workbook(path: Path, report_date: str, *, january: bool) -> N
     annual.title = "\u5e74"
     monthly = workbook.create_sheet(title="\u6708")
     for worksheet in (annual, monthly):
-        worksheet.append([f"\u673a\u6784\uff1a 199200\u9752\u5c9b\u94f6\u884c"])
+        worksheet.append(["\u673a\u6784\uff1a 199200\u9752\u5c9b\u94f6\u884c"])
         worksheet.append([f"\u65e5\u671f\uff1a {report_date[:8]}01 \u81f3 {report_date}"])
         worksheet.append(["\u5e01\u79cd", "\u79d1\u76ee", "\u79d1\u76ee\u65e5\u5747\u4f59\u989d", None])
         for row in _avg_rows(monthly=(worksheet.title == "\u6708"), january=january):

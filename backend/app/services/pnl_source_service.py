@@ -11,6 +11,7 @@ from pathlib import Path
 import xlrd
 from openpyxl import load_workbook
 
+from backend.app.core_finance.field_normalization import resolve_pnl_source_currency
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import SOURCE_MANIFEST_STREAM, GovernanceRepository
 from backend.app.services.source_rules import describe_source_file
@@ -235,7 +236,7 @@ def _latest_candidate_for_family(
     )
 
 
-def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
+def _legacy_parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
     metadata = describe_source_file(snapshot.path.name)
     report_date = snapshot.report_date or metadata.report_date
     workbook = xlrd.open_workbook(str(snapshot.path))
@@ -274,6 +275,49 @@ def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
                 "trace_id": f"{snapshot.path.name}:fi:{len(rows) + 1}",
             }
         )
+    return rows
+
+
+def _parse_fi_rows(snapshot: PnlSourceSnapshot) -> list[dict[str, object]]:
+    metadata = describe_source_file(snapshot.path.name)
+    report_date = snapshot.report_date or metadata.report_date
+    workbook = xlrd.open_workbook(str(snapshot.path))
+    sheet = workbook.sheet_by_index(0)
+    headers = [str(sheet.cell_value(0, column)).strip() for column in range(sheet.ncols)]
+    rows: list[dict[str, object]] = []
+
+    for row_index in range(1, sheet.nrows):
+        raw_row = {
+            headers[column]: sheet.cell_value(row_index, column)
+            for column in range(sheet.ncols)
+            if headers[column]
+        }
+        instrument_code = _cell_text(raw_row.get("债券代码"))
+        if not instrument_code:
+            continue
+
+        currency_basis, fx_base_currency = resolve_pnl_source_currency(
+            _cell_text(raw_row.get("币种"))
+        )
+        parsed_row = {
+            "report_date": report_date,
+            "instrument_code": instrument_code,
+            "portfolio_name": _cell_text(raw_row.get("投资组合")),
+            "cost_center": _cell_text(raw_row.get("成本中心")),
+            "invest_type_raw": _cell_text(raw_row.get("投资类型")),
+            "interest_income_514": _to_decimal(raw_row.get("利息514")),
+            "fair_value_change_516": _to_decimal(raw_row.get("T损益516")) * Decimal("-1"),
+            "capital_gain_517": _to_decimal(raw_row.get("投资收益517")),
+            "manual_adjustment": Decimal("0"),
+            "currency_basis": currency_basis,
+            "source_version": snapshot.source_version,
+            "rule_version": PNL_SOURCE_RULE_VERSION,
+            "ingest_batch_id": snapshot.ingest_batch_id,
+            "trace_id": f"{snapshot.path.name}:fi:{len(rows) + 1}",
+        }
+        if fx_base_currency is not None:
+            parsed_row["fx_base_currency"] = fx_base_currency
+        rows.append(parsed_row)
     return rows
 
 

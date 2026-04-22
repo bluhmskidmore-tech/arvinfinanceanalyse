@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import calendar
 import uuid
 from datetime import date
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
+from backend.app.core_finance.bond_duration import estimate_duration
 from backend.app.core_finance.cashflow_projection import MonthlyBucket, compute_duration_gap
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.balance_analysis_repo import BalanceAnalysisRepository
 from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
-from backend.app.repositories.cashflow_projection_repo import CashflowProjectionRepository
 from backend.app.schemas.cashflow_projection import CashflowProjectionResponse
 from backend.app.services.explicit_numeric import numeric_json
 from backend.app.services.formal_result_runtime import (
@@ -19,25 +21,33 @@ Q8 = Decimal("0.00000000")
 CACHE_VERSION = "cv_cashflow_projection_read_v1"
 RULE_VERSION = "rv_cashflow_projection_read_v1"
 EMPTY_SOURCE_VERSION = "sv_cashflow_projection_empty"
+TYWL_DEMAND_PRODUCTS = frozenset({"同业存放", "存放同业"})
 
 
 def get_cashflow_projection(report_date: date) -> dict[str, object]:
     settings = get_settings()
     report_date_text = report_date.isoformat()
 
-    bond_repo = BondAnalyticsRepository(str(settings.duckdb_path))
-    projection_repo = CashflowProjectionRepository(str(settings.duckdb_path))
-    bond_rows = bond_repo.fetch_bond_analytics_rows(report_date=report_date_text)
-    tyw_rows = projection_repo.fetch_formal_tyw_liability_rows(
+    balance_repo = BalanceAnalysisRepository(str(settings.duckdb_path))
+    analytics_repo = BondAnalyticsRepository(str(settings.duckdb_path))
+    zqtz_rows = balance_repo.fetch_formal_zqtz_rows(
         report_date=report_date_text,
+        position_scope="all",
         currency_basis="CNY",
     )
+    tyw_rows = balance_repo.fetch_formal_tyw_rows(
+        report_date=report_date_text,
+        position_scope="all",
+        currency_basis="CNY",
+    )
+    analytics_rows = analytics_repo.fetch_bond_analytics_rows(report_date=report_date_text)
+    zqtz_rows = _attach_macaulay_duration(zqtz_rows, analytics_rows)
 
-    if not bond_rows and not tyw_rows:
+    if not zqtz_rows and not tyw_rows:
         raise ValueError(f"No cashflow projection data found for report_date={report_date_text}.")
 
     result = compute_duration_gap(
-        bond_rows=bond_rows,
+        zqtz_rows=zqtz_rows,
         tyw_rows=tyw_rows,
         report_date=report_date,
         horizon_months=24,
@@ -48,11 +58,11 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         result_kind="cashflow_projection.overview",
         cache_version=CACHE_VERSION,
         source_version=_merge_versions(
-            [*_collect_values(bond_rows, "source_version"), *_collect_values(tyw_rows, "source_version")],
+            [*_collect_values(zqtz_rows, "source_version"), *_collect_values(tyw_rows, "source_version")],
             empty_value=EMPTY_SOURCE_VERSION,
         ),
         rule_version=_merge_versions(
-            [*_collect_values(bond_rows, "rule_version"), *_collect_values(tyw_rows, "rule_version")],
+            [*_collect_values(zqtz_rows, "rule_version"), *_collect_values(tyw_rows, "rule_version")],
             empty_value=RULE_VERSION,
         ),
         source_surface="cashflow",
@@ -67,7 +77,7 @@ def get_cashflow_projection(report_date: date) -> dict[str, object]:
         rate_sensitivity_1bp=numeric_json(result.rate_sensitivity_1bp, "yuan", True),
         reinvestment_risk_12m=numeric_json(result.reinvestment_risk_12m, "pct", False),
         monthly_buckets=[_serialize_monthly_bucket(bucket) for bucket in result.monthly_buckets],
-        top_maturing_assets_12m=_build_top_maturing_assets_12m(bond_rows, report_date),
+        top_maturing_assets_12m=_build_top_maturing_assets_12m(zqtz_rows, tyw_rows, report_date),
         warnings=list(result.warnings),
         computed_at=meta.generated_at.isoformat(),
     )
@@ -88,12 +98,16 @@ def _serialize_monthly_bucket(bucket: MonthlyBucket) -> dict[str, object]:
 
 
 def _build_top_maturing_assets_12m(
-    bond_rows: list[dict[str, object]],
+    zqtz_rows: list[dict[str, object]],
+    tyw_rows: list[dict[str, object]],
     report_date: date,
 ) -> list[dict[str, object]]:
     horizon_end = date(report_date.year + 1, report_date.month, report_date.day)
     candidates: list[dict[str, object]] = []
-    for row in bond_rows:
+
+    for row in zqtz_rows:
+        if _row_scope(row) != "asset":
+            continue
         maturity_date = _coerce_date(row.get("maturity_date"))
         if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
             continue
@@ -110,6 +124,24 @@ def _build_top_maturing_assets_12m(
                 "maturity_date": maturity_date,
                 "face_value": face_value,
                 "market_value": market_value,
+                "currency_code": str(row.get("currency_code") or "CNY"),
+            }
+        )
+
+    for row in tyw_rows:
+        if _row_scope(row) != "asset":
+            continue
+        maturity_date = _effective_tyw_maturity_date(row, report_date)
+        if maturity_date is None or maturity_date <= report_date or maturity_date > horizon_end:
+            continue
+        principal = _coerce_decimal(row.get("principal_amount") or row.get("principal_native"))
+        candidates.append(
+            {
+                "instrument_code": str(row.get("position_id") or ""),
+                "instrument_name": str(row.get("counterparty_name") or row.get("product_type") or ""),
+                "maturity_date": maturity_date,
+                "face_value": principal,
+                "market_value": principal,
                 "currency_code": str(row.get("currency_code") or "CNY"),
             }
         )
@@ -165,3 +197,89 @@ def _coerce_date(value: object) -> date | None:
     if isinstance(value, date):
         return value
     return date.fromisoformat(str(value))
+
+
+def _row_scope(row: dict[str, object]) -> str:
+    raw = str(row.get("position_scope") or row.get("position_side") or "").strip().lower()
+    if "asset" in raw:
+        return "asset"
+    if "liab" in raw:
+        return "liability"
+    return raw
+
+
+def _effective_tyw_maturity_date(row: dict[str, object], report_date: date) -> date | None:
+    maturity_date = _coerce_date(row.get("maturity_date"))
+    if maturity_date is not None:
+        return maturity_date
+    product_type = str(row.get("product_type") or "").strip()
+    if product_type in TYWL_DEMAND_PRODUCTS:
+        month = report_date.month + 1
+        year = report_date.year + (1 if month > 12 else 0)
+        month = 1 if month > 12 else month
+        day = min(report_date.day, calendar.monthrange(year, month)[1])
+        return date(year, month, day)
+    return None
+
+
+def _attach_macaulay_duration(
+    zqtz_rows: list[dict[str, object]],
+    analytics_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    macaulay_by_key: dict[tuple[str, str, str, str], Decimal] = {}
+    for row in analytics_rows:
+        value = _recompute_macaulay_duration(row)
+        if value is None:
+            value = row.get("macaulay_duration")
+        if value in (None, ""):
+            continue
+        key = (
+            str(row.get("instrument_code") or ""),
+            str(row.get("portfolio_name") or ""),
+            str(row.get("cost_center") or ""),
+            str(row.get("currency_code") or ""),
+        )
+        macaulay_by_key[key] = _coerce_decimal(value)
+
+    enriched: list[dict[str, object]] = []
+    for row in zqtz_rows:
+        if _row_scope(row) != "asset":
+            enriched.append(row)
+            continue
+        key = (
+            str(row.get("instrument_code") or ""),
+            str(row.get("portfolio_name") or ""),
+            str(row.get("cost_center") or ""),
+            str(row.get("currency_code") or ""),
+        )
+        macaulay_duration = macaulay_by_key.get(key)
+        if macaulay_duration is None:
+            enriched.append(row)
+            continue
+        enriched.append({**row, "macaulay_duration": macaulay_duration})
+    return enriched
+
+
+def _recompute_macaulay_duration(row: dict[str, object]) -> Decimal | None:
+    maturity_date = _coerce_date(row.get("maturity_date"))
+    report_date = _coerce_date(row.get("report_date"))
+    if maturity_date is None or report_date is None:
+        return None
+    coupon_rate = _normalize_rate(row.get("coupon_rate"))
+    ytm = _normalize_rate(row.get("ytm") or row.get("ytm_value"))
+    return estimate_duration(
+        maturity_date,
+        report_date,
+        coupon_rate=coupon_rate or Decimal("0"),
+        ytm=ytm,
+        bond_code=str(row.get("instrument_code") or ""),
+    )
+
+
+def _normalize_rate(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    dec = _coerce_decimal(value)
+    if abs(dec) > Decimal("1"):
+        return dec / Decimal("100")
+    return dec

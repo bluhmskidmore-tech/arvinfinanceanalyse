@@ -28,7 +28,7 @@ def test_bond_cashflow_projection_basic():
                 "maturity_date": date(2026, 7, 15),
                 "face_value": Decimal("100"),
                 "coupon_rate": Decimal("0.06"),
-                "interest_mode": "半年付息",
+                "interest_mode": "semi annual",
                 "currency_code": "CNY",
             },
             {
@@ -37,7 +37,7 @@ def test_bond_cashflow_projection_basic():
                 "maturity_date": date(2025, 12, 31),
                 "face_value": Decimal("50"),
                 "coupon_rate": Decimal("0.05"),
-                "interest_mode": "年付",
+                "interest_mode": "annual",
                 "currency_code": "CNY",
             },
         ],
@@ -66,7 +66,7 @@ def test_bond_cashflow_projection_treats_bullet_as_maturity_only_coupon():
                 "maturity_date": date(2027, 7, 15),
                 "face_value": Decimal("100"),
                 "coupon_rate": Decimal("0.06"),
-                "interest_mode": "到期一次还本付息",
+                "interest_mode": "bullet",
                 "currency_code": "CNY",
             }
         ],
@@ -168,50 +168,49 @@ def test_monthly_bucket_aggregation():
     assert buckets[1].liability_outflow == Decimal("30")
 
 
-def test_duration_gap_calculation():
+def test_duration_gap_calculation_uses_full_scope_term_proxy():
     module = _core_module()
 
     result = module.compute_duration_gap(
-        bond_rows=[
+        zqtz_rows=[
             {
                 "instrument_code": "BOND-001",
                 "instrument_name": "Bond 1",
+                "position_scope": "asset",
                 "maturity_date": date(2028, 1, 1),
-                "face_value": Decimal("100"),
-                "market_value": Decimal("100"),
+                "face_value_amount": Decimal("100"),
+                "market_value_amount": Decimal("100"),
                 "coupon_rate": Decimal("0.05"),
-                "modified_duration": Decimal("2"),
-                "years_to_maturity": Decimal("2"),
-                "interest_mode": "年付",
+                "macaulay_duration": Decimal("1.8"),
+                "interest_mode": "annual",
                 "currency_code": "CNY",
             },
             {
                 "instrument_code": "BOND-002",
                 "instrument_name": "Bond 2",
-                "maturity_date": date(2030, 1, 1),
-                "face_value": Decimal("300"),
-                "market_value": Decimal("300"),
+                "position_scope": "liability",
+                "maturity_date": date(2027, 1, 1),
+                "face_value_amount": Decimal("50"),
+                "market_value_amount": Decimal("50"),
                 "coupon_rate": Decimal("0.04"),
-                "modified_duration": Decimal("4"),
-                "years_to_maturity": Decimal("4"),
-                "interest_mode": "年付",
+                "interest_mode": "annual",
                 "currency_code": "CNY",
             },
         ],
         tyw_rows=[
             {
-                "position_id": "TYW-001",
-                "counterparty_name": "Bank A",
-                "position_side": "liability",
-                "maturity_date": date(2027, 1, 1),
+                "position_id": "TYW-ASSET-001",
+                "counterparty_name": "Bank Asset",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 7, 1),
                 "principal_amount": Decimal("100"),
                 "funding_cost_rate": Decimal("0.03"),
                 "currency_code": "CNY",
             },
             {
-                "position_id": "TYW-002",
-                "counterparty_name": "Bank B",
-                "position_side": "liability",
+                "position_id": "TYW-LIAB-001",
+                "counterparty_name": "Bank Liability",
+                "position_scope": "liability",
                 "maturity_date": date(2028, 1, 1),
                 "principal_amount": Decimal("100"),
                 "funding_cost_rate": Decimal("0.03"),
@@ -222,43 +221,171 @@ def test_duration_gap_calculation():
         horizon_months=24,
     )
 
-    assert result.asset_weighted_duration == Decimal("3.5")
-    assert result.liability_weighted_duration == Decimal("1.5")
-    assert result.duration_gap == Decimal("2.0")
-    assert result.modified_duration_gap == Decimal("2.0")
-    assert result.total_asset_market_value == Decimal("400")
+    assert result.asset_weighted_duration == Decimal("1.147945205479452054794520548")
+    assert result.liability_weighted_duration == Decimal("1.666666666666666666666666667")
+    assert result.duration_gap == Decimal("-0.518721461187214611872146119")
+    assert result.modified_duration_gap == Decimal("-0.518721461187214611872146119")
+    assert result.total_asset_market_value == Decimal("200")
+    assert result.total_liability_value == Decimal("150")
+    assert result.equity_duration == Decimal("-2.074885844748858447488584476")
+    assert result.rate_sensitivity_1bp == Decimal("-0.01037442922374429223744292238")
+
+
+def test_duration_gap_warns_when_missing_maturity_excludes_rows():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[
+            {
+                "instrument_code": "BOND-001",
+                "instrument_name": "Bond 1",
+                "position_scope": "asset",
+                "maturity_date": date(2030, 1, 1),
+                "face_value_amount": Decimal("300"),
+                "market_value_amount": Decimal("300"),
+                "coupon_rate": Decimal("0.04"),
+                "macaulay_duration": Decimal("3.2"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+            },
+        ],
+        tyw_rows=[
+            {
+                "position_id": "TYW-001",
+                "counterparty_name": "Bank A",
+                "position_scope": "liability",
+                "maturity_date": None,
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+            {
+                "position_id": "TYW-002",
+                "counterparty_name": "Bank B",
+                "position_scope": "liability",
+                "maturity_date": date(2028, 1, 1),
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=24,
+    )
+
+    assert result.asset_weighted_duration == Decimal("3.2")
+    assert result.liability_weighted_duration == Decimal("2")
+    assert result.duration_gap == Decimal("1.2")
+    assert result.modified_duration_gap == Decimal("1.2")
+    assert result.total_asset_market_value == Decimal("300")
     assert result.total_liability_value == Decimal("200")
-    assert result.equity_duration == Decimal("4.0")
-    assert result.rate_sensitivity_1bp == Decimal("0.0800")
+    assert result.equity_duration == Decimal("3.6")
+    assert result.rate_sensitivity_1bp == Decimal("0.0360")
+    assert any("missing maturity information" in warning for warning in result.warnings)
+
+
+def test_tywl_demand_positions_without_maturity_use_one_month_proxy():
+    module = _core_module()
+
+    result = module.compute_duration_gap(
+        zqtz_rows=[],
+        tyw_rows=[
+            {
+                "position_id": "TYW-ASSET-001",
+                "product_type": "存放同业",
+                "counterparty_name": "Bank Asset",
+                "position_scope": "asset",
+                "maturity_date": None,
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+            {
+                "position_id": "TYW-LIAB-001",
+                "product_type": "同业存放",
+                "counterparty_name": "Bank Liability",
+                "position_scope": "liability",
+                "maturity_date": None,
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=24,
+    )
+
+    one_month_proxy = Decimal("31") / Decimal("365")
+    assert result.asset_weighted_duration == one_month_proxy
+    assert result.liability_weighted_duration == one_month_proxy
+    assert result.duration_gap == Decimal("0")
+    assert result.modified_duration_gap == Decimal("0")
+    assert all("missing maturity information" not in warning for warning in result.warnings)
+
+
+def test_tywl_demand_positions_without_maturity_project_into_next_month():
+    module = _core_module()
+
+    cashflows = module.project_tyw_cashflows(
+        [
+            {
+                "position_id": "TYW-ASSET-001",
+                "product_type": "存放同业",
+                "counterparty_name": "Bank Asset",
+                "position_scope": "asset",
+                "maturity_date": None,
+                "principal_amount": Decimal("100"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+            {
+                "position_id": "TYW-LIAB-001",
+                "product_type": "同业存放",
+                "counterparty_name": "Bank Liability",
+                "position_scope": "liability",
+                "maturity_date": None,
+                "principal_amount": Decimal("80"),
+                "funding_cost_rate": Decimal("0.03"),
+                "currency_code": "CNY",
+            },
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=2,
+    )
+
+    assert [(event.event_type, event.event_date.isoformat(), event.side, event.amount) for event in cashflows] == [
+        ("funding_cost", "2026-02-01", "liability", Decimal("-0.2038356164383561643835616438")),
+        ("funding_income", "2026-02-01", "asset", Decimal("0.2547945205479452054794520548")),
+        ("maturity", "2026-02-01", "asset", Decimal("100")),
+        ("maturity", "2026-02-01", "liability", Decimal("-80")),
+    ]
 
 
 def test_reinvestment_risk_ratio():
     module = _core_module()
 
     result = module.compute_duration_gap(
-        bond_rows=[
+        zqtz_rows=[
             {
                 "instrument_code": "BOND-NEAR",
                 "instrument_name": "Near Maturity",
+                "position_scope": "asset",
                 "maturity_date": date(2026, 6, 1),
-                "face_value": Decimal("100"),
-                "market_value": Decimal("100"),
+                "face_value_amount": Decimal("100"),
+                "market_value_amount": Decimal("100"),
                 "coupon_rate": Decimal("0.03"),
-                "modified_duration": Decimal("0.4"),
-                "years_to_maturity": Decimal("0.41666667"),
-                "interest_mode": "年付",
+                "interest_mode": "骞翠粯",
                 "currency_code": "CNY",
             },
             {
                 "instrument_code": "BOND-LONG",
                 "instrument_name": "Long Bond",
+                "position_scope": "asset",
                 "maturity_date": date(2028, 1, 1),
-                "face_value": Decimal("300"),
-                "market_value": Decimal("300"),
+                "face_value_amount": Decimal("300"),
+                "market_value_amount": Decimal("300"),
                 "coupon_rate": Decimal("0.05"),
-                "modified_duration": Decimal("3.5"),
-                "years_to_maturity": Decimal("2"),
-                "interest_mode": "年付",
+                "interest_mode": "骞翠粯",
                 "currency_code": "CNY",
             },
         ],
@@ -280,32 +407,35 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         "backend/app/services/cashflow_projection_service.py",
     )
 
-    def fake_fetch_bond_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+    def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
         assert report_date == "2026-01-01"
+        assert position_scope == "all"
+        assert currency_basis == "CNY"
         return [
             {
                 "instrument_code": "BOND-001",
                 "instrument_name": "Bond 1",
+                "position_scope": "asset",
                 "maturity_date": date(2026, 7, 1),
-                "face_value": Decimal("100"),
-                "market_value": Decimal("100"),
+                "face_value_amount": Decimal("100"),
+                "market_value_amount": Decimal("100"),
                 "coupon_rate": Decimal("0.05"),
-                "modified_duration": Decimal("1.5"),
-                "years_to_maturity": Decimal("0.5"),
-                "interest_mode": "年付",
+                "interest_mode": "骞翠粯",
                 "currency_code": "CNY",
                 "source_version": "sv_bond_1",
                 "rule_version": "rv_bond_1",
             }
         ]
 
-    def fake_fetch_tyw_rows(self, *, report_date, currency_basis="CNY"):
+    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
         assert report_date == "2026-01-01"
+        assert position_scope == "all"
+        assert currency_basis == "CNY"
         return [
             {
                 "position_id": "TYW-001",
                 "counterparty_name": "Bank A",
-                "position_side": "liability",
+                "position_scope": "liability",
                 "maturity_date": date(2026, 3, 1),
                 "principal_amount": Decimal("80"),
                 "funding_cost_rate": Decimal("0.03"),
@@ -316,13 +446,13 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        service_mod.BondAnalyticsRepository,
-        "fetch_bond_analytics_rows",
-        fake_fetch_bond_rows,
+        service_mod.BalanceAnalysisRepository,
+        "fetch_formal_zqtz_rows",
+        fake_fetch_zqtz_rows,
     )
     monkeypatch.setattr(
-        service_mod.CashflowProjectionRepository,
-        "fetch_formal_tyw_liability_rows",
+        service_mod.BalanceAnalysisRepository,
+        "fetch_formal_tyw_rows",
         fake_fetch_tyw_rows,
     )
 
@@ -349,5 +479,103 @@ def test_api_returns_envelope(tmp_path, monkeypatch):
     assert "monthly_buckets" in payload["result"]
     assert "top_maturing_assets_12m" in payload["result"]
     assert "computed_at" in payload["result"]
+
+    get_settings.cache_clear()
+
+
+def test_api_recomputes_asset_macaulay_duration_from_percent_rates(tmp_path, monkeypatch):
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    service_mod = load_module(
+        "backend.app.services.cashflow_projection_service",
+        "backend/app/services/cashflow_projection_service.py",
+    )
+    bond_duration_mod = load_module(
+        "backend.app.core_finance.bond_duration",
+        "backend/app/core_finance/bond_duration.py",
+    )
+
+    def fake_fetch_zqtz_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+        assert report_date == "2026-01-01"
+        return [
+            {
+                "instrument_code": "BOND-001",
+                "instrument_name": "Bond 1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "position_scope": "asset",
+                "maturity_date": date(2031, 1, 1),
+                "face_value_amount": Decimal("100"),
+                "market_value_amount": Decimal("100"),
+                "coupon_rate": Decimal("3.0"),
+                "ytm_value": Decimal("3.5"),
+                "interest_mode": "annual",
+                "currency_code": "CNY",
+                "source_version": "sv_zqtz_1",
+                "rule_version": "rv_zqtz_1",
+            }
+        ]
+
+    def fake_fetch_tyw_rows(self, *, report_date, position_scope="all", currency_basis="CNY"):
+        assert report_date == "2026-01-01"
+        return []
+
+    def fake_fetch_bond_analytics_rows(self, *, report_date, asset_class="all", accounting_class="all"):
+        assert report_date == "2026-01-01"
+        return [
+            {
+                "report_date": date(2026, 1, 1),
+                "instrument_code": "BOND-001",
+                "instrument_name": "Bond 1",
+                "portfolio_name": "P1",
+                "cost_center": "C1",
+                "currency_code": "CNY",
+                "maturity_date": date(2031, 1, 1),
+                "coupon_rate": Decimal("3.0"),
+                "ytm": Decimal("3.5"),
+                "macaulay_duration": Decimal("1.25"),
+            }
+        ]
+
+    monkeypatch.setattr(
+        service_mod.BalanceAnalysisRepository,
+        "fetch_formal_zqtz_rows",
+        fake_fetch_zqtz_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.BalanceAnalysisRepository,
+        "fetch_formal_tyw_rows",
+        fake_fetch_tyw_rows,
+    )
+    monkeypatch.setattr(
+        service_mod.BondAnalyticsRepository,
+        "fetch_bond_analytics_rows",
+        fake_fetch_bond_analytics_rows,
+    )
+
+    route_mod = load_module(
+        "backend.app.api.routes.cashflow_projection",
+        "backend/app/api/routes/cashflow_projection.py",
+    )
+    app = FastAPI()
+    app.include_router(route_mod.router)
+    client = TestClient(app)
+    response = client.get(
+        "/api/cashflow-projection",
+        params={"report_date": "2026-01-01"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    expected = bond_duration_mod.estimate_duration(
+        date(2031, 1, 1),
+        date(2026, 1, 1),
+        coupon_rate=Decimal("0.03"),
+        ytm=Decimal("0.035"),
+        bond_code="BOND-001",
+    )
+    assert Decimal(str(payload["result"]["asset_duration"]["raw"])) == expected
 
     get_settings.cache_clear()

@@ -102,11 +102,11 @@ def compute_bond_analytics_rows(
         accounting_class = map_accounting_class(accounting_source)
         accounting_rule_id, _ = get_accounting_rule_trace(accounting_source)
 
-        coupon_rate = _optional_decimal(snapshot_row.get("coupon_rate"))
+        coupon_rate = _normalize_rate_decimal(snapshot_row.get("coupon_rate"))
         interest_mode = _as_text(snapshot_row.get("interest_mode"))
         interest_payment_frequency, _used_fallback = resolve_interest_payment_frequency(interest_mode)
         interest_rate_style = classify_interest_rate_style(interest_mode)
-        ytm = _optional_decimal(snapshot_row.get("ytm_value"))
+        ytm = _normalize_rate_decimal(snapshot_row.get("ytm_value"))
         maturity_date = _coerce_date(snapshot_row.get("maturity_date"))
         years_to_maturity = _compute_years_to_maturity(
             report_date=report_date,
@@ -238,6 +238,15 @@ def _optional_decimal(value: Any) -> Decimal | None:
     if not text:
         return None
     return safe_decimal(value)
+
+
+def _normalize_rate_decimal(value: Any) -> Decimal | None:
+    dec = _optional_decimal(value)
+    if dec is None:
+        return None
+    if abs(dec) > Decimal("1"):
+        return dec / Decimal("100")
+    return dec
 
 
 def _coerce_date(value: Any) -> date | None:

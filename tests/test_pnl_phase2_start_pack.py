@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance import (
     FiPnlRecord,
     FormalPnlFiFactRow,
@@ -254,6 +256,26 @@ def test_phase2_nonstd_standardization_handles_raw_dc_flags_and_517_direct_field
             trace_id="",
         ),
     ]
+
+
+def test_phase2_nonstd_standardization_rejects_unknown_dc_flag() -> None:
+    with pytest.raises(ValueError, match="Unsupported dc_flag"):
+        normalize_nonstd_journal_entries(
+            [
+                {
+                    "voucher_date": "2025-12-31",
+                    "account_code": "51601010004",
+                    "asset_code": "BOND-516-UNKNOWN",
+                    "portfolio_name": "FI Desk",
+                    "cost_center": "CC100",
+                    "dc_flag": "mystery_flag",
+                    "event_type": "mtm",
+                    "raw_amount": Decimal("10.00"),
+                    "source_file": "nonstd-516.xlsx",
+                }
+            ],
+            journal_type="516",
+        )
 
 def test_phase2_nonstd_bridge_uses_month_end_mtd_semantics():
     entries = [
@@ -544,4 +566,49 @@ def test_phase2_formal_fi_fact_projection_applies_recognition_matrix_and_gating(
         Decimal("17.00"),
         Decimal("14.00"),
         Decimal("15.00"),
+    ]
+
+
+def test_phase2_fi_standardization_converts_usd_rows_to_cny_with_fx_rate() -> None:
+    assert normalize_fi_pnl_records(
+        [
+            {
+                "report_date": "2025-12-31",
+                "instrument_code": "240002.IB",
+                "portfolio_name": "FI Desk",
+                "cost_center": "CC100",
+                "invest_type_raw": "交易性金融资产",
+                "interest_income_514": Decimal("10.00"),
+                "fair_value_change_516": Decimal("-2.00"),
+                "capital_gain_517": Decimal("1.00"),
+                "manual_adjustment": Decimal("0.50"),
+                "currency_basis": "CNY",
+                "fx_base_currency": "USD",
+                "source_version": "src-v1",
+                "rule_version": "rule-v1",
+                "ingest_batch_id": "batch-001",
+                "trace_id": "trace-fi-002",
+            }
+        ],
+        fx_rates_by_currency={"USD": (Decimal("7.20"), "sv_fx_usd")},
+    ) == [
+        FiPnlRecord(
+            report_date=date(2025, 12, 31),
+            instrument_code="240002.IB",
+            portfolio_name="FI Desk",
+            cost_center="CC100",
+            invest_type_raw="交易性金融资产",
+            invest_type_std="T",
+            accounting_basis="FVTPL",
+            interest_income_514=Decimal("72.0000"),
+            fair_value_change_516=Decimal("-14.4000"),
+            capital_gain_517=Decimal("7.2000"),
+            manual_adjustment=Decimal("3.6000"),
+            total_pnl=Decimal("68.4000"),
+            currency_basis="CNY",
+            source_version="src-v1__sv_fx_usd",
+            rule_version="rule-v1",
+            ingest_batch_id="batch-001",
+            trace_id="trace-fi-002",
+        )
     ]

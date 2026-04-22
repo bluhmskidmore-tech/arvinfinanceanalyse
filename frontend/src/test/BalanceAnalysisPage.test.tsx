@@ -451,9 +451,9 @@ describe("BalanceAnalysisPage", () => {
         currency_basis: "CNY" as const,
         detail_row_count: 7,
         summary_row_count: 3,
-        total_market_value_amount: "999.99",
-        total_amortized_cost_amount: "888.88",
-        total_accrued_interest_amount: "77.77",
+        total_market_value_amount: "99999000000.00",
+        total_amortized_cost_amount: "88888000000.00",
+        total_accrued_interest_amount: "7777000000.00",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
@@ -677,9 +677,9 @@ describe("BalanceAnalysisPage", () => {
         currency_basis: "native" as const,
         detail_row_count: 1,
         summary_row_count: 1,
-        total_market_value_amount: "10.00",
-        total_amortized_cost_amount: "10.00",
-        total_accrued_interest_amount: "1.00",
+        total_market_value_amount: "1000000000.00",
+        total_amortized_cost_amount: "1000000000.00",
+        total_accrued_interest_amount: "100000000.00",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -732,9 +732,9 @@ describe("BalanceAnalysisPage", () => {
         currency_basis: currencyBasis,
         detail_row_count: 1,
         summary_row_count: 1,
-        total_market_value_amount: "10.00",
-        total_amortized_cost_amount: "10.00",
-        total_accrued_interest_amount: "1.00",
+        total_market_value_amount: "1000000000.00",
+        total_amortized_cost_amount: "1000000000.00",
+        total_accrued_interest_amount: "100000000.00",
       },
     }));
     const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({

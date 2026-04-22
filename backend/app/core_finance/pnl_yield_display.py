@@ -1,9 +1,26 @@
-"""V1 损益展示用投资类型 A/T/H 推导（与 MOSS-SYSTEM-V1 pnl_service._infer_invest_type 一致）。
+"""V1 损益展示用投资类型 A/T/H 推导（与 MOSS-SYSTEM-V1 pnl_service._infer_invest_type 对齐）。
 
 非正式风险/久期指标，仅用于 /pnl/data、yield-bench 与 V1 界面口径对齐。
+
+W-migrate-hat-2026-04-21
+------------------------
+本模块原内嵌一份 H/A/T 推导逻辑，与 ``classification_rules.infer_invest_type``
+属于同一规则的并行实现（caliber rule ``hat_mapping``，canonical
+``backend.app.core_finance.config.classification_rules.infer_invest_type``）。
+此次试迁把 ``infer_invest_type_v1`` 改为 canonical 的薄包装：
+
+* 保留模块名 / 函数签名以兼容现有调用方（外部仍按 V1 名字 import）。
+* 行为差异修正：原 v1 对 ``"Trading"`` 大小写敏感（漏匹配 ``"TRADING"``、
+  ``"trading"``）；canonical 对 ``"TRADING"`` 不区分大小写。caliber 统一选择
+  采用 canonical 行为（同一输入跨页面给出同一答案）。
+* 入参 ``interest_income`` 类型从 ``float`` 转为 ``Decimal`` 适配 canonical。
 """
 
 from __future__ import annotations
+
+from decimal import Decimal
+
+from backend.app.core_finance.config.classification_rules import infer_invest_type
 
 
 def infer_invest_type_v1(
@@ -14,29 +31,22 @@ def infer_invest_type_v1(
     interest_income: float | None = None,
     is_nonstd: bool = False,
 ) -> str | None:
+    """推导投资类型（A/T/H）。
+
+    薄包装：直接 delegate 到 ``classification_rules.infer_invest_type``。
+    保留 V1 风格的签名（``interest_income: float | None``）以兼容现有调用方；
+    内部转 ``Decimal`` 调 canonical。
     """
-    推导投资类型（A/T/H）。
-    非标：有利息收入 -> H，无（含 0 与负）-> T。标准债：先 asset_type 再 portfolio（与 V1 循环顺序一致），再 asset_class。
-    """
-    if is_nonstd and interest_income is not None:
-        return "H" if interest_income > 0 else "T"
-    for v in (asset_type, portfolio):
-        if not v:
-            continue
-        s = str(v).strip().upper()
-        if s in ("A", "T", "H"):
-            return s
-        if s and s[-1] in ("A", "T", "H"):
-            return s[-1]
-    if asset_class:
-        ac = str(asset_class).strip()
-        if "可供出售" in ac or "AFS" in ac.upper():
-            return "A"
-        if "交易" in ac or "Trading" in ac:
-            return "T"
-        if "持有至到期" in ac or "HTM" in ac.upper():
-            return "H"
-    return None
+    interest_income_decimal: Decimal | None = (
+        Decimal(str(interest_income)) if interest_income is not None else None
+    )
+    return infer_invest_type(
+        portfolio,
+        asset_type,
+        asset_class,
+        interest_income=interest_income_decimal,
+        is_nonstd=is_nonstd,
+    )
 
 
 def apply_v1_invest_type_to_fi_yield_row(row: dict) -> None:

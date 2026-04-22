@@ -1,7 +1,6 @@
 """
 Unit tests for rate_units.py — explicit unit conversions and normalization.
 """
-import math
 import pytest
 
 from backend.app.core_finance.rate_units import (
