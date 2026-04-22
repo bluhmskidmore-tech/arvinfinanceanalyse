@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import duckdb
-
 from backend.app.repositories.duckdb_schema_registry import (
     DuckDBSchemaRegistry,
     main_database_file_path,
@@ -105,6 +104,14 @@ def _v13_external_data_catalog(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "14_external_data_catalog.sql")
 
 
+def _v14_std_external_macro(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "15_external_std_macro.sql")
+
+
+def _v15_external_vw_legacy(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "16_external_vw_legacy.sql")
+
+
 def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(1, "baseline snapshot tables", _v1_snapshot_tables)
     registry.register(2, "baseline bond analytics", _v2_bond_analytics)
@@ -119,6 +126,8 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(11, "baseline Choice news", _v11_choice_news)
     registry.register(12, "news warehouse fact_news_event", _v12_news_warehouse)
     registry.register(13, "external data catalog", _v13_external_data_catalog)
+    registry.register(14, "std external macro + vw_external_macro_daily", _v14_std_external_macro)
+    registry.register(15, "legacy read views (choice macro/news, yield, fx)", _v15_external_vw_legacy)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

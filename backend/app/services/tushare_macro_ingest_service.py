@@ -13,10 +13,16 @@ from backend.app.repositories.source_manifest_repo import SourceManifestReposito
 from backend.app.repositories.tushare_adapter import VendorAdapter
 from backend.app.repositories.tushare_catalog_seed import TUSHARE_M2A_SERIES, get_m2a_series_by_id
 from backend.app.schemas.external_data import ExternalDataCatalogEntry
+from backend.app.services.external_std_macro_etl_service import ExternalStdMacroEtlService
 
 CATALOG_VERSION_M2A = "m2a.tushare_macro.v1"
 ACCESS_PATH_PLACEHOLDER = "select 1 -- m2a placeholder, std table comes in M2b"
 _SOURCE_FAMILY = "tushare_macro"
+
+
+def _access_path_vw_macro(series_id: str) -> str:
+    s = str(series_id).replace("'", "''")
+    return f"select * from vw_external_macro_daily where series_id = '{s}'"
 
 
 def _source_version_from_payload(payload: object) -> str:
@@ -48,11 +54,13 @@ class TushareMacroIngestService:
         raw_zone_repo: RawZoneRepository,
         catalog_repo: ExternalDataCatalogRepository,
         manifest_repo: SourceManifestRepository,
+        etl_service: ExternalStdMacroEtlService | None = None,
     ) -> None:
         self._adapter = adapter
         self._raw_zone = raw_zone_repo
         self._catalog = catalog_repo
         self._manifest = manifest_repo
+        self._etl = etl_service
 
     def ingest_series(self, series_id: str, ingest_batch_id: str) -> dict[str, object]:
         cfg = get_m2a_series_by_id(series_id)
@@ -72,6 +80,29 @@ class TushareMacroIngestService:
             row_list = []
         report_date = _latest_trade_date(row_list)
 
+        if self._etl is not None:
+            pre_entry = ExternalDataCatalogEntry(
+                series_id=cfg["series_id"],
+                series_name=cfg["series_name"],
+                vendor_name=self._adapter.vendor_name,
+                source_family=_SOURCE_FAMILY,
+                domain="macro",
+                frequency=cfg["frequency"],
+                unit=cfg["unit"],
+                refresh_tier="on_demand",
+                fetch_mode="live",
+                raw_zone_path=raw_path_template,
+                standardized_table="std_external_macro_daily",
+                view_name="vw_external_macro_daily",
+                access_path=ACCESS_PATH_PLACEHOLDER,
+                catalog_version=CATALOG_VERSION_M2A,
+                created_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
+            )
+            _ = self._etl.materialize_from_raw(raw_zone_path, pre_entry, ingest_batch_id)
+            access_path = _access_path_vw_macro(cfg["series_id"])
+        else:
+            access_path = ACCESS_PATH_PLACEHOLDER
+
         entry = ExternalDataCatalogEntry(
             series_id=cfg["series_id"],
             series_name=cfg["series_name"],
@@ -85,7 +116,7 @@ class TushareMacroIngestService:
             raw_zone_path=raw_path_template,
             standardized_table="std_external_macro_daily",
             view_name="vw_external_macro_daily",
-            access_path=ACCESS_PATH_PLACEHOLDER,
+            access_path=access_path,
             catalog_version=CATALOG_VERSION_M2A,
             created_at=datetime.now(UTC).replace(microsecond=0).isoformat(),
         )

@@ -71,6 +71,16 @@
       "path": "14_external_data_catalog.sql",
       "ensure_module": "backend.app.repositories.external_data_catalog_repo",
       "ensure_symbol": "ensure_external_data_catalog_schema"
+    },
+    {
+      "path": "15_external_std_macro.sql",
+      "ensure_module": "backend.app.repositories.external_data_migrations_extra",
+      "ensure_symbol": "ensure_std_external_macro_schema"
+    },
+    {
+      "path": "16_external_vw_legacy.sql",
+      "ensure_module": "backend.app.repositories.external_data_migrations_extra",
+      "ensure_symbol": "ensure_external_vw_legacy_schema"
     }
   ]
 }
