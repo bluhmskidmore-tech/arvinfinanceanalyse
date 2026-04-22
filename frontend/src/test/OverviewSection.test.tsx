@@ -34,6 +34,7 @@ function overviewVm(): NonNullable<DashboardAdapterOutput["overview"]["vm"]> {
         delta: numeric(0.021, "+2.10%", "pct"),
         tone: "positive",
         detail: "杈冧笂鏈堟湯",
+        history: null,
       },
       {
         id: "m2",
@@ -42,6 +43,7 @@ function overviewVm(): NonNullable<DashboardAdapterOutput["overview"]["vm"]> {
         delta: numeric(0, "鎸佸钩", "pct", false),
         tone: "neutral",
         detail: "鐩戠鍙ｅ緞",
+        history: null,
       },
     ],
   };

@@ -28,6 +28,7 @@ function makeOverviewVM(): NonNullable<DashboardAdapterOutput["overview"]["vm"]>
         delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
         tone: "positive",
         detail: "来自 formal balance",
+        history: null,
       },
     ],
   };

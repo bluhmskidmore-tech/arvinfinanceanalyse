@@ -35,6 +35,7 @@ function makeOverviewVM(): DashboardOverviewVM {
         delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
         tone: "positive",
         detail: "来自 formal balance",
+        history: null,
       },
       {
         id: "yield",
@@ -43,6 +44,7 @@ function makeOverviewVM(): DashboardOverviewVM {
         delta: makeNumeric({ raw: 0.05, unit: "pct", display: "+5.00%" }),
         tone: "positive",
         detail: "来自 formal fi",
+        history: null,
       },
     ],
   };
