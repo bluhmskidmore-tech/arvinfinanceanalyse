@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiEnvelope, ResearchCalendarEvent } from "../../../api/contracts";
+import type { ApiEnvelope } from "../../../api/contracts";
 import type {
   ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,
