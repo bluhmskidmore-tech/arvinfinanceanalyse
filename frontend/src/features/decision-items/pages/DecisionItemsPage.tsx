@@ -284,6 +284,7 @@ export default function DecisionItemsPage() {
       ) : null}
 
       <PageSectionLead
+        eyebrow="Governance"
         title="决策工作区"
         description="对规则生成的待办做集中处理，保留 trace / 规则版本与写回人信息以便审计。"
       />
