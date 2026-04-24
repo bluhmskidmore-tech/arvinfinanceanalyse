@@ -10,6 +10,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import type { CalendarItem } from "../../../components/CalendarList";
+import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 import type { ResolvedCrossAssetKpi } from "./crossAssetKpiModel";
 
 type StatusTone = "normal" | "caution" | "warning" | "danger";
@@ -747,13 +748,7 @@ export function buildCrossAssetEventItems(input: {
       .slice()
       .sort((left, right) => right.date.localeCompare(left.date))
       .slice(0, 4)
-      .map((event) => ({
-        date: calendarDateLabel(event.date),
-        event: event.title,
-        amount: event.amount_label ?? undefined,
-        level: event.severity,
-        note: event.note ?? event.kind,
-      }));
+      .map(mapResearchCalendarEventToCalendarItem);
   }
 
   const warningRows = (input.linkageWarnings ?? []).map((warning, index) => ({

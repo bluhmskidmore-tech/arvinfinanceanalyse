@@ -64,6 +64,7 @@ export type ApiEnvelope<T> = {
 export type ExecutiveMetric = {
   id: string;
   label: string;
+  caliber_label?: string | null;
   value: Numeric;
   delta: Numeric;
   tone: "positive" | "neutral" | "warning" | "negative";

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
+import type { ResearchCalendarEvent, ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -22,9 +22,11 @@ import {
   DashboardOverviewHeroStrip,
   DashboardTasksCalendarPanels,
   type DashboardAlert,
+  type DashboardHubCalendarItem,
   type DashboardHeroMetric,
 } from "../dashboard/DashboardOverviewSections";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
+import { researchCalendarEventHubKind } from "../../../lib/researchCalendarToCalendarItem";
 
 const PnlAttributionSection = lazy(
   () => import("../../executive-dashboard/components/PnlAttributionSection"),
@@ -104,6 +106,19 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
   return fallbackLabel;
 }
 
+/** Strip model (`DashboardHubCalendarItem`) ≠ `CalendarList` rows: different fields/labels, shared API event only. */
+function mapResearchCalendarEventToDashboardItem(
+  event: ResearchCalendarEvent,
+): DashboardHubCalendarItem {
+  return {
+    id: event.id,
+    title: event.title,
+    time: event.date,
+    kind: researchCalendarEventHubKind(event),
+    severity: event.severity,
+  };
+}
+
 export default function DashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState("");
@@ -180,6 +195,13 @@ export default function DashboardPage() {
     return null;
   }, [snapshotResult]);
 
+  const researchCalendarQuery = useQuery({
+    queryKey: ["research-calendar", client.mode, effectiveReportDate],
+    queryFn: () => client.getResearchCalendarEvents({ reportDate: effectiveReportDate }),
+    enabled: Boolean(effectiveReportDate),
+    retry: false,
+  });
+
   const sanitizedOverviewMetrics = useMemo(
     () =>
       (adapterOutput.overview.vm?.metrics ?? []).map((metric) =>
@@ -193,6 +215,7 @@ export default function DashboardPage() {
       .map((metric) => ({
         id: metric.id,
         label: metric.label,
+        caliberLabel: metric.caliberLabel,
         value: metric.value.display,
         note: metric.detail,
         delta: formatHeroDelta(metric.delta.display, "read path"),
@@ -336,6 +359,14 @@ export default function DashboardPage() {
     client.mode,
     snapshotPartialNote,
   ]);
+
+  const dashboardCalendarItems = useMemo<DashboardHubCalendarItem[]>(
+    () =>
+      (researchCalendarQuery.data ?? [])
+        .map(mapResearchCalendarEventToDashboardItem)
+        .slice(0, 4),
+    [researchCalendarQuery.data],
+  );
 
   return (
     <section data-testid="fixed-income-dashboard-page">
@@ -514,7 +545,7 @@ export default function DashboardPage() {
           </Suspense>
         </section>
 
-        <DashboardTasksCalendarPanels />
+        <DashboardTasksCalendarPanels calendarItems={dashboardCalendarItems} />
       </div>
 
       <div className="dashboard-overview-live-grid">

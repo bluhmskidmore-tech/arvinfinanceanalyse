@@ -1,4 +1,5 @@
 import { designTokens } from "../../../theme/designSystem";
+import type { CalendarItem } from "../../../components/CalendarList";
 import type { BondAnalyticsOverviewModel } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type {
@@ -38,6 +39,7 @@ export interface BondAnalyticsOverviewPanelsProps {
   isAnalyticsRefreshing?: boolean;
   analyticsRefreshError?: string | null;
   lastAnalyticsRefreshRunId?: string | null;
+  calendarItems?: CalendarItem[];
 }
 
 export function BondAnalyticsOverviewPanels({
@@ -61,6 +63,7 @@ export function BondAnalyticsOverviewPanels({
   isAnalyticsRefreshing = false,
   analyticsRefreshError = null,
   lastAnalyticsRefreshRunId = null,
+  calendarItems = [],
 }: BondAnalyticsOverviewPanelsProps) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: dt.space[3] }}>
@@ -111,7 +114,7 @@ export function BondAnalyticsOverviewPanels({
           }}
         >
           <RiskTrendChart />
-          <BondEventCalendar />
+          <BondEventCalendar items={calendarItems} />
         </div>
       </div>
     </div>

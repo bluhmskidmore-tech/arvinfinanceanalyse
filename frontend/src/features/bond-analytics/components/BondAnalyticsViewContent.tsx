@@ -1,6 +1,6 @@
 import { Suspense, lazy, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ApiEnvelope } from "../../../api/contracts";
+import type { ApiEnvelope, ResearchCalendarEvent } from "../../../api/contracts";
 import type {
   ActionAttributionResponse,
   BondAnalyticsAccountingClassFilter,
@@ -15,6 +15,7 @@ import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useSearchParams } from "react-router-dom";
 import { designTokens } from "../../../theme/designSystem";
+import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 
 const BondAnalyticsOverviewPanels = lazy(() => import("./BondAnalyticsOverviewPanels"));
 
@@ -90,6 +91,17 @@ export function BondAnalyticsViewContent() {
     retry: false,
   });
 
+  const researchCalendarQuery = useQuery({
+    queryKey: [
+      ...bondAnalyticsQueryKeyRoot,
+      "research-calendar",
+      effectiveReportDate,
+    ],
+    queryFn: () => client.getResearchCalendarEvents({ reportDate: effectiveReportDate }),
+    enabled: Boolean(effectiveReportDate),
+    retry: false,
+  });
+
   const actionAttributionErrorMessage =
     actionAttributionQuery.error instanceof Error
       ? actionAttributionQuery.error.message
@@ -138,6 +150,14 @@ export function BondAnalyticsViewContent() {
     actionAttributionLoading: actionAttributionQuery.isFetching,
     actionAttributionError: actionAttributionErrorMessage,
   });
+
+  const calendarItems = useMemo(
+    () =>
+      (researchCalendarQuery.data ?? [])
+        .map(mapResearchCalendarEventToCalendarItem)
+        .slice(0, 4),
+    [researchCalendarQuery.data],
+  );
 
   if (showDatesErrorState) {
     return (
@@ -255,6 +275,7 @@ export function BondAnalyticsViewContent() {
           isAnalyticsRefreshing={isBondAnalyticsRefreshing}
           analyticsRefreshError={bondAnalyticsRefreshError}
           lastAnalyticsRefreshRunId={lastBondAnalyticsRefreshRunId}
+          calendarItems={calendarItems}
         />
       </Suspense>
       <section

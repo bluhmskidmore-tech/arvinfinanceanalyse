@@ -144,6 +144,66 @@ describe("DashboardPage", () => {
     expect(screen.queryByTestId("dashboard-governed-meta")).not.toBeInTheDocument();
   });
 
+  it("requests bond counterparty stats over the YTD range for the homepage report date", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const getPositionsCounterpartyBonds = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_test_dashboard_bond_counterparty_range",
+        basis: "formal" as const,
+        result_kind: "positions.counterparty.bonds",
+        formal_use_allowed: true,
+        source_version: "sv_test",
+        vendor_version: "vv_test",
+        rule_version: "rv_test",
+        cache_version: "cv_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-21T08:00:00Z",
+      },
+      result: {
+        start_date: "2026-01-01",
+        end_date: "2026-03-31",
+        num_days: 90,
+        items: [],
+        total_amount: "0",
+        total_avg_daily: "0",
+        total_weighted_rate: null,
+        total_weighted_coupon_rate: null,
+        total_customers: 0,
+      },
+    }));
+    const governedClient: ApiClient = {
+      ...base,
+      getHomeSnapshot: async (...args) => {
+        const envelope = await mockSnapshotSource.getHomeSnapshot(...args);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-03-31",
+          },
+        };
+      },
+      getPositionsCounterpartyBonds,
+    };
+
+    renderDashboard(governedClient);
+
+    expect(await screen.findByTestId("dashboard-bond-counterparty-section")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getPositionsCounterpartyBonds).toHaveBeenCalledWith({
+        startDate: "2026-01-01",
+        endDate: "2026-03-31",
+        topN: 5,
+        page: 1,
+        pageSize: 5,
+      });
+    });
+  });
+
   it("surfaces counterparty concentration summaries on the home page", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
@@ -323,5 +383,82 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(reportDatePill).toHaveTextContent("2026-02-28");
     });
+  });
+
+  it("renders total asset scale with a caliber tag on the hero card", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const governedClient: ApiClient = {
+      ...base,
+      mode: "real",
+      getHomeSnapshot: async (options) => {
+        const envelope = await base.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            overview: {
+              ...envelope.result.overview,
+              metrics: [
+                {
+                  id: "aum",
+                  label: "总资产规模",
+                  caliber_label: "本币资产口径",
+                  value: formatRawAsNumeric({ raw: 3339.26e8, unit: "yuan", sign_aware: false }),
+                  delta: formatRawAsNumeric({ raw: -0.002, unit: "pct", sign_aware: true }),
+                  tone: "positive",
+                  detail: "在 2026-02-28 的本币资产口径市值合计。",
+                  history: [3400e8, 3380e8, 3339.26e8],
+                },
+                ...envelope.result.overview.metrics.filter((metric) => metric.id !== "aum"),
+              ],
+            },
+          },
+        };
+      },
+    };
+
+    renderDashboard(governedClient);
+
+    const heroStrip = await screen.findByTestId("dashboard-overview-hero-strip");
+    expect(await within(heroStrip).findByText("总资产规模")).toBeInTheDocument();
+    expect(await within(heroStrip).findByText("本币资产口径")).toBeInTheDocument();
+  });
+  it("renders supply and auction calendar items from the research calendar feed", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const researchCalendarCalls: Array<{ reportDate?: string }> = [];
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents: async (options) => {
+        researchCalendarCalls.push(options ?? {});
+        return [
+          {
+            id: "cal_supply_001",
+            date: "2026-04-18",
+            title: "国债净融资节奏",
+            kind: "supply",
+            severity: "low",
+            amount_label: "净融资 180 亿元",
+            note: "供给节奏",
+          },
+          {
+            id: "cal_auction_002",
+            date: "2026-04-19",
+            title: "政策性金融债招标",
+            kind: "auction",
+            severity: "high",
+            amount_label: "420 亿元",
+            note: "国开行",
+          },
+        ];
+      },
+    };
+
+    renderDashboard(client);
+
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(await within(calendar).findByText("国债净融资节奏")).toBeInTheDocument();
+    expect(await within(calendar).findByText("政策性金融债招标")).toBeInTheDocument();
+    expect(within(calendar).getAllByText("供给").length).toBeGreaterThan(0);
+    expect(researchCalendarCalls).toContainEqual({ reportDate: "2026-04-18" });
   });
 });

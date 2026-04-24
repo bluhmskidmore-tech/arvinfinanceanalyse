@@ -476,6 +476,11 @@ export default function MarketDataPage() {
     queryFn: () => client.getFxAnalytical(),
     retry: false,
   });
+  const ncdFundingProxyQuery = useQuery({
+    queryKey: ["market-data", "ncd-funding-proxy", client.mode],
+    queryFn: () => client.getNcdFundingProxy(),
+    retry: false,
+  });
 
   const catalog = useMemo(
     () => catalogQuery.data?.result.series ?? [],
@@ -489,6 +494,7 @@ export default function MarketDataPage() {
     () => fxAnalyticalQuery.data?.result.groups ?? [],
     [fxAnalyticalQuery.data?.result.groups],
   );
+  const ncdFundingProxy = ncdFundingProxyQuery.data?.result;
   const visibleLatestSeries = useMemo(
     () => latestSeries.filter((point) => seriesRefreshTier(point) !== "isolated"),
     [latestSeries],
@@ -975,7 +981,12 @@ export default function MarketDataPage() {
       <div style={observationGridStyle}>
         <MoneyMarketTable />
         <BondFuturesTable />
-        <NcdMatrix />
+        <NcdMatrix
+          payload={ncdFundingProxy}
+          isLoading={ncdFundingProxyQuery.isLoading}
+          isError={ncdFundingProxyQuery.isError}
+          onRetry={() => void ncdFundingProxyQuery.refetch()}
+        />
       </div>
 
       <div style={observationGridStyle}>

@@ -19,11 +19,13 @@ export type DashboardHubCalendarItem = {
   title: string;
   time: string;
   kind: "macro" | "supply" | "internal";
+  severity: "high" | "medium" | "low";
 };
 
 export type DashboardHeroMetric = {
   id: string;
   label: string;
+  caliberLabel: string | null;
   value: string;
   note: string;
   delta: string;
@@ -71,6 +73,19 @@ const bodyTextStyle: CSSProperties = {
   color: shellTokens.colorTextSecondary,
   fontSize: designTokens.fontSize[12],
   lineHeight: designTokens.lineHeight.normal,
+};
+
+const metricCaliberTagStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "2px 6px",
+  borderRadius: 999,
+  background: shellTokens.colorBgMuted,
+  color: shellTokens.colorTextSecondary,
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: "0.02em",
+  whiteSpace: "nowrap",
 };
 
 const severityPalette = {
@@ -226,25 +241,40 @@ export function DashboardOverviewHeroStrip({
             <div
               style={{
                 display: "flex",
-                alignItems: "center",
+                alignItems: "flex-start",
                 justifyContent: "space-between",
                 gap: designTokens.space[2],
               }}
             >
-              <span
+              <div
                 style={{
-                  fontSize: designTokens.fontSize[12],
-                  color: shellTokens.colorTextMuted,
-                  fontWeight: 600,
-                  letterSpacing: "0.02em",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  gap: 6,
+                  minWidth: 0,
+                  flex: 1,
                 }}
-                title={metric.label}
               >
-                {metric.label}
-              </span>
+                <span
+                  style={{
+                    fontSize: designTokens.fontSize[12],
+                    color: shellTokens.colorTextMuted,
+                    fontWeight: 600,
+                    letterSpacing: "0.02em",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    minWidth: 0,
+                  }}
+                  title={metric.label}
+                >
+                  {metric.label}
+                </span>
+                {metric.caliberLabel ? (
+                  <span style={metricCaliberTagStyle}>{metric.caliberLabel}</span>
+                ) : null}
+              </div>
               <span
                 style={{
                   display: "inline-flex",
@@ -698,9 +728,8 @@ function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
             暂无日历事件。宏观与供给类日程接入后将显示在此。
           </p>
         ) : null}
-        {items.map((item, index) => {
-          const severity = index === 0 ? "high" : index === 1 ? "medium" : "low";
-          const palette = severityPalette[severity];
+        {items.map((item) => {
+          const palette = severityPalette[item.severity];
           return (
             <article
               key={item.id}
