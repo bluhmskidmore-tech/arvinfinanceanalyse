@@ -4,7 +4,6 @@ Unit tests for bond_duration.py — Macaulay duration, modified duration, convex
 from decimal import Decimal
 from datetime import date
 
-import pytest
 
 from backend.app.core_finance.bond_duration import (
     compute_macaulay_duration,

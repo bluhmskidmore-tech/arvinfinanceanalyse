@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+
 import pandas as pd
 
 RATE_INPUT_OVERRIDES: dict[str, str] = {
@@ -61,7 +62,7 @@ def _coerce_rate_number(value: object) -> float | None:
             return None
 
     try:
-        number = float(candidate)
+        number = float(candidate) if isinstance(candidate, (int, float, str)) else float(str(candidate))
     except (TypeError, ValueError):
         return None
 

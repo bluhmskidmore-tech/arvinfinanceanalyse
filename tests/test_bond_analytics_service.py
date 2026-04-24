@@ -4,7 +4,6 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
 
 from backend.app.governance.settings import get_settings
 from tests.helpers import load_module

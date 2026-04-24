@@ -84,7 +84,7 @@ def run_release_suite(
     env = os.environ.copy()
     env.update(_release_suite_env())
     completed = subprocess.run(
-        ["python", *_pytest_args()],
+        [sys.executable, *_pytest_args()],
         cwd=root,
         env=env,
         check=False,

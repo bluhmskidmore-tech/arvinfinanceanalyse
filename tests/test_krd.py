@@ -14,12 +14,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import pytest
 
 from backend.app.core_finance.krd import (
     KRD_TENORS,
     STANDARD_KRD_SCENARIOS,
-    aggregate_krd_by_asset_class,
     build_krd_position_metrics,
     classify_asset_class,
     compute_krd_by_tenor,

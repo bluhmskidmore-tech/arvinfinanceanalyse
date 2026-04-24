@@ -89,7 +89,7 @@ class IngestService:
 
         archived_rows: list[dict[str, object]] = []
         for row in rows:
-            source_path = Path(row["file_path"])
+            source_path = Path(str(row["file_path"]))
             source_key = source_path.relative_to(self.data_root).as_posix()
             archive_info = self.object_store_repo.archive_file(
                 source_path,
@@ -111,8 +111,10 @@ class IngestService:
 
     def run(self) -> IngestRunSummary:
         rows = self.scan_and_archive()
-        archive_mode = rows[0].get("archive_mode") if rows else None
-        ingest_batch_id = rows[0].get("ingest_batch_id") if rows else None
+        archive_mode = str(rows[0].get("archive_mode")) if rows and rows[0].get("archive_mode") is not None else None
+        ingest_batch_id = (
+            str(rows[0].get("ingest_batch_id")) if rows and rows[0].get("ingest_batch_id") is not None else None
+        )
         return IngestRunSummary(
             status="completed",
             row_count=len(rows),

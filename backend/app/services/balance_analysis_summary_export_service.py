@@ -75,7 +75,7 @@ def _to_summary_table_row(row: dict[str, object]) -> BalanceAnalysisTableRow:
         currency_basis=str(row["currency_basis"]),
         invest_type_std=str(row["invest_type_std"]),
         accounting_basis=str(row["accounting_basis"]),
-        detail_row_count=int(row["detail_row_count"]),
+        detail_row_count=int(str(row["detail_row_count"])),
         market_value_amount=_as_decimal(row["market_value_amount"]),
         amortized_cost_amount=_as_decimal(row["amortized_cost_amount"]),
         accrued_interest_amount=_as_decimal(row["accrued_interest_amount"]),

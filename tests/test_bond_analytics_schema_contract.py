@@ -9,7 +9,6 @@ from backend.app.schemas.bond_analytics import (
     ActionAttributionResponse,
     ActionDetail,
     ActionTypeSummary,
-    AssetClassBreakdown,
     AssetClassRiskSummary,
     BenchmarkExcessResponse,
     BondLevelDecomposition,
