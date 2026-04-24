@@ -30,6 +30,17 @@ from backend.app.schemas.vendor import (
 TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
 
 
+def resolve_tushare_token_with_settings_fallback(settings: Any) -> str:
+    """Env `MOSS_TUSHARE_TOKEN` first; then `settings.tushare_token` (config / .env).
+
+    Shared by services that need optional Tushare calls with explicit no-token handling.
+    """
+    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    if token:
+        return token
+    return str(getattr(settings, "tushare_token", "") or "").strip()
+
+
 def _require_tushare_token() -> str:
     token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
     if not token:
@@ -42,9 +53,17 @@ def _import_tushare_pro():
     try:
         import tushare as ts  # noqa: PLC0415
     except Exception as exc:
-        msg = "The `tushare` package is not installed or cannot be imported; install it for live Tushare macro fetch."
+        msg = (
+            "The `tushare` package is not installed or cannot be imported; "
+            "install it for live Tushare vendor calls."
+        )
         raise RuntimeError(msg) from exc
     return ts
+
+
+def import_tushare_pro():
+    """Lazy-import the tushare package. Raises :class:`RuntimeError` on import failure."""
+    return _import_tushare_pro()
 
 
 def _month_to_trade_date(month: str) -> str:
