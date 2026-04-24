@@ -6,11 +6,11 @@ from decimal import Decimal
 
 import duckdb
 import pytest
+from backend.app.governance.settings import get_settings
+from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from backend.app.governance.settings import get_settings
-from backend.app.repositories.yield_curve_repo import ensure_yield_curve_tables
 from tests.helpers import load_module
 
 REPORT_DATE = date(2026, 4, 10)
@@ -748,6 +748,418 @@ def test_api_cross_layer_exposes_correlation_statistical_metadata(tmp_path, monk
     assert isinstance(top0["winsorized"], bool)
 
     get_settings.cache_clear()
+
+
+def test_api_exposes_investment_research_additive_fields(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-research.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _route_client().get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    ).json()
+
+    assert "research_views" in payload["result"]
+    assert "transmission_axes" in payload["result"]
+    assert {"duration", "curve", "credit", "instrument"} <= {
+        row["key"] for row in payload["result"]["research_views"]
+    }
+
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_marks_missing_equity_axes_as_pending_signal(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-pending-signal.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _route_client().get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    ).json()["result"]
+
+    axes = {row["axis_key"]: row for row in payload["transmission_axes"]}
+    assert axes["equity_bond_spread"]["status"] == "pending_signal"
+    assert axes["mega_cap_equities"]["status"] == "pending_signal"
+
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_emits_supported_research_views(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-research-views.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    payload = _route_client().get(
+        "/api/macro-bond-linkage/analysis",
+        params={"report_date": REPORT_DATE.isoformat()},
+    ).json()["result"]
+
+    views = {row["key"]: row for row in payload["research_views"]}
+    assert views["duration"]["status"] == "ready"
+    assert views["curve"]["status"] == "ready"
+    assert views["credit"]["status"] == "ready"
+    assert views["instrument"]["status"] == "ready"
+    assert views["duration"]["affected_targets"] == ["rates", "ncd", "high_grade_credit"]
+    assert views["curve"]["affected_targets"] == ["rates", "ncd"]
+    assert views["credit"]["affected_targets"] == ["high_grade_credit"]
+    assert views["instrument"]["affected_targets"] == ["rates", "ncd", "high_grade_credit"]
+
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_promotes_equity_axes_to_ready_when_tushare_signals_are_available(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-bond-live-equity-axes.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    svc = _service_module()
+    core = _core_module()
+
+    monkeypatch.setattr(svc, "_tushare_research_axes_enabled", lambda: True)
+    monkeypatch.setattr(
+        svc,
+        "_load_tushare_equity_research_signals",
+        lambda report_date, macro_latest: (
+            core.EquityBondSpreadSignal(
+                trade_date=REPORT_DATE,
+                index_code="000300.SH",
+                index_close=4799.6270,
+                index_pct_change=0.6634,
+                pe=14.64,
+                earnings_yield_pct=6.8306,
+                bond_yield_pct=1.7627,
+                spread_pct=5.0679,
+            ),
+            core.MegaCapEquitySignal(
+                weight_trade_date=REPORT_DATE,
+                index_code="000300.SH",
+                top10_weight_sum=23.5367,
+                top5_weight_sum=15.5320,
+                leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
+                index_pct_change=0.6634,
+            ),
+            [],
+        ),
+    )
+
+    payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    axes = {row["axis_key"]: row for row in payload["transmission_axes"]}
+    assert axes["equity_bond_spread"]["status"] == "ready"
+    assert axes["equity_bond_spread"]["stance"] == "restrictive"
+    assert axes["mega_cap_equities"]["status"] == "ready"
+    assert axes["mega_cap_equities"]["stance"] == "restrictive"
+
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_live_equity_axes_flow_into_research_view_evidence(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-live-equity-view.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    svc = _service_module()
+    core = _core_module()
+
+    monkeypatch.setattr(svc, "_tushare_research_axes_enabled", lambda: True)
+    monkeypatch.setattr(
+        svc,
+        "_load_tushare_equity_research_signals",
+        lambda report_date, macro_latest: (
+            core.EquityBondSpreadSignal(
+                trade_date=REPORT_DATE,
+                index_code="000300.SH",
+                index_close=4799.6270,
+                index_pct_change=0.6634,
+                pe=14.64,
+                earnings_yield_pct=6.8306,
+                bond_yield_pct=1.7627,
+                spread_pct=5.0679,
+            ),
+            core.MegaCapEquitySignal(
+                weight_trade_date=REPORT_DATE,
+                index_code="000300.SH",
+                top10_weight_sum=23.5367,
+                top5_weight_sum=15.5320,
+                leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
+                index_pct_change=0.6634,
+            ),
+            [],
+        ),
+    )
+
+    payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+    views = {row["key"]: row for row in payload["research_views"]}
+    assert any("equity-bond" in item.lower() for item in views["duration"]["evidence"])
+    assert any("equity-bond" in item.lower() for item in views["credit"]["evidence"])
+    assert any("mega-cap" in item.lower() for item in views["credit"]["evidence"])
+    assert any("equity-bond" in item.lower() for item in views["instrument"]["evidence"])
+    assert any("mega-cap" in item.lower() for item in views["instrument"]["evidence"])
+    assert "equity" in views["duration"]["summary"].lower()
+    assert "equity" in views["credit"]["summary"].lower()
+    assert "2026-04-10" in next(
+        row for row in payload["transmission_axes"] if row["axis_key"] == "mega_cap_equities"
+    )["summary"]
+
+    get_settings.cache_clear()
+
+
+def test_equity_bond_spread_axis_uses_explicit_rule_table_thresholds():
+    mod = _core_module()
+
+    assert [rule.stance for rule in mod.EQUITY_BOND_SPREAD_RULES] == [
+        "restrictive",
+        "conflicted",
+        "supportive",
+    ]
+
+    restrictive = mod._build_equity_bond_spread_axis(
+        mod.EquityBondSpreadSignal(
+            trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            index_close=4800.0,
+            index_pct_change=0.35,
+            pe=14.0,
+            earnings_yield_pct=7.14,
+            bond_yield_pct=1.90,
+            spread_pct=5.24,
+        )
+    )
+    conflicted = mod._build_equity_bond_spread_axis(
+        mod.EquityBondSpreadSignal(
+            trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            index_close=4700.0,
+            index_pct_change=-0.30,
+            pe=14.0,
+            earnings_yield_pct=7.14,
+            bond_yield_pct=1.90,
+            spread_pct=5.24,
+        )
+    )
+    supportive = mod._build_equity_bond_spread_axis(
+        mod.EquityBondSpreadSignal(
+            trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            index_close=4600.0,
+            index_pct_change=0.05,
+            pe=28.0,
+            earnings_yield_pct=3.57,
+            bond_yield_pct=1.90,
+            spread_pct=1.67,
+        )
+    )
+    neutral = mod._build_equity_bond_spread_axis(
+        mod.EquityBondSpreadSignal(
+            trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            index_close=4700.0,
+            index_pct_change=0.10,
+            pe=18.0,
+            earnings_yield_pct=5.56,
+            bond_yield_pct=1.90,
+            spread_pct=3.66,
+        )
+    )
+
+    assert restrictive.stance == "restrictive"
+    assert conflicted.stance == "conflicted"
+    assert supportive.stance == "supportive"
+    assert neutral.stance == "neutral"
+
+
+def test_duration_summary_mentions_equity_when_supportive_equity_axis_promotes_bullish_stance():
+    mod = _core_module()
+
+    view = mod._build_duration_view(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="neutral",
+            rate_direction_score=0.0,
+            liquidity_score=0.0,
+            growth_score=0.0,
+            inflation_score=0.0,
+            composite_score=0.0,
+            signal_description="neutral setup",
+            contributing_factors=[],
+            warnings=[],
+        ),
+        {
+            "global_rates": mod.MacroBondTransmissionAxisResult(
+                axis_key="global_rates",
+                status="ready",
+                stance="neutral",
+                summary="global neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "liquidity": mod.MacroBondTransmissionAxisResult(
+                axis_key="liquidity",
+                status="ready",
+                stance="neutral",
+                summary="liquidity neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "equity_bond_spread": mod.MacroBondTransmissionAxisResult(
+                axis_key="equity_bond_spread",
+                status="ready",
+                stance="supportive",
+                summary="equity supportive",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "commodities_inflation": mod.MacroBondTransmissionAxisResult(
+                axis_key="commodities_inflation",
+                status="ready",
+                stance="neutral",
+                summary="inflation neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "mega_cap_equities": mod.MacroBondTransmissionAxisResult(
+                axis_key="mega_cap_equities",
+                status="pending_signal",
+                stance="neutral",
+                summary="pending",
+                impacted_views=["instrument"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+        },
+        [],
+    )
+
+    assert view.stance == "bullish"
+    assert "equity" in view.summary.lower()
+
+
+def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_already_make_it_bullish():
+    mod = _core_module()
+
+    view = mod._build_duration_view(
+        mod.MacroEnvironmentScore(
+            report_date=REPORT_DATE,
+            rate_direction="falling",
+            rate_direction_score=-0.4,
+            liquidity_score=0.2,
+            growth_score=0.0,
+            inflation_score=0.0,
+            composite_score=-0.1,
+            signal_description="supportive rates",
+            contributing_factors=[],
+            warnings=[],
+        ),
+        {
+            "global_rates": mod.MacroBondTransmissionAxisResult(
+                axis_key="global_rates",
+                status="ready",
+                stance="supportive",
+                summary="global supportive",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "liquidity": mod.MacroBondTransmissionAxisResult(
+                axis_key="liquidity",
+                status="ready",
+                stance="neutral",
+                summary="liquidity neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "equity_bond_spread": mod.MacroBondTransmissionAxisResult(
+                axis_key="equity_bond_spread",
+                status="ready",
+                stance="supportive",
+                summary="equity supportive",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "commodities_inflation": mod.MacroBondTransmissionAxisResult(
+                axis_key="commodities_inflation",
+                status="ready",
+                stance="neutral",
+                summary="inflation neutral",
+                impacted_views=["duration"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+            "mega_cap_equities": mod.MacroBondTransmissionAxisResult(
+                axis_key="mega_cap_equities",
+                status="pending_signal",
+                stance="neutral",
+                summary="pending",
+                impacted_views=["instrument"],
+                required_series_ids=[],
+                warnings=[],
+            ),
+        },
+        [],
+    )
+
+    assert view.stance == "bullish"
+    assert "because the equity-bond spread axis is supportive" not in view.summary.lower()
+
+
+def test_mega_cap_equity_axis_uses_explicit_rule_table_thresholds():
+    mod = _core_module()
+
+    assert [rule.stance for rule in mod.MEGA_CAP_EQUITY_RULES] == [
+        "restrictive",
+        "supportive",
+    ]
+
+    restrictive = mod._build_mega_cap_equities_axis(
+        mod.MegaCapEquitySignal(
+            weight_trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            top10_weight_sum=23.6,
+            top5_weight_sum=15.5,
+            leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
+            index_pct_change=0.60,
+        )
+    )
+    supportive = mod._build_mega_cap_equities_axis(
+        mod.MegaCapEquitySignal(
+            weight_trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            top10_weight_sum=23.6,
+            top5_weight_sum=15.5,
+            leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
+            index_pct_change=-0.60,
+        )
+    )
+    neutral = mod._build_mega_cap_equities_axis(
+        mod.MegaCapEquitySignal(
+            weight_trade_date=REPORT_DATE,
+            index_code="000300.SH",
+            top10_weight_sum=21.0,
+            top5_weight_sum=13.0,
+            leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
+            index_pct_change=0.10,
+        )
+    )
+
+    assert restrictive.stance == "restrictive"
+    assert supportive.stance == "supportive"
+    assert neutral.stance == "neutral"
+    assert "2026-04-10" in restrictive.summary
 
 
 def test_schema_method_variants_additive_shape():

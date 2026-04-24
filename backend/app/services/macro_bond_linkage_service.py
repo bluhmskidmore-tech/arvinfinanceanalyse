@@ -1,21 +1,28 @@
 from __future__ import annotations
 
+import os
+import uuid
 from dataclasses import asdict, is_dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
-import uuid
+from typing import Any, Literal, cast
 
 import duckdb
-
 from backend.app.core_finance.macro_bond_linkage import (
+    EquityBondSpreadSignal,
     MacroBondCorrelation,
+    MegaCapEquitySignal,
+    build_macro_bond_research_output,
     compute_macro_bond_correlations,
     compute_macro_environment_score,
     estimate_macro_impact_on_portfolio,
 )
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.tushare_adapter import (
+    import_tushare_pro,
+    resolve_tushare_token_with_settings_fallback,
+)
 from backend.app.schemas.macro_bond_linkage import (
     MacroBondLinkageMethodMeta,
     MacroBondLinkageMethodVariant,
@@ -38,7 +45,7 @@ TOP_CORRELATION_LIMIT = 10
 
 def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     settings = get_settings()
-    computed_at = datetime.now(timezone.utc).isoformat()
+    computed_at = datetime.now(UTC).isoformat()
     warnings: list[str] = []
     duckdb_path = str(settings.duckdb_path)
     conn = _connect_read_only(duckdb_path)
@@ -51,6 +58,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_impact={},
             top_correlations=[],
             method_variants=_empty_method_variants(),
+            research_views=[],
+            transmission_axes=[],
             warnings=warnings,
             source_versions=[EMPTY_SOURCE_VERSION],
             vendor_versions=["vv_none"],
@@ -75,6 +84,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_impact={},
             top_correlations=[],
             method_variants=_empty_method_variants(),
+            research_views=[],
+            transmission_axes=[],
             warnings=_dedupe_preserve_order(warnings),
             source_versions=[
                 *macro_inputs["source_versions"],
@@ -101,6 +112,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     method_variants = _empty_method_variants()
     environment_score_payload: dict[str, Any] = {}
     portfolio_impact_payload: dict[str, Any] = {}
+    research_views: list[dict[str, Any]] = []
+    transmission_axes: list[dict[str, Any]] = []
 
     if macro_inputs["series"] and yield_inputs["series"]:
         conservative_corrs = compute_macro_bond_correlations(
@@ -152,6 +165,22 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
                 portfolio_market_value=portfolio_metrics["portfolio_market_value"],
             )
         )
+        equity_bond_signal = None
+        mega_cap_signal = None
+        if _tushare_research_axes_enabled():
+            equity_bond_signal, mega_cap_signal, tushare_warnings = _load_tushare_equity_research_signals(
+                report_date=report_date,
+                macro_latest=macro_inputs["latest"],
+            )
+            warnings.extend(tushare_warnings)
+        research_view_rows, transmission_axis_rows = build_macro_bond_research_output(
+            environment_score,
+            conservative_corrs,
+            equity_bond_spread_signal=equity_bond_signal,
+            mega_cap_equity_signal=mega_cap_signal,
+        )
+        research_views = _json_safe(research_view_rows)
+        transmission_axes = _json_safe(transmission_axis_rows)
 
     return _build_response_envelope(
         report_date=report_date,
@@ -160,6 +189,8 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
         portfolio_impact=portfolio_impact_payload,
         top_correlations=top_correlations,
         method_variants=method_variants,
+        research_views=research_views,
+        transmission_axes=transmission_axes,
         warnings=_dedupe_preserve_order(warnings),
         source_versions=[
             *macro_inputs["source_versions"],
@@ -176,6 +207,122 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
             portfolio_metrics["rule_version"],
         ],
     )
+
+
+def _tushare_research_axes_enabled() -> bool:
+    explicit = str(os.getenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "") or "").strip().lower()
+    if explicit in {"0", "false", "no", "off"}:
+        return False
+    if explicit in {"1", "true", "yes", "on"}:
+        return True
+    if os.getenv("PYTEST_CURRENT_TEST"):
+        return False
+    return True
+
+
+def _latest_macro_value(
+    macro_latest: dict[str, tuple[date, float]],
+    series_ids: list[str],
+) -> tuple[date, float] | None:
+    for series_id in series_ids:
+        value = macro_latest.get(series_id)
+        if value is not None:
+            return value
+    return None
+
+
+def _load_tushare_equity_research_signals(
+    *,
+    report_date: date,
+    macro_latest: dict[str, tuple[date, float]],
+) -> tuple[EquityBondSpreadSignal | None, MegaCapEquitySignal | None, list[str]]:
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        return None, None, ["Tushare token missing; equity research axes remain pending."]
+    try:
+        ts = import_tushare_pro()
+    except RuntimeError as exc:
+        return None, None, [f"Tushare import failed: {exc}"]
+
+    cn10y = _latest_macro_value(macro_latest, ["E1000180", "EMM00166466"])
+    if cn10y is None:
+        return None, None, ["CN 10Y macro anchor missing; unable to build equity-bond spread axis."]
+
+    pro = ts.pro_api(token)
+    daily_start = (report_date - timedelta(days=35)).strftime("%Y%m%d")
+    weight_start = (report_date - timedelta(days=90)).strftime("%Y%m%d")
+    report_date_str = report_date.strftime("%Y%m%d")
+    warnings: list[str] = []
+
+    try:
+        index_daily = pro.index_daily(ts_code="000300.SH", start_date=daily_start, end_date=report_date_str)
+        index_dailybasic = pro.index_dailybasic(ts_code="000300.SH", start_date=daily_start, end_date=report_date_str)
+        index_weight = pro.index_weight(index_code="000300.SH", start_date=weight_start, end_date=report_date_str)
+    except Exception as exc:
+        return None, None, [f"Tushare equity fetch failed: {exc}"]
+
+    daily_row = None if index_daily is None or len(index_daily) == 0 else index_daily.sort_values("trade_date").iloc[-1]
+    basic_row = None if index_dailybasic is None or len(index_dailybasic) == 0 else index_dailybasic.sort_values("trade_date").iloc[-1]
+    equity_signal = None
+    index_pct_change = None
+    if daily_row is not None:
+        index_pct_change = _coerce_float(daily_row.get("pct_chg"))
+    if daily_row is not None and basic_row is not None:
+        pe = _coerce_float(basic_row.get("pe"))
+        close = _coerce_float(daily_row.get("close"))
+        if pe and pe > 0 and close is not None:
+            earnings_yield_pct = 100.0 / pe
+            bond_yield_pct = float(cn10y[1])
+            equity_signal = EquityBondSpreadSignal(
+                trade_date=_parse_yyyymmdd(str(daily_row.get("trade_date"))),
+                index_code="000300.SH",
+                index_close=close,
+                index_pct_change=index_pct_change,
+                pe=pe,
+                earnings_yield_pct=earnings_yield_pct,
+                bond_yield_pct=bond_yield_pct,
+                spread_pct=earnings_yield_pct - bond_yield_pct,
+            )
+        else:
+            warnings.append("Tushare index_dailybasic missing usable PE; equity-bond spread axis remains pending.")
+
+    mega_cap_signal = None
+    if index_weight is not None and len(index_weight) > 0:
+        latest_weight_date = sorted(index_weight["trade_date"].unique())[-1]
+        latest_weight_df = index_weight[index_weight["trade_date"] == latest_weight_date].sort_values("weight", ascending=False)
+        if len(latest_weight_df) > 0:
+            mega_cap_signal = MegaCapEquitySignal(
+                weight_trade_date=_parse_yyyymmdd(str(latest_weight_date)),
+                index_code="000300.SH",
+                top10_weight_sum=float(latest_weight_df.head(10)["weight"].sum()),
+                top5_weight_sum=float(latest_weight_df.head(5)["weight"].sum()),
+                leading_constituents=[str(code) for code in latest_weight_df.head(5)["con_code"].tolist()],
+                index_pct_change=index_pct_change,
+            )
+        else:
+            warnings.append("Tushare index_weight returned no usable latest rows; mega-cap axis remains pending.")
+
+    return equity_signal, mega_cap_signal, warnings
+
+
+def _parse_yyyymmdd(raw: str) -> date:
+    text = str(raw or "").strip()
+    if len(text) == 8 and text.isdigit():
+        return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
+    return date.fromisoformat(text)
+
+
+def _coerce_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        numeric = float(cast(Any, value))
+    except (TypeError, ValueError):
+        return None
+    if numeric != numeric:
+        return None
+    return numeric
 
 
 def _load_macro_inputs(
@@ -353,6 +500,8 @@ def _load_portfolio_metrics(
             """,
             [report_date.isoformat()],
         ).fetchone()
+        if row is None:
+            row = (Decimal("0"), Decimal("0"), Decimal("0"), EMPTY_SOURCE_VERSION, "")
         warnings.append("风险张量缺失，组合 DV01/CS01 已回退到 bond analytics 聚合结果。")
         return {
             "portfolio_dv01": _coerce_decimal(row[0]),
@@ -413,6 +562,8 @@ def _build_response_envelope(
     portfolio_impact: dict[str, Any],
     top_correlations: list[dict[str, Any]],
     method_variants: MacroBondLinkageMethodVariants,
+    research_views: list[dict[str, Any]],
+    transmission_axes: list[dict[str, Any]],
     warnings: list[str],
     source_versions: list[str],
     vendor_versions: list[str],
@@ -424,6 +575,8 @@ def _build_response_envelope(
         portfolio_impact=portfolio_impact,
         top_correlations=top_correlations,
         method_variants=method_variants,
+        research_views=research_views,
+        transmission_axes=transmission_axes,
         warnings=warnings,
         computed_at=computed_at,
     )
@@ -510,7 +663,7 @@ def _coerce_decimal(value: object) -> Decimal:
 
 def _json_safe(value: Any) -> Any:
     if is_dataclass(value):
-        return _json_safe(asdict(value))
+        return _json_safe(asdict(cast(Any, value)))
     if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, (date, datetime)):
