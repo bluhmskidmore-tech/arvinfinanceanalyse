@@ -189,10 +189,13 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "决策事项",
     path: "/decision-items",
     icon: "decision",
-    description: "跨页决策与待办聚合（占位路由）。",
-    readiness: "placeholder",
-    readinessLabel: "Reserved",
-    readinessNote: "保留导航入口；能力仍在各业务页，后续再收敛到此路由。",
+    description:
+      "集中查看与处理资产负债分析决策事项：读接口拉取规则命中项，写接口回写确认/忽略与备注。",
+    readiness: "live",
+    readinessLabel: "Temporary",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "本页已接 balance-analysis 的 decision-items 与 decision-items/status 读写在统一 ApiClient 上，报告日由 dates 驱动，默认取可用日期中最新的一档。",
   },
   {
     key: "balance-analysis",

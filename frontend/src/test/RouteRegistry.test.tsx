@@ -217,6 +217,13 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("navigation")).toBeInTheDocument();
   });
 
+  it("renders the decision-items route", async () => {
+    renderWorkbenchApp(["/decision-items"], { client: mockClient });
+
+    expect(await screen.findByTestId("decision-items-page")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "决策事项" })).toBeInTheDocument();
+  });
+
   it("renders the /dashboard alias", async () => {
     renderWorkbenchApp(["/dashboard"], { client: mockClient });
 
