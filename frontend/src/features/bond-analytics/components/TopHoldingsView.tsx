@@ -4,7 +4,7 @@ import type { BondTopHoldingsPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
-import { formatPct, formatWan } from "../utils/formatters";
+import { formatPct, formatYi } from "../utils/formatters";
 
 interface Props {
   reportDate: string;
@@ -18,8 +18,8 @@ const columns = [
   { title: "发行人", dataIndex: "issuer_name", key: "issuer_name" },
   { title: "评级", dataIndex: "rating", key: "rating" },
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
-  { title: "面值", dataIndex: "face_value", key: "face_value", render: formatWan },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
+  { title: "面值", dataIndex: "face_value", key: "face_value", render: formatYi },
   {
     title: "YTM",
     dataIndex: "ytm",

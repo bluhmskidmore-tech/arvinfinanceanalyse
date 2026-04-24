@@ -158,6 +158,8 @@ describe("KRDCurveRiskView", () => {
 
     expect(screen.getByText("按资产类别拆分")).toBeInTheDocument();
     expect(screen.getByText("rate")).toBeInTheDocument();
+    expect(screen.getByText("8.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("-50 万")).toBeInTheDocument();
   });
 
   it("shows scenario by_asset_class breakdown when scenario row is expanded", async () => {

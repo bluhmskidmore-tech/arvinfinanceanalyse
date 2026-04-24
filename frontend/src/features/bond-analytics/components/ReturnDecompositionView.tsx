@@ -16,7 +16,7 @@ import {
   returnDecompositionWaterfallRawSteps,
 } from "../adapters/bondAnalyticsAdapter";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { formatWan } from "../utils/formatters";
+import { formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 const CN_MARKET_UP = designTokens.color.danger[500];
@@ -168,7 +168,7 @@ const bondDetailColumns = [
   },
   { title: "璧勪骇绫诲埆", dataIndex: "asset_class", key: "asset_class" },
   { title: "浼氳鍒嗙被", dataIndex: "accounting_class", key: "accounting_class" },
-  { title: "Market Value", dataIndex: "market_value", key: "market_value", render: formatWan },
+  { title: "Market Value", dataIndex: "market_value", key: "market_value", render: formatYi },
   { title: "Carry锛堢エ鎭級", dataIndex: "carry", key: "carry", render: formatWan },
   { title: "Roll-down锛堥獞涔橈級", dataIndex: "roll_down", key: "roll_down", render: formatWan },
   { title: "鍒╃巼鏁堝簲", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
@@ -320,7 +320,7 @@ export function ReturnDecompositionView({
         </Col>
         <Col span={12}>
           <Card size="small" data-testid="return-decomposition-total-mv">
-            <Statistic title="Total Market Value" value={formatWan(data.total_market_value)} />
+            <Statistic title="Total Market Value" value={formatYi(data.total_market_value)} />
           </Card>
         </Col>
       </Row>

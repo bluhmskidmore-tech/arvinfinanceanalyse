@@ -4,7 +4,7 @@ import { Modal, Spin, Table, Tabs, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
-import { formatAmountWan, formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYi, formatRatePercent } from "../utils/format";
 
 /** A股配色：红涨绿跌 — 余额上行红色，下行绿色 */
 const UP_COLOR = "#cf1322";
@@ -197,10 +197,10 @@ export default function CustomerDetailModal({ open, onClose, customerName, repor
                     ellipsis: true,
                   },
                   {
-                    title: "市值",
+                    title: "市值(亿元)",
                     dataIndex: "market_value",
                     align: "right",
-                    render: (v: string) => formatAmountWan(v),
+                    render: (v: string) => formatAmountYi(v),
                   },
                   {
                     title: "收益率",

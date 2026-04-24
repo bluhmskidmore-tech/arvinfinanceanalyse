@@ -156,7 +156,8 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("MoM");
     expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent("2026-04-10T00:00:00Z");
     expect(screen.getByTestId("return-decomposition-bond-count")).toHaveTextContent("3");
-    expect(screen.getByTestId("return-decomposition-total-mv")).toBeInTheDocument();
+    expect(screen.getByTestId("return-decomposition-total-mv")).toHaveTextContent("1.00 亿");
+    expect(screen.getByText("320 万")).toBeInTheDocument();
     expect(screen.getByTestId("return-decomposition-by-accounting-class")).toHaveTextContent("FVTPL");
     expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("vendor_status");
     expect(screen.getAllByText("Rates").length).toBeGreaterThan(0);
@@ -213,6 +214,7 @@ describe("ReturnDecompositionView", () => {
     expect(within(table).getByText("019547")).toBeInTheDocument();
     expect(within(table).getByText("Rates")).toBeInTheDocument();
     expect(within(table).getByText("AC")).toBeInTheDocument();
+    expect(within(table).getByText("1.00 亿")).toBeInTheDocument();
   });
 
   it("renders backend warnings when present", async () => {
