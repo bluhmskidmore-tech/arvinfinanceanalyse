@@ -1727,6 +1727,7 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
         report_date="2026-02-28",
         approval_status="pending",
         account_code="100",
+        account_name='Account "B"',
     )
     _append_adjustment_event(
         repo,
@@ -1759,6 +1760,7 @@ def test_manual_adjustment_export_locks_csv_order_under_sort_and_range(tmp_path,
         "adj-c",
     ]
     assert [row["account_code"] for row in current_rows] == ["100", "200"]
+    assert current_rows[0]["account_name"] == 'Account "B"'
     assert [row["adjustment_id"] for row in event_rows] == [
         "adj-c",
         "adj-b",
@@ -1792,6 +1794,7 @@ def _append_adjustment_event(
     report_date: str,
     approval_status: str,
     account_code: str,
+    account_name: str | None = None,
 ) -> None:
     repo.append(
         PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
@@ -1804,7 +1807,7 @@ def _append_adjustment_event(
             "approval_status": approval_status,
             "account_code": account_code,
             "currency": "CNX",
-            "account_name": f"Account {account_code}",
+            "account_name": account_name or f"Account {account_code}",
             "monthly_pnl": "1",
         },
     )
