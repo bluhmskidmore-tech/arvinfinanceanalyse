@@ -777,11 +777,33 @@ export type MacroBondLinkageTopCorrelation = {
   direction: "positive" | "negative" | "neutral";
 };
 
+export type MacroBondResearchView = {
+  key: string;
+  stance: string;
+  confidence: string;
+  summary: string;
+  affected_targets?: string[];
+  evidence?: string[];
+  status: "ready" | "pending_signal";
+};
+
+export type MacroBondTransmissionAxis = {
+  axis_key: string;
+  status: "ready" | "pending_signal";
+  stance: string;
+  summary: string;
+  impacted_views?: string[];
+  required_series_ids?: string[];
+  warnings?: string[];
+};
+
 export type MacroBondLinkagePayload = {
   report_date: string;
   environment_score: Partial<MacroBondLinkageEnvironmentScore>;
   portfolio_impact: Partial<MacroBondLinkagePortfolioImpact>;
   top_correlations: MacroBondLinkageTopCorrelation[];
+  research_views?: MacroBondResearchView[];
+  transmission_axes?: MacroBondTransmissionAxis[];
   warnings: string[];
   computed_at: string;
 };
@@ -868,6 +890,67 @@ export type ChoiceNewsEventsPayload = {
   limit: number;
   offset: number;
   events: ChoiceNewsEvent[];
+};
+
+export type NcdFundingProxyRow = {
+  row_key: string;
+  label: string;
+  "1M": number | null;
+  "3M": number | null;
+  "6M": number | null;
+  "9M": number | null;
+  "1Y": number | null;
+  quote_count: number | null;
+};
+
+export type NcdFundingProxyPayload = {
+  as_of_date: string | null;
+  proxy_label: string;
+  is_actual_ncd_matrix: boolean;
+  rows: NcdFundingProxyRow[];
+  warnings: string[];
+};
+
+export type ResearchCalendarEventKind = "macro" | "supply" | "auction" | "internal";
+
+export type ResearchCalendarEvent = {
+  id: string;
+  date: string;
+  title: string;
+  kind: ResearchCalendarEventKind;
+  severity: "high" | "medium" | "low";
+  amount_label?: string | null;
+  note?: string | null;
+};
+
+/** Raw supply/auction row from `GET /ui/calendar/supply-auctions` (`ResearchCalendarEvent` in backend). */
+export type ResearchCalendarApiEventRow = {
+  event_id: string;
+  series_id: string;
+  event_date: string;
+  event_kind: "auction" | "supply";
+  title: string;
+  source_family: string;
+  severity: "high" | "medium" | "low";
+  issuer?: string | null;
+  market?: string | null;
+  instrument_type?: string | null;
+  term_label?: string | null;
+  amount?: number | null;
+  amount_unit?: string | null;
+  currency?: string | null;
+  status?: "scheduled" | "completed" | "cancelled" | "unknown";
+  headline_text?: string | null;
+  headline_url?: string | null;
+  headline_published_at?: string | null;
+};
+
+export type ResearchCalendarResultPayload = {
+  series_id: string;
+  total_rows: number;
+  limit: number;
+  offset: number;
+  events: ResearchCalendarApiEventRow[];
 };
 
 export type PnlFormalFiRow = {

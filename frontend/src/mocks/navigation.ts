@@ -113,6 +113,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
 export const workbenchPathAliases: Record<string, string> = {
   "/macro-analysis": "/market-data",
   "/market": "/market-data",
+  "/cross-asset-drivers": "/cross-asset",
   "/adb": "/average-balance",
   "/assets": "/bond-dashboard",
   "/pnl-by-business": "/ledger-pnl",

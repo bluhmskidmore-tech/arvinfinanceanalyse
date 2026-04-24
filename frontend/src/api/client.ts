@@ -48,6 +48,10 @@ import type {
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
   ChoiceNewsEventsPayload,
+  NcdFundingProxyPayload,
+  ResearchCalendarApiEventRow,
+  ResearchCalendarEvent,
+  ResearchCalendarResultPayload,
   ContributionPayload,
   CounterpartyStatsResponse,
   CubeDimensionsPayload,
@@ -258,6 +262,9 @@ export type ApiClient = {
   }) => Promise<void>;
   getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
   executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
+  getResearchCalendarEvents: (options?: {
+    reportDate?: string;
+  }) => Promise<ResearchCalendarEvent[]>;
   getHealthLive: () => Promise<HealthStatusResponse>;
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
@@ -661,6 +668,152 @@ const MOCK_CHOICE_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
     payload_json: '{"title":"Mock 研报","abstr":"占位摘要","_url":"https://example.com/mock-report"}',
   },
 ];
+
+function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
+  const baseDate = reportDate?.trim() || "2026-04-18";
+  return [
+    {
+      id: "rc_supply_001",
+      date: baseDate,
+      title: "国债净融资节奏",
+      kind: "supply",
+      severity: "low",
+      amount_label: "净融资 180 亿元",
+      note: "供给节奏",
+    },
+    {
+      id: "rc_auction_002",
+      date: baseDate,
+      title: "政策性金融债招标",
+      kind: "auction",
+      severity: "high",
+      amount_label: "420 亿元",
+      note: "国开行",
+    },
+    {
+      id: "rc_macro_003",
+      date: baseDate,
+      title: "CPI 数据公布",
+      kind: "macro",
+      severity: "medium",
+      amount_label: "同比观察",
+      note: "宏观数据",
+    },
+  ];
+}
+
+function formatResearchCalendarAmountValue(amount: number): string {
+  if (!Number.isFinite(amount)) {
+    return String(amount);
+  }
+  if (Number.isInteger(amount)) {
+    return String(amount);
+  }
+  const rounded = Math.round(amount * 1e6) / 1e6;
+  return Number.isInteger(rounded) ? String(Math.trunc(rounded)) : String(amount);
+}
+
+function formatResearchCalendarAmountLabel(event: ResearchCalendarApiEventRow): string | null {
+  if (event.amount == null) {
+    return null;
+  }
+  const unit = event.amount_unit?.trim();
+  const numText = formatResearchCalendarAmountValue(event.amount);
+  if (!unit) {
+    return numText;
+  }
+  return `${numText} ${unit}`.replace(/\s+/g, " ").trim();
+}
+
+function buildResearchCalendarEventNote(event: ResearchCalendarApiEventRow): string | null {
+  const parts: string[] = [];
+  const issuer = event.issuer?.trim();
+  const term = event.term_label?.trim();
+  const status = event.status?.trim();
+  const core = [issuer, term, status].filter(Boolean);
+  if (core.length > 0) {
+    parts.push(core.join(" · "));
+  }
+  const headline = event.headline_text?.trim();
+  if (headline) {
+    parts.push(headline);
+  }
+  const inst = event.instrument_type?.trim();
+  if (inst && !parts.some((p) => p.includes(inst))) {
+    parts.push(inst);
+  }
+  const mkt = event.market?.trim();
+  if (mkt) {
+    parts.push(`市场 ${mkt}`);
+  }
+  if (event.headline_published_at?.trim() && !headline) {
+    parts.push(`published ${event.headline_published_at.trim()}`);
+  }
+  if (event.headline_url?.trim()) {
+    parts.push(`来源 ${event.headline_url.trim()}`);
+  }
+  const cur = event.currency?.trim();
+  if (cur && !parts.some((p) => p.includes(cur))) {
+    parts.push(`币种 ${cur}`);
+  }
+  if (parts.length > 0) {
+    return parts.join(" | ");
+  }
+  return [issuer, inst, term].filter(Boolean).join(" / ") || null;
+}
+
+function stableResearchCalendarEventId(event: ResearchCalendarApiEventRow): string {
+  const raw = event.event_id?.trim();
+  if (raw) {
+    return raw;
+  }
+  return [event.series_id, event.event_date, event.event_kind, event.title]
+    .map((s) => String(s).trim())
+    .join("::");
+}
+
+function mapResearchCalendarApiEvent(event: ResearchCalendarApiEventRow): ResearchCalendarEvent {
+  return {
+    id: stableResearchCalendarEventId(event),
+    date: event.event_date,
+    title: event.title,
+    kind: event.event_kind,
+    severity: event.severity,
+    amount_label: formatResearchCalendarAmountLabel(event),
+    note: buildResearchCalendarEventNote(event),
+  };
+}
+
+function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
+  return {
+    as_of_date: reportDate?.trim() || "2026-04-23",
+    proxy_label: "Tushare Shibor funding proxy (not NCD issuance matrix)",
+    is_actual_ncd_matrix: false,
+    rows: [
+      {
+        row_key: "shibor_fixing",
+        label: "Shibor fixing",
+        "1M": 1.412,
+        "3M": 1.4345,
+        "6M": 1.4535,
+        "9M": 1.4695,
+        "1Y": 1.4825,
+        quote_count: null,
+      },
+      {
+        row_key: "quote_median",
+        label: "Quote median",
+        "1M": 1.44,
+        "3M": 1.45,
+        "6M": 1.48,
+        "9M": 1.49,
+        "1Y": 1.5,
+        quote_count: 287,
+      },
+    ],
+    warnings: ["Proxy only; not actual NCD issuance matrix."],
+  };
+}
 
 const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
   read_target: "duckdb",
@@ -3442,9 +3595,31 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
     },
+    async getNcdFundingProxy() {
+      await delay();
+      return buildMockApiEnvelope(
+        "market_data.ncd_proxy",
+        buildMockNcdFundingProxyPayload(),
+        {
+          basis: "analytical",
+          formal_use_allowed: false,
+          source_version: "sv_ncd_proxy_mock",
+          vendor_version: "vv_tushare_shibor",
+          rule_version: "rv_ncd_proxy_v1",
+          cache_version: "cv_ncd_proxy_v1",
+          quality_flag: "warning",
+          vendor_status: "ok",
+          fallback_mode: "none",
+        },
+      );
+    },
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
+    },
+    async getResearchCalendarEvents(options) {
+      await delay();
+      return buildMockResearchCalendarEvents(options?.reportDate);
     },
     async ingestTushareNprNews(_options?: { limit?: number }) {
       await delay();
@@ -5959,6 +6134,24 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/api/macro-bond-linkage/analysis?report_date=${encodeURIComponent(reportDate)}`,
       ),
+    getNcdFundingProxy: () =>
+      requestJson<NcdFundingProxyPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/market-data/ncd-funding-proxy",
+      ),
+    getResearchCalendarEvents: (options) => {
+      const params = new URLSearchParams();
+      if (options?.reportDate?.trim()) {
+        params.set("end_date", options.reportDate.trim());
+      }
+      const query = params.toString();
+      return requestJson<ResearchCalendarResultPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/calendar/supply-auctions${query ? `?${query}` : ""}`,
+      ).then((payload) => payload.result.events.map(mapResearchCalendarApiEvent));
+    },
     getFxFormalStatus: () =>
       requestJson<FxFormalStatusPayload>(
         fetchImpl,

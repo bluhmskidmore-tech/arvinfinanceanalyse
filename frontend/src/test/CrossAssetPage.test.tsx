@@ -2,6 +2,11 @@ import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { vi } from "vitest";
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="cross-asset-echarts-stub" />,
+}));
 
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import CrossAssetPage from "../features/cross-asset/pages/CrossAssetPage";
@@ -34,40 +39,122 @@ function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
 }
 
 describe("CrossAssetPage", () => {
-  it("renders the standardized shell and analytical linkage sections", async () => {
-    renderPage();
+  it("renders first-screen investment research judgments from backend additive fields", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
 
-    expect(await screen.findByTestId("cross-asset-page")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "跨资产驱动" })).toBeInTheDocument();
-    expect(screen.getByText("环境概览")).toBeInTheDocument();
-    expect(screen.getByText("判断、驱动与候选动作")).toBeInTheDocument();
-    expect(screen.getByText("走势、事件与观察")).toBeInTheDocument();
-    expect(screen.getByText("分析结果与输出")).toBeInTheDocument();
-    expect(screen.getByText(/完整宏观序列仍在/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "市场数据" })).toBeInTheDocument();
+    vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
+      ...linkagePayload,
+      result: {
+        ...linkagePayload.result,
+        research_views: [
+          {
+            key: "duration",
+            status: "ready",
+            stance: "bullish",
+            confidence: "high",
+            summary: "Duration view favors adding exposure.",
+            affected_targets: ["rates", "ncd", "high_grade_credit"],
+            evidence: ["Liquidity remains supportive."],
+          },
+          {
+            key: "curve",
+            status: "ready",
+            stance: "barbell",
+            confidence: "medium",
+            summary: "Curve view prefers front-end carry with selective extension.",
+            affected_targets: ["rates", "ncd"],
+            evidence: ["Funding stays loose."],
+          },
+          {
+            key: "credit",
+            status: "ready",
+            stance: "selective",
+            confidence: "medium",
+            summary: "Credit view stays focused on high grade.",
+            affected_targets: ["high_grade_credit"],
+            evidence: ["Spread beta remains controlled."],
+          },
+          {
+            key: "instrument",
+            status: "ready",
+            stance: "barbell",
+            confidence: "medium",
+            summary: "Instrument view prefers rates plus high-grade credit.",
+            affected_targets: ["rates", "ncd", "high_grade_credit"],
+            evidence: ["Cross-asset evidence is mixed but constructive."],
+          },
+        ],
+        transmission_axes: [
+          {
+            axis_key: "global_rates",
+            status: "ready",
+            stance: "restrictive",
+            summary: "Global rates cap aggressive long-end chasing.",
+            impacted_views: ["duration", "curve"],
+            required_series_ids: ["UST10Y"],
+            warnings: [],
+          },
+          {
+            axis_key: "equity_bond_spread",
+            status: "pending_signal",
+            stance: "neutral",
+            summary: "Awaiting governed equity-bond spread proxy.",
+            impacted_views: ["duration", "credit"],
+            required_series_ids: ["CA.CSI300"],
+            warnings: ["missing governed proxy series"],
+          },
+        ],
+      },
+    });
 
-    expect(screen.getByTestId("cross-asset-kpi-band")).toBeInTheDocument();
-    expect(screen.getByText("市场判断")).toBeInTheDocument();
-    expect(screen.getByText("驱动拆解")).toBeInTheDocument();
-    expect(screen.getByText("跨资产走势（近20日，统一基准 = 100）")).toBeInTheDocument();
-    expect(screen.getByText("跨资产传导链（这页应该怎么用）")).toBeInTheDocument();
-    expect(screen.getByText("宏观—债市相关性（Top）")).toBeInTheDocument();
+    renderPage(client);
 
-    expect(screen.getByText("宏观 — 债券联动（评分与组合影响）")).toBeInTheDocument();
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(await screen.findByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-ncd-proxy-warning")).toBeInTheDocument();
+    expect(await screen.findByText("Duration view favors adding exposure.")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-transmission-axes")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-research-card-duration")).toHaveTextContent(
+      "Duration view favors adding exposure.",
+    );
+    expect(screen.getByTestId("cross-asset-research-card-instrument")).toHaveTextContent(
+      "Instrument view prefers rates plus high-grade credit.",
+    );
+    expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent(
+      "Global rates cap aggressive long-end chasing.",
+    );
+    expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).toHaveTextContent(
+      "Awaiting governed equity-bond spread proxy.",
+    );
   });
 
-  it("renders the fourth-page cross-asset cockpit sections from the mockup", async () => {
-    renderPage();
+  it("surfaces the data-driven cockpit sections and provenance flags", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getResearchCalendarEvents: vi.fn(async () => [
+        {
+          id: "rc_supply_001",
+          date: "2026-04-10",
+          title: "国债供给窗口",
+          kind: "supply" as const,
+          severity: "medium" as const,
+          amount_label: "净融资 180 亿元",
+          note: "供给节奏",
+        },
+      ]),
+    };
 
-    expect(await screen.findByTestId("cross-asset-page")).toBeInTheDocument();
-    expect(screen.getByText("市场判断")).toBeInTheDocument();
-    expect(screen.getByText("驱动拆解")).toBeInTheDocument();
-    expect(screen.getByText("宏观—债市相关性（Top）")).toBeInTheDocument();
-    expect(screen.getByText("市场候选动作")).toBeInTheDocument();
-    expect(screen.getByText("跨资产走势（近20日，统一基准 = 100）")).toBeInTheDocument();
-    expect(screen.getByText("事件与供给日历（示例）")).toBeInTheDocument();
-    expect(screen.getByText("观察名单")).toBeInTheDocument();
-    expect(screen.getByText("跨资产传导链（这页应该怎么用）")).toBeInTheDocument();
-    expect(screen.getByText("页面输出")).toBeInTheDocument();
+    renderPage(client);
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-candidate-actions")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-event-calendar")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-watch-list")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
+    expect(await screen.findByText("国债供给窗口")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-event-calendar")).not.toHaveTextContent("analytical only");
+    expect((await screen.findAllByText("analytical only")).length).toBeGreaterThan(0);
   });
 });

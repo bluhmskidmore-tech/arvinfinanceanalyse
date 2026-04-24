@@ -335,6 +335,10 @@ export const workbenchRoutes: RouteObject[] = [
         element: <Navigate to="/market-data" replace />,
       },
       {
+        path: "cross-asset-drivers",
+        element: routeElement(<CrossAssetPage />),
+      },
+      {
         path: "assets",
         element: <Navigate to="/bond-dashboard" replace />,
       },
