@@ -146,14 +146,14 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
     )
 
     assert payload["liabilities_structure"] == [
-        {"name": "同业负债", "amount": 670.0, "pct": 77.0115},
-        {"name": "发行负债", "amount": 200.0, "pct": 22.9885},
+        {"name": "同业负债", "amount": 670.0, "pct": 0.7701},
+        {"name": "发行负债", "amount": 200.0, "pct": 0.2299},
     ]
     assert payload["interbank_liabilities_structure"] == [
-        {"name": "卖出回购票据", "amount": 20.0, "pct": 2.9851},
-        {"name": "卖出回购证券", "amount": 100.0, "pct": 14.9254},
-        {"name": "同业存放", "amount": 500.0, "pct": 74.6269},
-        {"name": "同业拆入", "amount": 50.0, "pct": 7.4627},
+        {"name": "卖出回购票据", "amount": 20.0, "pct": 0.0299},
+        {"name": "卖出回购证券", "amount": 100.0, "pct": 0.1493},
+        {"name": "同业存放", "amount": 500.0, "pct": 0.7463},
+        {"name": "同业拆入", "amount": 50.0, "pct": 0.0746},
     ]
     assert [item["bucket"] for item in payload["liabilities_term_buckets"]] == [
         "0-3M",
@@ -168,20 +168,20 @@ def test_compute_liability_risk_buckets_matches_v1_bucket_shape_and_order() -> N
     assert payload["liabilities_term_buckets"][0] == {
         "bucket": "0-3M",
         "amount": 520.0,
-        "pct": 59.7701,
+        "pct": 0.5977,
     }
     assert payload["liabilities_term_buckets"][1] == {
         "bucket": "3-6M",
         "amount": 100.0,
-        "pct": 11.4943,
+        "pct": 0.1149,
     }
     assert payload["liabilities_term_buckets"][3] == {
         "bucket": "1-3Y",
         "amount": 200.0,
-        "pct": 22.9885,
+        "pct": 0.2299,
     }
     assert payload["liabilities_term_buckets"][4:] == [
-        {"bucket": "3-5Y", "amount": 50.0, "pct": 5.7471},
+        {"bucket": "3-5Y", "amount": 50.0, "pct": 0.0575},
         {"bucket": "5-10Y", "amount": 0.0, "pct": 0.0},
         {"bucket": "10Y+", "amount": 0.0, "pct": 0.0},
         {"bucket": "Matured", "amount": 0.0, "pct": 0.0},
