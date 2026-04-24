@@ -32,7 +32,7 @@ function srcRelativePath(path: string) {
 describe("shared echarts boundary", () => {
   it("keeps runtime echarts imports isolated to the shared wrapper", () => {
     const offenders = walkFiles(SRC_DIR)
-      .filter((path) => !path.includes(`${TEST_DIR}\\`))
+      .filter((path) => !srcRelativePath(path).startsWith("test/"))
       .filter((path) => srcRelativePath(path) !== SHARED_ECHARTS_MODULE)
       .filter((path) => {
         const source = readFileSync(path, "utf8");
