@@ -18,11 +18,12 @@
 ## 2.1 已经具备的样本基础
 
 - `tests/test_golden_samples_capture_ready.py` 已经存在，并且会校验每个样本目录下的 `request.json`、`response.json`、`assertions.md`、`approval.md`。
-- `tests/golden_samples/` 已经存在 11 个样本包：
+- `tests/golden_samples/` 已经存在 **12** 个样本包（与 `tests/test_golden_samples_capture_ready.py` 矩阵一致）：
   - `GS-BAL-OVERVIEW-A`
   - `GS-BAL-WORKBOOK-A`
   - `GS-PNL-OVERVIEW-A`
   - `GS-PNL-DATA-A`
+  - `GS-PROD-CAT-PNL-A`
   - `GS-BRIDGE-A`
   - `GS-BRIDGE-WARN-B`
   - `GS-RISK-A`
@@ -36,9 +37,10 @@
 
 ## 2.2 当前缺口
 
-- `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md`、`tests/golden_samples/` 当前都不在 `git ls-files` 结果中，说明它们还没有进入版本基线。
+- `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md` 与 `tests/golden_samples/` 已纳入版本基线；仍需与 **页面契约 / 指标字典 / capture-ready 重抓** 保持同步。
+- `GS-EXEC-OVERVIEW-A` 已补齐 `metrics[].caliber_label` 冻结字段，与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 当前契约一致。
 - 当前样本集中没有首页 `/` 的聚合样本。
-- `GS-BOND-HEADLINE-A` 仍未冻结，根因不是没有 API，而是页面契约和指标映射还没补齐。
+- `GS-BOND-HEADLINE-A` 仍为 **blocked/candidate**：根因不是缺少 API，而是 bond analytics 专页 **page contract 与 metric 映射** 未齐；在 `docs/page_contracts.md` 与 `docs/metric_dictionary.md` 补齐前不将 `GS-BOND-HEADLINE-A` 标为 capture-ready 主包。
 - 还没有把 `sample_id -> page_id -> metric_id -> test file` 做成强约束。
 
 ## 3. 什么样的样本才算“黄金样本”
@@ -66,6 +68,7 @@
 | `GS-BAL-WORKBOOK-A` | `/ui/balance-analysis/workbook` | 已有样本包 | `tests/test_balance_analysis_workbook_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-PNL-OVERVIEW-A` | `/api/pnl/overview` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-PNL-DATA-A` | `/api/pnl/data` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
+| `GS-PROD-CAT-PNL-A` | `/ui/pnl/product-category` | 已有样本包 | `tests/test_product_category_pnl_flow.py` + `tests/golden_samples/GS-PROD-CAT-PNL-A/` + capture-ready | 与 `docs/pnl/product-category-page-truth-contract.md` / `PAGE-PROD-CAT-PNL-001` 绑定 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 纳入版本基线 |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | 已有样本包 | `tests/test_pnl_api_contract.py` + 样本目录 | 作为受控 warning profile 样本纳入版本基线 |
 | `GS-RISK-A` | `/api/risk/tensor` | 已有样本包 | `tests/test_risk_tensor_service.py` + 样本目录 | 纳入版本基线 |

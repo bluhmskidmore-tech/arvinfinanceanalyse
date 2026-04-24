@@ -38,14 +38,15 @@
 
 ## 3. 第一批范围
 
-本批只覆盖当前已完成“页面契约 + 指标字典”的面：
+本批覆盖 `tests/golden_samples/` 下 **12** 个目录所对应的主链（含 warning profile）；产品分类样本以 **truth contract** 与 **page contract `PAGE-PROD-CAT-PNL-001`** 为权威，不等同于“指标字典已全覆盖”。
 
 - `/ui/balance-analysis/overview`
 - `/ui/balance-analysis/workbook`
 - `/api/pnl/overview`
 - `/api/pnl/data`
-- `/api/pnl/bridge`
-- `/api/risk/tensor`
+- `/ui/pnl/product-category`（`GS-PROD-CAT-PNL-A`）
+- `/api/pnl/bridge`（含 `GS-BRIDGE-WARN-B`）
+- `/api/risk/tensor`（含 `GS-RISK-WARN-B`）
 - `/ui/home/overview`
 - `/ui/home/summary`
 - `/ui/pnl/attribution`
@@ -53,7 +54,7 @@
 不纳入本批：
 
 - `/` 驾驶舱聚合页
-- `/api/bond-analytics/portfolio-headlines`
+- `/api/bond-analytics/portfolio-headlines`（`GS-BOND-HEADLINE-A` 仍为 **blocked-by-contract-gap**）
 - `/ui/risk/overview`
 - `/ui/home/alerts`
 - `/ui/home/contribution`
@@ -75,10 +76,14 @@ tests/golden_samples/
   GS-BAL-WORKBOOK-A/
   GS-PNL-OVERVIEW-A/
   GS-PNL-DATA-A/
+  GS-PROD-CAT-PNL-A/
   GS-BRIDGE-A/
+  GS-BRIDGE-WARN-B/
   GS-RISK-A/
+  GS-RISK-WARN-B/
   GS-EXEC-OVERVIEW-A/
   GS-EXEC-PNL-ATTR-A/
+  GS-EXEC-SUMMARY-A/
 ```
 
 每个目录包含：
@@ -90,14 +95,19 @@ tests/golden_samples/
 
 ## 5. Batch A 样本总表
 
+与 `tests/test_golden_samples_capture_ready.py` 中注册的 12 个 `sample_id` 对齐（含 `GS-BRIDGE-WARN-B`、`GS-RISK-WARN-B` 与 `GS-PROD-CAT-PNL-A`）。
+
 | sample_id | surface | status | preferred_report_date | 证据来源 | 样本类型 |
 | --- | --- | --- | --- | --- | --- |
 | `GS-BAL-OVERVIEW-A` | `/ui/balance-analysis/overview` | `capture-ready` | `2025-12-31` | `tests/test_balance_analysis_api.py` | 正常样本 |
 | `GS-BAL-WORKBOOK-A` | `/ui/balance-analysis/workbook` | `capture-ready` | `2025-12-31` | `tests/test_balance_analysis_api.py`、`tests/test_balance_analysis_workbook_contract.py` | 结构样本 |
 | `GS-PNL-OVERVIEW-A` | `/api/pnl/overview` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
 | `GS-PNL-DATA-A` | `/api/pnl/data` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 明细样本 |
+| `GS-PROD-CAT-PNL-A` | `GET /ui/pnl/product-category` | `capture-ready` | `2026-02-28` | `tests/test_product_category_pnl_flow.py`、`tests/test_golden_samples_capture_ready.py` | formal 明细/主表样本 |
 | `GS-BRIDGE-A` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` | 正常样本 |
+| `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py`（warning profile） | `warning-profile` 样本 |
 | `GS-RISK-A` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`、`tests/test_risk_tensor_service.py` | 正常样本 |
+| `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`（degraded） | `warning-profile` 样本 |
 | `GS-EXEC-OVERVIEW-A` | `/ui/home/overview` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-PNL-ATTR-A` | `/ui/pnl/attribution` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | overlay 样本 |
 | `GS-EXEC-SUMMARY-A` | `/ui/home/summary` | `capture-ready` | `2026-02-28` | `tests/test_executive_service_contract.py` + `tests/test_executive_dashboard_endpoints.py` | narrative 样本 |
@@ -106,7 +116,7 @@ tests/golden_samples/
 
 | sample_id | surface | status | 延后原因 |
 | --- | --- | --- | --- |
-| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` | 当前 `page_contracts.md` 第一版未覆盖 bond analytics 专页；为避免“有样本、无页面 owner contract”，本目录先不把它当作首批主包 |
+| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` / **candidate** | **直至** bond analytics 专页在 `docs/page_contracts.md` 与 `docs/metric_dictionary.md` 中具备可冻结的 page+metric 映射前，不将本包提升为与 Batch A 同级的“主包就绪”样本；避免仅有 API 而无 owner contract |
 
 ## 6. 样本定义
 
@@ -237,6 +247,18 @@ tests/golden_samples/
 - 对账：
   - 聚合后必须能复核 `GS-PNL-OVERVIEW-A`
 
+### 6.4.1 `GS-PROD-CAT-PNL-A`
+
+- surface：`GET /ui/pnl/product-category`（query：`report_date`、`view` 等，见 `tests/golden_samples/GS-PROD-CAT-PNL-A/request.json`）
+- 状态：`capture-ready`（`tests/test_golden_samples_capture_ready.py`）
+- page / 真值链：`docs/pnl/product-category-page-truth-contract.md`；页面契约绑定：`docs/page_contracts.md` → `PAGE-PROD-CAT-PNL-001`
+- 证据：
+  - `tests/test_product_category_pnl_flow.py`
+  - `tests/test_product_category_mapping_contract.py`
+  - `tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md`
+- 对账：
+  - 与 `docs/pnl/product-category-golden-sample-a.md` 及 closure checklist 一致；不得用持仓侧分类重解样本行
+
 ### 6.5 `GS-BRIDGE-A`
 
 - surface：`GET /api/pnl/bridge`
@@ -326,6 +348,10 @@ tests/golden_samples/
 ```
 
 - 状态：`capture-ready`
+- `caliber_label` 冻结字段：
+  - `aum` 固定为 `本币资产口径`。
+  - `yield` / `nim` / `dv01` 当前固定为 `null`。
+  - 该形状与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 的当前契约一致。
 - 证据：
   - `tests/test_executive_service_contract.py::test_executive_overview_aum_uses_combined_formal_balance_scope`
   - `tests/test_executive_dashboard_endpoints.py` 已证明该 route 为 in-scope analytical envelope
@@ -412,14 +438,14 @@ tests/golden_samples/
     - `风险`
     - `建议`
 
-## 7. Batch B：异常样本候选
+## 7. Batch B：异常 / warning profile 样本（已并入 12 目录）
 
-以下样本不是本轮主包，但建议紧接着做：
+`GS-BRIDGE-WARN-B` 与 `GS-RISK-WARN-B` 已作为 **第一方 capture-ready 包** 纳入 §5 总表与 `tests/test_golden_samples_capture_ready.py`，此处保留说明其意图：
 
 | sample_id | surface | status | preferred_report_date | 证据 | 目的 |
 | --- | --- | --- | --- | --- | --- |
 | `GS-BRIDGE-WARN-B` | `/api/pnl/bridge` | `capture-ready` | `2025-12-31` | `tests/test_pnl_api_contract.py` 中的 balance lineage fallback warnings | 锁住 `fallback_mode/quality/warnings` 语义 |
-| `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py::degraded snapshot` | 锁住 `quality_flag=warning` 和 warning 列表 |
+| `GS-RISK-WARN-B` | `/api/risk/tensor` | `capture-ready` | `2026-03-31` | `tests/test_risk_tensor_api.py`（degraded snapshot） | 锁住 `quality_flag=warning` 和 warning 列表 |
 
 ## 8. 样本间对账矩阵
 
@@ -433,15 +459,9 @@ tests/golden_samples/
 
 ## 9. 当前结论
 
-当前首批黄金样本里，已经可以直接落盘的有 6 个：
+仓库中已有 **12** 个与 capture-ready 测试矩阵一致的样本目录（含产品分类与两类 warning profile）；治理重点转为：**契约/字典/冻结 JSON 一致性**。
 
-- `GS-BAL-OVERVIEW-A`
-- `GS-BAL-WORKBOOK-A`
-- `GS-PNL-OVERVIEW-A`
-- `GS-PNL-DATA-A`
-- `GS-BRIDGE-A`
-- `GS-RISK-A`
+因此下一步是维护与对账，而不是再扩张“计划-only”文档：
 
-因此下一步不需要再写更多“计划文档”，而是按这个目录开始真正落：
-
-1. `capture-ready` 样本包
+1. 按 `assertions.md` 与 page contract 持续校验 `capture-ready` 样本包
+2. 未来若出现新的样本漂移，安排受控重抓或断言调整（需证据与审批）

@@ -1,5 +1,11 @@
 # 页面契约（第一版）
 
+## 0. Current-state pointer
+
+- `Role`: governed page contracts
+- `Not for`: repo-level current-state or boundary entrypoint selection
+- `Current-state pointer`: `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`, then this file
+
 ## 1. 目的
 
 本文件把当前已纳入 cutover 的消费面收敛成一组 **页面级契约**。
@@ -15,7 +21,7 @@
 
 ## 2. 本版范围
 
-本版只覆盖以下 8 个消费面：
+本版只覆盖以下 9 个消费面：
 
 1. 前端驾驶舱 `/`
 2. 资产负债分析 `/balance-analysis`
@@ -25,6 +31,7 @@
 6. executive overview `/ui/home/overview`
 7. executive summary `/ui/home/summary`
 8. executive pnl attribution `/ui/pnl/attribution`
+9. 产品分类损益（正式主链）`/product-category-pnl`
 
 不覆盖：
 
@@ -38,6 +45,7 @@
 ## 3. 编制依据
 
 - `AGENTS.md`
+- `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
 - `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
 - `docs/EXECUTIVE_CONSUMER_CUTOVER_V1.md`
 - `docs/metric_dictionary.md`
@@ -1008,11 +1016,85 @@
   - `frontend/src/test/RouteRegistry.test.tsx`
   - `frontend/src/test/WorkbenchShell.test.tsx`
 
-## 14. 当前缺口
+## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
-### 14.1 `as_of_date` 未统一
+### A. 页面身份
 
-当前这 8 个页面/消费面都还没有统一 outward `as_of_date`。
+- 页面 ID：`PAGE-PROD-CAT-PNL-001`（与 `docs/pnl/product-category-page-truth-contract.md` 中的 `PAGE-PROD-CAT-001` 指同一受治理表面；本文件为 page contract 命名空间下的绑定 ID）
+- 页面名称：`产品分类损益`
+- 路由：
+  - 前端：`/product-category-pnl`（`frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx`）
+  - 后端主读面：
+    - `GET /ui/pnl/product-category`
+    - `GET /ui/pnl/product-category/dates`
+    - `POST /ui/pnl/product-category/refresh`、相关 `refresh-status`
+    - manual adjustments 与 export 见 truth contract
+- 页面状态：
+  - `active`（正式主链；closure 见 `docs/pnl/product-category-closure-checklist.md`）
+- 权威真值与字段冻结：
+  - `docs/pnl/product-category-page-truth-contract.md`
+  - `docs/pnl/adr-product-category-truth-chain.md`
+
+### B. 页面目标
+
+- 主要使用者：财务/研究/治理需要按产品分类看 formal PnL 的用户。
+- 页面要回答的业务问题（首要）：
+  1. 在选定 `report_date` 与主屏视图（`monthly` / `ytd`）下，产品分类层面的损益总计、资产/负债/总计各为多少，主要由哪些分类行贡献。
+- 页面不负责回答的问题（与 truth contract 一致）：
+  - 持仓侧利率债/信用债/转债等研究分解
+  - 属于 `/ledger-pnl` 的通用总账 PnL 问题
+  - 分支口径经营结论或邻域代码推定的 ad hoc 分类
+
+### C. 信息架构（最小 first-screen）
+
+- 必有：报告日选择；主屏 `monthly`/`ytd` 视图；基线合计；场景对比态；分类行；`result_meta`/新鲜度；调整与审计入口（见 truth contract §8）。
+
+### D. 筛选与时间语义
+
+- `requested_report_date`：查询参数 `report_date`
+- `resolved_report_date`：当前为 `result.report_date`
+- `generated_at`：`result_meta.generated_at`
+- `as_of_date`：当前未作为独立 outward 字段；视为显式合同缺口，不得隐式假设
+- 禁止静默回落；退化必须可见（见 truth contract §10）
+
+### E. Endpoint / DTO 与正式性边界
+
+| 用途 | Endpoint | 说明 |
+| --- | --- | --- |
+| 明细/主表 | `GET /ui/pnl/product-category` | `result_meta.basis` 为 `formal` 或受治理 `scenario`；主链见 truth contract §6 |
+| 日期 | `GET /ui/pnl/product-category/dates` | 初始化 report_date 列表 |
+| 刷新/状态 | refresh 与 refresh-status | 运营态，非主读值真值面 |
+
+- 默认解释：`formal`；`scenario_rate_pct` 等场景字段仅在显式场景载荷下成为主解释（truth contract §6、§9）。
+
+### F. 指标与字段锚点
+
+- 本页 `metric_id` 主表绑定**尚未**在 `docs/metric_dictionary.md` 中完备案；真值以 truth contract **field freeze** 为准，禁止在前端重算或推断：
+  - 头表：`result.asset_total.business_net_income`、`result.liability_total.business_net_income`、`result.grand_total.business_net_income`
+  - 行：`category_id`、`category_name`、`side`、`level`、`view`、`report_date`、`business_net_income`、`children` 等（truth contract §9）
+- 对账等式见 truth contract §12（含 asset+liability 与 grand_total 一致性等）。
+
+### G. 状态合同（stale / fallback / error）
+
+- 须可见：`quality_flag`、`fallback_mode`、`vendor_status`、无数据、陈旧、加载失败、指标定义待确认等（truth contract §11）。
+- `404` / `503` 等 HTTP 语义遵循仓库通用状态语义（与 `page_contracts` §4.3 一致）。
+
+### H. 对账与黄金样本
+
+- 黄金样本：`GS-PROD-CAT-PNL-A`（`tests/golden_samples/GS-PROD-CAT-PNL-A/`，断言见同目录 `assertions.md`）
+- 不通过持仓分类或研究桶重解释样本行；与 `docs/pnl/product-category-golden-sample-a.md` 对账
+
+### I. 自动化测试（锚点）
+
+- 后端/流程：`tests/test_product_category_pnl_flow.py`、`tests/test_product_category_mapping_contract.py`
+- 前端：`frontend/src/test/ProductCategoryPnlPage.test.tsx` 等（见 `product-category-closure-checklist.md`）
+- capture-ready：`tests/test_golden_samples_capture_ready.py` 中 `GS-PROD-CAT-PNL-A`
+
+## 15. 当前缺口
+
+### 15.1 `as_of_date` 未统一
+
+当前纳入本文件的页面/消费面仍未统一 outward `as_of_date`。
 
 下一轮需要在 page contract 与 DTO 层统一：
 
@@ -1020,7 +1102,7 @@
 - `resolved_report_date`
 - `as_of_date`
 
-### 14.2 fallback 可见性未统一落 UI
+### 15.2 fallback 可见性未统一落 UI
 
 当前部分页面已有 `result_meta` 面板，但不是所有业务异常都会上浮成用户可见状态。
 
@@ -1029,14 +1111,14 @@
 - formal 页面 fallback banner 规范
 - analytical overlay 的 stale / vendor unavailable 文案
 
-### 14.3 黄金样本未挂接
+### 15.3 黄金样本绑定未完全收敛
 
-本文件已经给每个核心页面标了黄金样本方向，但尚未落样本包。
+本文件已经给核心页面标了黄金样本方向，且部分样本包已经落地；下一步需要把 `page_id -> metric_id -> sample_id -> test file` 绑定继续收敛到一致状态。
 
-## 15. 下一步建议
+## 16. 下一步建议
 
 按最小顺序继续：
 
-1. 用本文件和 `metric_dictionary.md` 选第一批黄金样本
+1. 用本文件和 `metric_dictionary.md` 继续补齐样本绑定关系
 2. 给 formal 页面补统一的 fallback / stale 可见性规范
 3. 再把 page contract existence / metric coverage 接入 docs-contract 测试
