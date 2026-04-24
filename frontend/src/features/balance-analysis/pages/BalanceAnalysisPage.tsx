@@ -68,6 +68,17 @@ import {
   barTrackStyle,
 } from "./BalanceAnalysisPage.styles";
 import { heroMetaChipStyle, signalAccentStyle, severityTone } from "./BalanceAnalysisPage.helpers";
+import {
+  distributionChartBarWidthPercent,
+  formatBalanceAmountToYiFromWan,
+  formatBalanceAmountToYiFromYuan,
+  formatBalanceGridThousandsValue,
+  formatBalanceWorkbookCellDisplay,
+  gapChartBarWidthPercent,
+  maxAbsFiniteChartScale,
+  maxFiniteChartScale,
+  parseBalanceChartMagnitude,
+} from "./balanceAnalysisPageModel";
 
 const PAGE_SIZE = 2;
 
@@ -133,58 +144,6 @@ function downloadCsvFile(filename: string, content: string) {
   downloadBlobFile(filename, new Blob([content], { type: "text/csv;charset=utf-8;" }));
 }
 
-function parseWorkbookNumber(value: unknown) {
-  const text = String(value ?? "").replace(/,/g, "").trim();
-  const parsed = Number.parseFloat(text);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function formatWorkbookValue(value: unknown) {
-  if (value === null || value === undefined || value === "") {
-    return "—";
-  }
-  return String(value);
-}
-
-function formatOverviewNumber(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
-    return String(raw);
-  }
-  return n.toLocaleString("zh-CN");
-}
-
-function formatAmountToYiFromYuan(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
-    return String(raw);
-  }
-  return (n / 100000000).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatAmountToYiFromWan(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
-    return String(raw);
-  }
-  return (n / 10000).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function formatBalanceScopeLabel(scope: BalancePositionScope | string | undefined): string {
   if (scope === "asset") {
     return "资产端";
@@ -209,29 +168,11 @@ function formatCurrencyBasisLabel(basis: BalanceCurrencyBasis | string | undefin
 }
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") {
-    return "—";
-  }
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) {
-    return String(v);
-  }
-  return n.toLocaleString("zh-CN");
+  return formatBalanceGridThousandsValue(params.value);
 }
 
 function workbookCellFormatter(params: ValueFormatterParams): string {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") {
-    return "—";
-  }
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) {
-    return String(v);
-  }
-  return n.toLocaleString("zh-CN");
+  return formatBalanceGridThousandsValue(params.value);
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -485,24 +426,26 @@ function renderDistributionPanel(
   if (!hasWorkbookFields(rows, [labelKey, valueKey])) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：缺少主分布图所需字段。");
   }
-  const maxValue = Math.max(...rows.map((row) => parseWorkbookNumber(row[valueKey])), 1);
+  const maxAmong = maxFiniteChartScale(rows.map((row) => row[valueKey]));
   return (
     <div data-testid={`balance-analysis-workbook-table-${table.key}`} style={{ display: "grid", gap: 12 }}>
       {rows.map((row, index) => {
-        const value = parseWorkbookNumber(row[valueKey]);
-        const width = `${Math.max(14, (value / maxValue) * 100)}%`;
+        const mag = parseBalanceChartMagnitude(row[valueKey]);
+        const widthPct = distributionChartBarWidthPercent(mag, maxAmong);
+        const width = widthPct == null ? "0%" : `${widthPct}%`;
         return (
           <div key={`${table.key}-${index}`} style={{ display: "grid", gap: 6 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <span style={{ color: designTokens.color.neutral[900], fontWeight: 600 }}>
-                {formatWorkbookValue(row[labelKey])}
+                {formatBalanceWorkbookCellDisplay(row[labelKey])}
               </span>
               <span style={{ color: designTokens.color.neutral[700], ...tabularNumsStyle }}>
-                {formatWorkbookValue(row[valueKey])}
+                {formatBalanceWorkbookCellDisplay(row[valueKey])}
               </span>
             </div>
             <div style={barTrackStyle}>
               <div
+                data-testid={`balance-analysis-distribution-bar-${table.key}-${index}`}
                 style={{
                   width,
                   height: "100%",
@@ -523,7 +466,7 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
   if (!hasWorkbookFields(rows, ["rating", "balance_amount"])) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：评级分布字段不完整。");
   }
-  const maxValue = Math.max(...rows.map((row) => parseWorkbookNumber(row.balance_amount)), 1);
+  const maxValue = maxFiniteChartScale(rows.map((row) => row.balance_amount));
   return (
     <div
       data-testid={`balance-analysis-workbook-table-${table.key}`}
@@ -534,8 +477,8 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
       }}
     >
       {rows.map((row, index) => {
-        const value = parseWorkbookNumber(row.balance_amount);
-        const ratio = Math.max(0.35, value / maxValue);
+        const mag = parseBalanceChartMagnitude(row.balance_amount);
+        const ratio = mag.kind === "finite" ? Math.max(0.35, mag.value / maxValue) : 0.35;
         return (
           <article
             key={`${table.key}-${index}`}
@@ -551,8 +494,8 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
               justifyContent: "space-between",
             }}
           >
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{formatWorkbookValue(row.rating)}</div>
-            <div style={{ fontSize: 13, opacity: 0.92 }}>{formatWorkbookValue(row.balance_amount)}</div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.rating)}</div>
+            <div style={{ fontSize: 13, opacity: 0.92 }}>{formatBalanceWorkbookCellDisplay(row.balance_amount)}</div>
           </article>
         );
       })}
@@ -565,13 +508,14 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
   if (!hasWorkbookFields(rows, ["bucket", "gap_amount"])) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：期限缺口字段不完整。");
   }
-  const maxValue = Math.max(...rows.map((row) => Math.abs(parseWorkbookNumber(row.gap_amount))), 1);
+  const maxAbs = maxAbsFiniteChartScale(rows.map((row) => row.gap_amount));
   return (
     <div data-testid={`balance-analysis-workbook-table-${table.key}`} style={{ display: "grid", gap: 12 }}>
       {rows.map((row, index) => {
-        const value = parseWorkbookNumber(row.gap_amount);
-        const width = `${Math.max(14, (Math.abs(value) / maxValue) * 100)}%`;
-        const positive = value >= 0;
+        const mag = parseBalanceChartMagnitude(row.gap_amount);
+        const widthPct = gapChartBarWidthPercent(mag, maxAbs);
+        const width = widthPct == null ? "0%" : `${widthPct}%`;
+        const positive = mag.kind === "finite" ? mag.value >= 0 : true;
         return (
           <article
             key={`${table.key}-${index}`}
@@ -588,7 +532,7 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
               <div style={{ color: designTokens.color.neutral[900], fontWeight: 700, fontSize: 13 }}>
-                {formatWorkbookValue(row.bucket)}
+                {formatBalanceWorkbookCellDisplay(row.bucket)}
               </div>
               <div
                 style={{
@@ -597,11 +541,12 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                   ...tabularNumsStyle,
                 }}
               >
-                {formatWorkbookValue(row.gap_amount)}
+                {formatBalanceWorkbookCellDisplay(row.gap_amount)}
               </div>
             </div>
             <div style={barTrackStyle}>
               <div
+                data-testid={`balance-analysis-maturity-gap-bar-${table.key}-${index}`}
                 style={{
                   width,
                   height: "100%",
@@ -644,13 +589,13 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.bond_type)}</div>
-            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.balance_amount)}</div>
+            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.bond_type)}</div>
+            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.balance_amount)}</div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: designTokens.color.neutral[700], fontSize: 12 }}>
-            <span>笔数 {formatWorkbookValue(row.count)}</span>
-            <span>利率 {formatWorkbookValue(row.weighted_rate_pct)}</span>
-            <span>期限 {formatWorkbookValue(row.weighted_term_years)}</span>
+            <span>笔数 {formatBalanceWorkbookCellDisplay(row.count)}</span>
+            <span>利率 {formatBalanceWorkbookCellDisplay(row.weighted_rate_pct)}</span>
+            <span>期限 {formatBalanceWorkbookCellDisplay(row.weighted_term_years)}</span>
           </div>
         </article>
       ))}
@@ -711,7 +656,7 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
             gap: 8,
           }}
         >
-          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.bucket)}</div>
+          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.bucket)}</div>
           <div
             style={{
               display: "grid",
@@ -722,18 +667,18 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
           >
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>债券</div>
-              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.bond_amount)}</div>
+              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.bond_amount)}</div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业资产</div>
               <div style={{ color: designTokens.color.success[400], fontWeight: 700 }}>
-                {formatWorkbookValue(row.interbank_asset_amount)}
+                {formatBalanceWorkbookCellDisplay(row.interbank_asset_amount)}
               </div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业负债</div>
               <div style={{ color: designTokens.color.warning[400], fontWeight: 700 }}>
-                {formatWorkbookValue(row.interbank_liability_amount)}
+                {formatBalanceWorkbookCellDisplay(row.interbank_liability_amount)}
               </div>
             </div>
           </div>
@@ -768,11 +713,11 @@ function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
             gap: 8,
           }}
         >
-          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.counterparty_type)}</div>
+          <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.counterparty_type)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
-            <span style={{ color: designTokens.color.info[600] }}>资产 {formatWorkbookValue(row.asset_amount)}</span>
-            <span style={{ color: designTokens.color.warning[400] }}>负债 {formatWorkbookValue(row.liability_amount)}</span>
-            <span style={{ color: designTokens.color.neutral[900] }}>净头寸 {formatWorkbookValue(row.net_position_amount)}</span>
+            <span style={{ color: designTokens.color.info[600] }}>资产 {formatBalanceWorkbookCellDisplay(row.asset_amount)}</span>
+            <span style={{ color: designTokens.color.warning[400] }}>负债 {formatBalanceWorkbookCellDisplay(row.liability_amount)}</span>
+            <span style={{ color: designTokens.color.neutral[900] }}>净头寸 {formatBalanceWorkbookCellDisplay(row.net_position_amount)}</span>
           </div>
         </article>
       ))}
@@ -840,17 +785,17 @@ function renderDecisionItemsPanel(
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-            <span style={workbookPanelBadgeStyle}>{formatWorkbookValue(row.severity)}</span>
+            <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.title)}</div>
+            <span style={workbookPanelBadgeStyle}>{formatBalanceWorkbookCellDisplay(row.severity)}</span>
           </div>
           <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-            {formatWorkbookValue(row.reason)}
+            {formatBalanceWorkbookCellDisplay(row.reason)}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
-            <span>{formatWorkbookValue(row.action_label)}</span>
-            <span>{formatWorkbookValue(row.source_section)}</span>
-            <span>{formatWorkbookValue(row.rule_id)}</span>
-            <span>{formatWorkbookValue(row.rule_version)}</span>
+            <span>{formatBalanceWorkbookCellDisplay(row.action_label)}</span>
+            <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
+            <span>{formatBalanceWorkbookCellDisplay(row.rule_id)}</span>
+            <span>{formatBalanceWorkbookCellDisplay(row.rule_version)}</span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[700] }}>
             <span>Status: {row.latest_status.status}</span>
@@ -944,14 +889,14 @@ function renderEventCalendarPanel(
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
-              <div style={{ color: designTokens.color.info[600], fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
+              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.title)}</div>
+              <div style={{ color: designTokens.color.info[600], fontSize: 12 }}>{formatBalanceWorkbookCellDisplay(row.event_date)}</div>
             </div>
-            <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
+            <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{formatBalanceWorkbookCellDisplay(row.impact_hint)}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
-              <span>{formatWorkbookValue(row.event_type)}</span>
-              <span>{formatWorkbookValue(row.source)}</span>
-              <span>{formatWorkbookValue(row.source_section)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.event_type)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.source)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
             </div>
           </article>
         </button>
@@ -1012,7 +957,7 @@ function renderRiskAlertsPanel(
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
+              <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.title)}</div>
               <span
                 style={{
                   ...workbookPanelBadgeStyle,
@@ -1020,16 +965,16 @@ function renderRiskAlertsPanel(
                   color: designTokens.color.warning[600],
                 }}
               >
-                {formatWorkbookValue(row.severity)}
+                {formatBalanceWorkbookCellDisplay(row.severity)}
               </span>
             </div>
             <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-              {formatWorkbookValue(row.reason)}
+              {formatBalanceWorkbookCellDisplay(row.reason)}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
-              <span>{formatWorkbookValue(row.source_section)}</span>
-              <span>{formatWorkbookValue(row.rule_id)}</span>
-              <span>{formatWorkbookValue(row.rule_version)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.rule_id)}</span>
+              <span>{formatBalanceWorkbookCellDisplay(row.rule_version)}</span>
             </div>
           </article>
         </button>
@@ -1383,7 +1328,7 @@ export default function BalanceAnalysisPage() {
     {
       key: "total-market-value",
       label: "总市值合计",
-      value: formatAmountToYiFromYuan(overview?.total_market_value_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
       unit: "亿元",
       detail: "overview.total_market_value_amount · formal",
       valueVariant: "text" as const,
@@ -1391,7 +1336,7 @@ export default function BalanceAnalysisPage() {
     {
       key: "total-amortized-cost",
       label: "摊余成本合计",
-      value: formatAmountToYiFromYuan(overview?.total_amortized_cost_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
       unit: "亿元",
       detail: "overview.total_amortized_cost_amount · formal",
       valueVariant: "text" as const,
@@ -1399,7 +1344,7 @@ export default function BalanceAnalysisPage() {
     {
       key: "total-accrued-interest",
       label: "应计利息合计",
-      value: formatAmountToYiFromYuan(overview?.total_accrued_interest_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
       unit: "亿元",
       detail: "overview.total_accrued_interest_amount · formal",
       valueVariant: "text" as const,
@@ -1421,7 +1366,7 @@ export default function BalanceAnalysisPage() {
     ...(workbook?.cards ?? []).map((card) => ({
       key: `workbook-card-${card.key}`,
       label: card.label,
-      value: formatAmountToYiFromWan(card.value),
+      value: formatBalanceAmountToYiFromWan(card.value),
       unit: "亿元",
       detail: `${card.note ?? "workbook.cards"} · workbook`,
       valueVariant: "text" as const,
@@ -2002,9 +1947,9 @@ export default function BalanceAnalysisPage() {
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
+        {formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
       </div>
 
       <div style={{ marginTop: 24 }}>

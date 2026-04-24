@@ -1387,4 +1387,166 @@ describe("BalanceAnalysisPage", () => {
       expect(getAdbComparisonSpy.mock.calls.length).toBeGreaterThan(1);
     });
   });
+
+  it("surfaces invalid overview amounts as text and does not show a minimum-width bar for invalid workbook magnitudes", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates"),
+      result: { report_dates: ["2025-12-31"] },
+    }));
+    const getOverviewSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        detail_row_count: 0,
+        summary_row_count: 0,
+        total_market_value_amount: "NOT_A_NUMERIC_KPI",
+        total_amortized_cost_amount: "0.00",
+        total_accrued_interest_amount: "0.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        details: [],
+        summary: [],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => {
+      const envelope = buildWorkbookResponse();
+      const bond = envelope.result.tables.find((t) => t.key === "bond_business_types");
+      if (bond) {
+        bond.rows = [
+          { bond_type: "规模正常", balance_amount: "200" },
+          { bond_type: "脏数据", balance_amount: "not-a-magnitude" },
+        ];
+      }
+      return envelope;
+    });
+    const getAdbComparisonSpy = vi.fn(async () => ({
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 0,
+      total_avg_assets: 0,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      asset_yield: 0,
+      liability_cost: 0,
+      net_interest_margin: 0,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    }));
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getAdbComparison: getAdbComparisonSpy,
+    });
+
+    await screen.findByRole("heading", { name: "资产负债分析" });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("NOT_A_NUMERIC_KPI");
+    });
+
+    const panel = await screen.findByTestId("balance-analysis-workbook-panel-bond_business_types");
+    expect(panel).toHaveTextContent("not-a-magnitude");
+    const bar0 = within(panel).getByTestId("balance-analysis-distribution-bar-bond_business_types-0");
+    const bar1 = within(panel).getByTestId("balance-analysis-distribution-bar-bond_business_types-1");
+    expect(bar0).toHaveStyle({ width: "100%" });
+    expect(bar1).toHaveStyle({ width: "0%" });
+  });
+
+  it("shows negative maturity gap amounts in text while bar width uses absolute magnitude", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates"),
+      result: { report_dates: ["2025-12-31"] },
+    }));
+    const getOverviewSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.overview", "tr_balance_overview"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        detail_row_count: 0,
+        summary_row_count: 0,
+        total_market_value_amount: "0.00",
+        total_amortized_cost_amount: "0.00",
+        total_accrued_interest_amount: "0.00",
+      },
+    }));
+    const getDetailSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.detail", "tr_balance_detail"),
+      result: {
+        report_date: "2025-12-31",
+        position_scope: "all" as const,
+        currency_basis: "CNY" as const,
+        details: [],
+        summary: [],
+      },
+    }));
+    const getSummarySpy = vi.fn(async ({ offset }: { offset: number }) => buildSummaryResponse(offset));
+    const getWorkbookSpy = vi.fn(async () => {
+      const envelope = buildWorkbookResponse();
+      const gap = envelope.result.tables.find((t) => t.key === "maturity_gap");
+      if (gap) {
+        gap.rows = [
+          { bucket: "正缺口桶", gap_amount: "200" },
+          { bucket: "负缺口桶", gap_amount: "-50" },
+        ];
+      }
+      return envelope;
+    });
+    const getAdbComparisonSpy = vi.fn(async () => ({
+      report_date: "2025-12-31",
+      start_date: "2025-01-01",
+      end_date: "2025-12-31",
+      num_days: 365,
+      simulated: false,
+      total_spot_assets: 0,
+      total_avg_assets: 0,
+      total_spot_liabilities: 0,
+      total_avg_liabilities: 0,
+      asset_yield: 0,
+      liability_cost: 0,
+      net_interest_margin: 0,
+      assets_breakdown: [],
+      liabilities_breakdown: [],
+    }));
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: getDatesSpy,
+      getBalanceAnalysisOverview: getOverviewSpy,
+      getBalanceAnalysisDetail: getDetailSpy,
+      getBalanceAnalysisSummary: getSummarySpy,
+      getBalanceAnalysisWorkbook: getWorkbookSpy,
+      getAdbComparison: getAdbComparisonSpy,
+    });
+
+    await screen.findByRole("heading", { name: "资产负债分析" });
+
+    const panel = await screen.findByTestId("balance-analysis-workbook-panel-maturity_gap");
+    expect(panel).toHaveTextContent("-50");
+    expect(panel).toHaveTextContent("该期限桶为负缺口");
+
+    const bar0 = within(panel).getByTestId("balance-analysis-maturity-gap-bar-maturity_gap-0");
+    const bar1 = within(panel).getByTestId("balance-analysis-maturity-gap-bar-maturity_gap-1");
+    expect(bar0).toHaveStyle({ width: "100%" });
+    expect(bar1).toHaveStyle({ width: "25%" });
+  });
 });
