@@ -2732,6 +2732,7 @@ export type AdbCategoryItem = {
 };
 
 export type AdbComparisonResponse = {
+  result_meta?: ResultMeta;
   report_date: string;
   start_date: string;
   end_date: string;
@@ -2774,6 +2775,7 @@ export type AdbMonthlyDataItem = {
 };
 
 export type AdbMonthlyResponse = {
+  result_meta?: ResultMeta;
   year: number;
   months: AdbMonthlyDataItem[];
   ytd_avg_assets: number;

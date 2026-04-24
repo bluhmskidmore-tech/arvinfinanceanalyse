@@ -21,6 +21,47 @@ describe("createApiClient", () => {
     expect(payload.result_meta.fallback_mode).toBe("none");
   });
 
+  it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const overview = await client.getBalanceAnalysisOverview({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    const summary = await client.getBalanceAnalysisSummary({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+      limit: 10,
+      offset: 0,
+    });
+    const basis = await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+
+    expect(summary.result.rows).toHaveLength(3);
+    expect(overview.result.summary_row_count).toBe(summary.result.total_rows);
+    expect(overview.result.detail_row_count).toBe(6);
+    expect(overview.result.total_market_value_amount).toBe("120200000000.00");
+    expect(overview.result.total_amortized_cost_amount).toBe("112300000000.00");
+    expect(overview.result.total_accrued_interest_amount).toBe("7040000000.00");
+
+    const detail = await client.getBalanceAnalysisDetail({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    expect(detail.result.details).toHaveLength(6);
+    expect(detail.result.summary).toHaveLength(summary.result.rows.length);
+    expect(detail.result.summary[0]?.market_value_amount).toBe("72000000000.00");
+    expect(detail.result.summary[1]?.market_value_amount).toBe("7200000000.00");
+    expect(detail.result.summary[2]?.market_value_amount).toBe("41000000000.00");
+    expect(basis.result.rows).toHaveLength(summary.result.rows.length);
+    expect(basis.result.rows[2]?.market_value_amount).toBe("41000000000.00");
+  });
+
   it("keeps mock manual-adjustment current state reduced while exposing full timeline", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -256,6 +297,8 @@ describe("createApiClient", () => {
 
     expect(payload).not.toHaveProperty("assets");
     expect(payload).not.toHaveProperty("liabilities");
+    expect(payload.result_meta?.result_kind).toBe("adb.comparison");
+    expect(payload.result_meta?.source_version).toBe("sv_adb");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",

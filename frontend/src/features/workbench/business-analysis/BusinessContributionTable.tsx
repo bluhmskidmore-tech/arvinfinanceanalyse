@@ -2,12 +2,10 @@ import { Link } from "react-router-dom";
 
 import type { BalanceAnalysisTableRow } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
+import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 
 function formatCell(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  return String(raw);
+  return formatBalanceAmountToYiFromYuan(raw);
 }
 
 export type BusinessContributionTableProps = {

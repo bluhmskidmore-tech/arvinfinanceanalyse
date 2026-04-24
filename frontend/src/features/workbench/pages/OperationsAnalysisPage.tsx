@@ -28,6 +28,7 @@ import {
   OPERATIONS_WATCH_ITEMS,
 } from "../business-analysis/businessAnalysisWorkbenchMocks";
 import { KpiCard } from "../components/KpiCard";
+import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 
 const DISPLAY_FONT =
   '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
@@ -414,14 +415,7 @@ function OperationsMetricCard({
 }
 
 function formatOverviewNumber(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const parsed = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(parsed)) {
-    return String(raw);
-  }
-  return parsed.toLocaleString("zh-CN");
+  return formatBalanceAmountToYiFromYuan(raw);
 }
 
 function buildStatusCardContent(input: {

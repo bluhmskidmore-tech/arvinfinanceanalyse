@@ -265,9 +265,9 @@ describe("OperationsAnalysisPage governed values", () => {
           currency_basis: "CNY" as const,
           detail_row_count: 11,
           summary_row_count: 4,
-          total_market_value_amount: "901.25",
-          total_amortized_cost_amount: "880.5",
-          total_accrued_interest_amount: "12.75",
+          total_market_value_amount: "90125000000",
+          total_amortized_cost_amount: "88050000000",
+          total_accrued_interest_amount: "1275000000",
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({

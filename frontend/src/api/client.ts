@@ -2187,7 +2187,7 @@ const parseBaseUrl = () => {
   return normalizeBaseUrl(typeof raw === "string" ? raw.trim() : undefined);
 };
 
-function buildMockBalanceAnalysisTableRows(
+function buildBalanceAnalysisTableRows(
   reportDate: string,
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
@@ -2204,9 +2204,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "A",
       accounting_basis: "FVOCI",
       detail_row_count: 3,
-      market_value_amount: "720.00",
-      amortized_cost_amount: "648.00",
-      accrued_interest_amount: "36.00",
+      market_value_amount: "72000000000.00",
+      amortized_cost_amount: "64800000000.00",
+      accrued_interest_amount: "3600000000.00",
     },
     {
       row_key: "tyw:repo-1:CNY:liability:H:AC",
@@ -2219,9 +2219,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "H",
       accounting_basis: "AC",
       detail_row_count: 1,
-      market_value_amount: "72.00",
-      amortized_cost_amount: "72.00",
-      accrued_interest_amount: "14.40",
+      market_value_amount: "7200000000.00",
+      amortized_cost_amount: "7200000000.00",
+      accrued_interest_amount: "1440000000.00",
     },
     {
       row_key: "zqtz:240002.IB:portfolio-b:cc-2:CNY:asset:H:AC",
@@ -2234,9 +2234,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "H",
       accounting_basis: "AC",
       detail_row_count: 2,
-      market_value_amount: "410.00",
-      amortized_cost_amount: "403.00",
-      accrued_interest_amount: "20.00",
+      market_value_amount: "41000000000.00",
+      amortized_cost_amount: "40300000000.00",
+      accrued_interest_amount: "2000000000.00",
     },
   ];
   return rows.filter((row) => {
@@ -2246,6 +2246,112 @@ function buildMockBalanceAnalysisTableRows(
   });
 }
 
+type BalanceAnalysisAmountField =
+  | "market_value_amount"
+  | "amortized_cost_amount"
+  | "accrued_interest_amount";
+
+function parseBalanceAmount(raw: BalanceAnalysisTableRow[BalanceAnalysisAmountField]): number {
+  const parsed = Number.parseFloat(String(raw));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatBalanceAmountDecimal(value: number): string {
+  return value.toFixed(2);
+}
+
+function sumBalanceAmount(
+  rows: readonly BalanceAnalysisTableRow[],
+  field: BalanceAnalysisAmountField,
+): number {
+  return rows.reduce((sum, row) => sum + parseBalanceAmount(row[field]), 0);
+}
+
+function divideBalanceAmount(
+  row: BalanceAnalysisTableRow,
+  field: BalanceAnalysisAmountField,
+): string {
+  const divisor = Math.max(1, row.detail_row_count);
+  return formatBalanceAmountDecimal(parseBalanceAmount(row[field]) / divisor);
+}
+
+function buildBalanceAnalysisOverviewPayload(
+  reportDate: string,
+  positionScope: BalancePositionScope,
+  currencyBasis: BalanceCurrencyBasis,
+): BalanceAnalysisOverviewPayload {
+  const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  return {
+    report_date: reportDate,
+    position_scope: positionScope,
+    currency_basis: currencyBasis,
+    detail_row_count: rows.reduce((sum, row) => sum + row.detail_row_count, 0),
+    summary_row_count: rows.length,
+    total_market_value_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(rows, "market_value_amount"),
+    ),
+    total_amortized_cost_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(rows, "amortized_cost_amount"),
+    ),
+    total_accrued_interest_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(rows, "accrued_interest_amount"),
+    ),
+  };
+}
+
+function buildBalanceAnalysisDetailRows(
+  reportDate: string,
+  rows: readonly BalanceAnalysisTableRow[],
+): BalanceAnalysisPayload["details"] {
+  return rows.flatMap((row) => {
+    const count = Math.max(1, row.detail_row_count);
+    return Array.from({ length: count }, (_, index) => ({
+      source_family: row.source_family,
+      report_date: reportDate,
+      row_key: `${row.row_key}:detail-${index + 1}`,
+      display_name: count === 1 ? row.display_name : `${row.display_name} #${index + 1}`,
+      position_scope: row.position_scope,
+      currency_basis: row.currency_basis,
+      invest_type_std: row.invest_type_std,
+      accounting_basis: row.accounting_basis,
+      market_value_amount: divideBalanceAmount(row, "market_value_amount"),
+      amortized_cost_amount: divideBalanceAmount(row, "amortized_cost_amount"),
+      accrued_interest_amount: divideBalanceAmount(row, "accrued_interest_amount"),
+      is_issuance_like: row.source_family === "zqtz" ? false : null,
+    }));
+  });
+}
+
+function buildBalanceAnalysisDetailSummary(
+  rows: readonly BalanceAnalysisTableRow[],
+): BalanceAnalysisPayload["summary"] {
+  return rows.map((row) => ({
+    source_family: row.source_family,
+    position_scope: row.position_scope,
+    currency_basis: row.currency_basis,
+    row_count: row.detail_row_count,
+    market_value_amount: row.market_value_amount,
+    amortized_cost_amount: row.amortized_cost_amount,
+    accrued_interest_amount: row.accrued_interest_amount,
+  }));
+}
+
+function buildBalanceAnalysisBasisRows(
+  rows: readonly BalanceAnalysisTableRow[],
+): BalanceAnalysisBasisBreakdownPayload["rows"] {
+  return rows.map((row) => ({
+    source_family: row.source_family,
+    invest_type_std: row.invest_type_std,
+    accounting_basis: row.accounting_basis,
+    position_scope: row.position_scope,
+    currency_basis: row.currency_basis,
+    detail_row_count: row.detail_row_count,
+    market_value_amount: row.market_value_amount,
+    amortized_cost_amount: row.amortized_cost_amount,
+    accrued_interest_amount: row.accrued_interest_amount,
+  }));
+}
+
 function buildMockBalanceAnalysisSummaryTable(
   reportDate: string,
   positionScope: BalancePositionScope,
@@ -2253,7 +2359,7 @@ function buildMockBalanceAnalysisSummaryTable(
   limit: number,
   offset: number,
 ): ApiEnvelope<BalanceAnalysisSummaryTablePayload> {
-  const rows = buildMockBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
   return buildMockApiEnvelope(
     "balance-analysis.summary",
     {
@@ -2280,7 +2386,7 @@ function buildMockBalanceAnalysisSummaryCsv(
   positionScope: BalancePositionScope,
   currencyBasis: BalanceCurrencyBasis,
 ): BalanceAnalysisSummaryExportPayload {
-  const rows = buildMockBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
   const headers = [
     "row_key",
     "source_family",
@@ -2805,7 +2911,30 @@ const requestEnvelopeOrPlainJson = async <T>(
   return payload as T;
 };
 
-function normalizeAdbComparisonResponse(raw: Record<string, unknown>): AdbComparisonResponse {
+const requestEnvelopeOrPlainJsonWithMeta = async <T>(
+  fetchImpl: typeof fetch,
+  baseUrl: string,
+  path: string,
+): Promise<{ result: T; result_meta?: ResultMeta }> => {
+  const payload = await requestPlainJson<Record<string, unknown>>(fetchImpl, baseUrl, path);
+  if (
+    payload &&
+    typeof payload === "object" &&
+    "result_meta" in payload &&
+    "result" in payload
+  ) {
+    return {
+      result: payload.result as T,
+      result_meta: payload.result_meta as ResultMeta,
+    };
+  }
+  return { result: payload as T };
+};
+
+function normalizeAdbComparisonResponse(
+  raw: Record<string, unknown>,
+  resultMeta?: ResultMeta,
+): AdbComparisonResponse {
   const mapBreakdown = (items: unknown[]) =>
     items.map((item) => {
       const row = item as Record<string, unknown>;
@@ -2829,6 +2958,7 @@ function normalizeAdbComparisonResponse(raw: Record<string, unknown>): AdbCompar
   );
 
   return {
+    result_meta: resultMeta,
     report_date: String(raw.report_date ?? raw.end_date ?? ""),
     start_date: String(raw.start_date ?? ""),
     end_date: String(raw.end_date ?? ""),
@@ -2854,9 +2984,13 @@ function normalizeAdbComparisonResponse(raw: Record<string, unknown>): AdbCompar
   };
 }
 
-function normalizeAdbMonthlyResponse(raw: Record<string, unknown>): AdbMonthlyResponse {
+function normalizeAdbMonthlyResponse(
+  raw: Record<string, unknown>,
+  resultMeta?: ResultMeta,
+): AdbMonthlyResponse {
   const months = Array.isArray(raw.months) ? raw.months : [];
   return {
+    result_meta: resultMeta,
     year: Number(raw.year ?? 0),
     months: months.map((item) => {
       const row = item as Record<string, unknown>;
@@ -4002,56 +4136,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisOverview({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      const detailRows = [
-        {
-          source_family: "zqtz" as const,
-          position_scope: "asset" as const,
-          currency_basis: "CNY" as const,
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
-        },
-        {
-          source_family: "tyw" as const,
-          position_scope: "liability" as const,
-          currency_basis: "CNY" as const,
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
-        },
-      ].filter((row) => {
-        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
-        const matchesBasis = row.currency_basis === currencyBasis;
-        return matchesScope && matchesBasis;
-      });
-      const totals = detailRows.reduce(
-        (acc, row) => ({
-          detailRowCount: acc.detailRowCount + 1,
-          summaryRowCount: acc.summaryRowCount + 1,
-          marketValue: acc.marketValue + Number.parseFloat(row.market_value_amount),
-          amortizedCost: acc.amortizedCost + Number.parseFloat(row.amortized_cost_amount),
-          accruedInterest: acc.accruedInterest + Number.parseFloat(row.accrued_interest_amount),
-        }),
-        {
-          detailRowCount: 0,
-          summaryRowCount: 0,
-          marketValue: 0,
-          amortizedCost: 0,
-          accruedInterest: 0,
-        },
-      );
       return buildMockApiEnvelope(
         "balance-analysis.overview",
-        {
-          report_date: reportDate,
-          position_scope: positionScope,
-          currency_basis: currencyBasis,
-          detail_row_count: totals.detailRowCount,
-          summary_row_count: totals.summaryRowCount,
-          total_market_value_amount: totals.marketValue.toFixed(2),
-          total_amortized_cost_amount: totals.amortizedCost.toFixed(2),
-          total_accrued_interest_amount: totals.accruedInterest.toFixed(2),
-        },
+        buildBalanceAnalysisOverviewPayload(reportDate, positionScope, currencyBasis),
         {
           basis: "formal",
           formal_use_allowed: true,
@@ -4063,49 +4150,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisDetail({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      const baseDetails = [
-        {
-          source_family: "zqtz" as const,
-          report_date: reportDate,
-          row_key: "zqtz:mock",
-          display_name: "240001.IB",
-          position_scope: "asset" as const,
-          currency_basis: "CNY" as const,
-          invest_type_std: "A",
-          accounting_basis: "FVOCI",
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
-          is_issuance_like: false,
-        },
-        {
-          source_family: "tyw" as const,
-          report_date: reportDate,
-          row_key: "tyw:mock",
-          display_name: "pos-1",
-          position_scope: "liability" as const,
-          currency_basis: "CNY" as const,
-          invest_type_std: "H",
-          accounting_basis: "AC",
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
-          is_issuance_like: null,
-        },
-      ].filter((row) => {
-        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
-        const matchesBasis = row.currency_basis === currencyBasis;
-        return matchesScope && matchesBasis;
-      });
-      const summary = baseDetails.map((row) => ({
-        source_family: row.source_family,
-        position_scope: row.position_scope,
-        currency_basis: row.currency_basis,
-        row_count: 1,
-        market_value_amount: row.market_value_amount,
-        amortized_cost_amount: row.amortized_cost_amount,
-        accrued_interest_amount: row.accrued_interest_amount,
-      }));
+      const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+      const baseDetails = buildBalanceAnalysisDetailRows(reportDate, rows);
+      const summary = buildBalanceAnalysisDetailSummary(rows);
       return buildMockApiEnvelope(
         "balance-analysis.detail",
         {
@@ -4126,34 +4173,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getBalanceAnalysisSummaryByBasis({ reportDate, positionScope, currencyBasis }) {
       await delay();
-      const rows: BalanceAnalysisBasisBreakdownPayload["rows"] = [
-        {
-          source_family: "zqtz" as const,
-          invest_type_std: "A",
-          accounting_basis: "FVOCI",
-          position_scope: "asset" as const,
-          currency_basis: "CNY" as const,
-          detail_row_count: 3,
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
-        },
-        {
-          source_family: "tyw" as const,
-          invest_type_std: "H",
-          accounting_basis: "AC",
-          position_scope: "liability" as const,
-          currency_basis: "CNY" as const,
-          detail_row_count: 1,
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
-        },
-      ].filter((row) => {
-        const matchesScope = positionScope === "all" || row.position_scope === positionScope;
-        const matchesBasis = row.currency_basis === currencyBasis;
-        return matchesScope && matchesBasis;
-      });
+      const rows = buildBalanceAnalysisBasisRows(
+        buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis),
+      );
       return buildMockApiEnvelope(
         "balance-analysis.basis_breakdown",
         {
@@ -6046,21 +6068,25 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       if (topN !== undefined) {
         params.set("top_n", String(topN));
       }
-      const raw = await requestEnvelopeOrPlainJson<Record<string, unknown>>(
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+        Record<string, unknown>
+      >(
         fetchImpl,
         baseUrl,
         `/api/analysis/adb/comparison?${params.toString()}`,
       );
-      return normalizeAdbComparisonResponse(raw);
+      return normalizeAdbComparisonResponse(result, result_meta);
     },
-    getAdbMonthly: async (year) =>
-      normalizeAdbMonthlyResponse(
-        await requestEnvelopeOrPlainJson<Record<string, unknown>>(
-          fetchImpl,
-          baseUrl,
-          `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
-        ),
-      ),
+    getAdbMonthly: async (year) => {
+      const { result, result_meta } = await requestEnvelopeOrPlainJsonWithMeta<
+        Record<string, unknown>
+      >(
+        fetchImpl,
+        baseUrl,
+        `/api/analysis/adb/monthly?year=${encodeURIComponent(String(year))}`,
+      );
+      return normalizeAdbMonthlyResponse(result, result_meta);
+    },
     getContribution: () =>
       requestJson<ContributionPayload>(
         fetchImpl,

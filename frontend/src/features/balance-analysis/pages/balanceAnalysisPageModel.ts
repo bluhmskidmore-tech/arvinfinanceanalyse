@@ -11,7 +11,7 @@ function stripThousandsSeparators(raw: string): string {
 }
 
 /** Full-string numeric match so `parseFloat("12abc") === 12` cannot slip through as valid. */
-const STRICT_DISPLAY_FINITE_NUMBER = /^-?(?:\d+(?:\.\d*)?|\.\d+)$/;
+const STRICT_DISPLAY_FINITE_NUMBER = /^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
 
 function strictFiniteNumberFromDisplayText(text: string): number | null {
   if (text === "") {
@@ -30,6 +30,87 @@ function finiteNumberFromOverviewInput(raw: string | number): number | null {
   }
   const text = stripThousandsSeparators(raw);
   return strictFiniteNumberFromDisplayText(text);
+}
+
+export type BalanceScopeAmountKey =
+  | "marketValueAmount"
+  | "amortizedCostAmount"
+  | "accruedInterestAmount";
+
+export type BalanceScopeAmountTotals = {
+  rowCount: number;
+  hasRows: boolean;
+  marketValueAmount: number | null;
+  amortizedCostAmount: number | null;
+  accruedInterestAmount: number | null;
+};
+
+type BalanceScopeSummaryInput = {
+  position_scope?: unknown;
+  row_count?: unknown;
+  market_value_amount?: unknown;
+  amortized_cost_amount?: unknown;
+  accrued_interest_amount?: unknown;
+};
+
+function createEmptyScopeTotals(): BalanceScopeAmountTotals {
+  return {
+    rowCount: 0,
+    hasRows: false,
+    marketValueAmount: 0,
+    amortizedCostAmount: 0,
+    accruedInterestAmount: 0,
+  };
+}
+
+function finiteNumberFromUnknown(value: unknown): number | null {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return null;
+  }
+  return finiteNumberFromOverviewInput(value);
+}
+
+function addFiniteAmount(current: number | null, value: unknown): number | null {
+  if (current === null) {
+    return null;
+  }
+  const n = finiteNumberFromUnknown(value);
+  return n === null ? null : current + n;
+}
+
+export function summarizeBalanceAmountsByPositionScope(
+  rows: readonly BalanceScopeSummaryInput[],
+): Record<"asset" | "liability", BalanceScopeAmountTotals> {
+  const totals = {
+    asset: createEmptyScopeTotals(),
+    liability: createEmptyScopeTotals(),
+  };
+
+  for (const row of rows) {
+    if (row.position_scope !== "asset" && row.position_scope !== "liability") {
+      continue;
+    }
+    const bucket = totals[row.position_scope];
+    bucket.hasRows = true;
+    const rowCount = finiteNumberFromUnknown(row.row_count);
+    bucket.rowCount += rowCount === null ? 0 : rowCount;
+    bucket.marketValueAmount = addFiniteAmount(bucket.marketValueAmount, row.market_value_amount);
+    bucket.amortizedCostAmount = addFiniteAmount(bucket.amortizedCostAmount, row.amortized_cost_amount);
+    bucket.accruedInterestAmount = addFiniteAmount(bucket.accruedInterestAmount, row.accrued_interest_amount);
+  }
+
+  return totals;
+}
+
+export function formatBalanceScopeTotalAmountToYi(
+  totals: BalanceScopeAmountTotals,
+  amountKey: BalanceScopeAmountKey,
+): string {
+  if (!totals.hasRows) {
+    return "—";
+  }
+  const value = totals[amountKey];
+  return value === null ? "—" : formatBalanceAmountToYiFromYuan(value);
 }
 
 /**
@@ -165,6 +246,34 @@ export function formatBalanceAmountToYiFromWan(raw: string | number | null | und
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+/** Workbook wan-yuan amount cell display with unit, preserving invalid source text. */
+export function formatBalanceWorkbookWanAmountDisplay(raw: unknown): string {
+  if (raw === null || raw === undefined || raw === "") {
+    return "—";
+  }
+  if (typeof raw !== "string" && typeof raw !== "number") {
+    return String(raw);
+  }
+  const n = finiteNumberFromOverviewInput(raw);
+  if (n === null) {
+    return String(raw);
+  }
+  return `${formatBalanceAmountToYiFromWan(raw)} 亿元`;
+}
+
+const WORKBOOK_WAN_YUAN_TEXT_PATTERN = /(-?(?:\d[\d,]*(?:\.\d*)?|\.\d+))\s*(?:wan yuan|万元)/gi;
+
+/** Workbook governed prose display: replace embedded wan-yuan amounts with yi-yuan amounts. */
+export function formatBalanceWorkbookWanTextDisplay(value: unknown): string {
+  const text = formatBalanceWorkbookCellDisplay(value);
+  if (text === "—") {
+    return text;
+  }
+  return text.replace(WORKBOOK_WAN_YUAN_TEXT_PATTERN, (_match, rawAmount: string) =>
+    formatBalanceWorkbookWanAmountDisplay(rawAmount),
+  );
 }
 
 /**

@@ -7,11 +7,15 @@ import {
   formatBalanceAmountToYiFromYuan,
   formatBalanceGridThousandsValue,
   formatBalanceOverviewNumber,
+  formatBalanceScopeTotalAmountToYi,
   formatBalanceWorkbookCellDisplay,
+  formatBalanceWorkbookWanAmountDisplay,
+  formatBalanceWorkbookWanTextDisplay,
   gapChartBarWidthPercent,
   maxAbsFiniteChartScale,
   maxFiniteChartScale,
   parseBalanceChartMagnitude,
+  summarizeBalanceAmountsByPositionScope,
 } from "./balanceAnalysisPageModel";
 
 describe("balanceAnalysisPageModel", () => {
@@ -49,6 +53,7 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceOverviewNumber("1,234.5")).toBe("1,234.5");
       expect(formatBalanceGridThousandsValue("1,234")).toBe("1,234");
       expect(formatBalanceAmountToYiFromYuan("100,000,000")).toBe("1.00");
+      expect(formatBalanceAmountToYiFromYuan("0E-8")).toBe("0.00");
     });
 
     it("matches yuan-to-yi and wan-to-yi locale precision (zh-CN, 2 decimals)", () => {
@@ -66,6 +71,26 @@ describe("balanceAnalysisPageModel", () => {
           maximumFractionDigits: 2,
         }),
       );
+    });
+
+    it("adds yi unit labels for workbook wan-yuan amount cells", () => {
+      expect(formatBalanceWorkbookWanAmountDisplay("4290357.07")).toBe("429.04 亿元");
+      expect(formatBalanceWorkbookWanAmountDisplay("-128000.00")).toBe("-12.80 亿元");
+      expect(formatBalanceWorkbookWanAmountDisplay("n/a")).toBe("n/a");
+    });
+
+    it("rewrites governed workbook reason text from wan yuan to yi yuan", () => {
+      expect(formatBalanceWorkbookWanTextDisplay("Bucket gap is 4290357.07 wan yuan.")).toBe(
+        "Bucket gap is 429.04 亿元.",
+      );
+      expect(formatBalanceWorkbookWanTextDisplay("Gap dropped to -128000.00 wan yuan.")).toBe(
+        "Gap dropped to -12.80 亿元.",
+      );
+      expect(formatBalanceWorkbookWanTextDisplay("No numeric amount here.")).toBe("No numeric amount here.");
+    });
+
+    it("rewrites 万元 (Chinese) amounts in workbook notes the same as wan yuan", () => {
+      expect(formatBalanceWorkbookWanTextDisplay("观测峰值 99.00 万元。")).toBe("观测峰值 0.01 亿元。");
     });
   });
 
@@ -98,6 +123,50 @@ describe("balanceAnalysisPageModel", () => {
     it("ignores invalid cells when computing max scale so bars are not pinned to a fake zero denominator", () => {
       expect(maxFiniteChartScale(["bad", 50, 30])).toBe(50);
       expect(maxAbsFiniteChartScale(["bad", "-30", 10])).toBe(30);
+    });
+  });
+
+  describe("position-scope amount summaries", () => {
+    it("separates asset and liability totals instead of combining them", () => {
+      const totals = summarizeBalanceAmountsByPositionScope([
+        {
+          position_scope: "asset",
+          row_count: 174,
+          market_value_amount: "24145782559.52",
+          amortized_cost_amount: "24145782559.52",
+          accrued_interest_amount: "186447192.86",
+        },
+        {
+          position_scope: "liability",
+          row_count: 2125,
+          market_value_amount: "64768888887.83",
+          amortized_cost_amount: "64768888887.83",
+          accrued_interest_amount: "13996586.21",
+        },
+        {
+          position_scope: "asset",
+          row_count: 1711,
+          market_value_amount: "333925726735.544",
+          amortized_cost_amount: "327352769214.272",
+          accrued_interest_amount: "25793215.37",
+        },
+        {
+          position_scope: "liability",
+          row_count: 129,
+          market_value_amount: "119804097177.69",
+          amortized_cost_amount: "120453500738.43",
+          accrued_interest_amount: "0E-8",
+        },
+      ]);
+
+      expect(totals.asset.rowCount).toBe(1885);
+      expect(formatBalanceScopeTotalAmountToYi(totals.asset, "marketValueAmount")).toBe("3,580.72");
+      expect(formatBalanceScopeTotalAmountToYi(totals.asset, "amortizedCostAmount")).toBe("3,514.99");
+      expect(formatBalanceScopeTotalAmountToYi(totals.asset, "accruedInterestAmount")).toBe("2.12");
+      expect(totals.liability.rowCount).toBe(2254);
+      expect(formatBalanceScopeTotalAmountToYi(totals.liability, "marketValueAmount")).toBe("1,845.73");
+      expect(formatBalanceScopeTotalAmountToYi(totals.liability, "amortizedCostAmount")).toBe("1,852.22");
+      expect(formatBalanceScopeTotalAmountToYi(totals.liability, "accruedInterestAmount")).toBe("0.14");
     });
   });
 });

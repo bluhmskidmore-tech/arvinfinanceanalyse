@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { vi } from "vitest";
@@ -268,8 +268,8 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-balance-report-date")).toHaveTextContent(
         "2025-12-31",
       );
-      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("720");
-      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("792");
+      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("1,123");
+      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("1,202");
     });
     await expandOperationsDataSourcesPanel(user);
     await waitFor(() => {
@@ -592,7 +592,14 @@ describe("OperationsAnalysisPage", () => {
     await screen.findByTestId("operations-entry-balance-section");
     expect(await screen.findByTestId("operations-business-kpis")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-conclusion-grid")).toBeInTheDocument();
-    expect(await screen.findByTestId("operations-contribution-grid")).toBeInTheDocument();
+    const contributionGrid = await screen.findByTestId("operations-contribution-grid");
+    expect(contributionGrid).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(contributionGrid).getByText("240001.IB")).toBeInTheDocument();
+      expect(contributionGrid).toHaveTextContent("720.00");
+      expect(contributionGrid).toHaveTextContent("410.00");
+      expect(contributionGrid).not.toHaveTextContent("72000000000.00");
+    });
     expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
     return;

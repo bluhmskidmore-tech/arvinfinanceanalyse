@@ -73,11 +73,15 @@ import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
   formatBalanceGridThousandsValue,
+  formatBalanceScopeTotalAmountToYi,
   formatBalanceWorkbookCellDisplay,
+  formatBalanceWorkbookWanAmountDisplay,
+  formatBalanceWorkbookWanTextDisplay,
   gapChartBarWidthPercent,
   maxAbsFiniteChartScale,
   maxFiniteChartScale,
   parseBalanceChartMagnitude,
+  summarizeBalanceAmountsByPositionScope,
 } from "./balanceAnalysisPageModel";
 
 const PAGE_SIZE = 2;
@@ -98,6 +102,27 @@ const secondaryWorkbookPanelKeys = [
 const rightRailWorkbookKeys = [
   "event_calendar",
   "risk_alerts",
+] as const;
+
+const amountMetricDefinitions = [
+  {
+    key: "market-value",
+    label: "市值合计",
+    amountKey: "marketValueAmount",
+    overviewKey: "total_market_value_amount",
+  },
+  {
+    key: "amortized-cost",
+    label: "摊余成本合计",
+    amountKey: "amortizedCostAmount",
+    overviewKey: "total_amortized_cost_amount",
+  },
+  {
+    key: "accrued-interest",
+    label: "应计利息合计",
+    amountKey: "accruedInterestAmount",
+    overviewKey: "total_accrued_interest_amount",
+  },
 ] as const;
 
 const workbookPanelNotes: Record<(typeof primaryWorkbookTableKeys)[number], string> = {
@@ -171,7 +196,57 @@ function thousandsValueFormatter(params: ValueFormatterParams) {
   return formatBalanceGridThousandsValue(params.value);
 }
 
+function yuanAmountValueFormatter(params: ValueFormatterParams) {
+  return formatBalanceAmountToYiFromYuan(params.value);
+}
+
+const workbookWanAmountFieldKeys = new Set([
+  "asset_amount",
+  "asset_total_amount",
+  "balance_amount",
+  "bond_amount",
+  "bond_assets_amount",
+  "bond_maturity_amount",
+  "book_value_amount",
+  "coupon_income_amount",
+  "cumulative_gap_amount",
+  "cumulative_net_cashflow_amount",
+  "face_value_amount",
+  "floating_pnl_amount",
+  "full_scope_gap_amount",
+  "full_scope_liability_amount",
+  "gap_amount",
+  "hqla_amount",
+  "interbank_asset_amount",
+  "interbank_asset_maturity_amount",
+  "interbank_assets_amount",
+  "interbank_liability_amount",
+  "interbank_liability_maturity_amount",
+  "interbank_liabilities_amount",
+  "issuance_amount",
+  "issuance_maturity_amount",
+  "liability_amount",
+  "market_value_amount",
+  "net_cashflow_amount",
+  "net_position_amount",
+  "notional_amount",
+  "price_return_amount",
+  "spread_income_amount",
+  "total_amount",
+  "amortized_cost_amount",
+]);
+
+function isWorkbookWanAmountField(field: unknown): field is string {
+  return typeof field === "string" && workbookWanAmountFieldKeys.has(field);
+}
+
 function workbookCellFormatter(params: ValueFormatterParams): string {
+  if (isWorkbookWanAmountField(params.colDef.field)) {
+    return formatBalanceWorkbookWanAmountDisplay(params.value);
+  }
+  if (typeof params.value === "string" && /(?:wan yuan|万元)/i.test(params.value)) {
+    return formatBalanceWorkbookWanTextDisplay(params.value);
+  }
   return formatBalanceGridThousandsValue(params.value);
 }
 
@@ -199,24 +274,24 @@ const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
   { field: "currency_basis", headerName: "币种口径" },
   {
     field: "market_value_amount",
-    headerName: "规模(亿)",
+    headerName: "规模(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "detail_row_count",
@@ -250,24 +325,24 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
   },
   {
     field: "market_value_amount",
-    headerName: "规模",
+    headerName: "规模(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "is_issuance_like",
@@ -277,7 +352,7 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
   },
 ];
 
-const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryRow>[] = [
+const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryGridRow>[] = [
   {
     field: "source_family",
     headerName: "来源",
@@ -294,26 +369,46 @@ const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryRow>[] = [
   },
   {
     field: "market_value_amount",
-    headerName: "市值",
+    headerName: "市值(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
 ];
+
+type BalanceAnalysisSummaryGridRow = BalanceAnalysisSummaryRow & { __gridId: string };
+
+function buildBalanceDetailSummaryGridRows(
+  rows: readonly BalanceAnalysisSummaryRow[],
+): BalanceAnalysisSummaryGridRow[] {
+  return rows.map((row, index) => ({
+    ...row,
+    __gridId: [
+      row.source_family,
+      row.position_scope,
+      row.currency_basis,
+      row.row_count,
+      row.market_value_amount,
+      row.amortized_cost_amount,
+      row.accrued_interest_amount,
+      index,
+    ].join("|"),
+  }));
+}
 
 const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] = [
   {
@@ -334,24 +429,24 @@ const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] =
   },
   {
     field: "market_value_amount",
-    headerName: "市值",
+    headerName: "市值(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿元)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanAmountValueFormatter,
   },
 ];
 
@@ -440,7 +535,7 @@ function renderDistributionPanel(
                 {formatBalanceWorkbookCellDisplay(row[labelKey])}
               </span>
               <span style={{ color: designTokens.color.neutral[700], ...tabularNumsStyle }}>
-                {formatBalanceWorkbookCellDisplay(row[valueKey])}
+                {formatBalanceWorkbookWanAmountDisplay(row[valueKey])}
               </span>
             </div>
             <div style={barTrackStyle}>
@@ -495,7 +590,9 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
             }}
           >
             <div style={{ fontSize: 18, fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.rating)}</div>
-            <div style={{ fontSize: 13, opacity: 0.92 }}>{formatBalanceWorkbookCellDisplay(row.balance_amount)}</div>
+            <div style={{ fontSize: 13, opacity: 0.92 }}>
+              {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
+            </div>
           </article>
         );
       })}
@@ -541,7 +638,7 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                   ...tabularNumsStyle,
                 }}
               >
-                {formatBalanceWorkbookCellDisplay(row.gap_amount)}
+                {formatBalanceWorkbookWanAmountDisplay(row.gap_amount)}
               </div>
             </div>
             <div style={barTrackStyle}>
@@ -590,7 +687,9 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
             <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.bond_type)}</div>
-            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.balance_amount)}</div>
+            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>
+              {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
+            </div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: designTokens.color.neutral[700], fontSize: 12 }}>
             <span>笔数 {formatBalanceWorkbookCellDisplay(row.count)}</span>
@@ -667,18 +766,20 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
           >
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>债券</div>
-              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.bond_amount)}</div>
+              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>
+                {formatBalanceWorkbookWanAmountDisplay(row.bond_amount)}
+              </div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业资产</div>
               <div style={{ color: designTokens.color.success[400], fontWeight: 700 }}>
-                {formatBalanceWorkbookCellDisplay(row.interbank_asset_amount)}
+                {formatBalanceWorkbookWanAmountDisplay(row.interbank_asset_amount)}
               </div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业负债</div>
               <div style={{ color: designTokens.color.warning[400], fontWeight: 700 }}>
-                {formatBalanceWorkbookCellDisplay(row.interbank_liability_amount)}
+                {formatBalanceWorkbookWanAmountDisplay(row.interbank_liability_amount)}
               </div>
             </div>
           </div>
@@ -715,9 +816,15 @@ function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
         >
           <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.counterparty_type)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
-            <span style={{ color: designTokens.color.info[600] }}>资产 {formatBalanceWorkbookCellDisplay(row.asset_amount)}</span>
-            <span style={{ color: designTokens.color.warning[400] }}>负债 {formatBalanceWorkbookCellDisplay(row.liability_amount)}</span>
-            <span style={{ color: designTokens.color.neutral[900] }}>净头寸 {formatBalanceWorkbookCellDisplay(row.net_position_amount)}</span>
+            <span style={{ color: designTokens.color.info[600] }}>
+              资产 {formatBalanceWorkbookWanAmountDisplay(row.asset_amount)}
+            </span>
+            <span style={{ color: designTokens.color.warning[400] }}>
+              负债 {formatBalanceWorkbookWanAmountDisplay(row.liability_amount)}
+            </span>
+            <span style={{ color: designTokens.color.neutral[900] }}>
+              净头寸 {formatBalanceWorkbookWanAmountDisplay(row.net_position_amount)}
+            </span>
           </div>
         </article>
       ))}
@@ -789,7 +896,7 @@ function renderDecisionItemsPanel(
             <span style={workbookPanelBadgeStyle}>{formatBalanceWorkbookCellDisplay(row.severity)}</span>
           </div>
           <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-            {formatBalanceWorkbookCellDisplay(row.reason)}
+            {formatBalanceWorkbookWanTextDisplay(row.reason)}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
             <span>{formatBalanceWorkbookCellDisplay(row.action_label)}</span>
@@ -969,7 +1076,7 @@ function renderRiskAlertsPanel(
               </span>
             </div>
             <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-              {formatBalanceWorkbookCellDisplay(row.reason)}
+              {formatBalanceWorkbookWanTextDisplay(row.reason)}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
               <span>{formatBalanceWorkbookCellDisplay(row.source_section)}</span>
@@ -1036,8 +1143,10 @@ export default function BalanceAnalysisPage() {
   const [selectedEventCalendarKey, setSelectedEventCalendarKey] = useState<string | null>(null);
   const [selectedRiskAlertKey, setSelectedRiskAlertKey] = useState<string | null>(null);
   const [decisionStatusComment, setDecisionStatusComment] = useState("");
+  const [deferredAnalysisQueryKey, setDeferredAnalysisQueryKey] = useState("");
   const adbStartDate = selectedReportDate ? `${selectedReportDate.slice(0, 4)}-01-01` : "";
   const adbHref = selectedReportDate ? `/average-balance?report_date=${selectedReportDate}` : "/average-balance";
+  const activeAnalysisQueryKey = `${selectedReportDate}|${positionScope}|${currencyBasis}`;
 
   const datesQuery = useQuery({
     queryKey: ["balance-analysis", "dates", client.mode],
@@ -1082,6 +1191,10 @@ export default function BalanceAnalysisPage() {
   }, [selectedReportDate, positionScope, currencyBasis]);
 
   useEffect(() => {
+    setDeferredAnalysisQueryKey("");
+  }, [activeAnalysisQueryKey]);
+
+  useEffect(() => {
     setDecisionActionError(null);
     setSelectedDecisionKey(null);
     setSelectedEventCalendarKey(null);
@@ -1101,25 +1214,6 @@ export default function BalanceAnalysisPage() {
     enabled: Boolean(selectedReportDate),
     queryFn: () =>
       client.getBalanceAnalysisOverview({
-        reportDate: selectedReportDate,
-        positionScope,
-        currencyBasis,
-      }),
-    retry: false,
-  });
-
-  const detailQuery = useQuery({
-    queryKey: [
-      "balance-analysis",
-      "detail",
-      client.mode,
-      selectedReportDate,
-      positionScope,
-      currencyBasis,
-    ],
-    enabled: Boolean(selectedReportDate),
-    queryFn: () =>
-      client.getBalanceAnalysisDetail({
         reportDate: selectedReportDate,
         positionScope,
         currencyBasis,
@@ -1171,6 +1265,46 @@ export default function BalanceAnalysisPage() {
     retry: false,
   });
 
+  const firstScreenQueriesSettled =
+    Boolean(selectedReportDate) &&
+    !overviewQuery.isLoading &&
+    !workbookQuery.isLoading &&
+    !decisionItemsQuery.isLoading;
+
+  useEffect(() => {
+    if (!selectedReportDate || !firstScreenQueriesSettled) {
+      return;
+    }
+    const timeoutId = window.setTimeout(() => {
+      setDeferredAnalysisQueryKey(activeAnalysisQueryKey);
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [activeAnalysisQueryKey, firstScreenQueriesSettled, selectedReportDate]);
+
+  const deferredAnalysisQueriesEnabled =
+    Boolean(selectedReportDate) && deferredAnalysisQueryKey === activeAnalysisQueryKey;
+  const deferredAnalysisQueriesPending =
+    Boolean(selectedReportDate) && !deferredAnalysisQueriesEnabled;
+
+  const detailQuery = useQuery({
+    queryKey: [
+      "balance-analysis",
+      "detail",
+      client.mode,
+      selectedReportDate,
+      positionScope,
+      currencyBasis,
+    ],
+    enabled: deferredAnalysisQueriesEnabled,
+    queryFn: () =>
+      client.getBalanceAnalysisDetail({
+        reportDate: selectedReportDate,
+        positionScope,
+        currencyBasis,
+      }),
+    retry: false,
+  });
+
   const summaryQuery = useQuery({
     queryKey: [
       "balance-analysis",
@@ -1181,7 +1315,7 @@ export default function BalanceAnalysisPage() {
       currencyBasis,
       summaryOffset,
     ],
-    enabled: Boolean(selectedReportDate),
+    enabled: deferredAnalysisQueriesEnabled,
     queryFn: () =>
       client.getBalanceAnalysisSummary({
         reportDate: selectedReportDate,
@@ -1202,7 +1336,7 @@ export default function BalanceAnalysisPage() {
       positionScope,
       currencyBasis,
     ],
-    enabled: Boolean(selectedReportDate),
+    enabled: deferredAnalysisQueriesEnabled,
     queryFn: () =>
       client.getBalanceAnalysisSummaryByBasis({
         reportDate: selectedReportDate,
@@ -1214,14 +1348,14 @@ export default function BalanceAnalysisPage() {
 
   const adbComparisonQuery = useQuery({
     queryKey: ["balance-analysis", "adb-preview", client.mode, selectedReportDate],
-    enabled: Boolean(selectedReportDate),
+    enabled: deferredAnalysisQueriesEnabled,
     queryFn: () => client.getAdbComparison(adbStartDate, selectedReportDate),
     retry: false,
   });
 
   const advancedAttributionQuery = useQuery({
     queryKey: ["balance-analysis", "advanced-attribution", client.mode, selectedReportDate],
-    enabled: Boolean(selectedReportDate),
+    enabled: deferredAnalysisQueriesEnabled,
     queryFn: () =>
       client.getBalanceAnalysisAdvancedAttribution({
         reportDate: selectedReportDate,
@@ -1239,6 +1373,7 @@ export default function BalanceAnalysisPage() {
   const decisionItems = decisionItemsQuery.data?.result;
   const workbook = workbookQuery.data?.result;
   const summaryTable = summaryQuery.data?.result;
+  const detailSummaryGridRows = buildBalanceDetailSummaryGridRows(detailQuery.data?.result.summary ?? []);
   const decisionRows = decisionItems?.rows ?? [];
   const workbookTables = workbook?.tables ?? [];
   const workbookOperationalSections = workbook?.operational_sections ?? [];
@@ -1324,35 +1459,48 @@ export default function BalanceAnalysisPage() {
   const topDecision = decisionRows[0] ?? workbookDecisionRows[0];
   const topEventCalendar = eventCalendarRows[0];
   const topRiskAlert = riskAlertRows[0];
+  const scopeAmountTotals = summarizeBalanceAmountsByPositionScope(detailQuery.data?.result.summary ?? []);
+  const canSplitAllPositionScope =
+    positionScope === "all" &&
+    detailQuery.isSuccess &&
+    scopeAmountTotals.asset.hasRows &&
+    scopeAmountTotals.liability.hasRows;
+  const scopedAmountCards =
+    positionScope === "all" && canSplitAllPositionScope
+      ? (["asset", "liability"] as const).flatMap((scope) =>
+          amountMetricDefinitions.map((metric) => ({
+            key: `${scope}-${metric.key}`,
+            label: `${scope === "asset" ? "资产" : "负债"}${metric.label}`,
+            value: formatBalanceScopeTotalAmountToYi(scopeAmountTotals[scope], metric.amountKey),
+            unit: "亿元",
+            detail: `detail.summary[position_scope=${scope}].${metric.amountKey} · formal`,
+            valueVariant: "text" as const,
+          })),
+        )
+      : positionScope === "all"
+        ? amountMetricDefinitions.map((metric) => ({
+            key: `all-${metric.key}`,
+            label: metric.label,
+            value: formatBalanceAmountToYiFromYuan(overview?.[metric.overviewKey]),
+            unit: "亿元",
+            detail: `overview.${metric.overviewKey} · all · formal`,
+            valueVariant: "text" as const,
+          }))
+        : amountMetricDefinitions.map((metric) => ({
+            key: `${positionScope}-${metric.key}`,
+            label: `${positionScope === "asset" ? "资产" : "负债"}${metric.label}`,
+            value: formatBalanceAmountToYiFromYuan(overview?.[metric.overviewKey]),
+            unit: "亿元",
+            detail: `overview.${metric.overviewKey} · ${positionScope} · formal`,
+            valueVariant: "text" as const,
+          }));
   const overviewCards = [
-    {
-      key: "total-market-value",
-      label: "总市值合计",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
-      unit: "亿元",
-      detail: "overview.total_market_value_amount · formal",
-      valueVariant: "text" as const,
-    },
-    {
-      key: "total-amortized-cost",
-      label: "摊余成本合计",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
-      unit: "亿元",
-      detail: "overview.total_amortized_cost_amount · formal",
-      valueVariant: "text" as const,
-    },
-    {
-      key: "total-accrued-interest",
-      label: "应计利息合计",
-      value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
-      unit: "亿元",
-      detail: "overview.total_accrued_interest_amount · formal",
-      valueVariant: "text" as const,
-    },
+    ...scopedAmountCards,
     {
       key: "summary-rows",
       label: "汇总行数",
       value: String(overview?.summary_row_count ?? "—"),
+      unit: undefined,
       detail: "overview.summary_row_count · formal",
       valueVariant: "text" as const,
     },
@@ -1360,6 +1508,7 @@ export default function BalanceAnalysisPage() {
       key: "detail-rows",
       label: "明细行数",
       value: String(overview?.detail_row_count ?? "—"),
+      unit: undefined,
       detail: "overview.detail_row_count · formal",
       valueVariant: "text" as const,
     },
@@ -1368,7 +1517,7 @@ export default function BalanceAnalysisPage() {
       label: card.label,
       value: formatBalanceAmountToYiFromWan(card.value),
       unit: "亿元",
-      detail: `${card.note ?? "workbook.cards"} · workbook`,
+      detail: `${formatBalanceWorkbookWanTextDisplay(card.note ?? "workbook.cards")} · workbook`,
       valueVariant: "text" as const,
     })),
   ];
@@ -1884,7 +2033,7 @@ export default function BalanceAnalysisPage() {
         />
         <SectionCard
           title="ADB Analytical Preview"
-          loading={adbComparisonQuery.isLoading}
+          loading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
           error={adbComparisonQuery.isError}
           onRetry={() => void adbComparisonQuery.refetch()}
         >
@@ -1892,7 +2041,7 @@ export default function BalanceAnalysisPage() {
         </SectionCard>
         <SectionCard
           title="按会计口径分解"
-          loading={basisBreakdownQuery.isLoading}
+          loading={deferredAnalysisQueriesPending || basisBreakdownQuery.isLoading}
           error={basisBreakdownQuery.isError}
           onRetry={() => void basisBreakdownQuery.refetch()}
           noPadding
@@ -1914,7 +2063,7 @@ export default function BalanceAnalysisPage() {
         </SectionCard>
         <SectionCard
           title="高阶归因"
-          loading={advancedAttributionQuery.isLoading}
+          loading={deferredAnalysisQueriesPending || advancedAttributionQuery.isLoading}
           error={advancedAttributionQuery.isError}
           onRetry={() => void advancedAttributionQuery.refetch()}
         >
@@ -1947,9 +2096,7 @@ export default function BalanceAnalysisPage() {
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
-        {formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
-        {formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
+        {scopedAmountCards.map((card) => card.value).join(" ")}
       </div>
 
       <div style={{ marginTop: 24 }}>
@@ -1963,6 +2110,7 @@ export default function BalanceAnalysisPage() {
           isLoading={
             datesQuery.isLoading ||
             overviewQuery.isLoading ||
+            deferredAnalysisQueriesPending ||
             summaryQuery.isLoading
           }
           isError={
@@ -2022,7 +2170,9 @@ export default function BalanceAnalysisPage() {
           </div>
           <div style={{ marginTop: 18 }}>
             <div style={{ color: designTokens.color.neutral[600], fontSize: 12, marginBottom: 8 }}>明细下钻预留</div>
-            {!detailQuery.isLoading &&
+            {deferredAnalysisQueriesPending ? (
+              <div>明细下钻等待首屏数据完成…</div>
+            ) : !detailQuery.isLoading &&
             !detailQuery.isError &&
             (detailQuery.data?.result.summary?.length ?? 0) > 0 ? (
               <div style={{ marginBottom: 14 }}>
@@ -2034,18 +2184,16 @@ export default function BalanceAnalysisPage() {
                   data-testid="balance-analysis-detail-summary-grid"
                   style={{ ...tableShellStyle, height: 200, width: "100%" }}
                 >
-                  <AgGridReact<BalanceAnalysisSummaryRow>
-                    rowData={detailQuery.data?.result.summary ?? []}
+                  <AgGridReact<BalanceAnalysisSummaryGridRow>
+                    rowData={detailSummaryGridRows}
                     columnDefs={balanceDetailSummaryColDefs}
                     defaultColDef={balanceAnalysisGridDefaultColDef}
-                    getRowId={(p) =>
-                      `${p.data.source_family}-${p.data.position_scope}-${p.data.currency_basis}`
-                    }
+                    getRowId={(p) => p.data.__gridId}
                   />
                 </div>
               </div>
             ) : null}
-            {detailQuery.isError ? (
+            {deferredAnalysisQueriesPending ? null : detailQuery.isError ? (
               <div
                 style={{
                   borderRadius: 14,
@@ -2367,7 +2515,7 @@ export default function BalanceAnalysisPage() {
                       Latest status: {selectedDecision.latest_status.status}
                     </div>
                     <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {selectedDecision.reason}
+                      {formatBalanceWorkbookWanTextDisplay(selectedDecision.reason)}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{selectedDecision.source_section}</span>
@@ -2408,7 +2556,7 @@ export default function BalanceAnalysisPage() {
                     <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedRiskAlert.title}</div>
                     <div style={{ color: designTokens.color.warning[600], fontSize: 13 }}>{selectedRiskAlert.severity}</div>
                     <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {selectedRiskAlert.reason}
+                      {formatBalanceWorkbookWanTextDisplay(selectedRiskAlert.reason)}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
                       <span>{selectedRiskAlert.source_section}</span>
