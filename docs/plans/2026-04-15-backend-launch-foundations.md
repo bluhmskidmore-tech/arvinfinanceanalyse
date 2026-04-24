@@ -12,6 +12,12 @@
 
 ## Read This First
 
+- Current repo-level state lookup now enters through:
+  - `F:\\MOSS-V3\\AGENTS.md`
+  - `F:\\MOSS-V3\\docs\\DOCUMENT_AUTHORITY.md`
+  - `F:\\MOSS-V3\\docs\\CURRENT_EFFECTIVE_ENTRYPOINT.md`
+- The references below remain useful as background / planning context, not as the current repo-level entry sequence.
+
 - `F:\MOSS-V3\AGENTS.md`
 - `F:\MOSS-V3\prd-moss-agent-analytics-os.md`
 - `F:\MOSS-V3\docs\CODEX_HANDOFF.md`

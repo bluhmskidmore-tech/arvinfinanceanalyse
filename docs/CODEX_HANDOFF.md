@@ -1,5 +1,11 @@
 # CODEX_HANDOFF.md
 
+## 0. Role / Not for / Current-state pointer
+
+- `Role`: repo background and reference handoff
+- `Not for`: deciding the current repo-level "start here" path or sole current execution boundary
+- `Current-state pointer`: `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+
 ## 1. 你正在构建的是什么
 
 这是一个银行固定收益领域的生产级内部系统。
@@ -34,6 +40,11 @@
 - 不得删功能，只允许补齐、纠错、重构。
 
 ## 4. 文档优先级
+
+- `Role`: reference doc pack for orientation
+- `Not for`: the current repo-level read order
+- `Current-state pointer`: use `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` after `AGENTS.md` and `docs/DOCUMENT_AUTHORITY.md`
+- 下方列表保留为背景 / reference doc pack，不作为当前 repo-level entry sequence。
 
 阅读顺序如下：
 
@@ -151,6 +162,10 @@ repo/
 - Agent 工作台
 
 ## 9. 当前执行边界
+
+- `Role`: reference execution snapshot carried inside this handoff
+- `Not for`: acting as the sole current repo-level boundary authority
+- `Current-state pointer`: use `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` to locate the current boundary source and any applicable dated execution update
 
 当前默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
 

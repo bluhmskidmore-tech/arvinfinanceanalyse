@@ -298,12 +298,15 @@ UI 风格要求：Claude 风格的安静工作台，但不删专业能力。
 ```md
 先完整阅读：
 1. AGENTS.md
-2. docs/CODEX_HANDOFF.md
-3. docs/architecture.md
-4. docs/calc_rules.md
-5. docs/data_contracts.md
-6. docs/CACHE_SPEC.md
-7. docs/acceptance_tests.md
+2. docs/DOCUMENT_AUTHORITY.md
+3. docs/CURRENT_EFFECTIVE_ENTRYPOINT.md
+4. docs/architecture.md
+5. docs/calc_rules.md
+6. docs/data_contracts.md
+7. docs/CACHE_SPEC.md
+8. docs/acceptance_tests.md
+
+如需 repo 历史背景或 phase 计划上下文，再按需查 docs/CODEX_HANDOFF.md / docs/IMPLEMENTATION_PLAN.md，不要把它们当作当前状态入口。
 
 必须遵守：
 - 正式金融计算只允许在 backend/app/core_finance/

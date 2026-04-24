@@ -3,12 +3,14 @@
 开始前先遵守仓库文档优先级，至少阅读：
 - `AGENTS.md`
 - `prd-moss-agent-analytics-os.md`
-- `docs/CODEX_HANDOFF.md`
-- `docs/IMPLEMENTATION_PLAN.md`
+- `docs/DOCUMENT_AUTHORITY.md`
+- `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
 - `docs/calc_rules.md`
 - `docs/data_contracts.md`
 - `docs/CACHE_SPEC.md`
 - `docs/acceptance_tests.md`
+
+如需 repo 历史背景或 phase 计划上下文，再按需查 `docs/CODEX_HANDOFF.md`、`docs/IMPLEMENTATION_PLAN.md`，不要把它们当作当前状态入口。
 
 当前已经验证完成的状态：
 - `fact_formal_zqtz_balance_daily`：`2024-01-01` 到 `2026-02-28`，`425` 个 distinct `report_date`

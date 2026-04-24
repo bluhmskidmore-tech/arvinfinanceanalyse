@@ -12,6 +12,7 @@
 
 - `docs/`：
   - `DOCUMENT_AUTHORITY.md`
+  - `CURRENT_EFFECTIVE_ENTRYPOINT.md`
   - `CODEX_HANDOFF.md`
   - `IMPLEMENTATION_PLAN.md`
   - `CODEX_KICKOFF_PROMPT.md`
@@ -28,7 +29,8 @@
 3. 如果仓库已有 `docs/MOSS-V2 系统架构说明`，保留并纳入阅读顺序
 4. 如果仓库已有 `MOSS 系统：取值逻辑、计算层与规则总览`，仅保留为旧逻辑参考
 5. 将 `docs/CODEX_KICKOFF_PROMPT.md` 原样发给 Codex
-6. 强制 Codex 只做 `Phase 1`
+6. 当前 repo-level 状态入口改为：`AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+7. `docs/CODEX_HANDOFF.md` / `docs/IMPLEMENTATION_PLAN.md` 保留为 reference docs，不再作为并列当前入口
 
 ## 不要做的事
 

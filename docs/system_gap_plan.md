@@ -287,7 +287,7 @@
 ## 4.9 文档与交接
 
 - 当前现状证据：
-  - `docs/` 下已经有 `DOCUMENT_AUTHORITY.md`、`CODEX_HANDOFF.md`、`CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`、`EXECUTIVE_CONSUMER_CUTOVER_V1.md`、`acceptance_tests.md` 等大量治理文档。
+  - `docs/` 下已经有 `DOCUMENT_AUTHORITY.md`、`CURRENT_EFFECTIVE_ENTRYPOINT.md`、`CODEX_HANDOFF.md`、`CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`、`EXECUTIVE_CONSUMER_CUTOVER_V1.md`、`acceptance_tests.md` 等大量治理文档。
   - `tests/test_backend_release_gate_docs.py` 和 `tests/test_balance_analysis_docs_contract.py` 说明部分文档已纳入回归。
   - 当前这批关键治理文档和样本目录在 `git status --short` 中仍是 `??`，还没有纳入版本控制基线。
 - 已具备内容：

@@ -3,7 +3,7 @@
 ## Boundary note（与阶段授权对齐）
 
 - 本文记录的是 **2026-03-01** 一次**对账切片**的结论，用于证明当时 governed workbook **已支持 section** 与参考表之间的数值一致性。
-- **不等于**参考 Excel 全簿 1:1 完成，**也不等于**仓库整体进入 `Phase 2` 或正式金融全域交付。阶段边界以 `docs/IMPLEMENTATION_PLAN.md`、`docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md` 为准。
+- **不等于**参考 Excel 全簿 1:1 完成，**也不等于**仓库整体进入 `Phase 2` 或正式金融全域交付。阶段边界应通过 `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` 查阅。
 - 后续若仅存在局部 lane（如 `zqtz / tyw` formal-balance）的 dated execution update，其授权**只作用于被点名的工作流**，不得解释为 repo-wide Phase 2 cutover。
 
 ## Purpose
@@ -158,8 +158,8 @@ Closeout: re-run the verification block in this doc after any future workbook-si
 > 2026-04-17 status update:
 > This reconciliation note remains valid as a historical compare slice, but its old boundary wording is superseded.
 > The active repository interpretation is now `repo-wide Phase 2 (通用正式计算)` for the governed formal-compute mainline, with explicit exclusions for `executive.*`, Agent, and preview/vendor/analytical-only surfaces.
-> Use `AGENTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`, and `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the current source of truth for boundary interpretation.
+> Use `AGENTS.md`, `docs/DOCUMENT_AUTHORITY.md`, and `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` as the current navigation path for boundary interpretation; use `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the cutover-definition reference.
 > 2026-04-17 status update:
 > This reconciliation note remains valid as a historical compare slice, but its old boundary wording is superseded.
 > The active repository interpretation is now `repo-wide Phase 2 (通用正式计算)` for the governed formal-compute mainline, with explicit exclusions for `executive.*`, Agent, and preview/vendor/analytical-only surfaces.
-> Use `AGENTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`, and `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the current source of truth for boundary interpretation.
+> Use `AGENTS.md`, `docs/DOCUMENT_AUTHORITY.md`, and `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` as the current navigation path for boundary interpretation; use `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the cutover-definition reference.

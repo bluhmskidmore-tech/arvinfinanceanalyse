@@ -20,13 +20,14 @@ Authority precedence for semantic disputes:
 
 1. [../AGENTS.md](../AGENTS.md)
 2. [../prd-moss-agent-analytics-os.md](../prd-moss-agent-analytics-os.md)
-3. `docs/MOSS-V2 系统架构说明` (repo priority slot; the tracked checkout currently does not expose this file as a standalone path)
-4. [CODEX_HANDOFF.md](CODEX_HANDOFF.md)
-5. [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md)
-6. [calc_rules.md](calc_rules.md)
-7. [data_contracts.md](data_contracts.md)
-8. [CACHE_SPEC.md](CACHE_SPEC.md)
-9. V1 samples
+3. [DOCUMENT_AUTHORITY.md](DOCUMENT_AUTHORITY.md)
+4. `docs/MOSS-V2 系统架构说明` (repo priority slot; the tracked checkout currently does not expose this file as a standalone path)
+5. [calc_rules.md](calc_rules.md)
+6. [data_contracts.md](data_contracts.md)
+7. [CACHE_SPEC.md](CACHE_SPEC.md)
+8. V1 samples
+
+Repo current-state navigation enters through [CURRENT_EFFECTIVE_ENTRYPOINT.md](CURRENT_EFFECTIVE_ENTRYPOINT.md), but that file is navigation-only and is not itself an authority source for semantic disputes.
 
 Column notes:
 

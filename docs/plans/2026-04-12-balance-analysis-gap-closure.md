@@ -16,6 +16,12 @@
 
 ## Boundary First
 
+Historical plan note:
+
+- This file is a dated planning artifact, not the current repo-level boundary source.
+- Current repo-level state lookup now enters through `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`.
+- The boundary wording below should be read as historical planning context unless it matches the current authority chain.
+
 This repo is not authorized for a repo-wide Phase 2 rollout.
 
 Current directly executable lane:
@@ -623,4 +629,3 @@ Tranche C is complete when:
 - pushing finance math into frontend code
 - using preview tables as outward formal results
 - pretending Phase 3 attribution is finished when service warnings still say otherwise
-

@@ -8,13 +8,16 @@
 2. `prd-moss-agent-analytics-os.md`
 3. `docs/MOSS-V2 系统架构说明`
 4. `docs/DOCUMENT_AUTHORITY.md`
-5. `docs/CODEX_HANDOFF.md`
-6. `docs/IMPLEMENTATION_PLAN.md`
-7. `docs/calc_rules.md`
-8. `docs/data_contracts.md`
-9. `docs/CACHE_SPEC.md`
-10. `docs/acceptance_tests.md`
-11. `MOSS 系统：取值逻辑、计算层与规则总览`
+5. `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+6. `docs/calc_rules.md`
+7. `docs/data_contracts.md`
+8. `docs/CACHE_SPEC.md`
+9. `docs/acceptance_tests.md`
+10. `MOSS 系统：取值逻辑、计算层与规则总览`
+
+背景 / reference 文档（按需，不作为当前 repo-level 入口）：
+- `docs/CODEX_HANDOFF.md`
+- `docs/IMPLEMENTATION_PLAN.md`
 
 必须遵守：
 

@@ -2,6 +2,8 @@
 
 > Status update (2026-04-17): this handoff now reflects the adopted default interpretation for repo-wide `Phase 2` formal-compute cutover, with explicit exclusions for non-cutover consumers and surfaces.
 
+> Repo-level current-state navigation now starts at `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`. This document remains the boundary-focused source linked from that entrypoint; it is not a catch-all operating log.
+
 ## 目的
 
 用一页文档对齐“当前代码状态”和“当前阶段边界”，避免把已落地薄切片、Phase 1 closeout、next-slice 计划、dated override 混为一谈。
