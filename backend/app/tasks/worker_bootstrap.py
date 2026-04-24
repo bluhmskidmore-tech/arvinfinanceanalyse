@@ -21,6 +21,7 @@ CANONICAL_TASK_MODULES: tuple[str, ...] = (
     "backend.app.tasks.fx_mid_materialize",
     "backend.app.tasks.choice_macro",
     "backend.app.tasks.choice_news",
+    "backend.app.tasks.research_calendar_upstream_fetch",
 )
 
 
