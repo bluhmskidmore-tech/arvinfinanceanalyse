@@ -67,6 +67,9 @@ jobs:
       - name: Run Vitest
         run: npx vitest run
 
+      - name: Frontend debt audit
+        run: npm run debt:audit
+
   lint:
     name: Frontend Lint
     runs-on: ubuntu-latest
