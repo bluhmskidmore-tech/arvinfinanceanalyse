@@ -10,6 +10,7 @@ import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { KpiCard } from "../../workbench/components/KpiCard";
 import { shellTokens as t } from "../../../theme/tokens";
 import { adaptCashflowProjection } from "../adapters/cashflowProjectionAdapter";
+import { selectCashflowMonthlyProjectionSeries } from "./cashflowProjectionPageModel";
 
 const pageStyle = { maxWidth: 1280, margin: "0 auto" } as const;
 const summaryGridStyle = {
@@ -118,21 +119,17 @@ export default function CashflowProjectionPage() {
   );
   const vm = adapted.vm;
   const conclusion = buildConclusion(vm?.kpis.durationGap);
+  const monthlySeries = useMemo(() => selectCashflowMonthlyProjectionSeries(vm), [vm]);
 
   const chartOption = useMemo((): EChartsOption | null => {
-    const buckets = vm?.monthlyBuckets ?? [];
-    if (!buckets.length) {
+    if (!monthlySeries) {
       return null;
     }
-    const cats = buckets.map((b) => b.yearMonth);
-    const asset = buckets.map((b) => b.assetInflow.raw ?? 0);
-    const liab = buckets.map((b) => b.liabilityOutflow.raw ?? 0);
-    const cum = buckets.map((b) => b.cumulativeNet.raw ?? 0);
     return {
       grid: { left: 56, right: 24, top: 32, bottom: 40 },
       tooltip: { trigger: "axis" },
       legend: { data: ["资产流入", "负债流出", "累计净现金流"] },
-      xAxis: { type: "category", data: cats, axisLabel: { rotate: 30 } },
+      xAxis: { type: "category", data: monthlySeries.categories, axisLabel: { rotate: 30 } },
       yAxis: [
         { type: "value", name: "当月流量", splitLine: { lineStyle: { color: "#eef2f7" } } },
         { type: "value", name: "累计", splitLine: { show: false } },
@@ -141,27 +138,27 @@ export default function CashflowProjectionPage() {
         {
           name: "资产流入",
           type: "bar",
-          data: asset,
+          data: monthlySeries.assetInflow,
           itemStyle: { color: "#389e0d" },
         },
         {
           name: "负债流出",
           type: "bar",
-          data: liab,
+          data: monthlySeries.liabilityOutflow,
           itemStyle: { color: "#cf1322" },
         },
         {
           name: "累计净现金流",
           type: "line",
           yAxisIndex: 1,
-          data: cum,
+          data: monthlySeries.cumulativeNet,
           smooth: true,
           symbolSize: 6,
           lineStyle: { width: 2, color: "#1d4ed8" },
         },
       ],
     };
-  }, [vm?.monthlyBuckets]);
+  }, [monthlySeries]);
 
   return (
     <section data-testid="cashflow-projection-page" style={pageStyle}>
