@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import uuid
 from dataclasses import asdict, is_dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -19,10 +18,6 @@ from backend.app.core_finance.macro_bond_linkage import (
     estimate_macro_impact_on_portfolio,
 )
 from backend.app.governance.settings import get_settings
-from backend.app.repositories.tushare_adapter import (
-    import_tushare_pro,
-    resolve_tushare_token_with_settings_fallback,
-)
 from backend.app.schemas.macro_bond_linkage import (
     MacroBondLinkageMethodMeta,
     MacroBondLinkageMethodVariant,
@@ -167,12 +162,12 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
         )
         equity_bond_signal = None
         mega_cap_signal = None
-        if _tushare_research_axes_enabled():
-            equity_bond_signal, mega_cap_signal, tushare_warnings = _load_tushare_equity_research_signals(
-                report_date=report_date,
-                macro_latest=macro_inputs["latest"],
-            )
-            warnings.extend(tushare_warnings)
+        equity_bond_signal, mega_cap_signal, landed_axis_warnings = _load_landed_equity_research_signals(
+            duckdb_path=duckdb_path,
+            report_date=report_date,
+            macro_latest=macro_inputs["latest"],
+        )
+        warnings.extend(landed_axis_warnings)
         research_view_rows, transmission_axis_rows = build_macro_bond_research_output(
             environment_score,
             conservative_corrs,
@@ -181,7 +176,6 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
         )
         research_views = _json_safe(research_view_rows)
         transmission_axes = _json_safe(transmission_axis_rows)
-
     return _build_response_envelope(
         report_date=report_date,
         computed_at=computed_at,
@@ -209,15 +203,91 @@ def get_macro_bond_linkage(report_date: date) -> dict[str, object]:
     )
 
 
-def _tushare_research_axes_enabled() -> bool:
-    explicit = str(os.getenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "") or "").strip().lower()
-    if explicit in {"0", "false", "no", "off"}:
-        return False
-    if explicit in {"1", "true", "yes", "on"}:
-        return True
-    if os.getenv("PYTEST_CURRENT_TEST"):
-        return False
-    return True
+def _load_landed_equity_research_signals(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    macro_latest: dict[str, tuple[date, float]],
+) -> tuple[EquityBondSpreadSignal | None, MegaCapEquitySignal | None, list[str]]:
+    conn = _connect_read_only(duckdb_path)
+    if conn is None:
+        return None, None, []
+    try:
+        if not _relation_exists(conn, "choice_market_snapshot"):
+            return None, None, []
+        rows = conn.execute(
+            """
+            select series_id, cast(trade_date as date) as trade_date, cast(value_numeric as double) as value_numeric
+            from (
+              select
+                series_id,
+                trade_date,
+                value_numeric,
+                row_number() over (partition by series_id order by cast(trade_date as date) desc) as rn
+              from choice_market_snapshot
+              where series_id in (
+                'CA.CSI300',
+                'CA.CSI300_PCT_CHG',
+                'CA.CSI300_PE',
+                'CA.MEGA_CAP_WEIGHT',
+                'CA.MEGA_CAP_TOP5_WEIGHT',
+                'E1000180',
+                'EMM00166466'
+              )
+                and cast(trade_date as date) <= ?
+                and value_numeric is not null
+            )
+            where rn = 1
+            """,
+            [report_date.isoformat()],
+        ).fetchall()
+    except duckdb.Error as exc:
+        return None, None, [f"choice_market_snapshot equity axes unavailable: {exc}"]
+    finally:
+        conn.close()
+
+    latest: dict[str, tuple[date, float]] = {}
+    for series_id, trade_date_value, value_numeric in rows:
+        point_date = _coerce_date(trade_date_value)
+        if point_date is None:
+            continue
+        latest[str(series_id)] = (point_date, float(value_numeric))
+
+    cn10y = _latest_macro_value(macro_latest, ["E1000180", "EMM00166466"]) or latest.get("E1000180") or latest.get(
+        "EMM00166466"
+    )
+    index_close = latest.get("CA.CSI300")
+    index_pct_change = latest.get("CA.CSI300_PCT_CHG")
+    index_pe = latest.get("CA.CSI300_PE")
+    equity_signal = None
+    if cn10y is not None and index_close is not None and index_pe is not None and index_pe[1] > 0:
+        earnings_yield_pct = 100.0 / index_pe[1]
+        bond_yield_pct = float(cn10y[1])
+        equity_signal = EquityBondSpreadSignal(
+            trade_date=index_pe[0],
+            index_code="000300.SH",
+            index_close=index_close[1],
+            index_pct_change=None if index_pct_change is None else index_pct_change[1],
+            pe=index_pe[1],
+            earnings_yield_pct=earnings_yield_pct,
+            bond_yield_pct=bond_yield_pct,
+            spread_pct=earnings_yield_pct - bond_yield_pct,
+        )
+
+    top10_weight = latest.get("CA.MEGA_CAP_WEIGHT")
+    top5_weight = latest.get("CA.MEGA_CAP_TOP5_WEIGHT")
+    mega_cap_signal = None
+    if top10_weight is not None and top5_weight is not None:
+        mega_cap_signal = MegaCapEquitySignal(
+            weight_trade_date=max(top10_weight[0], top5_weight[0]),
+            index_code="000300.SH",
+            top10_weight_sum=top10_weight[1],
+            top5_weight_sum=top5_weight[1],
+            leading_constituents=[],
+            index_pct_change=None if index_pct_change is None else index_pct_change[1],
+        )
+
+    return equity_signal, mega_cap_signal, []
 
 
 def _latest_macro_value(
@@ -229,100 +299,6 @@ def _latest_macro_value(
         if value is not None:
             return value
     return None
-
-
-def _load_tushare_equity_research_signals(
-    *,
-    report_date: date,
-    macro_latest: dict[str, tuple[date, float]],
-) -> tuple[EquityBondSpreadSignal | None, MegaCapEquitySignal | None, list[str]]:
-    settings = get_settings()
-    token = resolve_tushare_token_with_settings_fallback(settings)
-    if not token:
-        return None, None, ["Tushare token missing; equity research axes remain pending."]
-    try:
-        ts = import_tushare_pro()
-    except RuntimeError as exc:
-        return None, None, [f"Tushare import failed: {exc}"]
-
-    cn10y = _latest_macro_value(macro_latest, ["E1000180", "EMM00166466"])
-    if cn10y is None:
-        return None, None, ["CN 10Y macro anchor missing; unable to build equity-bond spread axis."]
-
-    pro = ts.pro_api(token)
-    daily_start = (report_date - timedelta(days=35)).strftime("%Y%m%d")
-    weight_start = (report_date - timedelta(days=90)).strftime("%Y%m%d")
-    report_date_str = report_date.strftime("%Y%m%d")
-    warnings: list[str] = []
-
-    try:
-        index_daily = pro.index_daily(ts_code="000300.SH", start_date=daily_start, end_date=report_date_str)
-        index_dailybasic = pro.index_dailybasic(ts_code="000300.SH", start_date=daily_start, end_date=report_date_str)
-        index_weight = pro.index_weight(index_code="000300.SH", start_date=weight_start, end_date=report_date_str)
-    except Exception as exc:
-        return None, None, [f"Tushare equity fetch failed: {exc}"]
-
-    daily_row = None if index_daily is None or len(index_daily) == 0 else index_daily.sort_values("trade_date").iloc[-1]
-    basic_row = None if index_dailybasic is None or len(index_dailybasic) == 0 else index_dailybasic.sort_values("trade_date").iloc[-1]
-    equity_signal = None
-    index_pct_change = None
-    if daily_row is not None:
-        index_pct_change = _coerce_float(daily_row.get("pct_chg"))
-    if daily_row is not None and basic_row is not None:
-        pe = _coerce_float(basic_row.get("pe"))
-        close = _coerce_float(daily_row.get("close"))
-        if pe and pe > 0 and close is not None:
-            earnings_yield_pct = 100.0 / pe
-            bond_yield_pct = float(cn10y[1])
-            equity_signal = EquityBondSpreadSignal(
-                trade_date=_parse_yyyymmdd(str(daily_row.get("trade_date"))),
-                index_code="000300.SH",
-                index_close=close,
-                index_pct_change=index_pct_change,
-                pe=pe,
-                earnings_yield_pct=earnings_yield_pct,
-                bond_yield_pct=bond_yield_pct,
-                spread_pct=earnings_yield_pct - bond_yield_pct,
-            )
-        else:
-            warnings.append("Tushare index_dailybasic missing usable PE; equity-bond spread axis remains pending.")
-
-    mega_cap_signal = None
-    if index_weight is not None and len(index_weight) > 0:
-        latest_weight_date = sorted(index_weight["trade_date"].unique())[-1]
-        latest_weight_df = index_weight[index_weight["trade_date"] == latest_weight_date].sort_values("weight", ascending=False)
-        if len(latest_weight_df) > 0:
-            mega_cap_signal = MegaCapEquitySignal(
-                weight_trade_date=_parse_yyyymmdd(str(latest_weight_date)),
-                index_code="000300.SH",
-                top10_weight_sum=float(latest_weight_df.head(10)["weight"].sum()),
-                top5_weight_sum=float(latest_weight_df.head(5)["weight"].sum()),
-                leading_constituents=[str(code) for code in latest_weight_df.head(5)["con_code"].tolist()],
-                index_pct_change=index_pct_change,
-            )
-        else:
-            warnings.append("Tushare index_weight returned no usable latest rows; mega-cap axis remains pending.")
-
-    return equity_signal, mega_cap_signal, warnings
-
-
-def _parse_yyyymmdd(raw: str) -> date:
-    text = str(raw or "").strip()
-    if len(text) == 8 and text.isdigit():
-        return date(int(text[:4]), int(text[4:6]), int(text[6:8]))
-    return date.fromisoformat(text)
-
-
-def _coerce_float(value: object) -> float | None:
-    if value is None:
-        return None
-    try:
-        numeric = float(cast(Any, value))
-    except (TypeError, ValueError):
-        return None
-    if numeric != numeric:
-        return None
-    return numeric
 
 
 def _load_macro_inputs(

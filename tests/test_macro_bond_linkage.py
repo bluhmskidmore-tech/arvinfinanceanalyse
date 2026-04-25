@@ -253,6 +253,64 @@ def _seed_macro_and_curve_inputs(
         conn.close()
 
 
+def _seed_choice_market_equity_axes(duckdb_path: str) -> None:
+    conn = duckdb.connect(duckdb_path, read_only=False)
+    try:
+        conn.execute(
+            """
+            create table if not exists choice_market_snapshot (
+              series_id varchar,
+              series_name varchar,
+              vendor_series_code varchar,
+              vendor_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              run_id varchar
+            )
+            """
+        )
+        rows = [
+            ("CA.CSI300", "沪深300指数收盘价", "000300.SH", "tushare", REPORT_DATE.isoformat(), 4799.6270, "daily", "index"),
+            ("CA.CSI300_PCT_CHG", "沪深300指数涨跌幅", "000300.SH", "tushare", REPORT_DATE.isoformat(), 0.6634, "daily", "pct"),
+            ("CA.CSI300_PE", "沪深300市盈率", "000300.SH", "tushare", REPORT_DATE.isoformat(), 14.64, "daily", "ratio"),
+            (
+                "CA.MEGA_CAP_WEIGHT",
+                "沪深300前十大权重合计",
+                "000300.SH",
+                "tushare",
+                REPORT_DATE.isoformat(),
+                23.5367,
+                "daily",
+                "pct",
+            ),
+            (
+                "CA.MEGA_CAP_TOP5_WEIGHT",
+                "沪深300前五大权重合计",
+                "000300.SH",
+                "tushare",
+                REPORT_DATE.isoformat(),
+                15.5320,
+                "daily",
+                "pct",
+            ),
+        ]
+        conn.executemany(
+            """
+            insert into choice_market_snapshot values (
+              ?, ?, ?, ?, ?, ?, ?, ?, 'sv_landed_equity_axes', 'vv_landed_equity_axes', 'rv_landed_equity_axes', 'run_landed'
+            )
+            """,
+            rows,
+        )
+    finally:
+        conn.close()
+
+
 def test_pearson_correlation_basic():
     mod = _core_module()
 
@@ -774,6 +832,7 @@ def test_macro_bond_linkage_marks_missing_equity_axes_as_pending_signal(tmp_path
     duckdb_path = tmp_path / "macro-bond-pending-signal.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=True)
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
     get_settings.cache_clear()
 
     payload = _route_client().get(
@@ -784,6 +843,25 @@ def test_macro_bond_linkage_marks_missing_equity_axes_as_pending_signal(tmp_path
     axes = {row["axis_key"]: row for row in payload["transmission_axes"]}
     assert axes["equity_bond_spread"]["status"] == "pending_signal"
     assert axes["mega_cap_equities"]["status"] == "pending_signal"
+
+    get_settings.cache_clear()
+
+
+def test_macro_bond_linkage_reads_landed_equity_axes_with_live_env_ignored(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-landed-equity-axes.duckdb"
+    _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    _seed_choice_market_equity_axes(str(duckdb_path))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
+    get_settings.cache_clear()
+
+    svc = _service_module()
+
+    payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
+
+    axes = {row["axis_key"]: row for row in payload["transmission_axes"]}
+    assert axes["equity_bond_spread"]["status"] == "ready"
+    assert axes["mega_cap_equities"]["status"] == "ready"
 
     get_settings.cache_clear()
 
@@ -812,44 +890,18 @@ def test_macro_bond_linkage_emits_supported_research_views(tmp_path, monkeypatch
     get_settings.cache_clear()
 
 
-def test_macro_bond_linkage_promotes_equity_axes_to_ready_when_tushare_signals_are_available(
+def test_macro_bond_linkage_promotes_equity_axes_to_ready_when_landed_signals_are_available(
     tmp_path,
     monkeypatch,
 ):
-    duckdb_path = tmp_path / "macro-bond-live-equity-axes.duckdb"
+    duckdb_path = tmp_path / "macro-bond-landed-equity-ready.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    _seed_choice_market_equity_axes(str(duckdb_path))
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
     get_settings.cache_clear()
 
     svc = _service_module()
-    core = _core_module()
-
-    monkeypatch.setattr(svc, "_tushare_research_axes_enabled", lambda: True)
-    monkeypatch.setattr(
-        svc,
-        "_load_tushare_equity_research_signals",
-        lambda report_date, macro_latest: (
-            core.EquityBondSpreadSignal(
-                trade_date=REPORT_DATE,
-                index_code="000300.SH",
-                index_close=4799.6270,
-                index_pct_change=0.6634,
-                pe=14.64,
-                earnings_yield_pct=6.8306,
-                bond_yield_pct=1.7627,
-                spread_pct=5.0679,
-            ),
-            core.MegaCapEquitySignal(
-                weight_trade_date=REPORT_DATE,
-                index_code="000300.SH",
-                top10_weight_sum=23.5367,
-                top5_weight_sum=15.5320,
-                leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
-                index_pct_change=0.6634,
-            ),
-            [],
-        ),
-    )
 
     payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
     axes = {row["axis_key"]: row for row in payload["transmission_axes"]}
@@ -861,41 +913,15 @@ def test_macro_bond_linkage_promotes_equity_axes_to_ready_when_tushare_signals_a
     get_settings.cache_clear()
 
 
-def test_macro_bond_linkage_live_equity_axes_flow_into_research_view_evidence(tmp_path, monkeypatch):
-    duckdb_path = tmp_path / "macro-bond-live-equity-view.duckdb"
+def test_macro_bond_linkage_landed_equity_axes_flow_into_research_view_evidence(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "macro-bond-landed-equity-view.duckdb"
     _seed_macro_and_curve_inputs(str(duckdb_path), macro_points=45, rising_rates=False)
+    _seed_choice_market_equity_axes(str(duckdb_path))
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_ENABLE_TUSHARE_RESEARCH_AXES", "1")
     get_settings.cache_clear()
 
     svc = _service_module()
-    core = _core_module()
-
-    monkeypatch.setattr(svc, "_tushare_research_axes_enabled", lambda: True)
-    monkeypatch.setattr(
-        svc,
-        "_load_tushare_equity_research_signals",
-        lambda report_date, macro_latest: (
-            core.EquityBondSpreadSignal(
-                trade_date=REPORT_DATE,
-                index_code="000300.SH",
-                index_close=4799.6270,
-                index_pct_change=0.6634,
-                pe=14.64,
-                earnings_yield_pct=6.8306,
-                bond_yield_pct=1.7627,
-                spread_pct=5.0679,
-            ),
-            core.MegaCapEquitySignal(
-                weight_trade_date=REPORT_DATE,
-                index_code="000300.SH",
-                top10_weight_sum=23.5367,
-                top5_weight_sum=15.5320,
-                leading_constituents=["300750.SZ", "600519.SH", "300308.SZ"],
-                index_pct_change=0.6634,
-            ),
-            [],
-        ),
-    )
 
     payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
     views = {row["key"]: row for row in payload["research_views"]}
