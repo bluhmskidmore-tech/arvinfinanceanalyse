@@ -33,6 +33,13 @@ export default defineConfig({
   },
   build: {
     emptyOutDir: true,
+    /**
+     * 默认 500kB 阈值会对「完整 UI/表格框架」的单一 vendor 输出告警。
+     * antd 为集成式组件库、ag-grid-community 为单入口 main.esm.mjs，在不引入按子路径人工拆包（易触发 Rollup
+     * circular chunk）时无法可靠压到 500kB 以下。已通过：echarts 与 zrender 独立拆包、ag-grid 从主入口外移
+     * 作路由级懒加载。此处将告警阈值微调到 1100kB 仅用于抑制上述两类的已知单体体积告警。
+     */
+    chunkSizeWarningLimit: 1100,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -69,22 +76,24 @@ export default defineConfig({
             return "antd-vendor";
           }
 
+          if (normalizedId.includes("/zrender/")) {
+            return "zrender";
+          }
+
           if (normalizedId.includes("/echarts-for-react/")) {
-            return "echarts-vendor";
+            return "echarts-for-react";
           }
 
-          if (
-            normalizedId.includes("/echarts/") ||
-            normalizedId.includes("/zrender/")
-          ) {
-            return "echarts-vendor";
+          if (normalizedId.includes("node_modules/echarts/")) {
+            return "echarts-misc";
           }
 
-          if (
-            normalizedId.includes("/ag-grid-community/") ||
-            normalizedId.includes("/ag-grid-react/")
-          ) {
-            return "ag-grid-vendor";
+          if (normalizedId.includes("/ag-grid-react/")) {
+            return "ag-grid-react";
+          }
+
+          if (normalizedId.includes("/ag-grid-community/")) {
+            return "ag-grid-community";
           }
 
           return "vendor-misc";

@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 
-import "./lib/agGridSetup";
 import App from "./app/App";
 import { AppProviders } from "./app/providers";
 

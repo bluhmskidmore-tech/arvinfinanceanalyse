@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapse } from "antd";
+import "../../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import { useSearchParams } from "react-router-dom";
