@@ -116,7 +116,7 @@ Make the docs accurately reflect:
 - `GS-BRIDGE-WARN-B`
 - `GS-RISK-WARN-B`
 - `GS-EXEC-OVERVIEW-A` current `caliber_label` frozen shape
-- `GS-BOND-HEADLINE-A` remains blocked/candidate until page contract and metric mapping are complete
+- `GS-BOND-HEADLINE-A` remains blocked/candidate until `docs/metric_dictionary.md` GAP closure **and** a real `tests/golden_samples/GS-BOND-HEADLINE-A/` package exists **and** it is registered in `tests/test_golden_samples_capture_ready.py` (do not treat page contract + mapping alone as sufficient)
 
 Important:
 Do not edit sample response JSON in this task. If you believe a sample response should change, report it as a follow-up with evidence.

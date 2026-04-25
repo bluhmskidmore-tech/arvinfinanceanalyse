@@ -177,7 +177,7 @@ Required behavior:
 
 - Add metric dictionary rows only when the source field and display semantics are clear from code, tests, or docs.
 - For unapproved or ambiguous product, bond, market, or operations metrics, add an explicit gap entry instead of guessing.
-- Keep `GS-BOND-HEADLINE-A` blocked unless page contract plus metric mapping is genuinely ready.
+- Keep `GS-BOND-HEADLINE-A` blocked unless metric GAPs are closed **and** `tests/golden_samples/GS-BOND-HEADLINE-A/` exists with the standard four files **and** the sample is registered in `tests/test_golden_samples_capture_ready.py` (contract/mapping alone are not enough).
 - Do not create new golden sample JSON in this lane.
 - Do not change backend calculation logic.
 
@@ -357,7 +357,7 @@ Do not implement these unless Wave 1 finishes cleanly and they are clearly safe:
 - Extract one small domain from `frontend/src/api/client.ts` into its domain client/mock module.
 - Add docs-contract tests for live route to page contract completeness.
 - Add docs-contract tests for page contract to metric dictionary references.
-- Promote `GS-BOND-HEADLINE-A` only after bond dashboard contract and metric mapping are review-ready.
+- Promote `GS-BOND-HEADLINE-A` only after bond dashboard **plus** dictionary GAP closure **plus** on-disk `tests/golden_samples/GS-BOND-HEADLINE-A/` **plus** `tests/test_golden_samples_capture_ready.py` registration are review-ready.
 - Continue one-page closure for `/ledger-pnl`, `/average-balance`, `/liability-analytics`, `/cashflow-projection`, `/concentration-monitor`.
 
 ## 7. Completion Criteria

@@ -92,12 +92,12 @@ Recommended follow-up:
 
 ### Bond Headline Candidate
 
-`GS-BOND-HEADLINE-A` is blocked by contract gap. It should remain candidate/blocked until bond analytics page contract and metric mapping are complete.
+`GS-BOND-HEADLINE-A` is blocked by contract gap. It should remain candidate/blocked until metric dictionary GAPs for bond headline/risk are closed **and** a real `tests/golden_samples/GS-BOND-HEADLINE-A/` directory (four files) exists **and** that sample is listed in `tests/test_golden_samples_capture_ready.py`. Page contract + mapping work alone does not lift blocked status.
 
 Recommended follow-up:
 
-- do not create or promote the sample first
-- finish contract and metric mapping first
+- do not fabricate an empty sample folder to satisfy docs
+- finish `GAP-BOND-DASH-*` / mapping work first, then add the on-disk package and gate registration when ready
 
 ### Metric Dictionary Sample Scope
 

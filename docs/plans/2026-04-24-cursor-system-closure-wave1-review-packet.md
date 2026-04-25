@@ -94,7 +94,7 @@ Full `pytest tests/test_golden_samples_capture_ready.py` not run in integration 
 
 - Extract small pure-mock blocks from `frontend/src/api/client.ts` per Agent F (ledger PnL mocks, Campisi structures, then macro `MOCK_*` blocks).
 - Docs-contract tests: live routes → `PAGE-*` completeness; `PAGE-*` → metric dictionary references.
-- Promote `GS-BOND-HEADLINE-A` only after bond dashboard contract + metric mapping review-ready.
+- Promote `GS-BOND-HEADLINE-A` only after bond dashboard contract, metric/GAP closure, an on-disk `tests/golden_samples/GS-BOND-HEADLINE-A/` package, and capture-ready gate registration are review-ready.
 - One-page closure continuation: `/ledger-pnl`, `/average-balance`, `/liability-analytics`, `/cashflow-projection`, `/concentration-monitor` (per prompt §6).
 
 ## Files intentionally not touched

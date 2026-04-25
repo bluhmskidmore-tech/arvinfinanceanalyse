@@ -46,7 +46,7 @@ Read first:
 | --- | --- | --- | --- |
 | frontend mock client balance overview | `frontend/src/api/client.ts:3968`-`:3970` | mock/demo/placeholder-only behavior | Mock mode sums fixture rows and returns a formal-looking envelope. This must remain dev/test-only and must not be used as golden truth or runtime fallback evidence. |
 | ADB / average-balance normalization | `frontend/src/api/client.ts:2751` onward | adapter-owned conversion for analytical surface | This is not a current formal main-chain page in Prompt 4. Treat separately if average-balance is promoted later. |
-| bond dashboard legacy components | `frontend/src/features/bond-dashboard/**` | candidate/overlay behavior | Many `nativeToNumber` usages are candidate bond-dashboard read-model display logic. They are not the first closure target because `GS-BOND-HEADLINE-A` remains blocked by page contract / metric mapping. |
+| bond dashboard legacy components | `frontend/src/features/bond-dashboard/**` | candidate/overlay behavior | Many `nativeToNumber` usages are candidate bond-dashboard read-model display logic. They are not the first closure target because `GS-BOND-HEADLINE-A` remains blocked: contract/metric GAPs and **no** `tests/golden_samples/GS-BOND-HEADLINE-A/` on disk (not in `tests/test_golden_samples_capture_ready.py`). |
 
 ## Existing Safe Patterns To Reuse
 
