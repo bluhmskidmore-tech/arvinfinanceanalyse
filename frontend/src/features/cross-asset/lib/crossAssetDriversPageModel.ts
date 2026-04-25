@@ -168,9 +168,10 @@ function formatScore(value: number | null | undefined) {
   return value.toFixed(2);
 }
 
-function formatCorrelation(value: number | null | undefined) {
+/** Macro–bond correlation cells: align with market-data `formatCorrelation` ("不可用" when missing). */
+export function formatLinkageCorrelationDisplay(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
-    return "n/a";
+    return "不可用";
   }
   return value.toFixed(2);
 }
@@ -342,7 +343,7 @@ function buildFallbackResearchViews(input: {
         : "Fallback read: no strong governed credit stance is available yet.",
     affected_targets: ["high_grade_credit"],
     evidence: creditCorr
-      ? [`${creditCorr.target_family} corr6m ${formatCorrelation(creditCorr.correlation_6m)}`]
+      ? [`${creditCorr.target_family} corr6m ${formatLinkageCorrelationDisplay(creditCorr.correlation_6m)}`]
       : [`growth_score ${formatScore(growth)}`],
   };
 
@@ -498,6 +499,8 @@ export function buildCrossAssetDriversViewModel(input: {
   newsEvents?: ChoiceNewsEvent[];
   ncdProxy?: NcdFundingProxyPayload | null;
   ncdProxyAvailable: boolean;
+  /** When macro/linkage fetches fail, pass stable module keys for status flags. */
+  loadingFailures?: string[];
 }): CrossAssetDriversViewModel {
   const researchCards = buildResearchSummaryCards({
     researchViews: input.researchViews,
@@ -540,6 +543,7 @@ export function buildCrossAssetDriversViewModel(input: {
     latestSeries: input.latestSeries,
     crossAssetDataDate: input.crossAssetDataDate,
     linkageReportDate: input.linkageReportDate,
+    loadingFailures: input.loadingFailures,
   });
 
   return {
@@ -559,8 +563,20 @@ export function buildCrossAssetStatusFlags(input: {
   latestSeries: ChoiceMacroLatestPoint[];
   crossAssetDataDate: string;
   linkageReportDate: string;
+  loadingFailures?: string[];
 }): CrossAssetStatusFlag[] {
   const flags: CrossAssetStatusFlag[] = [];
+
+  const loadingFailures = (input.loadingFailures ?? []).filter(Boolean);
+  if (loadingFailures.length > 0) {
+    const modules = loadingFailures.join(", ");
+    flags.push({
+      id: "loading-failure",
+      label: `loading failure · ${modules}`,
+      tone: "danger",
+      detail: `Failed to load ${modules}; do not treat fallback cards as a complete cross-asset read.`,
+    });
+  }
 
   if (input.latestMeta && !input.latestMeta.formal_use_allowed) {
     flags.push({

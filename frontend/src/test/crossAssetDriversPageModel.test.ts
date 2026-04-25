@@ -108,6 +108,20 @@ describe("crossAssetDriversPageModel", () => {
     expect(fallback?.detail).toContain("Fallback");
   });
 
+  it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
+    const flags = buildCrossAssetStatusFlags({
+      latestSeries: [],
+      crossAssetDataDate: "",
+      linkageReportDate: "",
+      loadingFailures: ["choice_macro.latest", "macro_bond_linkage.analysis"],
+    });
+    const loadFail = flags.find((f) => f.id === "loading-failure");
+    expect(loadFail?.label).toBe(
+      "loading failure · choice_macro.latest, macro_bond_linkage.analysis",
+    );
+    expect(loadFail?.label).toContain("choice_macro.latest");
+  });
+
   it("builds candidate actions from current environment scores and top-correlation evidence", () => {
     const rows = buildCrossAssetCandidateActions({
       env: {

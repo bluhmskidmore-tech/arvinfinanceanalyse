@@ -157,4 +157,20 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-event-calendar")).not.toHaveTextContent("analytical only");
     expect((await screen.findAllByText("analytical only")).length).toBeGreaterThan(0);
   });
+
+  it("surfaces a first-screen loading failure when the latest macro chain fails", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getChoiceMacroLatest: vi.fn(async () => {
+        throw new Error("choice latest failed");
+      }),
+    };
+
+    renderPage(client);
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    const firstScreenFlags = await screen.findByTestId("cross-asset-status-flags");
+    expect(firstScreenFlags).toHaveTextContent("loading failure");
+    expect(firstScreenFlags).toHaveTextContent("choice_macro.latest");
+  });
 });

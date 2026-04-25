@@ -25,6 +25,7 @@ import {
   buildCrossAssetWatchList,
   buildResearchSummaryCards,
   buildTransmissionAxisRows,
+  formatLinkageCorrelationDisplay,
   type CrossAssetNcdProxyEvidence,
   type CrossAssetResearchViewCard,
   type CrossAssetTransmissionAxisRow,
@@ -59,8 +60,8 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
     return [
       {
         indicator: "No governed linkage ranking yet",
-        current: "-",
-        mid: "-",
+        current: "不可用",
+        mid: "不可用",
         eval: "Pending",
         evalTone: "warning" as const,
       },
@@ -69,8 +70,8 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
 
   return correlations.slice(0, 8).map((row) => {
     const indicator = `${row.series_name} -> ${row.target_family}${row.target_tenor ? ` (${row.target_tenor})` : ""}`;
-    const current = row.correlation_3m != null ? row.correlation_3m.toFixed(2) : "-";
-    const mid = row.correlation_6m != null ? row.correlation_6m.toFixed(2) : "-";
+    const current = formatLinkageCorrelationDisplay(row.correlation_3m);
+    const mid = formatLinkageCorrelationDisplay(row.correlation_6m);
     let evalLabel = "Mixed";
     let evalTone: "bull" | "bear" | "warning" = "warning";
     if (row.direction === "positive") {
@@ -469,14 +470,20 @@ export default function CrossAssetDriversPage() {
       latestSeries,
       crossAssetDataDate,
       linkageReportDate,
+      loadingFailures: [
+        latestQuery.isError ? "choice_macro.latest" : "",
+        macroBondLinkageQuery.isError ? "macro_bond_linkage.analysis" : "",
+      ],
     });
   }, [
     crossAssetDataDate,
     latestMeta,
+    latestQuery.isError,
     latestQuery.isLoading,
     latestSeries,
     linkageMeta,
     linkageReportDate,
+    macroBondLinkageQuery.isError,
     macroBondLinkageQuery.isLoading,
   ]);
 
