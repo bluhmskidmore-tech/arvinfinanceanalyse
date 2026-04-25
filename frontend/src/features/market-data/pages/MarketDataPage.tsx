@@ -15,7 +15,6 @@ import {
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
-  FxAnalyticalSeriesPoint,
   MacroBondLinkagePayload,
   MacroBondLinkageTopCorrelation,
   ResultMeta,
@@ -34,6 +33,12 @@ import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
 import { NewsAndCalendar } from "../components/NewsAndCalendar";
 import { RateQuoteTable } from "../components/RateQuoteTable";
+import {
+  buildMarketDataCategoryStore,
+  marketCatalogRefreshTier,
+  marketSeriesRefreshTier,
+  type MarketObservationPoint,
+} from "../lib/marketDataCategoryStore";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 
@@ -124,7 +129,6 @@ const RATE_TREND_DEFINITIONS = [
   { series_id: "EMM00166252", name: "SHIBOR 隔夜" },
 ] as const;
 
-type MarketObservationPoint = ChoiceMacroLatestPoint | FxAnalyticalSeriesPoint;
 type SpreadTenorSlot = "3Y" | "5Y" | "10Y";
 
 const SPREAD_TENOR_SLOTS: SpreadTenorSlot[] = ["3Y", "5Y", "10Y"];
@@ -213,10 +217,6 @@ function seriesRecentPoints(point: MarketObservationPoint) {
   return point.recent_points ?? [];
 }
 
-function seriesRefreshTier(point: MarketObservationPoint) {
-  return point.refresh_tier ?? "stable";
-}
-
 function seriesPolicyNote(point: MarketObservationPoint) {
   return point.policy_note?.trim() || "analytical read path";
 }
@@ -240,7 +240,7 @@ function familyLabel(targetFamily: string) {
 }
 
 function formatCorrelation(value: number | null | undefined) {
-  if (value == null) {
+  if (value == null || Number.isNaN(value)) {
     return "不可用";
   }
   return value.toFixed(2);
@@ -329,10 +329,6 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
   );
 }
 
-function catalogRefreshTier(series: { refresh_tier?: "stable" | "fallback" | "isolated" | null }) {
-  return series.refresh_tier ?? "stable";
-}
-
 function renderSeriesCards(
   series: MarketObservationPoint[],
   options?: { testIdPrefix?: string },
@@ -377,7 +373,7 @@ function renderSeriesCards(
                 fontWeight: 600,
               }}
             >
-              <span>{`tier ${seriesRefreshTier(point)}`}</span>
+              <span>{`tier ${marketSeriesRefreshTier(point)}`}</span>
               <span>路</span>
               <span>{point.quality_flag ?? "warning"}</span>
             </div>
@@ -521,26 +517,20 @@ export default function MarketDataPage() {
     [fxAnalyticalQuery.data?.result.groups],
   );
   const ncdFundingProxy = ncdFundingProxyQuery.data?.result;
-  const visibleLatestSeries = useMemo(
-    () => latestSeries.filter((point) => seriesRefreshTier(point) !== "isolated"),
-    [latestSeries],
+  const marketDataCategories = useMemo(
+    () =>
+      buildMarketDataCategoryStore({
+        catalog,
+        latestSeries,
+        fxAnalyticalGroups,
+      }),
+    [catalog, fxAnalyticalGroups, latestSeries],
   );
-  const stableSeries = useMemo(
-    () => visibleLatestSeries.filter((point) => seriesRefreshTier(point) !== "fallback"),
-    [visibleLatestSeries],
-  );
-  const fallbackSeries = useMemo(
-    () => visibleLatestSeries.filter((point) => seriesRefreshTier(point) === "fallback"),
-    [visibleLatestSeries],
-  );
-  const stableCatalogSeries = useMemo(
-    () => catalog.filter((series) => catalogRefreshTier(series) === "stable"),
-    [catalog],
-  );
-  const missingStableSeries = useMemo(() => {
-    const visibleStableIds = new Set(stableSeries.map((point) => point.series_id));
-    return stableCatalogSeries.filter((series) => !visibleStableIds.has(series.series_id));
-  }, [stableCatalogSeries, stableSeries]);
+  const visibleLatestSeries = marketDataCategories.visibleLatestSeries;
+  const stableSeries = marketDataCategories.stableSeries;
+  const fallbackSeries = marketDataCategories.fallbackSeries;
+  const stableCatalogSeries = marketDataCategories.stableCatalogSeries;
+  const missingStableSeries = marketDataCategories.missingStableSeries;
   const stableLatestTradeDate = useMemo(() => {
     if (stableSeries.length === 0) {
       return "—";
@@ -549,40 +539,16 @@ export default function MarketDataPage() {
       .map((point) => point.trade_date)
       .sort((left, right) => right.localeCompare(left))[0];
   }, [stableSeries]);
-  const linkageReportDate = useMemo(() => {
-    if (visibleLatestSeries.length === 0) {
-      return "";
-    }
-    return visibleLatestSeries
-      .map((point) => point.trade_date)
-      .sort((left, right) => right.localeCompare(left))[0];
-  }, [visibleLatestSeries]);
+  const linkageReportDate = marketDataCategories.linkageReportDate;
   const macroBondLinkageQuery = useQuery({
     queryKey: ["market-data", "macro-bond-linkage", client.mode, linkageReportDate],
     queryFn: () => client.getMacroBondLinkageAnalysis({ reportDate: linkageReportDate }),
     enabled: Boolean(linkageReportDate),
     retry: false,
   });
-  const vendorVersions = useMemo(
-    () => [...new Set(visibleLatestSeries.map((point) => point.vendor_version))],
-    [visibleLatestSeries],
-  );
-  const fxAnalyticalSeriesCount = useMemo(
-    () => fxAnalyticalGroups.reduce((total, group) => total + group.series.length, 0),
-    [fxAnalyticalGroups],
-  );
-  const stablePipelineTone = useMemo(() => {
-    if (stableCatalogSeries.length === 0) {
-      return "default" as const;
-    }
-    if (stableSeries.length === 0) {
-      return "error" as const;
-    }
-    if (stableSeries.length < stableCatalogSeries.length) {
-      return "warning" as const;
-    }
-    return "default" as const;
-  }, [stableCatalogSeries.length, stableSeries.length]);
+  const vendorVersions = marketDataCategories.vendorVersions;
+  const fxAnalyticalSeriesCount = marketDataCategories.fxAnalyticalSeriesCount;
+  const stablePipelineTone = marketDataCategories.stablePipelineTone;
   const rateTrendChartOption = useMemo(
     () => buildRateTrendChartOption(latestSeries),
     [latestSeries],
@@ -1106,7 +1072,7 @@ export default function MarketDataPage() {
                     >
                       <strong>{series.series_name}</strong>
                       <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
-                        {series.series_id} 路 {catalogRefreshTier(series)} 路 {series.fetch_mode ?? "date_slice"} /{" "}
+                        {series.series_id} 路 {marketCatalogRefreshTier(series)} 路 {series.fetch_mode ?? "date_slice"} /{" "}
                         {series.fetch_granularity ?? "batch"}
                       </div>
                       <div style={{ color: c.neutral[800], fontSize: fs[13] }}>

@@ -22,7 +22,7 @@ type Row = {
 };
 
 function formatCorrelation(value: number | null | undefined) {
-  if (value == null) {
+  if (value == null || Number.isNaN(value)) {
     return "不可用";
   }
   return value.toFixed(2);
