@@ -1,9 +1,10 @@
 import { useMemo } from "react";
-import { Button, Table } from "antd";
+import { Button, Space, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
-import type { NcdFundingProxyPayload } from "../../../api/contracts";
+import type { NcdFundingProxyPayload, ResultMeta } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
+import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 const TENORS = ["1M", "3M", "6M", "9M", "1Y"] as const;
@@ -25,11 +26,13 @@ function formatProxyCell(value: number | string | null | undefined) {
 
 export function NcdMatrix({
   payload,
+  resultMeta,
   isLoading = false,
   isError = false,
   onRetry,
 }: {
   payload?: NcdFundingProxyPayload;
+  resultMeta?: ResultMeta;
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -74,27 +77,20 @@ export function NcdMatrix({
   return (
     <section data-testid="market-data-ncd-matrix" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>同业存单</h2>
-      <p
-        style={{
-          margin: `0 0 ${designTokens.space[3]}px`,
-          color: designTokens.color.neutral[600],
-          fontSize: designTokens.fontSize[12],
-          lineHeight: designTokens.lineHeight.normal,
-        }}
-      >
-        {payload?.proxy_label ?? "Tushare Shibor funding proxy"}
-      </p>
-      <p
-        style={{
-          margin: `0 0 ${designTokens.space[3]}px`,
-          color: designTokens.color.neutral[600],
-          fontSize: designTokens.fontSize[12],
-          lineHeight: designTokens.lineHeight.normal,
-        }}
-      >
-        当前展示的是资金利率 proxy，不是实际同业存单期限×评级矩阵。
-        {payload?.as_of_date ? ` 截至 ${payload.as_of_date}。` : ""}
-      </p>
+      <Space direction="vertical" size={4}>
+        <Typography.Text type="secondary">
+          {payload?.proxy_label ?? "Tushare Shibor funding proxy"}
+        </Typography.Text>
+        <Typography.Text type="secondary">
+          当前展示的是资金利率 proxy，不是实际同业存单期限×评级矩阵。
+          {payload?.as_of_date ? ` 截至 ${payload.as_of_date}。` : ""}
+        </Typography.Text>
+      </Space>
+      <LiveResultMetaStrip
+        lead="同业存单 proxy 读面"
+        meta={resultMeta}
+        testId="market-data-ncd-live-meta"
+      />
       {payload?.warnings?.length ? (
         <div
           style={{
@@ -121,7 +117,7 @@ export function NcdMatrix({
               fontSize: designTokens.fontSize[12],
             }}
           >
-            Proxy read failed.
+            同业存单 proxy 读面失败。
           </div>
           {onRetry ? (
             <Button size="small" onClick={onRetry}>

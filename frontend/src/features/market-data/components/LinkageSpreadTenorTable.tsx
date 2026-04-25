@@ -1,10 +1,10 @@
 import { useMemo } from "react";
-import { Table } from "antd";
+import { Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
 import type { MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 
-import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { tabularNumsStyle } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 export type SpreadTenorSlot = {
@@ -23,7 +23,7 @@ type Row = {
 
 function formatCorrelation(value: number | null | undefined) {
   if (value == null) {
-    return "—";
+    return "不可用";
   }
   return value.toFixed(2);
 }
@@ -69,16 +69,9 @@ export function LinkageSpreadTenorTable({
   return (
     <section data-testid="market-data-linkage-spread-table" style={marketDataPanelStyle}>
       <h2 style={marketDataBlockTitleStyle}>信用利差</h2>
-      <p
-        style={{
-          margin: `0 0 ${designTokens.space[3]}px`,
-          color: designTokens.color.neutral[600],
-          fontSize: designTokens.fontSize[12],
-          lineHeight: designTokens.lineHeight.normal,
-        }}
-      >
+      <Typography.Paragraph type="secondary">
         来自宏观-债市联动的 credit_spread 结构化维度；无数据时表格为空。
-      </p>
+      </Typography.Paragraph>
       <Table<Row>
         size="small"
         pagination={false}

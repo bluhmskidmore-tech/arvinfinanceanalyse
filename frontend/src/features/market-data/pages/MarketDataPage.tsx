@@ -1,6 +1,6 @@
 import { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Collapse, Select, Tabs } from "antd";
+import { Alert, Button, Collapse, Select, Tabs } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
@@ -28,6 +28,8 @@ import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
 import { LinkageSpreadTenorTable } from "../components/LinkageSpreadTenorTable";
+import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
+import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
 import { NewsAndCalendar } from "../components/NewsAndCalendar";
@@ -60,6 +62,26 @@ const sectionGridStyle = {
 } as const;
 
 const detailPanelStyle = pageSurfacePanelStyle;
+
+const macroTabPanelStyle = {
+  marginTop: s[2],
+} as const;
+
+const rateTrendStateStyle = {
+  marginTop: s[4],
+  padding: s[5],
+  borderRadius: s[4],
+  background: "#ffffff",
+  fontSize: fs[14],
+  display: "grid",
+  gap: s[3],
+} as const;
+
+const rateTrendEmptyStateStyle = {
+  ...rateTrendStateStyle,
+  border: `1px solid ${c.primary[200]}`,
+  color: c.neutral[500],
+} as const;
 
 const blockTitleStyle = {
   margin: `${s[6]}px 0 0`,
@@ -452,6 +474,10 @@ function MetadataPanel({
         <div>vendor_version: {meta?.vendor_version ?? "pending"}</div>
         <div>rule_version: {meta?.rule_version ?? "pending"}</div>
         <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
+        <div>vendor_status: {meta?.vendor_status ?? "pending"}</div>
+        <div>fallback_mode: {meta?.fallback_mode ?? "pending"}</div>
+        <div>cache_version: {meta?.cache_version ?? "pending"}</div>
+        <div>scenario_flag: {meta ? String(meta.scenario_flag) : "pending"}</div>
         <div>generated_at: {meta?.generated_at ?? "pending"}</div>
         {extraLine ? <div>{extraLine}</div> : null}
       </div>
@@ -831,6 +857,11 @@ export default function MarketDataPage() {
           />
         </div>
       </div>
+      <LiveResultMetaStrip
+        lead="市场概览·宏观读面（latest 优先）"
+        meta={macroMeta}
+        testId="market-data-overview-live-meta"
+      />
 
       <PageSectionLead
         eyebrow="Core Watch"
@@ -848,6 +879,7 @@ export default function MarketDataPage() {
               {
                 key: "curve",
                 label: "曲线（M8）",
+                forceRender: true,
                 children: (
                   <div data-testid="market-data-macro-tab-curve">
                     <h2 style={{ ...blockTitleStyle, marginTop: 0 }}>收益率曲线</h2>
@@ -863,6 +895,11 @@ export default function MarketDataPage() {
                       国债 10Y（{RATE_TREND_DEFINITIONS[0].series_id}）、国开 5Y（{RATE_TREND_DEFINITIONS[1].series_id}）、
                       SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
                     </p>
+                    <LiveResultMetaStrip
+                      lead="收益率曲线·宏观 latest"
+                      meta={latestQuery.data?.result_meta}
+                      testId="market-data-curve-live-meta"
+                    />
                     {latestQuery.isLoading ? (
                       <div
                         style={{
@@ -874,6 +911,19 @@ export default function MarketDataPage() {
                       >
                         加载宏观序列中…
                       </div>
+                    ) : latestQuery.isError ? (
+                      <Alert
+                        action={
+                          <Button danger size="small" onClick={() => void latestQuery.refetch()}>
+                            重试宏观序列
+                          </Button>
+                        }
+                        data-testid="market-data-rate-trend-error"
+                        description="无法确认收益率曲线输入，不按空数据处理；请重试或查看下方宏观序列失败态。"
+                        message="宏观 latest 载入失败"
+                        showIcon
+                        type="error"
+                      />
                     ) : rateTrendChartOption ? (
                       <div data-testid="market-data-rate-trend-chart" style={{ marginTop: s[4] }}>
                         <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
@@ -881,15 +931,7 @@ export default function MarketDataPage() {
                     ) : (
                       <div
                         data-testid="market-data-rate-trend-empty"
-                        style={{
-                          marginTop: s[4],
-                          padding: s[5],
-                          borderRadius: s[4],
-                          border: `1px solid ${c.primary[200]}`,
-                          background: "#ffffff",
-                          color: c.neutral[500],
-                          fontSize: fs[14],
-                        }}
+                        style={rateTrendEmptyStateStyle}
                       >
                         当前响应中缺少上述利率序列的近期点位，无法绘制走势图。
                       </div>
@@ -900,8 +942,14 @@ export default function MarketDataPage() {
               {
                 key: "spreads",
                 label: "信用利差",
+                forceRender: true,
                 children: (
-                  <div data-testid="market-data-macro-tab-spreads" style={{ marginTop: s[2] }}>
+                  <div data-testid="market-data-macro-tab-spreads" style={macroTabPanelStyle}>
+                    <LiveResultMetaStrip
+                      lead="信用利差表格·联动读面"
+                      meta={macroBondLinkageQuery.data?.result_meta}
+                      testId="market-data-spreads-live-meta"
+                    />
                     <LinkageSpreadTenorTable slots={spreadSlots} loading={macroBondLinkageQuery.isLoading} />
                   </div>
                 ),
@@ -909,8 +957,9 @@ export default function MarketDataPage() {
               {
                 key: "linkage",
                 label: "压力与情景（M11/M15）",
+                forceRender: true,
                 children: (
-                  <div data-testid="market-data-macro-tab-linkage" style={{ marginTop: s[2] }}>
+                  <div data-testid="market-data-macro-tab-linkage" style={macroTabPanelStyle}>
                     <p
                       style={{
                         margin: `0 0 ${s[3]}px`,
@@ -983,6 +1032,7 @@ export default function MarketDataPage() {
         <BondFuturesTable />
         <NcdMatrix
           payload={ncdFundingProxy}
+          resultMeta={ncdFundingProxyQuery.data?.result_meta}
           isLoading={ncdFundingProxyQuery.isLoading}
           isError={ncdFundingProxyQuery.isError}
           onRetry={() => void ncdFundingProxyQuery.refetch()}
@@ -1001,6 +1051,13 @@ export default function MarketDataPage() {
         description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
       />
       <div style={{ marginTop: s[5] }}>
+        <MacroLatestReadinessBanner
+          testId="market-data-macro-readiness"
+          isLoading={latestQuery.isLoading}
+          isError={latestQuery.isError}
+          hasSeries={visibleLatestSeries.length > 0}
+          meta={latestQuery.data?.result_meta}
+        />
         <AsyncSection
           title="宏观序列观察"
           isLoading={latestQuery.isLoading}
@@ -1009,6 +1066,13 @@ export default function MarketDataPage() {
           onRetry={() => void latestQuery.refetch()}
         >
           <div style={{ display: "grid", gap: s[6] }}>
+            {!latestQuery.isLoading && !latestQuery.isError ? (
+              <LiveResultMetaStrip
+                lead="本区块·宏观 latest"
+                meta={latestQuery.data?.result_meta}
+                testId="market-data-macro-section-meta"
+              />
+            ) : null}
             <section data-testid="market-data-stable-section">
               <div style={{ marginBottom: s[3] }}>
                 <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
@@ -1108,6 +1172,13 @@ export default function MarketDataPage() {
           onRetry={() => void fxAnalyticalQuery.refetch()}
         >
           <div style={{ display: "grid", gap: s[6] }}>
+            {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError ? (
+              <LiveResultMetaStrip
+                lead="本区块·FX analytical"
+                meta={fxAnalyticalQuery.data?.result_meta}
+                testId="market-data-fx-section-meta"
+              />
+            ) : null}
             {fxAnalyticalGroups.map((group) => (
               <section
                 key={group.group_key}
