@@ -6,6 +6,7 @@ from backend.app.agent.schemas.agent_response import (
     AgentEnvelope,
     AgentEvidence,
     AgentResultMeta,
+    AgentSuggestedAction,
 )
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "AgentEvidence",
     "AgentQueryRequest",
     "AgentResultMeta",
+    "AgentSuggestedAction",
 ]
 

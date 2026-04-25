@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Agent HTTP + schema contracts.
 
@@ -7,6 +5,8 @@ Production default (`agent_enabled=False`): `POST /api/agent/query` returns **50
 `AgentDisabledResponse` — not a live Agent. Tests that return 200 use an isolated FastAPI
 app with `agent_enabled` stubbed True to exercise envelope/schema only.
 """
+
+from __future__ import annotations
 
 import json
 
@@ -131,6 +131,17 @@ def test_agent_response_schema_exposes_target_state_and_disabled_contracts():
     disabled = getattr(module, "AgentDisabledResponse", None)
     assert disabled is not None
     assert {"enabled", "phase", "detail"} <= set(disabled.model_fields)
+
+
+def test_agent_response_schema_exposes_passive_suggested_actions():
+    module = load_module(
+        "backend.app.agent.schemas.agent_response",
+        "backend/app/agent/schemas/agent_response.py",
+    )
+    action_model = getattr(module, "AgentSuggestedAction", None)
+    assert action_model is not None
+    assert {"type", "label", "payload", "requires_confirmation"} <= set(action_model.model_fields)
+    assert "suggested_actions" in module.AgentEnvelope.model_fields
 
 
 def test_agent_query_returns_200_with_envelope(monkeypatch, tmp_path):

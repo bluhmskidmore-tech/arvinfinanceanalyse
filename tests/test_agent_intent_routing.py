@@ -122,6 +122,53 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_agent_report_date_context_precedence_filters_context_current_filters_latest(tmp_path, monkeypatch):
+    service_module = load_module(
+        "backend.app.services.agent_service",
+        "backend/app/services/agent_service.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    available_dates = ["2026-03-31", "2026-02-28", "2026-01-31", "2025-12-31"]
+
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            filters={"report_date": "2026-02-28"},
+            context={
+                "report_date": "2026-01-31",
+                "current_filters": {"report_date": "2025-12-31"},
+            },
+        ),
+        available_dates,
+    ) == "2026-02-28"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            context={
+                "page_id": "dashboard",
+                "report_date": "2026-01-31",
+                "current_filters": {"report_date": "2025-12-31"},
+            },
+        ),
+        available_dates,
+    ) == "2026-01-31"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            context={"current_filters": {"report_date": "2025-12-31"}},
+        ),
+        available_dates,
+    ) == "2025-12-31"
+    assert service_module._latest_or_requested(
+        request_module.AgentQueryRequest(question="组合概览"),
+        available_dates,
+    ) == "2026-03-31"
+
+
 def test_pnl_summary_intent_routes_to_pnl_repo(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",

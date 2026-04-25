@@ -9,7 +9,7 @@ from backend.app.agent.schemas.agent_request import AgentQueryRequest
 from backend.app.services.gitnexus_mcp_client import GitNexusMcpClient
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-_WINDOWS_PATH_RE = re.compile(r"([A-Za-z]:\\[^\s\"'<>|?*]+)")
+_PATH_WITH_GITNEXUS_RE = re.compile(r"(?P<path>(?:[A-Za-z]:\\|/)[^\s\"'<>|?*]+?)(?:\\\\|/)?\\.gitnexus")
 _PROCESS_NAME_RE = re.compile(r"gitnexus\s+process(?:/|\s+)(?P<name>[^\r\n]+)", re.IGNORECASE)
 _GITNEXUS_TRACE_COLUMNS = ["step", "symbol", "file", "module_group", "edge_label"]
 
@@ -177,9 +177,9 @@ def _resolve_repo_path(request: AgentQueryRequest) -> Path:
         if value:
             return _normalize_repo_path(str(value))
 
-    question_match = _WINDOWS_PATH_RE.search(request.question)
+    question_match = _PATH_WITH_GITNEXUS_RE.search(request.question)
     if question_match:
-        return _normalize_repo_path(question_match.group(1))
+        return _normalize_repo_path(question_match.group("path"))
 
     return _REPO_ROOT
 

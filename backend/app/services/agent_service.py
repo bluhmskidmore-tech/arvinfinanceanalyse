@@ -139,6 +139,18 @@ def _portfolio_overview_payload(request: AgentQueryRequest, duckdb_path: str) ->
             {"dimension": "portfolio", "label": "按组合查看"},
             {"dimension": "cost_center", "label": "按成本中心查看"},
         ],
+        "suggested_actions": [
+            {
+                "type": "inspect_lineage",
+                "label": "查看组合概览来源",
+                "payload": {"metric_key": "portfolio_overview", "report_date": report_date},
+            },
+            {
+                "type": "inspect_drill",
+                "label": "按组合查看",
+                "payload": {"dimension": "portfolio", "report_date": report_date},
+            },
+        ],
     }
 
 
@@ -178,6 +190,18 @@ def _pnl_summary_payload(request: AgentQueryRequest, duckdb_path: str) -> dict[s
         "next_drill": [
             {"dimension": "instrument", "label": "按券查看"},
             {"dimension": "portfolio", "label": "按组合查看"},
+        ],
+        "suggested_actions": [
+            {
+                "type": "inspect_lineage",
+                "label": "查看损益来源",
+                "payload": {"metric_key": "total_pnl", "report_date": report_date},
+            },
+            {
+                "type": "inspect_drill",
+                "label": "查看PnL桥接",
+                "payload": {"intent": "pnl_bridge", "report_date": report_date},
+            },
         ],
     }
 
@@ -550,8 +574,11 @@ def _append_audit(
 
 
 def _requested_report_date(request: AgentQueryRequest) -> str | None:
+    current_filters = request.context.get("current_filters")
+    if not isinstance(current_filters, dict):
+        current_filters = {}
     for key in ("report_date", "date"):
-        for container in (request.filters, request.context):
+        for container in (request.filters, request.context, current_filters):
             value = container.get(key)
             if value is not None and str(value).strip():
                 return str(value).strip()

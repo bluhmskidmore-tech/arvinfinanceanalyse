@@ -10,6 +10,7 @@ from backend.app.agent.schemas.agent_response import (
     AgentDrill,
     AgentEnvelope,
     AgentResultMeta,
+    AgentSuggestedAction,
 )
 from backend.app.agent.tools.evidence_tool import EvidenceTool
 from backend.app.schemas.cube_query import CubeQueryRequest
@@ -106,6 +107,7 @@ class AnalysisViewTool:
             AgentDrill(dimension=path.dimension, label=path.label)
             for path in cube_response.drill_paths
         ]
+        suggested_actions = self._suggested_actions_from_drills(next_drill)
         evidence = self._evidence.build_evidence(
             tables_used=[table_name],
             filters_applied=filters_applied,
@@ -141,6 +143,7 @@ class AnalysisViewTool:
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=next_drill,
+                suggested_actions=suggested_actions,
             )
         )
 
@@ -153,6 +156,10 @@ class AnalysisViewTool:
     ) -> AgentEnvelope:
         cards = self._normalize_cards(payload.get("cards", []))
         next_drill = self._normalize_drills(payload.get("next_drill", []))
+        suggested_actions = self._normalize_suggested_actions(
+            payload.get("suggested_actions", []),
+            fallback_drills=next_drill,
+        )
         evidence = self._evidence.build_evidence(
             tables_used=list(payload.get("tables_used", [])),
             filters_applied=dict(payload.get("filters_applied", {})),
@@ -185,6 +192,7 @@ class AnalysisViewTool:
                 evidence=evidence,
                 result_meta=result_meta,
                 next_drill=next_drill,
+                suggested_actions=suggested_actions,
             )
         )
 
@@ -280,6 +288,32 @@ class AnalysisViewTool:
             for drill in drills
         ]
 
+    def _normalize_suggested_actions(
+        self,
+        actions: list[Any],
+        *,
+        fallback_drills: list[AgentDrill] | None = None,
+    ) -> list[AgentSuggestedAction]:
+        if actions:
+            return [
+                action
+                if isinstance(action, AgentSuggestedAction)
+                else AgentSuggestedAction.model_validate(action)
+                for action in actions
+            ]
+        return self._suggested_actions_from_drills(fallback_drills or [])
+
+    def _suggested_actions_from_drills(self, drills: list[AgentDrill]) -> list[AgentSuggestedAction]:
+        return [
+            AgentSuggestedAction(
+                type="inspect_drill",
+                label=drill.label,
+                payload={"dimension": drill.dimension},
+                requires_confirmation=True,
+            )
+            for drill in drills
+        ]
+
     def _trace_id(self, result_kind: str) -> str:
         suffix = result_kind.replace(".", "_")
         return f"tr_{suffix}_{uuid4().hex[:12]}"
@@ -292,6 +326,7 @@ class AnalysisViewTool:
         evidence,
         result_meta,
         next_drill: list[AgentDrill],
+        suggested_actions: list[AgentSuggestedAction] | None = None,
     ) -> dict[str, Any]:
         return {
             "answer": answer,
@@ -299,4 +334,7 @@ class AnalysisViewTool:
             "evidence": evidence.model_dump(mode="python"),
             "result_meta": result_meta.model_dump(mode="python"),
             "next_drill": [drill.model_dump(mode="python") for drill in next_drill],
+            "suggested_actions": [
+                action.model_dump(mode="python") for action in (suggested_actions or [])
+            ],
         }
