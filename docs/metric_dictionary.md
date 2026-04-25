@@ -22,6 +22,7 @@
   - `/ui/home/overview`
   - `/ui/home/summary`
   - `/ui/pnl/attribution`
+- Wave 1 工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）的 **文档层绑定** 见 §12.5；其中仅 `PAGE-OPS-001` 上的 `balance-analysis.overview` 切片已可钉到既有 `MTR-BAL-*` 与 `GS-BAL-OVERVIEW-A`，其余路由以显式 **GAP** 登记，不臆造 `metric_id`
 
 不覆盖：
 
@@ -342,7 +343,7 @@
 
 处理方式：
 
-- 下一轮为剩余主链页面继续补 page contract
+- 下一轮为剩余**尚未建档**的主链页面继续补 page contract；Wave 1 的 `/bond-dashboard`、`/positions`、`/market-data` 已在 `docs/page_contracts.md` 建立 `PAGE-BOND-001`、`PAGE-POS-001`、`PAGE-MKT-001`
 
 ### 12.3 黄金样本绑定首版矩阵
 
@@ -374,6 +375,25 @@
 | `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
 | `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | 无；正式 `metric_id` 缺口必须保持显式待绑定 | `business_net_income`、`asset_total/liability_total/grand_total` 对账、分类层级与 `result_meta` 为 page/sample truth；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
 
+### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
+
+说明：
+
+- 绑定只使用本文件 **已定义** 且语义可追溯的 `metric_id`。
+- `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），但在字典主表建立与正式余额 / 风险张量等的 **可审计同源**、且 `GS-BOND-HEADLINE-A` 仍为 candidate 前，**不得**将债券驾驶舱展示字段 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价。
+- `GS-BOND-HEADLINE-A` 在 **metric 映射齐套**、存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前 **保持 blocked**（与 `docs/golden_sample_catalog.md` 一致）；本表不将其提升为 capture-ready。
+
+| 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
+| --- | --- | --- | --- | --- | --- |
+| `/operations-analysis` | `PAGE-OPS-001` | `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx` → `client.getBalanceAnalysisOverview`（`positionScope: "all"`, `currencyBasis: "CNY"`） | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `client.getBalanceAnalysisSummary`（分页汇总行） | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`；请求口径 `MTR-BAL-104`, `MTR-BAL-105` | **无** 独立 capture-ready 包；与 `GS-BAL-OVERVIEW-A` 仅共享 formal 族与 `report_date` 语义，不对 summary 表做 frozen JSON 逐项锁死 | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `getMacroFoundation` / `getChoiceMacroLatest` / `getFxFormalStatus` / `getChoiceNewsEvents` / PnL refresh 状态 | **GAP-OPS-MACRO-FX**：市场与运营条未纳入本版字典 `MTR-*` | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **blocked**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`，非 capture-ready） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
+| `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
+| `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；市场数据域未建本字典 `MTR-*` | — | `frontend/src/test/MarketDataPage.test.tsx` |
+
 ## 13. 建议下一步
 
 按当前顺序继续，不要跳步：
@@ -384,7 +404,7 @@
 
 ## 14. 版本说明
 
-- 当前版本：`v1-draft + sample_scope pass`
+- 当前版本：`v1-draft + sample_scope pass + wave1_page_binding`
 - 日期：`2026-04-24`
-- 性质：docs-only first pass + capture-ready sample binding
+- 性质：docs-only first pass + capture-ready sample binding + Wave 1 工作台四路由文档绑定（§12.5）
 - 约束：仅反映当前仓库已落地指标，不代表未来所有页面或所有域已建字典

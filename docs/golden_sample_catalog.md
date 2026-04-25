@@ -63,7 +63,7 @@
 原因：
 
 - 驾驶舱聚合页混合了 live / excluded section，不适合作为第一批黄金样本主包
-- `bond-analytics` 在 `golden_sample_plan.md` 中已被识别为重要样本来源，但当前 page contract 第一版尚未覆盖 bond analytics 专页，因此本目录将其延后，而不是伪装成当前首批已就绪样本
+- `bond-analytics` 在 `golden_sample_plan.md` 中已被识别为重要样本来源；`docs/page_contracts.md` 已补入 `PAGE-BOND-001`，但 Headline / 风险卡的 `metric_id` 同源与样本目录仍未冻结，因此本目录继续将其延后，而不是伪装成当前首批已就绪样本
 - excluded surface 当前就是 `503 fail-closed`
 
 ## 4. 样本落盘路径
@@ -116,7 +116,20 @@ tests/golden_samples/
 
 | sample_id | surface | status | 延后原因 |
 | --- | --- | --- | --- |
-| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` / **candidate** | **直至** bond analytics 专页在 `docs/page_contracts.md` 与 `docs/metric_dictionary.md` 中具备可冻结的 page+metric 映射前，不将本包提升为与 Batch A 同级的“主包就绪”样本；避免仅有 API 而无 owner contract |
+| `GS-BOND-HEADLINE-A` | `/api/bond-analytics/portfolio-headlines` | `blocked-by-contract-gap` / **candidate** | **`PAGE-BOND-001` 专章已存在**；**直至** Headline/风险卡等在 `docs/metric_dictionary.md` 建立可冻结 `MTR-*` 同源、且本包具备 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前，不提升为与 Batch A 同级的“主包就绪”样本（**当前无该目录**） |
+
+## 5.2 Wave 1 页面：`page_id` → `metric_id` → `sample_id` → 测试
+
+与 `docs/metric_dictionary.md` §12.5 对齐；用于系统闭环 Wave 1 四条工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）。**不新增** `tests/golden_samples/` 目录。
+
+| 前端路由 | `page_id` | 可钉 `metric_id`（字典已批） | `sample_id` | 测试锚点 |
+| --- | --- | --- | --- | --- |
+| `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-001`~`003`, `MTR-BAL-101`~`102`（overview 切片） | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | `MTR-BAL-004`~`006`, `MTR-BAL-103`；筛选口径 `MTR-BAL-104`~`105`（summary 表） | —（无专包；不与 frozen JSON 逐项锁死） | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | —（macro / FX / news / 运营条） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001`（见 `page_contracts` §13.6） | —（Headline / 风险卡见字典 **GAP-BOND-DASH-***；**无** capture-ready 黄金包目录） | `GS-BOND-HEADLINE-A` **仍为 blocked-by-contract-gap**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/positions` | `PAGE-POS-001`（见 §13.7） | —（**GAP-POS-LIST**：`MTR-*` / 样本仍未钉死） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
+| `/market-data` | `PAGE-MKT-001`（见 §13.8） | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 6. 样本定义
 

@@ -40,8 +40,8 @@
 - `docs/golden_sample_plan.md`、`docs/golden_sample_catalog.md` 与 `tests/golden_samples/` 已纳入版本基线；仍需与 **页面契约 / 指标字典 / capture-ready 重抓** 保持同步。
 - `GS-EXEC-OVERVIEW-A` 已补齐 `metrics[].caliber_label` 冻结字段，与 `tests/test_executive_service_contract.py` 和 `backend/app/schemas/executive_dashboard.py` 当前契约一致。
 - 当前样本集中没有首页 `/` 的聚合样本。
-- `GS-BOND-HEADLINE-A` 仍为 **blocked/candidate**：根因不是缺少 API，而是 bond analytics 专页 **page contract 与 metric 映射** 未齐；在 `docs/page_contracts.md` 与 `docs/metric_dictionary.md` 补齐前不将 `GS-BOND-HEADLINE-A` 标为 capture-ready 主包。
-- 还没有把 `sample_id -> page_id -> metric_id -> test file` 做成强约束。
+- `GS-BOND-HEADLINE-A` 仍为 **blocked/candidate**：`PAGE-BOND-001` 专章已立，但 **metric 字典同源** 与 **冻结样本目录** 仍未齐；在 `docs/metric_dictionary.md` 补齐 **GAP-BOND-DASH-***、并建立 `tests/golden_samples/GS-BOND-HEADLINE-A/` 且纳入 gate 前，不将 `GS-BOND-HEADLINE-A` 标为 capture-ready 主包。
+- Wave 1 四条工作台路由已在本文件 §7.4 与 `docs/metric_dictionary.md` §12.5 做 **文档层** `page_id → metric_id → sample_id → test file` 绑定；全量强约束（含 CI 校验矩阵）仍待后续。
 
 ## 3. 什么样的样本才算“黄金样本”
 
@@ -87,7 +87,7 @@
 | surface / sample | 当前状态 | 不纳入首批的原因 | 什么时候再纳入 |
 | --- | --- | --- | --- |
 | `/` 驾驶舱聚合页 | 暂不冻结 | 页面混合了 live、placeholder、excluded section，不适合作为第一批系统真值页 | 首页 page contract 明确“允许 section / 禁止 section”后 |
-| `GS-BOND-HEADLINE-A` | 暂缓 | `bond analytics` 还没有补齐首版 page contract 与 metric mapping | `docs/page_contracts.md` 和 `docs/metric_dictionary.md` 补齐 bond analytics 后 |
+| `GS-BOND-HEADLINE-A` | 暂缓 | `PAGE-BOND-001` 已有；**metric mapping** 与 **样本目录** 未齐 | `metric_dictionary` 同源 + `tests/golden_samples/GS-BOND-HEADLINE-A/` + gate |
 | `/ui/risk/overview`、`/ui/home/alerts`、`/ui/home/contribution` | excluded / compat | 当前 cutover 边界外，按 `503` / reserved 处理，不应该伪装成 live 样本 | 真正进入 governed cutover 后 |
 
 ## 6. 样本目录标准
@@ -134,6 +134,19 @@ tests/golden_samples/
 - 每个 `sample_id` 必须能对应到至少一个现有测试文件。
 - 没有测试挂点的样本，不算“可维护样本”。
 
+### 7.4 Wave 1：`page_id` → `metric_id` → `sample_id` → `test file`（强绑定草案）
+
+以下仅覆盖闭环 Wave 1 四条路由；详细语义与 **GAP** 见 `docs/metric_dictionary.md` §12.5 与 `docs/golden_sample_catalog.md` §5.2。`GS-BOND-HEADLINE-A` **不**因本表解除 blocked。
+
+| `page_id` / 路由 | `metric_id`（仅字典已定义项） | `sample_id` | `test file` |
+| --- | --- | --- | --- |
+| `PAGE-OPS-001` / `/operations-analysis` | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
+| `PAGE-OPS-001` / `/operations-analysis` | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`, `MTR-BAL-104`, `MTR-BAL-105` | — | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
+| `PAGE-OPS-001` / `/operations-analysis` | —（macro / FX / news / 运营） | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
+| `PAGE-BOND-001` / `/bond-dashboard` | —（**GAP-BOND-DASH-***） | —（`GS-BOND-HEADLINE-A` blocked；无样本目录） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `PAGE-POS-001` / `/positions` | —（**GAP-POS-LIST**） | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
+| `PAGE-MKT-001` / `/market-data` | —（**GAP-MKT-DATA**） | — | `frontend/src/test/MarketDataPage.test.tsx` |
+
 ## 8. 首批最小行动
 
 ### 8.1 本周必须完成
@@ -145,8 +158,8 @@ tests/golden_samples/
 ### 8.2 下周必须完成
 
 1. 让 `GS-EXEC-*` 三个样本与首页聚合页页面契约明确脱钩，只服务各自 governed executive section。
-2. 在 `bond analytics` 页面契约补齐前，不新增 `GS-BOND-HEADLINE-A`。
-3. 为缺 page contract 的 live 页面建立“不可冻结样本”的显式说明，避免样本膨胀。
+2. 在 **metric 同源与样本目录** 就绪前，不新增 `GS-BOND-HEADLINE-A` 为 capture-ready。
+3. 为 **已有 page contract 但缺 `MTR-*`/样本** 的 live 页面保持显式 GAP 说明，避免样本膨胀。
 
 ## 9. 与 release gate 的关系
 
