@@ -75,6 +75,30 @@ export const CROSS_ASSET_KPI_SLOTS: CrossAssetKpiSlot[] = [
   },
   {
     kind: "single",
+    key: "csi300_pe",
+    label: "沪深300市盈率",
+    format: "plain",
+    tag: "估值",
+    candidateSeriesIds: ["CA.CSI300_PE"],
+  },
+  {
+    kind: "single",
+    key: "mega_cap_weight",
+    label: "沪深300前十大权重",
+    format: "percent",
+    tag: "大市值权重",
+    candidateSeriesIds: ["CA.MEGA_CAP_WEIGHT"],
+  },
+  {
+    kind: "single",
+    key: "mega_cap_top5_weight",
+    label: "沪深300前五大权重",
+    format: "percent",
+    tag: "大市值权重",
+    candidateSeriesIds: ["CA.MEGA_CAP_TOP5_WEIGHT"],
+  },
+  {
+    kind: "single",
     key: "brent",
     label: "布油",
     format: "plain",
@@ -379,12 +403,17 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
   const point = pickPoint(byId, slot.candidateSeriesIds);
   const id = point?.series_id ?? slot.candidateSeriesIds[0] ?? slot.key;
   const delta = point?.latest_change ?? null;
-  const label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  let label = slot.key === "money_market_7d" && point?.series_id === "CA.DR007" ? "DR007" : slot.label;
+  let tag = slot.tag;
+  if (slot.key === "financial_conditions" && point?.series_id === "CA.CSI300") {
+    label = "沪深300指数";
+    tag = "权益风险偏好";
+  }
   return {
     key: slot.key,
     label,
     format: slot.format,
-    tag: slot.tag,
+    tag,
     resolvedSeriesId: id,
     sourceKind: sourceKindFromSeriesId(id),
     tradeDate: point?.trade_date ?? null,

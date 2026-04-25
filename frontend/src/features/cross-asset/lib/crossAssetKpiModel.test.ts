@@ -66,7 +66,31 @@ describe("crossAssetKpiModel", () => {
 
     expect(financialConditions?.resolvedSeriesId).toBe("CA.CSI300");
     expect(financialConditions?.sourceKind).toBe("public");
+    expect(financialConditions?.label).toBe("沪深300指数");
     expect(financialConditions?.tradeDate).toBe("2026-04-10");
+  });
+
+  it("resolves CSI300 valuation and mega-cap concentration supplement slots", () => {
+    const series = [
+      macroPoint("CA.CSI300_PE", 14.58, [
+        ["2026-04-09", 14.42],
+        ["2026-04-10", 14.58],
+      ]),
+      macroPoint("CA.MEGA_CAP_WEIGHT", 23.5367, [
+        ["2026-03-01", 22.9],
+        ["2026-04-01", 23.5367],
+      ]),
+      macroPoint("CA.MEGA_CAP_TOP5_WEIGHT", 15.532, [
+        ["2026-03-01", 15.1],
+        ["2026-04-01", 15.532],
+      ]),
+    ];
+
+    const kpis = resolveCrossAssetKpis(series);
+
+    expect(kpis.find((k) => k.key === "csi300_pe")?.valueLabel).toBe("14.58");
+    expect(kpis.find((k) => k.key === "mega_cap_weight")?.valueLabel).toBe("23.54%");
+    expect(kpis.find((k) => k.key === "mega_cap_top5_weight")?.valueLabel).toBe("15.53%");
   });
 
   it("prefers E1003238 over EMG for US 10Y", () => {

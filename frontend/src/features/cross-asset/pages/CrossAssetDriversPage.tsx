@@ -6,7 +6,7 @@ import { useApiClient } from "../../../api/client";
 import type { MacroBondLinkagePayload, MacroBondLinkageTopCorrelation } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../../components/AsyncSection";
-import { PageHeader, PageSectionLead, pageSurfacePanelStyle } from "../../../components/page/PagePrimitives";
+import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { StatusPill } from "../../../components/StatusPill";
 import ReactECharts from "../../../lib/echarts";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -44,13 +44,7 @@ import "./CrossAssetDriversPage.css";
 
 const t = designTokens;
 
-const pageBg = t.color.neutral[50];
-
-const detailPanelStyle = {
-  ...pageSurfacePanelStyle,
-  padding: t.space[5],
-  boxShadow: t.shadow.card,
-} as const;
+const crossAssetPanelClass = "cross-asset-drivers-page__panel";
 
 const sparkStroke: Record<ResolvedCrossAssetKpi["changeTone"], string> = {
   positive: t.color.semantic.profit,
@@ -104,18 +98,7 @@ function formatSignedNumber(value: number | string | null | undefined, suffix = 
 function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
-    <div
-      style={{
-        padding: `${t.space[4]}px ${t.space[4]}px ${t.space[3]}px`,
-        borderRadius: t.radius.md,
-        background: t.color.primary[50],
-        border: `1px solid ${t.color.neutral[200]}`,
-        boxShadow: t.shadow.card,
-        minHeight: 132,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
+    <div className="cross-asset-drivers-page__mini-kpi" style={{ display: "flex", flexDirection: "column" } as const}>
       <div
         style={{
           fontSize: t.fontSize[11],
@@ -158,7 +141,7 @@ function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
 
 function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
   return (
-    <section data-testid="cross-asset-research-views" style={detailPanelStyle}>
+    <section data-testid="cross-asset-research-views" className={crossAssetPanelClass}>
       <div style={{ display: "grid", gap: t.space[2], marginBottom: t.space[4] }}>
         <h2 style={{ margin: 0, fontSize: t.fontSize[16], fontWeight: 700, color: t.color.neutral[900] }}>
           投资研究判断
@@ -227,11 +210,11 @@ function NcdProxyEvidencePanel({
   return (
     <section
       data-testid="cross-asset-ncd-proxy"
-      style={{
-        ...detailPanelStyle,
-        border: `1px solid ${isProxyNotMatrix ? t.color.warning[200] : t.color.neutral[200]}`,
-        background: isProxyNotMatrix ? t.color.warning[50] : t.color.neutral[50],
-      }}
+      className={
+        isProxyNotMatrix
+          ? `${crossAssetPanelClass} cross-asset-drivers-page__panel--ncd-warn`
+          : crossAssetPanelClass
+      }
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: t.space[3], flexWrap: "wrap" }}>
         <h2 style={{ margin: 0, fontSize: t.fontSize[16], fontWeight: 700, color: t.color.neutral[900] }}>NCD / 资金代理</h2>
@@ -279,7 +262,7 @@ function NcdProxyEvidencePanel({
 
 function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[] }) {
   return (
-    <section data-testid="cross-asset-transmission-axes" style={detailPanelStyle}>
+    <section data-testid="cross-asset-transmission-axes" className={crossAssetPanelClass}>
       <div style={{ display: "grid", gap: t.space[2], marginBottom: t.space[4] }}>
         <h2 style={{ margin: 0, fontSize: t.fontSize[16], fontWeight: 700, color: t.color.neutral[900] }}>
           传导主线
@@ -397,7 +380,7 @@ function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] 
                     >
                       <div className="cross-asset-class-analysis__line-header">
                         <span className="cross-asset-class-analysis__line-title">{line.label}</span>
-                        <span className="cross-asset-class-analysis__line-status">{lineStatusLabel(line.status)}</span>
+                        <span className="cross-asset-class-analysis__line-status">{lineStatusLabel(line.stateLabel)}</span>
                       </div>
                       <div className="cross-asset-class-analysis__line-source" title={line.sourceLabel}>
                         <strong>{line.dataLabel}</strong>
@@ -445,7 +428,9 @@ function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] 
                     >
                       <span>{line.label}</span>
                       <span>{assetDirectionLabel(line.direction)}</span>
-                      <small>{line.dataLabel}</small>
+                      <small>
+                        {lineStatusLabel(line.stateLabel)} · {line.dataLabel}
+                      </small>
                     </div>
                   ))}
                 </div>
@@ -473,8 +458,6 @@ const UI = {
   pending: "\u5f85\u63a5\u5165",
   dataReady: "\u6570\u636e\u53ef\u7528",
   inputPending: "\u8f93\u5165\u5f85\u63a5\u5165",
-  connected: "\u5df2\u63a5\u5165",
-  missingInput: "\u7f3a\u8f93\u5165",
   supportive: "\u652f\u6491",
   restrictive: "\u538b\u5236",
   neutral: "\u4e2d\u6027",
@@ -487,8 +470,8 @@ function analysisStatusLabel(status: CrossAssetClassAnalysisRow["status"]) {
   return status === "ready" ? UI.dataReady : UI.inputPending;
 }
 
-function lineStatusLabel(status: CrossAssetClassAnalysisLine["status"]) {
-  return status === "ready" ? UI.connected : UI.missingInput;
+function lineStatusLabel(stateLabel: CrossAssetClassAnalysisLine["stateLabel"]) {
+  return stateLabel;
 }
 
 function assetDirectionLabel(direction: string) {
@@ -582,6 +565,8 @@ export default function CrossAssetDriversPage() {
 
   const env = useMemo(() => macroBondLinkage.environment_score ?? {}, [macroBondLinkage.environment_score]);
   const kpis = useMemo(() => resolveCrossAssetKpis(latestSeries), [latestSeries]);
+  const remainder = kpis.length % 4;
+  const kpiPlaceholderCount = remainder !== 0 ? 4 - remainder : 0;
   const trendOption = useMemo(() => buildCrossAssetTrendOption(latestSeries), [latestSeries]);
   const drivers = useMemo(() => buildDriverColumns(env), [env]);
   const envTags = useMemo(() => buildEnvironmentTags(env), [env]);
@@ -609,8 +594,10 @@ export default function CrossAssetDriversPage() {
       buildCrossAssetClassAnalysisRows({
         kpis,
         transmissionAxes: transmissionAxisRows,
+        latestMeta,
+        linkageMeta,
       }),
-    [kpis, transmissionAxisRows],
+    [kpis, latestMeta, linkageMeta, transmissionAxisRows],
   );
   const ncdProxyPayload = ncdFundingProxyQuery.data?.result ?? null;
   const ncdProxyEvidence = useMemo(
@@ -699,9 +686,9 @@ export default function CrossAssetDriversPage() {
 
   return (
     <section
+      className="cross-asset-drivers-page"
       data-testid="cross-asset-drivers-page"
       style={{
-        background: pageBg,
         minHeight: "100%",
         borderRadius: t.radius.lg,
         padding: t.space[4],
@@ -710,7 +697,7 @@ export default function CrossAssetDriversPage() {
       <div data-testid="cross-asset-page">
         <PageHeader
           title="跨资产驱动"
-          eyebrow="Overview"
+          eyebrow="市场工作台"
           badgeLabel={client.mode === "real" ? "真实 analytical 读链路" : "本地 mock contract replay"}
           badgeTone={client.mode === "real" ? "positive" : "accent"}
           description="这页只回答一个问题：外部变量正在怎样传导到债券，不直接替代正式执行与风控口径。完整宏观序列仍在市场数据页，跨资产页只保留判断、告警和候选动作。"
@@ -729,15 +716,33 @@ export default function CrossAssetDriversPage() {
           </div>
         </PageHeader>
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(300px, 360px)",
-            gap: t.space[4],
-            alignItems: "start",
-          }}
-        >
-          <div style={{ display: "grid", gap: t.space[4], minWidth: 0 }}>
+        <SectionCard title="数据状态">
+          <div style={{ display: "grid", gap: t.space[3] }}>
+            {statusFlags.length === 0 ? (
+              <p style={{ margin: 0, color: t.color.neutral[600], fontSize: t.fontSize[13] }}>当前没有额外状态告警。</p>
+            ) : (
+              statusFlags.map((flag) => (
+                <div key={flag.id} style={{ display: "grid", gap: t.space[1] }}>
+                  <StatusPill status={flag.tone} label={flag.label} />
+                  <span style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
+                    {flag.detail}
+                  </span>
+                </div>
+              ))
+            )}
+            <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
+              latest quality {latestMeta?.quality_flag ?? "pending"} · linkage quality {linkageMeta?.quality_flag ?? "pending"}
+            </div>
+            <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
+              latest generated {latestMeta?.generated_at ?? "pending"}
+            </div>
+            <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
+              linkage generated {linkageMeta?.generated_at ?? "pending"}
+            </div>
+          </div>
+        </SectionCard>
+
+        <div className="cross-asset-drivers-page__flow">
             <PageSectionLead
               eyebrow="Investment Research"
               title="研究结论先行"
@@ -752,27 +757,23 @@ export default function CrossAssetDriversPage() {
               title="环境概览"
               description="在研究判断之后，用顶部环境 KPI 和驱动拆解补充证据。"
             />
-            <div
-              data-testid="cross-asset-kpi-band"
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                gap: t.space[3],
-              }}
-            >
+            <div className="cross-asset-drivers-page__kpi-grid" data-testid="cross-asset-kpi-band">
               {kpis.map((kpi) => (
                 <MiniKpiCard key={kpi.key} kpi={kpi} />
               ))}
+              {remainder !== 0
+                ? Array.from({ length: kpiPlaceholderCount }, (_, index) => (
+                    <div
+                      key={`kpi-placeholder-${index}`}
+                      className="cross-asset-drivers-page__kpi-placeholder"
+                      aria-hidden={true}
+                    />
+                  ))
+                : null}
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                gap: t.space[3],
-              }}
-            >
-              <section style={detailPanelStyle}>
+            <div className="cross-asset-drivers-page__row-two">
+              <section className={crossAssetPanelClass}>
                 <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
                   市场判断
                 </h2>
@@ -788,58 +789,80 @@ export default function CrossAssetDriversPage() {
                 </div>
               </section>
 
-              <section style={detailPanelStyle}>
+              <section className={crossAssetPanelClass}>
                 <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
-                  驱动拆解
+                  宏观-债市相关性（Top）
                 </h2>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-                    gap: t.space[3],
-                  }}
-                >
-                  {drivers.map((col) => {
-                    const stanceStyle = driverStanceStyle(col.tone);
-                    return (
-                      <div
-                        key={col.title}
-                        style={{
-                          borderRadius: t.radius.md,
-                          border: `1px solid ${t.color.neutral[100]}`,
-                          padding: t.space[3],
-                          background: t.color.neutral[50],
-                          minHeight: 160,
-                        }}
-                      >
-                        <div style={{ fontSize: t.fontSize[12], fontWeight: 600, color: t.color.neutral[600], marginBottom: t.space[2] }}>
-                          {col.title}
-                        </div>
-                        <div
-                          style={{
-                            display: "inline-block",
-                            padding: `2px ${t.space[2]}px`,
-                            borderRadius: t.radius.sm,
-                            fontSize: t.fontSize[12],
-                            fontWeight: 700,
-                            background: stanceStyle.bg,
-                            color: stanceStyle.color,
-                            marginBottom: t.space[2],
-                          }}
-                        >
-                          {col.stance}
-                        </div>
-                        <ul style={{ margin: 0, paddingLeft: t.space[5], color: t.color.neutral[700], fontSize: t.fontSize[11], lineHeight: t.lineHeight.normal }}>
-                          {col.bullets.map((bullet) => (
-                            <li key={bullet}>{bullet}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                </div>
+                <p style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[11], color: t.color.neutral[500], lineHeight: t.lineHeight.snug }}>
+                  来源为联动分析返回的滚动相关性结果；这里只展示 analytical 证据，不替代估值分位。
+                </p>
+                <table className="cross-asset-drivers-page__heatmap">
+                  <thead>
+                    <tr>
+                      <th>指标</th>
+                      <th>corr(3M)</th>
+                      <th>corr(6M)</th>
+                      <th>方向</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {heatmapRows.map((row) => (
+                      <tr key={row.indicator} style={{ borderTop: `1px solid ${t.color.neutral[100]}` }}>
+                        <td style={{ color: t.color.neutral[800] }}>{row.indicator}</td>
+                        <td style={{ ...tabularNumsStyle, color: t.color.neutral[900], fontWeight: 600 }}>{row.current}</td>
+                        <td style={{ ...tabularNumsStyle, color: t.color.neutral[600] }}>{row.mid}</td>
+                        <td style={{ color: evalColor[row.evalTone], fontWeight: 600 }}>{row.eval}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </section>
             </div>
+
+            <section className={`${crossAssetPanelClass} cross-asset-drivers-page__drivers`}>
+              <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
+                驱动拆解
+              </h2>
+              <div className="cross-asset-drivers-page__drivers-grid">
+                {drivers.map((col) => {
+                  const stanceStyle = driverStanceStyle(col.tone);
+                  return (
+                    <div key={col.title} className="cross-asset-drivers-page__driver-cell">
+                      <div style={{ fontSize: t.fontSize[12], fontWeight: 600, color: t.color.neutral[600], marginBottom: t.space[2] }}>
+                        {col.title}
+                      </div>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          padding: `2px ${t.space[2]}px`,
+                          borderRadius: t.radius.sm,
+                          fontSize: t.fontSize[12],
+                          fontWeight: 700,
+                          background: stanceStyle.bg,
+                          color: stanceStyle.color,
+                          marginBottom: t.space[2],
+                        }}
+                      >
+                        {col.stance}
+                      </div>
+                      <ul
+                        style={{
+                          margin: 0,
+                          paddingLeft: t.space[5],
+                          color: t.color.neutral[700],
+                          fontSize: t.fontSize[11],
+                          lineHeight: t.lineHeight.normal,
+                        }}
+                      >
+                        {col.bullets.map((bullet) => (
+                          <li key={bullet}>{bullet}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
 
             <MarketCandidateActions rows={candidateActions} />
 
@@ -850,7 +873,7 @@ export default function CrossAssetDriversPage() {
               title="走势、事件与观察"
               description="完成研究判断后，再看走势、事件流和观察名单，避免把噪音放到结论前面。"
             />
-            <section style={detailPanelStyle}>
+            <section className={crossAssetPanelClass}>
               <h2 style={{ margin: `0 0 ${t.space[2]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
                 跨资产走势（近 20 日，统一基准 = 100）
               </h2>
@@ -966,7 +989,7 @@ export default function CrossAssetDriversPage() {
                     </div>
                   </div>
 
-                  <section data-testid="cross-asset-linkage-portfolio-impact" style={detailPanelStyle}>
+                  <section data-testid="cross-asset-linkage-portfolio-impact" className={crossAssetPanelClass}>
                     <h2 style={{ marginTop: 0, marginBottom: t.space[2], fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
                       组合影响估算
                     </h2>
@@ -1014,71 +1037,6 @@ export default function CrossAssetDriversPage() {
                 }
               />
             </div>
-          </div>
-
-          <aside
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: t.space[3],
-              position: "sticky",
-              top: t.space[4],
-            }}
-          >
-            <SectionCard title="数据状态">
-              <div style={{ display: "grid", gap: t.space[3] }}>
-                {statusFlags.length === 0 ? (
-                  <p style={{ margin: 0, color: t.color.neutral[600], fontSize: t.fontSize[13] }}>当前没有额外状态告警。</p>
-                ) : (
-                  statusFlags.map((flag) => (
-                    <div key={flag.id} style={{ display: "grid", gap: t.space[1] }}>
-                      <StatusPill status={flag.tone} label={flag.label} />
-                      <span style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-                        {flag.detail}
-                      </span>
-                    </div>
-                  ))
-                )}
-                <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-                  latest quality {latestMeta?.quality_flag ?? "pending"} · linkage quality {linkageMeta?.quality_flag ?? "pending"}
-                </div>
-                <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-                  latest generated {latestMeta?.generated_at ?? "pending"}
-                </div>
-                <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-                  linkage generated {linkageMeta?.generated_at ?? "pending"}
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="宏观-债市相关性（Top）">
-              <p style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[11], color: t.color.neutral[500], lineHeight: t.lineHeight.snug }}>
-                来源为联动分析返回的滚动相关性结果；这里只展示 analytical 证据，不替代估值分位。
-              </p>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: t.fontSize[12] }}>
-                <thead>
-                  <tr style={{ color: t.color.neutral[500], textAlign: "left" }}>
-                    <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>指标</th>
-                    <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>corr(3M)</th>
-                    <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>corr(6M)</th>
-                    <th style={{ padding: `${t.space[2]}px ${t.space[1]}px`, fontWeight: 600 }}>方向</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {heatmapRows.map((row) => (
-                    <tr key={row.indicator} style={{ borderTop: `1px solid ${t.color.neutral[100]}` }}>
-                      <td style={{ padding: `${t.space[2]}px ${t.space[1]}px`, color: t.color.neutral[800] }}>{row.indicator}</td>
-                      <td style={{ ...tabularNumsStyle, padding: `${t.space[2]}px ${t.space[1]}px`, color: t.color.neutral[900], fontWeight: 600 }}>
-                        {row.current}
-                      </td>
-                      <td style={{ ...tabularNumsStyle, padding: `${t.space[2]}px ${t.space[1]}px`, color: t.color.neutral[600] }}>{row.mid}</td>
-                      <td style={{ padding: `${t.space[2]}px ${t.space[1]}px`, color: evalColor[row.evalTone], fontWeight: 600 }}>{row.eval}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </SectionCard>
-          </aside>
         </div>
       </div>
     </section>

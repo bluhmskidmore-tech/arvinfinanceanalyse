@@ -245,3 +245,139 @@
     grid-template-columns: 1fr;
   }
 }
+
+.cross-asset-drivers-page {
+  --ca-card: #ffffff;
+  --ca-card-mute: #f3f5f8;
+  --ca-border: #dde1e8;
+  --ca-text: #111926;
+  --ca-muted: #7889a0;
+  --ca-radius: 8px;
+  --ca-shadow: 0 1px 2px rgba(12, 18, 40, 0.03), 0 2px 8px rgba(12, 18, 40, 0.05);
+  color: var(--ca-text);
+  font-family: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.cross-asset-drivers-page h1,
+.cross-asset-drivers-page h2 {
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--ca-text);
+}
+
+.cross-asset-drivers-page__flow {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-width: 0;
+  width: 100%;
+}
+
+.cross-asset-drivers-page__panel {
+  padding: 20px;
+  border-radius: var(--ca-radius);
+  background: var(--ca-card);
+  border: 1px solid var(--ca-border);
+  box-shadow: var(--ca-shadow);
+  min-width: 0;
+}
+
+.cross-asset-drivers-page__row-two > .cross-asset-drivers-page__panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.cross-asset-drivers-page__panel--ncd-warn {
+  border-color: #e8d4a8;
+  background: #fffaf0;
+}
+
+.cross-asset-drivers-page__kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-drivers-page__row-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.cross-asset-drivers-page__drivers {
+  display: block;
+}
+
+.cross-asset-drivers-page__drivers-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-drivers-page__driver-cell {
+  border-radius: var(--ca-radius);
+  border: 1px solid var(--ca-border);
+  padding: 12px;
+  background: var(--ca-card-mute);
+  min-height: 160px;
+}
+
+.cross-asset-drivers-page__heatmap {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.cross-asset-drivers-page__heatmap th,
+.cross-asset-drivers-page__heatmap td {
+  padding: 8px 4px;
+}
+
+.cross-asset-drivers-page__heatmap thead th {
+  font-weight: 600;
+  text-align: left;
+  color: var(--ca-muted);
+}
+
+.cross-asset-drivers-page__mini-kpi {
+  border-radius: var(--ca-radius);
+  background: var(--ca-card);
+  border: 1px solid var(--ca-border);
+  box-shadow: var(--ca-shadow);
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 16px 12px;
+}
+
+.cross-asset-drivers-page__kpi-placeholder {
+  min-height: 0;
+  visibility: hidden;
+  pointer-events: none;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+@media (max-width: 1200px) {
+  .cross-asset-drivers-page__kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  .cross-asset-drivers-page__row-two {
+    grid-template-columns: 1fr;
+  }
+  .cross-asset-drivers-page__kpi-grid {
+    grid-template-columns: 1fr;
+  }
+  .cross-asset-drivers-page__kpi-placeholder {
+    display: none;
+  }
+}

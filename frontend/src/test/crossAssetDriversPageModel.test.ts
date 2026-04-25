@@ -109,6 +109,35 @@ describe("crossAssetDriversPageModel", () => {
     expect(fallback?.detail).toContain("Fallback");
   });
 
+  it("marks the cross-asset chain as dual-source when Choice and Tushare supplements coexist", () => {
+    const flags = buildCrossAssetStatusFlags({
+      latestMeta: makeResultMeta(),
+      latestSeries: [
+        makePoint("EMM01843735", "Choice financial condition", -1.54),
+        makePoint("CA.CSI300", "CSI300", 4769.37),
+      ],
+      crossAssetDataDate: "2026-04-24",
+      linkageReportDate: "2026-04-24",
+    });
+
+    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("dual source ready");
+  });
+
+  it("keeps source_blocked visible when Choice is unavailable but retained Choice rows still exist", () => {
+    const flags = buildCrossAssetStatusFlags({
+      latestMeta: makeResultMeta({ vendor_status: "vendor_unavailable" }),
+      latestSeries: [
+        makePoint("EMM01843735", "Choice financial condition", -1.54),
+        makePoint("CA.CSI300", "CSI300", 4769.37),
+      ],
+      crossAssetDataDate: "2026-04-24",
+      linkageReportDate: "2026-04-24",
+    });
+
+    expect(flags.find((flag) => flag.id === "source-blocked")?.label).toBe("source_blocked");
+    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("dual source ready");
+  });
+
   it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
     const flags = buildCrossAssetStatusFlags({
       latestSeries: [],
@@ -272,6 +301,9 @@ describe("crossAssetDriversPageModel", () => {
   it("builds asset-class analysis rows with direction, source, and pending data labels", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16 }),
+      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, { unit: "%", latest_change: 0.2 }),
+      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, { unit: "%", latest_change: 0.1 }),
       makePoint("CA.BRENT", "Brent spot price", 82.3, { unit: "USD/bbl", latest_change: 4.8 }),
       makePoint("CA.STEEL", "Steel spot price", 8500, { unit: "CNY/t", latest_change: 3.2 }),
     ]);
@@ -286,6 +318,15 @@ describe("crossAssetDriversPageModel", () => {
           required_series_ids: ["CA.CSI300"],
           warnings: [],
         } satisfies MacroBondTransmissionAxis,
+        {
+          axis_key: "mega_cap_equities",
+          status: "ready",
+          stance: "neutral",
+          summary: "CSI300 top10 weight concentration is 23.54% (top5 15.53%).",
+          impacted_views: ["credit", "instrument"],
+          required_series_ids: ["tushare.index.000300.SH.weight"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
       ],
       env: {},
     });
@@ -294,13 +335,16 @@ describe("crossAssetDriversPageModel", () => {
 
     expect(rows.map((row) => row.key)).toEqual(["stock", "commodities", "options"]);
     expect(rows[0].status).toBe("ready");
-    expect(rows[0].lines.map((line) => line.key)).toEqual(["broad_index", "mega_cap_weight"]);
+    expect(rows[0].lines.map((line) => line.key)).toEqual(["broad_index", "valuation_spread", "mega_cap_weight"]);
     expect(rows[0].lines[0].direction.length).toBeGreaterThan(0);
     expect(rows[0].lines[0].dataLabel).toContain("2026-04-10");
     expect(rows[0].lines[0].sourceLabel).toContain("Choice");
     expect(rows[0].lines[0].sourceLabel).toContain("EMM01843735");
-    expect(rows[0].lines[1].dataLabel).toContain("Choice");
-    expect(rows[0].lines[1].dataLabel).toContain("Tushare");
+    expect(rows[0].lines[1].dataLabel).toContain("14.58");
+    expect(rows[0].lines[1].dataLabel).toContain("股债利差轴 ready");
+    expect(rows[0].lines[2].dataLabel).toContain("23.54%");
+    expect(rows[0].lines[2].dataLabel).toContain("15.53%");
+    expect(rows[0].lines[2].sourceLabel).toContain("tushare.index.000300.SH.weight");
     expect(rows[0].lines[0].explanation).toContain("金融条件指数");
     expect(rows[1].status).toBe("ready");
     expect(rows[1].lines.map((line) => line.key)).toEqual(["energy", "ferrous", "nonferrous"]);
@@ -316,9 +360,26 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].status).toBe("pending_signal");
     expect(rows[2].lines.map((line) => line.key)).toEqual(["equity_options", "commodity_options", "rates_bond_options"]);
     expect(rows[2].lines.every((line) => line.status === "pending_signal")).toBe(true);
+    expect(rows[2].lines.every((line) => line.stateLabel === "pending_definition")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
     expect(rows[2].lines[0].explanation).toContain("No governed equity-options input");
+  });
+
+  it("marks retained Choice-backed card lines as source_blocked when vendor status is unavailable", () => {
+    const kpis = resolveCrossAssetKpis([
+      makePoint("EMM01843735", "Choice financial condition", -1.54, {
+        latest_change: -0.01,
+      }),
+    ]);
+
+    const rows = buildCrossAssetClassAnalysisRows({
+      kpis,
+      transmissionAxes: [],
+      latestMeta: makeResultMeta({ vendor_status: "vendor_unavailable" }),
+    });
+
+    expect(rows[0].lines.find((line) => line.key === "broad_index")?.stateLabel).toBe("source_blocked");
   });
 
   it("maps research calendar events into event calendar rows", () => {

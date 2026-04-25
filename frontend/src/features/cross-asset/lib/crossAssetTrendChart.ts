@@ -7,12 +7,12 @@ import { crossAssetTrendLines } from "./crossAssetKpiModel";
 const { color: c } = designTokens;
 const CHART_COLORS = [
   c.primary[500],
-  c.danger[500],
-  c.success[500],
-  c.warning[500],
-  c.primary[700],
+  c.neutral[700],
+  c.success[600],
+  c.warning[600],
   c.info[400],
-  c.danger[400],
+  c.primary[400],
+  c.danger[600],
 ];
 
 function normalizedAligned(values: (number | null)[]): (number | null)[] {
@@ -51,7 +51,7 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       type: "line" as const,
       smooth: 0.25,
       showSymbol: false,
-      lineStyle: { width: 2, color: CHART_COLORS[idx % CHART_COLORS.length] },
+      lineStyle: { width: 1.5, color: CHART_COLORS[idx % CHART_COLORS.length] },
       data: display,
     };
   });
@@ -64,23 +64,27 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
     legend: {
       type: "scroll",
       top: s[1],
-      textStyle: { fontSize: fs[11], color: c.neutral[600] },
+      textStyle: { fontSize: fs[11], color: c.neutral[500] },
     },
     tooltip: {
       trigger: "axis",
+      backgroundColor: c.neutral[50],
+      borderColor: c.neutral[200],
+      borderWidth: 1,
+      textStyle: { fontSize: fs[11], color: c.neutral[700] },
     },
     xAxis: {
       type: "category",
       data: axisDates,
       axisLabel: { fontSize: fs[11], color: c.neutral[500] },
-      axisLine: { lineStyle: { color: c.neutral[200] } },
+      axisLine: { lineStyle: { color: c.neutral[300] } },
     },
     yAxis: {
       type: "value",
       name: "基期=100",
       nameTextStyle: { fontSize: fs[11], color: c.neutral[500] },
       axisLabel: { fontSize: fs[11], color: c.neutral[500] },
-      splitLine: { lineStyle: { color: c.neutral[100] } },
+      splitLine: { lineStyle: { color: c.neutral[200], opacity: 0.65 } },
     },
     series: echartsSeries,
   };

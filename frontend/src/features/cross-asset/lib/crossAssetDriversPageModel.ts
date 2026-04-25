@@ -77,6 +77,7 @@ export type CrossAssetClassAnalysisLine = {
   key: string;
   label: string;
   status: "ready" | "pending_signal";
+  stateLabel: "ready" | "stale" | "source_blocked" | "missing_dependency" | "pending_definition";
   direction: string;
   dataLabel: string;
   sourceLabel: string;
@@ -136,12 +137,24 @@ function hasStaleMeta(meta: ResultMeta | undefined) {
   return meta.quality_flag === "stale" || meta.vendor_status === "vendor_stale";
 }
 
+function hasBlockedMeta(meta: ResultMeta | undefined) {
+  return meta?.vendor_status === "vendor_unavailable";
+}
+
 function hasFallbackMeta(meta: ResultMeta | undefined) {
   return Boolean(meta && meta.fallback_mode !== "none");
 }
 
 function hasFallbackSeries(series: ChoiceMacroLatestPoint[]) {
   return series.some((point) => point.refresh_tier === "fallback");
+}
+
+function hasChoiceSeries(series: ChoiceMacroLatestPoint[]) {
+  return series.some((point) => /^(E100|EMM|EMG|EMI|EM\d)/.test(point.series_id));
+}
+
+function hasPublicSupplementSeries(series: ChoiceMacroLatestPoint[]) {
+  return series.some((point) => point.series_id.startsWith("CA."));
 }
 
 function ncdRowCaption(row: NcdFundingProxyPayload["rows"][number]) {
@@ -530,6 +543,22 @@ function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined) {
   return Boolean(kpi && (kpi.sparkline.length > 0 || kpi.changeTone !== "default"));
 }
 
+function kpiDateSuffix(kpi: ResolvedCrossAssetKpi) {
+  return kpi.tradeDate ? ` · ${kpi.tradeDate}` : "";
+}
+
+function compactKpiData(kpi: ResolvedCrossAssetKpi | undefined) {
+  if (!hasUsableKpi(kpi)) {
+    return null;
+  }
+  return `${kpi!.label} ${kpi!.valueLabel} / ${kpi!.changeLabel}${kpiDateSuffix(kpi!)}`;
+}
+
+function combinedDataLabel(parts: Array<string | null>, pending: string) {
+  const readyParts = parts.filter((part): part is string => Boolean(part));
+  return readyParts.length > 0 ? readyParts.join("；") : pending;
+}
+
 function dataLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: string) {
   if (!hasUsableKpi(kpi)) {
     return pending;
@@ -551,27 +580,27 @@ function sourceLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: st
   return `${sourcePrefix[kpi!.sourceKind]}: ${kpi!.resolvedSeriesId}`;
 }
 
-function lineFromAxis(input: {
-  key: string;
-  label: string;
-  axis: CrossAssetTransmissionAxisRow | undefined;
-  pending: string;
-  pendingData?: string;
-}): CrossAssetClassAnalysisLine {
-  const ready = input.axis?.status === "ready";
-  const impactedViewsLabel = input.axis?.impactedViews.length ? input.axis.impactedViews.join(" / ") : input.label;
-  const sourceIdsLabel = input.axis?.requiredSeriesIds.length ? input.axis.requiredSeriesIds.join(", ") : "governed axis";
-  return {
-    key: input.key,
-    label: input.label,
-    status: ready ? "ready" : "pending_signal",
-    direction: input.axis?.stance ?? "pending",
-    dataLabel: ready
-      ? `已接入 ${impactedViewsLabel}`
-      : input.pendingData ?? "需登记 Choice 接入码或 Tushare/公共补充治理输入",
-    sourceLabel: ready ? `双源轴(${input.axis?.source ?? "backend"}): ${sourceIdsLabel}` : input.axis?.source ?? "missing",
-    explanation: input.axis?.summary ?? input.pending,
-  };
+function combinedSourceLabel(kpis: Array<ResolvedCrossAssetKpi | undefined>, fallback: string) {
+  const labels = kpis
+    .filter((kpi): kpi is ResolvedCrossAssetKpi => hasUsableKpi(kpi))
+    .map((kpi) => sourceLabelFromKpi(kpi, fallback));
+  return labels.length > 0 ? labels.join("；") : fallback;
+}
+
+function stateLabelFromKpi(
+  kpi: ResolvedCrossAssetKpi | undefined,
+  meta?: ResultMeta,
+): CrossAssetClassAnalysisLine["stateLabel"] {
+  if (!hasUsableKpi(kpi)) {
+    return "missing_dependency";
+  }
+  if (hasBlockedMeta(meta) && kpi!.sourceKind === "choice") {
+    return "source_blocked";
+  }
+  if (hasStaleMeta(meta)) {
+    return "stale";
+  }
+  return "ready";
 }
 
 function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
@@ -581,11 +610,16 @@ function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
 export function buildCrossAssetClassAnalysisRows(input: {
   kpis: ResolvedCrossAssetKpi[];
   transmissionAxes: CrossAssetTransmissionAxisRow[];
+  latestMeta?: ResultMeta;
+  linkageMeta?: ResultMeta;
 }): CrossAssetClassAnalysisRow[] {
   const equityAxis = axisByKey(input.transmissionAxes, "equity_bond_spread");
   const megaCapAxis = axisByKey(input.transmissionAxes, "mega_cap_equities");
   const commodityAxis = axisByKey(input.transmissionAxes, "commodities_inflation");
   const broadIndex = kpiByKey(input.kpis, "financial_conditions");
+  const csi300Pe = kpiByKey(input.kpis, "csi300_pe");
+  const megaCapTop10 = kpiByKey(input.kpis, "mega_cap_weight");
+  const megaCapTop5 = kpiByKey(input.kpis, "mega_cap_top5_weight");
   const energy = kpiByKey(input.kpis, "brent");
   const ferrous = kpiByKey(input.kpis, "steel");
   const stockLines: CrossAssetClassAnalysisLine[] = [
@@ -593,6 +627,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "broad_index",
       label: "指数层面",
       status: hasUsableKpi(broadIndex) ? "ready" : "pending_signal",
+      stateLabel: stateLabelFromKpi(broadIndex, input.latestMeta),
       direction: directionFromKpi(broadIndex),
       dataLabel: dataLabelFromKpi(broadIndex, "等待 EMM01843735 / CA.CSI300 / Tushare CSI300"),
       sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Choice 接入码或 Tushare 指数输入"),
@@ -601,19 +636,69 @@ export function buildCrossAssetClassAnalysisRows(input: {
         "Pending governed broad-index input; do not turn this into stock-picking or sector rotation.",
       ),
     },
-    lineFromAxis({
+    {
+      key: "valuation_spread",
+      label: "估值/股债利差",
+      status: hasUsableKpi(csi300Pe) || equityAxis?.status === "ready" ? "ready" : "pending_signal",
+      stateLabel: hasUsableKpi(csi300Pe)
+        ? stateLabelFromKpi(csi300Pe, input.latestMeta)
+        : equityAxis?.status === "ready" && hasBlockedMeta(input.linkageMeta)
+          ? "source_blocked"
+          : equityAxis?.status === "ready" && hasStaleMeta(input.linkageMeta)
+            ? "stale"
+            : equityAxis?.status === "ready"
+              ? "ready"
+              : "missing_dependency",
+      direction: equityAxis?.stance ?? directionFromKpi(csi300Pe),
+      dataLabel: combinedDataLabel(
+        [compactKpiData(csi300Pe), equityAxis?.status === "ready" ? "股债利差轴 ready" : null],
+        "等待 CA.CSI300_PE / 股债利差轴",
+      ),
+      sourceLabel: [
+        combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic"),
+        equityAxis?.status === "ready" ? `双源轴(${equityAxis.source}): ${equityAxis.requiredSeriesIds.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      explanation:
+        equityAxis?.summary ??
+        explanationFromKpi(csi300Pe, "Pending governed CSI300 valuation and equity-bond spread input."),
+    },
+    {
       key: "mega_cap_weight",
       label: "大市值权重",
-      axis: megaCapAxis,
-      pending: "Pending governed mega-cap leadership proxy; keep the large-cap-weight channel unresolved.",
-      pendingData: "双源待补：Choice 大市值权重码 / Tushare index_weight",
-    }),
+      status: hasUsableKpi(megaCapTop10) || hasUsableKpi(megaCapTop5) || megaCapAxis?.status === "ready" ? "ready" : "pending_signal",
+      stateLabel: hasUsableKpi(megaCapTop10) || hasUsableKpi(megaCapTop5)
+        ? stateLabelFromKpi(megaCapTop10 ?? megaCapTop5, input.latestMeta)
+        : megaCapAxis?.status === "ready" && hasBlockedMeta(input.linkageMeta)
+          ? "source_blocked"
+          : megaCapAxis?.status === "ready" && hasStaleMeta(input.linkageMeta)
+            ? "stale"
+            : megaCapAxis?.status === "ready"
+              ? "ready"
+              : "missing_dependency",
+      direction: megaCapAxis?.stance ?? directionFromKpi(megaCapTop10),
+      dataLabel: combinedDataLabel(
+        [compactKpiData(megaCapTop10), compactKpiData(megaCapTop5)],
+        "双源待补：Choice 大市值权重码 / Tushare index_weight",
+      ),
+      sourceLabel: [
+        combinedSourceLabel([megaCapTop10, megaCapTop5], "需登记 Choice 大市值权重码 / Tushare index_weight"),
+        megaCapAxis?.status === "ready" ? `双源轴(${megaCapAxis.source}): ${megaCapAxis.requiredSeriesIds.join(", ")}` : null,
+      ]
+        .filter(Boolean)
+        .join("；"),
+      explanation:
+        megaCapAxis?.summary ??
+        explanationFromKpi(megaCapTop10, "Pending governed mega-cap leadership proxy; keep the large-cap-weight channel unresolved."),
+    },
   ];
   const commodityLines: CrossAssetClassAnalysisLine[] = [
     {
       key: "energy",
       label: "能源",
       status: hasUsableKpi(energy) ? "ready" : "pending_signal",
+      stateLabel: stateLabelFromKpi(energy, input.latestMeta),
       direction: directionFromKpi(energy),
       dataLabel: dataLabelFromKpi(energy, "等待 CA.BRENT"),
       sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源"),
@@ -623,6 +708,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "ferrous",
       label: "黑色",
       status: hasUsableKpi(ferrous) ? "ready" : "pending_signal",
+      stateLabel: stateLabelFromKpi(ferrous, input.latestMeta),
       direction: directionFromKpi(ferrous),
       dataLabel: dataLabelFromKpi(ferrous, "等待 CA.STEEL"),
       sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源"),
@@ -632,6 +718,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "nonferrous",
       label: "有色",
       status: "pending_signal",
+      stateLabel: "missing_dependency",
       direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "pending",
       dataLabel: "需补齐铜/铝 Choice 接入码或公共补充治理输入",
       sourceLabel: commodityAxis?.requiredSeriesIds.length
@@ -648,6 +735,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "equity_options",
       label: "权益期权",
       status: "pending_signal",
+      stateLabel: "pending_definition",
       direction: "pending",
       dataLabel: "需登记 IV / skew / put-call Choice 接入码或期权治理源",
       sourceLabel: "missing",
@@ -657,6 +745,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "commodity_options",
       label: "商品期权",
       status: "pending_signal",
+      stateLabel: "pending_definition",
       direction: "pending",
       dataLabel: "需登记商品期权 IV / skew / tail-risk Choice 接入码或期权治理源",
       sourceLabel: "missing",
@@ -666,6 +755,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       key: "rates_bond_options",
       label: "利率/债券期权",
       status: "pending_signal",
+      stateLabel: "pending_definition",
       direction: "pending",
       dataLabel: "需登记 rates vol / curve vol Choice 接入码或利率期权治理源",
       sourceLabel: "missing",
@@ -742,6 +832,8 @@ export function buildCrossAssetDriversViewModel(input: {
   const assetClassAnalysisRows = buildCrossAssetClassAnalysisRows({
     kpis: input.kpis,
     transmissionAxes,
+    latestMeta: input.latestMeta,
+    linkageMeta: input.linkageMeta,
   });
   const candidateActions = buildCrossAssetCandidateActions({
     researchViews: input.researchViews,
@@ -828,12 +920,39 @@ export function buildCrossAssetStatusFlags(input: {
     });
   }
 
+  if (hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta)) {
+    flags.push({
+      id: "source-blocked",
+      label: "source_blocked",
+      tone: "danger",
+      detail: "One vendor source is unavailable or permission-blocked; use retained rows and public supplements with explicit caution.",
+    });
+  }
+
   if (hasFallbackMeta(input.latestMeta) || hasFallbackMeta(input.linkageMeta) || hasFallbackSeries(input.latestSeries)) {
     flags.push({
       id: "fallback",
       label: "fallback",
       tone: "caution",
       detail: "Fallback snapshots are present, so conclusions should be used with reduced confidence.",
+    });
+  }
+
+  if (hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
+    flags.push({
+      id: "dual-source",
+      label: "dual source ready",
+      tone: "normal",
+      detail: "Choice rows and Tushare/public supplement rows are both present in the governed cross-asset chain.",
+    });
+  }
+
+  if (hasPublicSupplementSeries(input.latestSeries) && !hasChoiceSeries(input.latestSeries)) {
+    flags.push({
+      id: "choice-source-missing",
+      label: "choice source missing",
+      tone: "caution",
+      detail: "Public/Tushare supplements are available, but no Choice-coded row is present for this snapshot.",
     });
   }
 

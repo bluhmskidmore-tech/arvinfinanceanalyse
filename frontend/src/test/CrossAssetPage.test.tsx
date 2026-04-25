@@ -41,6 +41,47 @@ function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
 describe("CrossAssetPage", () => {
   it("renders first-screen investment research judgments from backend additive fields", async () => {
     const client = createApiClient({ mode: "mock" });
+    const latestPayload = await client.getChoiceMacroLatest();
+    const baseCsi300 = latestPayload.result.series.find((point) => point.series_id === "CA.CSI300")!;
+    vi.spyOn(client, "getChoiceMacroLatest").mockResolvedValue({
+      ...latestPayload,
+      result_meta: {
+        ...latestPayload.result_meta,
+        vendor_status: "vendor_unavailable",
+      },
+      result: {
+        ...latestPayload.result,
+        series: [
+          ...latestPayload.result.series,
+          {
+            ...baseCsi300,
+            series_id: "CA.CSI300_PE",
+            series_name: "沪深300市盈率",
+            value_numeric: 14.58,
+            unit: "x",
+            latest_change: 0.16,
+          },
+          {
+            ...baseCsi300,
+            series_id: "CA.MEGA_CAP_WEIGHT",
+            series_name: "沪深300前十大权重",
+            trade_date: "2026-04-01",
+            value_numeric: 23.5367,
+            unit: "%",
+            latest_change: 0.2,
+          },
+          {
+            ...baseCsi300,
+            series_id: "CA.MEGA_CAP_TOP5_WEIGHT",
+            series_name: "沪深300前五大权重",
+            trade_date: "2026-04-01",
+            value_numeric: 15.532,
+            unit: "%",
+            latest_change: 0.1,
+          },
+        ],
+      },
+    });
     const linkagePayload = await client.getMacroBondLinkageAnalysis({ reportDate: "2026-04-10" });
 
     vi.spyOn(client, "getMacroBondLinkageAnalysis").mockResolvedValue({
@@ -97,12 +138,21 @@ describe("CrossAssetPage", () => {
           },
           {
             axis_key: "equity_bond_spread",
-            status: "pending_signal",
-            stance: "neutral",
-            summary: "Awaiting governed equity-bond spread proxy.",
+            status: "ready",
+            stance: "conflicted",
+            summary: "CSI300 equity-bond spread is 5.10ppt with CSI300 move -0.35%.",
             impacted_views: ["duration", "credit"],
-            required_series_ids: ["CA.CSI300"],
-            warnings: ["missing governed proxy series"],
+            required_series_ids: ["tushare.index.000300.SH.daily", "tushare.index.000300.SH.dailybasic"],
+            warnings: [],
+          },
+          {
+            axis_key: "mega_cap_equities",
+            status: "ready",
+            stance: "neutral",
+            summary: "CSI300 top10 weight concentration is 23.54% (top5 15.53%).",
+            impacted_views: ["credit", "instrument"],
+            required_series_ids: ["tushare.index.000300.SH.weight"],
+            warnings: [],
           },
         ],
       },
@@ -126,8 +176,9 @@ describe("CrossAssetPage", () => {
       "Global rates cap aggressive long-end chasing.",
     );
     expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).toHaveTextContent(
-      "Awaiting governed equity-bond spread proxy.",
+      "CSI300 equity-bond spread",
     );
+    expect(screen.getByTestId("cross-asset-transmission-axis-mega_cap_equities")).toHaveTextContent("23.54%");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-stock")).toHaveTextContent("股票分析");
     expect(screen.getByTestId("cross-asset-asset-analysis-commodities")).toHaveTextContent("大宗商品");
@@ -137,13 +188,18 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u5f85\u63a5\u5165\u6e05\u5355");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Choice");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Tushare");
+    expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("source_blocked");
     const stockBroadIndex = screen.getByTestId("cross-asset-asset-analysis-stock-broad_index");
     expect(stockBroadIndex).toBeInTheDocument();
+    expect(stockBroadIndex).toHaveTextContent("source_blocked");
     expect(stockBroadIndex).not.toHaveTextContent("EMM01843735");
     expect(stockBroadIndex.querySelector(".cross-asset-class-analysis__line-source")?.getAttribute("title")).toContain(
       "EMM01843735",
     );
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock-valuation_spread")).toHaveTextContent("14.58");
     expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toHaveTextContent("23.54%");
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toHaveTextContent("15.53%");
     const commoditiesEnergy = screen.getByTestId("cross-asset-asset-analysis-commodities-energy");
     expect(commoditiesEnergy).toBeInTheDocument();
     expect(commoditiesEnergy).not.toHaveTextContent("CA.BRENT");
