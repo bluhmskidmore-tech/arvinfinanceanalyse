@@ -28,6 +28,7 @@ import {
   OPERATIONS_WATCH_ITEMS,
 } from "../business-analysis/businessAnalysisWorkbenchMocks";
 import { KpiCard } from "../components/KpiCard";
+import { formatYuanAmountAsYiPlain } from "../../../utils/format";
 
 const DISPLAY_FONT =
   '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
@@ -694,19 +695,19 @@ export default function OperationsAnalysisPage() {
     () => [
       {
         title: "Market Value",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
+        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_market_value_amount),
         unit: "亿元",
         detail: "governed balance overview",
       },
       {
         title: "Amortized Cost",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
+        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
         unit: "亿元",
         detail: "governed balance overview",
       },
       {
         title: "Accrued Interest",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
+        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
         unit: "亿元",
         detail: "governed balance overview",
       },
@@ -854,9 +855,9 @@ export default function OperationsAnalysisPage() {
           reportDate={balanceOverviewQuery.data?.result.report_date}
           detailRowCount={balanceOverviewQuery.data?.result.detail_row_count}
           summaryRowCount={balanceOverviewQuery.data?.result.summary_row_count}
-          marketValueAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount)}
-          amortizedCostAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
-          accruedInterestAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
+          marketValueAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_market_value_amount)}
+          amortizedCostAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
+          accruedInterestAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
           missingFxCount={missingFxRows.length}
         />
         <RevenueCostBridge />
@@ -975,19 +976,19 @@ export default function OperationsAnalysisPage() {
                   {
                     testId: "operations-entry-balance-market-value",
                     label: "总市值合计",
-                    value: formatOverviewNumber(balanceOverview!.total_market_value_amount),
+                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_market_value_amount),
                     detail: "正式读面总市值",
                   },
                   {
                     testId: "operations-entry-balance-amortized",
                     label: "摊余成本合计",
-                    value: formatOverviewNumber(balanceOverview!.total_amortized_cost_amount),
+                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_amortized_cost_amount),
                     detail: "正式读面摊余成本",
                   },
                   {
                     testId: "operations-entry-balance-accrued",
                     label: "应计利息合计",
-                    value: formatOverviewNumber(balanceOverview!.total_accrued_interest_amount),
+                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_accrued_interest_amount),
                     detail: "正式读面应计利息",
                   },
                 ].map((item) => (
@@ -1027,7 +1028,7 @@ export default function OperationsAnalysisPage() {
                 <div data-testid="operations-entry-balance-market-value">
                   <KpiCard
                     title="总市值合计"
-                    value={formatOverviewNumber(balanceOverview!.total_market_value_amount)}
+                    value={formatYuanAmountAsYiPlain(balanceOverview!.total_market_value_amount)}
                     detail="正式读面总市值"
                     valueVariant="text"
                   />
@@ -1035,7 +1036,7 @@ export default function OperationsAnalysisPage() {
                 <div data-testid="operations-entry-balance-amortized">
                   <KpiCard
                     title="摊余成本合计"
-                    value={formatOverviewNumber(balanceOverview!.total_amortized_cost_amount)}
+                    value={formatYuanAmountAsYiPlain(balanceOverview!.total_amortized_cost_amount)}
                     detail="正式读面摊余成本"
                     valueVariant="text"
                   />
@@ -1043,7 +1044,7 @@ export default function OperationsAnalysisPage() {
                 <div data-testid="operations-entry-balance-accrued">
                   <KpiCard
                     title="应计利息合计"
-                    value={formatOverviewNumber(balanceOverview!.total_accrued_interest_amount)}
+                    value={formatYuanAmountAsYiPlain(balanceOverview!.total_accrued_interest_amount)}
                     detail="正式读面应计利息"
                     valueVariant="text"
                   />

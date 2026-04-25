@@ -617,88 +617,219 @@ class BalanceAnalysisRepository(DuckDBRepository):
             zqtz_params.append(position_scope)
             tyw_params.append(position_scope)
 
-        rows = self._fetch_rows(
-            f"""
-            with zqtz as (
-              select
-                count(*) as detail_row_count,
-                count(
-                  distinct (
-                    instrument_code || '|' || portfolio_name || '|' || cost_center || '|' ||
-                    position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
-                  )
-                ) as summary_row_count,
-                coalesce(sum(market_value_amount), 0) as total_market_value_amount,
-                coalesce(sum(amortized_cost_amount), 0) as total_amortized_cost_amount,
-                coalesce(sum(accrued_interest_amount), 0) as total_accrued_interest_amount
-              from fact_formal_zqtz_balance_daily
-              where {' and '.join(zqtz_where_parts)}
-            ),
-            tyw as (
-              select
-                count(*) as detail_row_count,
-                count(
-                  distinct (
-                    position_id || '|' || counterparty_name || '|' || product_type || '|' ||
-                    position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
-                  )
-                ) as summary_row_count,
-                coalesce(sum(principal_amount), 0) as total_market_value_amount,
-                coalesce(sum(principal_amount), 0) as total_amortized_cost_amount,
-                coalesce(sum(accrued_interest_amount), 0) as total_accrued_interest_amount
-              from fact_formal_tyw_balance_daily
-              where {' and '.join(tyw_where_parts)}
+        if position_scope == "all":
+            rows = self._fetch_rows(
+                f"""
+                with zqtz as (
+                  select
+                    count(*) as detail_row_count,
+                    count(
+                      distinct (
+                        instrument_code || '|' || portfolio_name || '|' || cost_center || '|' ||
+                        position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
+                      )
+                    ) as summary_row_count,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then market_value_amount else 0 end), 0
+                    ) as asset_market_value_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then market_value_amount else 0 end), 0
+                    ) as liability_market_value_amount,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then amortized_cost_amount else 0 end), 0
+                    ) as asset_amortized_cost_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then amortized_cost_amount else 0 end), 0
+                    ) as liability_amortized_cost_amount,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then accrued_interest_amount else 0 end), 0
+                    ) as asset_accrued_interest_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then accrued_interest_amount else 0 end), 0
+                    ) as liability_accrued_interest_amount
+                  from fact_formal_zqtz_balance_daily
+                  where {' and '.join(zqtz_where_parts)}
+                ),
+                tyw as (
+                  select
+                    count(*) as detail_row_count,
+                    count(
+                      distinct (
+                        position_id || '|' || counterparty_name || '|' || product_type || '|' ||
+                        position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
+                      )
+                    ) as summary_row_count,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then principal_amount else 0 end), 0
+                    ) as asset_market_value_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then principal_amount else 0 end), 0
+                    ) as liability_market_value_amount,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then principal_amount else 0 end), 0
+                    ) as asset_amortized_cost_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then principal_amount else 0 end), 0
+                    ) as liability_amortized_cost_amount,
+                    coalesce(
+                      sum(case when position_scope = 'asset' then accrued_interest_amount else 0 end), 0
+                    ) as asset_accrued_interest_amount,
+                    coalesce(
+                      sum(case when position_scope = 'liability' then accrued_interest_amount else 0 end), 0
+                    ) as liability_accrued_interest_amount
+                  from fact_formal_tyw_balance_daily
+                  where {' and '.join(tyw_where_parts)}
+                )
+                select
+                  ? as report_date,
+                  ? as position_scope,
+                  ? as currency_basis,
+                  zqtz.detail_row_count + tyw.detail_row_count as detail_row_count,
+                  zqtz.summary_row_count + tyw.summary_row_count as summary_row_count,
+                  zqtz.asset_market_value_amount + tyw.asset_market_value_amount
+                    + zqtz.liability_market_value_amount + tyw.liability_market_value_amount
+                    as total_market_value_amount,
+                  zqtz.asset_amortized_cost_amount + tyw.asset_amortized_cost_amount
+                    + zqtz.liability_amortized_cost_amount + tyw.liability_amortized_cost_amount
+                    as total_amortized_cost_amount,
+                  zqtz.asset_accrued_interest_amount + tyw.asset_accrued_interest_amount
+                    + zqtz.liability_accrued_interest_amount + tyw.liability_accrued_interest_amount
+                    as total_accrued_interest_amount,
+                  zqtz.asset_market_value_amount + tyw.asset_market_value_amount
+                    as asset_total_market_value_amount,
+                  zqtz.liability_market_value_amount + tyw.liability_market_value_amount
+                    as liability_total_market_value_amount,
+                  zqtz.asset_amortized_cost_amount + tyw.asset_amortized_cost_amount
+                    as asset_total_amortized_cost_amount,
+                  zqtz.liability_amortized_cost_amount + tyw.liability_amortized_cost_amount
+                    as liability_total_amortized_cost_amount,
+                  zqtz.asset_accrued_interest_amount + tyw.asset_accrued_interest_amount
+                    as asset_total_accrued_interest_amount,
+                  zqtz.liability_accrued_interest_amount + tyw.liability_accrued_interest_amount
+                    as liability_total_accrued_interest_amount,
+                  (
+                    select string_agg(source_version, '__' order by source_version)
+                    from (
+                      select distinct source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)} and source_version <> ''
+                      union
+                      select distinct source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)} and source_version <> ''
+                    )
+                  ) as source_version,
+                  (
+                    select string_agg(rule_version, '__' order by rule_version)
+                    from (
+                      select distinct rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)} and rule_version <> ''
+                      union
+                      select distinct rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)} and rule_version <> ''
+                    )
+                  ) as rule_version
+                from zqtz
+                cross join tyw
+                """,
+                [
+                    *zqtz_params,
+                    *tyw_params,
+                    report_date,
+                    position_scope,
+                    currency_basis,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
+                ],
             )
-            select
-              ? as report_date,
-              ? as position_scope,
-              ? as currency_basis,
-              zqtz.detail_row_count + tyw.detail_row_count as detail_row_count,
-              zqtz.summary_row_count + tyw.summary_row_count as summary_row_count,
-              zqtz.total_market_value_amount + tyw.total_market_value_amount as total_market_value_amount,
-              zqtz.total_amortized_cost_amount + tyw.total_amortized_cost_amount as total_amortized_cost_amount,
-              zqtz.total_accrued_interest_amount + tyw.total_accrued_interest_amount as total_accrued_interest_amount,
-              (
-                select string_agg(source_version, '__' order by source_version)
-                from (
-                  select distinct source_version
+        else:
+            rows = self._fetch_rows(
+                f"""
+                with zqtz as (
+                  select
+                    count(*) as detail_row_count,
+                    count(
+                      distinct (
+                        instrument_code || '|' || portfolio_name || '|' || cost_center || '|' ||
+                        position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
+                      )
+                    ) as summary_row_count,
+                    coalesce(sum(market_value_amount), 0) as total_market_value_amount,
+                    coalesce(sum(amortized_cost_amount), 0) as total_amortized_cost_amount,
+                    coalesce(sum(accrued_interest_amount), 0) as total_accrued_interest_amount
                   from fact_formal_zqtz_balance_daily
-                  where {' and '.join(zqtz_where_parts)} and source_version <> ''
-                  union
-                  select distinct source_version
+                  where {' and '.join(zqtz_where_parts)}
+                ),
+                tyw as (
+                  select
+                    count(*) as detail_row_count,
+                    count(
+                      distinct (
+                        position_id || '|' || counterparty_name || '|' || product_type || '|' ||
+                        position_scope || '|' || currency_basis || '|' || invest_type_std || '|' || accounting_basis
+                      )
+                    ) as summary_row_count,
+                    coalesce(sum(principal_amount), 0) as total_market_value_amount,
+                    coalesce(sum(principal_amount), 0) as total_amortized_cost_amount,
+                    coalesce(sum(accrued_interest_amount), 0) as total_accrued_interest_amount
                   from fact_formal_tyw_balance_daily
-                  where {' and '.join(tyw_where_parts)} and source_version <> ''
+                  where {' and '.join(tyw_where_parts)}
                 )
-              ) as source_version,
-              (
-                select string_agg(rule_version, '__' order by rule_version)
-                from (
-                  select distinct rule_version
-                  from fact_formal_zqtz_balance_daily
-                  where {' and '.join(zqtz_where_parts)} and rule_version <> ''
-                  union
-                  select distinct rule_version
-                  from fact_formal_tyw_balance_daily
-                  where {' and '.join(tyw_where_parts)} and rule_version <> ''
-                )
-              ) as rule_version
-            from zqtz
-            cross join tyw
-            """,
-            [
-                *zqtz_params,
-                *tyw_params,
-                report_date,
-                position_scope,
-                currency_basis,
-                *zqtz_params,
-                *tyw_params,
-                *zqtz_params,
-                *tyw_params,
-            ],
-        )
+                select
+                  ? as report_date,
+                  ? as position_scope,
+                  ? as currency_basis,
+                  zqtz.detail_row_count + tyw.detail_row_count as detail_row_count,
+                  zqtz.summary_row_count + tyw.summary_row_count as summary_row_count,
+                  zqtz.total_market_value_amount + tyw.total_market_value_amount as total_market_value_amount,
+                  zqtz.total_amortized_cost_amount + tyw.total_amortized_cost_amount as total_amortized_cost_amount,
+                  zqtz.total_accrued_interest_amount + tyw.total_accrued_interest_amount as total_accrued_interest_amount,
+                  (
+                    select string_agg(source_version, '__' order by source_version)
+                    from (
+                      select distinct source_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)} and source_version <> ''
+                      union
+                      select distinct source_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)} and source_version <> ''
+                    )
+                  ) as source_version,
+                  (
+                    select string_agg(rule_version, '__' order by rule_version)
+                    from (
+                      select distinct rule_version
+                      from fact_formal_zqtz_balance_daily
+                      where {' and '.join(zqtz_where_parts)} and rule_version <> ''
+                      union
+                      select distinct rule_version
+                      from fact_formal_tyw_balance_daily
+                      where {' and '.join(tyw_where_parts)} and rule_version <> ''
+                    )
+                  ) as rule_version
+                from zqtz
+                cross join tyw
+                """,
+                [
+                    *zqtz_params,
+                    *tyw_params,
+                    report_date,
+                    position_scope,
+                    currency_basis,
+                    *zqtz_params,
+                    *tyw_params,
+                    *zqtz_params,
+                    *tyw_params,
+                ],
+            )
+
         row = rows[0]
-        columns = [
+        columns: list[str] = [
             "report_date",
             "position_scope",
             "currency_basis",
@@ -707,10 +838,37 @@ class BalanceAnalysisRepository(DuckDBRepository):
             "total_market_value_amount",
             "total_amortized_cost_amount",
             "total_accrued_interest_amount",
-            "source_version",
-            "rule_version",
         ]
-        return dict(zip(columns, row, strict=True))
+        if position_scope == "all":
+            columns.extend(
+                [
+                    "asset_total_market_value_amount",
+                    "liability_total_market_value_amount",
+                    "asset_total_amortized_cost_amount",
+                    "liability_total_amortized_cost_amount",
+                    "asset_total_accrued_interest_amount",
+                    "liability_total_accrued_interest_amount",
+                ]
+            )
+        columns.extend(["source_version", "rule_version"])
+        out = dict(zip(columns, row, strict=True))
+        if position_scope == "asset":
+            tma, taa, tai = (out["total_market_value_amount"], out["total_amortized_cost_amount"], out["total_accrued_interest_amount"])
+            out["asset_total_market_value_amount"] = tma
+            out["liability_total_market_value_amount"] = 0
+            out["asset_total_amortized_cost_amount"] = taa
+            out["liability_total_amortized_cost_amount"] = 0
+            out["asset_total_accrued_interest_amount"] = tai
+            out["liability_total_accrued_interest_amount"] = 0
+        elif position_scope == "liability":
+            tma, taa, tai = (out["total_market_value_amount"], out["total_amortized_cost_amount"], out["total_accrued_interest_amount"])
+            out["asset_total_market_value_amount"] = 0
+            out["liability_total_market_value_amount"] = tma
+            out["asset_total_amortized_cost_amount"] = 0
+            out["liability_total_amortized_cost_amount"] = taa
+            out["asset_total_accrued_interest_amount"] = 0
+            out["liability_total_accrued_interest_amount"] = tai
+        return out
 
     def fetch_formal_summary_table(
         self,

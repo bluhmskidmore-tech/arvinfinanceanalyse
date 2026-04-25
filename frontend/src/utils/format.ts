@@ -144,3 +144,35 @@ function defaultPrecisionForUnit(unit: NumericUnit): number {
   if (unit === "bp") return 1;
   return 2;
 }
+
+// ---- Formal balance sheet display (yuan / wan from API) -----------------------
+
+const YUAN_PER_YI = 100_000_000;
+const WAN_PER_YI = 10_000;
+
+/**
+ * 人民币元 → 亿元数值串（不含“亿”后缀），与 KpiCard 的 `unit="亿元"` 搭配。
+ * `/ui/balance-analysis/overview`、summary、detail、basis_breakdown 的金额字段均为元。
+ */
+export function formatYuanAmountAsYiPlain(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(raw);
+  return (n / YUAN_PER_YI).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
+ * 万元 → 亿元数值串（不含“亿”后缀）。balance-analysis workbook 读模型中多数金额为万元（`_to_wanyuan`）。
+ */
+export function formatWanAmountAsYiPlain(raw: string | number | null | undefined): string {
+  if (raw === null || raw === undefined || raw === "") return NULL_DISPLAY;
+  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return String(raw);
+  return (n / WAN_PER_YI).toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}

@@ -68,6 +68,7 @@ import {
   barTrackStyle,
 } from "./BalanceAnalysisPage.styles";
 import { heroMetaChipStyle, signalAccentStyle, severityTone } from "./BalanceAnalysisPage.helpers";
+import { formatWanAmountAsYiPlain, formatYuanAmountAsYiPlain } from "../../../utils/format";
 
 const PAGE_SIZE = 2;
 
@@ -157,34 +158,6 @@ function formatOverviewNumber(raw: string | number | null | undefined): string {
   return n.toLocaleString("zh-CN");
 }
 
-function formatAmountToYiFromYuan(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
-    return String(raw);
-  }
-  return (n / 100000000).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-function formatAmountToYiFromWan(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) {
-    return String(raw);
-  }
-  return (n / 10000).toLocaleString("zh-CN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
 function formatBalanceScopeLabel(scope: BalancePositionScope | string | undefined): string {
   if (scope === "asset") {
     return "资产端";
@@ -219,6 +192,10 @@ function thousandsValueFormatter(params: ValueFormatterParams) {
     return String(v);
   }
   return n.toLocaleString("zh-CN");
+}
+
+function yuanYiValueFormatter(params: ValueFormatterParams) {
+  return formatYuanAmountAsYiPlain(params.value);
 }
 
 function workbookCellFormatter(params: ValueFormatterParams): string {
@@ -261,21 +238,21 @@ const balanceSummaryColDefs: ColDef<BalanceAnalysisTableRow>[] = [
     headerName: "规模(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "detail_row_count",
@@ -309,24 +286,24 @@ const balanceDetailColDefs: ColDef<BalanceAnalysisDetailRow>[] = [
   },
   {
     field: "market_value_amount",
-    headerName: "规模",
+    headerName: "规模(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "is_issuance_like",
@@ -353,24 +330,24 @@ const balanceDetailSummaryColDefs: ColDef<BalanceAnalysisSummaryRow>[] = [
   },
   {
     field: "market_value_amount",
-    headerName: "市值",
+    headerName: "市值(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
 ];
 
@@ -393,32 +370,46 @@ const balanceBasisBreakdownColDefs: ColDef<BalanceAnalysisBasisBreakdownRow>[] =
   },
   {
     field: "market_value_amount",
-    headerName: "市值",
+    headerName: "市值(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "amortized_cost_amount",
-    headerName: "摊余成本",
+    headerName: "摊余成本(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
   {
     field: "accrued_interest_amount",
-    headerName: "应计利息",
+    headerName: "应计利息(亿)",
     headerClass: "ag-right-aligned-header",
     cellClass: "ag-right-aligned-cell",
-    valueFormatter: thousandsValueFormatter,
+    valueFormatter: yuanYiValueFormatter,
   },
 ];
+
+function workbookAmountColumnWanYuan(colKey: string): boolean {
+  // Workbook 读模型里金额型列在服务端为「万元」(_to_wanyuan)。占比、利率、笔数等列不走该分支。
+  return colKey.endsWith("_amount");
+}
 
 function buildWorkbookGridColumnDefs(columns: BalanceAnalysisWorkbookColumn[]): ColDef[] {
   return columns.map((col) => ({
     field: col.key,
     headerName: col.label,
-    valueFormatter: workbookCellFormatter,
+    valueFormatter: (params: ValueFormatterParams) => {
+      const v = params.value;
+      if (v === null || v === undefined || v === "") {
+        return "—";
+      }
+      if (workbookAmountColumnWanYuan(col.key)) {
+        return formatWanAmountAsYiPlain(v);
+      }
+      return workbookCellFormatter(params);
+    },
     cellStyle: { ...tabularNumsStyle },
   }));
 }
@@ -1379,31 +1370,87 @@ export default function BalanceAnalysisPage() {
   const topDecision = decisionRows[0] ?? workbookDecisionRows[0];
   const topEventCalendar = eventCalendarRows[0];
   const topRiskAlert = riskAlertRows[0];
+  const scope = overview?.position_scope ?? positionScope;
+  const formalAmountCards =
+    scope === "all"
+      ? [
+          {
+            key: "asset-market-value",
+            label: "资产端 · 市值",
+            value: formatYuanAmountAsYiPlain(overview?.asset_total_market_value_amount),
+            unit: "亿元",
+            detail: "overview.asset_total_market_value_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "asset-amortized-cost",
+            label: "资产端 · 摊余成本",
+            value: formatYuanAmountAsYiPlain(overview?.asset_total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "overview.asset_total_amortized_cost_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "asset-accrued-interest",
+            label: "资产端 · 应计利息",
+            value: formatYuanAmountAsYiPlain(overview?.asset_total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "overview.asset_total_accrued_interest_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "liability-market-value",
+            label: "负债端 · 市值",
+            value: formatYuanAmountAsYiPlain(overview?.liability_total_market_value_amount),
+            unit: "亿元",
+            detail: "overview.liability_total_market_value_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "liability-amortized-cost",
+            label: "负债端 · 摊余成本",
+            value: formatYuanAmountAsYiPlain(overview?.liability_total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "overview.liability_total_amortized_cost_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "liability-accrued-interest",
+            label: "负债端 · 应计利息",
+            value: formatYuanAmountAsYiPlain(overview?.liability_total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "overview.liability_total_accrued_interest_amount · formal",
+            valueVariant: "text" as const,
+          },
+        ]
+      : [
+          {
+            key: "total-market-value",
+            label: "总市值合计",
+            value: formatYuanAmountAsYiPlain(overview?.total_market_value_amount),
+            unit: "亿元",
+            detail: "overview.total_market_value_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "total-amortized-cost",
+            label: "摊余成本合计",
+            value: formatYuanAmountAsYiPlain(overview?.total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "overview.total_amortized_cost_amount · formal",
+            valueVariant: "text" as const,
+          },
+          {
+            key: "total-accrued-interest",
+            label: "应计利息合计",
+            value: formatYuanAmountAsYiPlain(overview?.total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "overview.total_accrued_interest_amount · formal",
+            valueVariant: "text" as const,
+          },
+        ];
   const overviewCards = [
-    {
-      key: "total-market-value",
-      label: "总市值合计",
-      value: formatAmountToYiFromYuan(overview?.total_market_value_amount),
-      unit: "亿元",
-      detail: "overview.total_market_value_amount · formal",
-      valueVariant: "text" as const,
-    },
-    {
-      key: "total-amortized-cost",
-      label: "摊余成本合计",
-      value: formatAmountToYiFromYuan(overview?.total_amortized_cost_amount),
-      unit: "亿元",
-      detail: "overview.total_amortized_cost_amount · formal",
-      valueVariant: "text" as const,
-    },
-    {
-      key: "total-accrued-interest",
-      label: "应计利息合计",
-      value: formatAmountToYiFromYuan(overview?.total_accrued_interest_amount),
-      unit: "亿元",
-      detail: "overview.total_accrued_interest_amount · formal",
-      valueVariant: "text" as const,
-    },
+    ...formalAmountCards,
     {
       key: "summary-rows",
       label: "汇总行数",
@@ -1421,7 +1468,7 @@ export default function BalanceAnalysisPage() {
     ...(workbook?.cards ?? []).map((card) => ({
       key: `workbook-card-${card.key}`,
       label: card.label,
-      value: formatAmountToYiFromWan(card.value),
+      value: formatWanAmountAsYiPlain(card.value),
       unit: "亿元",
       detail: `${card.note ?? "workbook.cards"} · workbook`,
       valueVariant: "text" as const,
@@ -2002,9 +2049,9 @@ export default function BalanceAnalysisPage() {
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
-        {formatAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
+        {formatYuanAmountAsYiPlain(overview?.total_market_value_amount)}{" "}
+        {formatYuanAmountAsYiPlain(overview?.total_amortized_cost_amount)}{" "}
+        {formatYuanAmountAsYiPlain(overview?.total_accrued_interest_amount)}
       </div>
 
       <div style={{ marginTop: 24 }}>

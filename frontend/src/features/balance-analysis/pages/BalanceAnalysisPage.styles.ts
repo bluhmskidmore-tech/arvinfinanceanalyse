@@ -9,7 +9,7 @@ const c = designTokens.color;
 
 export const summaryGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: s[4],
 } as const;
 

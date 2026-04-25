@@ -1963,6 +1963,11 @@ const parseBaseUrl = () => {
   return normalizeBaseUrl(typeof raw === "string" ? raw.trim() : undefined);
 };
 
+/** 将「亿」量级的玩具数转为模拟 API 返回的人民币元（与 goverened formal 表一致）。 */
+function mockBalanceYiToYuanString(yi: number): string {
+  return (yi * 100_000_000).toFixed(2);
+}
+
 function buildMockBalanceAnalysisTableRows(
   reportDate: string,
   positionScope: BalancePositionScope,
@@ -1980,9 +1985,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "A",
       accounting_basis: "FVOCI",
       detail_row_count: 3,
-      market_value_amount: "720.00",
-      amortized_cost_amount: "648.00",
-      accrued_interest_amount: "36.00",
+      market_value_amount: mockBalanceYiToYuanString(720),
+      amortized_cost_amount: mockBalanceYiToYuanString(648),
+      accrued_interest_amount: mockBalanceYiToYuanString(36),
     },
     {
       row_key: "tyw:repo-1:CNY:liability:H:AC",
@@ -1995,9 +2000,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "H",
       accounting_basis: "AC",
       detail_row_count: 1,
-      market_value_amount: "72.00",
-      amortized_cost_amount: "72.00",
-      accrued_interest_amount: "14.40",
+      market_value_amount: mockBalanceYiToYuanString(72),
+      amortized_cost_amount: mockBalanceYiToYuanString(72),
+      accrued_interest_amount: mockBalanceYiToYuanString(14.4),
     },
     {
       row_key: "zqtz:240002.IB:portfolio-b:cc-2:CNY:asset:H:AC",
@@ -2010,9 +2015,9 @@ function buildMockBalanceAnalysisTableRows(
       invest_type_std: "H",
       accounting_basis: "AC",
       detail_row_count: 2,
-      market_value_amount: "410.00",
-      amortized_cost_amount: "403.00",
-      accrued_interest_amount: "20.00",
+      market_value_amount: mockBalanceYiToYuanString(410),
+      amortized_cost_amount: mockBalanceYiToYuanString(403),
+      accrued_interest_amount: mockBalanceYiToYuanString(20),
     },
   ];
   return rows.filter((row) => {
@@ -3761,17 +3766,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           source_family: "zqtz" as const,
           position_scope: "asset" as const,
           currency_basis: "CNY" as const,
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
+          market_value_amount: mockBalanceYiToYuanString(720),
+          amortized_cost_amount: mockBalanceYiToYuanString(648),
+          accrued_interest_amount: mockBalanceYiToYuanString(36),
         },
         {
           source_family: "tyw" as const,
           position_scope: "liability" as const,
           currency_basis: "CNY" as const,
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
+          market_value_amount: mockBalanceYiToYuanString(72),
+          amortized_cost_amount: mockBalanceYiToYuanString(72),
+          accrued_interest_amount: mockBalanceYiToYuanString(14.4),
         },
       ].filter((row) => {
         const matchesScope = positionScope === "all" || row.position_scope === positionScope;
@@ -3779,19 +3784,37 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         return matchesScope && matchesBasis;
       });
       const totals = detailRows.reduce(
-        (acc, row) => ({
-          detailRowCount: acc.detailRowCount + 1,
-          summaryRowCount: acc.summaryRowCount + 1,
-          marketValue: acc.marketValue + Number.parseFloat(row.market_value_amount),
-          amortizedCost: acc.amortizedCost + Number.parseFloat(row.amortized_cost_amount),
-          accruedInterest: acc.accruedInterest + Number.parseFloat(row.accrued_interest_amount),
-        }),
+        (acc, row) => {
+          const mv = Number.parseFloat(row.market_value_amount);
+          const ac = Number.parseFloat(row.amortized_cost_amount);
+          const ai = Number.parseFloat(row.accrued_interest_amount);
+          const isAsset = row.position_scope === "asset";
+          return {
+            detailRowCount: acc.detailRowCount + 1,
+            summaryRowCount: acc.summaryRowCount + 1,
+            marketValue: acc.marketValue + mv,
+            amortizedCost: acc.amortizedCost + ac,
+            accruedInterest: acc.accruedInterest + ai,
+            assetMarket: acc.assetMarket + (isAsset ? mv : 0),
+            liabilityMarket: acc.liabilityMarket + (isAsset ? 0 : mv),
+            assetAmortized: acc.assetAmortized + (isAsset ? ac : 0),
+            liabilityAmortized: acc.liabilityAmortized + (isAsset ? 0 : ac),
+            assetAccrued: acc.assetAccrued + (isAsset ? ai : 0),
+            liabilityAccrued: acc.liabilityAccrued + (isAsset ? 0 : ai),
+          };
+        },
         {
           detailRowCount: 0,
           summaryRowCount: 0,
           marketValue: 0,
           amortizedCost: 0,
           accruedInterest: 0,
+          assetMarket: 0,
+          liabilityMarket: 0,
+          assetAmortized: 0,
+          liabilityAmortized: 0,
+          assetAccrued: 0,
+          liabilityAccrued: 0,
         },
       );
       return buildMockApiEnvelope(
@@ -3805,6 +3828,12 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           total_market_value_amount: totals.marketValue.toFixed(2),
           total_amortized_cost_amount: totals.amortizedCost.toFixed(2),
           total_accrued_interest_amount: totals.accruedInterest.toFixed(2),
+          asset_total_market_value_amount: totals.assetMarket.toFixed(2),
+          liability_total_market_value_amount: totals.liabilityMarket.toFixed(2),
+          asset_total_amortized_cost_amount: totals.assetAmortized.toFixed(2),
+          liability_total_amortized_cost_amount: totals.liabilityAmortized.toFixed(2),
+          asset_total_accrued_interest_amount: totals.assetAccrued.toFixed(2),
+          liability_total_accrued_interest_amount: totals.liabilityAccrued.toFixed(2),
         },
         {
           basis: "formal",
@@ -3827,9 +3856,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           currency_basis: "CNY" as const,
           invest_type_std: "A",
           accounting_basis: "FVOCI",
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
+          market_value_amount: mockBalanceYiToYuanString(720),
+          amortized_cost_amount: mockBalanceYiToYuanString(648),
+          accrued_interest_amount: mockBalanceYiToYuanString(36),
           is_issuance_like: false,
         },
         {
@@ -3841,9 +3870,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           currency_basis: "CNY" as const,
           invest_type_std: "H",
           accounting_basis: "AC",
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
+          market_value_amount: mockBalanceYiToYuanString(72),
+          amortized_cost_amount: mockBalanceYiToYuanString(72),
+          accrued_interest_amount: mockBalanceYiToYuanString(14.4),
           is_issuance_like: null,
         },
       ].filter((row) => {
@@ -3888,9 +3917,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           position_scope: "asset" as const,
           currency_basis: "CNY" as const,
           detail_row_count: 3,
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
+          market_value_amount: mockBalanceYiToYuanString(720),
+          amortized_cost_amount: mockBalanceYiToYuanString(648),
+          accrued_interest_amount: mockBalanceYiToYuanString(36),
         },
         {
           source_family: "tyw" as const,
@@ -3899,9 +3928,9 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           position_scope: "liability" as const,
           currency_basis: "CNY" as const,
           detail_row_count: 1,
-          market_value_amount: "72.00",
-          amortized_cost_amount: "72.00",
-          accrued_interest_amount: "14.40",
+          market_value_amount: mockBalanceYiToYuanString(72),
+          amortized_cost_amount: mockBalanceYiToYuanString(72),
+          accrued_interest_amount: mockBalanceYiToYuanString(14.4),
         },
       ].filter((row) => {
         const matchesScope = positionScope === "all" || row.position_scope === positionScope;

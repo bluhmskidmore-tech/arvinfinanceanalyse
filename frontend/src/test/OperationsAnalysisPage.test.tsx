@@ -268,8 +268,8 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-balance-report-date")).toHaveTextContent(
         "2025-12-31",
       );
-      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("720");
-      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("792");
+      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("720.00");
+      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("792.00");
     });
     await expandOperationsDataSourcesPanel(user);
     await waitFor(() => {

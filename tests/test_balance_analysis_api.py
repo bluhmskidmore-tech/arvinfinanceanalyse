@@ -298,6 +298,12 @@ def test_balance_analysis_dates_and_detail_api_flow(tmp_path, monkeypatch):
         "total_market_value_amount": "792.00000000",
         "total_amortized_cost_amount": "720.00000000",
         "total_accrued_interest_amount": "50.40000000",
+        "asset_total_market_value_amount": "720.00000000",
+        "liability_total_market_value_amount": "72.00000000",
+        "asset_total_amortized_cost_amount": "648.00000000",
+        "liability_total_amortized_cost_amount": "72.00000000",
+        "asset_total_accrued_interest_amount": "36.00000000",
+        "liability_total_accrued_interest_amount": "14.40000000",
     }
 
     workbook_response = client.get(

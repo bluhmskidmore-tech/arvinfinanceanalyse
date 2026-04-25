@@ -49,6 +49,10 @@ function renderBalanceAnalysisWithClient(
   return { router, queryClient, ...renderResult };
 }
 
+function mockBalanceYiToYuanString(yi: number): string {
+  return (yi * 100_000_000).toFixed(2);
+}
+
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
   return {
     trace_id: traceId,
@@ -82,9 +86,9 @@ function buildSummaryResponse(offset: number): ApiEnvelope<BalanceAnalysisSummar
             invest_type_std: "A",
             accounting_basis: "FVOCI",
             detail_row_count: 3,
-            market_value_amount: "720.00",
-            amortized_cost_amount: "648.00",
-            accrued_interest_amount: "36.00",
+            market_value_amount: mockBalanceYiToYuanString(720),
+            amortized_cost_amount: mockBalanceYiToYuanString(648),
+            accrued_interest_amount: mockBalanceYiToYuanString(36),
           },
           {
             row_key: "tyw:repo-1:CNY:liability:H:AC",
@@ -97,9 +101,9 @@ function buildSummaryResponse(offset: number): ApiEnvelope<BalanceAnalysisSummar
             invest_type_std: "H",
             accounting_basis: "AC",
             detail_row_count: 1,
-            market_value_amount: "72.00",
-            amortized_cost_amount: "72.00",
-            accrued_interest_amount: "14.40",
+            market_value_amount: mockBalanceYiToYuanString(72),
+            amortized_cost_amount: mockBalanceYiToYuanString(72),
+            accrued_interest_amount: mockBalanceYiToYuanString(14.4),
           },
         ]
       : [
@@ -114,9 +118,9 @@ function buildSummaryResponse(offset: number): ApiEnvelope<BalanceAnalysisSummar
             invest_type_std: "H",
             accounting_basis: "AC",
             detail_row_count: 2,
-            market_value_amount: "410.00",
-            amortized_cost_amount: "403.00",
-            accrued_interest_amount: "20.00",
+            market_value_amount: mockBalanceYiToYuanString(410),
+            amortized_cost_amount: mockBalanceYiToYuanString(403),
+            accrued_interest_amount: mockBalanceYiToYuanString(20),
           },
         ];
 
@@ -454,6 +458,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "99999000000.00",
         total_amortized_cost_amount: "88888000000.00",
         total_accrued_interest_amount: "7777000000.00",
+        asset_total_market_value_amount: "80000000000.00",
+        liability_total_market_value_amount: "19999000000.00",
+        asset_total_amortized_cost_amount: "70000000000.00",
+        liability_total_amortized_cost_amount: "18888000000.00",
+        asset_total_accrued_interest_amount: "5000000000.00",
+        liability_total_accrued_interest_amount: "2777000000.00",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
@@ -467,9 +477,9 @@ describe("BalanceAnalysisPage", () => {
           currency_basis: "CNY",
           invest_type_std: "A",
           accounting_basis: "FVOCI",
-          market_value_amount: "720.00",
-          amortized_cost_amount: "648.00",
-          accrued_interest_amount: "36.00",
+          market_value_amount: mockBalanceYiToYuanString(720),
+          amortized_cost_amount: mockBalanceYiToYuanString(648),
+          accrued_interest_amount: mockBalanceYiToYuanString(36),
           is_issuance_like: false,
         },
       ];
@@ -524,13 +534,17 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("总市值合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("999.99");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("摊余成本合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("888.88");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("应计利息合计");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("债券资产(剔除发行类)");
-      expect(screen.getByTestId("balance-analysis-overview-cards")).not.toHaveTextContent("市场资产");
+      const cards = screen.getByTestId("balance-analysis-overview-cards");
+      expect(cards).toHaveTextContent("资产端 · 市值");
+      expect(cards).toHaveTextContent("800.00");
+      expect(cards).toHaveTextContent("负债端 · 市值");
+      expect(cards).toHaveTextContent("199.99");
+      expect(cards).toHaveTextContent("资产端 · 摊余成本");
+      expect(cards).toHaveTextContent("700.00");
+      expect(cards).toHaveTextContent("188.88");
+      expect(cards).toHaveTextContent("应计利息");
+      expect(cards).toHaveTextContent("债券资产(剔除发行类)");
+      expect(cards).not.toHaveTextContent("市场资产");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("999.99");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("888.88");
       expect(screen.getByTestId("balance-analysis-summary")).toHaveTextContent("77.77");
