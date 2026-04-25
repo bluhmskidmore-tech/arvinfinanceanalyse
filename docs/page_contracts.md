@@ -33,6 +33,13 @@
 8. executive pnl attribution `/ui/pnl/attribution`
 9. 产品分类损益（正式主链）`/product-category-pnl`
 
+**Wave 1 工作扩展（页面契约见 §13.5–§13.8，与上列 1–9 条并列索引，不修改既有 9 页编号）：**
+
+- `/bond-dashboard`（债券总览 / 债券分析驾驶舱）
+- `/positions`（持仓与对手方下钻）
+- `/market-data`（市场数据：宏观/利率/外汇/结构化 NCD 等，含多源与 preview）
+- `/operations-analysis`（经营分析：证据链 + 正式余额入口，Wave 1 例外与计划并存）
+
 不覆盖：
 
 - `/ui/risk/overview`
@@ -47,11 +54,22 @@
 - `AGENTS.md`
 - `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
 - `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
+- `docs/DOCUMENT_AUTHORITY.md`（`market-data` / preview / `source_preview` 排除语义）
 - `docs/EXECUTIVE_CONSUMER_CUTOVER_V1.md`
 - `docs/metric_dictionary.md`
 - `docs/CACHE_SPEC.md`
 - `frontend/src/features/workbench/pages/DashboardPage.tsx`
 - `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx`
+- `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx`
+- `frontend/src/features/positions/pages/PositionsPage.tsx` / `PositionsView.tsx`
+- `frontend/src/features/market-data/pages/MarketDataPage.tsx`
+- `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx`
+- `backend/app/api/routes/bond_dashboard.py`
+- `backend/app/api/routes/positions.py`
+- `backend/app/api/routes/macro_vendor.py` / `market_data_ncd_proxy.py` / `macro_bond_linkage.py`
+- `tests/test_positions_api_contract.py`
+- `tests/test_bond_dashboard_api_contract.py`
+- `tests/test_result_meta_source_surface_followup.py`（`bond_analytics` surface 与 `bond_dashboard` dates）
 - `frontend/src/features/pnl/PnlPage.tsx`
 - `frontend/src/features/pnl/PnlBridgePage.tsx`
 - `frontend/src/features/risk-tensor/RiskTensorPage.tsx`
@@ -963,58 +981,257 @@
 
 - 页面 ID：`PAGE-OPS-001`
 - 页面名称：`经营分析`
-- 前端路由：`/operations-analysis`
-- 页面状态：`wave-1 temporary exception`
+- 路由：前端 `/operations-analysis`（`frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx`）
+- 页面状态：`mixed-source`（正式正式余额读面 + `basis=analytical` 的 source/macro/news + 仍存在的演示/本地组件混排；`WorkbenchShell` 对本路由保留 **temporary exception** 横幅）
+- 编制备注：`client.mode === "real"` 与 `"mock"` 分支影响 badge/演示语义；**不得**将 mock 与真实链路混读为同一正式结论。
 
-### B. 页面只回答一个问题
+### B. 页面目标
 
-`今天的经营判断是否已有可信证据支撑；如果需要下钻，第一站应该进入哪个正式专题页？`
+- 主要问题（业务）：**当前经营判断是否已有可追证的读链路支撑；若需要下钻，第一站应进哪个受治理专题页？**
+- 明确 **不负责**：
+  - 不替代 `balance-analysis` 工作簿/明细真值
+  - 不替代 `pnl` / 产品分类损益正式页
+  - 不把 `source_preview` / Choice news / macro `preview` 伪装为 formal compute 主链真值
+  - 不承诺 Wave 1 文档中列为「禁止首屏」的组件已从代码中物理移除（见下 **Pending**）
 
-本页 wave 1 不承担完整经营驾驶舱，也不承担静态经营结论展示。
+### C. 信息架构（按 repo 实装 + Wave 1 目标态）
 
-### C. wave 1 允许的首屏区块
+| 类别 | section_key / 组件 | 状态 | 备注 |
+| --- | --- | --- | --- |
+| 必有（代码已渲染） | `hero` / `PageHeader` + `operations-business-kpis` | live | 多卡 KPI 条带来自 balance overview + source/macro/FX/news 等查询的聚合展示 |
+| 必有（代码已渲染） | `operations-conclusion-grid` 内含 `BusinessConclusion`、`RevenueCostBridge`（可测试 stub）、`QualityObservation` | **与 Wave 1 目标清单冲突** | 以代码为准作契约；收缩首屏需后续改动 |
+| 必有（代码已渲染） | `operations-contribution-grid`（`BusinessContributionTable` + `AlertList` + `CalendarList` 等） | mixed | 表格为正式 balance **summary 行**；`AlertList`/`CalendarList` 使用 `businessAnalysisWorkbenchMocks` |
+| 必有（代码已渲染） | `operations-structure-grid`（`TenorConcentrationPanel` + `ManagementOutput`） | mixed | 与 §13.5 历史「禁止区块」声明不一致；**Pending** 对齐或更新禁止清单 |
+| 必有 | `recommendation` 推导 + `ManagementOutput` 行动卡片 | live | 推导见 `recommendation` `useMemo`（`source/macro/FX/balance` 错误/空/缺失） |
+| 必有 | 专题入口 `operations-entry-balance-section` 等 | live | 正式余额速览 + `Link` 至 `/balance-analysis`、`/market-data` 等 |
+| 可选 / 运维 | PnL refresh 按钮 + `runPollingTask` + `getFormalPnlImportStatus` | operational | 非主读数真值面 |
+| 可选 | `getChoiceNewsEvents` | **analytical-only** / advisory | `result_kind` 为 news vendor 流；仅作信息 |
+| 禁止 | 将上述 advisory/preview 与 `MTR-BAL-*` 混写为无 provenance 的「正式经营结论」 | — | UI 上须可区分来源（badge / meta / 失败态） |
 
-- source preview 状态
-- macro latest 状态
-- formal FX status
-- balance-analysis overview 速览
-- pnl refresh operational status
-- 一个只由 live query 状态推导出的 recommendation panel
-- drilldown links
+### D. 时间语义
 
-### D. wave 1 首屏禁止区块
+- `requested_report_date`：经营页自身无独立日期控件；`balance` 部分使用 `getBalanceAnalysisDates` 的 **首个** `report_dates[0]` 拉 overview/summary（与页面「最新证据」策略一致，非用户逐日点选语义）。
+- `resolved_report_date`：以 `getBalanceAnalysisOverview` 返回的 `result.report_date` 为 balance 子系统的解析报告日；其它 endpoint 各自带 `result_meta` / 载荷内日期字段。
+- `as_of_date`：本页**未**统一为单一向外字段；各区块遵循上游契约（同 §4.1 缺口声明）。
+- `generated_at`：来自各 `ApiEnvelope['result_meta'].generated_at`；多来源页须在运维/折叠区保留可核对条带（见实装中 Collapse/面板）。
 
-- 硬编码 KPI 行
-- `BusinessConclusion`
-- `RevenueCostBridge`
-- `QualityObservation`
-- `BusinessContributionTable`
-- mock `AlertList`
-- mock `CalendarList`
-- `TenorConcentrationPanel`
-- `ManagementOutput`
+### E. Endpoint / DTO 契约
 
-### E. 页面依赖的最小 query 边界
+| 用途 | Endpoint（前端 client 方法） | Response / DTO 要点 | `basis` / 形式 |
+| --- | --- | --- | --- |
+| Source 预览 | `getSourceFoundation()` → `GET /ui/preview/source-foundation` | `SourcePreviewPayload` + `result_meta` | 多为 **analytical/preview**；`formal_use_allowed: false` |
+| 宏观看板目录 | `getMacroFoundation()` → `GET /ui/preview/macro-foundation` | macro catalog 系列 + `result_meta` | **analytical** |
+| 宏观最新 | `getChoiceMacroLatest()` → `GET /ui/macro/choice-series/latest` | Choice macro latest points + `result_meta` | **analytical** + vendor |
+| 正式汇率覆盖 | `getFxFormalStatus()` → `GET /ui/market-data/fx/formal-status` | `FxFormalStatusPayload`（rows/materialized/candidate/日期） | 正式行与缺失行表；**非**全页 formal truth |
+| 新闻 | `getChoiceNewsEvents()` | 事件列表 + `result_meta` | **analytical** |
+| 余额日期 | `getBalanceAnalysisDates()` | `BalanceAnalysisDatesPayload` | `formal`（与 balance-analysis 页同链） |
+| 余额概览 | `getBalanceAnalysisOverview()` | `BalanceAnalysisOverviewPayload` | `formal` |
+| 余额汇总行 | `getBalanceAnalysisSummary()` | summary rows | `formal` |
+| PnL 刷新 | `refreshFormalPnl` / `getFormalPnlImportStatus` | 运维轮询 payload | 非主读 value |
 
-- `getSourceFoundation`
-- `getMacroFoundation`
-- `getChoiceMacroLatest`
-- `getFxFormalStatus`
-- `getBalanceAnalysisDates`
-- `getBalanceAnalysisOverview`
-- `getChoiceNewsEvents` 仅可作为 advisory 信息
-- `refreshFormalPnl` / `getFormalPnlImportStatus` 仅可作为 operational state
+### F. 指标映射（`metric_id`）
 
-### F. 验证要求
+- 本页 **不** 引入新的 `metric_id` 绑定; 与正式余额重叠的展示项，沿用 `PAGE-BALANCE-001` 在字典中的 `MTR-BAL-*`（如总市值/成本/应计/行数等），以 `getBalanceAnalysisOverview` / `summary` 字段为准；其余为 **analytical/preview/operational 展示**，仅字段路径，**无**独立字典行。
 
-- 首屏 recommendation 必须能追到：
-  `API response -> page-local derivation -> component`
-- 若 wave 1 未完成本页闭环，则下一轮 readiness pass 必须把本页从 `live` 降级
-- 相关前端验证至少覆盖：
-  - `frontend/src/test/OperationsAnalysisPage.test.tsx`
-  - `frontend/src/test/navigation.test.ts`
-  - `frontend/src/test/RouteRegistry.test.tsx`
-  - `frontend/src/test/WorkbenchShell.test.tsx`
+| 展示锚点 | `metric_id`（若可映射） | 来源 |
+| --- | --- | --- |
+| 总市值/摊余/应计/行数 | `MTR-BAL-001`–`MTR-BAL-103`（与 balance 页一致部分） | `BalanceAnalysisOverviewPayload` / summary rows |
+| Source/Macro/News/FX 卡计数 | 不适用（无 `metric_id`） | 各 `result` 列表长度或 envelope |
+
+### G. 状态：loading / empty / stale / fallback / error
+
+- **Loading**：`AsyncSection` 与多 `useQuery` 并存；`balance` 与 `source/macro` 可不同步完成。
+- **Empty**：`recommendation` 在 `sourceSummaries` 或 `macroLatest` 或 `fxFormalRows` 空时走 **Evidence chain incomplete** 分支；`balance` 无日期时走 **Await governed balance**。
+- **Stale / fallback**：遵循各 `result_meta.fallback_mode`、`quality_flag`、`vendor_status`；`ManagementOutput` / KPI 行须能反映查询失败态（`buildStatusCardContent` 等）。
+- **Error**：`isError` 时 recommendation 与卡片文案必须可见；禁止用静态 KPI 行掩盖。
+- **Mock 模式**：`client.mode === "mock"` 时首屏仍须标注演示语义（badge）。
+
+### H. 测试与黄金样本锚点
+
+- 测试：`frontend/src/test/OperationsAnalysisPage.test.tsx`、`navigation.test.ts`、`RouteRegistry.test.tsx`、`WorkbenchShell.test.tsx`（与 §13.5 旧表一致）
+- 黄金样本：本页**无**独立 GS；正式余额对账见 `GS-BAL-OVERVIEW-A` / balance 相关样本。
+
+### I. 显式待确认（Pending）
+
+- Wave 1 书面「禁止首屏」列表与 **当前** `OperationsAnalysisPage.tsx` 实装（仍含 `BusinessConclusion`、`TenorConcentrationPanel`、mock `AlertList`/`CalendarList` 等）的收敛策略：删组件 vs 改文档权威。
+- `requested_report_date` 与「默认最新余额日」的人机交互是否应升级为可点选，与 `PAGE-BALANCE-001` 统一。
+
+## 13.6 PAGE-BOND-001 债券总览（债券分析驾驶舱）
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-BOND-001`
+- 页面名称：`债券总览`（导航：`bond-dashboard`）
+- 路由：前端 `/bond-dashboard`；后端 `GET /api/bond-dashboard/*`（`backend/app/api/routes/bond_dashboard.py`）
+- 页面状态：`active`（`bond_analytics` formal read surface；`result_meta` 经 `formal_result_runtime` 与 `source_surface="bond_analytics"` 一致）
+- 依证据：`backend/app/services/bond_dashboard_service.py`（`BOND_ANALYTICS_*` 缓存/规则版本与 envelope）
+
+### B. 业务问题与不回答
+
+- **须回答**：在选定 `report_date` 下，组合市值/久期/票息/风险概览、资产分布、行业与利差结构、期限与收益分布等**只读**结论是什么。
+- **不回答**：不替代 `balance-analysis` 会计口径余额真值；不替代 `risk-tensor` 全量风险张量；不在前端重算正式指标（见 `test_no_finance_logic_in_frontend` 对 `bond-dashboard/` 的约束）。
+
+### C. 必有 / 可选 / 禁止 section
+
+- **必有（实装）**：`filter`（`bond-dashboard-report-date`）、`bond-dashboard-conclusion`（由 headline + risk 推导的文案，**analytical/derived UI**，非独立 API）、`HeadlineKpis`、`AssetStructurePie`、`CreditRatingBlocks`、`SpreadTable`、`YieldDistributionBar`、`PortfolioTable`、`MaturityStructureChart`、`IndustryTable`、`RiskIndicatorsPanel`
+- **禁止**：无可用 `report_date` 时仍展示上一日业务图；静默忽略 `result_meta.quality_flag` / `fallback_mode`
+
+### D. 时间语义
+
+- `requested_report_date`：页面 `Select` 当前值；初始为 `getBondDashboardDates` 返回的 `report_dates[0]`（`BondDashboardPage.tsx`）。
+- `resolved_report_date`：各分请求 URL 中传入的 `report_date` 与/或 `result.report_date`（headline/各 payload 内）。
+- `as_of_date`：未列独立字段；**临时**以 `report_date` 为截面语义。
+- `generated_at`：各分响应 `result_meta.generated_at`（`bond_dashboard.*` 各 `result_kind`）。
+
+### E. Endpoint / DTO 表
+
+| Endpoint | 用途 | DTO / payload 名（`frontend/src/api/contracts.ts`） |
+| --- | --- | --- |
+| `GET /api/bond-dashboard/dates` | 可选报告日 | `result.report_dates` + envelope |
+| `GET /api/bond-dashboard/headline-kpis?report_date=` | 首屏 KPI 与期次对比 | `BondDashboardHeadlinePayload` |
+| `GET /api/bond-dashboard/asset-structure?...` | 资产结构 | `AssetStructurePayload` |
+| `GET /api/bond-dashboard/yield-distribution?...` | 收益分布 | `YieldDistributionPayload` |
+| `GET /api/bond-dashboard/portfolio-comparison?...` | 组合对比 | `PortfolioComparisonPayload` |
+| `GET /api/bond-dashboard/spread-analysis?...` | 利差 | `SpreadAnalysisPayload` |
+| `GET /api/bond-dashboard/maturity-structure?...` | 期限 | `MaturityStructurePayload` |
+| `GET /api/bond-dashboard/industry-distribution?...` | 行业 | `IndustryDistPayload` |
+| `GET /api/bond-dashboard/risk-indicators?...` | 风险指示 | `RiskIndicatorsPayload` |
+
+### F. 指标映射（`metric_id`）
+
+- **不新增** `metric_id` 行；字典未与债券驾驶舱作独立绑定时，以「展示字段」表代替：
+
+| 展示字段 / KPI | 来源 DTO 路径 | `metric_id` |
+| --- | --- | --- |
+| 总市值/久期/票息/浮盈/DV01/信用利差中值等 | `BondDashboardHeadlinePayload.kpis.*`、prev_kpis | 待字典绑定；未绑定时不自称 `MTR-*` |
+| 信用占价比等 | `RiskIndicatorsPayload.credit_ratio` 等 | 同上 |
+| 各图 tabular 数据 | `asset-structure` / `industry` / `spread` 等 items | 同上 |
+
+### G. 状态与错误
+
+- **Loading**：`datesQuery` 与分块 `useQuery`；`report_date` 为空时不 enabled 子查询。
+- **Empty**：`report_dates` 空 → `bond-dashboard-page-state` 提示「暂无可用报告日」；combobox 禁用。
+- **Error**：`datesQuery` 错误 → 错误 `Alert`（`bond-dashboard-page-state`）。
+- **Stale / fallback**：以后端 `result_meta` 为准；若 `quality_flag`/`fallback_mode` 异常，须向用户可感知（同 §4.2 总规则）。
+
+### H. 测试与黄金样本
+
+- 现有测试锚点：`frontend/src/test/BondDashboardPage.test.tsx`、`tests/test_bond_dashboard_api_contract.py`、`tests/test_bond_dashboard_headlines_contract.py`、`tests/test_bond_analytics_api.py`、`tests/test_result_meta_source_surface_followup.py`
+- 黄金样本状态：`GS-BOND-HEADLINE-A` 仅为 **candidate / blocked-by-contract-gap**（见 `docs/golden_sample_catalog.md` §5.1），目标表面为 `/api/bond-analytics/portfolio-headlines`。仓库**当前没有** `tests/golden_samples/GS-BOND-HEADLINE-A/` 目录，因此它只是后续候选样本，不是已冻结、也不是 capture-ready 包；只有在样本目录实际落地并被 `tests/test_golden_samples_capture_ready.py` 收录后，才可提升状态。Headline / 风险卡与正式 `MTR-*` 的字典级绑定见 `docs/metric_dictionary.md` **GAP-BOND-DASH-***。**本文件只记录阻塞与候选状态，不扩写未来样本字段断言。**
+
+## 13.7 PAGE-POS-001 持仓
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-POS-001`
+- 页面名称：`持仓`（`PositionsView`）
+- 路由：前端 `/positions?report_date=` 可选；后端 `GET /api/positions/*`（`backend/app/api/routes/positions.py`）
+- 页面状态：`active`（`positions_service` 使用 `build_formal_result_envelope` + `result_kind` 形如 `positions.bonds.*` / `positions.interbank.*` 等，见 `tests/test_positions_api_contract.py`）
+- 报告日来源：页面**复用** `getBalanceAnalysisDates()` 的 `report_dates` 作为默认可选日（与 `bond-dashboard` 自有 dates 源不同，**双源**）
+
+### B. 业务问题与不回答
+
+- **须回答**：在选定范围与类型下，债券/同业持仓列表、对手方与行业评级分布、客户明细等快照是什么。
+- **不回答**：不提供跨页 formal PnL 解释；不替代 `product-category-pnl`；不在前端重算规模指标。
+
+### C. 必有 / 禁止
+
+- **必有**：`positions-page`、tab（债券/同业）、`report_date` 选择、与 tab 关连的列表与分布卡片、对手机构/客户 drilldown（`CustomerDetailModal` 等，见 `tests/CustomerDetailModal.test.tsx`）
+- **禁止**：`report_date` 未选时发列表请求；静默吞掉 422/空 envelope
+
+### D. 时间语义
+
+- `requested_report_date`：URL `report_date` 或用户选择，或 balance `report_dates[0]`
+- `resolved_report_date`：服务端在 `sub_types`/`product_types` 等接口内 `_resolve_report_date`（`positions_service`）及列表 `report_date` 参数
+- `as_of_date`：无统一 outward 字段
+- 对手方/统计 `start_date`/`end_date`：由页面本地 range 与 `reportDate` 派生，**区间语义** 与单点 `report_date` 不同
+
+### E. Endpoint / DTO 表
+
+| Endpoint | 用途 | DTO/Schema |
+| --- | --- | --- |
+| `GET /api/positions/bonds/sub_types` | 债券子类型 | `SubTypesResponse` 类（envelope `positions.bonds.sub_types`） |
+| `GET /api/positions/bonds` | 债券分页列表 | `BondPositionsPageResponse` |
+| `GET /api/positions/counterparty/bonds` | 对手方债券 | `CounterpartyStatsResponse` |
+| `GET /api/positions/interbank/product_types` | 同业产品类型 | `ProductTypesResponse` |
+| `GET /api/positions/interbank` | 同业列表 | `InterbankPositionsPageResponse` |
+| `GET /api/positions/counterparty/interbank/split` | 同业对手方拆分 | `InterbankCounterpartySplitResponse` |
+| `GET /api/positions/stats/rating` | 评级分布 | `RatingStatsResponse` |
+| `GET /api/positions/stats/industry` | 行业分布 | `IndustryStatsResponse` |
+| `GET /api/positions/customer/details` | 客户明细 | `CustomerBondDetailsResponse` |
+| `GET /api/positions/customer/trend` | 客户趋势 | `CustomerBalanceTrendResponse` |
+| 余额日期（页面初始化） | `getBalanceAnalysisDates` → 既有 balance 契约 | 同 `PAGE-BALANCE-001` |
+
+### F. 指标映射
+
+- 不声明新 `metric_id`；表头金额/张数/评级等以 positions schema 与列为准。
+
+### G. 状态
+
+- **Loading/Empty/Error**：`useQuery` + `Spin`/表格空态；`retry: false` 与 balance dates 拉取失败级联
+- **Stale / fallback**：以各 `result_meta` 与行内 lineage 为准
+
+### H. 测试锚点
+
+- `data-testid`：`positions-page`、`positions-page-title`；`RouteRegistry` 对 `/positions` 路由
+
+## 13.8 PAGE-MKT-001 市场数据
+
+### A. 页面身份
+
+- 页面 ID：`PAGE-MKT-001`
+- 页面名称：`市场数据`
+- 路由：前端 `/market-data`；别名重定向见 `frontend/src/router/routes.tsx`（`/market`→`/market-data` 等，见 `RouteRegistry.test.tsx`）
+- 页面状态：`mixed-source`（**formal 片段** e.g. `fx/formal-status` + **preview/analytical** macro + vendor Choice + 结构化代理 `ncd-funding-proxy` + `api/macro-bond-linkage` 分析，与 `DOCUMENT_AUTHORITY.md` 中 **market-data preview/vendor/analytical surface** 的排除/警示语义一致：页内须标注 `basis` 与 `formal_use_allowed` 语义，不得整页称 formal cutover 真值面）
+
+### B. 业务问题与不回答
+
+- **须回答**：当前可得的利率/货基/信用成交/新闻与汇率覆盖、**refresh tier** 与 `result_meta` 所表达的线路质量如何；`macro-bond-linkage` 在选定 `report_date` 下环境/组合摘要是什么。
+- **不回答**：不作为 `Phase 2` 全量 formal market 权威；不替代 PnL/余额页；不将 Choice/预览混写为「已晋升正式」。
+
+### C. 必有 section（实装侧锚点，含 analytical-only）
+
+- `market-data-page-title`、**catalog/series 统计**（`market-data-*-count` 等，见 `MarketDataPage.test.tsx`）
+- 利率/曲线：rate quote、money market、rate trend、NCD 矩阵、信用成交等 `data-testid` 以 `market-data-` 前缀
+- 外汇：`getFxAnalytical` + `getFxFormalStatus` 分组与 **formal** vs **analytical** 分栏/计数
+- `NewsAndCalendar` / 宏观联动（`getMacroBondLinkageAnalysis` 等，**analytical/专题**)
+- 运维区：Choice refresh + `getChoiceMacroRefreshStatus`、refresh tier / policy 文案
+- 折叠说明中声明 **未暴露** 的 V1 `api/macro` 决策端点不实现（见 `MarketDataPage` 中注释性描述）
+
+### D. 时间语义
+
+- `requested_report_date` / `linkageReportDate`：由页面内状态或 selector 选择（`MarketDataPage` 内 `useState`+macro bond linkage 查询）
+- `resolved_report_date`：以各 API 结果字段（如 `MacroBondLinkagePayload` 内含 report、或 `ChoiceMacroLatestPoint.trade_date` 等）为准
+- `generated_at`：各 `result_meta.generated_at`
+
+### E. Endpoint / DTO 表
+
+| Client 方法 / Endpoint | 用途 | 备注 |
+| --- | --- | --- |
+| `getMacroFoundation()` | `GET /ui/preview/macro-foundation` | catalog/preview，**analytical** |
+| `getChoiceMacroLatest()` | `GET /ui/macro/choice-series/latest` | 最新点 + `recent_points` |
+| `getFxFormalStatus()` | `GET /ui/market-data/fx/formal-status` | **formal 状态表** |
+| `getFxAnalytical()` | `GET /ui/market-data/fx/analytical` | **analytical** |
+| `getNcdFundingProxy()` | `GET /ui/market-data/ncd-funding-proxy` | 结构化代理 |
+| `getMacroBondLinkageAnalysis` | `GET /api/macro-bond-linkage/analysis?report_date=` | 债券-宏观联动 **analytical** 读面 |
+| `getChoiceMacroRefreshStatus` / refresh POST | vendor 运维 | 非主值 |
+
+### F. 指标映射
+
+- 不添加 `metric_id`；NCD/利差等展示为 vendor + 合约字段。FX formal rows 不自动等同于 `MTR-BAL-105` 等汇率口径（跨页引用须在证据链中说明）。
+
+### G. 状态
+
+- 测试约定：`market-data-*` 系列 testid 对 catalog/stable/fallback/missing/result_meta 的可见性（`MarketDataPage.test.tsx`）
+- **Error**：Async/polling 与 vendor 失败（含 `424` permission 等）须可感知
+
+### H. 测试锚点
+
+- `frontend/src/test/MarketDataPage.test.tsx`、`ApiClient.test.ts`（端点 URL 拼写）、`RouteRegistry.test.tsx`
+
+### I. 显式待确认
+
+- 与全仓 `Phase 2` cutover 声明对齐后，本页是否拆分为「formal 子面」+「preview 子应用」的导航或强提示（当前为 **同页 mixed-source**）。
 
 ## 14. PAGE-PROD-CAT-PNL-001 产品分类损益（正式）
 
