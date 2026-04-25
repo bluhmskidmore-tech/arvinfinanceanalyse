@@ -73,14 +73,21 @@ export type CrossAssetTransmissionAxisRow = {
   source: ResearchCardSource;
 };
 
+export type CrossAssetClassAnalysisLine = {
+  key: string;
+  label: string;
+  status: "ready" | "pending_signal";
+  direction: string;
+  explanation: string;
+};
+
 export type CrossAssetClassAnalysisRow = {
   key: "stock" | "commodities" | "options";
   label: string;
   status: "ready" | "pending_signal";
-  stance: string;
-  summary: string;
-  evidence: string[];
-  warnings: string[];
+  direction: string;
+  explanation: string;
+  lines: CrossAssetClassAnalysisLine[];
 };
 
 export type CrossAssetCandidateAction = {
@@ -493,11 +500,43 @@ function transmissionAxisFromSource(
   };
 }
 
-function evidenceFromKpis(kpis: ResolvedCrossAssetKpi[], keys: readonly string[]) {
-  return keys
-    .map((key) => kpis.find((kpi) => kpi.key === key))
-    .filter((kpi): kpi is ResolvedCrossAssetKpi => Boolean(kpi))
-    .map((kpi) => `${kpi.key}: ${kpi.label} ${kpi.valueLabel} (${kpi.changeLabel})`);
+function kpiByKey(kpis: ResolvedCrossAssetKpi[], key: string) {
+  return kpis.find((kpi) => kpi.key === key);
+}
+
+function directionFromKpi(kpi: ResolvedCrossAssetKpi | undefined) {
+  if (!kpi) {
+    return "pending";
+  }
+  if (kpi.changeTone === "positive") {
+    return "supportive";
+  }
+  if (kpi.changeTone === "negative") {
+    return "restrictive";
+  }
+  return "neutral";
+}
+
+function explanationFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: string) {
+  if (!kpi) {
+    return pending;
+  }
+  return `${kpi.label} is ${kpi.valueLabel}, latest move ${kpi.changeLabel}.`;
+}
+
+function lineFromAxis(input: {
+  key: string;
+  label: string;
+  axis: CrossAssetTransmissionAxisRow | undefined;
+  pending: string;
+}): CrossAssetClassAnalysisLine {
+  return {
+    key: input.key,
+    label: input.label,
+    status: input.axis?.status === "ready" ? "ready" : "pending_signal",
+    direction: input.axis?.stance ?? "pending",
+    explanation: input.axis?.summary ?? input.pending,
+  };
 }
 
 function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
@@ -511,51 +550,109 @@ export function buildCrossAssetClassAnalysisRows(input: {
   const equityAxis = axisByKey(input.transmissionAxes, "equity_bond_spread");
   const megaCapAxis = axisByKey(input.transmissionAxes, "mega_cap_equities");
   const commodityAxis = axisByKey(input.transmissionAxes, "commodities_inflation");
-  const equityEvidence = [
-    ...evidenceFromKpis(input.kpis, ["financial_conditions"]),
-    ...(equityAxis?.requiredSeriesIds ?? []),
-    ...(megaCapAxis?.requiredSeriesIds ?? []),
+  const broadIndex = kpiByKey(input.kpis, "financial_conditions");
+  const energy = kpiByKey(input.kpis, "brent");
+  const ferrous = kpiByKey(input.kpis, "steel");
+  const stockLines: CrossAssetClassAnalysisLine[] = [
+    {
+      key: "broad_index",
+      label: "指数层面",
+      status: broadIndex ? "ready" : "pending_signal",
+      direction: directionFromKpi(broadIndex),
+      explanation: explanationFromKpi(
+        broadIndex,
+        "Pending governed broad-index input; do not turn this into stock-picking or sector rotation.",
+      ),
+    },
+    lineFromAxis({
+      key: "mega_cap_weight",
+      label: "大市值权重",
+      axis: megaCapAxis,
+      pending: "Pending governed mega-cap leadership proxy; keep the large-cap-weight channel unresolved.",
+    }),
   ];
-  const commodityEvidence = [
-    ...evidenceFromKpis(input.kpis, ["brent", "steel"]),
-    ...(commodityAxis?.requiredSeriesIds ?? []),
+  const commodityLines: CrossAssetClassAnalysisLine[] = [
+    {
+      key: "energy",
+      label: "能源",
+      status: energy ? "ready" : "pending_signal",
+      direction: directionFromKpi(energy),
+      explanation: explanationFromKpi(energy, "Pending governed energy-chain input."),
+    },
+    {
+      key: "ferrous",
+      label: "黑色",
+      status: ferrous ? "ready" : "pending_signal",
+      direction: directionFromKpi(ferrous),
+      explanation: explanationFromKpi(ferrous, "Pending governed ferrous-chain input."),
+    },
+    {
+      key: "nonferrous",
+      label: "有色",
+      status: "pending_signal",
+      direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "pending",
+      explanation:
+        commodityAxis?.status === "ready"
+          ? commodityAxis.summary
+          : "Pending governed non-ferrous input; do not proxy copper/aluminum with oil or steel.",
+    },
   ];
-  const stockReady = equityAxis?.status === "ready" || megaCapAxis?.status === "ready" || equityEvidence.length > 0;
-  const commodityReady = commodityAxis?.status === "ready" || commodityEvidence.length > 0;
+  const optionLines: CrossAssetClassAnalysisLine[] = [
+    {
+      key: "equity_options",
+      label: "权益期权",
+      status: "pending_signal",
+      direction: "pending",
+      explanation: "No governed equity-options input for volatility, skew, or put-call pressure.",
+    },
+    {
+      key: "commodity_options",
+      label: "商品期权",
+      status: "pending_signal",
+      direction: "pending",
+      explanation: "No governed commodity-options input for tail risk or supply-shock pricing.",
+    },
+    {
+      key: "rates_bond_options",
+      label: "利率/债券期权",
+      status: "pending_signal",
+      direction: "pending",
+      explanation: "No governed rates or bond-options input for duration volatility or curve risk.",
+    },
+  ];
+  const stockReady = stockLines.some((line) => line.status === "ready") || equityAxis?.status === "ready";
+  const commodityReady = commodityLines.some((line) => line.status === "ready");
 
   return [
     {
       key: "stock",
       label: "股票分析",
       status: stockReady ? "ready" : "pending_signal",
-      stance: equityAxis?.stance ?? megaCapAxis?.stance ?? "pending",
-      summary:
+      direction: equityAxis?.stance ?? stockLines.find((line) => line.status === "ready")?.direction ?? "pending",
+      explanation:
         equityAxis?.summary ??
         megaCapAxis?.summary ??
         "Pending governed equity analysis; keep equity evidence separate from bond conclusions until the proxy is confirmed.",
-      evidence: equityEvidence,
-      warnings: [...(equityAxis?.warnings ?? []), ...(megaCapAxis?.warnings ?? [])],
+      lines: stockLines,
     },
     {
       key: "commodities",
       label: "大宗商品分析",
       status: commodityReady ? "ready" : "pending_signal",
-      stance: commodityAxis?.stance ?? "pending",
-      summary:
+      direction: commodityAxis?.stance ?? commodityLines.find((line) => line.status === "ready")?.direction ?? "pending",
+      explanation:
         commodityAxis?.summary ??
         "Pending governed commodity chain read; use only visible Brent / steel evidence and avoid adding unsupported inflation pressure.",
-      evidence: commodityEvidence,
-      warnings: commodityAxis?.warnings ?? [],
+      lines: commodityLines,
     },
     {
       key: "options",
       label: "期权分析",
       status: "pending_signal",
-      stance: "definition pending",
-      summary:
+      direction: "definition pending",
+      explanation:
         "Options analysis definition pending: no governed volatility, skew, or put-call input is available in the current cross-asset chain.",
-      evidence: ["Required series: CA.OPTION_IV, CA.OPTION_SKEW, CA.PUT_CALL_RATIO"],
-      warnings: ["No governed options input; do not infer volatility or skew from equity spot, commodity moves, or bond yields."],
+      lines: optionLines,
     },
   ];
 }

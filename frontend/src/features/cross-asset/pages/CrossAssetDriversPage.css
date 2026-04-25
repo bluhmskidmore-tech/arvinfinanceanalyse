@@ -65,14 +65,34 @@
   line-height: 1.7;
 }
 
-.cross-asset-class-analysis__evidence {
-  color: #7a8795;
-  font-size: 12px;
-  line-height: 1.7;
+.cross-asset-class-analysis__lines {
+  display: grid;
+  gap: 8px;
 }
 
-.cross-asset-class-analysis__warning {
-  color: #d48806;
+.cross-asset-class-analysis__line {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid #e4ebe8;
+}
+
+.cross-asset-class-analysis__line-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cross-asset-class-analysis__line-title {
+  color: #1c2833;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cross-asset-class-analysis__line-explanation {
+  margin: 0;
+  color: #586575;
   font-size: 12px;
   line-height: 1.7;
 }

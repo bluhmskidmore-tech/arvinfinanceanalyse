@@ -354,16 +354,23 @@ function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] 
               <div className="cross-asset-class-analysis__card-title">{row.label}</div>
               <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={row.status} />
             </div>
-            <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.stance} />
-            <p className="cross-asset-class-analysis__summary">{row.summary}</p>
-            {row.evidence.length > 0 ? (
-              <div className="cross-asset-class-analysis__evidence">
-                Evidence: {row.evidence.slice(0, 2).join(" | ")}
-              </div>
-            ) : null}
-            {row.warnings.length > 0 ? (
-              <div className="cross-asset-class-analysis__warning">{row.warnings[0]}</div>
-            ) : null}
+            <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.direction} />
+            <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
+            <div className="cross-asset-class-analysis__lines">
+              {row.lines.map((line) => (
+                <div
+                  key={line.key}
+                  data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}`}
+                  className="cross-asset-class-analysis__line"
+                >
+                  <div className="cross-asset-class-analysis__line-header">
+                    <span className="cross-asset-class-analysis__line-title">{line.label}</span>
+                    <StatusPill status={line.status === "ready" ? "normal" : "caution"} label={line.direction} />
+                  </div>
+                  <p className="cross-asset-class-analysis__line-explanation">{line.explanation}</p>
+                </div>
+              ))}
+            </div>
           </article>
         ))}
       </div>

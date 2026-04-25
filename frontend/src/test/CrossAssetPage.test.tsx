@@ -133,6 +133,15 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-analysis-commodities")).toHaveTextContent("大宗商品");
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("期权");
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("pending_signal");
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock-broad_index")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-commodities-energy")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-commodities-ferrous")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-commodities-nonferrous")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options-equity_options")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options-commodity_options")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options-rates_bond_options")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options")).not.toHaveTextContent("Evidence:");
   });
 
   it("surfaces the data-driven cockpit sections and provenance flags", async () => {

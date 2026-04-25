@@ -269,7 +269,7 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows.every((r) => r.source === "fallback")).toBe(true);
   });
 
-  it("builds equity, commodity, and options analysis rows without inventing missing options signals", () => {
+  it("builds asset-class analysis rows with direction and explanation only", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
       makePoint("CA.BRENT", "Brent spot price", 82.3, { unit: "USD/bbl", latest_change: 4.8 }),
@@ -294,13 +294,18 @@ describe("crossAssetDriversPageModel", () => {
 
     expect(rows.map((row) => row.key)).toEqual(["stock", "commodities", "options"]);
     expect(rows[0].status).toBe("ready");
-    expect(rows[0].summary).toContain("Equity-bond spread narrows");
-    expect(rows[0].evidence).toEqual(expect.arrayContaining([expect.stringContaining("CA.CSI300")]));
+    expect(rows[0].lines.map((line) => line.key)).toEqual(["broad_index", "mega_cap_weight"]);
+    expect(rows[0].lines[0].direction.length).toBeGreaterThan(0);
+    expect(rows[0].lines[0].explanation).toContain("金融条件指数");
     expect(rows[1].status).toBe("ready");
-    expect(rows[1].evidence).toEqual(expect.arrayContaining([expect.stringContaining("brent")]));
+    expect(rows[1].lines.map((line) => line.key)).toEqual(["energy", "ferrous", "nonferrous"]);
+    expect(rows[1].lines[0].explanation).toContain("布油");
+    expect(rows[1].lines[1].explanation).toContain("钢");
+    expect(rows[1].lines[2].status).toBe("pending_signal");
     expect(rows[2].status).toBe("pending_signal");
-    expect(rows[2].summary).toContain("definition pending");
-    expect(rows[2].warnings[0]).toContain("No governed options input");
+    expect(rows[2].lines.map((line) => line.key)).toEqual(["equity_options", "commodity_options", "rates_bond_options"]);
+    expect(rows[2].lines.every((line) => line.status === "pending_signal")).toBe(true);
+    expect(rows[2].lines[0].explanation).toContain("No governed equity-options input");
   });
 
   it("maps research calendar events into event calendar rows", () => {
