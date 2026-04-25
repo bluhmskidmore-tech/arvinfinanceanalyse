@@ -106,6 +106,8 @@ export type ResolvedCrossAssetKpi = {
   tag: string;
   /** 单序列时为该 id；利差时为合成键 */
   resolvedSeriesId: string;
+  sourceKind: "choice" | "public" | "derived" | "missing";
+  tradeDate: string | null;
   valueLabel: string;
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
@@ -123,6 +125,29 @@ function pickPoint(
     }
   }
   return undefined;
+}
+
+function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["sourceKind"] {
+  if (seriesId.endsWith(":missing")) {
+    return "missing";
+  }
+  if (seriesId.includes(":")) {
+    return "derived";
+  }
+  if (/^(E100|EMM|EMG|EMI|EM\d)/.test(seriesId)) {
+    return "choice";
+  }
+  if (seriesId.startsWith("CA.")) {
+    return "public";
+  }
+  return "missing";
+}
+
+function latestTradeDate(points: Array<ChoiceMacroLatestPoint | undefined>) {
+  const dates = points
+    .map((point) => point?.trade_date)
+    .filter((tradeDate): tradeDate is string => Boolean(tradeDate));
+  return dates.length > 0 ? dates.sort((left, right) => right.localeCompare(left))[0] : null;
 }
 
 function formatPercent(n: number) {
@@ -280,6 +305,8 @@ function resolveSpreadSlot(
       format: "bp",
       tag: slot.tag,
       resolvedSeriesId: preBp.series_id,
+      sourceKind: sourceKindFromSeriesId(preBp.series_id),
+      tradeDate: preBp.trade_date,
       valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
       changeLabel: changeLabelForSlot("bp", delta),
       changeTone: toneForChange("bp", delta),
@@ -315,6 +342,8 @@ function resolveSpreadSlot(
       format: "bp",
       tag: slot.tag,
       resolvedSeriesId: `${slot.key}:missing`,
+      sourceKind: "missing",
+      tradeDate: null,
       valueLabel: "—",
       changeLabel: "—",
       changeTone: "default",
@@ -332,6 +361,8 @@ function resolveSpreadSlot(
     format: "bp",
     tag: slot.tag,
     resolvedSeriesId: resolvedId,
+    sourceKind: sourceKindFromSeriesId(resolvedId),
+    tradeDate: latestTradeDate([hi, lo]),
     valueLabel: valueLabelForSlot("bp", vBp),
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
@@ -350,6 +381,8 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
     format: slot.format,
     tag: slot.tag,
     resolvedSeriesId: id,
+    sourceKind: sourceKindFromSeriesId(id),
+    tradeDate: point?.trade_date ?? null,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),

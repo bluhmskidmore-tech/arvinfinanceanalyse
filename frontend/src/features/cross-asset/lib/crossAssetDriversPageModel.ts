@@ -78,6 +78,8 @@ export type CrossAssetClassAnalysisLine = {
   label: string;
   status: "ready" | "pending_signal";
   direction: string;
+  dataLabel: string;
+  sourceLabel: string;
   explanation: string;
 };
 
@@ -524,17 +526,48 @@ function explanationFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: str
   return `${kpi.label} is ${kpi.valueLabel}, latest move ${kpi.changeLabel}.`;
 }
 
+function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined) {
+  return Boolean(kpi && (kpi.sparkline.length > 0 || kpi.changeTone !== "default"));
+}
+
+function dataLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: string) {
+  if (!hasUsableKpi(kpi)) {
+    return pending;
+  }
+  const tradeDate = kpi!.tradeDate ? ` · ${kpi!.tradeDate}` : "";
+  return `${kpi!.valueLabel} / ${kpi!.changeLabel}${tradeDate}`;
+}
+
+function sourceLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: string) {
+  if (!hasUsableKpi(kpi)) {
+    return fallback;
+  }
+  const sourcePrefix: Record<ResolvedCrossAssetKpi["sourceKind"], string> = {
+    choice: "Choice接入码",
+    public: "公共补充源",
+    derived: "派生指标",
+    missing: "缺接入码",
+  };
+  return `${sourcePrefix[kpi!.sourceKind]}: ${kpi!.resolvedSeriesId}`;
+}
+
 function lineFromAxis(input: {
   key: string;
   label: string;
   axis: CrossAssetTransmissionAxisRow | undefined;
   pending: string;
+  pendingData?: string;
 }): CrossAssetClassAnalysisLine {
+  const ready = input.axis?.status === "ready";
+  const impactedViewsLabel = input.axis?.impactedViews.length ? input.axis.impactedViews.join(" / ") : input.label;
+  const sourceIdsLabel = input.axis?.requiredSeriesIds.length ? input.axis.requiredSeriesIds.join(", ") : "governed axis";
   return {
     key: input.key,
     label: input.label,
-    status: input.axis?.status === "ready" ? "ready" : "pending_signal",
+    status: ready ? "ready" : "pending_signal",
     direction: input.axis?.stance ?? "pending",
+    dataLabel: ready ? `已接入 ${impactedViewsLabel}` : input.pendingData ?? "需登记 Choice 接入码或治理输入",
+    sourceLabel: ready ? `${input.axis?.source ?? "backend"}: ${sourceIdsLabel}` : input.axis?.source ?? "missing",
     explanation: input.axis?.summary ?? input.pending,
   };
 }
@@ -557,8 +590,10 @@ export function buildCrossAssetClassAnalysisRows(input: {
     {
       key: "broad_index",
       label: "指数层面",
-      status: broadIndex ? "ready" : "pending_signal",
+      status: hasUsableKpi(broadIndex) ? "ready" : "pending_signal",
       direction: directionFromKpi(broadIndex),
+      dataLabel: dataLabelFromKpi(broadIndex, "等待 EMM01843735 / CA.CSI300"),
+      sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Choice 接入码"),
       explanation: explanationFromKpi(
         broadIndex,
         "Pending governed broad-index input; do not turn this into stock-picking or sector rotation.",
@@ -569,21 +604,26 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "大市值权重",
       axis: megaCapAxis,
       pending: "Pending governed mega-cap leadership proxy; keep the large-cap-weight channel unresolved.",
+      pendingData: "需登记大市值权重 Choice 接入码，或接入 Tushare index_weight",
     }),
   ];
   const commodityLines: CrossAssetClassAnalysisLine[] = [
     {
       key: "energy",
       label: "能源",
-      status: energy ? "ready" : "pending_signal",
+      status: hasUsableKpi(energy) ? "ready" : "pending_signal",
       direction: directionFromKpi(energy),
+      dataLabel: dataLabelFromKpi(energy, "等待 CA.BRENT"),
+      sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码"),
       explanation: explanationFromKpi(energy, "Pending governed energy-chain input."),
     },
     {
       key: "ferrous",
       label: "黑色",
-      status: ferrous ? "ready" : "pending_signal",
+      status: hasUsableKpi(ferrous) ? "ready" : "pending_signal",
       direction: directionFromKpi(ferrous),
+      dataLabel: dataLabelFromKpi(ferrous, "等待 CA.STEEL"),
+      sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码"),
       explanation: explanationFromKpi(ferrous, "Pending governed ferrous-chain input."),
     },
     {
@@ -591,6 +631,10 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "有色",
       status: "pending_signal",
       direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "pending",
+      dataLabel: "需补齐铜/铝治理输入",
+      sourceLabel: commodityAxis?.requiredSeriesIds.length
+        ? `${commodityAxis.source}: ${commodityAxis.requiredSeriesIds.join(", ")}`
+        : "missing",
       explanation:
         commodityAxis?.status === "ready"
           ? commodityAxis.summary
@@ -603,6 +647,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "权益期权",
       status: "pending_signal",
       direction: "pending",
+      dataLabel: "需登记 IV / skew / put-call Choice 接入码",
+      sourceLabel: "missing",
       explanation: "No governed equity-options input for volatility, skew, or put-call pressure.",
     },
     {
@@ -610,6 +656,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "商品期权",
       status: "pending_signal",
       direction: "pending",
+      dataLabel: "需登记商品期权 IV / skew / tail-risk Choice 接入码",
+      sourceLabel: "missing",
       explanation: "No governed commodity-options input for tail risk or supply-shock pricing.",
     },
     {
@@ -617,6 +665,8 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "利率/债券期权",
       status: "pending_signal",
       direction: "pending",
+      dataLabel: "需登记 rates vol / curve vol Choice 接入码",
+      sourceLabel: "missing",
       explanation: "No governed rates or bond-options input for duration volatility or curve risk.",
     },
   ];

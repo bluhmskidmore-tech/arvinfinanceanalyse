@@ -27,6 +27,7 @@ import {
   buildResearchSummaryCards,
   buildTransmissionAxisRows,
   formatLinkageCorrelationDisplay,
+  type CrossAssetClassAnalysisLine,
   type CrossAssetClassAnalysisRow,
   type CrossAssetNcdProxyEvidence,
   type CrossAssetResearchViewCard,
@@ -335,49 +336,197 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
 }
 
 function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] }) {
+  const stockRow = rows.find((row) => row.key === "stock");
+  const commodityRow = rows.find((row) => row.key === "commodities");
+  const optionsRow = rows.find((row) => row.key === "options");
+  const readyRows = rows.filter((row) => row.status === "ready");
+  const primaryRows = readyRows;
+  const pendingGroups = rows
+    .map((row) => ({
+      row,
+      lines: row.lines.filter((line) => line.status !== "ready"),
+    }))
+    .filter((group) => group.lines.length > 0);
+  const pendingLineCount = pendingGroups.reduce((count, group) => count + group.lines.length, 0);
+  const verdictParts = [
+    stockRow ? `${UI.stock}${assetDirectionLabel(stockRow.direction)}` : "",
+    commodityRow ? `${UI.commodity}${assetDirectionLabel(commodityRow.direction)}` : "",
+    optionsRow ? `${UI.options}${optionsRow.status === "ready" ? assetDirectionLabel(optionsRow.direction) : UI.pending}` : "",
+  ].filter(Boolean);
+
   return (
     <section data-testid="cross-asset-asset-class-analysis" className="cross-asset-class-analysis">
       <div className="cross-asset-class-analysis__header">
-        <h2 className="cross-asset-class-analysis__title">资产类别分析</h2>
-        <p className="cross-asset-class-analysis__description">
-          股票、大宗商品和期权单独列出；没有治理口径的数据保持 pending，不从相邻资产硬推。
-        </p>
+        <div className="cross-asset-class-analysis__eyebrow">{UI.verdictKicker}</div>
+        <h2 className="cross-asset-class-analysis__title">{verdictParts.join(UI.joiner)}</h2>
+        <p className="cross-asset-class-analysis__description">{UI.verdictDescription}</p>
       </div>
-      <div className="cross-asset-class-analysis__grid">
-        {rows.map((row) => (
-          <article
-            key={row.key}
-            data-testid={`cross-asset-asset-analysis-${row.key}`}
-            className={`cross-asset-class-analysis__card${row.status === "pending_signal" ? " cross-asset-class-analysis__card--pending" : ""}`}
-          >
-            <div className="cross-asset-class-analysis__card-header">
-              <div className="cross-asset-class-analysis__card-title">{row.label}</div>
-              <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={row.status} />
-            </div>
-            <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.direction} />
-            <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
-            <div className="cross-asset-class-analysis__lines">
-              {row.lines.map((line) => (
-                <div
-                  key={line.key}
-                  data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}`}
-                  className="cross-asset-class-analysis__line"
-                >
-                  <div className="cross-asset-class-analysis__line-header">
-                    <span className="cross-asset-class-analysis__line-title">{line.label}</span>
-                    <StatusPill status={line.status === "ready" ? "normal" : "caution"} label={line.direction} />
+      <div className="cross-asset-class-analysis__body">
+        <div className="cross-asset-class-analysis__primary">
+          <div className="cross-asset-class-analysis__column-head">
+            <span>{UI.readyJudgment}</span>
+            <span>{readyRows.length}/{rows.length}</span>
+          </div>
+          <div className="cross-asset-class-analysis__cards">
+            {primaryRows.map((row) => (
+              <article
+                key={row.key}
+                data-testid={`cross-asset-asset-analysis-${row.key}`}
+                className="cross-asset-class-analysis__card"
+              >
+                <div className="cross-asset-class-analysis__card-header">
+                  <div>
+                    <div className="cross-asset-class-analysis__card-title">{row.label}</div>
+                    <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
                   </div>
-                  <p className="cross-asset-class-analysis__line-explanation">{line.explanation}</p>
+                  <span
+                    className={`cross-asset-class-analysis__direction cross-asset-class-analysis__direction--${directionClassName(row.direction)}`}
+                  >
+                    {assetDirectionLabel(row.direction)}
+                  </span>
                 </div>
-              ))}
-            </div>
-          </article>
-        ))}
+                <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
+                <div className="cross-asset-class-analysis__lines">
+                  {row.lines.map((line) => (
+                    <div
+                      key={line.key}
+                      data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}`}
+                      className={`cross-asset-class-analysis__line${
+                        line.status === "ready" ? "" : " cross-asset-class-analysis__line--pending"
+                      }`}
+                    >
+                      <div className="cross-asset-class-analysis__line-header">
+                        <span className="cross-asset-class-analysis__line-title">{line.label}</span>
+                        <span className="cross-asset-class-analysis__line-status">{lineStatusLabel(line.status)}</span>
+                      </div>
+                      <div className="cross-asset-class-analysis__line-source" title={line.sourceLabel}>
+                        <strong>{line.dataLabel}</strong>
+                      </div>
+                      <p className="cross-asset-class-analysis__line-explanation">{line.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+
+        <aside className="cross-asset-class-analysis__pending">
+          <div className="cross-asset-class-analysis__column-head">
+            <span>{UI.pendingList}</span>
+            <span>{pendingLineCount} {UI.items}</span>
+          </div>
+          {pendingGroups.map(({ row, lines }) => {
+            const hasPrimaryCard = primaryRows.some((primaryRow) => primaryRow.key === row.key);
+            const testIdSuffix = hasPrimaryCard ? "-pending" : "";
+            return (
+              <article
+                key={row.key}
+                data-testid={`cross-asset-asset-analysis-${row.key}${testIdSuffix}`}
+                className="cross-asset-class-analysis__pending-card"
+              >
+                <div className="cross-asset-class-analysis__card-header">
+                  <div>
+                    <div className="cross-asset-class-analysis__card-title">{row.label}</div>
+                    <div className="cross-asset-class-analysis__card-subtitle">{analysisStatusLabel(row.status)}</div>
+                  </div>
+                  <span className="cross-asset-class-analysis__direction cross-asset-class-analysis__direction--pending">
+                    {UI.pending}
+                  </span>
+                </div>
+                <p className="cross-asset-class-analysis__summary">{row.explanation}</p>
+                <div className="cross-asset-class-analysis__pending-lines">
+                  {lines.map((line) => (
+                    <div
+                      key={line.key}
+                      data-testid={`cross-asset-asset-analysis-${row.key}-${line.key}${testIdSuffix}`}
+                      className="cross-asset-class-analysis__pending-line"
+                      title={line.sourceLabel}
+                    >
+                      <span>{line.label}</span>
+                      <span>{assetDirectionLabel(line.direction)}</span>
+                      <small>{line.dataLabel}</small>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            );
+          })}
+          <p className="cross-asset-class-analysis__pending-note">{UI.pendingNote}</p>
+        </aside>
       </div>
     </section>
   );
 }
 
+const UI = {
+  verdictKicker: "\u8de8\u8d44\u4ea7\u7ed3\u8bba",
+  verdictDescription:
+    "\u5df2\u63a5\u5165\u8bc1\u636e\u8fdb\u5165\u4e3b\u5224\u65ad\uff1b\u7f3a\u53e3\u7edf\u4e00\u6536\u655b\u5230\u5f85\u63a5\u5165\u6e05\u5355\uff0c\u907f\u514d\u628a\u6570\u636e\u6cbb\u7406\u72b6\u6001\u6df7\u5165\u8d44\u4ea7\u7ed3\u8bba\u3002",
+  readyJudgment: "\u5df2\u5f62\u6210\u5224\u65ad",
+  pendingList: "\u5f85\u63a5\u5165\u6e05\u5355",
+  pendingNote:
+    "\u671f\u6743\u3001\u6ce2\u52a8\u7387\u548c\u90e8\u5206\u5546\u54c1\u94fe\u6761\u4ecd\u6309 pending-confirmation \u5904\u7406\uff0c\u4e0d\u7528\u76f8\u90bb\u8d44\u4ea7\u66ff\u4ee3\u3002",
+  stock: "\u80a1\u7968",
+  commodity: "\u5546\u54c1",
+  options: "\u671f\u6743",
+  pending: "\u5f85\u63a5\u5165",
+  dataReady: "\u6570\u636e\u53ef\u7528",
+  inputPending: "\u8f93\u5165\u5f85\u63a5\u5165",
+  connected: "\u5df2\u63a5\u5165",
+  missingInput: "\u7f3a\u8f93\u5165",
+  supportive: "\u652f\u6491",
+  restrictive: "\u538b\u5236",
+  neutral: "\u4e2d\u6027",
+  conflicted: "\u5206\u6b67",
+  joiner: "\uff0c",
+  items: "\u9879",
+} as const;
+
+function analysisStatusLabel(status: CrossAssetClassAnalysisRow["status"]) {
+  return status === "ready" ? UI.dataReady : UI.inputPending;
+}
+
+function lineStatusLabel(status: CrossAssetClassAnalysisLine["status"]) {
+  return status === "ready" ? UI.connected : UI.missingInput;
+}
+
+function assetDirectionLabel(direction: string) {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("supportive")) {
+    return UI.supportive;
+  }
+  if (normalized.includes("restrictive")) {
+    return UI.restrictive;
+  }
+  if (normalized.includes("neutral")) {
+    return UI.neutral;
+  }
+  if (normalized.includes("conflicted")) {
+    return UI.conflicted;
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return UI.pending;
+  }
+  return direction;
+}
+
+function directionClassName(direction: string) {
+  const normalized = direction.toLowerCase();
+  if (normalized.includes("supportive")) {
+    return "supportive";
+  }
+  if (normalized.includes("restrictive")) {
+    return "restrictive";
+  }
+  if (normalized.includes("conflicted")) {
+    return "conflicted";
+  }
+  if (normalized.includes("pending") || normalized.includes("definition")) {
+    return "pending";
+  }
+  return "neutral";
+}
 export default function CrossAssetDriversPage() {
   const client = useApiClient();
   const latestQuery = useQuery({

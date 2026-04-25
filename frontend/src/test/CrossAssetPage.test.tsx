@@ -132,13 +132,31 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-analysis-stock")).toHaveTextContent("股票分析");
     expect(screen.getByTestId("cross-asset-asset-analysis-commodities")).toHaveTextContent("大宗商品");
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("期权");
-    expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("pending_signal");
-    expect(screen.getByTestId("cross-asset-asset-analysis-stock-broad_index")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("\u5f85\u63a5\u5165");
+    expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u8de8\u8d44\u4ea7\u7ed3\u8bba");
+    expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u5f85\u63a5\u5165\u6e05\u5355");
+    const stockBroadIndex = screen.getByTestId("cross-asset-asset-analysis-stock-broad_index");
+    expect(stockBroadIndex).toBeInTheDocument();
+    expect(stockBroadIndex).not.toHaveTextContent("EMM01843735");
+    expect(stockBroadIndex.querySelector(".cross-asset-class-analysis__line-source")?.getAttribute("title")).toContain(
+      "EMM01843735",
+    );
     expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-asset-analysis-commodities-energy")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-asset-analysis-commodities-ferrous")).toBeInTheDocument();
+    const commoditiesEnergy = screen.getByTestId("cross-asset-asset-analysis-commodities-energy");
+    expect(commoditiesEnergy).toBeInTheDocument();
+    expect(commoditiesEnergy).not.toHaveTextContent("CA.BRENT");
+    expect(commoditiesEnergy.querySelector(".cross-asset-class-analysis__line-source")?.getAttribute("title")).toContain(
+      "CA.BRENT",
+    );
+    const commoditiesFerrous = screen.getByTestId("cross-asset-asset-analysis-commodities-ferrous");
+    expect(commoditiesFerrous).toBeInTheDocument();
+    expect(commoditiesFerrous).not.toHaveTextContent("CA.STEEL");
+    expect(commoditiesFerrous.querySelector(".cross-asset-class-analysis__line-source")?.getAttribute("title")).toContain(
+      "CA.STEEL",
+    );
     expect(screen.getByTestId("cross-asset-asset-analysis-commodities-nonferrous")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-options-equity_options")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-options-equity_options")).toHaveTextContent("Choice");
     expect(screen.getByTestId("cross-asset-asset-analysis-options-commodity_options")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-options-rates_bond_options")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-options")).not.toHaveTextContent("Evidence:");

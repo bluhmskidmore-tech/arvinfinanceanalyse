@@ -46,6 +46,8 @@ describe("crossAssetKpiModel", () => {
     const cn = kpis.find((k) => k.key === "cn_gov_10y");
     expect(cn?.valueLabel).toBe("1.88%");
     expect(cn?.resolvedSeriesId).toBe("E1000180");
+    expect(cn?.sourceKind).toBe("choice");
+    expect(cn?.tradeDate).toBe("2026-03-01");
   });
 
   it("prefers E1003238 over EMG for US 10Y", () => {
@@ -87,6 +89,8 @@ describe("crossAssetKpiModel", () => {
     expect(spread?.label).toBe("中美10Y利差");
     expect(spread?.valueLabel).toBe("-215bp");
     expect(spread?.resolvedSeriesId).toBe("EM1");
+    expect(spread?.sourceKind).toBe("choice");
+    expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
   });
 
@@ -104,6 +108,8 @@ describe("crossAssetKpiModel", () => {
     const spread = resolveCrossAssetKpis(series).find((k) => k.key === "gov_spread");
     expect(spread?.label).toBe("中美10Y利差");
     expect(spread?.valueLabel).toBe("-200bp");
+    expect(spread?.sourceKind).toBe("derived");
+    expect(spread?.tradeDate).toBe("2026-03-01");
     expect(spread?.sparkline.length).toBeGreaterThan(0);
   });
 
@@ -147,5 +153,6 @@ describe("crossAssetKpiModel", () => {
     const liquidity = resolveCrossAssetKpis(series).find((k) => k.key === "money_market_7d");
     expect(liquidity?.label).toBe("DR007");
     expect(liquidity?.resolvedSeriesId).toBe("CA.DR007");
+    expect(liquidity?.sourceKind).toBe("public");
   });
 });
