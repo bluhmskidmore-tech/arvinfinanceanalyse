@@ -37,6 +37,13 @@ def ensure_fx_daily_mid_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> No
     _run_sql_slice(conn, "10_fx_mid.sql")
 
 
+def ensure_choice_macro_schema_if_missing(conn: duckdb.DuckDBPyConnection) -> None:
+    """Re-apply Choice macro DDL when an older DuckDB file lacks post-baseline tables."""
+    if _main_table_exists(conn, "market_data_series_category"):
+        return
+    _run_sql_slice(conn, "11_choice_macro.sql")
+
+
 def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
     """Align pre-registry / hand-rolled `fact_formal_zqtz_balance_daily` tables with current head columns."""
     if not _main_table_exists(conn, "fact_formal_zqtz_balance_daily"):

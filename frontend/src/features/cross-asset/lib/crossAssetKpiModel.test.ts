@@ -50,6 +50,25 @@ describe("crossAssetKpiModel", () => {
     expect(cn?.tradeDate).toBe("2026-03-01");
   });
 
+  it("uses the fresher Tushare/public CSI300 when the Choice financial-condition point is stale by date", () => {
+    const series = [
+      macroPoint("EMM01843735", -1.54, [
+        ["2025-12-30", -1.48],
+        ["2025-12-31", -1.54],
+      ], { refresh_tier: "fallback" }),
+      macroPoint("CA.CSI300", 4102.25, [
+        ["2026-04-09", 4085.12],
+        ["2026-04-10", 4102.25],
+      ], { vendor_version: "vv_tushare_index_daily" }),
+    ];
+
+    const financialConditions = resolveCrossAssetKpis(series).find((k) => k.key === "financial_conditions");
+
+    expect(financialConditions?.resolvedSeriesId).toBe("CA.CSI300");
+    expect(financialConditions?.sourceKind).toBe("public");
+    expect(financialConditions?.tradeDate).toBe("2026-04-10");
+  });
+
   it("prefers E1003238 over EMG for US 10Y", () => {
     const series = [
       macroPoint("EMG00001310", 4.1, [

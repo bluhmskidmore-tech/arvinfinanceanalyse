@@ -16,7 +16,10 @@ from backend.app.config.choice_runtime import _init_runtime
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_adapter import VendorAdapter
-from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
+from backend.app.repositories.duckdb_migrations import (
+    apply_pending_migrations_on_connection,
+    ensure_choice_macro_schema_if_missing,
+)
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     CACHE_MANIFEST_STREAM,
@@ -25,10 +28,13 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
+from backend.app.repositories.tushare_adapter import (
+    import_tushare_pro,
+    resolve_tushare_token_with_settings_fallback,
+)
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroBatchConfig,
     ChoiceMacroCatalogAsset,
-    ChoiceMacroPoint,
     ChoiceMacroSeriesConfig,
     ChoiceMacroSnapshot,
 )
@@ -125,6 +131,61 @@ _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
         "is_core": True,
         "tags": ["public", "macro", "market", "commodity", "oil", "cross_asset"],
         "policy_note": "public cross-asset headline supplement via FRED Brent spot series",
+    },
+    "CA.CSI300": {
+        "series_name": "沪深300指数收盘价",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_daily:000300.SH.close",
+        "frequency": "daily",
+        "unit": "index",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "csi300", "cross_asset"],
+        "policy_note": "Tushare index_daily supplement for CSI300 cross-asset risk sentiment",
+    },
+    "CA.CSI300_PCT_CHG": {
+        "series_name": "沪深300指数涨跌幅",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_daily:000300.SH.pct_chg",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "csi300", "cross_asset"],
+        "policy_note": "Tushare index_daily pct_chg supplement for CSI300 cross-asset momentum",
+    },
+    "CA.CSI300_PE": {
+        "series_name": "沪深300市盈率",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_dailybasic:000300.SH.pe",
+        "frequency": "daily",
+        "unit": "x",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "valuation", "cross_asset"],
+        "policy_note": "Tushare index_dailybasic PE supplement for CSI300 equity-bond spread",
+    },
+    "CA.MEGA_CAP_WEIGHT": {
+        "series_name": "沪深300前十大权重合计",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_weight:000300.SH.top10_weight",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "mega_cap", "cross_asset"],
+        "policy_note": "Tushare index_weight top10 concentration supplement for mega-cap equity leadership",
+    },
+    "CA.MEGA_CAP_TOP5_WEIGHT": {
+        "series_name": "沪深300前五大权重合计",
+        "vendor_name": "tushare",
+        "vendor_series_code": "index_weight:000300.SH.top5_weight",
+        "frequency": "daily",
+        "unit": "%",
+        "theme": "macro_market",
+        "is_core": True,
+        "tags": ["tushare", "market", "equity", "mega_cap", "cross_asset"],
+        "policy_note": "Tushare index_weight top5 concentration supplement for mega-cap equity leadership",
     },
     "CA.STEEL": {
         "series_name": "螺纹钢现货价格",
@@ -244,22 +305,12 @@ def refresh_choice_macro_snapshot(
             try:
                 _ensure_tables(conn)
                 conn.execute("begin transaction")
-                if backfill_days > 1 and backfill_trade_dates:
-                    placeholders = ", ".join(["?"] * len(backfill_trade_dates))
-                    date_list = sorted(backfill_trade_dates)
-                    conn.execute(
-                        f"delete from choice_market_snapshot where trade_date in ({placeholders})",
-                        date_list,
-                    )
-                    conn.execute(
-                        f"delete from fact_choice_macro_daily where trade_date in ({placeholders})",
-                        date_list,
-                    )
-                else:
-                    conn.execute("delete from choice_market_snapshot")
-                    conn.execute("delete from fact_choice_macro_daily")
-                conn.execute("delete from phase1_macro_vendor_catalog")
-                conn.execute("delete from market_data_series_category")
+                choice_series_ids = _choice_managed_series_ids(conn, series_registry)
+                _delete_choice_managed_rows(
+                    conn,
+                    series_ids=choice_series_ids,
+                    trade_dates=sorted(backfill_trade_dates) if backfill_days > 1 and backfill_trade_dates else None,
+                )
 
                 for point in snapshot.series:
                     conn.execute(
@@ -991,6 +1042,52 @@ def merge_choice_macro_snapshots(snapshots: list[ChoiceMacroSnapshot]) -> Choice
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+    ensure_choice_macro_schema_if_missing(conn)
+
+
+def _choice_managed_series_ids(
+    conn: duckdb.DuckDBPyConnection,
+    series_registry: dict[str, dict[str, object]],
+) -> list[str]:
+    rows = conn.execute(
+        "select distinct series_id from phase1_macro_vendor_catalog where lower(vendor_name) = 'choice'"
+    ).fetchall()
+    managed = {str(row[0]) for row in rows if row and row[0]}
+    managed.update(series_registry.keys())
+    return sorted(managed)
+
+
+def _delete_choice_managed_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_ids: list[str],
+    trade_dates: list[str] | None,
+) -> None:
+    if not series_ids:
+        return
+    series_placeholders = ", ".join(["?"] * len(series_ids))
+    if trade_dates:
+        date_placeholders = ", ".join(["?"] * len(trade_dates))
+        params = [*series_ids, *trade_dates]
+        conn.execute(
+            f"""
+            delete from choice_market_snapshot
+            where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
+            """,
+            params,
+        )
+        conn.execute(
+            f"""
+            delete from fact_choice_macro_daily
+            where series_id in ({series_placeholders}) and trade_date in ({date_placeholders})
+            """,
+            params,
+        )
+    else:
+        conn.execute(f"delete from choice_market_snapshot where series_id in ({series_placeholders})", series_ids)
+        conn.execute(f"delete from fact_choice_macro_daily where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from phase1_macro_vendor_catalog where series_id in ({series_placeholders})", series_ids)
+    conn.execute(f"delete from market_data_series_category where series_id in ({series_placeholders})", series_ids)
 
 
 def _fetch_backfill_snapshots(
@@ -1046,6 +1143,7 @@ def _load_public_cross_asset_history_rows(
     for loader in (
         _fetch_public_bond_zh_us_history_rows,
         _fetch_public_dr007_history_rows,
+        _fetch_tushare_cross_asset_history_rows,
         _fetch_public_brent_history_rows,
         _fetch_public_steel_history_rows,
         _fetch_public_fx_history_rows,
@@ -1158,6 +1256,95 @@ def _fetch_public_brent_history_rows(
     return rows
 
 
+def _fetch_tushare_cross_asset_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
+
+    ts = import_tushare_pro()
+    pro = ts.pro_api(token)
+    start_date = (report_date - timedelta(days=max(lookback_days, 45) * 2)).strftime("%Y%m%d")
+    weight_start_date = (report_date - timedelta(days=max(lookback_days, 90) * 2)).strftime("%Y%m%d")
+    end_date = report_date.strftime("%Y%m%d")
+    daily_records = _records_from_tushare_frame(
+        pro.index_daily(ts_code="000300.SH", start_date=start_date, end_date=end_date)
+    )
+    basic_records = _records_from_tushare_frame(
+        pro.index_dailybasic(ts_code="000300.SH", start_date=start_date, end_date=end_date)
+    )
+    weight_records = _records_from_tushare_frame(
+        pro.index_weight(index_code="000300.SH", start_date=weight_start_date, end_date=end_date)
+    )
+
+    rows: list[dict[str, object]] = []
+    daily_vendor_version = f"vv_tushare_index_daily_000300SH_{end_date}"
+    daily_source_version = _source_version_from_records("tushare_index_daily", daily_records)
+    for record in daily_records:
+        trade_date = _coerce_public_trade_date(record.get("trade_date"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        close = _coerce_public_number(record.get("close"))
+        pct_chg = _coerce_public_number(record.get("pct_chg"))
+        if close is not None:
+            rows.append(_public_history_row("CA.CSI300", trade_date, close, daily_vendor_version, daily_source_version))
+        if pct_chg is not None:
+            rows.append(
+                _public_history_row("CA.CSI300_PCT_CHG", trade_date, pct_chg, daily_vendor_version, daily_source_version)
+            )
+
+    basic_vendor_version = f"vv_tushare_index_dailybasic_000300SH_{end_date}"
+    basic_source_version = _source_version_from_records("tushare_index_dailybasic", basic_records)
+    for record in basic_records:
+        trade_date = _coerce_public_trade_date(record.get("trade_date"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        pe = _coerce_public_number(record.get("pe"))
+        if pe is None:
+            pe = _coerce_public_number(record.get("pe_ttm"))
+        if pe is not None and pe > 0:
+            rows.append(_public_history_row("CA.CSI300_PE", trade_date, pe, basic_vendor_version, basic_source_version))
+
+    weight_vendor_version = f"vv_tushare_index_weight_000300SH_{end_date}"
+    weight_source_version = _source_version_from_records("tushare_index_weight", weight_records)
+    weights_by_date: dict[str, list[float]] = {}
+    for record in weight_records:
+        trade_date = _coerce_public_trade_date(record.get("trade_date"))
+        if trade_date is None or trade_date > report_date.isoformat():
+            continue
+        weight = _coerce_public_number(record.get("weight"))
+        if weight is None:
+            continue
+        weights_by_date.setdefault(trade_date, []).append(weight)
+
+    for trade_date, weights in sorted(weights_by_date.items()):
+        ordered = sorted(weights, reverse=True)
+        top10 = sum(ordered[:10])
+        top5 = sum(ordered[:5])
+        if top10 > 0:
+            rows.append(
+                _public_history_row("CA.MEGA_CAP_WEIGHT", trade_date, top10, weight_vendor_version, weight_source_version)
+            )
+        if top5 > 0:
+            rows.append(
+                _public_history_row(
+                    "CA.MEGA_CAP_TOP5_WEIGHT",
+                    trade_date,
+                    top5,
+                    weight_vendor_version,
+                    weight_source_version,
+                )
+            )
+
+    return rows
+
+
 def _fetch_public_steel_history_rows(
     *,
     duckdb_path: str,
@@ -1214,6 +1401,24 @@ def _fetch_public_fx_history_rows(
             )
         )
     return result
+
+
+def _records_from_tushare_frame(frame: object) -> list[dict[str, object]]:
+    if frame is None:
+        return []
+    try:
+        if len(frame) == 0:  # type: ignore[arg-type]
+            return []
+        return list(frame.to_dict(orient="records"))  # type: ignore[attr-defined]
+    except (AttributeError, TypeError):
+        return []
+
+
+def _source_version_from_records(prefix: str, records: list[dict[str, object]]) -> str:
+    digest = hashlib.sha256(
+        json.dumps(records, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
+    ).hexdigest()[:12]
+    return f"sv_{prefix}_{digest}"
 
 
 def _public_history_row(

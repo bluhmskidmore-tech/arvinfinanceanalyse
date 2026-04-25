@@ -28,6 +28,7 @@ from backend.app.schemas.vendor import (
 )
 
 TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
+_GOVERNANCE_SETTINGS_MODULE = "backend.app.governance.settings"
 
 
 def resolve_tushare_token_with_settings_fallback(settings: Any) -> str:
@@ -39,6 +40,22 @@ def resolve_tushare_token_with_settings_fallback(settings: Any) -> str:
     if token:
         return token
     return str(getattr(settings, "tushare_token", "") or "").strip()
+
+
+def _load_settings_for_token_fallback() -> Any | None:
+    try:
+        from backend.app.governance.settings import get_settings
+    except ModuleNotFoundError as exc:
+        missing_name = str(getattr(exc, "name", "") or "")
+        if missing_name in {
+            "backend",
+            "backend.app",
+            "backend.app.governance",
+            _GOVERNANCE_SETTINGS_MODULE,
+        }:
+            return None
+        raise
+    return get_settings()
 
 
 def _require_tushare_token() -> str:
@@ -121,14 +138,14 @@ class VendorAdapter(VendorAdapterBase):
     vendor_name: str = "tushare"
 
     def preflight(self) -> VendorPreflightResult:
-        token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+        token = resolve_tushare_token_with_settings_fallback(_load_settings_for_token_fallback())
         if not token:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,
                 status="missing_config",
                 supports_live_fetch=False,
-                detail=f"{TUSHARE_TOKEN_ENV} must be set before live fetch is enabled.",
+                detail=f"{TUSHARE_TOKEN_ENV} must be set in process env or config/.env before live fetch is enabled.",
             )
         try:
             __import__("tushare")

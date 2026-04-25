@@ -2,7 +2,7 @@ import type { ChoiceMacroLatestPoint, ChoiceMacroRecentPoint } from "../../../ap
 
 export type CrossAssetKpiFormat = "percent" | "bp" | "index" | "fx" | "plain";
 
-/** 与 `config/choice_macro_catalog.json` 对齐（含 E100 系、EM1、EMG、EMM 等）；`CA.*` 为仅 mock 占位。 */
+/** 与 `config/choice_macro_catalog.json` 对齐；`CA.*` 为治理后的 Tushare/公共补充源。 */
 export type CrossAssetSingleSlot = {
   kind: "single";
   key: string;
@@ -118,13 +118,18 @@ function pickPoint(
   byId: Map<string, ChoiceMacroLatestPoint>,
   candidates: readonly string[],
 ): ChoiceMacroLatestPoint | undefined {
-  for (const id of candidates) {
-    const p = byId.get(id);
-    if (p) {
-      return p;
-    }
-  }
-  return undefined;
+  const ranked = candidates
+    .map((id, priority) => {
+      const point = byId.get(id);
+      return point ? { point, priority } : null;
+    })
+    .filter((item): item is { point: ChoiceMacroLatestPoint; priority: number } => Boolean(item));
+  const usable = ranked.filter((item) => item.point.quality_flag !== "stale");
+  const pool = usable.length ? usable : ranked;
+  return [...pool].sort((left, right) => {
+    const dateOrder = right.point.trade_date.localeCompare(left.point.trade_date);
+    return dateOrder || left.priority - right.priority;
+  })[0]?.point;
 }
 
 function sourceKindFromSeriesId(seriesId: string): ResolvedCrossAssetKpi["sourceKind"] {

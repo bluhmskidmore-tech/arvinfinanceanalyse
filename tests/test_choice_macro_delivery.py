@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date
 
 import duckdb
 import pandas as pd
@@ -333,6 +334,141 @@ def test_choice_macro_refresh_archives_raw_payload_and_materializes_duckdb(tmp_p
         ("cn_repo_7d", "stable", "date_slice", "batch", None),
     ]
     get_settings.cache_clear()
+
+
+def test_choice_macro_refresh_preserves_tushare_supplemental_rows(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(tmp_path / "archive"))
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_CATALOG_FILE", "")
+    monkeypatch.setenv("MOSS_CHOICE_MACRO_SERIES_JSON", _choice_series_json())
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+    macro_schema_module = load_module(
+        "backend.app.schemas.macro_vendor",
+        "backend/app/schemas/macro_vendor.py",
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        task_module._ensure_tables(conn)
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+            ('CA.CSI300', '沪深300指数收盘价', '2026-04-10', 4102.25, 'daily', 'index',
+             'sv_tushare', 'vv_tushare', 'rv_public_cross_asset_headline_v1', 'ok', 'run-public')
+            """
+        )
+        conn.execute(
+            """
+            insert into choice_market_snapshot values
+            ('CA.CSI300', '沪深300指数收盘价', 'index_daily:000300.SH.close', 'tushare',
+             '2026-04-10', 4102.25, 'daily', 'index', 'sv_tushare', 'vv_tushare',
+             'rv_public_cross_asset_headline_v1', 'run-public')
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog (
+              series_id, series_name, vendor_name, vendor_version, frequency, unit, vendor_series_code,
+              batch_id, catalog_version, theme, is_core, tags_json, request_options, fetch_mode,
+              fetch_granularity, refresh_tier, policy_note
+            ) values (
+              'CA.CSI300', '沪深300指数收盘价', 'tushare', 'vv_tushare', 'daily', 'index',
+              'index_daily:000300.SH.close', 'public_cross_asset_headline',
+              '2026-04-21.public-cross-asset-headline.v1', 'macro_market', true, '[]',
+              'lookback_days=60', 'latest', 'batch', 'stable', 'Tushare supplement'
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setattr(
+        task_module.VendorAdapter,
+        "fetch_macro_snapshot",
+        lambda self, series, timeout_seconds=10.0, request_options="": macro_schema_module.ChoiceMacroSnapshot(
+            vendor_name="choice",
+            vendor_version="vv_choice_refresh",
+            captured_at="2026-04-11T09:00:00Z",
+            series=[
+                macro_schema_module.ChoiceMacroPoint(
+                    series_id="cn_cpi_yoy",
+                    series_name="CN CPI YoY",
+                    vendor_series_code="EDB_CPI_YOY",
+                    vendor_name="choice",
+                    trade_date="2026-04-11",
+                    value_numeric=0.8,
+                    frequency="daily",
+                    unit="pct",
+                    vendor_version="vv_choice_refresh",
+                ),
+            ],
+            raw_payload=_choice_gateway_payload(),
+        ),
+    )
+
+    task_module.refresh_choice_macro_snapshot.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(tmp_path / "governance"),
+    )
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select fact.series_id, fact.trade_date, cat.vendor_name
+            from fact_choice_macro_daily fact
+            left join phase1_macro_vendor_catalog cat on fact.series_id = cat.series_id
+            order by fact.series_id
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("CA.CSI300", "2026-04-10", "tushare"),
+        ("cn_cpi_yoy", "2026-04-11", "choice"),
+    ]
+    get_settings.cache_clear()
+
+
+def test_choice_macro_ensure_tables_repairs_old_db_missing_category_table(tmp_path):
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    conn = duckdb.connect(str(tmp_path / "old.duckdb"), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table _schema_migrations (
+              version integer primary key,
+              description text not null,
+              applied_at timestamp default current_timestamp
+            )
+            """
+        )
+        for version in range(1, 17):
+            conn.execute("insert into _schema_migrations (version, description) values (?, ?)", [version, "applied"])
+
+        task_module._ensure_tables(conn)
+        tables = {row[0] for row in conn.execute("show tables").fetchall()}
+    finally:
+        conn.close()
+
+    assert "market_data_series_category" in tables
 
 
 def test_choice_macro_refresh_does_not_expose_partial_vendor_lineage_when_success_append_fails(tmp_path, monkeypatch):
@@ -1354,6 +1490,13 @@ def test_public_cross_asset_headline_refresh_materializes_history_and_latest_row
                 "vendor_version": "vv_public_fred",
                 "source_version": "sv_public_fred",
             },
+            {
+                "series_id": "CA.CSI300",
+                "trade_date": "2026-04-10",
+                "value_numeric": 4102.25,
+                "vendor_version": "vv_tushare_index_daily",
+                "source_version": "sv_tushare_index_daily",
+            },
         ],
     )
 
@@ -1364,8 +1507,8 @@ def test_public_cross_asset_headline_refresh_materializes_history_and_latest_row
     )
 
     assert payload["status"] == "completed"
-    assert payload["series_count"] == 2
-    assert payload["row_count"] == 3
+    assert payload["series_count"] == 3
+    assert payload["row_count"] == 4
 
     conn = duckdb.connect(str(tmp_path / "moss.duckdb"), read_only=False)
     try:
@@ -1395,15 +1538,23 @@ def test_public_cross_asset_headline_refresh_materializes_history_and_latest_row
 
     assert fact_rows == [
         ("CA.BRENT", "2026-04-10", 64.8),
+        ("CA.CSI300", "2026-04-10", 4102.25),
         ("E1003238", "2026-04-09", 4.2),
         ("E1003238", "2026-04-10", 4.26),
     ]
     assert latest_rows == [
         ("CA.BRENT", "2026-04-10", 64.8),
+        ("CA.CSI300", "2026-04-10", 4102.25),
         ("E1003238", "2026-04-10", 4.26),
     ]
     assert catalog_rows == [
         ("CA.BRENT", "fred", "stable", "public cross-asset headline supplement via FRED Brent spot series"),
+        (
+            "CA.CSI300",
+            "tushare",
+            "stable",
+            "Tushare index_daily supplement for CSI300 cross-asset risk sentiment",
+        ),
         (
             "E1003238",
             "public_bond_zh_us_rate",
@@ -1412,6 +1563,63 @@ def test_public_cross_asset_headline_refresh_materializes_history_and_latest_row
         ),
     ]
     get_settings.cache_clear()
+
+
+def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatch):
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    class _FakePro:
+        def index_daily(self, **kwargs):
+            assert kwargs["ts_code"] == "000300.SH"
+            return pd.DataFrame(
+                [
+                    {"trade_date": "20260409", "close": 4085.12, "pct_chg": -0.12},
+                    {"trade_date": "20260410", "close": 4102.25, "pct_chg": 0.42},
+                ]
+            )
+
+        def index_dailybasic(self, **kwargs):
+            assert kwargs["ts_code"] == "000300.SH"
+            return pd.DataFrame(
+                [
+                    {"trade_date": "20260410", "pe": 14.64},
+                ]
+            )
+
+        def index_weight(self, **kwargs):
+            assert kwargs["index_code"] == "000300.SH"
+            return pd.DataFrame(
+                [
+                    {"trade_date": "20260410", "con_code": f"00000{i}.SZ", "weight": weight}
+                    for i, weight in enumerate([4.5, 3.4, 2.5, 1.8, 1.5, 1.2, 1.1, 0.9, 0.8, 0.7, 0.4])
+                ]
+            )
+
+    class _FakeTushare:
+        def pro_api(self, token):
+            assert token == "test-token"
+            return _FakePro()
+
+    monkeypatch.setenv("MOSS_TUSHARE_TOKEN", "test-token")
+    monkeypatch.setattr(task_module, "import_tushare_pro", lambda: _FakeTushare())
+
+    rows = task_module._fetch_tushare_cross_asset_history_rows(
+        duckdb_path="unused.duckdb",
+        report_date=date(2026, 4, 10),
+        lookback_days=7,
+    )
+    by_key = {(row["series_id"], row["trade_date"]): row["value_numeric"] for row in rows}
+
+    assert by_key[("CA.CSI300", "2026-04-10")] == 4102.25
+    assert by_key[("CA.CSI300_PCT_CHG", "2026-04-10")] == 0.42
+    assert by_key[("CA.CSI300_PE", "2026-04-10")] == 14.64
+    assert by_key[("CA.MEGA_CAP_WEIGHT", "2026-04-10")] == pytest.approx(18.4)
+    assert by_key[("CA.MEGA_CAP_TOP5_WEIGHT", "2026-04-10")] == pytest.approx(13.7)
 
 
 def test_choice_macro_refresh_skips_isolated_catalog_batches(tmp_path, monkeypatch):
