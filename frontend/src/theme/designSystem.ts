@@ -121,10 +121,13 @@ export const designTokens = {
     relaxed: 1.7,
   },
   fontFamily: {
-    sans: '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", sans-serif',
-    /** Numeric columns, KPIs, tables */
-    tabular:
-      'ui-monospace, "SF Mono", "Segoe UI", "Roboto Mono", "Noto Sans Mono", monospace',
+    /**
+     * UI + 中文：使用系统黑体栈，避免页面级外部字体依赖。
+     * Ant Design `ConfigProvider` 使用本字段作为全局 `fontFamily`。
+     */
+    sans: '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
+    /** 数字列、KPI 等 */
+    tabular: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans Mono", monospace',
   },
   radius: {
     sm: 6,

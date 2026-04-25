@@ -40,6 +40,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { index: true, element: <div>shell body</div> },
           { path: "dashboard", element: <div>dashboard alias body</div> },
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
+          { path: "cross-asset", element: <div>cross-asset body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
@@ -115,6 +116,18 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
     expect(screen.queryByTestId("workbench-sidebar-sections")).not.toBeInTheDocument();
+  });
+
+  it("uses transparent main surface for cross-asset and keeps market workbench subnav", async () => {
+    renderShellAt("/cross-asset");
+
+    expect(await screen.findByText("cross-asset body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    const subnav = await screen.findByTestId("workbench-section-subnav");
+    const sectionLinks = within(subnav).getAllByRole("link");
+    expect(sectionLinks.length).toBeGreaterThanOrEqual(1);
+    const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/cross-asset");
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {

@@ -4,14 +4,14 @@ type Props = {
   height?: number;
 };
 
-export function CrossAssetSparkline({ values, stroke, height = 28 }: Props) {
+export function CrossAssetSparkline({ values, stroke, height = 36 }: Props) {
   if (values.length < 2) {
     return <div style={{ height, width: "100%" }} />;
   }
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = 2;
-  const w = 120;
+  const w = 140;
   const h = height;
   const span = max - min || 1;
   const pts = values.map((v, i) => {
@@ -28,7 +28,7 @@ export function CrossAssetSparkline({ values, stroke, height = 28 }: Props) {
       aria-hidden
       style={{ display: "block" }}
     >
-      <polyline fill="none" stroke={stroke} strokeWidth="1.5" points={pts.join(" ")} strokeLinejoin="round" />
+      <polyline fill="none" stroke={stroke} strokeWidth="2" points={pts.join(" ")} strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   );
 }

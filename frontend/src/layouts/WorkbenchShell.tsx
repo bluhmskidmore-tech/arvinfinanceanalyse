@@ -351,8 +351,13 @@ export function WorkbenchShell() {
   const currentGroupSections = currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
+  /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
+  const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
+  const isMinimalMainChrome = isBondAnalysisMinimalShell || isCrossAssetImmersiveMain;
   const showWorkspaceHeroCard =
-    !isBondAnalysisMinimalShell && (isPortfolioGroup || currentSection.key !== "dashboard");
+    !isBondAnalysisMinimalShell &&
+    !isCrossAssetImmersiveMain &&
+    (isPortfolioGroup || currentSection.key !== "dashboard");
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
   const bondAnalyticsDatesQuery = useQuery({
@@ -413,7 +418,7 @@ export function WorkbenchShell() {
           display: "grid",
           alignContent: "start",
           gap: 14,
-          padding: isBondAnalysisMinimalShell ? "8px 12px 14px 0" : "10px 14px 16px 0",
+          padding: isMinimalMainChrome ? "8px 12px 14px 0" : "10px 14px 16px 0",
           border: "none",
           borderRight: `1px solid ${shellTokens.colorBorderSoft}`,
           borderRadius: 0,
@@ -1220,11 +1225,11 @@ export function WorkbenchShell() {
 
         <main
           style={{
-            padding: isBondAnalysisMinimalShell ? 0 : 24,
-            border: isBondAnalysisMinimalShell ? "none" : `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: isBondAnalysisMinimalShell ? 0 : 30,
-            boxShadow: isBondAnalysisMinimalShell ? "none" : shellTokens.shadowPanel,
-            background: isBondAnalysisMinimalShell
+            padding: isMinimalMainChrome ? 0 : 24,
+            border: isMinimalMainChrome ? "none" : `1px solid ${shellTokens.colorBorder}`,
+            borderRadius: isMinimalMainChrome ? 0 : 30,
+            boxShadow: isMinimalMainChrome ? "none" : shellTokens.shadowPanel,
+            background: isMinimalMainChrome
               ? "transparent"
               : `linear-gradient(180deg, ${shellTokens.colorBgSurface} 0%, ${shellTokens.colorBgCanvas} 100%)`,
             display: "grid",

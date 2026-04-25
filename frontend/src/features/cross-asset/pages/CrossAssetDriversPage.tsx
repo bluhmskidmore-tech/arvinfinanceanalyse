@@ -98,44 +98,23 @@ function formatSignedNumber(value: number | string | null | undefined, suffix = 
 function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
-    <div className="cross-asset-drivers-page__mini-kpi" style={{ display: "flex", flexDirection: "column" } as const}>
-      <div
-        style={{
-          fontSize: t.fontSize[11],
-          color: t.color.neutral[600],
-          fontWeight: 600,
-          lineHeight: t.lineHeight.snug,
-        }}
-      >
-        {kpi.label}
+    <article className="cross-asset-drivers-page__mini-kpi" aria-label={kpi.label}>
+      <div className="cross-asset-drivers-page__mini-kpi-main">
+        <div className="cross-asset-drivers-page__mini-kpi-copy">
+          <div className="cross-asset-drivers-page__mini-kpi-label">{kpi.label}</div>
+          <div className="cross-asset-drivers-page__mini-kpi-value" style={tabularNumsStyle}>
+            {kpi.valueLabel}
+          </div>
+          <div className="cross-asset-drivers-page__mini-kpi-delta" style={{ color: stroke }}>
+            {kpi.changeLabel}
+          </div>
+          {kpi.tag ? <div className="cross-asset-drivers-page__mini-kpi-tag">{kpi.tag}</div> : null}
+        </div>
+        <div className="cross-asset-drivers-page__mini-kpi-chart">
+          <CrossAssetSparkline values={kpi.sparkline} stroke={stroke} height={40} />
+        </div>
       </div>
-      <div
-        style={{
-          ...tabularNumsStyle,
-          fontSize: t.fontSize[20],
-          fontWeight: 700,
-          color: t.color.neutral[800],
-          marginTop: t.space[2],
-          letterSpacing: "-0.02em",
-        }}
-      >
-        {kpi.valueLabel}
-      </div>
-      <div
-        style={{
-          fontSize: t.fontSize[12],
-          fontWeight: 600,
-          color: stroke,
-          marginTop: t.space[1],
-        }}
-      >
-        {kpi.changeLabel}
-      </div>
-      <div style={{ marginTop: "auto", paddingTop: t.space[2] }}>
-        <CrossAssetSparkline values={kpi.sparkline} stroke={stroke} height={26} />
-      </div>
-      <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500], marginTop: t.space[2] }}>{kpi.tag}</div>
-    </div>
+    </article>
   );
 }
 
@@ -743,20 +722,24 @@ export default function CrossAssetDriversPage() {
         </SectionCard>
 
         <div className="cross-asset-drivers-page__flow">
-            <PageSectionLead
-              eyebrow="Investment Research"
-              title="研究结论先行"
-              description="先看研究判断和传导主线，再决定如何解释后面的 KPI、事件和 analytical 证据。"
-            />
+            <div className="cross-asset-drivers-page__lede">
+              <PageSectionLead
+                eyebrow="投资研究"
+                title="研究结论先行"
+                description="先看研究判断和传导主线，再决定如何解释后面的 KPI、事件和观察项。"
+              />
+            </div>
             <ResearchViewsPanel rows={researchViewCards} />
             <TransmissionAxesPanel rows={transmissionAxisRows} />
             <AssetClassAnalysisPanel rows={assetClassAnalysisRows} />
 
-            <PageSectionLead
-              eyebrow="Context"
-              title="环境概览"
-              description="在研究判断之后，用顶部环境 KPI 和驱动拆解补充证据。"
-            />
+            <div className="cross-asset-drivers-page__lede">
+              <PageSectionLead
+                eyebrow="环境上下文"
+                title="环境概览与 KPI"
+                description="以下 KPI 为跨资产头线条目；数值与变化来自同一条宏观序列链路，与下方市场判断、传导拆解一致。"
+              />
+            </div>
             <div className="cross-asset-drivers-page__kpi-grid" data-testid="cross-asset-kpi-band">
               {kpis.map((kpi) => (
                 <MiniKpiCard key={kpi.key} kpi={kpi} />
@@ -773,28 +756,26 @@ export default function CrossAssetDriversPage() {
             </div>
 
             <div className="cross-asset-drivers-page__row-two">
-              <section className={crossAssetPanelClass}>
-                <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
-                  市场判断
-                </h2>
-                <p style={{ margin: 0, color: t.color.neutral[700], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
-                  {macroBondLinkageQuery.isLoading || latestQuery.isLoading
-                    ? "正在加载联动分析…"
-                    : env.signal_description ?? "当前暂无可用摘要；请先确认 provenance 与日期状态。"}
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: t.space[2], marginTop: t.space[4] }}>
-                  <StatusPill status="normal" label={`主导因素 ${envTags.primary}`} />
-                  <StatusPill status="caution" label={`次要扰动 ${envTags.secondary}`} />
-                  <StatusPill status="warning" label={`风格判断 ${envTags.style}`} />
+              <section className={`${crossAssetPanelClass} cross-asset-drivers-page__panel--stack`}>
+                <h2 className="cross-asset-drivers-page__panel-title">市场判断</h2>
+                <div className="cross-asset-drivers-page__panel-stack">
+                  <p className="cross-asset-drivers-page__panel-prose">
+                    {macroBondLinkageQuery.isLoading || latestQuery.isLoading
+                      ? "正在加载联动分析…"
+                      : env.signal_description ?? "当前暂无可用摘要；请确认数据日期与联动分析是否已就绪。"}
+                  </p>
+                  <div className="cross-asset-drivers-page__chip-row">
+                    <StatusPill status="normal" label={`主导因素 · ${envTags.primary}`} />
+                    <StatusPill status="caution" label={`次要因素 · ${envTags.secondary}`} />
+                    <StatusPill status="warning" label={`风格 · ${envTags.style}`} />
+                  </div>
                 </div>
               </section>
 
-              <section className={crossAssetPanelClass}>
-                <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
-                  宏观-债市相关性（Top）
-                </h2>
-                <p style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[11], color: t.color.neutral[500], lineHeight: t.lineHeight.snug }}>
-                  来源为联动分析返回的滚动相关性结果；这里只展示 analytical 证据，不替代估值分位。
+              <section className={`${crossAssetPanelClass} cross-asset-drivers-page__panel--stack`}>
+                <h2 className="cross-asset-drivers-page__panel-title">宏观 — 债市相关性（Top）</h2>
+                <p className="cross-asset-drivers-page__heatmap-intro">
+                  使用联动分析中的滚动相关结果作参考，不替代个券估值分位或正式风险结论。
                 </p>
                 <table className="cross-asset-drivers-page__heatmap">
                   <thead>
@@ -820,9 +801,7 @@ export default function CrossAssetDriversPage() {
             </div>
 
             <section className={`${crossAssetPanelClass} cross-asset-drivers-page__drivers`}>
-              <h2 style={{ margin: `0 0 ${t.space[3]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
-                驱动拆解
-              </h2>
+              <h2 className="cross-asset-drivers-page__panel-title">驱动拆解</h2>
               <div className="cross-asset-drivers-page__drivers-grid">
                 {drivers.map((col) => {
                   const stanceStyle = driverStanceStyle(col.tone);
@@ -868,13 +847,15 @@ export default function CrossAssetDriversPage() {
 
             <NcdProxyEvidencePanel evidence={ncdProxyEvidence} isLoading={ncdFundingProxyQuery.isLoading} />
 
-            <PageSectionLead
-              eyebrow="Observation"
-              title="走势、事件与观察"
-              description="完成研究判断后，再看走势、事件流和观察名单，避免把噪音放到结论前面。"
-            />
+            <div className="cross-asset-drivers-page__lede">
+              <PageSectionLead
+                eyebrow="观察项"
+                title="走势、事件与观察"
+                description="完成研究判断后，再查看价格走势、事件流和观察名单，避免把短噪音误当成主结论。"
+              />
+            </div>
             <section className={crossAssetPanelClass}>
-              <h2 style={{ margin: `0 0 ${t.space[2]}px`, fontSize: t.fontSize[16], fontWeight: 600, color: t.color.neutral[900] }}>
+              <h2 className="cross-asset-drivers-page__panel-title" style={{ margin: `0 0 ${t.space[2]}px` }}>
                 跨资产走势（近 20 日，统一基准 = 100）
               </h2>
               <p style={{ margin: `0 0 ${t.space[2]}px`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
@@ -905,11 +886,13 @@ export default function CrossAssetDriversPage() {
               <WatchList rows={watchRows} />
             </div>
 
-            <PageSectionLead
-              eyebrow="Analytical"
-              title="分析结果与输出"
-              description="联动评分与组合影响继续保持 analytical 口径，只提供证据与风险提示。"
-            />
+            <div className="cross-asset-drivers-page__lede">
+              <PageSectionLead
+                eyebrow="分析结果"
+                title="宏观联动与输出"
+                description="以下为联动评分与组合影响的分析口径，仅供决策参考，不替代正式风控与会计口径。"
+              />
+            </div>
             <AsyncSection
               title="宏观 - 债券联动（评分与组合影响）"
               isLoading={macroBondLinkageQuery.isLoading || latestQuery.isLoading}
