@@ -1,11 +1,9 @@
-from fastapi import APIRouter, Query
-from fastapi import HTTPException
-
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
+from backend.app.schemas.macro_vendor import ChoiceMacroRefreshTier
 from backend.app.services.macro_vendor_service import (
     choice_macro_latest_envelope,
     fx_analytical_envelope,
@@ -13,6 +11,7 @@ from backend.app.services.macro_vendor_service import (
     macro_vendor_envelope,
 )
 from backend.app.tasks.choice_macro import refresh_choice_macro_snapshot
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter()
 
@@ -23,9 +22,9 @@ def macro_foundation() -> dict[str, object]:
 
 
 @router.get("/ui/macro/choice-series/latest")
-def choice_series_latest() -> dict[str, object]:
+def choice_series_latest(category: ChoiceMacroRefreshTier | None = None) -> dict[str, object]:
     settings = get_settings()
-    return choice_macro_latest_envelope(settings.duckdb_path)
+    return choice_macro_latest_envelope(settings.duckdb_path, category=category)
 
 
 @router.get("/ui/market-data/fx/formal-status")
