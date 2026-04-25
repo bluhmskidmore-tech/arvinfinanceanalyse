@@ -3,12 +3,14 @@
 开始前先遵守仓库文档优先级，至少阅读：
 - `AGENTS.md`
 - `prd-moss-agent-analytics-os.md`
-- `docs/CODEX_HANDOFF.md`
-- `docs/IMPLEMENTATION_PLAN.md`
+- `docs/DOCUMENT_AUTHORITY.md`
+- `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
 - `docs/calc_rules.md`
 - `docs/data_contracts.md`
 - `docs/CACHE_SPEC.md`
 - `docs/acceptance_tests.md`
+
+如需 repo 历史背景或 phase 计划上下文，再按需查 `docs/CODEX_HANDOFF.md`、`docs/IMPLEMENTATION_PLAN.md`，不要把它们当作当前状态入口。
 
 当前状态说明：
 - 工作区是脏的，已有大量本地修改；不要回退、不要清理、不要重置别人的改动。

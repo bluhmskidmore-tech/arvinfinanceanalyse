@@ -24,10 +24,12 @@ function makeOverviewVM(): NonNullable<DashboardAdapterOutput["overview"]["vm"]>
       {
         id: "aum",
         label: "资产规模",
+        caliberLabel: null,
         value: makeNumeric({ raw: 123_456_000_000, display: "1,234.56 亿", sign_aware: false }),
         delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
         tone: "positive",
         detail: "来自 formal balance",
+        history: null,
       },
     ],
   };

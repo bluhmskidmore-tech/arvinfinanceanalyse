@@ -116,7 +116,7 @@
 - `basis / formal_use_allowed / scenario_flag` 与 cache identity，以 [CACHE_SPEC.md](CACHE_SPEC.md) 为准。
 - 若 [data_contracts.md](data_contracts.md) 之外出现独立 snapshot 字段清单、主键清单或 lineage 清单，则判定不通过。
 - 若 [CACHE_SPEC.md](CACHE_SPEC.md) 之外出现独立 `basis / formal_use_allowed / scenario_flag` 真值表，则判定不通过。
-- [CURRENT_BOUNDARY_HANDOFF_2026-04-10.md](CURRENT_BOUNDARY_HANDOFF_2026-04-10.md) 与 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 只允许保留 docs-only / non-authorization 语言；若复述 snapshot 结构合同，则判定不通过。
+- [CURRENT_EFFECTIVE_ENTRYPOINT.md](CURRENT_EFFECTIVE_ENTRYPOINT.md) 负责 repo-level current-state navigation；[CURRENT_BOUNDARY_HANDOFF_2026-04-10.md](CURRENT_BOUNDARY_HANDOFF_2026-04-10.md) 与 [IMPLEMENTATION_PLAN.md](IMPLEMENTATION_PLAN.md) 只允许保留 docs-only / non-authorization 语言；若复述 snapshot 结构合同，则判定不通过。
 - 本轮验证 docs-only contract alignment，必须同时避免以下误写：
   - 把 snapshot 写成已 materialized 的 formal result
   - 把当前已落地的 governed formal compute / materialize / service / API / 首个 workbench consumer 写成 future-only

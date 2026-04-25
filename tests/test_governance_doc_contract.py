@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 
 from tests.helpers import ROOT
 
@@ -11,6 +10,10 @@ GOLDEN_ROOT = ROOT / "tests" / "golden_samples"
 
 def _read_doc(name: str) -> str:
     return (DOCS_DIR / name).read_text(encoding="utf-8")
+
+
+def _read_pnl_doc(name: str) -> str:
+    return (DOCS_DIR / "pnl" / name).read_text(encoding="utf-8")
 
 
 def _sample_dirs() -> list[str]:
@@ -71,6 +74,7 @@ def test_governance_doc_pack_exists_with_required_sections():
 def test_metric_dictionary_and_page_contracts_cover_current_governed_scope():
     metric_dictionary = _read_doc("metric_dictionary.md")
     page_contracts = _read_doc("page_contracts.md")
+    product_category_page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
 
     for metric_id in (
         "MTR-BAL-001",
@@ -95,15 +99,21 @@ def test_metric_dictionary_and_page_contracts_cover_current_governed_scope():
     ):
         assert page_id in page_contracts
 
+    assert "PAGE-PROD-CAT-001" in product_category_page_contract
+
 
 def test_golden_sample_docs_match_current_sample_directories():
     golden_plan = _read_doc("golden_sample_plan.md")
     golden_catalog = _read_doc("golden_sample_catalog.md")
+    product_category_sample_doc = _read_pnl_doc("product-category-golden-sample-a.md")
     sample_dirs = _sample_dirs()
 
     assert sample_dirs, "expected at least one golden sample directory"
 
     for sample_id in sample_dirs:
+        if sample_id == "GS-PROD-CAT-PNL-A":
+            assert sample_id in product_category_sample_doc
+            continue
         assert sample_id in golden_plan
         assert sample_id in golden_catalog
 
@@ -121,6 +131,7 @@ def test_golden_sample_dirs_keep_required_four_file_structure():
 
 def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
     page_contracts = _read_doc("page_contracts.md")
+    product_category_page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
 
     for sample_id in (
         "GS-BAL-OVERVIEW-A",
@@ -134,3 +145,104 @@ def test_page_contracts_bind_sample_backed_governed_pages_to_golden_samples():
         "GS-EXEC-PNL-ATTR-A",
     ):
         assert sample_id in page_contracts
+
+    assert "GS-PROD-CAT-PNL-A" in product_category_page_contract
+
+
+def test_product_category_closure_checklist_is_ascii_and_unit_scoped():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+
+    assert checklist.isascii()
+    for state in ("CLOSED", "PARTIAL", "NOT_TRUSTED", "EXCLUDED"):
+        assert f"`{state}`" in checklist
+    for forbidden in ("\U00002705", "\U0001f7e1", "\U0001f534", "\U00002b1c"):
+        assert forbidden not in checklist
+
+    matrix_rows = [
+        line
+        for line in checklist.splitlines()
+        if any(line.startswith(f"| {index}. ") for index in range(1, 11))
+    ]
+    unit_headings = [
+        line
+        for line in checklist.splitlines()
+        if line.startswith("## Unit ")
+    ]
+
+    assert len(matrix_rows) == 10
+    assert len(unit_headings) == 10
+    assert "- `PARTIAL`: 10" in checklist
+
+    for required in (
+        "Future product-category-pnl work must start from this checklist, not from a broad page rewrite.",
+        "pick exactly one unit before editing code",
+        "read that unit's `Why not CLOSED` list first",
+        "do not change `PARTIAL` to `CLOSED` until every blocker for that unit is removed or reclassified with evidence",
+        "after changing a status, update the status matrix, unit details, and targeted tests in the same change",
+    ):
+        assert required in checklist
+
+
+def test_product_category_detail_unit_stays_partial_until_closure_evidence_exists():
+    checklist = _read_pnl_doc("product-category-closure-checklist.md")
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+
+    assert "| 2. Detail | `PARTIAL` | `P0` |" in checklist
+    unit_2 = checklist.split("## Unit 2: Detail", maxsplit=1)[1].split("## Unit 3:", maxsplit=1)[0]
+    boundary_section = page_contract.split("## 6. Page Basis and Boundaries", maxsplit=1)[1].split(
+        "## 7. Row Authority",
+        maxsplit=1,
+    )[0]
+
+    for required in (
+        "- Main page view selector:",
+        "  - `monthly`",
+        "  - `ytd`",
+        "`qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements.",
+    ):
+        assert required in boundary_section
+
+    for required in (
+        "the main page selector scope is explicitly frozen as `monthly` and `ytd`",
+        "`qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements",
+        "first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1",
+        "formal `metric_id` approval is still missing",
+        "core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only",
+        "productCategoryPnlPageModel.test.ts",
+    ):
+        assert required in unit_2
+
+    assert "the page UI itself currently exposes `monthly` and `ytd`, but not the full four-view surface" not in unit_2
+
+
+def test_product_category_first_stage_field_freeze_is_explicitly_bounded():
+    page_contract = _read_pnl_doc("product-category-page-truth-contract.md")
+    field_freeze = page_contract.split("### 9.1 First-Stage Field Freeze", maxsplit=1)[1].split(
+        "## 10. Time Semantics",
+        maxsplit=1,
+    )[0]
+
+    for field_path in (
+        "`result.view`",
+        "`result.available_views`",
+        "`result.rows[].category_id`",
+        "`result.rows[].side`",
+        "`result.rows[].business_net_income`",
+        "`result.asset_total.business_net_income`",
+        "`result.liability_total.business_net_income`",
+        "`result.grand_total.business_net_income`",
+        "`result.scenario_rate_pct`",
+        "`result_meta.basis`",
+        "`result_meta.scenario_flag`",
+    ):
+        assert field_path in field_freeze
+
+    for rule in (
+        "This is a page-level field freeze, not a formal `metric_id` approval.",
+        "do not invent `metric_id` bindings from this table",
+        "do not treat liability sign normalization as backend truth",
+        "do not use `available_views` to add first-screen controls",
+        "do not recompute `grand_total` in frontend",
+        "do not change row identity during scenario display",
+    ):
+        assert rule in field_freeze

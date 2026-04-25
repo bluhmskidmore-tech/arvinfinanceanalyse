@@ -152,7 +152,7 @@ def _backfill_fx_mid_history(
                     "start_date": start_date,
                     "end_date": end_date,
                     "report_dates": report_dates,
-                    "row_count": sum(int(item.get("row_count") or 0) for item in per_date),
+                    "row_count": sum(int(str(item.get("row_count") or 0)) for item in per_date),
                 },
             ),
             (
@@ -187,7 +187,7 @@ def _backfill_fx_mid_history(
         "start_date": start_date,
         "end_date": end_date,
         "report_dates": report_dates,
-        "row_count": sum(int(item.get("row_count") or 0) for item in per_date),
+        "row_count": sum(int(str(item.get("row_count") or 0)) for item in per_date),
         "source_version": source_version,
         "vendor_version": vendor_version,
         "per_date": per_date,

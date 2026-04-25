@@ -336,7 +336,7 @@ def build_v1_name_amount_payload(
     for name, amount in sort_items_with_preferred_order(items, preferred_order):
         if amount <= ZERO:
             continue
-        pct = (amount / total * ONE_HUNDRED) if total > ZERO else ZERO
+        pct = (amount / total) if total > ZERO else ZERO
         payload.append(
             {
                 "name": name,
@@ -368,7 +368,7 @@ def build_v1_bucket_amount_payload(items: dict[str, Decimal]) -> list[dict[str, 
     payload: list[dict[str, Any]] = []
     for label in V1_MONTHLY_BUCKET_ORDER:
         amount = items.get(label, ZERO)
-        pct = (amount / total * ONE_HUNDRED) if total > ZERO else ZERO
+        pct = (amount / total) if total > ZERO else ZERO
         payload.append(
             {
                 "bucket": label,
@@ -394,7 +394,7 @@ def monthly_breakdown_items(
         if total_amount <= ZERO:
             continue
         avg_balance = total_amount / divisor
-        pct = (avg_balance / denominator_avg * ONE_HUNDRED) if denominator_avg > ZERO else ZERO
+        pct = (avg_balance / denominator_avg) if denominator_avg > ZERO else ZERO
         rows.append(
             {
                 label_key: key,
@@ -416,7 +416,7 @@ def monthly_v1_term_items(values: dict[str, Decimal], *, num_days: int) -> list[
     rows: list[dict[str, Any]] = []
     for bucket in V1_MONTHLY_BUCKET_ORDER:
         avg_balance = avg_values[bucket]
-        pct = (avg_balance / total_avg * ONE_HUNDRED) if total_avg > ZERO else ZERO
+        pct = (avg_balance / total_avg) if total_avg > ZERO else ZERO
         rows.append(
             {
                 "bucket": bucket,
@@ -739,10 +739,10 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                     "name": cpty_name,
                     "avg_value": to_float(avg_value),
                     "proportion": to_float(
-                        (avg_value / counterparty_total_avg * ONE_HUNDRED) if counterparty_total_avg > ZERO else ZERO
+                        (avg_value / counterparty_total_avg) if counterparty_total_avg > ZERO else ZERO
                     ),
                     "amount": to_float(avg_value),
-                    "pct": to_float((avg_value / avg_total * ONE_HUNDRED) if avg_total > ZERO else ZERO),
+                    "pct": to_float((avg_value / avg_total) if avg_total > ZERO else ZERO),
                     "weighted_cost": to_float(weighted_cost),
                     "type": cpty_type,
                 }
@@ -757,15 +757,15 @@ def compute_liabilities_monthly(year: int, zqtz_rows: list[dict[str, Any]], tyw_
                 "type": inst_type,
                 "avg_value": to_float(value),
                 "amount": to_float(value),
-                "pct": to_float((value / by_institution_total * ONE_HUNDRED) if by_institution_total > ZERO else ZERO),
+                "pct": to_float((value / by_institution_total) if by_institution_total > ZERO else ZERO),
             }
             for inst_type, value in sorted(by_institution_sum.items(), key=lambda item: (-item[1], item[0]))
             if value > ZERO
         ]
 
         month_int = int(month_key.split("-")[1])
-        interbank_pct = (avg_interbank / avg_total * ONE_HUNDRED) if avg_total > ZERO else ZERO
-        issued_pct = (avg_issued / avg_total * ONE_HUNDRED) if avg_total > ZERO else ZERO
+        interbank_pct = (avg_interbank / avg_total) if avg_total > ZERO else ZERO
+        issued_pct = (avg_issued / avg_total) if avg_total > ZERO else ZERO
         structure_overview = [
             {
                 "category": "同业负债",

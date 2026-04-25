@@ -13,20 +13,21 @@ import duckdb
 
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.news_warehouse_repo import purge_expired_news_events, upsert_news_event
+from backend.app.repositories.tushare_adapter import (
+    TUSHARE_TOKEN_ENV,
+    resolve_tushare_token_with_settings_fallback,
+)
 from backend.app.tasks.choice_news import ensure_choice_news_event_schema
 
-TUSHARE_TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
-"""新闻来源标识，见 Tushare `pro.news` 文档（如 sina、eastmoney、cls）。"""
+# TUSHARE_TOKEN_ENV: single source tushare_adapter; re-imported for legacy imports of this module.
 TUSHARE_NEWS_SRC_ENV = "MOSS_TUSHARE_NEWS_SRC"
+# 新闻来源标识，见 Tushare `pro.news` 文档（如 sina、eastmoney、cls）
 
 
 def _resolve_tushare_token() -> str:
     """Read token from process env first; fall back to MOSS Settings (config/.env)."""
-    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
-    if token:
-        return token
     try:
-        return str(getattr(get_settings(), "tushare_token", "") or "").strip()
+        return resolve_tushare_token_with_settings_fallback(get_settings())
     except Exception:
         return ""
 

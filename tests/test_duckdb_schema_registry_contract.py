@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import duckdb
-import pytest
 
 from backend.app.schema_registry.duckdb_loader import (
     apply_registry_sql,

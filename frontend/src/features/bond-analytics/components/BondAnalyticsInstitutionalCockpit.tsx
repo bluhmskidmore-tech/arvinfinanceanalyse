@@ -783,7 +783,7 @@ export function BondAnalyticsInstitutionalCockpit({
                     >
                       <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
                         <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.instrument_name}</span>
-                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatWan(item.face_value)}</span>
+                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.face_value)}</span>
                       </div>
                       <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
                         收益率 {formatPct(item.ytm)} · 久期 {item.modified_duration.display} · {item.rating}
@@ -838,7 +838,7 @@ export function BondAnalyticsInstitutionalCockpit({
                     <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
                       <span style={{ color: sub, fontSize: dt.fontSize[12] }}>{item.rating}</span>
                       <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
-                        {item.count} bonds · {formatWan(item.faceValue)}
+                        {item.count} bonds · {formatYi(item.faceValue)}
                       </span>
                     </div>
                   ))}

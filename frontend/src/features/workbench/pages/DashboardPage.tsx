@@ -16,6 +16,7 @@ import { DashboardMacroSpotSection } from "../../executive-dashboard/components/
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import {
   DashboardAlertCenterPanel,
+  type DashboardCalendarPanelState,
   DashboardGlobalJudgmentPanel,
   DashboardModuleEntryGrid,
   DashboardModuleSnapshotPanel,
@@ -25,6 +26,7 @@ import {
   type DashboardHeroMetric,
 } from "../dashboard/DashboardOverviewSections";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
+import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
 
 const PnlAttributionSection = lazy(
   () => import("../../executive-dashboard/components/PnlAttributionSection"),
@@ -104,6 +106,21 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
   return fallbackLabel;
 }
 
+const DASHBOARD_KEY_CALENDAR_FORWARD_DAYS = 14;
+
+function addDaysToIsoDate(date: string, days: number): string {
+  const trimmed = date.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
 export default function DashboardPage() {
   const client = useApiClient();
   const [reportDate, setReportDate] = useState("");
@@ -180,6 +197,24 @@ export default function DashboardPage() {
     return null;
   }, [snapshotResult]);
 
+  const researchCalendarQuery = useQuery({
+    queryKey: ["research-calendar", client.mode, effectiveReportDate],
+    queryFn: () =>
+      client.getResearchCalendarEvents(
+        client.mode === "real"
+          ? {
+              startDate: effectiveReportDate,
+              endDate: addDaysToIsoDate(
+                effectiveReportDate,
+                DASHBOARD_KEY_CALENDAR_FORWARD_DAYS,
+              ),
+            }
+          : { reportDate: effectiveReportDate },
+      ),
+    enabled: Boolean(effectiveReportDate),
+    retry: false,
+  });
+
   const sanitizedOverviewMetrics = useMemo(
     () =>
       (adapterOutput.overview.vm?.metrics ?? []).map((metric) =>
@@ -193,6 +228,7 @@ export default function DashboardPage() {
       .map((metric) => ({
         id: metric.id,
         label: metric.label,
+        caliberLabel: metric.caliberLabel,
         value: metric.value.display,
         note: metric.detail,
         delta: formatHeroDelta(metric.delta.display, "read path"),
@@ -336,6 +372,31 @@ export default function DashboardPage() {
     client.mode,
     snapshotPartialNote,
   ]);
+
+  const dashboardCalendar = useMemo(
+    () =>
+      buildDashboardKeyCalendarModel({
+        events: researchCalendarQuery.data,
+        isLoading:
+          !effectiveReportDate ||
+          (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
+        isError: researchCalendarQuery.isError,
+      }),
+    [
+      effectiveReportDate,
+      researchCalendarQuery.data,
+      researchCalendarQuery.isError,
+      researchCalendarQuery.isLoading,
+    ],
+  );
+
+  const dashboardCalendarState = useMemo<DashboardCalendarPanelState>(
+    () => ({
+      status: dashboardCalendar.status,
+      message: dashboardCalendar.message,
+    }),
+    [dashboardCalendar.message, dashboardCalendar.status],
+  );
 
   return (
     <section data-testid="fixed-income-dashboard-page">
@@ -514,7 +575,10 @@ export default function DashboardPage() {
           </Suspense>
         </section>
 
-        <DashboardTasksCalendarPanels />
+        <DashboardTasksCalendarPanels
+          calendarItems={dashboardCalendar.items}
+          calendarState={dashboardCalendarState}
+        />
       </div>
 
       <div className="dashboard-overview-live-grid">

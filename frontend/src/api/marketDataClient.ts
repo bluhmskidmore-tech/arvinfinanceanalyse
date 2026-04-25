@@ -11,6 +11,7 @@ import type {
   FxFormalStatusPayload,
   MacroBondLinkagePayload,
   MacroVendorPayload,
+  NcdFundingProxyPayload,
   SourcePreviewHistoryPayload,
   SourcePreviewPayload,
   SourcePreviewRefreshPayload,
@@ -44,6 +45,7 @@ export type MarketDataClientMethods = {
   getMacroBondLinkageAnalysis: (options: {
     reportDate: string;
   }) => Promise<ApiEnvelope<MacroBondLinkagePayload>>;
+  getNcdFundingProxy: () => Promise<ApiEnvelope<NcdFundingProxyPayload>>;
   getFxFormalStatus: () => Promise<ApiEnvelope<FxFormalStatusPayload>>;
   getFxAnalytical: () => Promise<ApiEnvelope<FxAnalyticalPayload>>;
   refreshChoiceMacro: (backfillDays?: number) => Promise<ChoiceMacroRefreshPayload>;

@@ -3,7 +3,6 @@ from __future__ import annotations
 import builtins
 import importlib
 import sys
-from pathlib import Path
 from types import ModuleType
 from types import SimpleNamespace
 

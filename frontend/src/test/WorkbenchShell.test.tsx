@@ -474,6 +474,14 @@ describe("WorkbenchShell", () => {
     }
   });
 
+  it("does not render the overview hero card on the root dashboard route", async () => {
+    renderShellAt("/");
+
+    expect(await screen.findByText("shell body")).toBeInTheDocument();
+    expect(screen.queryByText("Phase 1 Status")).not.toBeInTheDocument();
+    expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
+  });
+
   it("shows a readiness banner for gated routes", async () => {
     renderShellAt("/agent");
 

@@ -345,7 +345,8 @@ def test_executive_overview_repo_backed_contract(monkeypatch, exec_mod):
     )
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert set(metrics) == {"aum", "yield", "nim", "dv01", "goal", "risk-budget"}
-    assert metrics["aum"]["label"] == "资产规模"
+    assert metrics["aum"]["label"] == "总资产规模"
+    assert metrics["aum"]["caliber_label"] == "本币资产口径"
     _assert_numeric_json_shape(metrics["aum"]["value"])
     assert metrics["aum"]["value"]["display"] == "1,023.47 亿"
     assert metrics["aum"]["value"]["raw"] == pytest.approx(1023.47e8)
@@ -453,18 +454,18 @@ def test_executive_overview_uses_requested_report_date(monkeypatch, exec_mod):
 
     out = exec_mod.executive_overview(report_date="2025-11-20")
 
-    assert calls == [
-        ("aum", "2025-11-20"),
-        ("aum", "2025-10-31"),
-        ("pnl", "2025-11-20"),
-        ("pnl", "2025-10-31"),
-        ("liab-z", "2025-11-20"),
-        ("liab-t", "2025-11-20"),
-        ("liab-z", "2025-10-31"),
-        ("liab-t", "2025-10-31"),
-        ("risk", "2025-11-20"),
-        ("risk", "2025-10-31"),
-    ]
+    # Each (repo, report_date) is hit twice: main row + prior (where applicable) + one walk in
+    # _fetch_*_history for the two-date window starting at the requested date (duplicates are expected).
+    assert calls.count(("aum", "2025-11-20")) == 2
+    assert calls.count(("aum", "2025-10-31")) == 2
+    assert calls.count(("pnl", "2025-11-20")) == 2
+    assert calls.count(("pnl", "2025-10-31")) == 2
+    assert calls.count(("liab-z", "2025-11-20")) == 2
+    assert calls.count(("liab-t", "2025-11-20")) == 2
+    assert calls.count(("liab-z", "2025-10-31")) == 2
+    assert calls.count(("liab-t", "2025-10-31")) == 2
+    assert calls.count(("risk", "2025-11-20")) == 2
+    assert calls.count(("risk", "2025-10-31")) == 2
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
     assert metrics["aum"]["label"] == "债券资产规模（zqtz）"
     assert "2025-11-20" in metrics["aum"]["detail"]
@@ -585,8 +586,9 @@ def test_executive_overview_without_report_date_uses_latest_governed_pnl_report_
     _assert_numeric_json_shape(metrics["yield"]["value"])
     assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
-    assert calls.count(("pnl", "2025-12-31")) == 1
-    assert calls.count(("pnl", "2025-11-30")) == 1
+    # PnL YTD: current + prior delta + _fetch_ytd_history re-walks the same two dates (expected duplicate calls).
+    assert calls.count(("pnl", "2025-12-31")) == 2
+    assert calls.count(("pnl", "2025-11-30")) == 2
 
 
 def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(monkeypatch, exec_mod):
@@ -666,7 +668,8 @@ def test_executive_overview_uses_latest_formal_fi_date_not_union_date_for_yield(
     assert metrics["yield"]["value"]["display"] == "+6.50 亿"
     assert "2025-12-31" in metrics["yield"]["detail"]
     assert "2026-01-31" not in metrics["yield"]["detail"]
-    assert calls == [("pnl", "2025-12-31"), ("pnl", "2025-11-30")]
+    assert calls.count(("pnl", "2025-12-31")) == 2
+    assert calls.count(("pnl", "2025-11-30")) == 2  # current + prior + ytd history slice (two passes each)
 
 
 def test_executive_pnl_attribution_fallback_no_rows(monkeypatch, exec_mod):
@@ -1393,7 +1396,8 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
     out = exec_mod.executive_overview(report_date="2026-02-28")
 
     metrics = {m["id"]: m for m in out["result"]["metrics"]}
-    assert metrics["aum"]["label"] == "资产规模"
+    assert metrics["aum"]["label"] == "总资产规模"
+    assert metrics["aum"]["caliber_label"] == "本币资产口径"
     aum_val = _assert_numeric_json_shape(metrics["aum"]["value"])
     assert aum_val["display"].startswith("3,572.76")
     aum_delta = _assert_numeric_json_shape(metrics["aum"]["delta"])
@@ -1422,6 +1426,103 @@ def test_executive_overview_aum_uses_combined_formal_balance_scope(monkeypatch, 
         "owner_count": 0,
         "year": 2026,
     }
+
+
+def test_executive_overview_nim_uses_ratio_input_without_extra_divide(monkeypatch, exec_mod):
+    class BalanceRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_formal_overview(self, **kwargs):
+            return {
+                "report_date": kwargs["report_date"],
+                "position_scope": kwargs["position_scope"],
+                "currency_basis": kwargs["currency_basis"],
+                "detail_row_count": 10,
+                "summary_row_count": 10,
+                "total_market_value_amount": 3572.76e8,
+                "total_amortized_cost_amount": 3572.76e8,
+                "total_accrued_interest_amount": 0.0,
+                "source_version": "sv_balance_union",
+                "rule_version": "rv_balance_union",
+            }
+
+    class PnlRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_formal_fi_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def sum_formal_total_pnl_through_report_date(self, report_date: str):
+            return 4.69e8 if report_date == "2026-02-28" else 4.60e8
+
+    class LiabilityRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def resolve_latest_report_date(self):
+            return "2026-02-28"
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_zqtz_rows(self, report_date: str):
+            return []
+
+        def fetch_tyw_rows(self, report_date: str):
+            return []
+
+    class BondRepo:
+        def __init__(self, *_a, **_k):
+            pass
+
+        def list_report_dates(self):
+            return ["2026-02-28", "2026-02-27"]
+
+        def fetch_risk_overview_snapshot(self, *, report_date: str):
+            return {
+                "report_date": report_date,
+                "portfolio_dv01": 13826218.0 if report_date == "2026-02-28" else 13855000.0,
+            }
+
+    monkeypatch.setattr(exec_mod, "FormalZqtzBalanceMetricsRepository", BalanceRepo)
+    monkeypatch.setattr(exec_mod, "PnlRepository", PnlRepo)
+    monkeypatch.setattr(exec_mod, "LiabilityAnalyticsRepository", LiabilityRepo)
+    monkeypatch.setattr(exec_mod, "BondAnalyticsRepository", BondRepo)
+    monkeypatch.setattr(
+        exec_mod,
+        "compute_liability_yield_metrics",
+        lambda report_date, zqtz_rows, tyw_rows: {
+            "report_date": report_date,
+            "kpi": {
+                "nim": 0.00894468140782911 if report_date == "2026-02-28" else 0.008005674094361691,
+            },
+        },
+    )
+    monkeypatch.setattr(
+        exec_mod,
+        "resolve_kpi_authority_gate",
+        lambda **_kwargs: {
+            "status": "blocked",
+            "reason": "no-active-owners",
+            "owner_count": 0,
+            "year": 2026,
+        },
+    )
+    monkeypatch.setattr(exec_mod, "resolve_executive_kpi_metrics", lambda **_kwargs: [])
+
+    out = exec_mod.executive_overview(report_date="2026-02-28")
+
+    metrics = {m["id"]: m for m in out["result"]["metrics"]}
+    nim_value = _assert_numeric_json_shape(metrics["nim"]["value"])
+    assert nim_value["display"] == "+0.89%"
+    assert nim_value["raw"] == pytest.approx(0.00894468140782911)
+    nim_delta = _assert_numeric_json_shape(metrics["nim"]["delta"])
+    assert nim_delta["display"] == "+0.09pp"
 
 
 def test_executive_overview_exposes_kpi_resolution_error_after_available_gate(monkeypatch, exec_mod):

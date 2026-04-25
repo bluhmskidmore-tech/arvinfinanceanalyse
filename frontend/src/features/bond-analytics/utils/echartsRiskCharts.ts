@@ -3,7 +3,7 @@ import type { Numeric } from "../../../api/contracts";
 import { designTokens } from "../../../theme/designSystem";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, KRDBucket } from "../types";
-import { formatWan } from "./formatters";
+import { formatWan, formatYi } from "./formatters";
 
 export const ECHARTS_RISK_TEXT = designTokens.color.neutral[700];
 export const ECHARTS_RISK_GRID_LINE = designTokens.color.neutral[200];
@@ -119,7 +119,7 @@ export function buildAssetClassMarketValuePieOption(rows: AssetClassRiskSummary[
           | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     series: [

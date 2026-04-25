@@ -23,7 +23,7 @@ import { KpiCard } from "../../workbench/components/KpiCard";
 import CustomerDetailModal from "./CustomerDetailModal";
 import IndustryDistributionCard from "./IndustryDistributionCard";
 import RatingDistributionCard from "./RatingDistributionCard";
-import { formatAmountWan, formatAmountYi, formatRatePercent } from "../utils/format";
+import { formatAmountYi, formatRatePercent } from "../utils/format";
 
 const PAGE_SIZE = 20;
 
@@ -493,10 +493,10 @@ export default function PositionsView() {
                       { title: "授信主体", dataIndex: "credit_name", render: (v: string | null) => v || "—" },
                       { title: "业务种类", dataIndex: "sub_type", render: (v: string | null) => v || "—" },
                       {
-                        title: "市值",
+                        title: "市值(亿元)",
                         dataIndex: "market_value",
                         align: "right",
-                        render: (v: string | null) => formatAmountWan(v),
+                        render: (v: string | null) => formatAmountYi(v),
                       },
                       {
                         title: "估值净价",
@@ -721,10 +721,10 @@ export default function PositionsView() {
                         { title: "产品类型", dataIndex: "product_type", render: (v: string | null) => v || "—" },
                         { title: "方向", dataIndex: "direction", render: (v: string | null) => v || "—" },
                         {
-                          title: "金额",
+                          title: "金额(亿元)",
                           dataIndex: "amount",
                           align: "right",
-                          render: (v: string) => formatAmountWan(v),
+                          render: (v: string) => formatAmountYi(v),
                         },
                         {
                           title: "利率",

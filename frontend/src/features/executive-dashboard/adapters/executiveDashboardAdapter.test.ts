@@ -54,6 +54,7 @@ function makeOverviewEnv(
         {
           id: "aum",
           label: "资产规模",
+          caliber_label: "本币资产口径",
           value: makeNumeric({ raw: 123_456_000_000, display: "1,234.56 亿", sign_aware: false }),
           delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
           tone: "positive",
@@ -108,6 +109,7 @@ describe("adaptDashboard · normal path", () => {
     expect(out.attribution.state.kind).toBe("ok");
     expect(out.overview.vm?.metrics).toHaveLength(1);
     expect(out.overview.vm?.metrics[0]?.value.raw).toBe(123_456_000_000);
+    expect(out.overview.vm?.metrics[0]?.caliberLabel).toBe("本币资产口径");
     expect(out.attribution.vm?.total.display).toBe("+32.00 亿");
   });
 

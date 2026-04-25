@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Alert, Card, Col, Row, Spin, Statistic, Table } from "antd";
 import type { BondPortfolioHeadlinesPayload, Numeric } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
-import { formatPct, formatWan } from "../utils/formatters";
+import { formatPct, formatYi } from "../utils/formatters";
 
 interface Props {
   reportDate: string;
@@ -10,7 +10,7 @@ interface Props {
 
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
   {
     title: "久期",
     dataIndex: "duration",
@@ -87,7 +87,7 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="总市值（元）" value={formatWan(data.total_market_value)} />
+            <Statistic title="总市值（亿元）" value={formatYi(data.total_market_value)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>

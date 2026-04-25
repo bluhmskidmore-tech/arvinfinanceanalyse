@@ -24,13 +24,16 @@ const resultMeta = (): ResultMeta => ({
   generated_at: "2026-04-12T00:00:00Z",
 });
 
-function topHoldingsEnvelope(topN: number): ApiEnvelope<BondTopHoldingsPayload> {
+function topHoldingsEnvelope(
+  topN: number,
+  items: BondTopHoldingsPayload["items"] = [],
+): ApiEnvelope<BondTopHoldingsPayload> {
   return {
     result_meta: resultMeta(),
     result: {
       report_date: "2026-03-31",
       top_n: topN,
-      items: [],
+      items,
       total_market_value: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
       warnings: [],
       computed_at: "2026-04-12T00:00:00Z",
@@ -79,5 +82,30 @@ describe("TopHoldingsView", () => {
     await waitFor(() => expect(getTop).toHaveBeenCalledTimes(2));
     expect(getTop.mock.calls[0]).toEqual(["2026-03-31", 20]);
     expect(getTop.mock.calls[1]).toEqual(["2026-03-31", 50]);
+  });
+
+  it("renders holding market value and face value in yi yuan", async () => {
+    const getTop = vi.fn(async (_d: string, topN?: number) =>
+      topHoldingsEnvelope(topN ?? 20, [
+        {
+          instrument_code: "BOND-1",
+          instrument_name: "测试债",
+          issuer_name: "发行人A",
+          rating: "AAA",
+          asset_class: "Rate",
+          market_value: formatRawAsNumeric({ raw: 120_000_000, unit: "yuan", sign_aware: false }),
+          face_value: formatRawAsNumeric({ raw: 100_000_000, unit: "yuan", sign_aware: false }),
+          ytm: formatRawAsNumeric({ raw: 0.025, unit: "pct", sign_aware: false }),
+          modified_duration: formatRawAsNumeric({ raw: 3.2, unit: "ratio", sign_aware: false }),
+          weight: formatRawAsNumeric({ raw: 0.1, unit: "ratio", sign_aware: false }),
+        },
+      ]),
+    );
+
+    renderView(getTop);
+
+    expect(await screen.findByText("测试债")).toBeInTheDocument();
+    expect(screen.getByText("1.20 亿")).toBeInTheDocument();
+    expect(screen.getByText("1.00 亿")).toBeInTheDocument();
   });
 });

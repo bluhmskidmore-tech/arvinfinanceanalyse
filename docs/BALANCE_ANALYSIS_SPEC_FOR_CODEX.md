@@ -1,7 +1,7 @@
 ﻿> 2026-04-17 status update:
 > The current repository default boundary is now interpreted as `repo-wide Phase 2 (??????)` for the governed formal-compute mainline.
 > Any older wording in this document that says the repo default is still `Phase 1` or that repo-wide `Phase 2` is not open should be read as historical context only.
-> The active cutover interpretation now comes from `AGENTS.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`, and `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md`.
+> The active cutover interpretation now enters through `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`; use `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md` as the cutover-definition reference.
 
 # Balance / 产品类别余额与规模口径（Codex 读取用）
 
@@ -120,7 +120,7 @@ CNX/CNY 分开求和；`foreign_cash = cnx_cash - cny_cash`。
 
 ### 阶段边界（避免误读为「全仓 Phase 2 已开放」）
 
-- 仓库默认边界现已按 `repo-wide Phase 2（通用正式计算）` 解释（见 `AGENTS.md`、`docs/IMPLEMENTATION_PLAN.md`、`docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`、`docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md`）。
+- 仓库默认边界现已按 `repo-wide Phase 2（通用正式计算）` 解释（入口见 `AGENTS.md`、`docs/DOCUMENT_AUTHORITY.md`、`docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`；cutover 定义参考 `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md`）。
 - `zqtz / tyw` formal-balance 与 governed workbook 的落地，现在属于 repo-wide `Phase 2` formal balance 主链的一部分。
 - 但这**不**意味着所有 consumer、所有前端、所有 analytical / preview surface 都被一起放开；`product-category-pnl` 也仍是独立实现面。
 

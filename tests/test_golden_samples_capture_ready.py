@@ -53,11 +53,14 @@ def _clear_runtime_modules() -> None:
         "backend.app.api.routes.balance_analysis",
         "backend.app.api.routes.executive",
         "backend.app.api.routes.pnl",
+        "backend.app.api.routes.product_category_pnl",
         "backend.app.api.routes.risk_tensor",
         "backend.app.services.balance_analysis_service",
         "backend.app.services.pnl_service",
         "backend.app.services.pnl_bridge_service",
+        "backend.app.services.product_category_pnl_service",
         "backend.app.services.risk_tensor_service",
+        "backend.app.tasks.product_category_pnl",
     ]:
         sys.modules.pop(name, None)
 
@@ -76,6 +79,37 @@ def _setup_pnl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "tests/test_pnl_api_contract.py",
     )
     module._materialize_three_pnl_dates(tmp_path, monkeypatch)
+
+
+def _setup_product_category(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = load_module(
+        "tests._golden_product_category_flow",
+        "tests/test_product_category_pnl_flow.py",
+    )
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    module._write_month_pair(source_dir, "202601", january=True)
+    module._write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.product_category_pnl")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.product_category_pnl",
+            "backend/app/tasks/product_category_pnl.py",
+        )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
 
 
 def _setup_risk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -456,6 +490,34 @@ def _validate_pnl_data(actual: dict[str, Any], expected: dict[str, Any]) -> None
     )
 
 
+def _validate_product_category(actual: dict[str, Any], expected: dict[str, Any]) -> None:
+    _assert_paths_equal(
+        actual,
+        expected,
+        [
+            ("result_meta", "basis"),
+            ("result_meta", "result_kind"),
+            ("result_meta", "formal_use_allowed"),
+            ("result_meta", "vendor_version"),
+            ("result_meta", "rule_version"),
+            ("result_meta", "cache_version"),
+            ("result_meta", "quality_flag"),
+            ("result_meta", "vendor_status"),
+            ("result_meta", "fallback_mode"),
+            ("result_meta", "scenario_flag"),
+            ("result", "report_date"),
+            ("result", "view"),
+            ("result", "available_views"),
+            ("result", "scenario_rate_pct"),
+            ("result", "rows"),
+            ("result", "asset_total"),
+            ("result", "liability_total"),
+            ("result", "grand_total"),
+        ],
+    )
+    assert str(actual["result_meta"]["source_version"]).startswith("sv_product_category_")
+
+
 def _validate_bridge(actual: dict[str, Any], expected: dict[str, Any]) -> None:
     _assert_paths_equal(
         actual,
@@ -620,6 +682,7 @@ CAPTURE_READY_CASES: dict[str, CaptureReadyCase] = {
     "GS-BAL-WORKBOOK-A": CaptureReadyCase(setup=_setup_balance, validator=_validate_balance_workbook),
     "GS-PNL-OVERVIEW-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_pnl_overview),
     "GS-PNL-DATA-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_pnl_data),
+    "GS-PROD-CAT-PNL-A": CaptureReadyCase(setup=_setup_product_category, validator=_validate_product_category),
     "GS-BRIDGE-A": CaptureReadyCase(setup=_setup_pnl, validator=_validate_bridge),
     "GS-RISK-A": CaptureReadyCase(setup=_setup_risk, validator=_validate_risk),
     "GS-BRIDGE-WARN-B": CaptureReadyCase(setup=_setup_bridge_warn, validator=_validate_bridge_warn),

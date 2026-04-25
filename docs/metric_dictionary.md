@@ -22,6 +22,7 @@
   - `/ui/home/overview`
   - `/ui/home/summary`
   - `/ui/pnl/attribution`
+- Wave 1 工作台路由（`/bond-dashboard`、`/positions`、`/market-data`、`/operations-analysis`）的 **文档层绑定** 见 §12.5；其中仅 `PAGE-OPS-001` 上的 `balance-analysis.overview` 切片已可钉到既有 `MTR-BAL-*` 与 `GS-BAL-OVERVIEW-A`，其余路由以显式 **GAP** 登记，不臆造 `metric_id`
 
 不覆盖：
 
@@ -30,6 +31,9 @@
 - `liability_analytics_compat`
 - broad `executive.*` 其余路由
 - preview / vendor / analytical-only 扩张面
+- `product-category PnL` 的字段级 truth freeze
+  - `GS-PROD-CAT-PNL-A` 当前以 `docs/pnl/product-category-page-truth-contract.md`、`docs/page_contracts.md -> PAGE-PROD-CAT-PNL-001` 和样本断言为权威
+  - 在正式 `metric_id` 审批前，不把 `business_net_income`、`weighted_yield`、`cnx_scale` 等字段臆造为字典指标
 
 ## 3. 编制依据
 
@@ -93,6 +97,12 @@
 
 - formal 指标默认不应静默 fallback
 - analytical / executive overlay 可存在受控 fallback，但必须由页面明确可见
+
+### 4.5 `sample_scope` 标注约定
+
+- `sample_scope` 只绑定已经落盘并由 `tests/test_golden_samples_capture_ready.py` 注册的 `sample_id`。
+- 字典真值只表示本文件已有正式 `metric_id` 定义；样本可能用 `MTR-*` 直接断言，也可能通过 page contract 的字段映射冻结。
+- 页面/样本真值只表示样本冻结了结构、字段、warning 或 narrative 语义；如果没有已审批 `metric_id`，不得把它写成字典已完成。
 
 ## 5. 本版明确不纳入字典的内容
 
@@ -333,18 +343,56 @@
 
 处理方式：
 
-- 下一轮为剩余主链页面继续补 page contract
+- 下一轮为剩余**尚未建档**的主链页面继续补 page contract；Wave 1 的 `/bond-dashboard`、`/positions`、`/market-data` 已在 `docs/page_contracts.md` 建立 `PAGE-BOND-001`、`PAGE-POS-001`、`PAGE-MKT-001`
 
-### 12.3 缺少黄金样本绑定
+### 12.3 黄金样本绑定首版矩阵
 
 当前状态：
 
-- 本版的测试锚点主要还是 contract / API test
-- 还没有把这些指标挂到正式的 `golden sample` 包
+- §12.4 已补首版 `sample_scope` 矩阵，覆盖当前 12 个 capture-ready 样本包。
+- 该矩阵只使用本文件已有 `metric_id`，不新增或猜测产品分类指标。
+- 仍有部分样本是结构 / warning / narrative freeze，不等同于完整指标字典冻结。
 
 处理方式：
 
-- 下一轮按 `docs/golden_sample_plan.md` 绑定第一批样本包
+- 后续样本断言如果新增 `MTR-*`，必须同步更新 §12.4。
+- 产品分类 PnL 只有页面 truth contract 与样本 truth；正式字典级 `metric_id` 待审批后再补。
+
+### 12.4 Capture-ready `sample_scope` 绑定
+
+| sample_id | page_scope / surface | 已有字典真值 `metric_id` | 仅页面 / 样本真值 | 测试入口 |
+| --- | --- | --- | --- | --- |
+| `GS-BAL-OVERVIEW-A` | `PAGE-BALANCE-001` / `/ui/balance-analysis/overview` | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | result_meta lineage 与 `currency_basis` 为样本断言，不单独作为业务指标 | `tests/test_balance_analysis_api.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-BAL-WORKBOOK-A` | `PAGE-BALANCE-001` / `/ui/balance-analysis/workbook` | 当前断言不冻结具体 `metric_id`；相关字典字段见 `MTR-BAL-004`~`MTR-BAL-006`, `MTR-BAL-103`~`MTR-BAL-105`, `MTR-BAL-201`~`MTR-BAL-203` | workbook `tables[].key`、`operational_sections` 与禁止 `advanced_attribution_bundle` 属结构真值 | `tests/test_balance_analysis_api.py`; `tests/test_balance_analysis_workbook_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-PNL-OVERVIEW-A` | `PAGE-PNL-001` / `/api/pnl/overview` | `MTR-PNL-001`, `MTR-PNL-002`, `MTR-PNL-003`, `MTR-PNL-004`, `MTR-PNL-005`, `MTR-PNL-101`, `MTR-PNL-102` | result_meta lineage 为 contract truth | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-PNL-DATA-A` | `PAGE-PNL-001` / `/api/pnl/data` | `MTR-PNL-001`, `MTR-PNL-002`, `MTR-PNL-003`, `MTR-PNL-004`, `MTR-PNL-005`, `MTR-PNL-103`, `MTR-PNL-104` | row shape、`formal_fi_rows` 与 `nonstd_bridge_rows` 数量为样本结构真值 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-BRIDGE-A` | `PAGE-BRIDGE-001` / `/api/pnl/bridge` | `MTR-BRG-003`, `MTR-BRG-008`, `MTR-BRG-009`, `MTR-BRG-010`, `MTR-BRG-011`, `MTR-BRG-012`, `MTR-BRG-013`, `MTR-BRG-101` | 当前 phase-3 partial delivery warning 是 warning profile truth，不新增指标 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-BRIDGE-WARN-B` | `PAGE-BRIDGE-001` / `/api/pnl/bridge` warning profile | `MTR-BRG-001`, `MTR-BRG-002`, `MTR-BRG-011`, `MTR-BRG-012`, `MTR-BRG-013` | current/prior balance fallback、`balance_diagnostics`、warning 文案为样本真值；不新增质量指标 | `tests/test_pnl_api_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-RISK-A` | `PAGE-RISK-001` / `/api/risk/tensor` | `MTR-RSK-001`, `MTR-RSK-008`, `MTR-RSK-009`, `MTR-RSK-012`, `MTR-RSK-013`, `MTR-RSK-014`, `MTR-RSK-015`, `MTR-RSK-016`, `MTR-RSK-017`, `MTR-RSK-018`, `MTR-RSK-020`, `MTR-RSK-101` | result_meta quality line 为 envelope truth | `tests/test_risk_tensor_api.py`; `tests/test_risk_tensor_service.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-RISK-WARN-B` | `PAGE-RISK-001` / `/api/risk/tensor` warning profile | `MTR-RSK-101`, `MTR-RSK-102` | degraded warning 文案为样本真值，不替代 primary risk sample | `tests/test_risk_tensor_api.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-EXEC-OVERVIEW-A` | `PAGE-EXEC-OVERVIEW-001` / `/ui/home/overview` | `MTR-EXEC-001`, `MTR-EXEC-002`, `MTR-EXEC-003`, `MTR-EXEC-004` | `caliber_label` 形状为当前 executive contract truth，不新增指标 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-EXEC-PNL-ATTR-A` | `PAGE-EXEC-PNL-ATTR-001` / `/ui/pnl/attribution` | `MTR-EXEC-101`; `MTR-EXEC-102`~`MTR-EXEC-106` 当前只冻结 segment id presence，不冻结段值 | title 与 segment inventory 为样本结构真值 | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-EXEC-SUMMARY-A` | `PAGE-EXEC-SUMMARY-001` / `/ui/home/summary` | 无；本样本为 narrative-only，不进入业务指标字典主表 | `title`、`points.length`、point labels 为 narrative contract truth | `tests/test_executive_service_contract.py`; `tests/test_executive_dashboard_endpoints.py`; `tests/test_golden_samples_capture_ready.py` |
+| `GS-PROD-CAT-PNL-A` | `PAGE-PROD-CAT-PNL-001` / `/ui/pnl/product-category` | 无；正式 `metric_id` 缺口必须保持显式待绑定 | `business_net_income`、`asset_total/liability_total/grand_total` 对账、分类层级与 `result_meta` 为 page/sample truth；权威见 `docs/pnl/product-category-page-truth-contract.md` | `tests/test_product_category_pnl_flow.py`; `tests/test_product_category_mapping_contract.py`; `tests/test_golden_samples_capture_ready.py` |
+
+### 12.5 Wave 1 工作台页面绑定（route → page_id → metric_id → sample_id → 测试）
+
+说明：
+
+- 绑定只使用本文件 **已定义** 且语义可追溯的 `metric_id`。
+- `BondDashboardPage.tsx` 的 Headline / `RiskIndicatorsPanel` 所用 DTO 字段名可能与 balance / risk tensor **字面相似**。`docs/page_contracts.md` 已有 **`PAGE-BOND-001`**（§13.6），但在字典主表建立与正式余额 / 风险张量等的 **可审计同源**、且 `GS-BOND-HEADLINE-A` 仍为 candidate 前，**不得**将债券驾驶舱展示字段 **升格**为新 `MTR-*` 行，也不得宣称与 `GS-RISK-A` / `GS-BOND-HEADLINE-A` 自动等价。
+- `GS-BOND-HEADLINE-A` 在 **metric 映射齐套**、存在 `tests/golden_samples/GS-BOND-HEADLINE-A/` 并由 capture-ready gate 收录前 **保持 blocked**（与 `docs/golden_sample_catalog.md` 一致）；本表不将其提升为 capture-ready。
+
+| 前端路由 | page_id | 页面 / API 证据 | 可绑定 `metric_id` | `sample_id` | 测试文件（golden gate 含 `tests/test_golden_samples_capture_ready.py` 时单列） |
+| --- | --- | --- | --- | --- | --- |
+| `/operations-analysis` | `PAGE-OPS-001` | `frontend/src/features/workbench/pages/OperationsAnalysisPage.tsx` → `client.getBalanceAnalysisOverview`（`positionScope: "all"`, `currencyBasis: "CNY"`） | `MTR-BAL-001`, `MTR-BAL-002`, `MTR-BAL-003`, `MTR-BAL-101`, `MTR-BAL-102` | `GS-BAL-OVERVIEW-A` | `tests/test_balance_analysis_api.py`；`tests/test_golden_samples_capture_ready.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `client.getBalanceAnalysisSummary`（分页汇总行） | `MTR-BAL-004`, `MTR-BAL-005`, `MTR-BAL-006`, `MTR-BAL-103`；请求口径 `MTR-BAL-104`, `MTR-BAL-105` | **无** 独立 capture-ready 包；与 `GS-BAL-OVERVIEW-A` 仅共享 formal 族与 `report_date` 语义，不对 summary 表做 frozen JSON 逐项锁死 | `tests/test_balance_analysis_api.py`；`tests/test_balance_analysis_service.py` |
+| `/operations-analysis` | `PAGE-OPS-001` | 同页 → `getMacroFoundation` / `getChoiceMacroLatest` / `getFxFormalStatus` / `getChoiceNewsEvents` / PnL refresh 状态 | **GAP-OPS-MACRO-FX**：市场与运营条未纳入本版字典 `MTR-*` | — | `frontend/src/test/OperationsAnalysisPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001` | `frontend/src/features/bond-dashboard/pages/BondDashboardPage.tsx` → `getBondDashboardHeadlineKpis`；`frontend/src/features/bond-dashboard/components/HeadlineKpis.tsx`（`total_market_value`, `unrealized_pnl`, `weighted_ytm`, …） | **GAP-BOND-DASH-HL**：**页面契约已有**；Headline 与 `MTR-BAL-001` 等 formal 字段 **未建立字典级同源** | `GS-BOND-HEADLINE-A` **blocked**（无 `tests/golden_samples/GS-BOND-HEADLINE-A/`，非 capture-ready） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/bond-dashboard` | `PAGE-BOND-001` | 同页 → `getBondDashboardRiskIndicators`；`RiskIndicatorsPanel.tsx`（`total_market_value`, `total_dv01`, `credit_ratio`, …） | **GAP-BOND-DASH-RISK**：**页面契约已有**；与 `MTR-RSK-*`（`GS-RISK-A` / risk tensor）是否同源 **未冻结** | —（不自动继承 `GS-RISK-A`） | `frontend/src/test/BondDashboardPage.test.tsx` |
+| `/positions` | `PAGE-POS-001` | `frontend/src/features/positions/components/PositionsView.tsx` → `getPositionsBondsList` / `getPositionsInterbankList` / counterparty 等 | **GAP-POS-LIST**：**页面契约已有**；`/api/positions/*` 列表与统计 DTO **未升为** `MTR-*` | — | `tests/test_positions_api_contract.py`；`frontend/src/test/PositionsView.test.tsx` |
+| `/positions` | `PAGE-POS-001` | 同页 → `getBalanceAnalysisDates`（仅日期列表） | 非业务展示指标；日期与 balance 正式读面可对齐属实现细节，**不**单占 `metric_id` | 可与 `GS-BAL-OVERVIEW-A` 的 `report_date` **语义对照**，非同一样本字段冻结 | `tests/test_balance_analysis_api.py`（以 dates/overview 专测为准） |
+| `/market-data` | `PAGE-MKT-001` | `frontend/src/features/market-data/pages/MarketDataPage.tsx` → Choice macro / FX analytical / macro-bond-linkage 等 | **GAP-MKT-DATA**：**页面契约已有**；市场数据域未建本字典 `MTR-*` | — | `frontend/src/test/MarketDataPage.test.tsx` |
 
 ## 13. 建议下一步
 
@@ -352,11 +400,11 @@
 
 1. 用本文件里的指标集合，先给 6 到 7 个 in-scope 页面写页面契约
 2. 为高风险指标补“页面展示规范”和“fallback 可见性”字段
-3. 再选第一批黄金样本，把本文件中的 `metric_id` 挂进去
+3. 对 `GS-PROD-CAT-PNL-A` 另走业务审批，批准后再补字典级 `metric_id`
 
 ## 14. 版本说明
 
-- 当前版本：`v1-draft`
-- 日期：`2026-04-18`
-- 性质：docs-only first pass
+- 当前版本：`v1-draft + sample_scope pass + wave1_page_binding`
+- 日期：`2026-04-24`
+- 性质：docs-only first pass + capture-ready sample binding + Wave 1 工作台四路由文档绑定（§12.5）
 - 约束：仅反映当前仓库已落地指标，不代表未来所有页面或所有域已建字典

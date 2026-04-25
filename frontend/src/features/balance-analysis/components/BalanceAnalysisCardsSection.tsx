@@ -14,13 +14,10 @@ import {
 } from "../pages/BalanceAnalysisPage.styles";
 import { signalAccentStyle, heroMetaChipStyle } from "../pages/BalanceAnalysisPage.helpers";
 import type { PrioritySignal } from "../pages/BalanceAnalysisPage.helpers";
-
-function formatOverviewNumber(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") return "—";
-  const n = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(n)) return String(raw);
-  return n.toLocaleString("zh-CN");
-}
+import {
+  formatBalanceAmountToYiFromWan,
+  formatBalanceAmountToYiFromYuan,
+} from "../pages/balanceAnalysisPageModel";
 
 interface Props {
   overview: BalanceAnalysisOverviewPayload | undefined;
@@ -58,21 +55,24 @@ export function BalanceAnalysisCardsSection({
     {
       key: "total-market-value",
       label: "总市值合计",
-      value: formatOverviewNumber(overview?.total_market_value_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
+      unit: "亿元",
       detail: "overview.total_market_value_amount · formal",
       valueVariant: "text" as const,
     },
     {
       key: "total-amortized-cost",
       label: "摊余成本合计",
-      value: formatOverviewNumber(overview?.total_amortized_cost_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
+      unit: "亿元",
       detail: "overview.total_amortized_cost_amount · formal",
       valueVariant: "text" as const,
     },
     {
       key: "total-accrued-interest",
       label: "应计利息合计",
-      value: formatOverviewNumber(overview?.total_accrued_interest_amount),
+      value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
+      unit: "亿元",
       detail: "overview.total_accrued_interest_amount · formal",
       valueVariant: "text" as const,
     },
@@ -93,7 +93,8 @@ export function BalanceAnalysisCardsSection({
     ...(workbook?.cards ?? []).map((card) => ({
       key: `workbook-card-${card.key}`,
       label: card.label,
-      value: formatOverviewNumber(card.value),
+      value: formatBalanceAmountToYiFromWan(card.value),
+      unit: "亿元",
       detail: `${card.note ?? "workbook.cards"} · workbook`,
       valueVariant: "text" as const,
     })),
@@ -337,6 +338,7 @@ export function BalanceAnalysisCardsSection({
             key={card.key}
             label={card.label}
             value={card.value}
+            unit={card.unit}
             detail={card.detail}
             valueVariant={card.valueVariant}
           />

@@ -27,6 +27,7 @@ type MetricTone = "positive" | "neutral" | "warning" | "negative";
 export type DashboardOverviewMetricVM = {
   id: string;
   label: string;
+  caliberLabel: string | null;
   value: Numeric;
   delta: Numeric;
   tone: MetricTone;
@@ -132,6 +133,7 @@ function buildOverviewVM(result: OverviewPayload | undefined): DashboardOverview
     metrics: result.metrics.map((m) => ({
       id: m.id,
       label: m.label,
+      caliberLabel: m.caliber_label ?? null,
       value: m.value,
       delta: m.delta,
       tone: (m.tone as MetricTone) ?? "neutral",

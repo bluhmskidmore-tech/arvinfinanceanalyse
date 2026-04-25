@@ -351,6 +351,8 @@ export function WorkbenchShell() {
   const currentGroupSections = currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
+  const showWorkspaceHeroCard =
+    !isBondAnalysisMinimalShell && (isPortfolioGroup || currentSection.key !== "dashboard");
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
   const bondAnalyticsDatesQuery = useQuery({
@@ -945,7 +947,7 @@ export function WorkbenchShell() {
             ))}
           </section>
         </header>
-        {!isBondAnalysisMinimalShell ? (
+        {showWorkspaceHeroCard ? (
           <header
             style={{
               display: "flex",

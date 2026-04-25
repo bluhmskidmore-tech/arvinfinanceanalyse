@@ -1,5 +1,11 @@
 # IMPLEMENTATION_PLAN.md
 
+## Role / Not for / Current-state pointer
+
+- `Role`: phase and implementation reference plan
+- `Not for`: deciding the current repo-level "start here" path or sole current execution boundary
+- `Current-state pointer`: `AGENTS.md` -> `docs/DOCUMENT_AUTHORITY.md` -> `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
+
 ## 总原则
 
 - 先搭边界，再写公式。
@@ -96,6 +102,10 @@
 - vendor_version / source_version / rule_version 全链路刷新
 
 ## 当前执行要求
+
+- `Role`: reference execution summary kept with the implementation plan
+- `Not for`: acting as the repo-level current-state authority
+- `Current-state pointer`: use `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md` for the current repo-level boundary path, then return here for phase / plan context
 
 当前默认执行边界已切换为 `repo-wide Phase 2（通用正式计算）`。
 

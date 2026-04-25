@@ -14,14 +14,10 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-import pytest
 
 from backend.app.core_finance.attribution_core import (
-    DEFAULT_RESIDUAL_THRESHOLD_BAD,
-    DEFAULT_RESIDUAL_THRESHOLD_WARN,
     DayCountConvention,
     QualityFlag,
-    ReconciliationResult,
     calculate_reconciliation,
     estimate_modified_duration,
     get_adjacent_tenor_buckets,

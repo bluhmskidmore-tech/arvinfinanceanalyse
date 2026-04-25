@@ -238,6 +238,7 @@ Any remaining P1 issue must have:
 
 The following must agree with actual route/test behavior:
 
+- `docs/CURRENT_EFFECTIVE_ENTRYPOINT.md`
 - `docs/REPO_WIDE_PHASE2_CUTOVER_DEFINITION.md`
 - `docs/CURRENT_BOUNDARY_HANDOFF_2026-04-10.md`
 - `docs/V2_V3_PARITY_MATRIX.md`

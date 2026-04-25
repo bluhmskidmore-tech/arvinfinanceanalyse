@@ -24,6 +24,7 @@ import type {
   AdbCategoryItem,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
+  ResultMeta,
 } from "../../../api/contracts";
 import AdbComparisonChart, { type AdbComparisonChartRow } from "./AdbComparisonChart";
 import AdbMonthlyHorizontalChart, {
@@ -170,6 +171,30 @@ function SectionLead(props: {
       <h2 style={sectionTitleStyle}>{props.title}</h2>
       <p style={sectionDescriptionStyle}>{props.description}</p>
     </div>
+  );
+}
+
+function ResultMetaNotice(props: {
+  meta?: ResultMeta;
+  testId: string;
+}) {
+  if (!props.meta) return null;
+  const hasQualityIssue =
+    props.meta.quality_flag !== "ok" || props.meta.fallback_mode !== "none";
+  return (
+    <Alert
+      data-testid={props.testId}
+      type={hasQualityIssue ? "warning" : "info"}
+      showIcon
+      message={[
+        `ADB 后端链路：${props.meta.result_kind}`,
+        props.meta.basis,
+        `source=${props.meta.source_version}`,
+        `rule=${props.meta.rule_version}`,
+        `quality=${props.meta.quality_flag}`,
+        `fallback=${props.meta.fallback_mode}`,
+      ].join(" · ")}
+    />
   );
 }
 
@@ -430,6 +455,10 @@ export default function AverageBalanceView() {
                 {canRunDailyQuery && dailyData ? (
                   <>
                     <Alert type="info" showIcon message={`口径说明：Spot=期末（${dailyData.end_date}）时点规模；Avg=区间日均规模`} />
+                    <ResultMetaNotice
+                      meta={dailyData.result_meta}
+                      testId="adb-daily-result-meta"
+                    />
                     {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
 
                     <Row gutter={[16, 16]}>
@@ -515,6 +544,10 @@ export default function AverageBalanceView() {
 
                 {monthlyData ? (
                   <>
+                    <ResultMetaNotice
+                      meta={monthlyData.result_meta}
+                      testId="adb-monthly-result-meta"
+                    />
                     <Row gutter={[16, 16]}>
                       {[
                         { title: "YTD 日均资产", value: formatYi(monthlyData.ytd_avg_assets) },

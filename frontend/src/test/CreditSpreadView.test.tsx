@@ -218,8 +218,11 @@ describe("CreditSpreadView", () => {
     expect(client.getCreditSpreadAnalysisDetail).toHaveBeenCalledWith("2026-03-31");
 
     expect(screen.getByText("信用债市值")).toBeInTheDocument();
+    expect(screen.getByText("50.00 亿")).toBeInTheDocument();
     expect(screen.getByText("Spread DV01 (万元/bp)")).toBeInTheDocument();
     expect(screen.getByText("加权平均利差（个券）")).toBeInTheDocument();
+    expect(screen.getByText("30.00 亿")).toBeInTheDocument();
+    expect(screen.getByText("-120 万")).toBeInTheDocument();
 
     expect(screen.getByText("利差情景冲击")).toBeInTheDocument();
     expect(screen.getByText("信用债分布")).toBeInTheDocument();
@@ -235,6 +238,7 @@ describe("CreditSpreadView", () => {
 
     expect(screen.getByText("评级迁徙情景")).toBeInTheDocument();
     expect(screen.getByText("mig_aa_to_a")).toBeInTheDocument();
+    expect(screen.getByText("2.00 亿")).toBeInTheDocument();
 
     expect(screen.getByText("信用集中度")).toBeInTheDocument();
   });

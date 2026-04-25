@@ -7,7 +7,6 @@ from backend.app.schemas.common_numeric import Numeric
 from backend.app.schemas.pnl_attribution import (
     AdvancedAttributionSummary,
     CampisiAttributionItem,
-    CampisiAttributionPayload,
     CarryRollDownItem,
     CarryRollDownPayload,
     KRDAttributionBucket,
@@ -15,10 +14,7 @@ from backend.app.schemas.pnl_attribution import (
     PnlAttributionAnalysisSummary,
     PnlCompositionItem,
     PnlCompositionPayload,
-    PnlCompositionTrendItem,
     SpreadAttributionItem,
-    SpreadAttributionPayload,
-    TPLMarketCorrelationPayload,
     TPLMarketDataPoint,
     VolumeRateAttributionItem,
     VolumeRateAttributionPayload,

@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
-import type { ApiEnvelope, BalanceAnalysisOverviewPayload } from "../../../api/contracts";
+import type { ApiEnvelope, BalanceAnalysisOverviewPayload, ResultMeta } from "../../../api/contracts";
 import { AlertList } from "../../../components/AlertList";
 import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
@@ -28,6 +28,7 @@ import {
   OPERATIONS_WATCH_ITEMS,
 } from "../business-analysis/businessAnalysisWorkbenchMocks";
 import { KpiCard } from "../components/KpiCard";
+import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 
 const DISPLAY_FONT =
   '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
@@ -414,14 +415,7 @@ function OperationsMetricCard({
 }
 
 function formatOverviewNumber(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  const parsed = Number.parseFloat(String(raw).replace(/,/g, ""));
-  if (!Number.isFinite(parsed)) {
-    return String(raw);
-  }
-  return parsed.toLocaleString("zh-CN");
+  return formatBalanceAmountToYiFromYuan(raw);
 }
 
 function buildStatusCardContent(input: {
@@ -483,6 +477,15 @@ function buildPnlRefreshStatusText(payload: {
   ]
     .filter(Boolean)
     .join(" / ");
+}
+
+/** Page-local: 受治理 result_meta 一行，不扩展指标含义，只标明 basis / 质量 / 供应商 / 回退。 */
+function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
+  if (!meta) {
+    return "无 result_meta";
+  }
+  const fb = meta.fallback_mode !== "none" ? ` · 回退 ${meta.fallback_mode}` : "";
+  return `basis ${meta.basis} · 质量 ${meta.quality_flag} · 供应 ${meta.vendor_status}${fb}`;
 }
 
 export default function OperationsAnalysisPage() {
@@ -624,8 +627,26 @@ export default function OperationsAnalysisPage() {
   const formalFxStatusCard = buildStatusCardContent({
     isError: fxFormalStatusQuery.isError,
     value: `${fxFormalStatus?.materialized_count ?? 0} / ${fxFormalStatus?.candidate_count ?? 0}`,
-    detail: `最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} / 沿用前值数量 ${fxFormalStatus?.carry_forward_count ?? 0}`,
+    detail: `物化/候选（对账）${fxFormalStatus?.materialized_count ?? 0} / ${
+      fxFormalStatus?.candidate_count ?? 0
+    } · 最新交易日 ${fxFormalStatus?.latest_trade_date ?? "待定"} · 沿用前值 ${
+      fxFormalStatus?.carry_forward_count ?? 0
+    }`,
   });
+  const balanceOverviewMeta = balanceOverviewQuery.data?.result_meta;
+  const sourceHeadlineDetail = sourceQuery.isError
+    ? sourceStatusCard.detail
+    : `${sourceStatusCard.detail} · ${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
+  const macroQueriesFailed = macroCatalogQuery.isError || macroLatestQuery.isError;
+  const macroHeadlineDetail = macroQueriesFailed
+    ? macroStatusCard.detail
+    : `${macroStatusCard.detail} · ${formatResultMetaProvenance(macroLatestQuery.data?.result_meta)}`;
+  const newsHeadlineDetail = newsQuery.isError
+    ? newsStatusCard.detail
+    : `${newsStatusCard.detail} · ${formatResultMetaProvenance(newsQuery.data?.result_meta)}`;
+  const formalFxHeadlineDetail = fxFormalStatusQuery.isError
+    ? formalFxStatusCard.detail
+    : `${formalFxStatusCard.detail} · ${formatResultMetaProvenance(fxFormalStatusQuery.data?.result_meta)}`;
 
   const recommendation = useMemo(() => {
     const hasCriticalError =
@@ -691,66 +712,79 @@ export default function OperationsAnalysisPage() {
   ]);
 
   const operationsHeadlineCards = useMemo(
-    () => [
+    () => {
+      const balanceErr = balanceOverviewQuery.isError;
+      const balanceProv = formatResultMetaProvenance(balanceOverviewMeta);
+      const balanceDetail = balanceErr
+        ? "正式余额读面：查询失败"
+        : `正式余额读面（亿元口径）· ${balanceProv}`;
+      const detailRows = balanceOverviewQuery.data?.result?.detail_row_count ?? 0;
+      const summaryDetail = balanceErr
+        ? "正式读面行数：查询失败"
+        : `正式读面 · 汇总/明细 行数 · ${balanceProv}`;
+      return [
       {
         title: "Market Value",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
         unit: "亿元",
-        detail: "governed balance overview",
+        detail: balanceDetail,
       },
       {
         title: "Amortized Cost",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
         unit: "亿元",
-        detail: "governed balance overview",
+        detail: balanceDetail,
       },
       {
         title: "Accrued Interest",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
         unit: "亿元",
-        detail: "governed balance overview",
+        detail: balanceDetail,
       },
       {
         title: "Source Batches",
         value: sourceStatusCard.value,
-        detail: sourceStatusCard.detail,
+        detail: sourceHeadlineDetail,
       },
       {
         title: "Macro Latest",
         value: macroStatusCard.value,
-        detail: macroStatusCard.detail,
+        detail: macroHeadlineDetail,
       },
       {
         title: "Formal FX Coverage",
         value: formalFxStatusCard.value,
-        detail: formalFxStatusCard.detail,
+        detail: formalFxHeadlineDetail,
         status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
       },
       {
         title: "News Events",
         value: newsStatusCard.value,
-        detail: newsStatusCard.detail,
+        detail: newsHeadlineDetail,
       },
       {
         title: "Summary Rows",
         value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
-        detail: `detail ${balanceOverviewQuery.data?.result.detail_row_count ?? 0} rows`,
+        detail: `${summaryDetail}（明细 ${detailRows} 行）`,
       },
-    ],
+    ];
+    },
     [
+      balanceOverviewMeta,
       balanceOverviewQuery.data?.result?.detail_row_count,
       balanceOverviewQuery.data?.result?.summary_row_count,
       balanceOverviewQuery.data?.result?.total_accrued_interest_amount,
       balanceOverviewQuery.data?.result?.total_amortized_cost_amount,
       balanceOverviewQuery.data?.result?.total_market_value_amount,
-      formalFxStatusCard.detail,
+      balanceOverviewQuery.isError,
+      formalFxHeadlineDetail,
       formalFxStatusCard.value,
       fxFormalStatusQuery.isError,
-      macroStatusCard.detail,
+      macroHeadlineDetail,
       macroStatusCard.value,
-      newsStatusCard.detail,
+      newsHeadlineDetail,
       newsStatusCard.value,
-      sourceStatusCard.detail,
+      sourceHeadlineDetail,
       sourceStatusCard.value,
     ],
   );
@@ -841,6 +875,12 @@ export default function OperationsAnalysisPage() {
           />
         ))}
       </div>
+      <p data-testid="operations-hero-provenance">
+        {client.mode === "real"
+          ? "链路：真实只读 API。"
+          : "链路：本地演示（mock 客户端，非生产）。"}
+        首屏混排为：正式余额读面（市值/摊余/应计/行数列）、分析类只读（源批次/宏观/新闻）与正式 FX 物化/候选对账。下方「本期关注事项」「近期经营日历」为静态示例；「期限与集中度」为硬编码示意，非受治理读面。
+      </p>
       </div>
 
       <div style={sectionBlockStyle}>
@@ -884,11 +924,16 @@ export default function OperationsAnalysisPage() {
           loading={balanceSummaryQuery.isLoading}
           error={balanceSummaryQuery.isError}
           onRetry={() => void balanceSummaryQuery.refetch()}
+          readProvenanceLine={
+            balanceSummaryQuery.isError || !balanceSummaryQuery.data
+              ? undefined
+              : `本表受治理元数据：${formatResultMetaProvenance(balanceSummaryQuery.data.result_meta)}`
+          }
         />
-        <OperationsPanel title="本期关注事项">
+        <OperationsPanel title="本期关注事项（静态示例）">
           <AlertList items={OPERATIONS_WATCH_ITEMS} />
         </OperationsPanel>
-        <OperationsPanel title="近期经营日历">
+        <OperationsPanel title="近期经营日历（静态示例）">
           <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
         </OperationsPanel>
       </div>
@@ -1070,7 +1115,6 @@ export default function OperationsAnalysisPage() {
       </OperationsPanel>
 
       <Collapse
-        style={{ marginTop: 28 }}
         bordered={false}
         defaultActiveKey={["ops-sources"]}
         items={[
@@ -1084,7 +1128,7 @@ export default function OperationsAnalysisPage() {
                     <KpiCard
                       title="数据源批次"
                       value={sourceStatusCard.value}
-                      detail={sourceStatusCard.detail}
+                      detail={sourceHeadlineDetail}
                       valueVariant="text"
                       status={sourceQuery.isError ? "warning" : "normal"}
                     />
@@ -1093,7 +1137,7 @@ export default function OperationsAnalysisPage() {
                     <KpiCard
                       title="宏观最新点位"
                       value={macroStatusCard.value}
-                      detail={macroStatusCard.detail}
+                      detail={macroHeadlineDetail}
                       valueVariant="text"
                       status={macroCatalogQuery.isError || macroLatestQuery.isError ? "warning" : "normal"}
                     />
@@ -1102,7 +1146,7 @@ export default function OperationsAnalysisPage() {
                     <KpiCard
                       title="新闻事件"
                       value={newsStatusCard.value}
-                      detail={newsStatusCard.detail}
+                      detail={newsHeadlineDetail}
                       valueVariant="text"
                       status={newsQuery.isError ? "warning" : "normal"}
                     />
@@ -1111,7 +1155,7 @@ export default function OperationsAnalysisPage() {
                     <KpiCard
                       title="正式 FX 状态"
                       value={formalFxStatusCard.value}
-                      detail={formalFxStatusCard.detail}
+                      detail={formalFxHeadlineDetail}
                       valueVariant="text"
                       status={fxFormalStatusQuery.isError ? "warning" : "normal"}
                     />

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import "../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
 import type { ColDef, ValueFormatterParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";

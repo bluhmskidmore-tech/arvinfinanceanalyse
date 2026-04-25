@@ -14,14 +14,13 @@ import { PageSectionLead } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { tableShellStyle, actionButtonStyle } from "../pages/BalanceAnalysisPage.styles";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
+import {
+  formatBalanceAmountToYiFromYuan,
+  formatBalanceGridThousandsValue,
+} from "../pages/balanceAnalysisPageModel";
 
 function thousandsValueFormatter(params: ValueFormatterParams) {
-  const v = params.value;
-  if (v === null || v === undefined || v === "") return "—";
-  const raw = String(v).replace(/,/g, "");
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return String(v);
-  return n.toLocaleString("zh-CN");
+  return formatBalanceGridThousandsValue(params.value);
 }
 
 const balanceAnalysisGridDefaultColDef: ColDef = {
@@ -324,9 +323,9 @@ export function BalanceAnalysisTableSection({
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}
-        {String(overview?.total_market_value_amount ?? "0.00")}{" "}
-        {String(overview?.total_amortized_cost_amount ?? "0.00")}{" "}
-        {String(overview?.total_accrued_interest_amount ?? "0.00")}
+        {formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount)}{" "}
+        {formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount)}
       </div>
 
       <div style={{ marginTop: designTokens.space[6] }}>

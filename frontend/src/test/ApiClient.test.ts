@@ -21,6 +21,47 @@ describe("createApiClient", () => {
     expect(payload.result_meta.fallback_mode).toBe("none");
   });
 
+  it("keeps mock balance-analysis overview, detail, basis, and summary amounts consistent", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const overview = await client.getBalanceAnalysisOverview({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    const summary = await client.getBalanceAnalysisSummary({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+      limit: 10,
+      offset: 0,
+    });
+    const basis = await client.getBalanceAnalysisSummaryByBasis({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+
+    expect(summary.result.rows).toHaveLength(3);
+    expect(overview.result.summary_row_count).toBe(summary.result.total_rows);
+    expect(overview.result.detail_row_count).toBe(6);
+    expect(overview.result.total_market_value_amount).toBe("120200000000.00");
+    expect(overview.result.total_amortized_cost_amount).toBe("112300000000.00");
+    expect(overview.result.total_accrued_interest_amount).toBe("7040000000.00");
+
+    const detail = await client.getBalanceAnalysisDetail({
+      reportDate: "2025-12-31",
+      positionScope: "all",
+      currencyBasis: "CNY",
+    });
+    expect(detail.result.details).toHaveLength(6);
+    expect(detail.result.summary).toHaveLength(summary.result.rows.length);
+    expect(detail.result.summary[0]?.market_value_amount).toBe("72000000000.00");
+    expect(detail.result.summary[1]?.market_value_amount).toBe("7200000000.00");
+    expect(detail.result.summary[2]?.market_value_amount).toBe("41000000000.00");
+    expect(basis.result.rows).toHaveLength(summary.result.rows.length);
+    expect(basis.result.rows[2]?.market_value_amount).toBe("41000000000.00");
+  });
+
   it("keeps mock manual-adjustment current state reduced while exposing full timeline", async () => {
     const client = createApiClient({ mode: "mock" });
 
@@ -256,6 +297,8 @@ describe("createApiClient", () => {
 
     expect(payload).not.toHaveProperty("assets");
     expect(payload).not.toHaveProperty("liabilities");
+    expect(payload.result_meta?.result_kind).toBe("adb.comparison");
+    expect(payload.result_meta?.source_version).toBe("sv_adb");
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",
@@ -1374,7 +1417,7 @@ describe("createApiClient", () => {
 
     expect(filtered.result.total_rows).toBe(1);
     expect(filtered.result.events[0]?.topic_code).toBe("S888010007API");
-    expect(paged.result.total_rows).toBe(3);
+    expect(paged.result.total_rows).toBe(8);
     expect(paged.result.events[0]?.event_key).toBe("ce_mock_003");
     expect(errorOnly.result.total_rows).toBe(1);
     expect(errorOnly.result.events[0]?.error_code).toBe(101);
@@ -2801,6 +2844,246 @@ describe("createApiClient", () => {
     });
 
     expect(exported.filename).toBe("balance-analysis-summary.csv");
+  });
+
+  it("returns mock research calendar events for the supply and auction feed", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const events = await client.getResearchCalendarEvents({ reportDate: "2026-03-31" });
+
+    expect(events.length).toBeGreaterThan(0);
+    expect(events[0]).toEqual(
+      expect.objectContaining({
+        id: "rc_supply_001",
+        date: "2026-03-31",
+        title: "国债净融资节奏",
+        kind: "supply",
+        severity: "low",
+        amount_label: "净融资 180 亿元",
+        note: "供给节奏",
+      }),
+    );
+    const auction = events.find((e) => e.kind === "auction");
+    expect(auction).toEqual(
+      expect.objectContaining({
+        id: "rc_auction_002",
+        kind: "auction",
+        severity: "high",
+        amount_label: "420 亿元",
+        note: "国开行",
+      }),
+    );
+  });
+
+  it("uses real mode to read research calendar events for a report date", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_supply_auction_calendar",
+          basis: "analytical",
+          result_kind: "calendar.supply_auctions",
+          formal_use_allowed: false,
+          source_version: "sv_supply_auction_test",
+          vendor_version: "vv_supply_auction_test",
+          rule_version: "rv_supply_auction_v1",
+          cache_version: "cv_supply_auction_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-23T07:00:00Z",
+        },
+        result: {
+          series_id: "research.calendar.supply_auction",
+          total_rows: 1,
+          limit: 50,
+          offset: 0,
+          events: [
+            {
+              event_id: "rc_auction_001",
+              series_id: "research.calendar.supply_auction",
+              event_date: "2026-03-31",
+              event_kind: "auction",
+              title: "政策性金融债招标",
+              source_family: "research_calendar",
+              severity: "high",
+              issuer: "国开行",
+              instrument_type: "政策性金融债",
+              term_label: "10Y",
+              amount: 420,
+              amount_unit: "亿元",
+              currency: "CNY",
+              status: "scheduled",
+              headline_text: null,
+              headline_url: null,
+              headline_published_at: null,
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const events = await client.getResearchCalendarEvents({ reportDate: "2026-03-31" });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "rc_auction_001",
+        date: "2026-03-31",
+        title: "政策性金融债招标",
+        kind: "auction",
+        severity: "high",
+        amount_label: "420 亿元",
+        note: "国开行 · 10Y · scheduled | 政策性金融债 | 币种 CNY",
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/calendar/supply-auctions?end_date=2026-03-31",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("maps forward-window research calendar requests with start_date and end_date while preserving event mapping", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_supply_auction_window",
+          basis: "analytical",
+          result_kind: "calendar.supply_auctions",
+          formal_use_allowed: false,
+          source_version: "sv_supply_auction_test",
+          vendor_version: "vv_supply_auction_test",
+          rule_version: "rv_supply_auction_v1",
+          cache_version: "cv_supply_auction_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-23T07:00:00Z",
+        },
+        result: {
+          series_id: "research.calendar.supply_auction",
+          total_rows: 1,
+          limit: 50,
+          offset: 0,
+          events: [
+            {
+              event_id: "rc_macro_001",
+              series_id: "research.calendar.supply_auction",
+              event_date: "2026-04-02",
+              event_kind: "supply",
+              title: "Quarter-opening net supply",
+              source_family: "research_calendar",
+              severity: "medium",
+              issuer: "MOF",
+              instrument_type: "Treasury",
+              term_label: "5Y",
+              amount: 180,
+              amount_unit: "bn",
+              currency: "CNY",
+              status: "scheduled",
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const events = await client.getResearchCalendarEvents({
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "rc_macro_001",
+        date: "2026-04-02",
+        title: "Quarter-opening net supply",
+        kind: "supply",
+        severity: "medium",
+        amount_label: "180 bn",
+        note: "MOF · 5Y · scheduled | Treasury | 币种 CNY",
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/calendar/supply-auctions?start_date=2026-04-01&end_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
+  it("returns a clearly labeled NCD funding proxy in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+    const envelope = await client.getNcdFundingProxy();
+    expect(envelope.result.is_actual_ncd_matrix).toBe(false);
+    expect(envelope.result.proxy_label).toContain("not NCD");
+    expect(envelope.result.warnings.some((w) => /proxy/i.test(w) || /NCD|matrix/i.test(w))).toBe(
+      true,
+    );
+  });
+
+  it("uses real mode to fetch NCD funding proxy", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_ncd_proxy",
+          basis: "analytical",
+          result_kind: "market_data.ncd_proxy",
+          formal_use_allowed: false,
+          source_version: "sv_ncd",
+          vendor_version: "vv_ncd",
+          rule_version: "rv_ncd_proxy",
+          cache_version: "cv_ncd",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-24T00:00:00Z",
+        },
+        result: {
+          as_of_date: "2026-04-24",
+          proxy_label: "Test proxy",
+          is_actual_ncd_matrix: false,
+          rows: [],
+          warnings: ["Not the issuance matrix."],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const envelope = await client.getNcdFundingProxy();
+    expect(envelope.result.is_actual_ncd_matrix).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/market-data/ncd-funding-proxy",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
   });
 
   it("reads workbook right-rail sections from the existing workbook endpoint", async () => {

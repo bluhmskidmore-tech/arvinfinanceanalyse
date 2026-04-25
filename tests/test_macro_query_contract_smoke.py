@@ -189,6 +189,241 @@ def test_choice_macro_latest_supports_legacy_catalog_schema(
     get_settings.cache_clear()
 
 
+def test_choice_macro_latest_reads_persisted_market_data_categories(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-persisted-categories.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table market_data_series_category (
+              series_id varchar,
+              category_key varchar,
+              category_label varchar,
+              source_surface varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              policy_note varchar,
+              catalog_version varchar,
+              batch_id varchar,
+              updated_at varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                '2026-04-09',
+                1.82,
+                'daily',
+                'pct',
+                'sv_choice_macro_20260409',
+                'vv_choice_batch_b',
+                'rv_choice_macro_thin_slice_v1',
+                'ok',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'cn_repo_7d',
+                'CN Repo 7D',
+                'choice',
+                'vv_choice_batch_b',
+                'daily',
+                'pct'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into market_data_series_category values
+              (
+                'cn_repo_7d',
+                'fallback',
+                'Fallback latest-only series',
+                'choice_macro',
+                'latest',
+                'single',
+                'persisted category read path',
+                '2026-04-11.choice-macro.v2',
+                'fallback_latest_single',
+                '2026-04-09T14:00:00Z',
+                'choice_macro_refresh:2026-04-09T14:00:00Z'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+    row = payload["result"]["series"][0]
+    assert row["series_id"] == "cn_repo_7d"
+    assert row["refresh_tier"] == "fallback"
+    assert row["fetch_mode"] == "latest"
+    assert row["fetch_granularity"] == "single"
+    assert row["policy_note"] == "persisted category read path"
+    get_settings.cache_clear()
+
+
+def test_choice_macro_latest_filters_persisted_market_data_categories(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-category-filter.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table market_data_series_category (
+              series_id varchar,
+              category_key varchar,
+              category_label varchar,
+              source_surface varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              policy_note varchar,
+              catalog_version varchar,
+              batch_id varchar,
+              updated_at varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              ('M_STABLE', 'Stable Series', '2026-04-09', 1.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run'),
+              ('M_FALLBACK', 'Fallback Series', '2026-04-09', 2.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run'),
+              ('M_ISOLATED', 'Isolated Series', '2026-04-09', 3.0, 'daily', 'pct', 'sv', 'vv', 'rv', 'ok', 'run')
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              ('M_STABLE', 'Stable Series', 'choice', 'vv', 'daily', 'pct'),
+              ('M_FALLBACK', 'Fallback Series', 'choice', 'vv', 'daily', 'pct'),
+              ('M_ISOLATED', 'Isolated Series', 'choice', 'vv', 'daily', 'pct')
+            """
+        )
+        conn.execute(
+            """
+            insert into market_data_series_category values
+              ('M_STABLE', 'stable', 'Stable governed series', 'choice_macro', 'date_slice', 'batch', 'stable category', 'catalog-v1', 'stable_batch', '2026-04-09T14:00:00Z', 'run'),
+              ('M_FALLBACK', 'fallback', 'Fallback latest-only series', 'choice_macro', 'latest', 'single', 'fallback category', 'catalog-v1', 'fallback_single', '2026-04-09T14:00:00Z', 'run'),
+              ('M_ISOLATED', 'isolated', 'Isolated vendor-pending series', 'choice_macro', 'latest', 'single', 'isolated category', 'catalog-v1', 'isolated_single', '2026-04-09T14:00:00Z', 'run')
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+
+    default_response = client.get("/ui/macro/choice-series/latest")
+    fallback_response = client.get("/ui/macro/choice-series/latest", params={"category": "fallback"})
+    isolated_response = client.get("/ui/macro/choice-series/latest", params={"category": "isolated"})
+    stable_response = client.get("/ui/macro/choice-series/latest", params={"category": "stable"})
+    invalid_response = client.get("/ui/macro/choice-series/latest", params={"category": "duration"})
+
+    assert default_response.status_code == 200
+    assert fallback_response.status_code == 200
+    assert isolated_response.status_code == 200
+    assert stable_response.status_code == 200
+    assert invalid_response.status_code == 422
+
+    default_payload = default_response.json()
+    fallback_payload = fallback_response.json()
+    isolated_payload = isolated_response.json()
+    stable_payload = stable_response.json()
+
+    assert [item["series_id"] for item in default_payload["result"]["series"]] == [
+        "M_FALLBACK",
+        "M_STABLE",
+    ]
+    assert [item["series_id"] for item in fallback_payload["result"]["series"]] == ["M_FALLBACK"]
+    assert [item["series_id"] for item in isolated_payload["result"]["series"]] == ["M_ISOLATED"]
+    assert [item["series_id"] for item in stable_payload["result"]["series"]] == ["M_STABLE"]
+    assert fallback_payload["result"]["series"][0]["policy_note"] == "fallback category"
+    get_settings.cache_clear()
+
+
 def test_choice_macro_latest_excludes_isolated_rows_and_exposes_policy_fields(
     tmp_path,
     monkeypatch,

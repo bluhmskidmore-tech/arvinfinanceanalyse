@@ -278,4 +278,47 @@ describe("AverageBalanceView", () => {
     expect(await screen.findByText("日均分析加载失败")).toBeInTheDocument();
     expect(screen.queryByText("Spot 总资产")).not.toBeInTheDocument();
   });
+
+  it("surfaces backend result metadata for daily ADB reads", async () => {
+    renderView({
+      async getAdbComparison() {
+        return {
+          report_date: "2026-04-14",
+          start_date: "2026-01-01",
+          end_date: "2026-04-14",
+          num_days: 104,
+          simulated: false,
+          total_spot_assets: 550000000,
+          total_avg_assets: 500000000,
+          total_spot_liabilities: 230000000,
+          total_avg_liabilities: 200000000,
+          asset_yield: 2.55,
+          liability_cost: 1.75,
+          net_interest_margin: 0.8,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+          result_meta: {
+            trace_id: "tr_adb_comparison_live",
+            basis: "analytical" as const,
+            result_kind: "adb.comparison",
+            formal_use_allowed: false,
+            source_version: "sv_live_adb",
+            vendor_version: "vv_none",
+            rule_version: "rv_adb_analysis_v1",
+            cache_version: "cv_adb_analysis_v1",
+            quality_flag: "warning" as const,
+            vendor_status: "ok" as const,
+            fallback_mode: "latest_snapshot" as const,
+            scenario_flag: false,
+            generated_at: "2026-04-14T08:00:00+08:00",
+          },
+        };
+      },
+    });
+
+    const meta = await screen.findByTestId("adb-daily-result-meta");
+    expect(meta).toHaveTextContent("adb.comparison");
+    expect(meta).toHaveTextContent("source=sv_live_adb");
+    expect(meta).toHaveTextContent("fallback=latest_snapshot");
+  });
 });

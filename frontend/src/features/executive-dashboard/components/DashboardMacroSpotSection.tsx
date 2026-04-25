@@ -9,10 +9,41 @@ import { formatNumeric, formatRawAsNumeric } from "../../../utils/format";
 import { DashboardCockpitSection } from "./DashboardCockpitSection";
 import { cockpitInsetCardStyle } from "./DashboardCockpitSection.styles";
 
+const DASHBOARD_SPOT_PRIORITY_SERIES_IDS: ReadonlyArray<readonly string[]> = [
+  ["M001"],
+  ["CA.DR007", "M002", "EMM00167613"],
+  ["M003", "EMM00166458"],
+  ["CA.CN_GOV_10Y", "E1000180", "EMM00166466"],
+  ["CA.US_GOV_10Y", "EMG00001310", "E1003238"],
+  ["CA.CN_US_SPREAD", "EM1"],
+] as const;
+
 function pickSpotSeries(series: ChoiceMacroLatestPoint[]) {
-  return series
-    .filter((point) => (point.refresh_tier ?? "stable") !== "isolated")
-    .slice(0, 6);
+  const candidates = series.filter((point) => (point.refresh_tier ?? "stable") !== "isolated");
+  const selected: ChoiceMacroLatestPoint[] = [];
+  const seen = new Set<string>();
+
+  for (const seriesIds of DASHBOARD_SPOT_PRIORITY_SERIES_IDS) {
+    const point = candidates.find((candidate) => seriesIds.includes(candidate.series_id));
+    if (!point || seen.has(point.series_id)) {
+      continue;
+    }
+    selected.push(point);
+    seen.add(point.series_id);
+  }
+
+  for (const point of candidates) {
+    if (seen.has(point.series_id)) {
+      continue;
+    }
+    selected.push(point);
+    seen.add(point.series_id);
+    if (selected.length >= 6) {
+      break;
+    }
+  }
+
+  return selected.slice(0, 6);
 }
 
 function isIndexUnit(unit: string): boolean {

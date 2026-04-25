@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "debt:audit": "node ../scripts/audit_frontend_debt.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

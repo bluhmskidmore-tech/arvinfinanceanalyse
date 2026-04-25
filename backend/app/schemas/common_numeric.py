@@ -83,15 +83,60 @@ def numeric_from_raw(
     if raw is None:
         return null_numeric(unit=unit, precision=precision, sign_aware=sign_aware)
 
-    if sign_aware and signed_format and raw >= 0:
-        display = f"+{raw:,.{precision}f}"
-    else:
-        display = f"{raw:,.{precision}f}"
+    raw_value = float(raw)
+    normalized_raw = _normalize_numeric_raw(raw_value, unit)
+    display = _format_numeric_display(
+        raw=normalized_raw,
+        unit=unit,
+        precision=precision,
+        sign_aware=sign_aware,
+        signed_format=signed_format,
+    )
 
     return Numeric(
-        raw=float(raw),
+        raw=normalized_raw,
         unit=unit,
         display=display,
         precision=precision,
         sign_aware=sign_aware,
     )
+
+
+def _normalize_numeric_raw(raw: float, unit: NumericUnit) -> float:
+    if unit == "pct" and abs(raw) >= 1.0:
+        return raw / 100.0
+    return raw
+
+
+def _format_numeric_display(
+    *,
+    raw: float,
+    unit: NumericUnit,
+    precision: int,
+    sign_aware: bool,
+    signed_format: bool,
+) -> str:
+    if unit == "pct":
+        value = raw * 100.0
+        return _format_signed_number(value, precision, sign_aware, signed_format, suffix="%")
+    if unit == "bp":
+        return _format_signed_number(raw, precision, sign_aware, signed_format, suffix=" bp")
+    if unit == "yi":
+        return _format_signed_number(raw, precision, sign_aware, signed_format, suffix=" 亿")
+    if unit == "count":
+        return f"{raw:,.0f}"
+    if unit == "dv01":
+        return f"{raw:,.{precision}f}"
+    return _format_signed_number(raw, precision, sign_aware, signed_format)
+
+
+def _format_signed_number(
+    value: float,
+    precision: int,
+    sign_aware: bool,
+    signed_format: bool,
+    suffix: str = "",
+) -> str:
+    if sign_aware and signed_format and value >= 0:
+        return f"+{value:,.{precision}f}{suffix}"
+    return f"{value:,.{precision}f}{suffix}"

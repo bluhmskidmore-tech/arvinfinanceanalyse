@@ -12,6 +12,17 @@ type DashboardBondCounterpartySectionProps = {
   reportDate: string;
 };
 
+function buildYtdRange(reportDate: string) {
+  const date = reportDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return null;
+  }
+  return {
+    startDate: `${date.slice(0, 4)}-01-01`,
+    endDate: date,
+  };
+}
+
 function toState(
   enabled: boolean,
   isLoading: boolean,
@@ -79,14 +90,21 @@ export function DashboardBondCounterpartySection({
   reportDate,
 }: DashboardBondCounterpartySectionProps) {
   const client = useApiClient();
-  const date = reportDate.trim();
-  const enabled = Boolean(date);
+  const range = useMemo(() => buildYtdRange(reportDate), [reportDate]);
+  const date = range?.endDate ?? "";
+  const enabled = Boolean(range);
   const query = useQuery({
-    queryKey: ["dashboard", "bond-counterparty-top5", client.mode, date],
+    queryKey: [
+      "dashboard",
+      "bond-counterparty-top5",
+      client.mode,
+      range?.startDate ?? "",
+      range?.endDate ?? "",
+    ],
     queryFn: () =>
       client.getPositionsCounterpartyBonds({
-        startDate: date,
-        endDate: date,
+        startDate: range!.startDate,
+        endDate: range!.endDate,
         topN: 5,
         page: 1,
         pageSize: 5,

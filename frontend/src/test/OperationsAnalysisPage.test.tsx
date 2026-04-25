@@ -1,6 +1,6 @@
 import { createElement, useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
 import { vi } from "vitest";
@@ -268,8 +268,8 @@ describe("OperationsAnalysisPage", () => {
       expect(screen.getByTestId("operations-entry-balance-report-date")).toHaveTextContent(
         "2025-12-31",
       );
-      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("720");
-      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("792");
+      expect(screen.getByTestId("operations-entry-balance-amortized")).toHaveTextContent("1,123");
+      expect(screen.getByTestId("operations-entry-balance-market-value")).toHaveTextContent("1,202");
     });
     await expandOperationsDataSourcesPanel(user);
     await waitFor(() => {
@@ -309,7 +309,7 @@ describe("OperationsAnalysisPage", () => {
     expect(screen.getByText(/粒度\s+daily/)).toBeInTheDocument();
     expect(screen.getAllByText(/规则 rv_source_preview_v1/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/频率 daily/)).toBeInTheDocument();
-    expect(screen.getByText(/质量 ok/)).toBeInTheDocument();
+    expect(screen.getByText(/频率 daily/)).toHaveTextContent(/质量 ok/);
     expect(screen.getByTestId("operations-news-meta-evt-001")).toHaveTextContent("sectornews");
 
     await waitFor(() => {
@@ -592,23 +592,20 @@ describe("OperationsAnalysisPage", () => {
     await screen.findByTestId("operations-entry-balance-section");
     expect(await screen.findByTestId("operations-business-kpis")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-conclusion-grid")).toBeInTheDocument();
-    expect(await screen.findByTestId("operations-contribution-grid")).toBeInTheDocument();
+    const contributionGrid = await screen.findByTestId("operations-contribution-grid");
+    expect(contributionGrid).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(contributionGrid).getByText("240001.IB")).toBeInTheDocument();
+      expect(contributionGrid).toHaveTextContent("720.00");
+      expect(contributionGrid).toHaveTextContent("410.00");
+      expect(contributionGrid).not.toHaveTextContent("72000000000.00");
+    });
     expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
-    return;
-
-    expect(
-      screen.getByText(
-        "本页 wave 1 只保留受控证据条、正式专题入口和一个由实时查询状态生成的判断建议，不再在首页混排硬编码 KPI、mock 经营事项或静态业务结论。",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "当前页上半区聚焦经营结论、收益成本桥和质量观察；下半区保留数据源预览、宏观观察、新闻事件、正式 FX 状态和 PnL 刷新入口。所有正式数值均以后端契约为准。",
-      ),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByTestId("operations-business-kpis")).not.toBeInTheDocument();
-    expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
+    const heroProvenance = await screen.findByTestId("operations-hero-provenance");
+    expect(heroProvenance).toHaveTextContent("物化/候选对账");
+    expect(heroProvenance).toHaveTextContent("静态示例");
+    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("basis formal");
   });
 
   it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {

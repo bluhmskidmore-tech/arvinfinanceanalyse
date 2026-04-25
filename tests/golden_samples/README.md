@@ -27,5 +27,6 @@ Current first-batch sample packs:
 - `GS-EXEC-OVERVIEW-A`
 - `GS-EXEC-PNL-ATTR-A`
 - `GS-EXEC-SUMMARY-A`
+- `GS-PROD-CAT-PNL-A`
 - `GS-BRIDGE-WARN-B`
 - `GS-RISK-WARN-B`

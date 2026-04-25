@@ -727,7 +727,8 @@ def _build_adjustment_csv(
         values = []
         for header in headers:
             value = str(getattr(row, header, "") or "")
-            values.append(f'"{value.replace("\"", "\"\"")}"')
+            escaped = value.replace('"', '""')
+            values.append(f'"{escaped}"')
         return ",".join(values)
 
     sections = [

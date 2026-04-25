@@ -84,6 +84,9 @@ const PlatformConfigPage = lazy(
 );
 const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
+const DecisionItemsPage = lazy(
+  () => import("../features/decision-items/pages/DecisionItemsPage"),
+);
 
 function routeElement(element: ReactNode) {
   return (
@@ -149,6 +152,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<BalanceAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/decision-items") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<DecisionItemsPage />),
       };
     }
 
@@ -333,6 +343,10 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "market",
         element: <Navigate to="/market-data" replace />,
+      },
+      {
+        path: "cross-asset-drivers",
+        element: routeElement(<CrossAssetPage />),
       },
       {
         path: "assets",

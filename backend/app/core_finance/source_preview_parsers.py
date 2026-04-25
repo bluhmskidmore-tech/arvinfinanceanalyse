@@ -4,8 +4,6 @@ import hashlib
 from pathlib import Path
 
 import xlrd
-from openpyxl import load_workbook
-
 from backend.app.schemas.source_preview import (
     NonstdPnlPreviewRow,
     PnlPreviewRow,
@@ -19,6 +17,7 @@ from backend.app.services.source_rules import (
     classify_zqtz_preview,
     describe_source_file,
 )
+from openpyxl import load_workbook
 
 RULE_VERSION = "rv_phase1_source_preview_v1"
 
@@ -230,7 +229,7 @@ def _zqtz_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) 
     rows = [
         {
             "ingest_batch_id": str(row_record["ingest_batch_id"]),
-            "row_locator": int(row_record["row_locator"]),
+            "row_locator": _row_locator_value(row_record),
             "trace_step": 1,
             "field_name": ZQTZ_BUSINESS_TYPE1,
             "field_value": _text(raw_row, ZQTZ_BUSINESS_TYPE1),
@@ -243,7 +242,7 @@ def _zqtz_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) 
         rows.append(
             {
                 "ingest_batch_id": str(row_record["ingest_batch_id"]),
-                "row_locator": int(row_record["row_locator"]),
+                "row_locator": _row_locator_value(row_record),
                 "trace_step": 2,
                 "field_name": ZQTZ_BOND_CODE,
                 "field_value": _text(raw_row, ZQTZ_BOND_CODE),
@@ -255,7 +254,7 @@ def _zqtz_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) 
     rows.append(
         {
             "ingest_batch_id": str(row_record["ingest_batch_id"]),
-            "row_locator": int(row_record["row_locator"]),
+            "row_locator": _row_locator_value(row_record),
             "trace_step": 3,
             "field_name": "asset_group_map",
             "field_value": str(row_record["business_type_final"]),
@@ -281,7 +280,7 @@ def _tyw_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) -
     return [
         {
             "ingest_batch_id": str(row_record["ingest_batch_id"]),
-            "row_locator": int(row_record["row_locator"]),
+            "row_locator": _row_locator_value(row_record),
             "trace_step": trace_step,
             "field_name": field_name,
             "field_value": _text(raw_row, field_name),
@@ -302,7 +301,7 @@ def _pnl_trace_rows(raw_row: dict[str, object], row_record: dict[str, object]) -
     return [
         {
             "ingest_batch_id": str(row_record["ingest_batch_id"]),
-            "row_locator": int(row_record["row_locator"]),
+            "row_locator": _row_locator_value(row_record),
             "trace_step": trace_step,
             "field_name": field_name,
             "field_value": _text(raw_row, field_name),
@@ -323,7 +322,7 @@ def _nonstd_pnl_trace_rows(raw_row: dict[str, object], row_record: dict[str, obj
     return [
         {
             "ingest_batch_id": str(row_record["ingest_batch_id"]),
-            "row_locator": int(row_record["row_locator"]),
+            "row_locator": _row_locator_value(row_record),
             "trace_step": trace_step,
             "field_name": field_name,
             "field_value": _text(raw_row, field_name),
@@ -340,3 +339,7 @@ def _text(row: dict[str, object], key: str) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _row_locator_value(row_record: dict[str, object]) -> int:
+    return int(str(row_record["row_locator"]))

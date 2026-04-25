@@ -52,6 +52,7 @@ describe("workbench navigation mocks", () => {
       "operations-analysis",
       "bond-analysis",
       "cross-asset",
+      "decision-items",
       "team-performance",
       "market-data",
       "platform-config",
@@ -152,12 +153,13 @@ describe("workbench navigation mocks", () => {
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
   });
 
-  it("keeps decision-items outside the live primary navigation", () => {
+  it("promotes decision-items into the live primary navigation as a temporary exception", () => {
     const section = workbenchNavigation.find((s) => s.key === "decision-items");
-    expect(section?.readiness).toBe("placeholder");
-    expect(section?.readinessLabel).toBe("Reserved");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(true);
+    expect(section?.readiness).toBe("live");
+    expect(section?.readinessLabel).toBe("Temporary");
+    expect(section?.governanceStatus).toBe("temporary-exception");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(false);
   });
 
   it("keeps reports-center outside the live primary navigation", () => {

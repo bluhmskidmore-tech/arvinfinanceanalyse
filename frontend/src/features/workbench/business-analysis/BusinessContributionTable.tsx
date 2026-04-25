@@ -2,12 +2,10 @@ import { Link } from "react-router-dom";
 
 import type { BalanceAnalysisTableRow } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
+import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 
 function formatCell(raw: string | number | null | undefined): string {
-  if (raw === null || raw === undefined || raw === "") {
-    return "—";
-  }
-  return String(raw);
+  return formatBalanceAmountToYiFromYuan(raw);
 }
 
 export type BusinessContributionTableProps = {
@@ -16,6 +14,8 @@ export type BusinessContributionTableProps = {
   loading: boolean;
   error: boolean;
   onRetry?: () => void;
+  /** 受治理 result_meta 一行，由页面注入；不新增指标口径解释。 */
+  readProvenanceLine?: string;
 };
 
 export function BusinessContributionTable({
@@ -24,6 +24,7 @@ export function BusinessContributionTable({
   loading,
   error,
   onRetry,
+  readProvenanceLine,
 }: BusinessContributionTableProps) {
   return (
     <SectionCard
@@ -32,15 +33,25 @@ export function BusinessContributionTable({
       error={error}
       onRetry={onRetry}
       extra={
-        <Link to="/balance-analysis" style={{ fontWeight: 600 }} aria-label="进入资产负债分析">
-          进入资产负债分析
+        <Link to="/balance-analysis" aria-label="进入资产负债分析">
+          <strong>进入资产负债分析</strong>
         </Link>
       }
     >
       {reportDate ? (
-        <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}>
+        <p
+          data-testid="operations-contribution-table-provenance"
+          style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}
+        >
           报告日 <strong>{reportDate}</strong>，数据来自{" "}
-          <code style={{ fontSize: 12 }}>/ui/balance-analysis/summary</code>，列示正式物化汇总行（示意经营贡献，非损益瀑布同一口径）。
+          <code>/ui/balance-analysis/summary</code>
+          ，列示正式物化汇总行；表意「贡献结构」、与 PnL 瀑布/单券损益不必同一口径，以本接口字段为准。
+          {readProvenanceLine ? (
+            <>
+              <br />
+              {readProvenanceLine}
+            </>
+          ) : null}
         </p>
       ) : (
         <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82" }}>暂无可用报告日。</p>

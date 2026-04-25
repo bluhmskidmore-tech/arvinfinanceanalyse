@@ -5,7 +5,7 @@ import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
-import { formatWan } from "../utils/formatters";
+import { formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function formatScenarioShocks(shocks: Record<string, number>): string {
@@ -137,7 +137,7 @@ function renderScenarioAssetClassBreakdown(record: KRDScenarioResult) {
 
 const assetClassColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
-  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatWan },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
   {
     title: "久期",
     dataIndex: "duration",
@@ -188,7 +188,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
       }) => {
         const d = params.data;
         if (!d) return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {

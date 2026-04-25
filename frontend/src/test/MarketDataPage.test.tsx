@@ -216,6 +216,16 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("vendor_status: ok");
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("fallback_mode: none");
+    expect(screen.getByTestId("market-data-macro-readiness")).toHaveTextContent("已返回数据");
+    expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent(
+      "vv_choice_macro_20260410",
+    );
+    expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("vendor_status=ok");
+    expect(screen.getByTestId("market-data-macro-section-meta")).toHaveTextContent(
+      "tr_choice_macro_latest_test",
+    );
     expect(screen.getByText("稳定主链路")).toBeInTheDocument();
     expect(screen.getByText("降级 latest-only")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("tier stable");
@@ -357,6 +367,26 @@ describe("MarketDataPage", () => {
     });
   });
 
+  it("distinguishes Choice macro latest failures from an empty rate trend", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getChoiceMacroLatest = vi.fn(async () => {
+      throw new Error("choice latest unavailable");
+    });
+
+    renderPage({
+      ...base,
+      getChoiceMacroLatest,
+    });
+
+    const curveError = await screen.findByTestId("market-data-rate-trend-error");
+    expect(curveError).toHaveTextContent("宏观 latest 载入失败");
+    expect(screen.queryByTestId("market-data-rate-trend-empty")).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("renders analytical FX groups separately from the macro sections", async () => {
     const base = createApiClient({ mode: "mock" });
     const getFxAnalytical = vi.fn(async () => ({
@@ -470,6 +500,9 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-fx-analytical-meta")).toHaveTextContent(
       "tr_fx_analytical_test",
     );
+    expect(screen.getByTestId("market-data-fx-section-meta")).toHaveTextContent(
+      "fallback_mode=latest_snapshot",
+    );
 
     await waitFor(() => {
       expect(getFxAnalytical).toHaveBeenCalledTimes(1);
@@ -511,6 +544,7 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-linkage-meta")).toHaveTextContent(
       "formal_use_allowed: false",
     );
+    expect(screen.getByTestId("market-data-spreads-live-meta")).toHaveTextContent("联动读面");
   });
 
   it("runs refresh polling and refetches the market-data queries after completion", async () => {
@@ -657,12 +691,78 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
     expect(screen.getByText("利率行情")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线")).toBeInTheDocument();
-    expect(screen.getByText("信用利差")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("market-data-linkage-spread-table")).getByText("信用利差"),
+    ).toBeInTheDocument();
     expect(screen.getByText("资金市场")).toBeInTheDocument();
     expect(screen.getByText("国债期货")).toBeInTheDocument();
     expect(screen.getByText("同业存单")).toBeInTheDocument();
     expect(screen.getByText("债券成交明细（现券）")).toBeInTheDocument();
     expect(screen.getByText("信用债成交明细")).toBeInTheDocument();
     expect(screen.getByText("资讯与日历")).toBeInTheDocument();
+  });
+
+  it("renders an explicit Shibor proxy in the NCD panel instead of pretending it is a live NCD matrix", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getNcdFundingProxy = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_ncd_proxy_test",
+        basis: "analytical" as const,
+        result_kind: "market_data.ncd_proxy",
+        formal_use_allowed: false,
+        source_version: "sv_ncd_proxy_test",
+        vendor_version: "vv_tushare_shibor",
+        rule_version: "rv_ncd_proxy_v1",
+        cache_version: "cv_ncd_proxy_v1",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-23T10:00:00Z",
+      },
+      result: {
+        as_of_date: "2026-04-23",
+        proxy_label: "Tushare Shibor funding proxy",
+        is_actual_ncd_matrix: false,
+        rows: [
+          {
+            row_key: "shibor_fixing",
+            label: "Shibor fixing",
+            "1M": 1.412,
+            "3M": 1.4345,
+            "6M": 1.4535,
+            "9M": 1.4695,
+            "1Y": 1.4825,
+            quote_count: null,
+          },
+          {
+            row_key: "quote_median",
+            label: "Quote median",
+            "1M": 1.44,
+            "3M": 1.45,
+            "6M": 1.48,
+            "9M": 1.49,
+            "1Y": 1.5,
+            quote_count: 287,
+          },
+        ],
+        warnings: ["Proxy only; not actual NCD issuance matrix."],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getNcdFundingProxy,
+    });
+
+    expect(await screen.findByTestId("market-data-ncd-matrix")).toBeInTheDocument();
+    expect(await screen.findByText("Tushare Shibor funding proxy")).toBeInTheDocument();
+    expect(await screen.findByText("Shibor fixing")).toBeInTheDocument();
+    expect(await screen.findByText("Quote median")).toBeInTheDocument();
+    expect(await screen.findByText(/not actual NCD issuance matrix/i)).toBeInTheDocument();
+    expect(await screen.findByText("1.412")).toBeInTheDocument();
+    expect(await screen.findByText("1.500")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("tr_ncd_proxy_test");
+    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("vendor_status=ok");
   });
 });

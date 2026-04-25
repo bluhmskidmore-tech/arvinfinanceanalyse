@@ -388,3 +388,90 @@ def test_liability_analytics_repository_lists_union_report_dates(tmp_path):
 
     repo = repo_module.LiabilityAnalyticsRepository(str(db_path))
     assert repo.list_report_dates() == ["2025-12-31", "2025-11-30", "2025-10-31"]
+
+
+def test_formal_zqtz_balance_metrics_repo_exposes_combined_formal_overview(tmp_path):
+    repo_module = load_module(
+        "backend.app.repositories.formal_zqtz_balance_metrics_repo_combined_contract",
+        "backend/app/repositories/formal_zqtz_balance_metrics_repo.py",
+    )
+    import duckdb
+
+    db_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(db_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              instrument_code varchar,
+              portfolio_name varchar,
+              cost_center varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_id varchar,
+              product_type varchar,
+              counterparty_name varchar,
+              invest_type_std varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              principal_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values
+            ('2025-12-31', 'Z1', 'p', 'c', 'inv', 'acct', 'asset', 'CNY', 100, 100, 0, 'sv_z_1', 'rv_z_1'),
+            ('2025-11-30', 'Z2', 'p', 'c', 'inv', 'acct', 'asset', 'CNY', 90, 90, 0, 'sv_z_2', 'rv_z_2')
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_tyw_balance_daily values
+            ('2025-12-31', 'T1', 'prod', 'cp', 'inv', 'acct', 'asset', 'CNY', 30, 0, 'sv_t_1', 'rv_t_1'),
+            ('2025-10-31', 'T2', 'prod', 'cp', 'inv', 'acct', 'asset', 'CNY', 20, 0, 'sv_t_2', 'rv_t_2')
+            """
+        )
+    finally:
+        conn.close()
+
+    repo = repo_module.FormalZqtzBalanceMetricsRepository(str(db_path))
+    assert repo.list_formal_overview_report_dates() == ["2025-12-31", "2025-11-30", "2025-10-31"]
+
+    overview = repo.fetch_formal_overview(
+        report_date="2025-12-31",
+        position_scope="asset",
+        currency_basis="CNY",
+    )
+
+    assert overview == {
+        "report_date": "2025-12-31",
+        "position_scope": "asset",
+        "currency_basis": "CNY",
+        "detail_row_count": 2,
+        "summary_row_count": 2,
+        "total_market_value_amount": 130,
+        "total_amortized_cost_amount": 130,
+        "total_accrued_interest_amount": 0,
+        "source_version": "sv_t_1__sv_z_1",
+        "rule_version": "rv_t_1__rv_z_1",
+    }

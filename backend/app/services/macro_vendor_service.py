@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import duckdb
-
 from backend.app.core_finance.fx_rates import get_usd_cny_rate
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_fx_catalog import (
@@ -14,13 +13,14 @@ from backend.app.repositories.choice_fx_catalog import (
 )
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroLatestPayload,
+    ChoiceMacroLatestPoint,
+    ChoiceMacroRecentPoint,
+    ChoiceMacroRefreshTier,
     FxAnalyticalGroup,
     FxAnalyticalPayload,
     FxAnalyticalSeriesPoint,
     FxFormalStatusPayload,
     FxFormalStatusRow,
-    ChoiceMacroLatestPoint,
-    ChoiceMacroRecentPoint,
     MacroVendorPayload,
     MacroVendorSeries,
 )
@@ -71,13 +71,27 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
             order by vendor_name, series_id
             """
         ).fetchall()
+        category_by_series = _load_market_data_category_map(conn, tables)
     except duckdb.Error:
         return MacroVendorPayload(series=[])
     finally:
         conn.close()
 
-    return MacroVendorPayload(
-        series=[
+    series: list[MacroVendorSeries] = []
+    for (
+        series_id,
+        series_name,
+        vendor_name,
+        vendor_version,
+        frequency,
+        unit,
+        refresh_tier,
+        fetch_mode,
+        fetch_granularity,
+        policy_note,
+    ) in rows:
+        category = category_by_series.get(str(series_id), {})
+        series.append(
             MacroVendorSeries(
                 series_id=str(series_id),
                 series_name=str(series_name),
@@ -85,25 +99,15 @@ def load_macro_vendor_payload(duckdb_path: str) -> MacroVendorPayload:
                 vendor_version=str(vendor_version),
                 frequency=str(frequency),
                 unit=str(unit),
-                refresh_tier=_as_optional_string(refresh_tier),
-                fetch_mode=_as_optional_string(fetch_mode),
-                fetch_granularity=_as_optional_string(fetch_granularity),
-                policy_note=_as_optional_string(policy_note),
+                refresh_tier=_as_optional_string(category.get("refresh_tier") or refresh_tier),
+                fetch_mode=_as_optional_string(category.get("fetch_mode") or fetch_mode),
+                fetch_granularity=_as_optional_string(
+                    category.get("fetch_granularity") or fetch_granularity
+                ),
+                policy_note=_as_optional_string(category.get("policy_note") or policy_note),
             )
-            for (
-                series_id,
-                series_name,
-                vendor_name,
-                vendor_version,
-                frequency,
-                unit,
-                refresh_tier,
-                fetch_mode,
-                fetch_granularity,
-                policy_note,
-            ) in rows
-        ]
-    )
+        )
+    return MacroVendorPayload(series=series)
 
 
 def macro_vendor_envelope(duckdb_path: str) -> dict[str, object]:
@@ -171,7 +175,10 @@ def _load_macro_vendor_source_version(duckdb_path: str, series_ids: list[str]) -
     )
 
 
-def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPayload:
+def load_choice_macro_latest_payload(
+    duckdb_path: str,
+    category: ChoiceMacroRefreshTier | None = None,
+) -> ChoiceMacroLatestPayload:
     duckdb_file = Path(duckdb_path)
     if not duckdb_file.exists():
         return ChoiceMacroLatestPayload(series=[])
@@ -248,7 +255,12 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
                 "policy_note": None,
             },
         )
-        if catalog.get("refresh_tier") == "isolated":
+        refresh_tier = _as_optional_string(catalog.get("refresh_tier"))
+        effective_category = refresh_tier or "stable"
+        if category is not None:
+            if effective_category != category:
+                continue
+        elif refresh_tier == "isolated":
             continue
         latest_change = None
         if len(rows) > 1:
@@ -264,7 +276,7 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
                 unit=str(catalog["unit"] or latest["unit"]),
                 source_version=str(latest["source_version"]),
                 vendor_version=str(latest["vendor_version"]),
-                refresh_tier=_as_optional_string(catalog.get("refresh_tier")),
+                refresh_tier=refresh_tier,
                 fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
                 fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
                 policy_note=_as_optional_string(catalog.get("policy_note")),
@@ -277,8 +289,11 @@ def load_choice_macro_latest_payload(duckdb_path: str) -> ChoiceMacroLatestPaylo
     return ChoiceMacroLatestPayload(series=series)
 
 
-def choice_macro_latest_envelope(duckdb_path: str) -> dict[str, object]:
-    payload = load_choice_macro_latest_payload(duckdb_path)
+def choice_macro_latest_envelope(
+    duckdb_path: str,
+    category: ChoiceMacroRefreshTier | None = None,
+) -> dict[str, object]:
+    payload = load_choice_macro_latest_payload(duckdb_path, category=category)
     quality_flag = _aggregate_quality_flags([item.quality_flag for item in payload.series])
     source_version = _aggregate_lineage_value(
         [item.source_version for item in payload.series],
@@ -753,6 +768,7 @@ def _load_choice_macro_catalog_map(
     if "phase1_macro_vendor_catalog" not in tables:
         return {}
 
+    category_by_series = _load_market_data_category_map(conn, tables)
     available_columns = {
         str(row[1])
         for row in conn.execute("pragma table_info('phase1_macro_vendor_catalog')").fetchall()
@@ -784,15 +800,56 @@ def _load_choice_macro_catalog_map(
         frequency,
         unit,
     ) in rows:
+        category = category_by_series.get(str(series_id), {})
         catalog_by_series[str(series_id)] = {
-            "refresh_tier": _as_optional_string(refresh_tier),
-            "fetch_mode": _as_optional_string(fetch_mode),
-            "fetch_granularity": _as_optional_string(fetch_granularity),
-            "policy_note": _as_optional_string(policy_note),
+            "refresh_tier": _as_optional_string(category.get("refresh_tier") or refresh_tier),
+            "fetch_mode": _as_optional_string(category.get("fetch_mode") or fetch_mode),
+            "fetch_granularity": _as_optional_string(
+                category.get("fetch_granularity") or fetch_granularity
+            ),
+            "policy_note": _as_optional_string(category.get("policy_note") or policy_note),
             "frequency": str(frequency or ""),
             "unit": str(unit or ""),
         }
     return catalog_by_series
+
+
+def _load_market_data_category_map(
+    conn: duckdb.DuckDBPyConnection,
+    tables: set[str],
+) -> dict[str, dict[str, object]]:
+    if "market_data_series_category" not in tables:
+        return {}
+
+    available_columns = {
+        str(row[1])
+        for row in conn.execute("pragma table_info('market_data_series_category')").fetchall()
+    }
+    if "series_id" not in available_columns:
+        return {}
+
+    refresh_expr = "category_key" if "category_key" in available_columns else "NULL"
+    rows = conn.execute(
+        f"""
+        select
+          series_id,
+          {refresh_expr},
+          {_catalog_column_expr("fetch_mode", available_columns, "NULL")},
+          {_catalog_column_expr("fetch_granularity", available_columns, "NULL")},
+          {_catalog_column_expr("policy_note", available_columns, "NULL")}
+        from market_data_series_category
+        """
+    ).fetchall()
+
+    category_by_series: dict[str, dict[str, object]] = {}
+    for series_id, refresh_tier, fetch_mode, fetch_granularity, policy_note in rows:
+        category_by_series[str(series_id)] = {
+            "refresh_tier": _as_optional_string(refresh_tier),
+            "fetch_mode": _as_optional_string(fetch_mode),
+            "fetch_granularity": _as_optional_string(fetch_granularity),
+            "policy_note": _as_optional_string(policy_note),
+        }
+    return category_by_series
 
 
 def _catalog_column_expr(column: str, available_columns: set[str], fallback_sql: str) -> str:

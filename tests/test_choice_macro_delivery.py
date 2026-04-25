@@ -313,12 +313,25 @@ def test_choice_macro_refresh_archives_raw_payload_and_materializes_duckdb(tmp_p
         normalized_rows = conn.execute("select count(*) from choice_market_snapshot").fetchone()[0]
         fact_rows = conn.execute("select count(*) from fact_choice_macro_daily").fetchone()[0]
         catalog_rows = conn.execute("select count(*) from phase1_macro_vendor_catalog").fetchone()[0]
+        category_rows = conn.execute("select count(*) from market_data_series_category").fetchone()[0]
+        categories = conn.execute(
+            """
+            select series_id, category_key, fetch_mode, fetch_granularity, policy_note
+            from market_data_series_category
+            order by series_id
+            """
+        ).fetchall()
     finally:
         conn.close()
 
     assert normalized_rows == 2
     assert fact_rows == 2
     assert catalog_rows == 2
+    assert category_rows == 2
+    assert categories == [
+        ("cn_cpi_yoy", "stable", "date_slice", "batch", None),
+        ("cn_repo_7d", "stable", "date_slice", "batch", None),
+    ]
     get_settings.cache_clear()
 
 

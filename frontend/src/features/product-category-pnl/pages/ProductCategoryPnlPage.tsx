@@ -4,13 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
-import type {
-  DecimalLike,
-  ProductCategoryManualAdjustmentRequest,
-  ProductCategoryPnlRow,
-} from "../../../api/contracts";
+import type { ProductCategoryManualAdjustmentRequest } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
+import {
+  formatProductCategoryRowDisplayValue,
+  formatProductCategoryValue,
+  selectDisplayedProductCategoryGrandTotal,
+  selectProductCategoryDetailRows,
+  toneForProductCategoryValue,
+} from "./productCategoryPnlPageModel";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -66,31 +69,6 @@ const sectionDescriptionStyle = {
   lineHeight: 1.7,
 } as const;
 
-const DISPLAY_ORDER = [
-  "interbank_lending_assets",
-  "repo_assets",
-  "bond_investment",
-  "bond_tpl",
-  "bond_ac",
-  "bond_ac_other",
-  "bond_fvoci",
-  "bond_valuation_spread",
-  "interest_earning_assets",
-  "derivatives",
-  "intermediate_business_income",
-  "asset_total",
-  "interbank_deposits",
-  "interbank_borrowings",
-  "repo_liabilities",
-  "interbank_cds",
-  "credit_linked_notes",
-  "liability_total",
-] as const;
-
-const DISPLAY_ORDER_INDEX = new Map<string, number>(
-  DISPLAY_ORDER.map((categoryId, index) => [categoryId, index]),
-);
-
 function buildAdjustmentDraft(reportDate: string): ProductCategoryManualAdjustmentRequest {
   return {
     report_date: reportDate,
@@ -105,52 +83,6 @@ function buildAdjustmentDraft(reportDate: string): ProductCategoryManualAdjustme
     daily_avg_balance: null,
     annual_avg_balance: null,
   };
-}
-
-function formatNumber(value: DecimalLike | null | undefined, digits = 2) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    return String(value);
-  }
-  return parsed.toFixed(digits);
-}
-
-function formatDisplayValue(
-  row: ProductCategoryPnlRow,
-  value: DecimalLike | null | undefined,
-  digits = 2,
-) {
-  if (value === null || value === undefined) {
-    return "-";
-  }
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    return String(value);
-  }
-  if (row.side === "liability") {
-    return Math.abs(parsed).toFixed(digits);
-  }
-  return parsed.toFixed(digits);
-}
-
-function toneForValue(value: DecimalLike | null | undefined) {
-  if (value === null || value === undefined) {
-    return "#162033";
-  }
-  const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
-    return "#162033";
-  }
-  if (parsed > 0) {
-    return "#12723b";
-  }
-  if (parsed < 0) {
-    return "#b42318";
-  }
-  return "#162033";
 }
 
 function SectionLead(props: {
@@ -245,21 +177,15 @@ export default function ProductCategoryPnlPage() {
 
   const baseline = baselineQuery.data?.result;
   const scenario = scenarioQuery.data?.result;
-  const displayedGrandTotal = scenario?.grand_total ?? baseline?.grand_total;
+  const displayedGrandTotal = selectDisplayedProductCategoryGrandTotal(
+    scenario?.grand_total,
+    baseline?.grand_total,
+  );
   const baselineRate = baseline?.asset_total.baseline_ftp_rate_pct ?? "1.75";
   const currentSceneRate = scenario?.scenario_rate_pct ?? baselineRate;
 
   const rowsToRender = useMemo(
-    () =>
-      (scenario?.rows ?? baseline?.rows ?? [])
-        .filter((row) => row.category_id !== "grand_total")
-        .sort((left, right) => {
-          const leftIndex =
-            DISPLAY_ORDER_INDEX.get(left.category_id) ?? Number.MAX_SAFE_INTEGER;
-          const rightIndex =
-            DISPLAY_ORDER_INDEX.get(right.category_id) ?? Number.MAX_SAFE_INTEGER;
-          return leftIndex - rightIndex;
-        }),
+    () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
     [baseline?.rows, scenario?.rows],
   );
 
@@ -413,7 +339,7 @@ export default function ProductCategoryPnlPage() {
       <span>当前场景：{currentSceneRate}%</span>
       <span>基准场景：{baselineRate}%</span>
       <span style={{ color: "#162033", fontWeight: 700 }}>
-        合计：{formatNumber(displayedGrandTotal?.business_net_income)}
+        合计：{formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
       </span>
     </div>
   ) : null;
@@ -1000,31 +926,31 @@ export default function ProductCategoryPnlPage() {
                       <div>{row.category_name}</div>
                     </div>
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.cnx_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.cny_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.foreign_scale)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.cnx_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.cny_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatDisplayValue(row, row.cny_ftp)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForValue(row.cny_net) }}>
-                    {formatDisplayValue(row, row.cny_net)}
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cnx_scale)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cny_scale)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_scale)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cnx_cash)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cny_cash)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatProductCategoryRowDisplayValue(row, row.cny_ftp)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.cny_net) }}>
+                    {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.foreign_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatDisplayValue(row, row.foreign_ftp)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForValue(row.foreign_net) }}>
-                    {formatDisplayValue(row, row.foreign_net)}
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_cash)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.foreign_net) }}>
+                    {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
                   </td>
                   <td
                     style={{
                       padding: "12px 8px",
                       textAlign: "right",
-                      color: toneForValue(row.business_net_income),
+                      color: toneForProductCategoryValue(row.business_net_income),
                       background: "#fff8dc",
                     }}
                   >
-                    {formatDisplayValue(row, row.business_net_income)}
+                    {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatDisplayValue(row, row.weighted_yield)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.weighted_yield)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1045,7 +971,7 @@ export default function ProductCategoryPnlPage() {
             textAlign: "center",
           }}
         >
-          全部市场科目 + 投资收益合计：{formatNumber(displayedGrandTotal.business_net_income)}
+          全部市场科目 + 投资收益合计：{formatProductCategoryValue(displayedGrandTotal.business_net_income)}
         </div>
       ) : null}
     </section>

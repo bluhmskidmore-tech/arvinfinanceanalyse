@@ -1830,10 +1830,13 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
     (data_root / "pnl").mkdir(parents=True)
     (data_root / "pnl_516").mkdir(parents=True)
 
-    source_fi = ROOT / "data_input" / "pnl" / "FI损益202602.xls"
-    target_fi = data_root / "pnl" / source_fi.name
-    target_fi.write_bytes(source_fi.read_bytes())
+    _write_fi_refresh_marker(data_root, month_key="202602")
     _write_nonstd_refresh_workbook(data_root / "pnl_516" / "非标516-20260101-0228.xlsx")
+    source_service = load_module(
+        "backend.app.services.pnl_source_service",
+        "backend/app/services/pnl_source_service.py",
+    )
+    monkeypatch.setattr(source_service, "_parse_fi_rows", _fake_parse_fi_refresh_rows)
 
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
@@ -1845,9 +1848,38 @@ def _configure_refresh_sources(tmp_path, monkeypatch):
 
 
 def _copy_fi_refresh_source(tmp_path, *, month_key: str):
-    source_fi = ROOT / "data_input" / "pnl" / f"FI损益{month_key}.xls"
-    target_fi = tmp_path / "data_input" / "pnl" / source_fi.name
-    target_fi.write_bytes(source_fi.read_bytes())
+    _write_fi_refresh_marker(tmp_path / "data_input", month_key=month_key)
+
+
+def _write_fi_refresh_marker(data_root: Path, *, month_key: str) -> Path:
+    path = data_root / "pnl" / f"FI损益{month_key}.xls"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("test-only FI refresh marker; parser is monkeypatched\n", encoding="utf-8")
+    return path
+
+
+def _fake_parse_fi_refresh_rows(snapshot) -> list[dict[str, object]]:
+    return [
+        {
+            "report_date": snapshot.report_date,
+            "instrument_code": "240001.IB",
+            "portfolio_name": "FI Desk",
+            "cost_center": "CC100",
+            "invest_type_raw": "交易性金融资产",
+            "interest_income_514": Decimal("12.50"),
+            "fair_value_change_516": Decimal("-3.25"),
+            "capital_gain_517": Decimal("1.75"),
+            "manual_adjustment": Decimal("0"),
+            "currency_basis": "CNY",
+            "source_version": snapshot.source_version,
+            "rule_version": "rv_test_fi_refresh_parser",
+            "ingest_batch_id": snapshot.ingest_batch_id,
+            "trace_id": f"{snapshot.path.name}:fi:1",
+            "approval_status": "approved",
+            "event_semantics": "realized_formal",
+            "realized_flag": True,
+        }
+    ]
 
 
 def _configure_import_status_env(tmp_path, monkeypatch):
@@ -1888,7 +1920,10 @@ def _create_archived_copy(tmp_path, *, source_file: Path, archive_name: str) -> 
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
     target = archive_dir / archive_name
-    target.write_bytes(source_file.read_bytes())
+    target.write_text(
+        f"test-only archived marker for {source_file.name}\n",
+        encoding="utf-8",
+    )
     return target
 
 

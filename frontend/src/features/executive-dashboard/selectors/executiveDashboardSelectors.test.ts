@@ -31,18 +31,22 @@ function makeOverviewVM(): DashboardOverviewVM {
       {
         id: "aum",
         label: "资产规模",
+        caliberLabel: "本币资产口径",
         value: makeNumeric({ raw: 123_456_000_000, display: "1,234.56 亿", sign_aware: false }),
         delta: makeNumeric({ raw: 0.023, unit: "pct", display: "+2.30%" }),
         tone: "positive",
         detail: "来自 formal balance",
+        history: null,
       },
       {
         id: "yield",
         label: "年内收益",
+        caliberLabel: null,
         value: makeNumeric({ raw: 3_200_000_000, display: "+32.00 亿" }),
         delta: makeNumeric({ raw: 0.05, unit: "pct", display: "+5.00%" }),
         tone: "positive",
         detail: "来自 formal fi",
+        history: null,
       },
     ],
   };
@@ -95,6 +99,7 @@ describe("selectOverviewCards", () => {
     const cards = selectOverviewCards(vm);
     expect(cards[0]?.value).toBe(vm.metrics[0]?.value);
     expect(cards[0]?.delta).toBe(vm.metrics[0]?.delta);
+    expect(cards[0]?.caliberLabel).toBe("本币资产口径");
   });
 
   it("returns [] when vm is null", () => {

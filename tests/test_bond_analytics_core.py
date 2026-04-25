@@ -8,7 +8,6 @@ import pytest
 
 from backend.app.core_finance.bond_analytics import common
 from backend.app.core_finance.bond_analytics.read_models import (
-    compute_benchmark_excess,
     summarize_return_decomposition,
 )
 from tests.helpers import load_module

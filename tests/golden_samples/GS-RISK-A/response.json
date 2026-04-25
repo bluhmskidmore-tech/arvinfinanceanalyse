@@ -1,6 +1,6 @@
 {
   "result_meta": {
-    "trace_id": "tr_a6e772ff81b9",
+    "trace_id": "tr_3e6dd9216f54",
     "basis": "formal",
     "result_kind": "risk.tensor",
     "formal_use_allowed": true,
@@ -12,7 +12,7 @@
     "vendor_status": "ok",
     "fallback_mode": "none",
     "scenario_flag": false,
-    "generated_at": "2026-04-19T03:13:33.688584Z",
+    "generated_at": "2026-04-22T04:30:48.192645Z",
     "filters_applied": {},
     "tables_used": [],
     "evidence_rows": null,

@@ -3,7 +3,7 @@ import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { Numeric } from "../../../api/contracts";
 import type { AccountingClassAuditResponse } from "../types";
-import { formatPct, formatWan } from "../utils/formatters";
+import { formatPct, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 function matchLabel(raw: string | null): string {
@@ -27,7 +27,7 @@ interface Props {
 const auditColumns = [
   { title: "资产类别", dataIndex: "asset_class", key: "asset_class", width: 200 },
   { title: "持仓数", dataIndex: "position_count", key: "position_count", width: 80 },
-  { title: "市值", dataIndex: "market_value", key: "market_value", width: 120, render: formatWan },
+  { title: "市值", dataIndex: "market_value", key: "market_value", width: 120, render: formatYi },
   {
     title: "权重",
     dataIndex: "market_value_weight",
@@ -136,7 +136,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="覆盖市值" value={formatWan(data.total_market_value)} />
+            <Statistic title="覆盖市值" value={formatYi(data.total_market_value)} />
           </Card>
         </Col>
       </Row>
@@ -159,7 +159,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
           <Card size="small">
             <Statistic
               title="分歧持仓市值"
-              value={formatWan(data.divergent_market_value)}
+              value={formatYi(data.divergent_market_value)}
               valueStyle={
                 Number(data.divergent_market_value.raw) !== 0 ? { color: "#cf1322" } : undefined
               }
@@ -181,7 +181,7 @@ export function AccountingClassAuditView({ reportDate }: Props) {
           <Card size="small">
             <Statistic
               title="映射未分类市值"
-              value={formatWan(data.map_unclassified_market_value)}
+              value={formatYi(data.map_unclassified_market_value)}
               valueStyle={
                 Number(data.map_unclassified_market_value.raw) !== 0 ? { color: "#faad14" } : undefined
               }

@@ -12,7 +12,7 @@ import type {
   CreditSpreadMigrationResponse,
 } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { formatWan, formatBp } from "../utils/formatters";
+import { formatWan, formatYi, formatBp } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
 const dt = designTokens;
@@ -69,7 +69,7 @@ const migrationColumns = [
     title: "涉及市值",
     dataIndex: "affected_market_value",
     key: "affected_market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
   {
@@ -93,7 +93,7 @@ const issuerConcentrationColumns = [
     title: "市值",
     dataIndex: "market_value",
     key: "market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
 ];
@@ -128,7 +128,7 @@ const spreadDetailColumns = [
     title: "市值",
     dataIndex: "market_value",
     key: "market_value",
-    render: formatWan,
+    render: formatYi,
     onCell: () => ({ style: tabularNumsStyle }),
   },
 ];
@@ -447,7 +447,7 @@ function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
       trigger: "item",
       formatter: (p) => {
         const item = p as { name: string; value: number; percent: number };
-        return `${item.name}: ${formatWan(item.value)} (${item.percent}%)`;
+        return `${item.name}: ${formatYi(item.value)} (${item.percent}%)`;
       },
     },
     series: [
@@ -481,7 +481,7 @@ function buildIssuerConcentrationPieOption(metrics: ConcentrationMetrics): EChar
           | { name: string; marketValueRaw: Numeric; weight: Numeric }
           | undefined;
         if (!d || typeof d !== "object") return "";
-        return `${d.name}<br/>市值：${formatWan(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
+        return `${d.name}<br/>市值：${formatYi(d.marketValueRaw)}<br/>权重：${d.weight.display}`;
       },
     },
     graphic: {
@@ -719,7 +719,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
           <Card size="small">
             <Statistic
               title="信用债市值"
-              value={formatWan(displayCreditMarketValue)}
+              value={formatYi(displayCreditMarketValue)}
               suffix={`(${(bondNumericRaw(data.credit_weight) * 100).toFixed(1)}%)`}
             />
           </Card>
@@ -739,7 +739,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       <Card title="OCI敏感度" size="small">
         <Row gutter={16}>
           <Col span={8}>
-            <Statistic title="OCI信用债敞口" value={formatWan(data.oci_credit_exposure)} />
+            <Statistic title="OCI信用债敞口" value={formatYi(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
             <Statistic title="OCI Spread DV01" value={data.oci_spread_dv01.display} />

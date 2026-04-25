@@ -112,6 +112,10 @@ def _v15_external_vw_legacy(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "16_external_vw_legacy.sql")
 
 
+def _v16_external_supply_auction_calendar(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "17_external_supply_auction_calendar.sql")
+
+
 def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(1, "baseline snapshot tables", _v1_snapshot_tables)
     registry.register(2, "baseline bond analytics", _v2_bond_analytics)
@@ -128,6 +132,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(13, "external data catalog", _v13_external_data_catalog)
     registry.register(14, "std external macro + vw_external_macro_daily", _v14_std_external_macro)
     registry.register(15, "legacy read views (choice macro/news, yield, fx)", _v15_external_vw_legacy)
+    registry.register(16, "supply auction research calendar read model", _v16_external_supply_auction_calendar)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

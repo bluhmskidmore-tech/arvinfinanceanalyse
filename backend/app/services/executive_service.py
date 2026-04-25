@@ -151,6 +151,30 @@ def _fmt_signed_percent(value: float | None) -> Numeric:
     )
 
 
+def _normalize_ratio_percent_input(value: float | None) -> float:
+    """Normalize legacy percent inputs onto decimal-ratio semantics."""
+    if value is None:
+        return 0.0
+    normalized = float(value)
+    if abs(normalized) >= 0.1:
+        return normalized / 100.0
+    return normalized
+
+
+def _fmt_signed_ratio_percent(value: float | None) -> Numeric:
+    if value is None:
+        return Numeric(raw=None, unit="pct", display="N/A", precision=2, sign_aware=True)
+    ratio = _normalize_ratio_percent_input(value)
+    sign = "+" if ratio >= 0 else ""
+    return Numeric(
+        raw=ratio,
+        unit="pct",
+        display=f"{sign}{ratio * 100.0:.2f}%",
+        precision=2,
+        sign_aware=True,
+    )
+
+
 def _previous_report_date(dates: list[str], current_report_date: str | None) -> str | None:
     if not current_report_date or not dates:
         return None
@@ -169,17 +193,21 @@ def _fetch_executive_aum_row(
 ) -> dict[str, object] | None:
     fetch_formal_overview = getattr(balance_repo, "fetch_formal_overview", None)
     if callable(fetch_formal_overview):
-        row = fetch_formal_overview(
-            report_date=report_date,
-            position_scope="asset",
-            currency_basis=currency_basis,
-        )
+        try:
+            row = fetch_formal_overview(
+                report_date=report_date,
+                position_scope="asset",
+                currency_basis=currency_basis,
+            )
+        except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+            row = None
         if row is None:
-            return None
-        return {
-            **row,
-            "_metric_scope": "combined_formal_balance",
-        }
+            pass
+        else:
+            return {
+                **row,
+                "_metric_scope": "combined_formal_balance",
+            }
 
     row = balance_repo.fetch_zqtz_asset_market_value(
         report_date=report_date,
@@ -191,6 +219,33 @@ def _fetch_executive_aum_row(
         **row,
         "_metric_scope": "zqtz_only",
     }
+
+
+def _list_executive_aum_report_dates(
+    balance_repo: object,
+    *,
+    currency_basis: str = "CNY",
+) -> list[str]:
+    list_formal_overview_report_dates = getattr(balance_repo, "list_formal_overview_report_dates", None)
+    if callable(list_formal_overview_report_dates):
+        try:
+            dates = list(
+                list_formal_overview_report_dates(
+                    position_scope="asset",
+                    currency_basis=currency_basis,
+                )
+            )
+            if dates:
+                return dates
+        except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
+            pass
+    list_report_dates = getattr(balance_repo, "list_report_dates", None)
+    if not callable(list_report_dates):
+        return []
+    try:
+        return list(list_report_dates(currency_basis=currency_basis))
+    except TypeError:
+        return list(list_report_dates())
 
 
 def _lineage_tokens(*values: object) -> list[str]:
@@ -238,6 +293,22 @@ def _format_point_change(current: float | None, previous: float | None) -> Numer
         raw=change * 100.0,  # bp = percent point * 100
         unit="bp",
         display=f"{sign}{change:.2f}pp",
+        precision=2,
+        sign_aware=True,
+    )
+
+
+def _format_ratio_point_change(current: float | None, previous: float | None) -> Numeric:
+    if current is None or previous is None:
+        return Numeric(raw=None, unit="bp", display="N/A", precision=2, sign_aware=True)
+    current_ratio = _normalize_ratio_percent_input(current)
+    previous_ratio = _normalize_ratio_percent_input(previous)
+    change_ratio = current_ratio - previous_ratio
+    sign = "+" if change_ratio >= 0 else ""
+    return Numeric(
+        raw=change_ratio * 10000.0,
+        unit="bp",
+        display=f"{sign}{change_ratio * 100.0:.2f}pp",
         precision=2,
         sign_aware=True,
     )
@@ -732,7 +803,10 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
 
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
-        balance_report_dates = list(getattr(balance_repo, "list_report_dates", lambda: [])())
+        balance_report_dates = _list_executive_aum_report_dates(
+            balance_repo,
+            currency_basis="CNY",
+        )
         current_balance_report_date = normalized_report_date or (balance_report_dates[0] if balance_report_dates else None)
         row = (
             _fetch_executive_aum_row(
@@ -860,7 +934,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
                         previous_zqtz_rows,
                         previous_tyw_rows,
                     )
-                    nim_delta = _format_point_change(
+                    nim_delta = _format_ratio_point_change(
                         nim_raw,
                         previous_payload.get("kpi", {}).get("nim"),
                     )
@@ -925,7 +999,8 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
     metrics: list[ExecutiveMetric] = []
     if aum_raw is not None:
         aum_scope = str(row.get("_metric_scope") or "") if row is not None else ""
-        aum_label = "资产规模" if aum_scope == "combined_formal_balance" else "债券资产规模（zqtz）"
+        aum_label = "总资产规模" if aum_scope == "combined_formal_balance" else "债券资产规模（zqtz）"
+        aum_caliber_label = "本币资产口径" if aum_scope == "combined_formal_balance" else "债券资产口径"
         aum_detail = (
             (
                 f"来自 governed formal balance overview，在 {normalized_report_date} 的 CNY 资产口径市值合计。"
@@ -943,6 +1018,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             ExecutiveMetric(
                 id="aum",
                 label=aum_label,
+                caliber_label=aum_caliber_label,
                 value=_fmt_yi_amount(aum_raw, signed=False),
                 delta=aum_delta,
                 tone="positive",
@@ -971,7 +1047,7 @@ def executive_overview(report_date: str | None = None) -> dict[str, object]:
             ExecutiveMetric(
                 id="nim",
                 label="净息差",
-                value=_fmt_signed_percent(nim_raw),
+                value=_fmt_signed_ratio_percent(nim_raw),
                 delta=nim_delta,
                 tone="positive" if nim_raw >= 0 else "negative",
                 detail=(
@@ -1344,7 +1420,7 @@ def _list_domain_dates() -> dict[str, set[str]]:
     dates: dict[str, set[str]] = {d: set() for d in _HOME_SNAPSHOT_DOMAINS}
     try:
         balance_repo = FormalZqtzBalanceMetricsRepository(str(settings.duckdb_path))
-        dates["balance"] = set(balance_repo.list_report_dates(currency_basis="CNY"))
+        dates["balance"] = set(_list_executive_aum_report_dates(balance_repo, currency_basis="CNY"))
     except (RuntimeError, OSError, TypeError, ValueError, AttributeError):
         dates["balance"] = set()
 

@@ -265,9 +265,9 @@ describe("OperationsAnalysisPage governed values", () => {
           currency_basis: "CNY" as const,
           detail_row_count: 11,
           summary_row_count: 4,
-          total_market_value_amount: "901.25",
-          total_amortized_cost_amount: "880.5",
-          total_accrued_interest_amount: "12.75",
+          total_market_value_amount: "90125000000",
+          total_amortized_cost_amount: "88050000000",
+          total_accrued_interest_amount: "1275000000",
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({
@@ -313,5 +313,11 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(conclusionGrid).toHaveTextContent("2026-01-31");
       expect(conclusionGrid).toHaveTextContent("11");
     });
+
+    const heroProvenance = await screen.findByTestId("operations-hero-provenance");
+    expect(heroProvenance).toHaveTextContent("物化/候选对账");
+    expect(heroProvenance).toHaveTextContent("静态示例");
+    const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
+    expect(tableProv).toHaveTextContent("basis formal");
   });
 });

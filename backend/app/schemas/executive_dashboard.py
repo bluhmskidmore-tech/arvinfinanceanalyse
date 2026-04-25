@@ -40,6 +40,7 @@ def _coerce_display_numeric(value: Any) -> Any:
 class ExecutiveMetric(BaseModel):
     id: str
     label: str
+    caliber_label: str | None = None
     value: Numeric
     delta: Numeric
     tone: str

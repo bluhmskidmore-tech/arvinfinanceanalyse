@@ -1,10 +1,24 @@
 from __future__ import annotations
 
+import math
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import Decimal
-import math
-from typing import Any, Iterable, Sequence
+from typing import Any, Literal
+
+ResearchViewStance = Literal["bullish", "neutral", "bearish", "conflicted"]
+ResearchViewConfidence = Literal["high", "medium", "low"]
+ResearchViewStatus = Literal["ready", "pending_signal"]
+TransmissionAxisKey = Literal[
+    "global_rates",
+    "liquidity",
+    "equity_bond_spread",
+    "commodities_inflation",
+    "mega_cap_equities",
+]
+TransmissionAxisStance = Literal["supportive", "neutral", "restrictive", "conflicted"]
+TransmissionAxisStatus = Literal["ready", "pending_signal"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -40,6 +54,70 @@ class MacroEnvironmentScore:
     signal_description: str
     contributing_factors: list[dict[str, Any]]
     warnings: list[str]
+
+
+@dataclass(slots=True, frozen=True)
+class MacroBondResearchViewResult:
+    key: Literal["duration", "curve", "credit", "instrument"]
+    stance: ResearchViewStance
+    confidence: ResearchViewConfidence
+    summary: str
+    affected_targets: list[str]
+    evidence: list[str]
+    status: ResearchViewStatus = "ready"
+
+
+@dataclass(slots=True, frozen=True)
+class MacroBondTransmissionAxisResult:
+    axis_key: TransmissionAxisKey
+    status: TransmissionAxisStatus
+    stance: TransmissionAxisStance
+    summary: str
+    impacted_views: list[str]
+    required_series_ids: list[str]
+    warnings: list[str]
+
+
+@dataclass(slots=True, frozen=True)
+class EquityBondSpreadSignal:
+    trade_date: date
+    index_code: str
+    index_close: float
+    index_pct_change: float | None
+    pe: float
+    earnings_yield_pct: float
+    bond_yield_pct: float
+    spread_pct: float
+
+
+@dataclass(slots=True, frozen=True)
+class MegaCapEquitySignal:
+    weight_trade_date: date
+    index_code: str
+    top10_weight_sum: float
+    top5_weight_sum: float
+    leading_constituents: list[str]
+    index_pct_change: float | None
+
+
+@dataclass(slots=True, frozen=True)
+class EquityBondSpreadRule:
+    stance: TransmissionAxisStance
+    spread_min: float | None = None
+    spread_max: float | None = None
+    index_pct_change_min: float | None = None
+    index_pct_change_max: float | None = None
+    summary: str = ""
+
+
+@dataclass(slots=True, frozen=True)
+class MegaCapEquityRule:
+    stance: TransmissionAxisStance
+    concentration_min: float | None = None
+    concentration_max: float | None = None
+    index_pct_change_min: float | None = None
+    index_pct_change_max: float | None = None
+    summary: str = ""
 
 
 RATE_INDICATORS = {
@@ -79,6 +157,66 @@ _WINDOW_3M_DAYS = 90
 _WINDOW_6M_DAYS = 180
 _WINDOW_1Y_DAYS = 365
 _MAX_LEAD_LAG_DAYS = 30
+
+EQUITY_BOND_SPREAD_RULES: tuple[EquityBondSpreadRule, ...] = (
+    EquityBondSpreadRule(
+        stance="restrictive",
+        spread_min=4.0,
+        index_pct_change_min=0.25,
+        summary="Equity-bond spread remains wide and equities are rising, which restrains bond risk appetite.",
+    ),
+    EquityBondSpreadRule(
+        stance="conflicted",
+        spread_min=4.0,
+        index_pct_change_max=-0.25,
+        summary="Equity-bond spread is wide, but equities are falling, leaving the cross-asset message conflicted.",
+    ),
+    EquityBondSpreadRule(
+        stance="supportive",
+        spread_max=2.75,
+        summary="Equity-bond spread has compressed enough to support a more constructive bond view.",
+    ),
+)
+
+MEGA_CAP_EQUITY_RULES: tuple[MegaCapEquityRule, ...] = (
+    MegaCapEquityRule(
+        stance="restrictive",
+        concentration_min=22.0,
+        index_pct_change_min=0.5,
+        summary="Mega-cap concentration is high and leadership is rising, which leans against adding bond beta aggressively.",
+    ),
+    MegaCapEquityRule(
+        stance="supportive",
+        concentration_min=22.0,
+        index_pct_change_max=-0.5,
+        summary="Mega-cap concentration is high but leadership is fading, which supports a more defensive equity backdrop for bonds.",
+    ),
+)
+
+
+def build_macro_bond_research_output(
+    macro_environment: MacroEnvironmentScore,
+    correlations: Sequence[MacroBondCorrelation],
+    *,
+    equity_bond_spread_signal: EquityBondSpreadSignal | None = None,
+    mega_cap_equity_signal: MegaCapEquitySignal | None = None,
+) -> tuple[list[MacroBondResearchViewResult], list[MacroBondTransmissionAxisResult]]:
+    ranked_correlations = sorted(correlations, key=_correlation_rank, reverse=True)
+    axes = [
+        _build_global_rates_axis(macro_environment),
+        _build_liquidity_axis(macro_environment),
+        _build_equity_bond_spread_axis(equity_bond_spread_signal),
+        _build_commodities_inflation_axis(macro_environment),
+        _build_mega_cap_equities_axis(mega_cap_equity_signal),
+    ]
+    axis_map = {axis.axis_key: axis for axis in axes}
+    views = [
+        _build_duration_view(macro_environment, axis_map, ranked_correlations),
+        _build_curve_view(macro_environment, axis_map, ranked_correlations),
+        _build_credit_view(macro_environment, axis_map, ranked_correlations),
+        _build_instrument_view(macro_environment, axis_map, ranked_correlations),
+    ]
+    return views, axes
 
 
 def pearson_correlation(
@@ -201,16 +339,30 @@ def _compute_correlations(
     winsorize_tail_fraction: float | None,
 ) -> tuple[float | None, float | None, float | None]:
     """Return (corr_3m, corr_6m, corr_1y) for a macro/yield pair."""
-    kwargs = dict(
+    corr_3m = _window_correlation(
         macro_map=macro_map,
         target_map=target_map,
         latest_date=latest_date,
         alignment_mode=alignment_mode,
         winsorize_tail_fraction=winsorize_tail_fraction,
+        window_days=_WINDOW_3M_DAYS,
     )
-    corr_3m = _window_correlation(**kwargs, window_days=_WINDOW_3M_DAYS)
-    corr_6m = _window_correlation(**kwargs, window_days=_WINDOW_6M_DAYS)
-    corr_1y = _window_correlation(**kwargs, window_days=_WINDOW_1Y_DAYS)
+    corr_6m = _window_correlation(
+        macro_map=macro_map,
+        target_map=target_map,
+        latest_date=latest_date,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+        window_days=_WINDOW_6M_DAYS,
+    )
+    corr_1y = _window_correlation(
+        macro_map=macro_map,
+        target_map=target_map,
+        latest_date=latest_date,
+        alignment_mode=alignment_mode,
+        winsorize_tail_fraction=winsorize_tail_fraction,
+        window_days=_WINDOW_1Y_DAYS,
+    )
     return corr_3m, corr_6m, corr_1y
 
 
@@ -228,10 +380,12 @@ def _compute_lead_lag(
         alignment_mode=alignment_mode,
         winsorize_tail_fraction=winsorize_tail_fraction,
     )
-    lead_lag_days = int(lead_details["lag_days"])
-    best_correlation = lead_details["correlation"]
+    lag_value = lead_details["lag_days"]
+    lead_lag_days = int(lag_value) if lag_value is not None else 0
+    raw_best_correlation = lead_details["correlation"]
+    best_correlation = float(raw_best_correlation) if raw_best_correlation is not None else None
     raw_sample = lead_details["sample_size"]
-    sample_size = int(raw_sample) if raw_sample is not None and int(raw_sample) >= 2 else None
+    sample_size = int(raw_sample) if raw_sample is not None and raw_sample >= 2 else None
     lc_val = lead_details["confidence"]
     lead_lag_confidence = round(float(lc_val), 6) if lc_val is not None else None
     return lead_lag_days, best_correlation, sample_size, lead_lag_confidence
@@ -502,6 +656,8 @@ def _winsorize_values(
     tail_fraction: float,
 ) -> list[float]:
     validated_tail_fraction = _validate_winsorize_tail_fraction(tail_fraction)
+    if validated_tail_fraction is None:
+        raise ValueError("winsorize_tail_fraction must be provided")
     if len(values) < 2:
         return [float(value) for value in values]
     ordered = sorted(float(value) for value in values)
@@ -932,3 +1088,501 @@ def _population_std(values: Sequence[float]) -> float:
     mean_value = _mean(values)
     variance = sum((value - mean_value) ** 2 for value in values) / len(values)
     return variance ** 0.5
+
+
+def _build_global_rates_axis(
+    macro_environment: MacroEnvironmentScore,
+) -> MacroBondTransmissionAxisResult:
+    stance = _axis_stance_from_score(macro_environment.rate_direction_score, reverse=True)
+    if stance == "supportive":
+        summary = "Rate direction signals are easing and support adding duration risk."
+    elif stance == "restrictive":
+        summary = "Rate direction signals are tightening and argue for tighter duration risk budgets."
+    else:
+        summary = "Rate direction is mixed and does not justify a strong duration call."
+    return MacroBondTransmissionAxisResult(
+        axis_key="global_rates",
+        status="ready",
+        stance=stance,
+        summary=summary,
+        impacted_views=["duration", "curve", "instrument"],
+        required_series_ids=list(RATE_INDICATORS),
+        warnings=[],
+    )
+
+
+def _build_liquidity_axis(
+    macro_environment: MacroEnvironmentScore,
+) -> MacroBondTransmissionAxisResult:
+    stance = _axis_stance_from_score(macro_environment.liquidity_score)
+    if stance == "supportive":
+        summary = "Funding conditions are supportive and favor rates, NCD carry, and high-grade credit."
+    elif stance == "restrictive":
+        summary = "Funding conditions are restrictive and argue against extending risk through NCD or credit."
+    else:
+        summary = "Liquidity conditions are balanced and warrant neutral implementation."
+    return MacroBondTransmissionAxisResult(
+        axis_key="liquidity",
+        status="ready",
+        stance=stance,
+        summary=summary,
+        impacted_views=["duration", "curve", "credit", "instrument"],
+        required_series_ids=list(LIQUIDITY_INDICATORS),
+        warnings=[],
+    )
+
+
+def _build_commodities_inflation_axis(
+    macro_environment: MacroEnvironmentScore,
+) -> MacroBondTransmissionAxisResult:
+    inflation_stance = _axis_stance_from_score(macro_environment.inflation_score)
+    growth_stance = _axis_stance_from_score(macro_environment.growth_score, neutral_threshold=0.2)
+    stance = _merge_axis_stances(inflation_stance, growth_stance)
+    if stance == "supportive":
+        summary = "Inflation pressure is subdued enough to support rates and high-grade spread carry."
+    elif stance == "restrictive":
+        summary = "Inflation and growth pressure argue against aggressive duration or spread compression calls."
+    elif stance == "conflicted":
+        summary = "Growth and inflation signals conflict, so commodity-linked inflation pressure is inconclusive."
+    else:
+        summary = "Commodity and inflation signals are neutral for current bond research views."
+    return MacroBondTransmissionAxisResult(
+        axis_key="commodities_inflation",
+        status="ready",
+        stance=stance,
+        summary=summary,
+        impacted_views=["duration", "credit", "instrument"],
+        required_series_ids=list(INFLATION_INDICATORS) + list(GROWTH_INDICATORS),
+        warnings=[],
+    )
+
+
+def _build_equity_bond_spread_axis(
+    signal: EquityBondSpreadSignal | None,
+) -> MacroBondTransmissionAxisResult:
+    if signal is None:
+        return _build_pending_axis(
+            axis_key="equity_bond_spread",
+            summary="Pending governed equity spread proxy; do not infer from unrelated signals.",
+            impacted_views=["duration", "credit"],
+            required_series_ids=["tushare.index.000300.SH.daily", "tushare.index.000300.SH.dailybasic"],
+            warnings=["missing governed proxy series"],
+        )
+
+    matched_rule = _match_equity_bond_spread_rule(signal)
+    stance: TransmissionAxisStance = matched_rule.stance if matched_rule is not None else "neutral"
+    pct_change = signal.index_pct_change
+    move_text = f"{pct_change:.2f}%" if pct_change is not None else "n/a"
+    context = (
+        f"CSI300 equity-bond spread is {signal.spread_pct:.2f}ppt "
+        f"(earnings yield {signal.earnings_yield_pct:.2f}% - CN10Y {signal.bond_yield_pct:.2f}%), "
+        f"with CSI300 move {move_text} on {signal.trade_date.isoformat()}."
+    )
+    summary = f"{matched_rule.summary} {context}" if matched_rule is not None else context
+    return MacroBondTransmissionAxisResult(
+        axis_key="equity_bond_spread",
+        status="ready",
+        stance=stance,
+        summary=summary,
+        impacted_views=["duration", "credit", "instrument"],
+        required_series_ids=["tushare.index.000300.SH.daily", "tushare.index.000300.SH.dailybasic"],
+        warnings=[],
+    )
+
+
+def _build_mega_cap_equities_axis(
+    signal: MegaCapEquitySignal | None,
+) -> MacroBondTransmissionAxisResult:
+    if signal is None:
+        return _build_pending_axis(
+            axis_key="mega_cap_equities",
+            summary="Pending governed mega-cap equity leadership proxy; do not infer from unrelated signals.",
+            impacted_views=["credit", "instrument"],
+            required_series_ids=["tushare.index.000300.SH.weight"],
+            warnings=["missing governed proxy series"],
+        )
+
+    matched_rule = _match_mega_cap_equity_rule(signal)
+    stance: TransmissionAxisStance = matched_rule.stance if matched_rule is not None else "neutral"
+    leaders = ", ".join(signal.leading_constituents[:3]) or "n/a"
+    move_text = f"{signal.index_pct_change:.2f}%" if signal.index_pct_change is not None else "n/a"
+    context = (
+        f"CSI300 top10 weight concentration is {signal.top10_weight_sum:.2f}% "
+        f"(top5 {signal.top5_weight_sum:.2f}%) on {signal.weight_trade_date.isoformat()}, with latest index move {move_text}; "
+        f"leaders include {leaders}."
+    )
+    summary = f"{matched_rule.summary} {context}" if matched_rule is not None else context
+    return MacroBondTransmissionAxisResult(
+        axis_key="mega_cap_equities",
+        status="ready",
+        stance=stance,
+        summary=summary,
+        impacted_views=["credit", "instrument"],
+        required_series_ids=["tushare.index.000300.SH.weight"],
+        warnings=[],
+    )
+
+
+def _build_pending_axis(
+    *,
+    axis_key: Literal["equity_bond_spread", "mega_cap_equities"],
+    summary: str,
+    impacted_views: list[str],
+    required_series_ids: list[str],
+    warnings: list[str],
+) -> MacroBondTransmissionAxisResult:
+    return MacroBondTransmissionAxisResult(
+        axis_key=axis_key,
+        status="pending_signal",
+        stance="neutral",
+        summary=summary,
+        impacted_views=impacted_views,
+        required_series_ids=required_series_ids,
+        warnings=warnings,
+    )
+
+
+def _match_equity_bond_spread_rule(signal: EquityBondSpreadSignal) -> EquityBondSpreadRule | None:
+    for rule in EQUITY_BOND_SPREAD_RULES:
+        if rule.spread_min is not None and signal.spread_pct < rule.spread_min:
+            continue
+        if rule.spread_max is not None and signal.spread_pct > rule.spread_max:
+            continue
+        if rule.index_pct_change_min is not None:
+            if signal.index_pct_change is None or signal.index_pct_change < rule.index_pct_change_min:
+                continue
+        if rule.index_pct_change_max is not None:
+            if signal.index_pct_change is None or signal.index_pct_change > rule.index_pct_change_max:
+                continue
+        return rule
+    return None
+
+
+def _match_mega_cap_equity_rule(signal: MegaCapEquitySignal) -> MegaCapEquityRule | None:
+    for rule in MEGA_CAP_EQUITY_RULES:
+        if rule.concentration_min is not None and signal.top10_weight_sum < rule.concentration_min:
+            continue
+        if rule.concentration_max is not None and signal.top10_weight_sum > rule.concentration_max:
+            continue
+        if rule.index_pct_change_min is not None:
+            if signal.index_pct_change is None or signal.index_pct_change < rule.index_pct_change_min:
+                continue
+        if rule.index_pct_change_max is not None:
+            if signal.index_pct_change is None or signal.index_pct_change > rule.index_pct_change_max:
+                continue
+        return rule
+    return None
+
+
+def _build_duration_view(
+    macro_environment: MacroEnvironmentScore,
+    axis_map: dict[TransmissionAxisKey, MacroBondTransmissionAxisResult],
+    correlations: Sequence[MacroBondCorrelation],
+) -> MacroBondResearchViewResult:
+    global_axis = axis_map["global_rates"]
+    liquidity_axis = axis_map["liquidity"]
+    inflation_axis = axis_map["commodities_inflation"]
+    equity_axis = axis_map["equity_bond_spread"]
+    stance: ResearchViewStance
+    if global_axis.stance == "supportive" and inflation_axis.stance != "restrictive":
+        stance = "bullish"
+    elif global_axis.stance == "restrictive" and liquidity_axis.stance != "supportive":
+        stance = "bearish"
+    elif global_axis.stance != inflation_axis.stance and "neutral" not in {
+        global_axis.stance,
+        inflation_axis.stance,
+    }:
+        stance = "conflicted"
+    else:
+        stance = "neutral"
+    base_stance = stance
+
+    if equity_axis.status == "ready":
+        if stance == "bullish" and equity_axis.stance == "restrictive":
+            stance = "conflicted"
+        elif stance == "neutral" and equity_axis.stance == "supportive":
+            stance = "bullish"
+
+    if (
+        stance == "bullish"
+        and base_stance == "neutral"
+        and equity_axis.status == "ready"
+        and equity_axis.stance == "supportive"
+    ):
+        summary = "Backend research supports longer duration because the equity-bond spread axis is supportive."
+    elif stance == "bullish":
+        summary = "Backend research supports longer duration across rates, NCD, and high-grade credit."
+    elif stance == "bearish":
+        summary = "Backend research favors keeping duration tight across rates, NCD, and high-grade credit."
+    elif stance == "conflicted" and equity_axis.status == "ready" and equity_axis.stance == "restrictive":
+        summary = "Duration inputs conflict: rates are supportive, but the equity-bond spread axis is restrictive."
+    elif stance == "conflicted":
+        summary = "Duration inputs conflict across rate direction and inflation pressure; keep duration balanced."
+    else:
+        summary = "Duration inputs are mixed, so keep the duration stance neutral."
+    evidence = [
+        f"global_rates: {global_axis.summary}",
+        f"liquidity: {liquidity_axis.summary}",
+    ]
+    if equity_axis.status == "ready":
+        evidence.append(f"equity-bond: {equity_axis.summary}")
+    top_duration = _find_top_correlation(correlations, {"treasury", "cdb"})
+    if top_duration is not None:
+        evidence.append(_format_correlation_evidence(top_duration))
+    return MacroBondResearchViewResult(
+        key="duration",
+        stance=stance,
+        confidence=_confidence_from_values(
+            abs(macro_environment.rate_direction_score),
+            abs(macro_environment.liquidity_score),
+            _correlation_rank(top_duration),
+        ),
+        summary=summary,
+        affected_targets=["rates", "ncd", "high_grade_credit"],
+        evidence=evidence,
+    )
+
+
+def _build_curve_view(
+    macro_environment: MacroEnvironmentScore,
+    axis_map: dict[TransmissionAxisKey, MacroBondTransmissionAxisResult],
+    correlations: Sequence[MacroBondCorrelation],
+) -> MacroBondResearchViewResult:
+    global_axis = axis_map["global_rates"]
+    liquidity_axis = axis_map["liquidity"]
+    stance: ResearchViewStance
+    if global_axis.stance == "supportive" and liquidity_axis.stance == "supportive":
+        stance = "bullish"
+    elif global_axis.stance == "restrictive" or liquidity_axis.stance == "restrictive":
+        stance = "bearish"
+    elif global_axis.stance == "neutral" and liquidity_axis.stance == "neutral":
+        stance = "neutral"
+    else:
+        stance = "conflicted"
+
+    summary = {
+        "bullish": "Curve conditions favor owning front-end rates and NCD carry rather than flattening defensively.",
+        "bearish": "Curve conditions argue for staying defensive on rates and NCD curve exposure.",
+        "conflicted": "Curve inputs disagree across duration and liquidity; avoid a large curve tilt.",
+        "neutral": "Curve inputs are balanced and do not support a strong rates or NCD curve tilt.",
+    }[stance]
+    evidence = [
+        f"global_rates: {global_axis.summary}",
+        f"liquidity: {liquidity_axis.summary}",
+    ]
+    top_curve = _find_top_correlation(correlations, {"treasury", "cdb"})
+    if top_curve is not None:
+        evidence.append(_format_correlation_evidence(top_curve))
+    return MacroBondResearchViewResult(
+        key="curve",
+        stance=stance,
+        confidence=_confidence_from_values(
+            abs(macro_environment.rate_direction_score),
+            abs(macro_environment.liquidity_score),
+            _correlation_rank(top_curve),
+        ),
+        summary=summary,
+        affected_targets=["rates", "ncd"],
+        evidence=evidence,
+    )
+
+
+def _build_credit_view(
+    macro_environment: MacroEnvironmentScore,
+    axis_map: dict[TransmissionAxisKey, MacroBondTransmissionAxisResult],
+    correlations: Sequence[MacroBondCorrelation],
+) -> MacroBondResearchViewResult:
+    liquidity_axis = axis_map["liquidity"]
+    inflation_axis = axis_map["commodities_inflation"]
+    equity_axis = axis_map["equity_bond_spread"]
+    mega_cap_axis = axis_map["mega_cap_equities"]
+    stance: ResearchViewStance
+    if (
+        equity_axis.status == "ready"
+        and equity_axis.stance == "restrictive"
+        and mega_cap_axis.status == "ready"
+        and mega_cap_axis.stance == "restrictive"
+    ):
+        stance = "bearish"
+    elif liquidity_axis.stance == "supportive" and inflation_axis.stance != "restrictive":
+        stance = "bullish"
+    elif liquidity_axis.stance == "restrictive" or inflation_axis.stance == "restrictive":
+        stance = "bearish"
+    elif liquidity_axis.stance == "neutral" and inflation_axis.stance == "neutral":
+        stance = "neutral"
+    else:
+        stance = "conflicted"
+
+    if (
+        stance == "bearish"
+        and equity_axis.status == "ready"
+        and equity_axis.stance == "restrictive"
+        and mega_cap_axis.status == "ready"
+        and mega_cap_axis.stance == "restrictive"
+    ):
+        summary = "High-grade credit should stay defensive because both equity-bond spread and mega-cap leadership are restrictive."
+    elif stance == "bullish":
+        summary = "High-grade credit is supported, but the tranche remains limited to high-grade spread risk only."
+    elif stance == "bearish":
+        summary = "High-grade credit should stay defensive while liquidity or inflation pressure remains restrictive."
+    elif stance == "conflicted":
+        summary = "High-grade credit inputs conflict; keep spread exposure selective and high quality only."
+    else:
+        summary = "High-grade credit inputs are balanced, so keep spread exposure neutral."
+    evidence = [
+        f"liquidity: {liquidity_axis.summary}",
+        f"commodities_inflation: {inflation_axis.summary}",
+    ]
+    if equity_axis.status == "ready":
+        evidence.append(f"equity-bond: {equity_axis.summary}")
+    if mega_cap_axis.status == "ready":
+        evidence.append(f"mega-cap: {mega_cap_axis.summary}")
+    top_credit = _find_top_correlation(correlations, {"credit_spread", "aaa_credit"})
+    if top_credit is not None:
+        evidence.append(_format_correlation_evidence(top_credit))
+    return MacroBondResearchViewResult(
+        key="credit",
+        stance=stance,
+        confidence=_confidence_from_values(
+            abs(macro_environment.liquidity_score),
+            abs(macro_environment.inflation_score),
+            _correlation_rank(top_credit),
+        ),
+        summary=summary,
+        affected_targets=["high_grade_credit"],
+        evidence=evidence,
+    )
+
+
+def _build_instrument_view(
+    macro_environment: MacroEnvironmentScore,
+    axis_map: dict[TransmissionAxisKey, MacroBondTransmissionAxisResult],
+    correlations: Sequence[MacroBondCorrelation],
+) -> MacroBondResearchViewResult:
+    global_axis = axis_map["global_rates"]
+    liquidity_axis = axis_map["liquidity"]
+    inflation_axis = axis_map["commodities_inflation"]
+    equity_axis = axis_map["equity_bond_spread"]
+    mega_cap_axis = axis_map["mega_cap_equities"]
+    considered_axes = [
+        global_axis,
+        liquidity_axis,
+        inflation_axis,
+        *(axis for axis in (equity_axis, mega_cap_axis) if axis.status == "ready"),
+    ]
+    supportive_count = sum(axis.stance == "supportive" for axis in considered_axes)
+    restrictive_count = sum(axis.stance == "restrictive" for axis in considered_axes)
+    stance: ResearchViewStance
+    if supportive_count >= 2 and restrictive_count == 0:
+        stance = "bullish"
+    elif restrictive_count >= 2 and supportive_count == 0:
+        stance = "bearish"
+    elif supportive_count and restrictive_count:
+        stance = "conflicted"
+    else:
+        stance = "neutral"
+
+    summary = {
+        "bullish": "Prefer rates first, then NCD carry, with high-grade credit as a controlled extension.",
+        "bearish": "Keep implementation defensive across rates, NCD, and high-grade credit until pressure eases.",
+        "conflicted": "Instrument preferences are mixed; keep allocations balanced across rates, NCD, and high-grade credit.",
+        "neutral": "No strong instrument tilt is supported across rates, NCD, and high-grade credit.",
+    }[stance]
+    evidence = [
+        f"global_rates: {global_axis.summary}",
+        f"liquidity: {liquidity_axis.summary}",
+        f"commodities_inflation: {inflation_axis.summary}",
+    ]
+    if equity_axis.status == "ready":
+        evidence.append(f"equity-bond: {equity_axis.summary}")
+    if mega_cap_axis.status == "ready":
+        evidence.append(f"mega-cap: {mega_cap_axis.summary}")
+    top_instrument = _find_top_correlation(correlations, {"treasury", "cdb", "credit_spread", "aaa_credit"})
+    if top_instrument is not None:
+        evidence.append(_format_correlation_evidence(top_instrument))
+    return MacroBondResearchViewResult(
+        key="instrument",
+        stance=stance,
+        confidence=_confidence_from_values(
+            abs(macro_environment.rate_direction_score),
+            abs(macro_environment.liquidity_score),
+            abs(macro_environment.inflation_score),
+            _correlation_rank(top_instrument),
+        ),
+        summary=summary,
+        affected_targets=["rates", "ncd", "high_grade_credit"],
+        evidence=evidence,
+    )
+
+
+def _axis_stance_from_score(
+    score: float,
+    *,
+    neutral_threshold: float = 0.1,
+    reverse: bool = False,
+) -> Literal["supportive", "neutral", "restrictive"]:
+    if score >= neutral_threshold:
+        return "supportive" if not reverse else "restrictive"
+    if score <= -neutral_threshold:
+        return "restrictive" if not reverse else "supportive"
+    return "neutral"
+
+
+def _merge_axis_stances(
+    primary: Literal["supportive", "neutral", "restrictive"],
+    secondary: Literal["supportive", "neutral", "restrictive"],
+) -> TransmissionAxisStance:
+    if primary == secondary:
+        return primary
+    if "neutral" in {primary, secondary}:
+        return secondary if primary == "neutral" else primary
+    return "conflicted"
+
+
+def _confidence_from_values(*values: float) -> ResearchViewConfidence:
+    strongest = max((float(value) for value in values), default=0.0)
+    if strongest >= 0.65:
+        return "high"
+    if strongest >= 0.25:
+        return "medium"
+    return "low"
+
+
+def _find_top_correlation(
+    correlations: Sequence[MacroBondCorrelation],
+    target_families: set[str],
+) -> MacroBondCorrelation | None:
+    for correlation in correlations:
+        family, _tenor = _split_target_identity(correlation.target_yield)
+        if family in target_families:
+            return correlation
+    return None
+
+
+def _format_correlation_evidence(correlation: MacroBondCorrelation) -> str:
+    family, tenor = _split_target_identity(correlation.target_yield)
+    target_label = family if tenor is None else f"{family} {tenor}"
+    strength = _correlation_rank(correlation)
+    return (
+        f"Top supported correlation: {correlation.series_name} vs {target_label} "
+        f"(strength {round(strength, 3)}, lead_lag_days {correlation.lead_lag_days})."
+    )
+
+
+def _split_target_identity(target_yield: str) -> tuple[str, str | None]:
+    family, separator, tenor = str(target_yield).rpartition("_")
+    if not separator:
+        return str(target_yield), None
+    return family, tenor or None
+
+
+def _correlation_rank(correlation: MacroBondCorrelation | None) -> float:
+    if correlation is None:
+        return 0.0
+    candidates = (
+        correlation.correlation_1y,
+        correlation.correlation_6m,
+        correlation.correlation_3m,
+    )
+    strengths = [abs(float(value)) for value in candidates if value is not None]
+    return max(strengths, default=0.0)
