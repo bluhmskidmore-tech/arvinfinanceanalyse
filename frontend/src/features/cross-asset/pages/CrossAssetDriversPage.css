@@ -1,0 +1,78 @@
+.cross-asset-class-analysis {
+  padding: 20px;
+  border-radius: 24px;
+  background: #f7f7f2;
+  border: 1px solid #e4ebe8;
+  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.06);
+}
+
+.cross-asset-class-analysis__header {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.cross-asset-class-analysis__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1c2833;
+}
+
+.cross-asset-class-analysis__description {
+  margin: 0;
+  color: #586575;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.cross-asset-class-analysis__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.cross-asset-class-analysis__card {
+  border-radius: 12px;
+  border: 1px solid #eef2f0;
+  background: #f7f7f2;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+
+.cross-asset-class-analysis__card--pending {
+  background: #fffbe6;
+}
+
+.cross-asset-class-analysis__card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+
+.cross-asset-class-analysis__card-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #1c2833;
+}
+
+.cross-asset-class-analysis__summary {
+  margin: 0;
+  color: #3d4a56;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.cross-asset-class-analysis__evidence {
+  color: #7a8795;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.cross-asset-class-analysis__warning {
+  color: #d48806;
+  font-size: 12px;
+  line-height: 1.7;
+}

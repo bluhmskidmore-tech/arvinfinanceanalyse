@@ -128,6 +128,11 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).toHaveTextContent(
       "Awaiting governed equity-bond spread proxy.",
     );
+    expect(screen.getByTestId("cross-asset-asset-class-analysis")).toBeInTheDocument();
+    expect(screen.getByTestId("cross-asset-asset-analysis-stock")).toHaveTextContent("股票分析");
+    expect(screen.getByTestId("cross-asset-asset-analysis-commodities")).toHaveTextContent("大宗商品");
+    expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("期权");
+    expect(screen.getByTestId("cross-asset-asset-analysis-options")).toHaveTextContent("pending_signal");
   });
 
   it("surfaces the data-driven cockpit sections and provenance flags", async () => {

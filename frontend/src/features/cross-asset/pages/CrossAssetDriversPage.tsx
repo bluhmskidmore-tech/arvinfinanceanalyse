@@ -19,6 +19,7 @@ import { PageOutput } from "../components/PageOutput";
 import { WatchList } from "../components/WatchList";
 import {
   buildCrossAssetCandidateActions,
+  buildCrossAssetClassAnalysisRows,
   buildCrossAssetEventItems,
   buildCrossAssetNcdProxyEvidence,
   buildCrossAssetStatusFlags,
@@ -26,6 +27,7 @@ import {
   buildResearchSummaryCards,
   buildTransmissionAxisRows,
   formatLinkageCorrelationDisplay,
+  type CrossAssetClassAnalysisRow,
   type CrossAssetNcdProxyEvidence,
   type CrossAssetResearchViewCard,
   type CrossAssetTransmissionAxisRow,
@@ -37,6 +39,7 @@ import {
   resolveCrossAssetKpis,
   type ResolvedCrossAssetKpi,
 } from "../lib/crossAssetKpiModel";
+import "./CrossAssetDriversPage.css";
 
 const t = designTokens;
 
@@ -331,6 +334,43 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
   );
 }
 
+function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] }) {
+  return (
+    <section data-testid="cross-asset-asset-class-analysis" className="cross-asset-class-analysis">
+      <div className="cross-asset-class-analysis__header">
+        <h2 className="cross-asset-class-analysis__title">资产类别分析</h2>
+        <p className="cross-asset-class-analysis__description">
+          股票、大宗商品和期权单独列出；没有治理口径的数据保持 pending，不从相邻资产硬推。
+        </p>
+      </div>
+      <div className="cross-asset-class-analysis__grid">
+        {rows.map((row) => (
+          <article
+            key={row.key}
+            data-testid={`cross-asset-asset-analysis-${row.key}`}
+            className={`cross-asset-class-analysis__card${row.status === "pending_signal" ? " cross-asset-class-analysis__card--pending" : ""}`}
+          >
+            <div className="cross-asset-class-analysis__card-header">
+              <div className="cross-asset-class-analysis__card-title">{row.label}</div>
+              <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={row.status} />
+            </div>
+            <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.stance} />
+            <p className="cross-asset-class-analysis__summary">{row.summary}</p>
+            {row.evidence.length > 0 ? (
+              <div className="cross-asset-class-analysis__evidence">
+                Evidence: {row.evidence.slice(0, 2).join(" | ")}
+              </div>
+            ) : null}
+            {row.warnings.length > 0 ? (
+              <div className="cross-asset-class-analysis__warning">{row.warnings[0]}</div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function CrossAssetDriversPage() {
   const client = useApiClient();
   const latestQuery = useQuery({
@@ -407,6 +447,14 @@ export default function CrossAssetDriversPage() {
         env,
       }),
     [env, macroBondLinkage.transmission_axes],
+  );
+  const assetClassAnalysisRows = useMemo(
+    () =>
+      buildCrossAssetClassAnalysisRows({
+        kpis,
+        transmissionAxes: transmissionAxisRows,
+      }),
+    [kpis, transmissionAxisRows],
   );
   const ncdProxyPayload = ncdFundingProxyQuery.data?.result ?? null;
   const ncdProxyEvidence = useMemo(
@@ -541,6 +589,7 @@ export default function CrossAssetDriversPage() {
             />
             <ResearchViewsPanel rows={researchViewCards} />
             <TransmissionAxesPanel rows={transmissionAxisRows} />
+            <AssetClassAnalysisPanel rows={assetClassAnalysisRows} />
 
             <PageSectionLead
               eyebrow="Context"

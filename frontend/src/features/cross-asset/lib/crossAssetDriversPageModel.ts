@@ -73,6 +73,16 @@ export type CrossAssetTransmissionAxisRow = {
   source: ResearchCardSource;
 };
 
+export type CrossAssetClassAnalysisRow = {
+  key: "stock" | "commodities" | "options";
+  label: string;
+  status: "ready" | "pending_signal";
+  stance: string;
+  summary: string;
+  evidence: string[];
+  warnings: string[];
+};
+
 export type CrossAssetCandidateAction = {
   tone: ActionTone;
   action: string;
@@ -102,6 +112,7 @@ export type CrossAssetNcdProxyEvidence = {
 export type CrossAssetDriversViewModel = {
   researchCards: CrossAssetResearchViewCard[];
   transmissionAxes: CrossAssetTransmissionAxisRow[];
+  assetClassAnalysisRows: CrossAssetClassAnalysisRow[];
   candidateActions: CrossAssetCandidateAction[];
   watchList: CrossAssetWatchRow[];
   eventCalendarRows: CalendarItem[];
@@ -482,6 +493,73 @@ function transmissionAxisFromSource(
   };
 }
 
+function evidenceFromKpis(kpis: ResolvedCrossAssetKpi[], keys: readonly string[]) {
+  return keys
+    .map((key) => kpis.find((kpi) => kpi.key === key))
+    .filter((kpi): kpi is ResolvedCrossAssetKpi => Boolean(kpi))
+    .map((kpi) => `${kpi.key}: ${kpi.label} ${kpi.valueLabel} (${kpi.changeLabel})`);
+}
+
+function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
+  return rows.find((row) => row.axisKey === key);
+}
+
+export function buildCrossAssetClassAnalysisRows(input: {
+  kpis: ResolvedCrossAssetKpi[];
+  transmissionAxes: CrossAssetTransmissionAxisRow[];
+}): CrossAssetClassAnalysisRow[] {
+  const equityAxis = axisByKey(input.transmissionAxes, "equity_bond_spread");
+  const megaCapAxis = axisByKey(input.transmissionAxes, "mega_cap_equities");
+  const commodityAxis = axisByKey(input.transmissionAxes, "commodities_inflation");
+  const equityEvidence = [
+    ...evidenceFromKpis(input.kpis, ["financial_conditions"]),
+    ...(equityAxis?.requiredSeriesIds ?? []),
+    ...(megaCapAxis?.requiredSeriesIds ?? []),
+  ];
+  const commodityEvidence = [
+    ...evidenceFromKpis(input.kpis, ["brent", "steel"]),
+    ...(commodityAxis?.requiredSeriesIds ?? []),
+  ];
+  const stockReady = equityAxis?.status === "ready" || megaCapAxis?.status === "ready" || equityEvidence.length > 0;
+  const commodityReady = commodityAxis?.status === "ready" || commodityEvidence.length > 0;
+
+  return [
+    {
+      key: "stock",
+      label: "股票分析",
+      status: stockReady ? "ready" : "pending_signal",
+      stance: equityAxis?.stance ?? megaCapAxis?.stance ?? "pending",
+      summary:
+        equityAxis?.summary ??
+        megaCapAxis?.summary ??
+        "Pending governed equity analysis; keep equity evidence separate from bond conclusions until the proxy is confirmed.",
+      evidence: equityEvidence,
+      warnings: [...(equityAxis?.warnings ?? []), ...(megaCapAxis?.warnings ?? [])],
+    },
+    {
+      key: "commodities",
+      label: "大宗商品分析",
+      status: commodityReady ? "ready" : "pending_signal",
+      stance: commodityAxis?.stance ?? "pending",
+      summary:
+        commodityAxis?.summary ??
+        "Pending governed commodity chain read; use only visible Brent / steel evidence and avoid adding unsupported inflation pressure.",
+      evidence: commodityEvidence,
+      warnings: commodityAxis?.warnings ?? [],
+    },
+    {
+      key: "options",
+      label: "期权分析",
+      status: "pending_signal",
+      stance: "definition pending",
+      summary:
+        "Options analysis definition pending: no governed volatility, skew, or put-call input is available in the current cross-asset chain.",
+      evidence: ["Required series: CA.OPTION_IV, CA.OPTION_SKEW, CA.PUT_CALL_RATIO"],
+      warnings: ["No governed options input; do not infer volatility or skew from equity spot, commodity moves, or bond yields."],
+    },
+  ];
+}
+
 export function buildCrossAssetDriversViewModel(input: {
   researchViews?: MacroBondResearchView[];
   transmissionAxes?: MacroBondTransmissionAxis[];
@@ -511,6 +589,10 @@ export function buildCrossAssetDriversViewModel(input: {
   const transmissionAxes = buildTransmissionAxisRows({
     transmissionAxes: input.transmissionAxes,
     env: input.env,
+  });
+  const assetClassAnalysisRows = buildCrossAssetClassAnalysisRows({
+    kpis: input.kpis,
+    transmissionAxes,
   });
   const candidateActions = buildCrossAssetCandidateActions({
     researchViews: input.researchViews,
@@ -549,6 +631,7 @@ export function buildCrossAssetDriversViewModel(input: {
   return {
     researchCards,
     transmissionAxes,
+    assetClassAnalysisRows,
     candidateActions,
     watchList,
     eventCalendarRows,

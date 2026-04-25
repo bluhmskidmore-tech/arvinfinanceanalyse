@@ -14,6 +14,7 @@ import {
   buildCrossAssetDriversViewModel,
   buildCrossAssetEventItems,
   buildCrossAssetNcdProxyEvidence,
+  buildCrossAssetClassAnalysisRows,
   buildResearchSummaryCards,
   buildCrossAssetStatusFlags,
   buildTransmissionAxisRows,
@@ -268,6 +269,40 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows.every((r) => r.source === "fallback")).toBe(true);
   });
 
+  it("builds equity, commodity, and options analysis rows without inventing missing options signals", () => {
+    const kpis = resolveCrossAssetKpis([
+      makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
+      makePoint("CA.BRENT", "Brent spot price", 82.3, { unit: "USD/bbl", latest_change: 4.8 }),
+      makePoint("CA.STEEL", "Steel spot price", 8500, { unit: "CNY/t", latest_change: 3.2 }),
+    ]);
+    const axes = buildTransmissionAxisRows({
+      transmissionAxes: [
+        {
+          axis_key: "equity_bond_spread",
+          status: "ready",
+          stance: "risk_on",
+          summary: "Equity-bond spread narrows as equity risk appetite improves.",
+          impacted_views: ["duration", "credit"],
+          required_series_ids: ["CA.CSI300"],
+          warnings: [],
+        } satisfies MacroBondTransmissionAxis,
+      ],
+      env: {},
+    });
+
+    const rows = buildCrossAssetClassAnalysisRows({ kpis, transmissionAxes: axes });
+
+    expect(rows.map((row) => row.key)).toEqual(["stock", "commodities", "options"]);
+    expect(rows[0].status).toBe("ready");
+    expect(rows[0].summary).toContain("Equity-bond spread narrows");
+    expect(rows[0].evidence).toEqual(expect.arrayContaining([expect.stringContaining("CA.CSI300")]));
+    expect(rows[1].status).toBe("ready");
+    expect(rows[1].evidence).toEqual(expect.arrayContaining([expect.stringContaining("brent")]));
+    expect(rows[2].status).toBe("pending_signal");
+    expect(rows[2].summary).toContain("definition pending");
+    expect(rows[2].warnings[0]).toContain("No governed options input");
+  });
+
   it("maps research calendar events into event calendar rows", () => {
     const items = buildCrossAssetEventItems({
       events: [
@@ -463,6 +498,8 @@ describe("crossAssetDriversPageModel", () => {
 
     expect(vm.researchCards[0].source).toBe("backend");
     expect(vm.transmissionAxes[0].source).toBe("backend");
+    expect(vm.assetClassAnalysisRows.map((row) => row.key)).toEqual(["stock", "commodities", "options"]);
+    expect(vm.assetClassAnalysisRows.find((row) => row.key === "options")?.status).toBe("pending_signal");
     expect(vm.eventCalendarRows[0].event).toContain("Auction");
     expect(vm.ncdProxyEvidence.sourceMeta).toBe("unavailable");
     expect(vm.statusFlags.map((f) => f.id)).toEqual(
