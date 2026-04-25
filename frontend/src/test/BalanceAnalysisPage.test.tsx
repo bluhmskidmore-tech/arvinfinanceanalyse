@@ -1170,7 +1170,7 @@ describe("BalanceAnalysisPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
-        "Bucket gap is 4290357.07 wan yuan.",
+        "Bucket gap is 429.04 亿元",
       );
       expect(screen.getByTestId("balance-analysis-right-rail-drilldown-decision")).toHaveTextContent(
         "bal_wb_decision_gap_001",

@@ -551,6 +551,17 @@ export default function OperationsAnalysisPage() {
   };
   const balanceOverview = balanceOverviewQuery.data?.result;
 
+  const canShowFormalBalanceSplit = useMemo(
+    () =>
+      Boolean(
+        balanceOverview &&
+          balanceOverview.position_scope === "all" &&
+          balanceOverview.asset_total_market_value_amount != null &&
+          balanceOverview.liability_total_market_value_amount != null,
+      ),
+    [balanceOverview],
+  );
+
   const balanceSummaryQuery = useQuery({
     queryKey: [
       "operations-entry",
@@ -691,26 +702,69 @@ export default function OperationsAnalysisPage() {
     sourceSummaries.length,
   ]);
 
-  const operationsHeadlineCards = useMemo(
-    () => [
-      {
-        title: "Market Value",
-        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_market_value_amount),
-        unit: "亿元",
-        detail: "governed balance overview",
-      },
-      {
-        title: "Amortized Cost",
-        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
-        unit: "亿元",
-        detail: "governed balance overview",
-      },
-      {
-        title: "Accrued Interest",
-        value: formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
-        unit: "亿元",
-        detail: "governed balance overview",
-      },
+  const operationsHeadlineCards = useMemo(() => {
+    const r = balanceOverviewQuery.data?.result;
+    const balanceStrip = canShowFormalBalanceSplit
+      ? [
+          {
+            title: "资产 · 总市值",
+            value: formatYuanAmountAsYiPlain(r?.asset_total_market_value_amount),
+            unit: "亿元",
+            detail: "formal · 资产端",
+          },
+          {
+            title: "负债 · 总市值",
+            value: formatYuanAmountAsYiPlain(r?.liability_total_market_value_amount),
+            unit: "亿元",
+            detail: "formal · 负债端",
+          },
+          {
+            title: "资产 · 摊余成本",
+            value: formatYuanAmountAsYiPlain(r?.asset_total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "formal · 资产端",
+          },
+          {
+            title: "负债 · 摊余成本",
+            value: formatYuanAmountAsYiPlain(r?.liability_total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "formal · 负债端",
+          },
+          {
+            title: "资产 · 应计利息",
+            value: formatYuanAmountAsYiPlain(r?.asset_total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "formal · 资产端",
+          },
+          {
+            title: "负债 · 应计利息",
+            value: formatYuanAmountAsYiPlain(r?.liability_total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "formal · 负债端",
+          },
+        ]
+      : [
+          {
+            title: "总市值（代数和）",
+            value: formatYuanAmountAsYiPlain(r?.total_market_value_amount),
+            unit: "亿元",
+            detail: "governed balance overview",
+          },
+          {
+            title: "摊余成本（代数和）",
+            value: formatYuanAmountAsYiPlain(r?.total_amortized_cost_amount),
+            unit: "亿元",
+            detail: "governed balance overview",
+          },
+          {
+            title: "应计利息（代数和）",
+            value: formatYuanAmountAsYiPlain(r?.total_accrued_interest_amount),
+            unit: "亿元",
+            detail: "governed balance overview",
+          },
+        ];
+    return [
+      ...balanceStrip,
       {
         title: "Source Batches",
         value: sourceStatusCard.value,
@@ -725,7 +779,7 @@ export default function OperationsAnalysisPage() {
         title: "Formal FX Coverage",
         value: formalFxStatusCard.value,
         detail: formalFxStatusCard.detail,
-        status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
+        status: fxFormalStatusQuery.isError ? ("warning" as const) : ("normal" as const),
       },
       {
         title: "News Events",
@@ -734,27 +788,133 @@ export default function OperationsAnalysisPage() {
       },
       {
         title: "Summary Rows",
-        value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
-        detail: `detail ${balanceOverviewQuery.data?.result.detail_row_count ?? 0} rows`,
+        value: String(r?.summary_row_count ?? 0),
+        detail: `detail ${r?.detail_row_count ?? 0} rows`,
       },
-    ],
-    [
-      balanceOverviewQuery.data?.result?.detail_row_count,
-      balanceOverviewQuery.data?.result?.summary_row_count,
-      balanceOverviewQuery.data?.result?.total_accrued_interest_amount,
-      balanceOverviewQuery.data?.result?.total_amortized_cost_amount,
-      balanceOverviewQuery.data?.result?.total_market_value_amount,
-      formalFxStatusCard.detail,
-      formalFxStatusCard.value,
-      fxFormalStatusQuery.isError,
-      macroStatusCard.detail,
-      macroStatusCard.value,
-      newsStatusCard.detail,
-      newsStatusCard.value,
-      sourceStatusCard.detail,
-      sourceStatusCard.value,
-    ],
-  );
+    ];
+  }, [
+    canShowFormalBalanceSplit,
+    balanceOverviewQuery.data?.result,
+    balanceOverviewQuery.data?.result?.asset_total_accrued_interest_amount,
+    balanceOverviewQuery.data?.result?.asset_total_amortized_cost_amount,
+    balanceOverviewQuery.data?.result?.asset_total_market_value_amount,
+    balanceOverviewQuery.data?.result?.detail_row_count,
+    balanceOverviewQuery.data?.result?.liability_total_accrued_interest_amount,
+    balanceOverviewQuery.data?.result?.liability_total_amortized_cost_amount,
+    balanceOverviewQuery.data?.result?.liability_total_market_value_amount,
+    balanceOverviewQuery.data?.result?.position_scope,
+    balanceOverviewQuery.data?.result?.summary_row_count,
+    balanceOverviewQuery.data?.result?.total_accrued_interest_amount,
+    balanceOverviewQuery.data?.result?.total_amortized_cost_amount,
+    balanceOverviewQuery.data?.result?.total_market_value_amount,
+    formalFxStatusCard.detail,
+    formalFxStatusCard.value,
+    fxFormalStatusQuery.isError,
+    macroStatusCard.detail,
+    macroStatusCard.value,
+    newsStatusCard.detail,
+    newsStatusCard.value,
+    sourceStatusCard.detail,
+    sourceStatusCard.value,
+  ]);
+
+  const balanceEntryMiniMetrics = useMemo(() => {
+    const o = balanceOverview;
+    if (!o) {
+      return [] as Array<{
+        testId: string;
+        label: string;
+        value: string;
+        detail: string;
+        unit?: string;
+      }>;
+    }
+    const head = [
+      {
+        testId: "operations-entry-balance-detail-rows",
+        label: "明细行数",
+        value: String(o.detail_row_count),
+        detail: "正式读面明细行数",
+      },
+      {
+        testId: "operations-entry-balance-summary-rows",
+        label: "汇总行数",
+        value: String(o.summary_row_count),
+        detail: "正式读面汇总行数",
+      },
+    ];
+    if (canShowFormalBalanceSplit) {
+      return [
+        ...head,
+        {
+          testId: "operations-entry-balance-asset-market-value",
+          label: "资产 · 总市值",
+          value: formatYuanAmountAsYiPlain(o.asset_total_market_value_amount),
+          detail: "正式读面 · 资产端",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-market-value",
+          label: "负债 · 总市值",
+          value: formatYuanAmountAsYiPlain(o.liability_total_market_value_amount),
+          detail: "正式读面 · 负债端",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-asset-amortized",
+          label: "资产 · 摊余成本",
+          value: formatYuanAmountAsYiPlain(o.asset_total_amortized_cost_amount),
+          detail: "正式读面 · 资产端",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-amortized",
+          label: "负债 · 摊余成本",
+          value: formatYuanAmountAsYiPlain(o.liability_total_amortized_cost_amount),
+          detail: "正式读面 · 负债端",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-asset-accrued",
+          label: "资产 · 应计利息",
+          value: formatYuanAmountAsYiPlain(o.asset_total_accrued_interest_amount),
+          detail: "正式读面 · 资产端",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-accrued",
+          label: "负债 · 应计利息",
+          value: formatYuanAmountAsYiPlain(o.liability_total_accrued_interest_amount),
+          detail: "正式读面 · 负债端",
+          unit: "亿元",
+        },
+      ];
+    }
+    return [
+      ...head,
+      {
+        testId: "operations-entry-balance-market-value",
+        label: "总市值（代数和）",
+        value: formatYuanAmountAsYiPlain(o.total_market_value_amount),
+        detail: "正式读面两端代数和",
+        unit: "亿元",
+      },
+      {
+        testId: "operations-entry-balance-amortized",
+        label: "摊余成本（代数和）",
+        value: formatYuanAmountAsYiPlain(o.total_amortized_cost_amount),
+        detail: "正式读面两端代数和",
+        unit: "亿元",
+      },
+      {
+        testId: "operations-entry-balance-accrued",
+        label: "应计利息（代数和）",
+        value: formatYuanAmountAsYiPlain(o.total_accrued_interest_amount),
+        detail: "正式读面两端代数和",
+        unit: "亿元",
+      },
+    ];
+  }, [balanceOverview, canShowFormalBalanceSplit]);
 
   async function handlePnlRefresh() {
     setIsPnlRefreshing(true);
@@ -858,6 +1018,26 @@ export default function OperationsAnalysisPage() {
           marketValueAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_market_value_amount)}
           amortizedCostAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
           accruedInterestAmount={formatYuanAmountAsYiPlain(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
+          {...(canShowFormalBalanceSplit && balanceOverview
+            ? {
+                assetMarketValueAmount: formatYuanAmountAsYiPlain(balanceOverview.asset_total_market_value_amount),
+                liabilityMarketValueAmount: formatYuanAmountAsYiPlain(
+                  balanceOverview.liability_total_market_value_amount,
+                ),
+                assetAmortizedCostAmount: formatYuanAmountAsYiPlain(
+                  balanceOverview.asset_total_amortized_cost_amount,
+                ),
+                liabilityAmortizedCostAmount: formatYuanAmountAsYiPlain(
+                  balanceOverview.liability_total_amortized_cost_amount,
+                ),
+                assetAccruedInterestAmount: formatYuanAmountAsYiPlain(
+                  balanceOverview.asset_total_accrued_interest_amount,
+                ),
+                liabilityAccruedInterestAmount: formatYuanAmountAsYiPlain(
+                  balanceOverview.liability_total_accrued_interest_amount,
+                ),
+              }
+            : {})}
           missingFxCount={missingFxRows.length}
         />
         <RevenueCostBridge />
@@ -960,50 +1140,13 @@ export default function OperationsAnalysisPage() {
                 作为经营分析后的专题入口，不在本页展开完整工作簿。
               </p>
               <div style={balanceOverviewGridStyle}>
-                {[
-                  {
-                    testId: "operations-entry-balance-detail-rows",
-                    label: "明细行数",
-                    value: String(balanceOverview!.detail_row_count),
-                    detail: "正式读面明细行数",
-                  },
-                  {
-                    testId: "operations-entry-balance-summary-rows",
-                    label: "汇总行数",
-                    value: String(balanceOverview!.summary_row_count),
-                    detail: "正式读面汇总行数",
-                  },
-                  {
-                    testId: "operations-entry-balance-market-value",
-                    label: "总市值合计",
-                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_market_value_amount),
-                    detail: "正式读面总市值",
-                  },
-                  {
-                    testId: "operations-entry-balance-amortized",
-                    label: "摊余成本合计",
-                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_amortized_cost_amount),
-                    detail: "正式读面摊余成本",
-                  },
-                  {
-                    testId: "operations-entry-balance-accrued",
-                    label: "应计利息合计",
-                    value: formatYuanAmountAsYiPlain(balanceOverview!.total_accrued_interest_amount),
-                    detail: "正式读面应计利息",
-                  },
-                ].map((item) => (
+                {balanceEntryMiniMetrics.map((item) => (
                   <div key={item.testId} data-testid={item.testId}>
                     <OperationsMetricCard
                       label={item.label}
                       value={item.value}
                       detail={item.detail}
-                      unit={
-                        item.testId === "operations-entry-balance-market-value" ||
-                        item.testId === "operations-entry-balance-amortized" ||
-                        item.testId === "operations-entry-balance-accrued"
-                          ? "亿元"
-                          : undefined
-                      }
+                      unit={item.unit}
                       compact
                     />
                   </div>

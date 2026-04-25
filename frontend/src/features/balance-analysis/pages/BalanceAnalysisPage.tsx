@@ -147,6 +147,57 @@ function formatWorkbookValue(value: unknown) {
   return String(value);
 }
 
+/** Workbook 金额列（万元）→ 亿元展示（与 `formatWanAmountAsYiPlain` 一致） */
+function formatWorkbookWanAsYi(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  return formatWanAmountAsYiPlain(String(value).replace(/,/g, ""));
+}
+
+function formatWorkbookWanAsYiWithUnit(value: unknown): string {
+  const s = formatWorkbookWanAsYi(value);
+  return s === "—" ? s : `${s} 亿元`;
+}
+
+/** 将叙事文案中的 `… wan yuan` / `… 万元` 换成亿元读数，供决策/预警/下钻使用 */
+function formatWanYuanPhrasesInText(text: string): string {
+  if (!text) {
+    return text;
+  }
+  let s = text.replace(
+    /(-?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))\s+wan\s+yuan/gi,
+    (_, rawNum: string) => `${formatWanAmountAsYiPlain(rawNum)} 亿元`,
+  );
+  s = s.replace(
+    /(-?(?:\d+(?:\.\d+)?(?:[eE][+-]?\d+)?))\s*万元/g,
+    (_, rawNum: string) => `${formatWanAmountAsYiPlain(rawNum)} 亿元`,
+  );
+  return s;
+}
+
+function formatWorkbookPercent(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  const n = Number.parseFloat(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  return `${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}%`;
+}
+
+function formatWorkbookYears(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+  const n = Number.parseFloat(String(value).replace(/,/g, ""));
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  return `${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 年`;
+}
+
 function formatOverviewNumber(raw: string | number | null | undefined): string {
   if (raw === null || raw === undefined || raw === "") {
     return "—";
@@ -489,7 +540,7 @@ function renderDistributionPanel(
                 {formatWorkbookValue(row[labelKey])}
               </span>
               <span style={{ color: designTokens.color.neutral[700], ...tabularNumsStyle }}>
-                {formatWorkbookValue(row[valueKey])}
+                {formatWorkbookWanAsYiWithUnit(row[valueKey])}
               </span>
             </div>
             <div style={barTrackStyle}>
@@ -543,7 +594,7 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
             }}
           >
             <div style={{ fontSize: 18, fontWeight: 700 }}>{formatWorkbookValue(row.rating)}</div>
-            <div style={{ fontSize: 13, opacity: 0.92 }}>{formatWorkbookValue(row.balance_amount)}</div>
+            <div style={{ fontSize: 13, opacity: 0.92 }}>{formatWorkbookWanAsYiWithUnit(row.balance_amount)}</div>
           </article>
         );
       })}
@@ -588,7 +639,7 @@ function renderMaturityGapPanel(table: BalanceAnalysisWorkbookTable) {
                   ...tabularNumsStyle,
                 }}
               >
-                {formatWorkbookValue(row.gap_amount)}
+                {formatWorkbookWanAsYiWithUnit(row.gap_amount)}
               </div>
             </div>
             <div style={barTrackStyle}>
@@ -636,12 +687,12 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
             <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.bond_type)}</div>
-            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.balance_amount)}</div>
+            <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookWanAsYiWithUnit(row.balance_amount)}</div>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: designTokens.color.neutral[700], fontSize: 12 }}>
             <span>笔数 {formatWorkbookValue(row.count)}</span>
-            <span>利率 {formatWorkbookValue(row.weighted_rate_pct)}</span>
-            <span>期限 {formatWorkbookValue(row.weighted_term_years)}</span>
+            <span>利率 {formatWorkbookPercent(row.weighted_rate_pct)}</span>
+            <span>期限 {formatWorkbookYears(row.weighted_term_years)}</span>
           </div>
         </article>
       ))}
@@ -713,18 +764,20 @@ function renderRateDistributionPanel(table: BalanceAnalysisWorkbookTable) {
           >
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>债券</div>
-              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>{formatWorkbookValue(row.bond_amount)}</div>
+              <div style={{ color: designTokens.color.info[600], fontWeight: 700 }}>
+                {formatWorkbookWanAsYiWithUnit(row.bond_amount)}
+              </div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业资产</div>
               <div style={{ color: designTokens.color.success[400], fontWeight: 700 }}>
-                {formatWorkbookValue(row.interbank_asset_amount)}
+                {formatWorkbookWanAsYiWithUnit(row.interbank_asset_amount)}
               </div>
             </div>
             <div>
               <div style={{ color: designTokens.color.neutral[600] }}>同业负债</div>
               <div style={{ color: designTokens.color.warning[400], fontWeight: 700 }}>
-                {formatWorkbookValue(row.interbank_liability_amount)}
+                {formatWorkbookWanAsYiWithUnit(row.interbank_liability_amount)}
               </div>
             </div>
           </div>
@@ -761,9 +814,15 @@ function renderCounterpartyPanel(table: BalanceAnalysisWorkbookTable) {
         >
           <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.counterparty_type)}</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12 }}>
-            <span style={{ color: designTokens.color.info[600] }}>资产 {formatWorkbookValue(row.asset_amount)}</span>
-            <span style={{ color: designTokens.color.warning[400] }}>负债 {formatWorkbookValue(row.liability_amount)}</span>
-            <span style={{ color: designTokens.color.neutral[900] }}>净头寸 {formatWorkbookValue(row.net_position_amount)}</span>
+            <span style={{ color: designTokens.color.info[600] }}>
+              资产 {formatWorkbookWanAsYiWithUnit(row.asset_amount)}
+            </span>
+            <span style={{ color: designTokens.color.warning[400] }}>
+              负债 {formatWorkbookWanAsYiWithUnit(row.liability_amount)}
+            </span>
+            <span style={{ color: designTokens.color.neutral[900] }}>
+              净头寸 {formatWorkbookWanAsYiWithUnit(row.net_position_amount)}
+            </span>
           </div>
         </article>
       ))}
@@ -835,7 +894,7 @@ function renderDecisionItemsPanel(
             <span style={workbookPanelBadgeStyle}>{formatWorkbookValue(row.severity)}</span>
           </div>
           <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-            {formatWorkbookValue(row.reason)}
+            {formatWanYuanPhrasesInText(String(row.reason))}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
             <span>{formatWorkbookValue(row.action_label)}</span>
@@ -938,7 +997,9 @@ function renderEventCalendarPanel(
               <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{formatWorkbookValue(row.title)}</div>
               <div style={{ color: designTokens.color.info[600], fontSize: 12 }}>{formatWorkbookValue(row.event_date)}</div>
             </div>
-            <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{formatWorkbookValue(row.impact_hint)}</div>
+            <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>
+              {formatWanYuanPhrasesInText(String(row.impact_hint))}
+            </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
               <span>{formatWorkbookValue(row.event_type)}</span>
               <span>{formatWorkbookValue(row.source)}</span>
@@ -1015,7 +1076,7 @@ function renderRiskAlertsPanel(
               </span>
             </div>
             <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-              {formatWorkbookValue(row.reason)}
+              {formatWanYuanPhrasesInText(String(row.reason))}
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
               <span>{formatWorkbookValue(row.source_section)}</span>
@@ -2469,7 +2530,7 @@ export default function BalanceAnalysisPage() {
                       Latest status: {selectedDecision.latest_status.status}
                     </div>
                     <div style={{ color: designTokens.color.neutral[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {selectedDecision.reason}
+                      {formatWanYuanPhrasesInText(String(selectedDecision.reason))}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{selectedDecision.source_section}</span>
@@ -2498,7 +2559,9 @@ export default function BalanceAnalysisPage() {
                   <div data-testid="balance-analysis-right-rail-drilldown-event" style={{ display: "grid", gap: 8 }}>
                     <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedEventCalendar.title}</div>
                     <div style={{ color: designTokens.color.info[600], fontSize: 13 }}>{selectedEventCalendar.event_date}</div>
-                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>{selectedEventCalendar.impact_hint}</div>
+                    <div style={{ color: designTokens.color.neutral[700], fontSize: 13 }}>
+                      {formatWanYuanPhrasesInText(String(selectedEventCalendar.impact_hint))}
+                    </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.neutral[600] }}>
                       <span>{selectedEventCalendar.event_type}</span>
                       <span>{selectedEventCalendar.source}</span>
@@ -2510,7 +2573,7 @@ export default function BalanceAnalysisPage() {
                     <div style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>{selectedRiskAlert.title}</div>
                     <div style={{ color: designTokens.color.warning[600], fontSize: 13 }}>{selectedRiskAlert.severity}</div>
                     <div style={{ color: designTokens.color.warning[700], fontSize: 13, lineHeight: 1.6 }}>
-                      {selectedRiskAlert.reason}
+                      {formatWanYuanPhrasesInText(String(selectedRiskAlert.reason))}
                     </div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 12, color: designTokens.color.warning[700] }}>
                       <span>{selectedRiskAlert.source_section}</span>

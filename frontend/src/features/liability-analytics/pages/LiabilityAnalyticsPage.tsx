@@ -403,14 +403,23 @@ export default function LiabilityAnalyticsPage() {
     yieldKpi,
     counterpartyRows: dailyCpRows,
   });
-  const assetTotalYi = useMemo(() => {
-    const raw = balanceOverviewQuery.data?.result.total_market_value_amount;
+  /** 正式 overview：资产端 / 负债端各自市值（亿元，与 balance-analysis 一致） */
+  const assetSideMarketYi = useMemo(() => {
+    const raw = balanceOverviewQuery.data?.result?.asset_total_market_value_amount;
     if (raw === null || raw === undefined || raw === "") {
       return null;
     }
-    const parsed = Number.parseFloat(String(raw).replace(/,/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
-  }, [balanceOverviewQuery.data?.result.total_market_value_amount]);
+    const yuan = Number.parseFloat(String(raw).replace(/,/g, ""));
+    return Number.isFinite(yuan) ? yuan / 100_000_000 : null;
+  }, [balanceOverviewQuery.data?.result?.asset_total_market_value_amount]);
+  const liabilitySideMarketYi = useMemo(() => {
+    const raw = balanceOverviewQuery.data?.result?.liability_total_market_value_amount;
+    if (raw === null || raw === undefined || raw === "") {
+      return null;
+    }
+    const yuan = Number.parseFloat(String(raw).replace(/,/g, ""));
+    return Number.isFinite(yuan) ? yuan / 100_000_000 : null;
+  }, [balanceOverviewQuery.data?.result?.liability_total_market_value_amount]);
   const liabilityTotalYi = useMemo((): number => {
     const fromCp = numericToYiNumeric(cpQuery.data?.total_value ?? null)?.raw;
     const fromBuckets = sumNumericRaw(dailyStructure.map((item) => item.amountYi?.raw));
@@ -427,9 +436,11 @@ export default function LiabilityAnalyticsPage() {
     );
   }, [dailyTerm]);
   const floatingGapYi = useMemo(() => {
-    if (assetTotalYi === null) return null;
-    return assetTotalYi - liabilityTotalYi;
-  }, [assetTotalYi, liabilityTotalYi]);
+    if (assetSideMarketYi === null || liabilitySideMarketYi === null) {
+      return null;
+    }
+    return assetSideMarketYi - liabilitySideMarketYi;
+  }, [assetSideMarketYi, liabilitySideMarketYi]);
   const topCounterpartyShare = dailyCpRows[0]?.share?.display ?? "—";
   // TODO(orchestrator-review): backend gap — 待关注事项为 cockpit 示意文案，待统一预警/限额 API
   const watchItems = [] as const;
@@ -442,9 +453,21 @@ export default function LiabilityAnalyticsPage() {
       { label: "流动性压力", level: liabilityTotalYi > 0 ? "中高" : "低", trend: "↑", status: "关注", detail: `${liabilityTotalYi.toFixed(0)} 亿` },
       { label: "负债滚续压力", level: firstYearPressureYi > 100 ? "高" : "中", trend: "↑", status: "预警", detail: `${firstYearPressureYi.toFixed(0)} 亿` },
       { label: "对手方集中度", level: topCounterpartyShare, trend: "→", status: "关注", detail: topCounterpartyShare },
-      { label: "已发资产", level: assetTotalYi === null ? "—" : `${assetTotalYi.toFixed(0)} 亿`, trend: "↓", status: "正常", detail: balanceOverviewQuery.data?.result.report_date ?? "—" },
+      {
+        label: "已发资产",
+        level: assetSideMarketYi === null ? "—" : `${assetSideMarketYi.toFixed(0)} 亿`,
+        trend: "↓",
+        status: "正常",
+        detail: balanceOverviewQuery.data?.result.report_date ?? "—",
+      },
     ],
-    [assetTotalYi, balanceOverviewQuery.data?.result.report_date, firstYearPressureYi, liabilityTotalYi, topCounterpartyShare],
+    [
+      assetSideMarketYi,
+      balanceOverviewQuery.data?.result.report_date,
+      firstYearPressureYi,
+      liabilityTotalYi,
+      topCounterpartyShare,
+    ],
   );
   // TODO(orchestrator-review): backend gap — 分项资产负债贡献仍为示意拆分；债券/同业行为 balance overview + 负债桶，合计行为真实接口
   const contributionRows = [] as const;
@@ -452,8 +475,18 @@ export default function LiabilityAnalyticsPage() {
   const calendarItems = [] as const;
   const liabilityHeadlineCards = useMemo(
     () => [
-      { label: "市场资产", value: assetTotalYi !== null ? assetTotalYi.toFixed(2) : "—", unit: "亿", detail: "balance overview" },
-      { label: "市场负债", value: liabilityTotalYi.toFixed(2), unit: "亿", detail: "funding total" },
+      {
+        label: "市场资产",
+        value: assetSideMarketYi !== null ? assetSideMarketYi.toFixed(2) : "—",
+        unit: "亿",
+        detail: "formal · 资产端市值",
+      },
+      {
+        label: "市场负债",
+        value: liabilitySideMarketYi !== null ? liabilitySideMarketYi.toFixed(2) : "—",
+        unit: "亿",
+        detail: "formal · 负债端市值",
+      },
       { label: "静态资产收益率", value: yieldKpi?.asset_yield?.display ?? "—", detail: "当前加权" },
       { label: "静态负债成本", value: yieldKpi?.liability_cost?.display ?? "—", detail: "当前加权" },
       { label: "静态利差", value: staticSpreadBp !== null ? `${staticSpreadBp.toFixed(1)}bp` : "—", detail: "资产收益-负债成本" },
@@ -466,7 +499,18 @@ export default function LiabilityAnalyticsPage() {
         valueVariant: "text" as const,
       },
     ],
-    [assetTotalYi, floatingGapYi, firstYearPressureYi, liabilityTotalYi, staticSpreadBp, syntheticSections.watchItems.detail, watchItems.length, yieldKpi?.asset_yield?.display, yieldKpi?.liability_cost?.display],
+    [
+      assetSideMarketYi,
+      floatingGapYi,
+      firstYearPressureYi,
+      liabilitySideMarketYi,
+      liabilityTotalYi,
+      staticSpreadBp,
+      syntheticSections.watchItems.detail,
+      watchItems.length,
+      yieldKpi?.asset_yield?.display,
+      yieldKpi?.liability_cost?.display,
+    ],
   );
   return (
     <section data-testid="liability-analytics-page">

@@ -265,9 +265,10 @@ describe("OperationsAnalysisPage governed values", () => {
           currency_basis: "CNY" as const,
           detail_row_count: 11,
           summary_row_count: 4,
-          total_market_value_amount: "901.25",
-          total_amortized_cost_amount: "880.5",
-          total_accrued_interest_amount: "12.75",
+          // API 金额为元；此处为「亿」量级的受治理示例值
+          total_market_value_amount: (901.25 * 100_000_000).toFixed(2),
+          total_amortized_cost_amount: (880.5 * 100_000_000).toFixed(2),
+          total_accrued_interest_amount: (12.75 * 100_000_000).toFixed(2),
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({
