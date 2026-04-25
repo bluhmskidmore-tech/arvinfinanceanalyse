@@ -18,8 +18,13 @@ export type DashboardHubCalendarItem = {
   id: string;
   title: string;
   time: string;
-  kind: "macro" | "supply" | "internal";
+  kind: "macro" | "supply" | "auction" | "internal";
   severity: "high" | "medium" | "low";
+};
+
+export type DashboardCalendarPanelState = {
+  status: "ready" | "loading" | "no-data" | "no-high-medium" | "error";
+  message?: string | null;
 };
 
 export type DashboardHeroMetric = {
@@ -112,6 +117,7 @@ const severityPalette = {
 const calendarKindLabel = {
   macro: "宏观",
   supply: "供给",
+  auction: "招标",
   internal: "内部",
 } as const;
 
@@ -718,62 +724,85 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
   );
 }
 
-function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
+function CalendarPanel({
+  items,
+  state,
+}: {
+  items: DashboardHubCalendarItem[];
+  state?: DashboardCalendarPanelState;
+}) {
+  const resolvedState =
+    state ?? (items.length > 0
+      ? { status: "ready" as const, message: null }
+      : {
+          status: "no-data" as const,
+          message: "暂无日历事件。宏观与供给类日程接入后将显示在此。",
+        });
+
   return (
     <section style={panelStyle}>
       <DashboardSectionHeader eyebrow="Calendar" title="关键日历" />
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
-        {items.length === 0 ? (
+        {resolvedState.status !== "ready" ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
-            暂无日历事件。宏观与供给类日程接入后将显示在此。
+            {resolvedState.message}
           </p>
         ) : null}
-        {items.map((item) => {
-          const palette = severityPalette[item.severity];
-          return (
-            <article
-              key={item.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: `${designTokens.space[10] + designTokens.space[5]}px minmax(0, 1fr) auto`,
-                alignItems: "center",
-                gap: designTokens.space[4] + designTokens.space[1],
-                paddingBottom: designTokens.space[3],
-                borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-              }}
-            >
-              <span
-                style={{
-                  ...tabularNumsStyle,
-                  color: shellTokens.colorTextPrimary,
-                  fontSize: designTokens.fontSize[13],
-                  fontWeight: 700,
-                }}
-              >
-                {item.time.length >= 10 ? item.time.slice(5, 10) : item.time}
-              </span>
-              <div style={{ display: "grid", gap: designTokens.space[1] }}>
-                <span style={{ color: shellTokens.colorTextPrimary, fontWeight: 700 }}>{item.title}</span>
-                <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
-                  {calendarKindLabel[item.kind]}
-                </span>
-              </div>
-              <span
-                style={{
-                  padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
-                  borderRadius: 999,
-                  background: palette.bg,
-                  color: palette.fg,
-                  border: `1px solid ${palette.border}`,
-                  fontSize: designTokens.fontSize[12],
-                  fontWeight: 700,
-                }}
-              >
-                {palette.label}
-              </span>
-            </article>
-          );
-        })}
+        {resolvedState.status === "ready"
+          ? items.map((item) => {
+              const palette = severityPalette[item.severity];
+              return (
+                <article
+                  key={item.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: `${designTokens.space[10] + designTokens.space[5]}px minmax(0, 1fr) auto`,
+                    alignItems: "center",
+                    gap: designTokens.space[4] + designTokens.space[1],
+                    paddingBottom: designTokens.space[3],
+                    borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+                  }}
+                >
+                  <span
+                    style={{
+                      ...tabularNumsStyle,
+                      color: shellTokens.colorTextPrimary,
+                      fontSize: designTokens.fontSize[13],
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.time.length >= 10 ? item.time.slice(5, 10) : item.time}
+                  </span>
+                  <div style={{ display: "grid", gap: designTokens.space[1] }}>
+                    <span style={{ color: shellTokens.colorTextPrimary, fontWeight: 700 }}>
+                      {item.title}
+                    </span>
+                    <span
+                      style={{
+                        color: shellTokens.colorTextSecondary,
+                        fontSize: designTokens.fontSize[12],
+                      }}
+                    >
+                      {calendarKindLabel[item.kind]}
+                    </span>
+                  </div>
+                  <span
+                    style={{
+                      padding: `${designTokens.space[1]}px ${designTokens.space[2] + designTokens.space[1]}px`,
+                      borderRadius: 999,
+                      background: palette.bg,
+                      color: palette.fg,
+                      border: `1px solid ${palette.border}`,
+                      fontSize: designTokens.fontSize[12],
+                      fontWeight: 700,
+                    }}
+                  >
+                    {palette.label}
+                  </span>
+                </article>
+              );
+            })
+          : null}
       </div>
     </section>
   );
@@ -782,9 +811,11 @@ function CalendarPanel({ items }: { items: DashboardHubCalendarItem[] }) {
 export function DashboardTasksCalendarPanels({
   tasks = [],
   calendarItems = [],
+  calendarState,
 }: {
   tasks?: DashboardHubTask[];
   calendarItems?: DashboardHubCalendarItem[];
+  calendarState?: DashboardCalendarPanelState;
 }) {
   return (
     <div
@@ -796,7 +827,7 @@ export function DashboardTasksCalendarPanels({
       }}
     >
       <TodoPanel tasks={tasks} />
-      <CalendarPanel items={calendarItems} />
+      <CalendarPanel items={calendarItems} state={calendarState} />
     </div>
   );
 }

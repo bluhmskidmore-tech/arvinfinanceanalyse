@@ -2953,6 +2953,84 @@ describe("createApiClient", () => {
     );
   });
 
+  it("maps forward-window research calendar requests with start_date and end_date while preserving event mapping", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        result_meta: {
+          trace_id: "tr_supply_auction_window",
+          basis: "analytical",
+          result_kind: "calendar.supply_auctions",
+          formal_use_allowed: false,
+          source_version: "sv_supply_auction_test",
+          vendor_version: "vv_supply_auction_test",
+          rule_version: "rv_supply_auction_v1",
+          cache_version: "cv_supply_auction_v1",
+          quality_flag: "ok",
+          vendor_status: "ok",
+          fallback_mode: "none",
+          scenario_flag: false,
+          generated_at: "2026-04-23T07:00:00Z",
+        },
+        result: {
+          series_id: "research.calendar.supply_auction",
+          total_rows: 1,
+          limit: 50,
+          offset: 0,
+          events: [
+            {
+              event_id: "rc_macro_001",
+              series_id: "research.calendar.supply_auction",
+              event_date: "2026-04-02",
+              event_kind: "supply",
+              title: "Quarter-opening net supply",
+              source_family: "research_calendar",
+              severity: "medium",
+              issuer: "MOF",
+              instrument_type: "Treasury",
+              term_label: "5Y",
+              amount: 180,
+              amount_unit: "bn",
+              currency: "CNY",
+              status: "scheduled",
+            },
+          ],
+        },
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const events = await client.getResearchCalendarEvents({
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        id: "rc_macro_001",
+        date: "2026-04-02",
+        title: "Quarter-opening net supply",
+        kind: "supply",
+        severity: "medium",
+        amount_label: "180 bn",
+        note: "MOF · 5Y · scheduled | Treasury | 币种 CNY",
+      }),
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/calendar/supply-auctions?start_date=2026-04-01&end_date=2026-04-30",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: "application/json",
+        }),
+      }),
+    );
+  });
+
   it("returns a clearly labeled NCD funding proxy in mock mode", async () => {
     const client = createApiClient({ mode: "mock" });
     const envelope = await client.getNcdFundingProxy();

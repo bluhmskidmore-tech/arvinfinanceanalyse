@@ -264,6 +264,8 @@ export type ApiClient = {
   executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
   getResearchCalendarEvents: (options?: {
     reportDate?: string;
+    startDate?: string;
+    endDate?: string;
   }) => Promise<ResearchCalendarEvent[]>;
   getHealthLive: () => Promise<HealthStatusResponse>;
   getHealthSummary: () => Promise<HealthStatusResponse>;
@@ -3753,7 +3755,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     },
     async getResearchCalendarEvents(options) {
       await delay();
-      return buildMockResearchCalendarEvents(options?.reportDate);
+      return buildMockResearchCalendarEvents(options?.startDate ?? options?.reportDate ?? options?.endDate);
     },
     async ingestTushareNprNews(_options?: { limit?: number }) {
       await delay();
@@ -6168,9 +6170,11 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       ),
     getResearchCalendarEvents: (options) => {
       const params = new URLSearchParams();
-      if (options?.reportDate?.trim()) {
-        params.set("end_date", options.reportDate.trim());
+      if (options?.startDate?.trim()) {
+        params.set("start_date", options.startDate.trim());
       }
+      if (options?.endDate?.trim()) params.set("end_date", options.endDate.trim());
+      else if (options?.reportDate?.trim()) params.set("end_date", options.reportDate.trim());
       const query = params.toString();
       return requestJson<ResearchCalendarResultPayload>(
         fetchImpl,

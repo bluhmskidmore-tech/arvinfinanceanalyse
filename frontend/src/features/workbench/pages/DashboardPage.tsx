@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import type { ResearchCalendarEvent, ResultMeta, VerdictPayload } from "../../../api/contracts";
+import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
@@ -16,17 +16,17 @@ import { DashboardMacroSpotSection } from "../../executive-dashboard/components/
 import { DashboardNewsDigestSection } from "../../executive-dashboard/components/DashboardNewsDigestSection";
 import {
   DashboardAlertCenterPanel,
+  type DashboardCalendarPanelState,
   DashboardGlobalJudgmentPanel,
   DashboardModuleEntryGrid,
   DashboardModuleSnapshotPanel,
   DashboardOverviewHeroStrip,
   DashboardTasksCalendarPanels,
   type DashboardAlert,
-  type DashboardHubCalendarItem,
   type DashboardHeroMetric,
 } from "../dashboard/DashboardOverviewSections";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
-import { researchCalendarEventHubKind } from "../../../lib/researchCalendarToCalendarItem";
+import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
 
 const PnlAttributionSection = lazy(
   () => import("../../executive-dashboard/components/PnlAttributionSection"),
@@ -106,17 +106,19 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
   return fallbackLabel;
 }
 
-/** Strip model (`DashboardHubCalendarItem`) ≠ `CalendarList` rows: different fields/labels, shared API event only. */
-function mapResearchCalendarEventToDashboardItem(
-  event: ResearchCalendarEvent,
-): DashboardHubCalendarItem {
-  return {
-    id: event.id,
-    title: event.title,
-    time: event.date,
-    kind: researchCalendarEventHubKind(event),
-    severity: event.severity,
-  };
+const DASHBOARD_KEY_CALENDAR_FORWARD_DAYS = 14;
+
+function addDaysToIsoDate(date: string, days: number): string {
+  const trimmed = date.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const parsed = new Date(`${trimmed}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return trimmed;
+  }
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
 }
 
 export default function DashboardPage() {
@@ -197,7 +199,18 @@ export default function DashboardPage() {
 
   const researchCalendarQuery = useQuery({
     queryKey: ["research-calendar", client.mode, effectiveReportDate],
-    queryFn: () => client.getResearchCalendarEvents({ reportDate: effectiveReportDate }),
+    queryFn: () =>
+      client.getResearchCalendarEvents(
+        client.mode === "real"
+          ? {
+              startDate: effectiveReportDate,
+              endDate: addDaysToIsoDate(
+                effectiveReportDate,
+                DASHBOARD_KEY_CALENDAR_FORWARD_DAYS,
+              ),
+            }
+          : { reportDate: effectiveReportDate },
+      ),
     enabled: Boolean(effectiveReportDate),
     retry: false,
   });
@@ -360,12 +373,29 @@ export default function DashboardPage() {
     snapshotPartialNote,
   ]);
 
-  const dashboardCalendarItems = useMemo<DashboardHubCalendarItem[]>(
+  const dashboardCalendar = useMemo(
     () =>
-      (researchCalendarQuery.data ?? [])
-        .map(mapResearchCalendarEventToDashboardItem)
-        .slice(0, 4),
-    [researchCalendarQuery.data],
+      buildDashboardKeyCalendarModel({
+        events: researchCalendarQuery.data,
+        isLoading:
+          !effectiveReportDate ||
+          (researchCalendarQuery.isLoading && !researchCalendarQuery.data),
+        isError: researchCalendarQuery.isError,
+      }),
+    [
+      effectiveReportDate,
+      researchCalendarQuery.data,
+      researchCalendarQuery.isError,
+      researchCalendarQuery.isLoading,
+    ],
+  );
+
+  const dashboardCalendarState = useMemo<DashboardCalendarPanelState>(
+    () => ({
+      status: dashboardCalendar.status,
+      message: dashboardCalendar.message,
+    }),
+    [dashboardCalendar.message, dashboardCalendar.status],
   );
 
   return (
@@ -545,7 +575,10 @@ export default function DashboardPage() {
           </Suspense>
         </section>
 
-        <DashboardTasksCalendarPanels calendarItems={dashboardCalendarItems} />
+        <DashboardTasksCalendarPanels
+          calendarItems={dashboardCalendar.items}
+          calendarState={dashboardCalendarState}
+        />
       </div>
 
       <div className="dashboard-overview-live-grid">

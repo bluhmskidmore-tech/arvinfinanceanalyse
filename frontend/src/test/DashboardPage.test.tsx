@@ -57,6 +57,15 @@ function numericWithRawYuanDisplay(raw: number) {
   };
 }
 
+function expectTitlesInOrder(container: HTMLElement, titles: string[]) {
+  const nodes = titles.map((title) => within(container).getByText(title));
+  for (let index = 0; index < nodes.length - 1; index += 1) {
+    expect(nodes[index].compareDocumentPosition(nodes[index + 1])).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  }
+}
+
 describe("DashboardPage", () => {
   it("renders the governed dashboard shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
@@ -385,6 +394,51 @@ describe("DashboardPage", () => {
     });
   });
 
+  it("requests the real key calendar as a report-date anchored forward window", async () => {
+    const base = createApiClient({ mode: "real" });
+    const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const researchCalendarCalls: Array<{
+      reportDate?: string;
+      startDate?: string;
+      endDate?: string;
+    }> = [];
+    const governedClient: ApiClient = {
+      ...base,
+      getHomeSnapshot: async (options) => {
+        const envelope = await mockSnapshotSource.getHomeSnapshot(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            report_date: "2026-02-28",
+          },
+        };
+      },
+      getResearchCalendarEvents: async (options) => {
+        researchCalendarCalls.push(options ?? {});
+        return [
+          {
+            id: "cal_policy_001",
+            date: "2026-03-01",
+            title: "Policy bank auction",
+            kind: "auction",
+            severity: "high",
+          },
+        ];
+      },
+    };
+
+    renderDashboard(governedClient);
+
+    expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(researchCalendarCalls).toContainEqual({
+        startDate: "2026-02-28",
+        endDate: "2026-03-14",
+      });
+    });
+  });
+
   it("renders total asset scale with a caliber tag on the hero card", async () => {
     const base = createApiClient({ mode: "mock" });
     const governedClient: ApiClient = {
@@ -436,7 +490,7 @@ describe("DashboardPage", () => {
             date: "2026-04-18",
             title: "国债净融资节奏",
             kind: "supply",
-            severity: "low",
+            severity: "medium",
             amount_label: "净融资 180 亿元",
             note: "供给节奏",
           },
@@ -460,5 +514,177 @@ describe("DashboardPage", () => {
     expect(await within(calendar).findByText("政策性金融债招标")).toBeInTheDocument();
     expect(within(calendar).getAllByText("供给").length).toBeGreaterThan(0);
     expect(researchCalendarCalls).toContainEqual({ reportDate: "2026-04-18" });
+  });
+
+  it("shows only high and medium external events in deterministic dashboard order", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "low-ignored",
+        date: "2026-04-19",
+        title: "Ignore low event",
+        kind: "macro" as const,
+        severity: "low" as const,
+      },
+      {
+        id: "medium-beta",
+        date: "2026-04-21",
+        title: "Beta medium event",
+        kind: "macro" as const,
+        severity: "medium" as const,
+      },
+      {
+        id: "high-delta",
+        date: "2026-04-21",
+        title: "Delta high event",
+        kind: "auction" as const,
+        severity: "high" as const,
+      },
+      {
+        id: "medium-alpha",
+        date: "2026-04-21",
+        title: "Alpha medium event",
+        kind: "supply" as const,
+        severity: "medium" as const,
+      },
+      {
+        id: "high-gamma",
+        date: "2026-04-20",
+        title: "Gamma earlier high event",
+        kind: "macro" as const,
+        severity: "high" as const,
+      },
+    ]);
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(within(calendar).queryByText("Ignore low event")).not.toBeInTheDocument();
+    expectTitlesInOrder(calendar, [
+      "Gamma earlier high event",
+      "Delta high event",
+      "Alpha medium event",
+      "Beta medium event",
+    ]);
+  });
+
+  it("renders a dedicated no-high-medium state when only low events are returned", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "low-only",
+        date: "2026-04-21",
+        title: "Low-only event",
+        kind: "macro" as const,
+        severity: "low" as const,
+      },
+    ]);
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(within(calendar).queryByText("Low-only event")).not.toBeInTheDocument();
+    expect(calendar).toHaveTextContent("No high/medium external events in the forward window.");
+  });
+
+  it("sorts dashboard calendar items by date then severity then stable title", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(async () => [
+      {
+        id: "medium-beta",
+        date: "2026-04-21",
+        title: "Beta medium event",
+        kind: "macro" as const,
+        severity: "medium" as const,
+      },
+      {
+        id: "high-delta",
+        date: "2026-04-21",
+        title: "Delta high event",
+        kind: "auction" as const,
+        severity: "high" as const,
+      },
+      {
+        id: "medium-alpha",
+        date: "2026-04-21",
+        title: "Alpha medium event",
+        kind: "supply" as const,
+        severity: "medium" as const,
+      },
+      {
+        id: "high-gamma",
+        date: "2026-04-20",
+        title: "Gamma earlier high event",
+        kind: "macro" as const,
+        severity: "high" as const,
+      },
+    ]);
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expectTitlesInOrder(calendar, [
+      "Gamma earlier high event",
+      "Delta high event",
+      "Alpha medium event",
+      "Beta medium event",
+    ]);
+  });
+
+  it("renders a dedicated no-data state when the external event feed is empty", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(async () => []);
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(calendar).toHaveTextContent("No external event data is available for the forward window.");
+  });
+
+  it("renders an explicit error state when the external event feed fails", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getResearchCalendarEvents = vi.fn(async () => {
+      throw new Error("calendar backend unavailable");
+    });
+    const client: ApiClient = {
+      ...base,
+      getResearchCalendarEvents,
+    };
+
+    renderDashboard(client);
+
+    await waitFor(() => {
+      expect(getResearchCalendarEvents).toHaveBeenCalled();
+    });
+    const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(calendar).toHaveTextContent("Failed to load key calendar external events.");
   });
 });
