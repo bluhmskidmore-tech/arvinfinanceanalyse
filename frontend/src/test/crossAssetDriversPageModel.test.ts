@@ -300,19 +300,24 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[0].lines[0].sourceLabel).toContain("Choice");
     expect(rows[0].lines[0].sourceLabel).toContain("EMM01843735");
     expect(rows[0].lines[1].dataLabel).toContain("Choice");
+    expect(rows[0].lines[1].dataLabel).toContain("Tushare");
     expect(rows[0].lines[0].explanation).toContain("金融条件指数");
     expect(rows[1].status).toBe("ready");
     expect(rows[1].lines.map((line) => line.key)).toEqual(["energy", "ferrous", "nonferrous"]);
+    expect(rows[1].lines[0].sourceLabel).toContain("公共补充源");
     expect(rows[1].lines[0].sourceLabel).toContain("CA.BRENT");
+    expect(rows[1].lines[1].sourceLabel).toContain("公共补充源");
     expect(rows[1].lines[1].sourceLabel).toContain("CA.STEEL");
     expect(rows[1].lines[0].explanation).toContain("布油");
     expect(rows[1].lines[1].explanation).toContain("钢");
     expect(rows[1].lines[2].status).toBe("pending_signal");
     expect(rows[1].lines[2].dataLabel).toContain("铜/铝");
+    expect(rows[1].lines[2].dataLabel).toContain("公共补充");
     expect(rows[2].status).toBe("pending_signal");
     expect(rows[2].lines.map((line) => line.key)).toEqual(["equity_options", "commodity_options", "rates_bond_options"]);
     expect(rows[2].lines.every((line) => line.status === "pending_signal")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
+    expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
     expect(rows[2].lines[0].explanation).toContain("No governed equity-options input");
   });
 
