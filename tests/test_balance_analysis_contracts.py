@@ -134,3 +134,14 @@ def test_balance_analysis_core_exports_future_formal_fact_types():
         "ingest_batch_id",
         "trace_id",
     ]
+
+
+def test_core_finance_root_package_lazily_exports_balance_analysis_symbols():
+    import backend.app.core_finance as core_finance
+
+    assert core_finance.BalanceCurrencyBasis is not None
+    assert core_finance.BalancePositionScope is not None
+    assert core_finance.FormalZqtzBalanceFactRow.__name__ == "FormalZqtzBalanceFactRow"
+    assert core_finance.FormalTywBalanceFactRow.__name__ == "FormalTywBalanceFactRow"
+    assert callable(core_finance.project_zqtz_formal_balance_row)
+    assert callable(core_finance.project_tyw_formal_balance_row)

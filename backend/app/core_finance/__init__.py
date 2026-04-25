@@ -1,18 +1,7 @@
 """Formal finance calculation entrypoints."""
 
-from backend.app.core_finance.balance_analysis import (
-    BalanceCurrencyBasis,
-    BalancePositionScope,
-    FormalTywBalanceFactRow,
-    FormalZqtzBalanceFactRow,
-    TywSnapshotRow,
-    ZqtzSnapshotRow,
-    average_daily_cny_amounts,
-    derive_accounting_basis,
-    derive_invest_type_std,
-    project_tyw_formal_balance_row,
-    project_zqtz_formal_balance_row,
-)
+from importlib import import_module
+
 from backend.app.core_finance.cashflow_projection import (
     CashflowEvent,
     DurationGapResult,
@@ -37,6 +26,22 @@ from backend.app.core_finance.pnl import (
     normalize_nonstd_journal_entries,
 )
 from backend.app.core_finance.pnl_bridge import PnlBridgeRow, build_pnl_bridge_rows
+
+_BALANCE_ANALYSIS_EXPORTS = frozenset(
+    {
+        "BalanceCurrencyBasis",
+        "BalancePositionScope",
+        "FormalTywBalanceFactRow",
+        "FormalZqtzBalanceFactRow",
+        "TywSnapshotRow",
+        "ZqtzSnapshotRow",
+        "average_daily_cny_amounts",
+        "derive_accounting_basis",
+        "derive_invest_type_std",
+        "project_tyw_formal_balance_row",
+        "project_zqtz_formal_balance_row",
+    }
+)
 
 __all__ = [
     "BalanceCurrencyBasis",
@@ -73,6 +78,15 @@ __all__ = [
     "project_tyw_formal_balance_row",
     "project_zqtz_formal_balance_row",
 ]
+
+
+def __getattr__(name: str):
+    if name in _BALANCE_ANALYSIS_EXPORTS:
+        module = import_module(".balance_analysis", __name__)
+        value = getattr(module, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def build_balance_analysis_workbook_payload(*args, **kwargs):
