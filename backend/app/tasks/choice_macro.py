@@ -53,6 +53,42 @@ PUBLIC_HEADLINE_BATCH_ID = "public_cross_asset_headline"
 PUBLIC_HEADLINE_LOOKBACK_DAYS = 90
 PUBLIC_HEADLINE_CATALOG_VERSION = "2026-04-21.public-cross-asset-headline.v1"
 FRED_BRENT_SERIES_ID = "DCOILBRENTEU"
+NCD_SHIBOR_RULE_VERSION = "rv_tushare_ncd_shibor_proxy_v1"
+NCD_SHIBOR_BATCH_ID = "tushare_ncd_shibor_proxy"
+NCD_SHIBOR_LOOKBACK_DAYS = 10
+NCD_SHIBOR_CATALOG_VERSION = "2026-04-25.tushare-ncd-shibor-proxy.v1"
+NCD_SHIBOR_TENORS: dict[str, dict[str, str]] = {
+    "1M": {
+        "series_id": "NCD.SHIBOR.1M",
+        "series_name": "SHIBOR:1M",
+        "vendor_series_code": "shibor:1m",
+        "column": "1m",
+    },
+    "3M": {
+        "series_id": "NCD.SHIBOR.3M",
+        "series_name": "SHIBOR:3M",
+        "vendor_series_code": "shibor:3m",
+        "column": "3m",
+    },
+    "6M": {
+        "series_id": "NCD.SHIBOR.6M",
+        "series_name": "SHIBOR:6M",
+        "vendor_series_code": "shibor:6m",
+        "column": "6m",
+    },
+    "9M": {
+        "series_id": "NCD.SHIBOR.9M",
+        "series_name": "SHIBOR:9M",
+        "vendor_series_code": "shibor:9m",
+        "column": "9m",
+    },
+    "1Y": {
+        "series_id": "NCD.SHIBOR.1Y",
+        "series_name": "SHIBOR:1Y",
+        "vendor_series_code": "shibor:1y",
+        "column": "1y",
+    },
+}
 
 _PUBLIC_HEADLINE_SERIES_META: dict[str, dict[str, object]] = {
     "E1000180": {
@@ -630,6 +666,176 @@ def refresh_public_cross_asset_headlines(
         "row_count": len(history_rows),
         "warnings": warnings,
     }
+
+
+def refresh_tushare_ncd_shibor_proxy(
+    duckdb_path: str | None = None,
+    lookback_days: int = NCD_SHIBOR_LOOKBACK_DAYS,
+    report_date: str | None = None,
+) -> dict[str, object]:
+    settings = get_settings()
+    target_date = date.fromisoformat(report_date) if report_date else date.today()
+    duckdb_file = Path(duckdb_path or settings.duckdb_path)
+    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
+
+    history_rows = _fetch_tushare_ncd_shibor_history_rows(
+        duckdb_path=str(duckdb_file),
+        report_date=target_date,
+        lookback_days=lookback_days,
+    )
+    if not history_rows:
+        raise RuntimeError("No Tushare Shibor rows were fetched for NCD proxy refresh.")
+
+    latest_rows = _latest_public_cross_asset_rows(history_rows)
+    series_ids = sorted({str(meta["series_id"]) for meta in NCD_SHIBOR_TENORS.values()})
+    latest_series_ids = {str(row["series_id"]) for row in latest_rows}
+    missing_series_ids = sorted(set(series_ids) - latest_series_ids)
+    if missing_series_ids:
+        raise RuntimeError(f"Incomplete Tushare Shibor refresh; missing series: {', '.join(missing_series_ids)}")
+    run_id = f"tushare_ncd_shibor_refresh:{target_date.isoformat()}"
+
+    with acquire_lock(CHOICE_MACRO_LOCK, base_dir=duckdb_file.parent):
+        conn = duckdb.connect(str(duckdb_file), read_only=False)
+        try:
+            _ensure_tables(conn)
+            conn.execute("begin transaction")
+            placeholders = ", ".join(["?"] * len(series_ids))
+            conn.execute(
+                f"delete from fact_choice_macro_daily where series_id in ({placeholders})",
+                series_ids,
+            )
+            conn.execute(
+                f"delete from choice_market_snapshot where series_id in ({placeholders})",
+                series_ids,
+            )
+            conn.execute(
+                f"delete from phase1_macro_vendor_catalog where series_id in ({placeholders})",
+                series_ids,
+            )
+            conn.execute(
+                f"delete from market_data_series_category where series_id in ({placeholders})",
+                series_ids,
+            )
+
+            for row in history_rows:
+                meta = _ncd_shibor_meta_by_series_id(str(row["series_id"]))
+                conn.execute(
+                    """
+                    insert into fact_choice_macro_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        meta["series_name"],
+                        row["trade_date"],
+                        row["value_numeric"],
+                        "daily",
+                        "%",
+                        row["source_version"],
+                        row["vendor_version"],
+                        NCD_SHIBOR_RULE_VERSION,
+                        "ok",
+                        run_id,
+                    ],
+                )
+
+            for row in latest_rows:
+                meta = _ncd_shibor_meta_by_series_id(str(row["series_id"]))
+                conn.execute(
+                    """
+                    insert into choice_market_snapshot values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        meta["series_name"],
+                        meta["vendor_series_code"],
+                        "tushare",
+                        row["trade_date"],
+                        row["value_numeric"],
+                        "daily",
+                        "%",
+                        row["source_version"],
+                        row["vendor_version"],
+                        NCD_SHIBOR_RULE_VERSION,
+                        run_id,
+                    ],
+                )
+                registry_entry = {
+                    "refresh_tier": "stable",
+                    "fetch_mode": "date_slice",
+                    "fetch_granularity": "batch",
+                    "policy_note": "Tushare Shibor fixing supplement for NCD funding proxy; quote medians remain unavailable.",
+                    "catalog_version": NCD_SHIBOR_CATALOG_VERSION,
+                    "batch_id": NCD_SHIBOR_BATCH_ID,
+                }
+                conn.execute(
+                    """
+                    insert into phase1_macro_vendor_catalog (
+                      series_id,
+                      series_name,
+                      vendor_name,
+                      vendor_version,
+                      frequency,
+                      unit,
+                      vendor_series_code,
+                      batch_id,
+                      catalog_version,
+                      theme,
+                      is_core,
+                      tags_json,
+                      request_options,
+                      fetch_mode,
+                      fetch_granularity,
+                      refresh_tier,
+                      policy_note
+                    ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        row["series_id"],
+                        meta["series_name"],
+                        "tushare",
+                        row["vendor_version"],
+                        "daily",
+                        "%",
+                        meta["vendor_series_code"],
+                        NCD_SHIBOR_BATCH_ID,
+                        NCD_SHIBOR_CATALOG_VERSION,
+                        "money_market",
+                        True,
+                        json.dumps(["tushare", "shibor", "ncd", "funding_proxy"], separators=(",", ":")),
+                        f"lookback_days={lookback_days}",
+                        "date_slice",
+                        "batch",
+                        "stable",
+                        registry_entry["policy_note"],
+                    ],
+                )
+                _insert_market_data_series_category(
+                    conn,
+                    series_id=str(row["series_id"]),
+                    registry_entry=registry_entry,
+                    run_id=run_id,
+                    updated_at=target_date.isoformat(),
+                )
+            conn.execute("commit")
+        except Exception:
+            conn.execute("rollback")
+            raise
+        finally:
+            conn.close()
+
+    return {
+        "status": "completed",
+        "run_id": run_id,
+        "series_count": len(latest_rows),
+        "row_count": len(history_rows),
+    }
+
+
+def _ncd_shibor_meta_by_series_id(series_id: str) -> dict[str, str]:
+    for meta in NCD_SHIBOR_TENORS.values():
+        if meta["series_id"] == series_id:
+            return meta
+    raise KeyError(series_id)
 
 
 def _insert_market_data_series_category(
@@ -1342,6 +1548,41 @@ def _fetch_tushare_cross_asset_history_rows(
                 )
             )
 
+    return rows
+
+
+def _fetch_tushare_ncd_shibor_history_rows(
+    *,
+    duckdb_path: str,
+    report_date: date,
+    lookback_days: int,
+) -> list[dict[str, object]]:
+    del duckdb_path
+    settings = get_settings()
+    token = resolve_tushare_token_with_settings_fallback(settings)
+    if not token:
+        raise RuntimeError("MOSS_TUSHARE_TOKEN is not configured.")
+
+    ts = import_tushare_pro()
+    pro = ts.pro_api(token)
+    start_date_value = report_date - timedelta(days=max(lookback_days, 1))
+    start_date = start_date_value.strftime("%Y%m%d")
+    start_date_iso = start_date_value.isoformat()
+    end_date = report_date.strftime("%Y%m%d")
+    records = _records_from_tushare_frame(pro.shibor(start_date=start_date, end_date=end_date))
+    vendor_version = f"vv_tushare_shibor_{end_date}"
+    source_version = _source_version_from_records("tushare_shibor", records)
+
+    rows: list[dict[str, object]] = []
+    for record in records:
+        trade_date = _coerce_public_trade_date(record.get("date"))
+        if trade_date is None or trade_date > report_date.isoformat() or trade_date < start_date_iso:
+            continue
+        for meta in NCD_SHIBOR_TENORS.values():
+            value = _coerce_public_number(record.get(meta["column"]))
+            if value is None:
+                continue
+            rows.append(_public_history_row(meta["series_id"], trade_date, value, vendor_version, source_version))
     return rows
 
 
