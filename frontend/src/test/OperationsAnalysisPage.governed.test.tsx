@@ -313,5 +313,11 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(conclusionGrid).toHaveTextContent("2026-01-31");
       expect(conclusionGrid).toHaveTextContent("11");
     });
+
+    const heroProvenance = await screen.findByTestId("operations-hero-provenance");
+    expect(heroProvenance).toHaveTextContent("物化/候选对账");
+    expect(heroProvenance).toHaveTextContent("静态示例");
+    const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
+    expect(tableProv).toHaveTextContent("basis formal");
   });
 });
