@@ -259,6 +259,7 @@ def refresh_choice_macro_snapshot(
                     conn.execute("delete from choice_market_snapshot")
                     conn.execute("delete from fact_choice_macro_daily")
                 conn.execute("delete from phase1_macro_vendor_catalog")
+                conn.execute("delete from market_data_series_category")
 
                 for point in snapshot.series:
                     conn.execute(
@@ -345,6 +346,13 @@ def refresh_choice_macro_snapshot(
                             str(registry_entry["refresh_tier"]),
                             registry_entry["policy_note"],
                         ],
+                    )
+                    _insert_market_data_series_category(
+                        conn,
+                        series_id=series_id,
+                        registry_entry=registry_entry,
+                        run_id=run_id,
+                        updated_at=run.created_at,
                     )
                 conn.execute("commit")
             except Exception:
@@ -454,6 +462,10 @@ def refresh_public_cross_asset_headlines(
                 f"delete from phase1_macro_vendor_catalog where series_id in ({placeholders})",
                 series_ids,
             )
+            conn.execute(
+                f"delete from market_data_series_category where series_id in ({placeholders})",
+                series_ids,
+            )
 
             for row in history_rows:
                 meta = _PUBLIC_HEADLINE_SERIES_META[row["series_id"]]
@@ -539,6 +551,20 @@ def refresh_public_cross_asset_headlines(
                         str(meta["policy_note"]),
                     ],
                 )
+                _insert_market_data_series_category(
+                    conn,
+                    series_id=str(row["series_id"]),
+                    registry_entry={
+                        "refresh_tier": "stable",
+                        "fetch_mode": "latest",
+                        "fetch_granularity": "batch",
+                        "policy_note": str(meta["policy_note"]),
+                        "catalog_version": PUBLIC_HEADLINE_CATALOG_VERSION,
+                        "batch_id": PUBLIC_HEADLINE_BATCH_ID,
+                    },
+                    run_id=run_id,
+                    updated_at=target_date.isoformat(),
+                )
             conn.execute("commit")
         except Exception:
             conn.execute("rollback")
@@ -553,6 +579,59 @@ def refresh_public_cross_asset_headlines(
         "row_count": len(history_rows),
         "warnings": warnings,
     }
+
+
+def _insert_market_data_series_category(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    series_id: str,
+    registry_entry: dict[str, object],
+    run_id: str,
+    updated_at: str,
+) -> None:
+    category_key = str(registry_entry.get("refresh_tier") or "stable")
+    category_label = {
+        "stable": "Stable governed series",
+        "fallback": "Fallback latest-only series",
+        "isolated": "Isolated vendor-pending series",
+    }.get(category_key, category_key)
+    conn.execute(
+        """
+        insert into market_data_series_category (
+          series_id,
+          category_key,
+          category_label,
+          source_surface,
+          fetch_mode,
+          fetch_granularity,
+          policy_note,
+          catalog_version,
+          batch_id,
+          updated_at,
+          run_id
+        ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            series_id,
+            category_key,
+            category_label,
+            "choice_macro",
+            str(registry_entry.get("fetch_mode") or "date_slice"),
+            str(registry_entry.get("fetch_granularity") or "batch"),
+            _optional_string(registry_entry.get("policy_note")),
+            _optional_string(registry_entry.get("catalog_version")),
+            _optional_string(registry_entry.get("batch_id")),
+            updated_at,
+            run_id,
+        ],
+    )
+
+
+def _optional_string(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    return text if text else None
 
 
 def _build_source_version(raw_payload: dict[str, object]) -> str:
