@@ -121,6 +121,30 @@ def test_agent_request_schema_defines_phase1_contract():
     } <= fields
 
 
+def test_agent_request_schema_accepts_page_context():
+    module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    request = module.AgentQueryRequest(
+        question="解释当前页面",
+        page_context={
+            "page_id": "reconciliation",
+            "current_filters": {"report_date": "2026-03-31", "status": "BREAK"},
+            "selected_rows": [
+                {"book_id": "BOOK-A", "instrument_id": "BOND-1", "difference": 12.3}
+            ],
+            "context_note": "Current reconciliation page filters and top break row.",
+        },
+    )
+
+    assert request.page_context.page_id == "reconciliation"
+    assert request.page_context.current_filters["status"] == "BREAK"
+    assert request.page_context.selected_rows[0]["instrument_id"] == "BOND-1"
+    assert request.page_context.context_note == "Current reconciliation page filters and top break row."
+
+
 def test_agent_response_schema_exposes_target_state_and_disabled_contracts():
     module = load_module(
         "backend.app.agent.schemas.agent_response",
