@@ -932,7 +932,14 @@ export type ResearchCalendarEvent = {
   kind: ResearchCalendarEventKind;
   severity: "high" | "medium" | "low";
   amount_label?: string | null;
+  /** 发行人/主体；与主标题分开展示。 */
+  issuer?: string | null;
+  /** 短句元信息，不含整段 URL、不含 `issuer` 重复；原文见 `source_url`。 */
   note?: string | null;
+  /** 公告/披露原文链接 */
+  source_url?: string | null;
+  /** 链接展示名，如「中国债券信息网」 */
+  source_label?: string | null;
 };
 
 /** Raw supply/auction row from `GET /ui/calendar/supply-auctions` (`ResearchCalendarEvent` in backend). */

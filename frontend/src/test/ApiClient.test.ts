@@ -2870,7 +2870,7 @@ describe("createApiClient", () => {
         kind: "auction",
         severity: "high",
         amount_label: "420 亿元",
-        note: "国开行",
+        issuer: "国开行",
       }),
     );
   });
@@ -2940,7 +2940,10 @@ describe("createApiClient", () => {
         kind: "auction",
         severity: "high",
         amount_label: "420 亿元",
-        note: "国开行 · 10Y · scheduled | 政策性金融债 | 币种 CNY",
+        issuer: "国开行",
+        note: "10Y · 已排期 · 政策性金融债 · 币种 CNY",
+        source_url: null,
+        source_label: null,
       }),
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
@@ -3018,7 +3021,10 @@ describe("createApiClient", () => {
         kind: "supply",
         severity: "medium",
         amount_label: "180 bn",
-        note: "MOF · 5Y · scheduled | Treasury | 币种 CNY",
+        issuer: "MOF",
+        note: "5Y · 已排期 · 国债 · 币种 CNY",
+        source_url: null,
+        source_label: null,
       }),
     ]);
     expect(fetchMock).toHaveBeenCalledWith(

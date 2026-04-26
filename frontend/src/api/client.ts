@@ -49,7 +49,6 @@ import type {
   ChoiceMacroRecentPoint,
   ChoiceNewsEventsPayload,
   NcdFundingProxyPayload,
-  ResearchCalendarApiEventRow,
   ResearchCalendarEvent,
   ResearchCalendarResultPayload,
   ContributionPayload,
@@ -167,6 +166,7 @@ import { formatRawAsNumeric } from "../utils/format";
 import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import type { ExecutiveClientMethods } from "./executiveClient";
+import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
@@ -690,7 +690,7 @@ function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarE
       kind: "auction",
       severity: "high",
       amount_label: "420 亿元",
-      note: "国开行",
+      issuer: "国开行",
     },
     {
       id: "rc_macro_003",
@@ -702,88 +702,6 @@ function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarE
       note: "宏观数据",
     },
   ];
-}
-
-function formatResearchCalendarAmountValue(amount: number): string {
-  if (!Number.isFinite(amount)) {
-    return String(amount);
-  }
-  if (Number.isInteger(amount)) {
-    return String(amount);
-  }
-  const rounded = Math.round(amount * 1e6) / 1e6;
-  return Number.isInteger(rounded) ? String(Math.trunc(rounded)) : String(amount);
-}
-
-function formatResearchCalendarAmountLabel(event: ResearchCalendarApiEventRow): string | null {
-  if (event.amount == null) {
-    return null;
-  }
-  const unit = event.amount_unit?.trim();
-  const numText = formatResearchCalendarAmountValue(event.amount);
-  if (!unit) {
-    return numText;
-  }
-  return `${numText} ${unit}`.replace(/\s+/g, " ").trim();
-}
-
-function buildResearchCalendarEventNote(event: ResearchCalendarApiEventRow): string | null {
-  const parts: string[] = [];
-  const issuer = event.issuer?.trim();
-  const term = event.term_label?.trim();
-  const status = event.status?.trim();
-  const core = [issuer, term, status].filter(Boolean);
-  if (core.length > 0) {
-    parts.push(core.join(" · "));
-  }
-  const headline = event.headline_text?.trim();
-  if (headline) {
-    parts.push(headline);
-  }
-  const inst = event.instrument_type?.trim();
-  if (inst && !parts.some((p) => p.includes(inst))) {
-    parts.push(inst);
-  }
-  const mkt = event.market?.trim();
-  if (mkt) {
-    parts.push(`市场 ${mkt}`);
-  }
-  if (event.headline_published_at?.trim() && !headline) {
-    parts.push(`published ${event.headline_published_at.trim()}`);
-  }
-  if (event.headline_url?.trim()) {
-    parts.push(`来源 ${event.headline_url.trim()}`);
-  }
-  const cur = event.currency?.trim();
-  if (cur && !parts.some((p) => p.includes(cur))) {
-    parts.push(`币种 ${cur}`);
-  }
-  if (parts.length > 0) {
-    return parts.join(" | ");
-  }
-  return [issuer, inst, term].filter(Boolean).join(" / ") || null;
-}
-
-function stableResearchCalendarEventId(event: ResearchCalendarApiEventRow): string {
-  const raw = event.event_id?.trim();
-  if (raw) {
-    return raw;
-  }
-  return [event.series_id, event.event_date, event.event_kind, event.title]
-    .map((s) => String(s).trim())
-    .join("::");
-}
-
-function mapResearchCalendarApiEvent(event: ResearchCalendarApiEventRow): ResearchCalendarEvent {
-  return {
-    id: stableResearchCalendarEventId(event),
-    date: event.event_date,
-    title: event.title,
-    kind: event.event_kind,
-    severity: event.severity,
-    amount_label: formatResearchCalendarAmountLabel(event),
-    note: buildResearchCalendarEventNote(event),
-  };
 }
 
 function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
