@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 import json
 from dataclasses import dataclass
 
@@ -399,39 +398,58 @@ def load_current_tyw_liability_lineage_by_report_date(
             return {}
         rows = conn.execute(
             """
-            select cast(report_date as varchar) as report_date,
-                   source_version,
-                   rule_version
-            from fact_formal_tyw_balance_daily
-            where position_scope = 'liability'
-              and currency_basis = 'CNY'
-              and (
-                coalesce(trim(source_version), '') <> ''
-                or coalesce(trim(rule_version), '') <> ''
+            with liability_lineage as (
+              select cast(report_date as varchar) as report_date,
+                     coalesce(trim(source_version), '') as source_version,
+                     coalesce(trim(rule_version), '') as rule_version
+              from fact_formal_tyw_balance_daily
+              where position_scope = 'liability'
+                and currency_basis = 'CNY'
+                and (
+                  coalesce(trim(source_version), '') <> ''
+                  or coalesce(trim(rule_version), '') <> ''
+                )
+            ),
+            report_dates as (
+              select distinct report_date
+              from liability_lineage
+              where report_date <> ''
+            ),
+            source_versions as (
+              select report_date,
+                     string_agg(source_version, '__' order by source_version) as source_version
+              from (
+                select distinct report_date, source_version
+                from liability_lineage
+                where source_version <> ''
               )
-            order by report_date, source_version, rule_version
+              group by report_date
+            ),
+            rule_versions as (
+              select report_date,
+                     string_agg(rule_version, '__' order by rule_version) as rule_version
+              from (
+                select distinct report_date, rule_version
+                from liability_lineage
+                where rule_version <> ''
+              )
+              group by report_date
+            )
+            select report_dates.report_date,
+                   coalesce(source_versions.source_version, '') as source_version,
+                   coalesce(rule_versions.rule_version, '') as rule_version
+            from report_dates
+            left join source_versions using (report_date)
+            left join rule_versions using (report_date)
+            order by report_dates.report_date
             """
         ).fetchall()
-        source_versions_by_date: defaultdict[str, set[str]] = defaultdict(set)
-        rule_versions_by_date: defaultdict[str, set[str]] = defaultdict(set)
-        for report_date, source_version, rule_version in rows:
-            report_date_text = str(report_date or "").strip()
-            if not report_date_text:
-                continue
-            source_version_text = str(source_version or "").strip()
-            rule_version_text = str(rule_version or "").strip()
-            if source_version_text:
-                source_versions_by_date[report_date_text].add(source_version_text)
-            if rule_version_text:
-                rule_versions_by_date[report_date_text].add(rule_version_text)
-
-        report_dates = set(source_versions_by_date) | set(rule_versions_by_date)
         return {
-            report_date: {
-                "source_version": "__".join(sorted(source_versions_by_date[report_date])),
-                "rule_version": "__".join(sorted(rule_versions_by_date[report_date])),
+            str(report_date): {
+                "source_version": str(source_version or ""),
+                "rule_version": str(rule_version or ""),
             }
-            for report_date in report_dates
+            for report_date, source_version, rule_version in rows
         }
     finally:
         conn.close()

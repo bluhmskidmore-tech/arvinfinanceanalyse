@@ -240,3 +240,54 @@ def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
         conn.close()
     assert "asset_cashflow_30d" not in columns
     assert "liability_source_version" not in columns
+
+
+def test_load_current_tyw_liability_lineage_by_report_date_deduplicates_and_sorts(tmp_path):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_tyw_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_tyw_balance_daily values (?, ?, ?, ?, ?)
+            """,
+            [
+                ("2026-03-31", "liability", "CNY", "sv_b", "rv_2"),
+                ("2026-03-31", "liability", "CNY", "sv_a", "rv_1"),
+                ("2026-03-31", "liability", "CNY", "sv_b", "rv_2"),
+                ("2026-04-30", "asset", "CNY", "sv_ignored", "rv_ignored"),
+                ("2026-04-30", "liability", "USD", "sv_ignored", "rv_ignored"),
+                ("2026-04-30", "liability", "CNY", "", "rv_3"),
+            ],
+        )
+    finally:
+        conn.close()
+
+    lineage = repo_mod.load_current_tyw_liability_lineage_by_report_date(
+        duckdb_path=str(duckdb_path),
+    )
+
+    assert lineage == {
+        "2026-03-31": {
+            "source_version": "sv_a__sv_b",
+            "rule_version": "rv_1__rv_2",
+        },
+        "2026-04-30": {
+            "source_version": "",
+            "rule_version": "rv_3",
+        },
+    }
