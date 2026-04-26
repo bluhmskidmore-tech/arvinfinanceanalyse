@@ -157,6 +157,7 @@ class MetricContractsProvider(McpProvider):
             / "product-category-page-truth-contract.md",
             "golden_sample_catalog": REPO_ROOT / "docs" / "golden_sample_catalog.md",
         }
+        self._page_trace_bundles = product_page_trace_bundles()
 
     def resources(self) -> list[dict[str, Any]]:
         resources = [
@@ -214,18 +215,36 @@ class MetricContractsProvider(McpProvider):
                     },
                     "required": ["query"],
                 },
-            }
+            },
+            {
+                "name": "get_page_trace_bundle",
+                "description": "Return the read-only contract, lineage, code, and test touchpoints for one seeded MOSS page.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "page_slug": {
+                            "type": "string",
+                            "description": "Seeded page slug or route alias, for example product-category-pnl.",
+                        }
+                    },
+                    "required": ["page_slug"],
+                },
+            },
         ]
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if name != "search_contract_docs":
-            return super().call_tool(name, arguments)
-        query = str(arguments.get("query") or "").strip()
-        if not query:
-            raise McpError(-32602, "query is required.")
-        max_results = int(arguments.get("max_results") or 20)
-        matches = search_files(self._docs.values(), query=query, max_results=max_results)
-        return tool_text(json.dumps({"query": query, "matches": matches}, ensure_ascii=False, indent=2))
+        if name == "search_contract_docs":
+            query = str(arguments.get("query") or "").strip()
+            if not query:
+                raise McpError(-32602, "query is required.")
+            max_results = int(arguments.get("max_results") or 20)
+            matches = search_files(self._docs.values(), query=query, max_results=max_results)
+            return tool_text(json.dumps({"query": query, "matches": matches}, ensure_ascii=False, indent=2))
+        if name == "get_page_trace_bundle":
+            page_slug = str(arguments.get("page_slug") or "").strip()
+            payload = page_trace_bundle(self._page_trace_bundles, page_slug)
+            return tool_text(json.dumps(payload, ensure_ascii=False, indent=2))
+        return super().call_tool(name, arguments)
 
 
 class LineageEvidenceProvider(McpProvider):
@@ -499,6 +518,96 @@ def resolve_path_env(env_name: str, fallback: Path) -> Path:
     if candidate.is_absolute():
         return candidate.resolve()
     return (REPO_ROOT / candidate).resolve()
+
+
+def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
+    product_category_bundle = {
+        "page_slug": "product-category-pnl",
+        "page_id": "PAGE-PROD-CAT-001",
+        "page_name": "Product-category PnL",
+        "aliases": [
+            "product-category-pnl",
+            "/product-category-pnl",
+            "product_category_pnl",
+            "PAGE-PROD-CAT-001",
+        ],
+        "frontend_route": "/product-category-pnl",
+        "primary_api": "/ui/pnl/product-category",
+        "supporting_apis": [
+            "/ui/pnl/product-category/dates",
+            "/ui/pnl/product-category/refresh",
+            "/ui/pnl/product-category/refresh-status",
+            "/ui/pnl/product-category/manual-adjustments",
+            "/ui/pnl/product-category/manual-adjustments/export",
+        ],
+        "contract_docs": [
+            "docs/pnl/product-category-page-truth-contract.md",
+            "docs/pnl/adr-product-category-truth-chain.md",
+            "docs/pnl/product-category-golden-sample-a.md",
+            "docs/pnl/product-category-closure-checklist.md",
+            "docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md",
+        ],
+        "truth_chain": [
+            "paired ledger reconciliation workbook + daily average workbook",
+            "backend/app/services/product_category_source_service.py",
+            "backend/app/core_finance/product_category_pnl.py",
+            "product_category_pnl_formal_read_model",
+            "backend/app/services/product_category_pnl_service.py",
+            "/ui/pnl/product-category",
+            "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+        ],
+        "backend_touchpoints": [
+            "backend/app/services/product_category_source_service.py",
+            "backend/app/core_finance/config/product_category_mapping.py",
+            "backend/app/core_finance/product_category_pnl.py",
+            "backend/app/services/product_category_pnl_service.py",
+            "backend/app/api/routes/product_category_pnl.py",
+            "backend/app/schemas/product_category_pnl.py",
+            "backend/app/repositories/product_category_pnl_repo.py",
+            "backend/app/tasks/product_category_pnl.py",
+            "backend/app/schema_registry/duckdb/08_product_category_pnl.sql",
+        ],
+        "frontend_touchpoints": [
+            "frontend/src/api/pnlClient.ts",
+            "frontend/src/api/contracts.ts",
+            "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx",
+            "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts",
+            "frontend/src/features/product-category-pnl/pages/ProductCategoryAdjustmentAuditPage.tsx",
+        ],
+        "test_touchpoints": [
+            "tests/test_product_category_pnl_flow.py",
+            "tests/test_product_category_mapping_contract.py",
+            "frontend/src/test/ProductCategoryPnlPage.test.tsx",
+            "frontend/src/test/ProductCategoryBranchSwitcher.test.tsx",
+            "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts",
+            "tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md",
+        ],
+        "golden_samples": ["tests/golden_samples/GS-PROD-CAT-PNL-A"],
+        "verification_focus": [
+            "Trace API response through adapter/model state into ProductCategoryPnlPage before changing display logic.",
+            "Check units, precision, null-vs-zero semantics, report_date resolution, fallback/stale flags, and result_meta visibility.",
+            "Keep baseline and scenario row identity stable; scenario_rate_pct must not redefine the category tree.",
+            "Do not recompute governed totals in the frontend; display backend totals.",
+        ],
+        "guardrails": [
+            "Do not infer product-category row meaning from zqtz holdings-side logic, holdings buckets, or research-style bond categories.",
+            "Use the paired ledger reconciliation + daily average source chain as the row authority.",
+            "Use backend/app/core_finance/config/product_category_mapping.py and backend/app/core_finance/product_category_pnl.py for governed row meaning.",
+            "Do not add qtd or year_to_report_month_end to the main page selector without updating the page contract, closure checklist, and tests.",
+            "Treat missing standalone as_of_date as an explicit contract gap, not an assumption.",
+        ],
+    }
+    return {alias.casefold(): product_category_bundle for alias in product_category_bundle["aliases"]}
+
+
+def page_trace_bundle(bundles: dict[str, dict[str, Any]], page_slug: str) -> dict[str, Any]:
+    if not page_slug:
+        raise McpError(-32602, "page_slug is required.")
+    bundle = bundles.get(page_slug.casefold())
+    if bundle is None:
+        supported = sorted({bundle["page_slug"] for bundle in bundles.values()})
+        raise McpError(-32602, f"Unknown page_slug: {page_slug}. Supported pages: {', '.join(supported)}")
+    return bundle
 
 
 def list_golden_samples(*, limit: int) -> list[dict[str, Any]]:

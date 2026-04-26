@@ -50,6 +50,7 @@ Data catalog:
 Metric contracts:
 
 - `search_contract_docs`
+- `get_page_trace_bundle`
 
 Lineage/evidence:
 
@@ -60,6 +61,43 @@ Data catalog:
 
 - `describe_table`
 - `list_available_dates`
+
+## Page Trace Bundle
+
+Use `moss-metric-contracts.get_page_trace_bundle` before changing a seeded business metric page. It returns a read-only evidence bundle with the page route, governed API, contract documents, truth chain, backend/frontend touchpoints, existing tests, golden samples, verification focus, and page-specific guardrails.
+
+First seeded page:
+
+- `product-category-pnl`
+
+Boundary:
+
+- The bundle is an evidence index only. It does not calculate metrics, inspect DuckDB rows, mutate data, or replace the contract documents it points to.
+- For `product-category-pnl`, row meaning must stay tied to the paired ledger reconciliation + daily average source chain. Do not infer page rows from ZQTZ holdings-side logic or research buckets.
+
+## Codex Page Helpers
+
+Use the local helper scripts after the trace bundle has identified the page surface.
+
+Dry-run the verification plan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl -DryRun
+```
+
+Run the page-specific verification plan:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl
+```
+
+Emit the page smoke checklist:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/codex-page-smoke.ps1 -PageSlug product-category-pnl
+```
+
+The smoke helper intentionally prints the route, governed API, expected visible states, and Playwright MCP checklist. It does not replace browser verification or add a new browser automation dependency.
 
 ## Local Verification
 

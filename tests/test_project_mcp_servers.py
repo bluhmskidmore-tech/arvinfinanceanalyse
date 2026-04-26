@@ -121,6 +121,35 @@ def test_metric_contracts_mcp_exposes_contract_docs() -> None:
         server.close()
 
 
+def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        tools = server.request("tools/list")["tools"]
+        assert any(tool["name"] == "get_page_trace_bundle" for tool in tools)
+
+        result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "product-category-pnl"}},
+        )
+        payload = json.loads(result["content"][0]["text"])
+
+        assert payload["page_slug"] == "product-category-pnl"
+        assert payload["frontend_route"] == "/product-category-pnl"
+        assert payload["primary_api"] == "/ui/pnl/product-category"
+        assert "product_category_pnl_formal_read_model" in payload["truth_chain"]
+        assert "backend/app/services/product_category_source_service.py" in payload["backend_touchpoints"]
+        assert "frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx" in payload[
+            "frontend_touchpoints"
+        ]
+        assert "tests/test_product_category_pnl_flow.py" in payload["test_touchpoints"]
+        assert any("zqtz holdings-side logic" in guardrail for guardrail in payload["guardrails"])
+    finally:
+        server.close()
+
+
 def test_lineage_evidence_mcp_reads_governance_stream_status(tmp_path: Path) -> None:
     governance = tmp_path / "governance"
     governance.mkdir()
