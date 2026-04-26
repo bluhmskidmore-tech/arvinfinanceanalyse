@@ -27,6 +27,7 @@ import {
 } from "../dashboard/DashboardOverviewSections";
 import { GovernancePills, type GovernancePill } from "../dashboard/GovernancePills";
 import { buildDashboardKeyCalendarModel } from "../dashboard/keyCalendarModel";
+import { buildDashboardTodoTasksFromAlerts } from "../dashboard/dashboardTodoModel";
 
 const PnlAttributionSection = lazy(
   () => import("../../executive-dashboard/components/PnlAttributionSection"),
@@ -413,6 +414,11 @@ export default function DashboardPage() {
     [dashboardCalendar.message, dashboardCalendar.status],
   );
 
+  const dashboardTasks = useMemo(
+    () => buildDashboardTodoTasksFromAlerts(dashboardAlerts),
+    [dashboardAlerts],
+  );
+
   return (
     <section data-testid="fixed-income-dashboard-page">
       <PageHeader
@@ -591,6 +597,7 @@ export default function DashboardPage() {
         </section>
 
         <DashboardTasksCalendarPanels
+          tasks={dashboardTasks}
           calendarItems={dashboardCalendar.items}
           calendarState={dashboardCalendarState}
         />

@@ -106,6 +106,17 @@ describe("DashboardPage", () => {
     expect(screen.queryByTestId("dashboard-governed-meta")).not.toBeInTheDocument();
   });
 
+  it("derives today todo items from high and medium dashboard alerts", async () => {
+    renderDashboard();
+
+    const panel = await screen.findByTestId("dashboard-tasks-calendar");
+    expect(await within(panel).findByText("复核：当前处于 Mock 模式")).toBeInTheDocument();
+    expect(within(panel).getByText("今日复核 · 来源：治理预警")).toBeInTheDocument();
+    expect(
+      within(panel).queryByText("暂无需要今日处理的高/中优先级事项。低优先级观察仍可在预警中心查看。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("does not request excluded executive surfaces from the dashboard page", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });

@@ -666,7 +666,7 @@ function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {tasks.length === 0 ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
-            暂无待办条目。治理预警或任务类数据接入 executive 读链路后将显示在此。
+            暂无需要今日处理的高/中优先级事项。低优先级观察仍可在预警中心查看。
           </p>
         ) : null}
         {tasks.map((task) => {
