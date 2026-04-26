@@ -66,6 +66,20 @@ function expectTitlesInOrder(container: HTMLElement, titles: string[]) {
   }
 }
 
+function addDaysToIsoDate(date: string, days: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function localTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 describe("DashboardPage", () => {
   it("renders the governed dashboard shell while snapshot query is unresolved", async () => {
     const base = createApiClient({ mode: "mock" });
@@ -394,9 +408,10 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("requests the real key calendar as a report-date anchored forward window", async () => {
+  it("requests the real key calendar around the current date, not the stale snapshot date", async () => {
     const base = createApiClient({ mode: "real" });
     const mockSnapshotSource = createApiClient({ mode: "mock" });
+    const today = localTodayIsoDate();
     const researchCalendarCalls: Array<{
       reportDate?: string;
       startDate?: string;
@@ -433,8 +448,8 @@ describe("DashboardPage", () => {
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
     await waitFor(() => {
       expect(researchCalendarCalls).toContainEqual({
-        startDate: "2026-02-28",
-        endDate: "2026-03-14",
+        startDate: addDaysToIsoDate(today, -7),
+        endDate: addDaysToIsoDate(today, 14),
       });
     });
   });
@@ -479,7 +494,11 @@ describe("DashboardPage", () => {
   });
   it("renders supply and auction calendar items from the research calendar feed", async () => {
     const base = createApiClient({ mode: "mock" });
-    const researchCalendarCalls: Array<{ reportDate?: string }> = [];
+    const researchCalendarCalls: Array<{
+      reportDate?: string;
+      startDate?: string;
+      endDate?: string;
+    }> = [];
     const client: ApiClient = {
       ...base,
       getResearchCalendarEvents: async (options) => {
@@ -513,7 +532,7 @@ describe("DashboardPage", () => {
     expect(await within(calendar).findByText("国债净融资节奏")).toBeInTheDocument();
     expect(await within(calendar).findByText("政策性金融债招标")).toBeInTheDocument();
     expect(within(calendar).getAllByText("供给").length).toBeGreaterThan(0);
-    expect(researchCalendarCalls).toContainEqual({ reportDate: "2026-04-18" });
+    expect(researchCalendarCalls.some((call) => call.startDate && call.endDate)).toBe(true);
   });
 
   it("shows only high and medium external events in deterministic dashboard order", async () => {
@@ -566,6 +585,7 @@ describe("DashboardPage", () => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    await within(calendar).findByText("Gamma earlier high event");
     expect(within(calendar).queryByText("Ignore low event")).not.toBeInTheDocument();
     expectTitlesInOrder(calendar, [
       "Gamma earlier high event",
@@ -597,8 +617,10 @@ describe("DashboardPage", () => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    await waitFor(() => {
+      expect(calendar).toHaveTextContent("近 7 天至未来 14 天暂无高/中优先级外部事件。");
+    });
     expect(within(calendar).queryByText("Low-only event")).not.toBeInTheDocument();
-    expect(calendar).toHaveTextContent("No high/medium external events in the forward window.");
   });
 
   it("sorts dashboard calendar items by date then severity then stable title", async () => {
@@ -644,6 +666,7 @@ describe("DashboardPage", () => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-tasks-calendar");
+    await within(calendar).findByText("Gamma earlier high event");
     expectTitlesInOrder(calendar, [
       "Gamma earlier high event",
       "Delta high event",
@@ -666,7 +689,9 @@ describe("DashboardPage", () => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-tasks-calendar");
-    expect(calendar).toHaveTextContent("No external event data is available for the forward window.");
+    await waitFor(() => {
+      expect(calendar).toHaveTextContent("近 7 天至未来 14 天暂无外部日历事件。");
+    });
   });
 
   it("renders an explicit error state when the external event feed fails", async () => {
@@ -685,6 +710,8 @@ describe("DashboardPage", () => {
       expect(getResearchCalendarEvents).toHaveBeenCalled();
     });
     const calendar = await screen.findByTestId("dashboard-tasks-calendar");
-    expect(calendar).toHaveTextContent("Failed to load key calendar external events.");
+    await waitFor(() => {
+      expect(calendar).toHaveTextContent("关键日历外部事件加载失败。");
+    });
   });
 });

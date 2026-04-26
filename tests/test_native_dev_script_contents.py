@@ -10,6 +10,9 @@ def test_dev_api_script_bootstraps_native_environment():
     assert "Assert-DevBootstrapStorageReady" in script
     assert "dev-python.ps1" in script
     assert "Resolve-DevPython" in script
+    assert "Get-DevListeningPortOwner" in script
+    assert "netstat -ano" in script
+    assert "Port $port already has a listener" in script
     assert "uvicorn backend.app.main:app" in script
 
 
@@ -57,15 +60,28 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "dev-api.ps1" in script
     assert "dev-worker.ps1" in script
     assert "dev-frontend.ps1" in script
-    assert "Start-Process" in script
+    assert "Start-Process" not in script
+    assert "Start-DevScriptDetached" in script
+    assert "WScript.Shell" in script
+    assert "runtime-clean\\logs" in script
+    assert ".out.log" in script
+    assert ".err.log" in script
+    assert "stdout=$stdoutPath stderr=$stderrPath" in script
     assert "Wait-HttpEndpoint" in script
     assert "Wait-TcpPort" in script
     assert "Wait-FileReady" in script
+    assert "Assert-PortAvailableForScriptStart" in script
+    assert "Get-DevListeningPortOwner" in script
+    assert "netstat -ano" in script
     assert "Assert-NativeProcessRunning" in script
+    assert "Invoke-ConcurrentHttpSmoke" in script
     assert "write_dev_worker_heartbeat" in script
     assert "55432" in script
     assert "/health" in script
     assert "/api/bond-analytics/dates" in script
+    assert "/api/risk/tensor/dates" in script
+    assert "/api/risk/tensor?report_date=$riskReportDate" in script
+    assert "risk tensor detail concurrent smoke" in script
     assert "audit_governance_lineage.py" in script
     assert "Governance lineage audit failed" in script
     assert "exit 0" in script

@@ -93,6 +93,22 @@ describe("crossAssetKpiModel", () => {
     expect(kpis.find((k) => k.key === "mega_cap_top5_weight")?.valueLabel).toBe("15.53%");
   });
 
+  it("keeps raw-point change labels unitless for index and valuation evidence", () => {
+    const kpis = resolveCrossAssetKpis([
+      macroPoint("CA.CSI300", 4102.25, [
+        ["2026-04-09", 4085.12],
+        ["2026-04-10", 4102.25],
+      ], { unit: "index", latest_change: 17.13, vendor_name: "tushare" }),
+      macroPoint("CA.CSI300_PE", 14.64, [
+        ["2026-04-09", 14.42],
+        ["2026-04-10", 14.64],
+      ], { unit: "x", latest_change: 0.22, vendor_name: "tushare" }),
+    ]);
+
+    expect(kpis.find((k) => k.key === "financial_conditions")?.changeLabel).toBe("+17.13");
+    expect(kpis.find((k) => k.key === "csi300_pe")?.changeLabel).toBe("+0.22");
+  });
+
   it("prefers E1003238 over EMG for US 10Y", () => {
     const series = [
       macroPoint("EMG00001310", 4.1, [

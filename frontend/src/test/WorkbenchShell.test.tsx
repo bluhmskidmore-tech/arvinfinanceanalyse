@@ -42,6 +42,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "bond-analysis", element: <div>bond-analysis body</div> },
           { path: "cross-asset", element: <div>cross-asset body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
+          { path: "balance-analysis", element: <div>balance-analysis body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
@@ -106,6 +107,19 @@ describe("WorkbenchShell", () => {
     expect(board).toHaveTextContent("债券总览");
     expect(board).toHaveTextContent("持仓透视");
     expect(board).toHaveTextContent("损益桥接");
+  });
+
+  it("shows only a compact portfolio hint on balance-analysis (not the full lead, flow, or board)", async () => {
+    renderShellAt("/balance-analysis");
+
+    expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
+    const hint = await screen.findByTestId("portfolio-workbench-light-hint");
+    expect(hint).toHaveTextContent("先以正式余额下结论");
+    expect(hint).toHaveTextContent("占位模块不混入首屏判断");
+
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
   });
 
   it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {

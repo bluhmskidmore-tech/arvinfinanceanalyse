@@ -171,6 +171,7 @@ import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
 import { buildMockApiEnvelope, buildMockMeta } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
+import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -1019,21 +1020,7 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
       latest_change: 0.021,
       recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 1.82, 0.06),
     },
-    {
-      series_id: "CA.CSI300",
-      series_name: "沪深300指数",
-      trade_date: "2026-03-01",
-      value_numeric: 3924.5,
-      unit: "index",
-      source_version: "sv_choice_macro_mock",
-      vendor_version: "vv_choice_macro_mock_v1",
-      refresh_tier: "stable",
-      fetch_mode: "date_slice",
-      fetch_granularity: "batch",
-      policy_note: "cross-asset headline lane",
-      latest_change: 1.89,
-      recent_points: buildMockChoiceMacroRecentPoints("2026-03-01", 20, 3924.5, 45),
-    },
+    ...MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES,
     {
       series_id: "CA.BRENT",
       series_name: "ICE布伦特原油期货收盘价",

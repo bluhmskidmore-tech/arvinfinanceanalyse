@@ -106,6 +106,7 @@ function formatHeroDelta(display: string | undefined, fallbackLabel: string) {
   return fallbackLabel;
 }
 
+const DASHBOARD_KEY_CALENDAR_LOOKBACK_DAYS = 7;
 const DASHBOARD_KEY_CALENDAR_FORWARD_DAYS = 14;
 
 function addDaysToIsoDate(date: string, days: number): string {
@@ -119,6 +120,14 @@ function addDaysToIsoDate(date: string, days: number): string {
   }
   parsed.setUTCDate(parsed.getUTCDate() + days);
   return parsed.toISOString().slice(0, 10);
+}
+
+function todayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export default function DashboardPage() {
@@ -197,21 +206,27 @@ export default function DashboardPage() {
     return null;
   }, [snapshotResult]);
 
+  const calendarAnchorDate = todayIsoDate();
+  const calendarStartDate = addDaysToIsoDate(
+    calendarAnchorDate,
+    -DASHBOARD_KEY_CALENDAR_LOOKBACK_DAYS,
+  );
+  const calendarEndDate = addDaysToIsoDate(
+    calendarAnchorDate,
+    DASHBOARD_KEY_CALENDAR_FORWARD_DAYS,
+  );
+
   const researchCalendarQuery = useQuery({
-    queryKey: ["research-calendar", client.mode, effectiveReportDate],
+    queryKey: ["research-calendar", client.mode, calendarStartDate, calendarEndDate],
     queryFn: () =>
       client.getResearchCalendarEvents(
         client.mode === "real"
           ? {
-              startDate: effectiveReportDate,
-              endDate: addDaysToIsoDate(
-                effectiveReportDate,
-                DASHBOARD_KEY_CALENDAR_FORWARD_DAYS,
-              ),
+              startDate: calendarStartDate,
+              endDate: calendarEndDate,
             }
-          : { reportDate: effectiveReportDate },
+          : { startDate: calendarStartDate, endDate: calendarEndDate },
       ),
-    enabled: Boolean(effectiveReportDate),
     retry: false,
   });
 

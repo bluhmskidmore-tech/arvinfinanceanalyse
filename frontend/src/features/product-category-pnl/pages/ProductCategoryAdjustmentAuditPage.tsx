@@ -841,18 +841,19 @@ function LegacyProductCategoryAdjustmentAuditBody() {
         description="当前状态和完整事件时间线分开展示，保留现有 current / event pagination、排序和导出语义。与主页面一致：仅当审批通过可撤销、仅当已拒绝可恢复；进行中时随整页刷新置灰。撤销、恢复、保存后触发同一 PnL 刷新工作流再拉列表。"
         testId="product-category-audit-timeline-lead"
       />
-      <AsyncSection
-        title="调整审计"
-        isLoading={adjustmentsQuery.isLoading}
-        isError={adjustmentsQuery.isError}
-        isEmpty={
-          !adjustmentsQuery.isLoading &&
-          !adjustmentsQuery.isError &&
-          currentTotal === 0 &&
-          eventTotal === 0
-        }
-        onRetry={() => void adjustmentsQuery.refetch()}
-      >
+      <div data-testid="product-category-audit-list-timeline-async">
+        <AsyncSection
+          title="调整审计"
+          isLoading={adjustmentsQuery.isLoading}
+          isError={adjustmentsQuery.isError}
+          isEmpty={
+            !adjustmentsQuery.isLoading &&
+            !adjustmentsQuery.isError &&
+            currentTotal === 0 &&
+            eventTotal === 0
+          }
+          onRetry={() => void adjustmentsQuery.refetch()}
+        >
         <div style={{ display: "grid", gap: 18 }}>
           <div data-testid="audit-current-state" style={{ display: "grid", gap: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1016,7 +1017,8 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             ))}
           </div>
         </div>
-      </AsyncSection>
+        </AsyncSection>
+      </div>
     </section>
   );
 }

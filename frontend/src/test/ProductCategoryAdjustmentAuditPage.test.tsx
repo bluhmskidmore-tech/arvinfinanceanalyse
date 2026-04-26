@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
@@ -142,6 +142,154 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByText("audit-account")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-pca-audit-1-edited")).toBeInTheDocument();
     expect(screen.getByTestId("audit-event-pca-audit-1-created")).toBeInTheDocument();
+  });
+
+  it("Unit 5: list/timeline failure surfaces AsyncSection error, hides current+event bodies, and retry refetches", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    let failList = true;
+    const successAfterRetry = {
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-audit-retry-1",
+          event_type: "created",
+          created_at: "2026-04-10T12:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51402010001",
+          currency: "CNX",
+          account_name: "after-retry-row",
+          monthly_pnl: "1",
+        },
+      ],
+      events: [],
+    };
+    const listSpy = vi.fn(async () => {
+      if (failList) {
+        throw new Error("audit-list-initial-failure");
+      }
+      return successAfterRetry;
+    });
+
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: listSpy,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("审计-报表月份") as HTMLSelectElement).value).toBeTruthy();
+    });
+
+    const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
+    const retryButton = await within(listAsyncRegion).findByRole("button", { name: "重试" });
+    expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).getByText(/当前页面保留重试入口/)).toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
+
+    failList = false;
+    await user.click(retryButton);
+
+    await waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(await screen.findByTestId("audit-current-state")).toBeInTheDocument();
+    expect(screen.getByText("after-retry-row")).toBeInTheDocument();
+  });
+
+  it("Unit 5: failed list refetch does not leave prior current-state or timeline rows visible", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const listSpy = vi
+      .fn()
+      .mockResolvedValueOnce({
+        report_date: "2026-02-28",
+        adjustment_count: 1,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 2,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "edited",
+            created_at: "2026-04-10T11:00:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "8",
+          },
+        ],
+        events: [
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "edited",
+            created_at: "2026-04-10T11:00:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "8",
+          },
+          {
+            adjustment_id: "pca-audit-stale-1",
+            event_type: "created",
+            created_at: "2026-04-10T10:30:00Z",
+            stream: "product_category_pnl_adjustments",
+            report_date: "2026-02-28",
+            operator: "DELTA",
+            approval_status: "approved",
+            account_code: "51402010001",
+            currency: "CNX",
+            account_name: "unit5-stale-marker",
+            monthly_pnl: "5",
+          },
+        ],
+      })
+      .mockRejectedValueOnce(new Error("audit-list-refetch-failure"));
+
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: listSpy,
+    });
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("审计-报表月份") as HTMLSelectElement).value).toBeTruthy();
+    });
+
+    expect(await screen.findByText("unit5-stale-marker")).toBeInTheDocument();
+    expect(screen.getByTestId("audit-event-pca-audit-stale-1-edited")).toBeInTheDocument();
+
+    await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
+    await user.click(screen.getByTestId("audit-apply-filters"));
+
+    await waitFor(() => {
+      expect(listSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    const listAsyncRegion = await screen.findByTestId("product-category-audit-list-timeline-async");
+    await within(listAsyncRegion).findByRole("button", { name: "重试" });
+    expect(within(listAsyncRegion).getByText(/数据载入失败/)).toBeInTheDocument();
+    expect(screen.queryByText("unit5-stale-marker")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-current-state")).not.toBeInTheDocument();
+    expect(within(listAsyncRegion).queryByTestId("audit-event-list")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("audit-event-pca-audit-stale-1-edited")).not.toBeInTheDocument();
   });
 
   it("disables audit revoke/restore by approval_status and states lifecycle refresh in the timeline lead", async () => {

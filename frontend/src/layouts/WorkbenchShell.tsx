@@ -351,6 +351,8 @@ export function WorkbenchShell() {
   const currentGroupSections = currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
+  /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
+  const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
   const isMinimalMainChrome = isBondAnalysisMinimalShell || isCrossAssetImmersiveMain;
@@ -960,14 +962,47 @@ export function WorkbenchShell() {
               alignItems: isPortfolioGroup ? "stretch" : "flex-start",
               justifyContent: "space-between",
               gap: 18,
-              padding: "22px 26px",
+              padding: isBalanceAnalysisCompactChrome ? "14px 20px" : "22px 26px",
               border: `1px solid ${shellTokens.colorBorder}`,
-              borderRadius: 30,
+              borderRadius: isBalanceAnalysisCompactChrome ? 20 : 30,
               boxShadow: shellTokens.shadowPanel,
               background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 88%)`,
             }}
           >
-            {isPortfolioGroup ? (
+            {isPortfolioGroup && isBalanceAnalysisCompactChrome ? (
+              <section
+                data-testid="portfolio-workbench-light-hint"
+                className="portfolio-workbench-light-hint"
+              >
+                <span className="portfolio-workbench-light-hint__eyebrow">
+                  Portfolio Workbench
+                </span>
+                <p className="portfolio-workbench-light-hint__copy">
+                  <strong className="portfolio-workbench-light-hint__strong">先以正式余额下结论</strong>
+                  ，再下钻损益、仓位与归因；占位模块不混入首屏判断。
+                </p>
+                <nav className="portfolio-workbench-light-hint__nav">
+                  <span className="portfolio-workbench-light-hint__nav-label">后续：</span>
+                  {portfolioFlow
+                    .filter((item) => item.key !== "balance-analysis")
+                    .map((item) => {
+                      const section = findSectionByKey(currentGroupSections, item.key);
+                      if (!section) {
+                        return null;
+                      }
+                      return (
+                        <NavLink
+                          key={item.key}
+                          to={section.path}
+                          className="portfolio-workbench-light-hint__nav-link"
+                        >
+                          {section.label}
+                        </NavLink>
+                      );
+                    })}
+                </nav>
+              </section>
+            ) : isPortfolioGroup ? (
               <>
                 <section
                   data-testid="portfolio-workbench-lead"
@@ -1237,7 +1272,7 @@ export function WorkbenchShell() {
             gap: 20,
           }}
         >
-          {isPortfolioGroup && !isBondAnalysisMinimalShell ? (
+          {isPortfolioGroup && !isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
             <section
               data-testid="portfolio-workbench-board"
               style={{

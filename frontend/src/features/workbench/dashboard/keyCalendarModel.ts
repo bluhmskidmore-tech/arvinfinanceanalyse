@@ -59,7 +59,7 @@ export function buildDashboardKeyCalendarModel({
     return {
       items: [],
       status: "error",
-      message: "Failed to load key calendar external events.",
+      message: "关键日历外部事件加载失败。",
     };
   }
 
@@ -67,7 +67,7 @@ export function buildDashboardKeyCalendarModel({
     return {
       items: [],
       status: "loading",
-      message: "Loading key calendar external events.",
+      message: "正在加载关键日历外部事件。",
     };
   }
 
@@ -75,7 +75,7 @@ export function buildDashboardKeyCalendarModel({
     return {
       items: [],
       status: "no-data",
-      message: "No external event data is available for the forward window.",
+      message: "近 7 天至未来 14 天暂无外部日历事件。",
     };
   }
 
@@ -89,7 +89,7 @@ export function buildDashboardKeyCalendarModel({
     return {
       items: [],
       status: "no-high-medium",
-      message: "No high/medium external events in the forward window.",
+      message: "近 7 天至未来 14 天暂无高/中优先级外部事件。",
     };
   }
 

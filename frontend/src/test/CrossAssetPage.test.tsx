@@ -39,6 +39,26 @@ function renderPage(client: ApiClient = createApiClient({ mode: "mock" })) {
 }
 
 describe("CrossAssetPage", () => {
+  it("renders dual-source stock evidence from the default mock latest-series contract", async () => {
+    renderPage(createApiClient({ mode: "mock" }));
+
+    expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("dual source ready");
+    });
+
+    const evidence = await screen.findByTestId("cross-asset-equity-evidence");
+    expect(evidence).toHaveTextContent("Tushare");
+    expect(evidence).toHaveTextContent("CA.CSI300");
+    expect(evidence).toHaveTextContent("CA.CSI300_PE");
+    expect(evidence).toHaveTextContent("CA.MEGA_CAP_WEIGHT");
+    expect(evidence).toHaveTextContent("CA.MEGA_CAP_TOP5_WEIGHT");
+
+    const broadIndex = screen.getByTestId("cross-asset-equity-evidence-broad_index");
+    expect(broadIndex).toHaveTextContent("index");
+    expect(broadIndex).toHaveTextContent("Tushare");
+  });
+
   it("renders first-screen investment research judgments from backend additive fields", async () => {
     const client = createApiClient({ mode: "mock" });
     const latestPayload = await client.getChoiceMacroLatest();
@@ -52,7 +72,14 @@ describe("CrossAssetPage", () => {
       result: {
         ...latestPayload.result,
         series: [
-          ...latestPayload.result.series,
+          ...latestPayload.result.series.map((point) =>
+            point.series_id === "CA.CSI300"
+              ? {
+                  ...point,
+                  trade_date: "2026-02-28",
+                }
+              : point,
+          ),
           {
             ...baseCsi300,
             series_id: "CA.CSI300_PE",

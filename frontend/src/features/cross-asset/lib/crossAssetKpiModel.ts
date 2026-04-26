@@ -293,7 +293,7 @@ function changeLabelForSlot(
   }
   if (format === "index" || format === "plain") {
     const sign = delta > 0 ? "+" : "";
-    return `${sign}${delta.toFixed(2)}%`;
+    return `${sign}${delta.toLocaleString("zh-CN", { maximumFractionDigits: 2 })}`;
   }
   if (format === "fx") {
     const sign = delta > 0 ? "+" : "";
