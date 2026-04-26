@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Alert, Button, Collapse, Select, Tabs } from "antd";
 
@@ -9,6 +9,7 @@ import {
   PageFilterTray,
   PageHeader,
   PageSectionLead,
+  type PageSectionLeadProps,
 } from "../../../components/page/PagePrimitives";
 import {
   pageInsetCardStyle,
@@ -50,25 +51,29 @@ const c = designTokens.color;
 
 const summaryGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: s[4],
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: s[5],
 } as const;
 
 const observationGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: s[4],
-  marginTop: s[4],
-} as const;
-
-const sectionGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.3fr) minmax(320px, 1fr)",
   gap: s[5],
   marginTop: s[5],
 } as const;
 
-const detailPanelStyle = pageSurfacePanelStyle;
+const sectionGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.6fr) minmax(320px, 1fr)",
+  gap: s[6],
+  marginTop: s[6],
+} as const;
+
+const detailPanelStyle = {
+  ...pageSurfacePanelStyle,
+  background: "#ffffff",
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
+} as const;
 
 const macroTabPanelStyle = {
   marginTop: s[2],
@@ -86,7 +91,7 @@ const rateTrendStateStyle = {
 
 const rateTrendEmptyStateStyle = {
   ...rateTrendStateStyle,
-  border: `1px solid ${c.primary[200]}`,
+  border: `1px dashed ${c.primary[200]}`,
   color: c.neutral[500],
 } as const;
 
@@ -100,12 +105,42 @@ const blockTitleStyle = {
 const macroChartShellStyle = {
   ...detailPanelStyle,
   marginTop: s[5],
+  background: "#ffffff",
 } as const;
 
 const terminalRowGridStyle = {
   ...observationGridStyle,
   marginTop: 0,
 } as const;
+
+const marketSectionBlockStyle = {
+  marginTop: 48,
+} as const;
+
+const marketSectionLeadStyle = {
+  marginBottom: 24,
+} as const;
+
+const marketSectionLeadFlushTopStyle = {
+  marginTop: 0,
+  marginBottom: 24,
+} as const;
+
+function MarketSectionBlock({ children }: { children: ReactNode }) {
+  return <div style={marketSectionBlockStyle}>{children}</div>;
+}
+
+function MarketSectionLead({
+  flushTop = false,
+  ...props
+}: Omit<PageSectionLeadProps, "style"> & { flushTop?: boolean }) {
+  return (
+    <PageSectionLead
+      {...props}
+      style={flushTop ? marketSectionLeadFlushTopStyle : marketSectionLeadStyle}
+    />
+  );
+}
 
 const filterLabelStyle = {
   display: "grid",
@@ -117,11 +152,15 @@ const filterLabelStyle = {
 
 const filterControlStyle = {
   width: "100%",
-  padding: `${s[2]}px ${s[2] + s[1]}px`,
-  borderRadius: designTokens.radius.sm + s[1],
-  border: `1px solid ${c.primary[300]}`,
+  height: 36,
+  padding: `0 ${s[3]}px`,
+  borderRadius: designTokens.radius.md,
+  border: `1px solid ${c.neutral[300]}`,
+  background: "#ffffff",
   fontSize: fs[13],
   color: c.neutral[900],
+  outline: "none",
+  transition: "border-color 0.2s ease",
 } as const;
 
 /** 利率走势：国债 10Y / 国开 5Y / SHIBOR 隔夜（Choice series_id） */
@@ -256,6 +295,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         display: "grid",
         gap: s[3],
         ...pageInsetCardStyle,
+        background: "#ffffff",
       }}
     >
       <div
@@ -347,6 +387,7 @@ function renderSeriesCards(
             display: "grid",
             gap: s[3],
             ...pageInsetCardStyle,
+            background: "#ffffff",
           }}
         >
           <div
@@ -681,19 +722,6 @@ export default function MarketDataPage() {
           >
             观察日期 {watchDate}
           </p>
-          {(refreshStatus || refreshError) && (
-            <div
-              style={{
-                padding: `${s[2] + s[1]}px ${s[4]}px`,
-                borderRadius: s[3],
-                fontSize: fs[13],
-                background: refreshError ? c.warning[50] : c.info[50],
-                color: refreshError ? c.warning[600] : c.info[500],
-              }}
-            >
-              {refreshError || refreshStatus}
-            </div>
-          )}
 
           <div data-testid="market-data-filter-strip">
             <PageFilterTray>
@@ -749,6 +777,20 @@ export default function MarketDataPage() {
               </FilterBar>
             </PageFilterTray>
           </div>
+
+          {(refreshStatus || refreshError) && (
+            <div
+              style={{
+                padding: `${s[2] + s[1]}px ${s[4]}px`,
+                borderRadius: s[3],
+                fontSize: fs[13],
+                background: refreshError ? c.warning[50] : c.info[50],
+                color: refreshError ? c.warning[600] : c.info[500],
+              }}
+            >
+              {refreshError || refreshStatus}
+            </div>
+          )}
         </div>
       </PageHeader>
 
@@ -756,6 +798,7 @@ export default function MarketDataPage() {
         eyebrow="Overview"
         title="市场概览"
         description="先确认当前序列覆盖、稳定回收和 analytical 观察范围，再进入利率、资金和成交明细。"
+        style={{ marginTop: 0, marginBottom: 24 }}
       />
       <div style={summaryGridStyle}>
         <div data-testid="market-data-catalog-count">
@@ -831,12 +874,14 @@ export default function MarketDataPage() {
         testId="market-data-overview-live-meta"
       />
 
-      <PageSectionLead
-        eyebrow="Core Watch"
-        title="利率、资金、宏观深度与成交观察"
-        description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
-      />
-      <div style={terminalRowGridStyle}>
+      <div style={{ marginTop: 48 }}>
+        <PageSectionLead
+          eyebrow="Core Watch"
+          title="利率、资金、宏观深度与成交观察"
+          description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
+          style={{ marginBottom: 24 }}
+        />
+        <div style={terminalRowGridStyle}>
         <RateQuoteTable />
         <div data-testid="market-data-macro-depth-wrap" style={{ ...macroChartShellStyle, marginTop: 0 }}>
           <Tabs
@@ -994,6 +1039,7 @@ export default function MarketDataPage() {
           />
         </div>
       </div>
+      </div>
 
       <div style={observationGridStyle}>
         <MoneyMarketTable />
@@ -1013,12 +1059,13 @@ export default function MarketDataPage() {
         <NewsAndCalendar />
       </div>
 
-      <PageSectionLead
-        eyebrow="Observation"
-        title="宏观序列与分析观察"
-        description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
-      />
-      <div style={{ marginTop: s[5] }}>
+      <div style={{ marginTop: 48 }}>
+        <PageSectionLead
+          eyebrow="Observation"
+          title="宏观序列与分析观察"
+          description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
+          style={{ marginBottom: 24 }}
+        />
         <MacroLatestReadinessBanner
           testId="market-data-macro-readiness"
           isLoading={latestQuery.isLoading}
@@ -1026,6 +1073,7 @@ export default function MarketDataPage() {
           hasSeries={visibleLatestSeries.length > 0}
           meta={latestQuery.data?.result_meta}
         />
+      <div style={{ marginTop: 48 }}>
         <AsyncSection
           title="宏观序列观察"
           isLoading={latestQuery.isLoading}
@@ -1127,7 +1175,6 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
-      <div style={{ marginTop: s[5] }}>
         <AsyncSection
           title="FX analytical 观察"
           isLoading={fxAnalyticalQuery.isLoading}
@@ -1175,15 +1222,16 @@ export default function MarketDataPage() {
         </AsyncSection>
       </div>
 
-      <PageSectionLead
-        eyebrow="Analytical"
-        title="宏观-债市联动"
-        description="联动区保留为分析口径折叠块，继续显式标注 analytical / non-formal，不向 formal 结果读面越界。"
-      />
-      <Collapse
-        data-testid="market-data-linkage-collapse"
-        style={{ marginTop: s[5] }}
-        bordered={false}
+      <div style={{ marginTop: 48 }}>
+        <PageSectionLead
+          eyebrow="Analytical"
+          title="宏观-债市联动"
+          description="联动区保留为分析口径折叠块，继续显式标注 analytical / non-formal，不向 formal 结果读面越界。"
+          style={{ marginBottom: 24 }}
+        />
+        <Collapse
+          data-testid="market-data-linkage-collapse"
+          bordered={false}
         defaultActiveKey={[]}
         items={[
           {
@@ -1494,13 +1542,16 @@ export default function MarketDataPage() {
           },
         ]}
       />
+      </div>
 
-      <PageSectionLead
-        eyebrow="Evidence"
-        title="目录与结果元数据"
-        description="页尾集中展示目录补充信息与 result metadata，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
-      />
-      <div style={sectionGridStyle}>
+      <div style={{ marginTop: 48 }}>
+        <PageSectionLead
+          eyebrow="Evidence"
+          title="目录与结果元数据"
+          description="页尾集中展示目录补充信息与 result metadata，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
+          style={{ marginBottom: 24 }}
+        />
+        <div style={{ ...sectionGridStyle, marginTop: 0 }}>
         <AsyncSection
           title="宏观序列目录"
           isLoading={catalogQuery.isLoading}
@@ -1552,6 +1603,7 @@ export default function MarketDataPage() {
           extraLine={`report_date: ${linkageReportDate || "pending"}`}
           testId="market-data-linkage-meta"
         />
+      </div>
       </div>
     </section>
   );

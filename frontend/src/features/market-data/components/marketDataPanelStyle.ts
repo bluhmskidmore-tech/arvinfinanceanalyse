@@ -5,10 +5,10 @@ const c = designTokens.color;
 
 export const marketDataPanelStyle = {
   padding: s[6],
-  borderRadius: s[5],
-  background: c.primary[50],
-  border: `1px solid ${c.primary[200]}`,
-  boxShadow: designTokens.shadow.card,
+  borderRadius: designTokens.radius.xl,
+  background: "#ffffff",
+  border: `1px solid ${c.neutral[200]}`,
+  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
 } as const;
 
 export const marketDataBlockTitleStyle = {
