@@ -681,7 +681,7 @@ export default function ProductCategoryPnlPage() {
       <SectionLead
         eyebrow="Governance"
         title="手工调整与审计"
-        description="手工调整仍走既有 create / update / revoke / restore API，完整事件时间线保留在独立审计视图。"
+        description="手工调整仍走既有 create / update / revoke / restore API，完整事件时间线保留在独立审计视图。仅当审批通过可撤销、仅当已拒绝可恢复；其余审批状态下对应按钮为禁用。撤销、恢复、保存后均触发与全页「刷新损益数据」一致的 PnL 刷新工作流以更新本列表。"
         testId="product-category-adjustment-lead"
       />
       <AsyncSection

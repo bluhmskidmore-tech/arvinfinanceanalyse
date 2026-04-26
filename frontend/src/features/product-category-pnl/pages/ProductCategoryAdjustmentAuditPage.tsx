@@ -838,7 +838,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       <SectionLead
         eyebrow="Timeline"
         title="调整审计时间线"
-        description="当前状态和完整事件时间线分开展示，保留现有 current / event pagination、排序和导出语义。"
+        description="当前状态和完整事件时间线分开展示，保留现有 current / event pagination、排序和导出语义。与主页面一致：仅当审批通过可撤销、仅当已拒绝可恢复；进行中时随整页刷新置灰。撤销、恢复、保存后触发同一 PnL 刷新工作流再拉列表。"
         testId="product-category-audit-timeline-lead"
       />
       <AsyncSection

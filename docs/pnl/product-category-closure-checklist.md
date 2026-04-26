@@ -177,11 +177,13 @@ This first pass is based on:
   - backend lifecycle behavior is deeply exercised in `tests/test_product_category_pnl_flow.py`
   - main-page revoke/edit/restore behavior is covered in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
   - audit-page edit/revoke/restore controls are covered in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
+  - page tests `disables revoke/restore by approval_status…` (main) and `disables audit revoke/restore…` (audit) freeze: `approved` → revoke on / restore off; `pending` → both off; `rejected` → revoke off / restore on; sample rows keep edit enabled (aligns with `disabled` in `ProductCategoryPnlPage.tsx` / `ProductCategoryAdjustmentAuditPage.tsx`)
+  - `product-category-adjustment-lead` and `product-category-audit-timeline-lead` copy states lifecycle actions run the same PnL refresh path as the full-page refresh before list updates; audit lead notes in-flight refresh grays out controls
   - real-mode client calls are covered in `frontend/src/test/ApiClient.test.ts`
 - Why not `CLOSED`:
-  - no confirmation-modal evidence for revoke
+  - no confirmation modal for destructive revoke; not added here, remains an explicit product gap if stakeholders want friction
   - lifecycle closure is spread across main page and audit page
-  - field-level edit policy is implemented, but not yet frozen as human-readable product contract
+  - field-level edit policy for every edge case is not written as a separate human contract beyond tests + these leads
 
 ## Unit 8: Governance / Traceability
 

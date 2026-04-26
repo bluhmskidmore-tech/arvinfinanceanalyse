@@ -144,6 +144,53 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("audit-event-pca-audit-1-created")).toBeInTheDocument();
   });
 
+  it("disables audit revoke/restore by approval_status and states lifecycle refresh in the timeline lead", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const rowBase = {
+      created_at: "2026-04-10T09:00:00Z",
+      stream: "product_category_pnl_adjustments" as const,
+      report_date: "2026-02-28",
+      operator: "DELTA" as const,
+      account_code: "51402010001",
+      currency: "CNX" as const,
+      account_name: "x",
+      event_type: "created" as const,
+      monthly_pnl: "1",
+    };
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: async () => ({
+        report_date: "2026-02-28",
+        adjustment_count: 3,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 0,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          { ...rowBase, adjustment_id: "pca-audit-ap", approval_status: "approved" as const },
+          { ...rowBase, adjustment_id: "pca-audit-pe", approval_status: "pending" as const },
+          { ...rowBase, adjustment_id: "pca-audit-rj", approval_status: "rejected" as const },
+        ],
+        events: [],
+      }),
+    });
+
+    const lead = await screen.findByTestId("product-category-audit-timeline-lead");
+    expect(lead).toHaveTextContent("仅当审批通过可撤销");
+    expect(lead).toHaveTextContent("刷新工作流再拉列表");
+    expect(lead).toHaveTextContent("整页刷新置灰");
+
+    await screen.findByTestId("audit-revoke-pca-audit-ap");
+    expect(screen.getByTestId("audit-revoke-pca-audit-ap")).not.toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-ap")).toBeDisabled();
+    expect(screen.getByTestId("audit-revoke-pca-audit-pe")).toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-pe")).toBeDisabled();
+    expect(screen.getByTestId("audit-revoke-pca-audit-rj")).toBeDisabled();
+    expect(screen.getByTestId("audit-restore-pca-audit-rj")).not.toBeDisabled();
+    expect(screen.getByTestId("audit-edit-pca-audit-ap")).not.toBeDisabled();
+  });
+
   it("applies audit filters and paginates timeline requests", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });

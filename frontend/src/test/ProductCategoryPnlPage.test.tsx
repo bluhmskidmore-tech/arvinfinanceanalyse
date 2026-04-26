@@ -511,4 +511,54 @@ describe("ProductCategoryPnlPage", () => {
       expect(refreshSpy).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("disables revoke/restore by approval_status and states lifecycle refresh in the adjustment lead", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const rowBase = {
+      created_at: "2026-04-10T09:00:00Z",
+      stream: "product_category_pnl_adjustments" as const,
+      report_date: "2026-02-28",
+      operator: "DELTA" as const,
+      account_code: "51402010001",
+      currency: "CNX" as const,
+      account_name: "x",
+      event_type: "created" as const,
+      monthly_pnl: "1",
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: async () => ({
+        report_date: "2026-02-28",
+        adjustment_count: 3,
+        adjustment_limit: 20,
+        adjustment_offset: 0,
+        event_total: 0,
+        event_limit: 20,
+        event_offset: 0,
+        adjustments: [
+          { ...rowBase, adjustment_id: "pca-st-approved", approval_status: "approved" as const },
+          { ...rowBase, adjustment_id: "pca-st-pending", approval_status: "pending" as const },
+          { ...rowBase, adjustment_id: "pca-st-rejected", approval_status: "rejected" as const },
+        ],
+        events: [],
+      }),
+    });
+
+    const lead = await screen.findByTestId("product-category-adjustment-lead");
+    expect(lead).toHaveTextContent("仅当审批通过可撤销");
+    expect(lead).toHaveTextContent("仅当已拒绝可恢复");
+    expect(lead).toHaveTextContent("刷新工作流");
+
+    await screen.findByTestId("product-category-revoke-pca-st-approved");
+    expect(screen.getByTestId("product-category-revoke-pca-st-approved")).not.toBeDisabled();
+    expect(screen.getByTestId("product-category-restore-pca-st-approved")).toBeDisabled();
+    expect(screen.getByTestId("product-category-revoke-pca-st-pending")).toBeDisabled();
+    expect(screen.getByTestId("product-category-restore-pca-st-pending")).toBeDisabled();
+    expect(screen.getByTestId("product-category-revoke-pca-st-rejected")).toBeDisabled();
+    expect(screen.getByTestId("product-category-restore-pca-st-rejected")).not.toBeDisabled();
+
+    expect(screen.getByTestId("product-category-edit-pca-st-approved")).not.toBeDisabled();
+    expect(screen.getByTestId("product-category-edit-pca-st-pending")).not.toBeDisabled();
+    expect(screen.getByTestId("product-category-edit-pca-st-rejected")).not.toBeDisabled();
+  });
 });
