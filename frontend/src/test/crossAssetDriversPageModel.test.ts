@@ -445,6 +445,18 @@ describe("crossAssetDriversPageModel", () => {
     expect(sourceBlockedItems.find((item) => item.key === "broad_index")?.status).toBe("source_blocked");
   });
 
+  it("prioritizes fallback over stale when equity evidence has both quality states", () => {
+    const kpis = resolveCrossAssetKpis([
+      makePoint("EMM01843735", "CSI 300", 3924.5, {
+        refresh_tier: "fallback",
+      }),
+    ]);
+
+    const items = buildCrossAssetEquityEvidenceItems(kpis, makeResultMeta({ quality_flag: "stale" }));
+
+    expect(items.find((item) => item.key === "broad_index")?.status).toBe("fallback");
+  });
+
   it("marks retained Choice-backed card lines as source_blocked when vendor status is unavailable", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "Choice financial condition", -1.54, {

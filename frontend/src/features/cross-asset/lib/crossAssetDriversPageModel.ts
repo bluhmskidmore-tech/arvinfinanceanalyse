@@ -701,11 +701,11 @@ function equityEvidenceStatusFromKpi(
   if (hasBlockedMeta(latestMeta) && kpi.sourceKind === "choice") {
     return "source_blocked";
   }
-  if (kpi.qualityFlag === "stale" || hasStaleMeta(latestMeta)) {
-    return "stale";
-  }
   if (kpi.refreshTier === "fallback" || hasFallbackMeta(latestMeta)) {
     return "fallback";
+  }
+  if (kpi.qualityFlag === "stale" || hasStaleMeta(latestMeta)) {
+    return "stale";
   }
   return "ready";
 }
