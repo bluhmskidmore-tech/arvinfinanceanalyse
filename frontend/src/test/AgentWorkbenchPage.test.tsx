@@ -211,6 +211,55 @@ describe("AgentWorkbenchPage", () => {
     }, { timeout: 2000 });
   });
 
+  it("includes page_context when provided by the mounting page", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "已使用页面上下文。",
+        cards: [],
+        evidence: {
+          tables_used: [],
+          filters_applied: {},
+          evidence_rows: 0,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_page_context",
+          basis: "formal",
+          generated_at: "2026-04-12T09:00:00Z",
+        },
+        next_drill: [],
+      }),
+    );
+
+    render(
+      <AgentWorkbenchPage
+        pageContext={{
+          page_id: "risk-dashboard",
+          current_filters: { as_of_date: "2026-04-12", portfolio: "core" },
+          selected_rows: [{ bond_code: "240001.IB" }],
+          context_note: "selected from risk table",
+        }}
+      />,
+    );
+
+    await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "解释当前选择");
+    await user.click(screen.getByRole("button", { name: "查询" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    const [, options] = fetchMock.mock.calls[0] ?? [];
+    expect(JSON.parse(String(options?.body))).toMatchObject({
+      page_context: {
+        page_id: "risk-dashboard",
+        current_filters: { as_of_date: "2026-04-12", portfolio: "core" },
+        selected_rows: [{ bond_code: "240001.IB" }],
+        context_note: "selected from risk table",
+      },
+    });
+  });
+
   it("loads process selector options from GitNexus processes response", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(

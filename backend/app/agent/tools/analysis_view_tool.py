@@ -107,7 +107,10 @@ class AnalysisViewTool:
             AgentDrill(dimension=path.dimension, label=path.label)
             for path in cube_response.drill_paths
         ]
-        suggested_actions = self._suggested_actions_from_drills(next_drill)
+        suggested_actions = self._suggested_actions_from_drills(
+            next_drill,
+            page_context=request.page_context,
+        )
         evidence = self._evidence.build_evidence(
             tables_used=[table_name],
             filters_applied=filters_applied,
@@ -159,6 +162,7 @@ class AnalysisViewTool:
         suggested_actions = self._normalize_suggested_actions(
             payload.get("suggested_actions", []),
             fallback_drills=next_drill,
+            page_context=request.page_context,
         )
         evidence = self._evidence.build_evidence(
             tables_used=list(payload.get("tables_used", [])),
@@ -293,6 +297,7 @@ class AnalysisViewTool:
         actions: list[Any],
         *,
         fallback_drills: list[AgentDrill] | None = None,
+        page_context: Any | None = None,
     ) -> list[AgentSuggestedAction]:
         if actions:
             return [
@@ -301,18 +306,66 @@ class AnalysisViewTool:
                 else AgentSuggestedAction.model_validate(action)
                 for action in actions
             ]
-        return self._suggested_actions_from_drills(fallback_drills or [])
+        return self._suggested_actions_from_drills(
+            fallback_drills or [],
+            page_context=page_context,
+        )
 
-    def _suggested_actions_from_drills(self, drills: list[AgentDrill]) -> list[AgentSuggestedAction]:
+    def _suggested_actions_from_drills(
+        self,
+        drills: list[AgentDrill],
+        *,
+        page_context: Any | None = None,
+    ) -> list[AgentSuggestedAction]:
+        page_context_payload = self._page_context_payload(page_context)
+        row_summary = self._selected_row_summary(page_context_payload)
         return [
             AgentSuggestedAction(
                 type="inspect_drill",
-                label=drill.label,
-                payload={"dimension": drill.dimension},
+                label=self._page_aware_drill_label(drill.label, row_summary),
+                payload=self._drill_action_payload(drill.dimension, page_context_payload),
                 requires_confirmation=True,
             )
             for drill in drills
         ]
+
+    def _page_context_payload(self, page_context: Any | None) -> dict[str, Any] | None:
+        if page_context is None:
+            return None
+        if hasattr(page_context, "model_dump"):
+            payload = page_context.model_dump(mode="python")
+        else:
+            payload = dict(page_context)
+        return payload or None
+
+    def _drill_action_payload(
+        self,
+        dimension: str,
+        page_context_payload: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"dimension": dimension}
+        if page_context_payload is not None:
+            payload["page_context"] = page_context_payload
+        return payload
+
+    def _selected_row_summary(self, page_context_payload: dict[str, Any] | None) -> str:
+        if not page_context_payload:
+            return ""
+        selected_rows = page_context_payload.get("selected_rows") or []
+        if not selected_rows or not isinstance(selected_rows[0], dict):
+            return ""
+        first_row = selected_rows[0]
+        parts = [
+            f"{key}={first_row[key]}"
+            for key in ("book_id", "instrument_id", "recon_type", "status")
+            if first_row.get(key) not in (None, "")
+        ]
+        return ", ".join(parts)
+
+    def _page_aware_drill_label(self, label: str, row_summary: str) -> str:
+        if not row_summary:
+            return label
+        return f"{label} for {row_summary}"
 
     def _trace_id(self, result_kind: str) -> str:
         suffix = result_kind.replace(".", "_")

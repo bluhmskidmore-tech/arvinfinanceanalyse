@@ -122,6 +122,110 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "next_drill": [{"dimension": "instrument_id", "label": "Inspect instrument"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            page_context=request_module.AgentPageContext(
+                page_id="recon-exceptions",
+                current_filters={"report_date": "2026-03-31", "status": "unmatched"},
+                selected_rows=[{"book_id": "B001", "instrument_id": "IB123"}],
+                context_note="user selected one exception row",
+            ),
+        )
+    )
+
+    assert len(envelope.suggested_actions) == 1
+    action = envelope.suggested_actions[0]
+    assert action.type == "inspect_drill"
+    assert action.requires_confirmation is True
+    assert action.payload == {
+        "dimension": "instrument_id",
+        "page_context": {
+            "page_id": "recon-exceptions",
+            "current_filters": {"report_date": "2026-03-31", "status": "unmatched"},
+            "selected_rows": [{"book_id": "B001", "instrument_id": "IB123"}],
+            "context_note": "user selected one exception row",
+        },
+    }
+
+
+def test_next_drill_inspect_labels_include_first_selected_row_summary(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "ok",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_test",
+                "quality_flag": "ok",
+                "row_count": 1,
+                "next_drill": [{"dimension": "break_reason", "label": "Inspect drill"}],
+            }
+        },
+    )
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="portfolio overview",
+            page_context=request_module.AgentPageContext(
+                page_id="recon-exceptions",
+                selected_rows=[
+                    {
+                        "book_id": "BOOK-A",
+                        "instrument_id": "INST-9",
+                        "recon_type": "cash_vs_position",
+                        "status": "unmatched",
+                        "ignored": "not part of the summary",
+                    },
+                    {"book_id": "BOOK-B", "instrument_id": "INST-10"},
+                ],
+            ),
+        )
+    )
+
+    assert envelope.suggested_actions[0].label == (
+        "Inspect drill for book_id=BOOK-A, instrument_id=INST-9, "
+        "recon_type=cash_vs_position, status=unmatched"
+    )
+
+
 def test_agent_report_date_context_precedence_filters_context_current_filters_latest(tmp_path, monkeypatch):
     service_module = load_module(
         "backend.app.services.agent_service",

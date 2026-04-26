@@ -415,11 +415,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     label: "Agent Workbench",
     path: "/agent",
     icon: "agent",
-    description: "Hidden analytical workbench route for agent-facing news and evidence surfaces.",
-    readiness: "gated",
-    readinessLabel: "Disabled Stub",
-    readinessNote: "受 Phase 1 限制，仅保留隐藏路由与 disabled stub。",
-    navigationVisibility: "hidden",
+    description: "Agent 分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面 copilot。",
+    readiness: "placeholder",
+    readinessLabel: "Agent MVP",
+    readinessNote: "已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。",
   },
 ];
 

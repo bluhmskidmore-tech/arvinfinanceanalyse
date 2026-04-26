@@ -1,5 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
+import type { AgentPageContext, AgentQueryRequest } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
 import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
@@ -47,6 +48,10 @@ type AgentQueryError =
       kind: "request";
       message: string;
     };
+
+type AgentWorkbenchPageProps = {
+  pageContext?: AgentPageContext;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -314,7 +319,7 @@ function movePinnedRepoPathValue(
   return nextPaths;
 }
 
-export default function AgentWorkbenchPage() {
+export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPageProps = {}) {
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
@@ -410,21 +415,24 @@ export default function AgentWorkbenchPage() {
     const normalizedRepoPath = repoPath.trim();
     const requestVersion = beginProcessStateRequest();
     try {
+      const requestBody: AgentQueryRequest = {
+        question,
+        basis: "formal",
+        filters: buildFilters(question, normalizedRepoPath, selectedProcess),
+        position_scope: "all",
+        currency_basis: "CNY",
+        context: {
+          user_id: "web-user",
+        },
+        ...(pageContext ? { page_context: pageContext } : {}),
+      };
+
       const response = await fetch("/api/agent/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          question,
-          basis: "formal",
-          filters: buildFilters(question, normalizedRepoPath, selectedProcess),
-          position_scope: "all",
-          currency_basis: "CNY",
-          context: {
-            user_id: "web-user",
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const payload = (await response.json()) as unknown;
@@ -511,21 +519,24 @@ export default function AgentWorkbenchPage() {
     setProcessLoading(true);
     setError(null);
     try {
+      const requestBody: AgentQueryRequest = {
+        question: "请给我看 GitNexus processes",
+        basis: "formal",
+        filters: { repo_path: normalizedRepoPath },
+        position_scope: "all",
+        currency_basis: "CNY",
+        context: {
+          user_id: "web-user",
+        },
+        ...(pageContext ? { page_context: pageContext } : {}),
+      };
+
       const response = await fetch("/api/agent/query", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          question: "请给我看 GitNexus processes",
-          basis: "formal",
-          filters: { repo_path: normalizedRepoPath },
-          position_scope: "all",
-          currency_basis: "CNY",
-          context: {
-            user_id: "web-user",
-          },
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const payload = (await response.json()) as unknown;

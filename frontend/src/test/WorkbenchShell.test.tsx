@@ -72,9 +72,14 @@ describe("WorkbenchShell", () => {
     expect(primaryWorkbenchNavigationGroups.length).toBeLessThan(
       primaryWorkbenchNavigation.length,
     );
+  });
+
+  it("shows Agent Workbench as a reserved module entry", async () => {
+    renderShellAt("/");
+
     expect(
-      within(navigation).queryByRole("link", { name: "Agent Workbench" }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("link", { name: /Agent Workbench/ }),
+    ).toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -523,12 +528,14 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
   });
 
-  it("shows a readiness banner for gated routes", async () => {
+  it("shows the Agent MVP route with its specific readiness note", async () => {
     renderShellAt("/agent");
 
-    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(screen.getByText("当前页面尚未物化真实数据链路")).toBeInTheDocument();
-    expect(screen.getByText("agent body")).toBeInTheDocument();
+    expect(await screen.findByText("agent body")).toBeInTheDocument();
+    const banner = screen.getByTestId("workbench-readiness-banner");
+    expect(banner).toHaveTextContent("当前页面仍是占位壳层");
+    expect(banner).toHaveTextContent("已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。");
+    expect(screen.queryByText("当前页面尚未物化真实数据链路")).not.toBeInTheDocument();
   });
 
   it("treats /dashboard as the dashboard section inside the current group subnav", async () => {

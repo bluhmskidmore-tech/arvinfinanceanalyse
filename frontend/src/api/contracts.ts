@@ -1552,6 +1552,13 @@ export type QdbGlMonthlyAnalysisManualAdjustmentExportPayload = {
 };
 
 /** Agent / multi-batch tooling contracts (separate from UI envelope-only pages). */
+export type AgentPageContext = {
+  page_id: string;
+  current_filters: Record<string, unknown>;
+  selected_rows: Array<Record<string, unknown>>;
+  context_note?: string | null;
+};
+
 export type AgentQueryRequest = {
   question: string;
   basis: "formal" | "scenario" | "analytical";
@@ -1559,6 +1566,7 @@ export type AgentQueryRequest = {
   position_scope: string;
   currency_basis: string;
   context: Record<string, unknown>;
+  page_context?: AgentPageContext | null;
 };
 
 export type AgentDrill = {
