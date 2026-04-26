@@ -134,6 +134,8 @@ export type ResolvedCrossAssetKpi = {
   vendorName?: string | null;
   tradeDate: string | null;
   unit: string | null;
+  qualityFlag?: ChoiceMacroLatestPoint["quality_flag"];
+  refreshTier?: ChoiceMacroLatestPoint["refresh_tier"];
   valueLabel: string;
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
@@ -427,6 +429,8 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
     vendorName: point?.vendor_name,
     tradeDate: point?.trade_date ?? null,
     unit: point?.unit ?? null,
+    qualityFlag: point?.quality_flag,
+    refreshTier: point?.refresh_tier,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),

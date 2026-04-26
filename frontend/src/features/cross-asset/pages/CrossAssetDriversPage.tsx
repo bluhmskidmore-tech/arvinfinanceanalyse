@@ -386,7 +386,7 @@ function AssetClassAnalysisPanel({
                       <div
                         key={item.key}
                         className={`cross-asset-class-analysis__evidence-item${
-                          item.status === "ready" ? "" : " cross-asset-class-analysis__evidence-item--missing"
+                          item.status === "ready" ? "" : ` cross-asset-class-analysis__evidence-item--${item.status}`
                         }`}
                         data-testid={`cross-asset-equity-evidence-${item.key}`}
                         title={item.sourceLabel}
@@ -394,7 +394,8 @@ function AssetClassAnalysisPanel({
                         <span>{item.label}</span>
                         <strong>{item.valueLabel}</strong>
                         <small>
-                          {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} · {item.sourceLabel}
+                          {item.status} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} ·{" "}
+                          {item.sourceLabel}
                         </small>
                       </div>
                     ))}
@@ -610,7 +611,7 @@ export default function CrossAssetDriversPage() {
       }),
     [kpis, latestMeta, linkageMeta, transmissionAxisRows],
   );
-  const equityEvidenceItems = useMemo(() => buildCrossAssetEquityEvidenceItems(kpis), [kpis]);
+  const equityEvidenceItems = useMemo(() => buildCrossAssetEquityEvidenceItems(kpis, latestMeta), [kpis, latestMeta]);
   const ncdProxyPayload = ncdFundingProxyQuery.data?.result ?? null;
   const ncdProxyEvidence = useMemo(
     () =>

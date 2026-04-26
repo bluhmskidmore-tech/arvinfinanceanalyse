@@ -99,7 +99,7 @@ export type CrossAssetClassAnalysisRow = {
 export type CrossAssetEquityEvidenceItem = {
   key: "broad_index" | "csi300_pe" | "mega_cap_weight" | "mega_cap_top5_weight";
   label: string;
-  status: "ready" | "missing_dependency";
+  status: "ready" | "stale" | "fallback" | "source_blocked" | "missing_dependency";
   valueLabel: string;
   changeLabel: string;
   unitLabel: string;
@@ -581,7 +581,7 @@ function explanationFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: str
   return `${kpi.label} is ${kpi.valueLabel}, latest move ${kpi.changeLabel}.`;
 }
 
-function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined) {
+function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined): kpi is ResolvedCrossAssetKpi {
   return Boolean(kpi && (kpi.sparkline.length > 0 || kpi.changeTone !== "default"));
 }
 
@@ -691,13 +691,35 @@ function unitLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: stri
   return unit || fallback;
 }
 
-export function buildCrossAssetEquityEvidenceItems(kpis: ResolvedCrossAssetKpi[]): CrossAssetEquityEvidenceItem[] {
+function equityEvidenceStatusFromKpi(
+  kpi: ResolvedCrossAssetKpi | undefined,
+  latestMeta?: ResultMeta,
+): CrossAssetEquityEvidenceItem["status"] {
+  if (!hasUsableKpi(kpi)) {
+    return "missing_dependency";
+  }
+  if (hasBlockedMeta(latestMeta) && kpi.sourceKind === "choice") {
+    return "source_blocked";
+  }
+  if (kpi.qualityFlag === "stale" || hasStaleMeta(latestMeta)) {
+    return "stale";
+  }
+  if (kpi.refreshTier === "fallback" || hasFallbackMeta(latestMeta)) {
+    return "fallback";
+  }
+  return "ready";
+}
+
+export function buildCrossAssetEquityEvidenceItems(
+  kpis: ResolvedCrossAssetKpi[],
+  latestMeta?: ResultMeta,
+): CrossAssetEquityEvidenceItem[] {
   return EQUITY_EVIDENCE_DEFINITIONS.map((definition) => {
     const kpi = kpiByKey(kpis, definition.kpiKey);
     return {
       key: definition.key,
       label: definition.label,
-      status: hasUsableKpi(kpi) ? "ready" : "missing_dependency",
+      status: equityEvidenceStatusFromKpi(kpi, latestMeta),
       valueLabel: kpi?.valueLabel ?? "—",
       changeLabel: kpi?.changeLabel ?? "—",
       unitLabel: unitLabelFromKpi(kpi, definition.unitFallback),

@@ -232,7 +232,10 @@
   word-break: break-word;
 }
 
-.cross-asset-class-analysis__evidence-item--missing {
+.cross-asset-class-analysis__evidence-item--missing_dependency,
+.cross-asset-class-analysis__evidence-item--stale,
+.cross-asset-class-analysis__evidence-item--fallback,
+.cross-asset-class-analysis__evidence-item--source_blocked {
   color: #8a6d3b;
 }
 

@@ -419,6 +419,32 @@ describe("crossAssetDriversPageModel", () => {
     expect(items[3].sourceLabel).toBe("Tushare: CA.MEGA_CAP_TOP5_WEIGHT");
   });
 
+  it("marks equity evidence item quality from selected data and source availability", () => {
+    const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
+    const kpis = resolveCrossAssetKpis([
+      makePoint("EMM01843735", "CSI 300", 3924.5, {
+        unit: "index",
+        quality_flag: "stale",
+      }),
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, {
+        unit: "x",
+        refresh_tier: "fallback",
+        ...vendor("tushare"),
+      }),
+    ]);
+
+    const items = buildCrossAssetEquityEvidenceItems(kpis);
+    const sourceBlockedItems = buildCrossAssetEquityEvidenceItems(
+      kpis,
+      makeResultMeta({ vendor_status: "vendor_unavailable" }),
+    );
+
+    expect(items.find((item) => item.key === "broad_index")?.status).toBe("stale");
+    expect(items.find((item) => item.key === "csi300_pe")?.status).toBe("fallback");
+    expect(items.find((item) => item.key === "mega_cap_weight")?.status).toBe("missing_dependency");
+    expect(sourceBlockedItems.find((item) => item.key === "broad_index")?.status).toBe("source_blocked");
+  });
+
   it("marks retained Choice-backed card lines as source_blocked when vendor status is unavailable", () => {
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "Choice financial condition", -1.54, {

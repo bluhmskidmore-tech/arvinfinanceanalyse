@@ -59,6 +59,7 @@ describe("CrossAssetPage", () => {
             series_name: "沪深300市盈率",
             value_numeric: 14.58,
             unit: "x",
+            refresh_tier: "fallback",
             latest_change: 0.16,
           },
           {
@@ -215,6 +216,8 @@ describe("CrossAssetPage", () => {
     expect(equityEvidence).toHaveTextContent("index");
     expect(equityEvidence).toHaveTextContent("x");
     expect(equityEvidence).toHaveTextContent("%");
+    expect(screen.getByTestId("cross-asset-equity-evidence-broad_index")).toHaveTextContent("source_blocked");
+    expect(screen.getByTestId("cross-asset-equity-evidence-csi300_pe")).toHaveTextContent("fallback");
     const commoditiesEnergy = screen.getByTestId("cross-asset-asset-analysis-commodities-energy");
     expect(commoditiesEnergy).toBeInTheDocument();
     expect(commoditiesEnergy).not.toHaveTextContent("CA.BRENT");
