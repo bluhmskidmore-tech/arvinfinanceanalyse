@@ -38,7 +38,7 @@ function buildRows(props: QualityObservationProps): Row[] {
       pill: (props.newsCount ?? 0) > 0 ? "可读" : "空白",
     },
     {
-      label: "Formal FX 覆盖",
+      label: "正式外汇覆盖",
       value: `${props.fxMaterializedCount ?? 0}/${props.fxCandidateCount ?? 0}`,
       status:
         (props.fxCandidateCount ?? 0) > 0 &&

@@ -25,10 +25,16 @@ import {
   OPERATIONS_WATCH_ITEMS,
 } from "../business-analysis/businessAnalysisWorkbenchMocks";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import {
+  formatProductCategoryValue,
+  selectProductCategoryDetailRows,
+} from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 import "./OperationsAnalysisPage.css";
 
 const DISPLAY_FONT =
   '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
+
+const OPERATIONS_PRODUCT_CATEGORY_VIEW = "monthly";
 
 const pageShellStyle = {
   display: "grid",
@@ -386,13 +392,13 @@ function buildStatusCardContent(input: {
   return input;
 }
 
-/** Page-local: 受治理 result_meta 一行，不扩展指标含义，只标明 basis / 质量 / 供应商 / 回退。 */
+/** Page-local: 受治理元信息一行，不扩展指标含义，只标明口径 / 质量 / 供应商 / 回退。 */
 function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
   if (!meta) {
-    return "无 result_meta";
+    return "无结果元信息";
   }
   const fb = meta.fallback_mode !== "none" ? ` · 回退 ${meta.fallback_mode}` : "";
-  return `basis ${meta.basis} · 质量 ${meta.quality_flag} · 供应 ${meta.vendor_status}${fb}`;
+  return `口径 ${meta.basis} · 质量 ${meta.quality_flag} · 供应 ${meta.vendor_status}${fb}`;
 }
 
 export default function OperationsAnalysisPage() {
@@ -432,9 +438,16 @@ export default function OperationsAnalysisPage() {
     queryFn: () => client.getBalanceAnalysisDates(),
     retry: false,
   });
+  const productCategoryDatesQuery = useQuery({
+    queryKey: ["operations-entry", "product-category-dates", client.mode],
+    queryFn: () => client.getProductCategoryDates(),
+    retry: false,
+  });
 
   const balanceReportDates = balanceDatesQuery.data?.result.report_dates ?? [];
   const latestBalanceReportDate = balanceReportDates[0] ?? null;
+  const productCategoryReportDates = productCategoryDatesQuery.data?.result.report_dates ?? [];
+  const latestProductCategoryReportDate = productCategoryReportDates[0] ?? null;
 
   const balanceOverviewQuery = useQuery({
     queryKey: [
@@ -456,24 +469,23 @@ export default function OperationsAnalysisPage() {
   };
   const balanceOverview = balanceOverviewQuery.data?.result;
 
-  const balanceSummaryQuery = useQuery({
+  const productCategoryPnlQuery = useQuery({
     queryKey: [
       "operations-entry",
-      "balance-analysis-summary",
+      "product-category-pnl",
       client.mode,
-      latestBalanceReportDate,
+      latestProductCategoryReportDate,
+      OPERATIONS_PRODUCT_CATEGORY_VIEW,
     ],
     queryFn: () =>
-      client.getBalanceAnalysisSummary({
-        reportDate: latestBalanceReportDate as string,
-        positionScope: "all",
-        currencyBasis: "CNY",
-        limit: 6,
-        offset: 0,
+      client.getProductCategoryPnl({
+        reportDate: latestProductCategoryReportDate as string,
+        view: OPERATIONS_PRODUCT_CATEGORY_VIEW,
       }),
-    enabled: Boolean(latestBalanceReportDate),
+    enabled: Boolean(latestProductCategoryReportDate),
     retry: false,
   });
+  const productCategoryPnl = productCategoryPnlQuery.data?.result;
 
   const sourceSummaries = useMemo(
     () => sourceQuery.data?.result.sources ?? [],
@@ -494,9 +506,9 @@ export default function OperationsAnalysisPage() {
     [fxFormalRows],
   );
   const newsTotal = newsQuery.data?.result.total_rows ?? 0;
-  const balanceSummaryRows = useMemo(
-    () => balanceSummaryQuery.data?.result.rows ?? [],
-    [balanceSummaryQuery.data?.result.rows],
+  const productCategoryRows = useMemo(
+    () => selectProductCategoryDetailRows(productCategoryPnl?.rows, null),
+    [productCategoryPnl?.rows],
   );
 
   const latestTradeDate = useMemo(() => {
@@ -532,7 +544,6 @@ export default function OperationsAnalysisPage() {
       fxFormalStatus?.carry_forward_count ?? 0
     }`,
   });
-  const balanceOverviewMeta = balanceOverviewQuery.data?.result_meta;
   const sourceHeadlineDetail = sourceQuery.isError
     ? sourceStatusCard.detail
     : `${sourceStatusCard.detail} · ${formatResultMetaProvenance(sourceQuery.data?.result_meta)}`;
@@ -550,95 +561,102 @@ export default function OperationsAnalysisPage() {
   const recommendation = useMemo(() => {
     const hasCriticalError =
       sourceQuery.isError ||
-      macroCatalogQuery.isError ||
-      macroLatestQuery.isError ||
-      fxFormalStatusQuery.isError ||
-      balanceDatesQuery.isError ||
-      balanceOverviewQuery.isError;
+      productCategoryDatesQuery.isError ||
+      productCategoryPnlQuery.isError;
     const hasCriticalEmpty =
       sourceSummaries.length === 0 ||
-      macroLatest.length === 0 ||
-      fxFormalRows.length === 0;
+      productCategoryReportDates.length === 0 ||
+      !productCategoryPnl ||
+      productCategoryRows.length === 0;
 
     if (hasCriticalError || hasCriticalEmpty) {
       return {
-        title: "Evidence chain incomplete",
+        title: "经营口径证据链不完整",
         detail:
-          "One or more governed reads failed. Validate source preview, macro latest, formal FX status, and the balance overview before making today’s operating judgment.",
-        actionLabel: "Review source preview",
+          "产品分类损益正式读模型或源批次预览未形成可读结果。先核验总账对账 + 日均配对链路，再下经营判断。",
+        actionLabel: "复核源预览",
         actionTo: "/source-preview",
       };
     }
 
-    if (!latestBalanceReportDate || !balanceOverviewQuery.data?.result) {
+    if (!latestProductCategoryReportDate || !productCategoryPnlQuery.data?.result) {
       return {
-        title: "Await governed balance evidence",
+        title: "等待产品分类损益证据",
         detail:
-          "Today’s operating judgment is not yet backed by a resolved balance-analysis report date. Start from the formal balance page when the report becomes available.",
-        actionLabel: "Open balance analysis",
-        actionTo: "/balance-analysis",
+          "当前尚未解析到 product-category report date。经营页不再用资产负债余额读面替代经营口径。",
+        actionLabel: "Open product-category PnL",
+        actionTo: "/product-category-pnl",
       };
     }
 
     if (missingFxRows.length > 0) {
       return {
-        title: "Judgment is usable but degraded",
-        detail: `Formal FX status is still missing ${missingFxRows.length} pair(s). Use the formal balance overview for the first decision, then verify market coverage before wider drilldown.`,
+        title: "经营判断可用但需关注 FX 覆盖",
+        detail: `产品分类损益已解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，但正式 FX 状态仍缺 ${missingFxRows.length} 对。先用产品分类 formal 结果作经营判断，再核验外币覆盖。`,
         actionLabel: "Open market data",
         actionTo: "/market-data",
       };
     }
 
     return {
-      title: "Evidence is sufficient for today’s operating call",
-      detail: `Current evidence resolves to balance report ${balanceOverviewQuery.data.result.report_date}. Start with the governed balance overview, then drill into source preview or market context only if the first conclusion needs explanation.`,
-      actionLabel: "Open balance analysis",
-      actionTo: "/balance-analysis",
+      title: "产品分类经营口径可用于本期判断",
+      detail: `当前证据解析到 ${productCategoryPnl.report_date} / ${productCategoryPnl.view}，首屏以 /ui/pnl/product-category 的资产、负债、合计经营净收入为准。`,
+      actionLabel: "Open product-category PnL",
+      actionTo: "/product-category-pnl",
     };
   }, [
-    balanceDatesQuery.isError,
-    balanceOverviewQuery.data?.result,
-    balanceOverviewQuery.isError,
-    fxFormalRows.length,
-    fxFormalStatusQuery.isError,
-    latestBalanceReportDate,
-    macroCatalogQuery.isError,
-    macroLatest.length,
-    macroLatestQuery.isError,
+    latestProductCategoryReportDate,
     missingFxRows.length,
+    productCategoryDatesQuery.isError,
+    productCategoryPnl,
+    productCategoryPnlQuery.data?.result,
+    productCategoryPnlQuery.isError,
+    productCategoryReportDates.length,
+    productCategoryRows.length,
     sourceQuery.isError,
     sourceSummaries.length,
   ]);
 
   const operationsHeadlineCards = useMemo(
     () => {
-      const balanceErr = balanceOverviewQuery.isError;
-      const balanceProv = formatResultMetaProvenance(balanceOverviewMeta);
-      const balanceDetail = balanceErr
-        ? "正式余额读面：查询失败"
-        : `正式余额读面（亿元口径）· ${balanceProv}`;
-      const detailRows = balanceOverviewQuery.data?.result?.detail_row_count ?? 0;
-      const summaryDetail = balanceErr
-        ? "正式读面行数：查询失败"
-        : `正式读面 · 汇总/明细 行数 · ${balanceProv}`;
+      const productErr = productCategoryPnlQuery.isError;
+      const productProv = formatResultMetaProvenance(productCategoryPnlQuery.data?.result_meta);
+      const productDetail = productErr
+        ? "产品分类损益：查询失败"
+        : `正式经营口径 /ui/pnl/product-category · view ${
+            productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW
+          } · ${productProv}`;
+      const productDateDetail = productErr
+        ? "产品分类损益报告月：查询失败"
+        : `总账对账 + 日均配对链路 · ${productProv}`;
       return [
       {
-        title: "总市值",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
+        title: "资产净收入",
+        value: formatProductCategoryValue(productCategoryPnl?.asset_total.business_net_income),
         unit: "亿元",
-        detail: balanceDetail,
+        detail: productDetail,
       },
       {
-        title: "摊余成本",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
+        title: "负债净收入",
+        value: formatProductCategoryValue(productCategoryPnl?.liability_total.business_net_income),
         unit: "亿元",
-        detail: balanceDetail,
+        detail: productDetail,
       },
       {
-        title: "应计利息",
-        value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
+        title: "经营净收入",
+        value: formatProductCategoryValue(productCategoryPnl?.grand_total.business_net_income),
         unit: "亿元",
-        detail: balanceDetail,
+        detail: productDetail,
+      },
+      {
+        title: "报告月份",
+        value: productCategoryPnl?.report_date ?? latestProductCategoryReportDate ?? "待定",
+        detail: productDateDetail,
+      },
+      {
+        title: "产品行数",
+        value: String(productCategoryRows.length),
+        detail: `正式产品分类行（不含 grand_total）· ${productProv}`,
       },
       {
         title: "源批次",
@@ -661,28 +679,25 @@ export default function OperationsAnalysisPage() {
         value: newsStatusCard.value,
         detail: newsHeadlineDetail,
       },
-      {
-        title: "汇总行数",
-        value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
-        detail: `${summaryDetail}（明细 ${detailRows} 行）`,
-      },
     ];
     },
     [
-      balanceOverviewMeta,
-      balanceOverviewQuery.data?.result?.detail_row_count,
-      balanceOverviewQuery.data?.result?.summary_row_count,
-      balanceOverviewQuery.data?.result?.total_accrued_interest_amount,
-      balanceOverviewQuery.data?.result?.total_amortized_cost_amount,
-      balanceOverviewQuery.data?.result?.total_market_value_amount,
-      balanceOverviewQuery.isError,
       formalFxHeadlineDetail,
       formalFxStatusCard.value,
       fxFormalStatusQuery.isError,
+      latestProductCategoryReportDate,
       macroHeadlineDetail,
       macroStatusCard.value,
       newsHeadlineDetail,
       newsStatusCard.value,
+      productCategoryPnl?.asset_total.business_net_income,
+      productCategoryPnl?.grand_total.business_net_income,
+      productCategoryPnl?.liability_total.business_net_income,
+      productCategoryPnl?.report_date,
+      productCategoryPnl?.view,
+      productCategoryPnlQuery.data?.result_meta,
+      productCategoryPnlQuery.isError,
+      productCategoryRows.length,
       sourceHeadlineDetail,
       sourceStatusCard.value,
     ],
@@ -701,8 +716,8 @@ export default function OperationsAnalysisPage() {
         <div className="operations-analysis-page__hero-main">
           <PageHeader
             title="经营分析"
-            eyebrow="Governed Operating View"
-            description="从正式余额读面出发，先给经营判断与可执行动作；专题入口和运维证据后置核验。"
+            eyebrow="受治理经营视图"
+            description="从产品分类损益正式读模型出发，先给经营判断与可执行动作；资产负债余额读面只保留为专题入口。"
             badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
             badgeTone={client.mode === "real" ? "positive" : "accent"}
             style={heroHeaderStyle}
@@ -719,7 +734,7 @@ export default function OperationsAnalysisPage() {
               <label>
                 <span style={filterLabelStyle}>口径</span>
                 <select style={controlStyle} disabled>
-                  <option>静态经营</option>
+                  <option>产品分类损益</option>
                 </select>
               </label>
               <label>
@@ -731,7 +746,7 @@ export default function OperationsAnalysisPage() {
               <label>
                 <span style={filterLabelStyle}>周期</span>
                 <select style={controlStyle} disabled>
-                  <option>单日截面</option>
+                  <option>月度</option>
                 </select>
               </label>
             </FilterBar>
@@ -741,7 +756,7 @@ export default function OperationsAnalysisPage() {
             {client.mode === "real"
               ? "链路：真实只读 API。"
               : "链路：本地演示（mock 客户端，非生产）。"}
-            首屏只放正式余额读面和关键证据状态；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。
+            首屏只放总账对账 + 日均配对链路产出的 <code>/ui/pnl/product-category</code> formal 经营口径；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。
             下方「本期关注事项」「近期经营日历」仍为静态示例。
           </p>
         </div>
@@ -784,18 +799,20 @@ export default function OperationsAnalysisPage() {
       <div className="operations-analysis-page__decision-layout">
         <div style={sectionBlockStyle}>
           <OperationsSectionLead
-            eyebrow="Core View"
+            eyebrow="核心视图"
             title="结论、桥接与质量观察"
             description="先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。"
           />
           <div className="operations-analysis-page__decision-cards" data-testid="operations-conclusion-grid">
             <BusinessConclusion
-              reportDate={balanceOverviewQuery.data?.result.report_date}
-              detailRowCount={balanceOverviewQuery.data?.result.detail_row_count}
-              summaryRowCount={balanceOverviewQuery.data?.result.summary_row_count}
-              marketValueAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount)}
-              amortizedCostAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
-              accruedInterestAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
+              reportDate={productCategoryPnl?.report_date}
+              view={productCategoryPnl?.view}
+              rowCount={productCategoryPnl ? productCategoryRows.length : undefined}
+              assetBusinessNetIncome={formatProductCategoryValue(productCategoryPnl?.asset_total.business_net_income)}
+              liabilityBusinessNetIncome={formatProductCategoryValue(
+                productCategoryPnl?.liability_total.business_net_income,
+              )}
+              grandBusinessNetIncome={formatProductCategoryValue(productCategoryPnl?.grand_total.business_net_income)}
               missingFxCount={missingFxRows.length}
             />
             <RevenueCostBridge />
@@ -829,21 +846,25 @@ export default function OperationsAnalysisPage() {
 
       <div style={sectionBlockStyle}>
         <OperationsSectionLead
-          eyebrow="Contribution"
+          eyebrow="贡献"
           title="经营贡献与行动项"
-          description="正式余额读面的汇总行、管理动作和近期日历放在同一层，方便从判断进入执行。"
+          description="产品分类损益行、管理动作和近期日历放在同一层，方便从经营判断进入执行。"
         />
         <div className="operations-analysis-page__contribution-layout" data-testid="operations-contribution-grid">
           <BusinessContributionTable
-            reportDate={latestBalanceReportDate}
-            rows={balanceSummaryRows}
-            loading={balanceSummaryQuery.isLoading}
-            error={balanceSummaryQuery.isError}
-            onRetry={() => void balanceSummaryQuery.refetch()}
+            reportDate={productCategoryPnl?.report_date ?? latestProductCategoryReportDate}
+            view={productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW}
+            rows={productCategoryRows}
+            loading={productCategoryDatesQuery.isLoading || productCategoryPnlQuery.isLoading}
+            error={productCategoryDatesQuery.isError || productCategoryPnlQuery.isError}
+            onRetry={() => {
+              void productCategoryDatesQuery.refetch();
+              void productCategoryPnlQuery.refetch();
+            }}
             readProvenanceLine={
-              balanceSummaryQuery.isError || !balanceSummaryQuery.data
+              productCategoryPnlQuery.isError || !productCategoryPnlQuery.data
                 ? undefined
-                : `本表受治理元数据：${formatResultMetaProvenance(balanceSummaryQuery.data.result_meta)}`
+                : `本表受治理元数据：${formatResultMetaProvenance(productCategoryPnlQuery.data.result_meta)}`
             }
           />
           <div className="operations-analysis-page__side-stack">
@@ -862,7 +883,7 @@ export default function OperationsAnalysisPage() {
 
       <div style={sectionBlockStyle}>
         <OperationsSectionLead
-          eyebrow="Structure"
+          eyebrow="结构"
           title="期限与集中度 / 专题入口"
           description="期限缺口只保留结构解读；正式工作簿与细项下钻仍进入对应专题页。"
         />
@@ -907,8 +928,8 @@ export default function OperationsAnalysisPage() {
                 <span data-testid="operations-entry-balance-report-date">
                   {balanceOverview.report_date}
                 </span>
-                ，口径 position_scope={balanceOverview.position_scope}，
-                currency_basis={balanceOverview.currency_basis}。这里只保留正式工作簿速览，
+                ，头寸范围={balanceOverview.position_scope}，
+                币种口径={balanceOverview.currency_basis}。这里只保留正式工作簿速览，
                 作为经营分析后的专题入口，不在本页展开完整工作簿。
               </p>
               <div style={balanceOverviewGridStyle}>

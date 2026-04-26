@@ -24,8 +24,8 @@ export function ManagementOutput({
       title: "当前限制",
       body:
         missingFxCount > 0
-          ? `Formal FX 仍缺 ${missingFxCount} 对，跨资产相关判断需继续复核。`
-          : "当前没有首屏层面的 FX 缺口提示。",
+          ? `正式外汇仍缺 ${missingFxCount} 对，跨资产相关判断需继续复核。`
+          : "当前没有首屏层面的外汇缺口提示。",
     },
     {
       title: "管理动作",

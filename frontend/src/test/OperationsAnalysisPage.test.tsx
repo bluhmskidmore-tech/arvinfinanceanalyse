@@ -308,7 +308,8 @@ describe("OperationsAnalysisPage", () => {
     expect(await screen.findByTestId("operations-business-kpis")).toBeInTheDocument();
     expect(preview).not.toHaveAttribute("data-layout-variant");
     expect(screen.queryByTestId("operations-layout-switcher")).not.toBeInTheDocument();
-    expect(screen.getByTestId("operations-business-kpis")).toHaveTextContent("总市值");
+    expect(screen.getByTestId("operations-business-kpis")).toHaveTextContent("经营净收入");
+    expect(screen.getByTestId("operations-business-kpis")).not.toHaveTextContent("总市值");
   });
 
   it("renders the business-analysis cockpit on the first screen", async () => {
@@ -320,17 +321,16 @@ describe("OperationsAnalysisPage", () => {
     const contributionGrid = await screen.findByTestId("operations-contribution-grid");
     expect(contributionGrid).toBeInTheDocument();
     await waitFor(() => {
-      expect(within(contributionGrid).getByText("240001.IB")).toBeInTheDocument();
-      expect(contributionGrid).toHaveTextContent("720.00");
-      expect(contributionGrid).toHaveTextContent("410.00");
-      expect(contributionGrid).not.toHaveTextContent("72000000000.00");
+      expect(within(contributionGrid).getByText("债券投资")).toBeInTheDocument();
+      expect(contributionGrid).toHaveTextContent("/ui/pnl/product-category");
+      expect(contributionGrid).not.toHaveTextContent("240001.IB");
     });
     expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();
     expect(await screen.findByTestId("operations-entry-recommendation")).toBeInTheDocument();
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
     expect(heroProvenance).toHaveTextContent("物化/候选对账");
     expect(heroProvenance).toHaveTextContent("静态示例");
-    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("basis formal");
+    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("口径 formal");
   });
 
   it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {
@@ -420,8 +420,8 @@ describe("OperationsAnalysisPage", () => {
       })),
     });
 
-    expect(await screen.findByText("Evidence chain incomplete")).toBeInTheDocument();
+    expect(await screen.findByText("经营口径证据链不完整")).toBeInTheDocument();
     const recommendation = await screen.findByTestId("operations-entry-recommendation");
-    expect(recommendation).not.toHaveTextContent("Evidence is sufficient for today’s operating call");
+    expect(recommendation).not.toHaveTextContent("产品分类经营口径可用于本期判断");
   });
 });

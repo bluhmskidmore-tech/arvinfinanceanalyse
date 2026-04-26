@@ -1,16 +1,27 @@
 import { Link } from "react-router-dom";
 
-import type { BalanceAnalysisTableRow } from "../../../api/contracts";
+import type { ProductCategoryPnlRow } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
-import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import {
+  formatProductCategoryRowDisplayValue,
+  formatProductCategoryYieldValue,
+  toneForProductCategoryValue,
+} from "../../product-category-pnl/pages/productCategoryPnlPageModel";
 
-function formatCell(raw: string | number | null | undefined): string {
-  return formatBalanceAmountToYiFromYuan(raw);
+function formatSide(side: string): string {
+  if (side === "asset") {
+    return "资产";
+  }
+  if (side === "liability") {
+    return "负债";
+  }
+  return side;
 }
 
 export type BusinessContributionTableProps = {
   reportDate: string | null;
-  rows: BalanceAnalysisTableRow[];
+  view: string;
+  rows: ProductCategoryPnlRow[];
   loading: boolean;
   error: boolean;
   onRetry?: () => void;
@@ -20,6 +31,7 @@ export type BusinessContributionTableProps = {
 
 export function BusinessContributionTable({
   reportDate,
+  view,
   rows,
   loading,
   error,
@@ -28,13 +40,13 @@ export function BusinessContributionTable({
 }: BusinessContributionTableProps) {
   return (
     <SectionCard
-      title="经营贡献（余额汇总读面）"
+      title="经营贡献（产品分类损益读面）"
       loading={loading}
       error={error}
       onRetry={onRetry}
       extra={
-        <Link to="/balance-analysis" aria-label="进入资产负债分析">
-          <strong>进入资产负债分析</strong>
+        <Link to="/product-category-pnl" aria-label="进入产品分类损益">
+          <strong>进入产品分类损益</strong>
         </Link>
       }
     >
@@ -44,8 +56,8 @@ export function BusinessContributionTable({
           style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82", lineHeight: 1.6 }}
         >
           报告日 <strong>{reportDate}</strong>，数据来自{" "}
-          <code>/ui/balance-analysis/summary</code>
-          ，列示正式物化汇总行；表意「贡献结构」、与 PnL 瀑布/单券损益不必同一口径，以本接口字段为准。
+          <code>/ui/pnl/product-category</code>
+          ，view={view}；由总账对账 + 日均配对链路生成，表格直接展示后端产品分类行，不在前端重算合计或改写类别。
           {readProvenanceLine ? (
             <>
               <br />
@@ -73,37 +85,75 @@ export function BusinessContributionTable({
         >
           <thead>
             <tr style={{ background: "#f8fafc", color: "#475569", textAlign: "left" }}>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>项目</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>台账</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>资产负债</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>市值</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>摊余</th>
-              <th style={{ padding: "10px 12px", fontWeight: 600 }}>应计利息</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600 }}>产品分类</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600 }}>侧别</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>综本日均</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>人民币FTP</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>人民币净收入</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>外币净收入</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>经营净收入</th>
+              <th style={{ padding: "10px 12px", fontWeight: 600, textAlign: "right" }}>加权收益率</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={6} style={{ padding: 16, color: "#94a3b8", textAlign: "center" }}>
-                  暂无汇总行
+                <td colSpan={8} style={{ padding: 16, color: "#94a3b8", textAlign: "center" }}>
+                  暂无产品分类行
                 </td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.row_key} style={{ borderTop: "1px solid #eef2f7" }}>
+                <tr
+                  key={row.category_id}
+                  style={{
+                    borderTop: "1px solid #eef2f7",
+                    background: row.is_total ? "#f3f7ff" : "#ffffff",
+                    fontWeight: row.is_total ? 700 : 400,
+                  }}
+                >
                   <td style={{ padding: "10px 12px", fontWeight: 600, color: "#162033" }}>
-                    {row.display_name}
+                    <span style={{ paddingLeft: row.level * 14 }}>{row.category_name}</span>
                   </td>
-                  <td style={{ padding: "10px 12px", color: "#475569" }}>{row.source_family}</td>
-                  <td style={{ padding: "10px 12px", color: "#475569" }}>{row.position_scope}</td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums" }}>
-                    {formatCell(row.market_value_amount)}
+                  <td style={{ padding: "10px 12px", color: "#475569" }}>{formatSide(row.side)}</td>
+                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                    {formatProductCategoryRowDisplayValue(row, row.cnx_scale)}
                   </td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums" }}>
-                    {formatCell(row.amortized_cost_amount)}
+                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                    {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
                   </td>
-                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums" }}>
-                    {formatCell(row.accrued_interest_amount)}
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      fontVariantNumeric: "tabular-nums",
+                      textAlign: "right",
+                      color: toneForProductCategoryValue(row.cny_net),
+                    }}
+                  >
+                    {formatProductCategoryRowDisplayValue(row, row.cny_net)}
+                  </td>
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      fontVariantNumeric: "tabular-nums",
+                      textAlign: "right",
+                      color: toneForProductCategoryValue(row.foreign_net),
+                    }}
+                  >
+                    {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
+                  </td>
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      fontVariantNumeric: "tabular-nums",
+                      textAlign: "right",
+                      color: toneForProductCategoryValue(row.business_net_income),
+                    }}
+                  >
+                    {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
+                  </td>
+                  <td style={{ padding: "10px 12px", fontVariantNumeric: "tabular-nums", textAlign: "right" }}>
+                    {formatProductCategoryYieldValue(row.weighted_yield)}
                   </td>
                 </tr>
               ))

@@ -3,45 +3,44 @@ import { SummaryBlock } from "../../../components/SummaryBlock";
 
 type BusinessConclusionProps = {
   reportDate?: string;
-  detailRowCount?: number;
-  summaryRowCount?: number;
-  marketValueAmount?: string;
-  amortizedCostAmount?: string;
-  accruedInterestAmount?: string;
+  view?: string;
+  rowCount?: number;
+  assetBusinessNetIncome?: string;
+  liabilityBusinessNetIncome?: string;
+  grandBusinessNetIncome?: string;
   missingFxCount?: number;
 };
 
 export function BusinessConclusion({
   reportDate,
-  detailRowCount,
-  summaryRowCount,
-  marketValueAmount,
-  amortizedCostAmount,
-  accruedInterestAmount,
+  view,
+  rowCount,
+  assetBusinessNetIncome,
+  liabilityBusinessNetIncome,
+  grandBusinessNetIncome,
   missingFxCount = 0,
 }: BusinessConclusionProps) {
   const hasGovernedValues =
     Boolean(reportDate) ||
-    detailRowCount !== undefined ||
-    summaryRowCount !== undefined ||
-    Boolean(marketValueAmount);
+    rowCount !== undefined ||
+    Boolean(grandBusinessNetIncome);
 
   const content = hasGovernedValues
-    ? `当前经营页首屏已切回正式余额读链路。报告日 ${reportDate ?? "待确认"}，明细 ${detailRowCount ?? 0} 行、汇总 ${summaryRowCount ?? 0} 行；当前可直接阅读市场价值 ${marketValueAmount ?? "—"}、摊余成本 ${amortizedCostAmount ?? "—"}、应计利息 ${accruedInterestAmount ?? "—"}。未接入正式经营口径的指标不再在首屏硬写结论。`
-    : "当前经营页首屏只保留正式读链路和专题分流，不再把 staged 经营结论写成正式判断。待正式经营口径到位后，再恢复更强的业务结论表达。";
+    ? `当前经营页首屏已切回产品分类损益正式读模型。报告日 ${reportDate ?? "待确认"}，视图 ${view ?? "月度"}，产品分类行 ${rowCount ?? 0} 行；资产净收入 ${assetBusinessNetIncome ?? "—"}、负债净收入 ${liabilityBusinessNetIncome ?? "—"}、经营净收入 ${grandBusinessNetIncome ?? "—"}。资产负债余额读面降为专题入口，不作为首屏经营口径。`
+    : "当前经营页首屏只保留产品分类损益正式读模型和专题分流，不再把资产负债余额读面写成经营判断。";
 
   const tags = hasGovernedValues
     ? [
-        { label: "正式读链路: 已切回", color: "green" },
+        { label: "经营口径: 产品分类损益", color: "green" },
         {
-          label: `FX覆盖: ${missingFxCount > 0 ? `缺 ${missingFxCount} 对` : "可用"}`,
+          label: `外汇覆盖: ${missingFxCount > 0 ? `缺 ${missingFxCount} 对` : "可用"}`,
           color: missingFxCount > 0 ? "gold" : "green",
         },
-        { label: "经营口径: 部分待接入", color: "orange" },
+        { label: "余额读面: 专题入口", color: "blue" },
       ]
     : [
         { label: "正式读链路: 待确认", color: "gold" },
-        { label: "经营口径: 待接入", color: "orange" },
+        { label: "经营口径: 产品分类损益", color: "orange" },
       ];
 
   return (
