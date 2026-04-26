@@ -1,4 +1,4 @@
-import { pageInsetCardStyle } from "../../../components/page/PagePrimitives";
+import { pageInsetCardStyle } from "../../../components/page/PagePrimitiveStyles";
 import { designTokens } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 

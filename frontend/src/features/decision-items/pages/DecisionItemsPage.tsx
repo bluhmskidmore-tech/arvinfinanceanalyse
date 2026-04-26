@@ -14,8 +14,8 @@ import type {
 import {
   PageHeader,
   PageSectionLead,
-  pageSurfacePanelStyle,
 } from "../../../components/page/PagePrimitives";
+import { pageSurfacePanelStyle } from "../../../components/page/PagePrimitiveStyles";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { buildDecisionItemsPageViewModel } from "../lib/decisionItemsPageModel";
 

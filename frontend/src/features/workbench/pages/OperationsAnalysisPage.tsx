@@ -11,10 +11,10 @@ import { CalendarList } from "../../../components/CalendarList";
 import { FilterBar } from "../../../components/FilterBar";
 import {
   PageFilterTray,
-  pageInsetCardStyle,
   PageHeader,
   PageSurfacePanel,
 } from "../../../components/page/PagePrimitives";
+import { pageInsetCardStyle } from "../../../components/page/PagePrimitiveStyles";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { shellTokens } from "../../../theme/tokens";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";

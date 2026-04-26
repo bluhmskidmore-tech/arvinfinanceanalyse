@@ -7,11 +7,13 @@ import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
 import {
   PageFilterTray,
-  pageInsetCardStyle,
-  pageSurfacePanelStyle,
   PageHeader,
   PageSectionLead,
 } from "../../../components/page/PagePrimitives";
+import {
+  pageInsetCardStyle,
+  pageSurfacePanelStyle,
+} from "../../../components/page/PagePrimitiveStyles";
 import type {
   ChoiceMacroLatestPoint,
   ChoiceMacroRecentPoint,
