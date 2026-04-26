@@ -861,7 +861,8 @@ export default function CrossAssetDriversPage() {
             <div data-testid="cross-asset-trend-panel" style={{ minWidth: 0 }}>
               <SectionCard title="跨资产走势（近 20 日，统一基准 = 100）" style={{ minWidth: 0 }}>
                 <p style={{ margin: `0 0 ${t.space[3]}px`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
-                  所有序列使用首日 = 100 的归一化结果，便于直接比较方向与节奏。
+                  各资产发布日与休市不同，在统一时间轴上先对缺失日沿用「上一有效观测」(LOCF)，再按窗口内首次观测 = 100
+                  归一化；否则多市场下会出现大段空档与碎线。曲线在两次真实更新之间为水平持有，不代表日内波动。
                 </p>
                 {latestQuery.isLoading ? (
                   <div

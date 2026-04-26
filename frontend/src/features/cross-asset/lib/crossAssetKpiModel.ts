@@ -441,6 +441,21 @@ export function resolveCrossAssetKpis(series: ChoiceMacroLatestPoint[]): Resolve
 
 export type CrossAssetTrendLine = { name: string; dates: string[]; values: number[] };
 
+/** Same trade_date can appear more than once from upstream; keep last and enforce strictly increasing x. */
+function dedupeDateSeries(dates: string[], values: number[]): Pick<CrossAssetTrendLine, "dates" | "values"> {
+  const byDate = new Map<string, number>();
+  for (let i = 0; i < dates.length; i += 1) {
+    const d = dates[i];
+    const v = values[i];
+    if (typeof v !== "number" || Number.isNaN(v)) {
+      continue;
+    }
+    byDate.set(d, v);
+  }
+  const order = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
+  return { dates: order, values: order.map((d) => byDate.get(d)!) };
+}
+
 export function maxCrossAssetHeadlineTradeDate(series: ChoiceMacroLatestPoint[]): string {
   const byId = new Map(series.map((p) => [p.series_id, p]));
   const dates: string[] = [];
@@ -485,8 +500,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
       const sorted = [...p.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       lines.push({
         name: slot.label,
-        dates: sorted.map((x) => x.trade_date),
-        values: sorted.map((x) => x.value_numeric),
+        ...dedupeDateSeries(
+          sorted.map((x) => x.trade_date),
+          sorted.map((x) => x.value_numeric),
+        ),
       });
       continue;
     }
@@ -496,8 +513,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
       const sorted = [...preBp.recent_points].sort((a, b) => a.trade_date.localeCompare(b.trade_date));
       lines.push({
         name: slot.labelCnUs,
-        dates: sorted.map((x) => x.trade_date),
-        values: sorted.map((x) => x.value_numeric),
+        ...dedupeDateSeries(
+          sorted.map((x) => x.trade_date),
+          sorted.map((x) => x.value_numeric),
+        ),
       });
       continue;
     }
@@ -526,8 +545,10 @@ export function crossAssetTrendLines(series: ChoiceMacroLatestPoint[]): CrossAss
     }
     lines.push({
       name,
-      dates,
-      values: leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+      ...dedupeDateSeries(
+        dates,
+        leftV.map((lv, i) => toSpreadBp(lv, rightV[i])),
+      ),
     });
   }
 
