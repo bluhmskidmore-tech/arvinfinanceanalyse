@@ -45,4 +45,27 @@ if ($CheckLive) {
   Write-Output "- API health reachable"
   Invoke-WebRequest -Uri "$FrontendBaseUrl$route" -UseBasicParsing | Out-Null
   Write-Output "- Frontend route reachable"
+
+  $datesPayload = $null
+  foreach ($api in $supportingApis) {
+    if ($api -eq "/ui/pnl/product-category/dates") {
+      $datesPayload = Invoke-RestMethod -Uri "$ApiBaseUrl$api"
+      Write-Output "- Page API reachable: $api"
+    } else {
+      Write-Output "- Page API live check skipped (requires mutation or parameters): $api"
+    }
+  }
+
+  $reportDates = @()
+  if ($null -ne $datesPayload -and $null -ne $datesPayload.result -and $null -ne $datesPayload.result.report_dates) {
+    $reportDates = @($datesPayload.result.report_dates)
+  }
+
+  if ($reportDates.Count -gt 0) {
+    $reportDate = [uri]::EscapeDataString([string]$reportDates[0])
+    Invoke-WebRequest -Uri "$ApiBaseUrl$primaryApi`?report_date=$reportDate&view=monthly" -UseBasicParsing | Out-Null
+    Write-Output "- Page API reachable: $primaryApi"
+  } else {
+    Write-Output "- Page API detail skipped: no report_dates returned by /dates"
+  }
 }

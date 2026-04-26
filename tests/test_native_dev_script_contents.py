@@ -134,6 +134,7 @@ def test_codex_verify_page_script_plans_product_category_checks():
     assert "tests/test_product_category_mapping_contract.py" in script
     assert "ProductCategoryPnlPage.test.tsx" in script
     assert "ProductCategoryBranchSwitcher.test.tsx" in script
+    assert "ProductCategoryAdjustmentAuditPage.test.tsx" in script
     assert "productCategoryPnlPageModel.test.ts" in script
     assert "npm.cmd" in script
     assert "debt:audit" in script
@@ -152,3 +153,6 @@ def test_codex_page_smoke_script_emits_product_category_checklist():
     assert "fallback" in script
     assert "loading failure" in script
     assert "ZQTZ holdings-side logic" in script
+    assert "$primaryApi" in script
+    assert "$supportingApis" in script
+    assert "Page API reachable" in script

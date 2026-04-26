@@ -41,6 +41,7 @@ $checks = @(
       "--",
       "src/test/ProductCategoryPnlPage.test.tsx",
       "src/test/ProductCategoryBranchSwitcher.test.tsx",
+      "src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
       "src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts"
     )
   },
