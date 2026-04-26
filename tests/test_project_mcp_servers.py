@@ -154,6 +154,7 @@ def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> No
             "frontend_touchpoints"
         ]
         assert "tests/test_product_category_pnl_flow.py" in payload["test_touchpoints"]
+        assert "frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx" in payload["test_touchpoints"]
         assert any("zqtz holdings-side logic" in guardrail for guardrail in payload["guardrails"])
     finally:
         server.close()

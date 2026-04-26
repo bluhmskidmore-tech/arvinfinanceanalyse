@@ -82,13 +82,13 @@ Use the local helper scripts after the trace bundle has identified the page surf
 Dry-run the verification plan:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl -DryRun
+powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl
 ```
 
 Run the page-specific verification plan:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl
+powershell -ExecutionPolicy Bypass -File scripts/codex-verify-page.ps1 -PageSlug product-category-pnl -Run
 ```
 
 Emit the page smoke checklist:

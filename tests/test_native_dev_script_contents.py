@@ -127,8 +127,10 @@ def test_dev_governance_maintenance_script_runs_compaction_and_layering():
 def test_codex_verify_page_script_plans_product_category_checks():
     script = (ROOT / "scripts" / "codex-verify-page.ps1").read_text(encoding="utf-8")
     assert "ValidateSet(\"product-category-pnl\")" in script
+    assert "Run" in script
     assert "DryRun" in script
-    assert "CODEx verify page" in script
+    assert "Pass -Run to execute checks" in script
+    assert "Codex verify page" in script
     assert "tests/test_project_mcp_servers.py" in script
     assert "tests/test_product_category_pnl_flow.py" in script
     assert "tests/test_product_category_mapping_contract.py" in script
@@ -144,7 +146,7 @@ def test_codex_verify_page_script_plans_product_category_checks():
 def test_codex_page_smoke_script_emits_product_category_checklist():
     script = (ROOT / "scripts" / "codex-page-smoke.ps1").read_text(encoding="utf-8")
     assert "ValidateSet(\"product-category-pnl\")" in script
-    assert "CODEx page smoke" in script
+    assert "Codex page smoke" in script
     assert "/product-category-pnl" in script
     assert "/ui/pnl/product-category" in script
     assert "Playwright MCP" in script

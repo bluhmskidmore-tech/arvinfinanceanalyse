@@ -2,6 +2,7 @@ param(
   [ValidateSet("product-category-pnl")]
   [string]$PageSlug = "product-category-pnl",
 
+  [switch]$Run,
   [switch]$DryRun
 )
 
@@ -12,11 +13,13 @@ $frontendRoot = Join-Path $root "frontend"
 
 Set-Location $root
 
-Write-Output "CODEx verify page: $PageSlug"
+Write-Output "Codex verify page: $PageSlug"
 
 if ($PageSlug -ne "product-category-pnl") {
   throw "Unsupported page slug: $PageSlug"
 }
+
+$planOnly = $DryRun -or -not $Run
 
 $checks = @(
   @{
@@ -63,7 +66,7 @@ foreach ($check in $checks) {
   $argsText = ($check.Args -join " ")
   Write-Output "[$($check.Label)] $($check.Command) $argsText"
 
-  if ($DryRun) {
+  if ($planOnly) {
     continue
   }
 
@@ -78,8 +81,8 @@ foreach ($check in $checks) {
   }
 }
 
-if ($DryRun) {
-  Write-Output "CODEx verify page dry run complete."
+if ($planOnly) {
+  Write-Output "Codex verify page dry run complete. Pass -Run to execute checks."
 } else {
-  Write-Output "CODEx verify page checks passed."
+  Write-Output "Codex verify page checks passed."
 }

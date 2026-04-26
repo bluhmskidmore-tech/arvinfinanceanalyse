@@ -23,7 +23,7 @@ $supportingApis = @(
   "/ui/pnl/product-category/manual-adjustments/export"
 )
 
-Write-Output "CODEx page smoke: $PageSlug"
+Write-Output "Codex page smoke: $PageSlug"
 Write-Output "Frontend route: $FrontendBaseUrl$route"
 Write-Output "Primary API: $ApiBaseUrl$primaryApi"
 Write-Output "Supporting APIs:"

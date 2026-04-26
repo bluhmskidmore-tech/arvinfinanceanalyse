@@ -579,6 +579,7 @@ def product_page_trace_bundles() -> dict[str, dict[str, Any]]:
             "tests/test_product_category_mapping_contract.py",
             "frontend/src/test/ProductCategoryPnlPage.test.tsx",
             "frontend/src/test/ProductCategoryBranchSwitcher.test.tsx",
+            "frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx",
             "frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts",
             "tests/golden_samples/GS-PROD-CAT-PNL-A/assertions.md",
         ],
