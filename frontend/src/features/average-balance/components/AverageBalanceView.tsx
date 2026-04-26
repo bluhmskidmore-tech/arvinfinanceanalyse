@@ -136,7 +136,7 @@ function buildPresetRange(reportDate: string, rangeKey: Exclude<RangeKey, "custo
 function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
   return [
     { title: "分类", dataIndex: "category", key: "category" },
-    { title: "Spot(亿元)", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
+    { title: "期末时点（亿元）", dataIndex: "spot_balance", key: "spot_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
@@ -187,12 +187,12 @@ function ResultMetaNotice(props: {
       type={hasQualityIssue ? "warning" : "info"}
       showIcon
       message={[
-        `ADB 后端链路：${props.meta.result_kind}`,
+        `日均余额后端链路：${props.meta.result_kind}`,
         props.meta.basis,
-        `source=${props.meta.source_version}`,
-        `rule=${props.meta.rule_version}`,
-        `quality=${props.meta.quality_flag}`,
-        `fallback=${props.meta.fallback_mode}`,
+        `来源=${props.meta.source_version}`,
+        `规则=${props.meta.rule_version}`,
+        `质量=${props.meta.quality_flag}`,
+        `降级=${props.meta.fallback_mode}`,
       ].join(" · ")}
     />
   );
@@ -385,11 +385,11 @@ export default function AverageBalanceView() {
             日均管理
           </Title>
           <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
-            聚焦 Spot vs ADB 偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，
-            不在前端补算正式金融口径，正式资产负债分析仍从 dedicated formal 页面进入。
+            聚焦期末时点与日均偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，
+            不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。
           </Paragraph>
           <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
-            <Text type="secondary">当前页面为 balance-analysis 的 analytical 子视图。</Text>
+            <Text type="secondary">当前页面为资产负债分析的分析口径子视图。</Text>
             <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
           </Space>
         </div>
@@ -409,9 +409,9 @@ export default function AverageBalanceView() {
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
                 <SectionLead
-                  eyebrow="Daily"
+                  eyebrow="日度"
                   title="区间日均分析"
-                  description="先选择报告日和观察区间，再阅读 Spot / ADB 偏离、收益成本和分类明细；这里保持 analytical 视图，不提升为 formal 口径。"
+                  description="先选择报告日和观察区间，再阅读期末时点与日均偏离、收益成本和分类明细；这里保持分析口径视图，不提升为正式口径。"
                 />
                 <Card size="small">
                   <Row gutter={[16, 16]} align="middle" justify="space-between">
@@ -427,9 +427,9 @@ export default function AverageBalanceView() {
                           disabled={Boolean(explicitReportDate)}
                           placeholder="选择日期"
                         />
-                        <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7D</Button>
-                        <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30D</Button>
-                        <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>YTD</Button>
+                        <Button type={rangeKey === "7d" ? "primary" : "default"} onClick={() => applyPreset("7d")}>7日</Button>
+                        <Button type={rangeKey === "30d" ? "primary" : "default"} onClick={() => applyPreset("30d")}>30日</Button>
+                        <Button type={rangeKey === "ytd" ? "primary" : "default"} onClick={() => applyPreset("ytd")}>年初至今</Button>
                         <Input aria-label="adb-start-date" type="date" value={startDate} onChange={(event) => onCustomRangeChange("start", event.target.value)} style={{ width: 160 }} />
                         <Input aria-label="adb-end-date" type="date" value={endDate} onChange={(event) => onCustomRangeChange("end", event.target.value)} style={{ width: 160 }} />
                       </FilterBar>
@@ -454,7 +454,7 @@ export default function AverageBalanceView() {
 
                 {canRunDailyQuery && dailyData ? (
                   <>
-                    <Alert type="info" showIcon message={`口径说明：Spot=期末（${dailyData.end_date}）时点规模；Avg=区间日均规模`} />
+                    <Alert type="info" showIcon message={`口径说明：期末时点=期末（${dailyData.end_date}）时点规模；区间日均=区间日均规模`} />
                     <ResultMetaNotice
                       meta={dailyData.result_meta}
                       testId="adb-daily-result-meta"
@@ -463,11 +463,11 @@ export default function AverageBalanceView() {
 
                     <Row gutter={[16, 16]}>
                       {[
-                        { title: "Spot 总资产", value: formatYi(dailyData.total_spot_assets) },
-                        { title: "ADB 总资产", value: formatYi(dailyData.total_avg_assets) },
+                        { title: "期末时点总资产", value: formatYi(dailyData.total_spot_assets) },
+                        { title: "日均总资产", value: formatYi(dailyData.total_avg_assets) },
                         { title: "偏离度（资产）", value: formatSignedPct(assetDeviationPct), danger: assetDeviationPct > 5 },
-                        { title: "Spot 总负债", value: formatYi(dailyData.total_spot_liabilities) },
-                        { title: "ADB 总负债", value: formatYi(dailyData.total_avg_liabilities) },
+                        { title: "期末时点总负债", value: formatYi(dailyData.total_spot_liabilities) },
+                        { title: "日均总负债", value: formatYi(dailyData.total_avg_liabilities) },
                         { title: "偏离度（负债）", value: formatSignedPct(liabilityDeviationPct), danger: liabilityDeviationPct > 5 },
                       ].map((item) => (
                         <Col xs={24} sm={12} xl={8} key={item.title}>
@@ -501,7 +501,7 @@ export default function AverageBalanceView() {
                       ))}
                     </Row>
 
-                    <Card title="Spot vs ADB 偏离对比" size="small">
+                    <Card title="期末时点与日均偏离对比" size="small">
                       <AdbComparisonChart rows={comparisonRows} />
                     </Card>
 
@@ -528,9 +528,9 @@ export default function AverageBalanceView() {
             children: (
               <Space direction="vertical" size="large" style={{ width: "100%" }}>
                 <SectionLead
-                  eyebrow="Monthly"
+                  eyebrow="月度"
                   title="月度日均统计"
-                  description="按年份查看 YTD 日均摘要、月度汇总表和单月深度分布，继续复用后端 ADB monthly read model。"
+                  description="按年份查看年初至今日均摘要、月度汇总表和单月深度分布，继续复用后端日均余额月度读模型。"
                 />
                 <Card size="small">
                   <FilterBar>
@@ -550,11 +550,11 @@ export default function AverageBalanceView() {
                     />
                     <Row gutter={[16, 16]}>
                       {[
-                        { title: "YTD 日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
-                        { title: "YTD 日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
-                        { title: "YTD 资产收益率", value: formatPct(monthlyData.ytd_asset_yield) },
-                        { title: "YTD 负债付息率", value: formatPct(monthlyData.ytd_liability_cost) },
-                        { title: "YTD NIM", value: formatPct(monthlyData.ytd_nim) },
+                        { title: "年初至今日均资产", value: formatYi(monthlyData.ytd_avg_assets) },
+                        { title: "年初至今日均负债", value: formatYi(monthlyData.ytd_avg_liabilities) },
+                        { title: "年初至今资产收益率", value: formatPct(monthlyData.ytd_asset_yield) },
+                        { title: "年初至今负债付息率", value: formatPct(monthlyData.ytd_liability_cost) },
+                        { title: "年初至今净息差", value: formatPct(monthlyData.ytd_nim) },
                       ].map((item) => (
                         <Col xs={24} sm={12} xl={4} key={item.title}>
                           <Card size="small">

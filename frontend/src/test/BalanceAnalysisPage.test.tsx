@@ -939,9 +939,9 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByTestId("balance-analysis-result-meta-detail")).toHaveTextContent(
       "balance-analysis.detail",
     );
-    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB 分析预览");
-    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("Spot 与 ADB 偏离对比");
-    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB 月度结构预览");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("日均分析预览");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("期末时点与日均偏离对比");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("日均月度结构预览");
     expect(
       within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
         "balance-analysis-echarts-stub",
@@ -952,7 +952,7 @@ describe("BalanceAnalysisPage", () => {
         "adb-monthly-breakdown-table",
       ),
     ).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "打开 ADB 分析页" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "打开日均分析页" })).toHaveAttribute(
       "href",
       "/average-balance?report_date=2025-12-31",
     );

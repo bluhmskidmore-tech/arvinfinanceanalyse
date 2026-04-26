@@ -81,22 +81,22 @@ export default function AdbAnalyticalPreview({
   const monthlyRows = [
     {
       avgYi: comparison.total_spot_assets / YI,
-      category: "Spot 资产",
+      category: "期末时点资产",
       weightedRate: comparison.asset_yield,
     },
     {
       avgYi: comparison.total_avg_assets / YI,
-      category: "ADB 资产",
+      category: "日均资产",
       weightedRate: comparison.asset_yield,
     },
     {
       avgYi: comparison.total_spot_liabilities / YI,
-      category: "Spot 负债",
+      category: "期末时点负债",
       weightedRate: comparison.liability_cost,
     },
     {
       avgYi: comparison.total_avg_liabilities / YI,
-      category: "ADB 负债",
+      category: "日均负债",
       weightedRate: comparison.liability_cost,
     },
   ];
@@ -118,9 +118,9 @@ export default function AdbAnalyticalPreview({
 
   return (
     <div data-testid="balance-analysis-adb-preview" style={{ display: "grid", gap: 12 }}>
-      <strong style={{ color: "#162033", fontSize: 14 }}>ADB Analytical Preview</strong>
+      <strong style={{ color: "#162033", fontSize: 14 }}>日均分析预览</strong>
       <div style={{ color: "#5c6b82", fontSize: 13 }}>
-        基于当前正式报告日生成的 analytical 区间预览，默认观察年初至报告日的 ADB 偏离与净息差。
+        基于当前正式报告日生成的分析口径区间预览，默认观察年初至报告日的日均偏离与净息差。
       </div>
       <div
         style={{
@@ -131,21 +131,21 @@ export default function AdbAnalyticalPreview({
       >
         <PlaceholderCard
           detail={`区间起点 ${comparison.start_date}`}
-          title="Spot 资产"
+          title="期末时点资产"
           value={formatYiAmount(comparison.total_spot_assets / YI)}
         />
         <PlaceholderCard
           detail={`区间终点 ${comparison.end_date}`}
-          title="ADB 资产"
+          title="日均资产"
           value={formatYiAmount(comparison.total_avg_assets / YI)}
         />
         <PlaceholderCard
           detail={`${comparison.num_days} 天`}
-          title="Spot 负债"
+          title="期末时点负债"
           value={formatYiAmount(comparison.total_spot_liabilities / YI)}
         />
         <PlaceholderCard
-          detail="Analytical preview"
+          detail="分析预览"
           title="NIM"
           value={
             comparison.net_interest_margin === null
@@ -156,13 +156,13 @@ export default function AdbAnalyticalPreview({
       </div>
       <div>
         <div style={{ color: "#162033", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          Spot vs ADB 偏离对比
+          期末时点与日均偏离对比
         </div>
         <AdbComparisonChart height={320} rows={comparisonRows} />
       </div>
       <div>
         <div style={{ color: "#162033", fontSize: 13, fontWeight: 600, marginBottom: 8 }}>
-          ADB 月度结构预览
+          日均月度结构预览
         </div>
         <AdbMonthlyHorizontalChart
           color="#2563EB"
@@ -177,7 +177,7 @@ export default function AdbAnalyticalPreview({
         />
       </div>
       <div>
-        <Link to={href}>打开 ADB 分析页</Link>
+        <Link to={href}>打开日均分析页</Link>
       </div>
     </div>
   );

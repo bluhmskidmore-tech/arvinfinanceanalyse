@@ -199,9 +199,9 @@ describe("AverageBalanceView", () => {
     expect(screen.getByRole("heading", { name: "区间日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "月度统计" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "7D" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "30D" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "YTD" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "7日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "30日" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "年初至今" })).toBeInTheDocument();
     expect(screen.getByLabelText("adb-start-date")).toBeInTheDocument();
     expect(screen.getByLabelText("adb-end-date")).toBeInTheDocument();
     expect(await screen.findByText("有效天数：104 天")).toBeInTheDocument();
@@ -209,20 +209,20 @@ describe("AverageBalanceView", () => {
       screen.getByText("当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑"),
     ).toBeInTheDocument();
 
-    expect(screen.getByText("Spot 总资产")).toBeInTheDocument();
-    expect(screen.getByText("ADB 总资产")).toBeInTheDocument();
+    expect(screen.getByText("期末时点总资产")).toBeInTheDocument();
+    expect(screen.getByText("日均总资产")).toBeInTheDocument();
     expect(screen.getByText("偏离度（资产）")).toBeInTheDocument();
-    expect(screen.getByText("Spot 总负债")).toBeInTheDocument();
-    expect(screen.getByText("ADB 总负债")).toBeInTheDocument();
+    expect(screen.getByText("期末时点总负债")).toBeInTheDocument();
+    expect(screen.getByText("日均总负债")).toBeInTheDocument();
     expect(screen.getByText("偏离度（负债）")).toBeInTheDocument();
     expect(screen.getByText("资产收益率（年化）")).toBeInTheDocument();
     expect(screen.getByText("负债付息率（年化）")).toBeInTheDocument();
     expect(screen.getByText("NIM（年化）")).toBeInTheDocument();
 
-    expect(screen.getByText("Spot vs ADB 偏离对比")).toBeInTheDocument();
+    expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
-    expect(screen.getAllByText("Spot(亿元)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("期末时点（亿元）").length).toBeGreaterThan(0);
     expect(screen.getAllByText("日均(亿元)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("收益率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付息率(%)").length).toBeGreaterThan(0);
@@ -240,11 +240,11 @@ describe("AverageBalanceView", () => {
     await user.click(await screen.findByRole("tab", { name: "月度统计" }));
 
     expect(await screen.findByRole("heading", { name: "月度日均统计" })).toBeInTheDocument();
-    expect(await screen.findByText("YTD 日均资产")).toBeInTheDocument();
-    expect(screen.getByText("YTD 日均负债")).toBeInTheDocument();
-    expect(screen.getByText("YTD 资产收益率")).toBeInTheDocument();
-    expect(screen.getByText("YTD 负债付息率")).toBeInTheDocument();
-    expect(screen.getByText("YTD NIM")).toBeInTheDocument();
+    expect(await screen.findByText("年初至今日均资产")).toBeInTheDocument();
+    expect(screen.getByText("年初至今日均负债")).toBeInTheDocument();
+    expect(screen.getByText("年初至今资产收益率")).toBeInTheDocument();
+    expect(screen.getByText("年初至今负债付息率")).toBeInTheDocument();
+    expect(screen.getByText("年初至今净息差")).toBeInTheDocument();
 
     expect(screen.getByText("月度汇总表")).toBeInTheDocument();
     expect(screen.getAllByText("2026年3月").length).toBeGreaterThan(0);
@@ -265,7 +265,7 @@ describe("AverageBalanceView", () => {
     });
 
     expect(await screen.findByText("可用报告日加载失败，请先恢复报告日列表后再查看日均分析。")).toBeInTheDocument();
-    expect(screen.queryByText("Spot 总资产")).not.toBeInTheDocument();
+    expect(screen.queryByText("期末时点总资产")).not.toBeInTheDocument();
   });
 
   it("shows an explicit daily error state when comparison loading fails", async () => {
@@ -276,7 +276,7 @@ describe("AverageBalanceView", () => {
     });
 
     expect(await screen.findByText("日均分析加载失败")).toBeInTheDocument();
-    expect(screen.queryByText("Spot 总资产")).not.toBeInTheDocument();
+    expect(screen.queryByText("期末时点总资产")).not.toBeInTheDocument();
   });
 
   it("surfaces backend result metadata for daily ADB reads", async () => {
@@ -318,7 +318,7 @@ describe("AverageBalanceView", () => {
 
     const meta = await screen.findByTestId("adb-daily-result-meta");
     expect(meta).toHaveTextContent("adb.comparison");
-    expect(meta).toHaveTextContent("source=sv_live_adb");
-    expect(meta).toHaveTextContent("fallback=latest_snapshot");
+    expect(meta).toHaveTextContent("来源=sv_live_adb");
+    expect(meta).toHaveTextContent("降级=latest_snapshot");
   });
 });
