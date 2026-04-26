@@ -2135,13 +2135,15 @@ describe("createApiClient", () => {
   });
 
   it("uses real mode to export filtered product-category manual adjustments as csv", async () => {
+    const responseBodyText =
+      "Current State,unit-6\n\"pca-1\",\"-12.12345678901234\"\nEvent Timeline\n...";
     const fetchMock = vi.fn(async () => ({
       ok: true,
       headers: new Headers({
         "Content-Disposition":
           'attachment; filename="product-category-audit-2026-02-28.csv"',
       }),
-      text: async () => "Current State\n...",
+      text: async () => responseBodyText,
     }));
 
     const client = createApiClient({
@@ -2165,7 +2167,10 @@ describe("createApiClient", () => {
     });
 
     expect(payload.filename).toBe("product-category-audit-2026-02-28.csv");
-    expect(payload.content).toContain("Current State");
+    // Unit 6: real client returns the response body as `content` with no reformatting.
+    expect(payload.content).toBe(responseBodyText);
+    // When the server does not lead with a UTF-8 BOM, the client does not add one.
+    expect(payload.content.codePointAt(0)).not.toBe(0xfeff);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/ui/pnl/product-category/manual-adjustments/export?report_date=2026-02-28&adjustment_id=pca-1&adjustment_id_exact=true&account_code=5140&approval_status=approved&event_type=edited&current_sort_field=account_code&current_sort_dir=asc&event_sort_field=event_type&event_sort_dir=desc&created_at_from=2026-04-10T00%3A00%3A00Z&created_at_to=2026-04-10T23%3A59%3A59Z",
       expect.objectContaining({

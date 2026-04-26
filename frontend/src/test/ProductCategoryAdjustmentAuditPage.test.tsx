@@ -602,6 +602,91 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     );
   });
 
+  it("Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const exportCsv = "a,b,unit-6-raw\n\"x\",12.12345678901234,\"-0.0\"\n";
+    const exportSpy = vi.fn(async () => ({
+      filename: "unit-6-blob-passthrough.csv",
+      content: exportCsv,
+    }));
+    const listSpy = vi.fn(async () => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-dummy",
+          event_type: "created",
+          created_at: "2026-04-10T10:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51400000000",
+          currency: "CNX",
+          account_name: "unit-6-blob",
+        },
+      ],
+      events: [],
+    }));
+    const OriginalBlob = globalThis.Blob;
+    const originalCreateObjectURL = globalThis.URL.createObjectURL;
+    const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    let capturedBody = "";
+    class MockBlob {
+      readonly size: number;
+      readonly type: string;
+
+      constructor(parts: BlobPart[], options?: BlobPropertyBag) {
+        capturedBody = parts.map((part) => String(part)).join("");
+        this.size = capturedBody.length;
+        this.type = options?.type ?? "";
+      }
+    }
+    globalThis.Blob = MockBlob as unknown as typeof Blob;
+    const createObjectUrl = vi.fn(() => "blob:unit-6");
+    const revokeObjectUrl = vi.fn();
+    const clickSpy = vi.fn();
+    const createElementSpy = vi.spyOn(document, "createElement");
+    createElementSpy.mockImplementation(((tagName: string) => {
+      const el = document.createElementNS("http://www.w3.org/1999/xhtml", tagName);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(el, "click", { value: clickSpy, configurable: true });
+      }
+      return el as HTMLElement;
+    }) as typeof document.createElement);
+    globalThis.URL.createObjectURL = createObjectUrl;
+    globalThis.URL.revokeObjectURL = revokeObjectUrl;
+
+    try {
+      renderAuditPageWithClient({
+        ...baseClient,
+        getProductCategoryManualAdjustments: listSpy,
+        exportProductCategoryManualAdjustmentsCsv: exportSpy,
+      });
+
+      await screen.findByTestId("audit-current-state");
+      await user.click(screen.getByTestId("audit-export-button"));
+
+      await waitFor(() => {
+        expect(exportSpy).toHaveBeenCalled();
+        expect(clickSpy).toHaveBeenCalled();
+      });
+      expect(capturedBody).toBe(exportCsv);
+      expect(capturedBody.codePointAt(0)).not.toBe(0xfeff);
+    } finally {
+      createElementSpy.mockRestore();
+      globalThis.Blob = OriginalBlob;
+      globalThis.URL.createObjectURL = originalCreateObjectURL;
+      globalThis.URL.revokeObjectURL = originalRevokeObjectURL;
+    }
+  });
+
   it("pages current-state rows and exports the filtered audit dataset", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });

@@ -136,6 +136,11 @@ function buildAdjustmentDraft(reportDate: string): ProductCategoryManualAdjustme
   };
 }
 
+/**
+ * Feeds the API response string into a download `Blob` as a single part.
+ * The audit page does not parse numbers, reformat values, or prepend a UTF-8 BOM; any BOM
+ * is whatever the server returned (if any) and is out of band for this helper.
+ */
 function downloadAuditCsv(
   filename: string,
   content: string,

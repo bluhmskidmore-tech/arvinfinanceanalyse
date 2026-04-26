@@ -64,7 +64,7 @@ This first pass is based on:
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests freeze 409/503/failed-terminal + polling + `product-category-refresh-status` in-flight line (`runPollingTask` `onUpdate`); stale-banner / timeout UX still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; Unit 5 list/timeline failure semantics frozen (`AsyncSection` + `product-category-audit-list-timeline-async` + `within` assertions: error + no stale rows + retry); dual-control “why” still narrative |
-| 6. Manual Adjustment Export | `PARTIAL` | `P1` | export shares applied filter/sort with list (code+tests); BOM / scale / precision still open |
+| 6. Manual Adjustment Export | `PARTIAL` | `P1` | list/export query symmetry + real-mode key alignment + client + page Blob pass-through evidence; backend UTF-8 BOM policy + large export + full UI↔CSV precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
 | 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
 | 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; full column matrix & formal-table AsyncSection error states remain open |
@@ -171,13 +171,15 @@ This first pass is based on:
   - export route exists
   - filtered export behavior and CSV section ordering are covered in `tests/test_product_category_pnl_flow.py`
   - audit-page export flow is exercised in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
-  - `buildProductCategoryAuditListExportQuery` in `ProductCategoryAdjustmentAuditPage.tsx` is the single object passed to `exportProductCategoryManualAdjustmentsCsv` and matches the list request’s filter+sort options without `adjustment_limit` / `adjustment_offset` / `limit` / `offset` (proven in `ProductCategoryAdjustmentAuditPage.test.tsx` and `buildProductCategoryAuditListExportQuery` unit block)
-  - real-mode export request and filename parsing are covered in `frontend/src/test/ApiClient.test.ts`
-  - `uses the same filter and sort query keys for real-mode list and export (export omits pagination only)` in `ApiClient.test.ts` asserts per-key equality between list and export query strings, excluding pagination keys
+  - `buildProductCategoryAuditListExportQuery` in `ProductCategoryAdjustmentAuditPage.tsx` is the single object passed to `exportProductCategoryManualAdjustmentsCsv` and matches the list request’s filter+sort options without `adjustment_limit` / `adjustment_offset` / `limit` / `offset` (see `buildProductCategoryAuditListExportQuery` + `CSV export uses the same applied filter+sort as the list request (omits only pagination options)` in `ProductCategoryAdjustmentAuditPage.test.tsx`)
+  - **Page-level CSV pass-through (no frontend numeric rewrite; no BOM prepended by the download path):** `downloadAuditCsv` in `ProductCategoryAdjustmentAuditPage.tsx` is documented as passing the API string into `Blob` as a single part without prepending a BOM (BOM in the file, if any, is defined by the server response); **`Unit 6: export pipes API CSV into the download Blob without rewriting numbers or a BOM`** intercepts `Blob` and asserts the string body equals the mocked `exportProductCategoryManualAdjustmentsCsv` `content` byte-for-byte (including long decimal digits) and the first code point is not U+FEFF when the mock omits a BOM
+  - **`frontend/src/test/ApiClient.test.ts` — `uses real mode to export filtered product-category manual adjustments as csv`:** `payload.content` is strictly `===` the `response().text` string; when that string has no leading BOM, `payload.content.codePointAt(0) !== 0xFEFF` (client does not insert a BOM in this path)
+  - **`uses the same filter and sort query keys for real-mode list and export (export omits pagination only)`:** for every key present on the export URL, values match the list call; `adjustment_limit` / `adjustment_offset` / `limit` / `offset` are absent on export
+- **BOM policy (closure stance):** no governed rule is recorded for whether the **backend** CSV is UTF-8 with or without a leading BOM; the **frontend** path shown above only forwards `text()` to `content` and into `new Blob([content], …)` without adding `\uFEFF`. Whether production exports include a BOM is **unknown** from these tests and must not be invented here.
 - Why not `CLOSED`:
-  - no clear evidence for UTF-8 BOM policy
+  - backend/global UTF-8 BOM policy for generated CSV is still not specified in tests or this checklist (only the non-mutation of “response as received” in the two shown layers)
   - no frozen behavior for very large exports
-  - no explicit product contract for numeric precision equality between UI and CSV beyond existing tests
+  - no explicit end-to-end product contract that UI-rendered money strings equal CSV number strings in every cell (only pass-through and sample decimals in tests)
 
 ## Unit 7: Manual Adjustment Lifecycle
 
