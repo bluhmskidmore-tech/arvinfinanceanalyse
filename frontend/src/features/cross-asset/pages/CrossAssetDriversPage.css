@@ -202,6 +202,40 @@
   word-break: break-word;
 }
 
+.cross-asset-class-analysis__evidence {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px dashed #d8e4de;
+}
+
+.cross-asset-class-analysis__evidence-item {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) auto;
+  gap: 3px 10px;
+  align-items: start;
+  color: #203244;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cross-asset-class-analysis__evidence-item strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.cross-asset-class-analysis__evidence-item small {
+  grid-column: 1 / -1;
+  color: #6c7b89;
+  font-size: 11px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.cross-asset-class-analysis__evidence-item--missing {
+  color: #8a6d3b;
+}
+
 .cross-asset-class-analysis__pending-lines {
   display: grid;
   gap: 8px;

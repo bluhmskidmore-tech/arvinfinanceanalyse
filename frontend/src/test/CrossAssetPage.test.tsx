@@ -207,6 +207,14 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toHaveTextContent("23.54%");
     expect(screen.getByTestId("cross-asset-asset-analysis-stock-mega_cap_weight")).toHaveTextContent("15.53%");
+    const equityEvidence = screen.getByTestId("cross-asset-equity-evidence");
+    expect(equityEvidence).toHaveTextContent("EMM01843735");
+    expect(equityEvidence).toHaveTextContent("CA.CSI300_PE");
+    expect(equityEvidence).toHaveTextContent("CA.MEGA_CAP_WEIGHT");
+    expect(equityEvidence).toHaveTextContent("CA.MEGA_CAP_TOP5_WEIGHT");
+    expect(equityEvidence).toHaveTextContent("index");
+    expect(equityEvidence).toHaveTextContent("x");
+    expect(equityEvidence).toHaveTextContent("%");
     const commoditiesEnergy = screen.getByTestId("cross-asset-asset-analysis-commodities-energy");
     expect(commoditiesEnergy).toBeInTheDocument();
     expect(commoditiesEnergy).not.toHaveTextContent("CA.BRENT");

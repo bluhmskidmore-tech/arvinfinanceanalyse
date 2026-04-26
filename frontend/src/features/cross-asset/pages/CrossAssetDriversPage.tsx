@@ -20,6 +20,7 @@ import { WatchList } from "../components/WatchList";
 import {
   buildCrossAssetCandidateActions,
   buildCrossAssetClassAnalysisRows,
+  buildCrossAssetEquityEvidenceItems,
   buildCrossAssetEventItems,
   buildCrossAssetNcdProxyEvidence,
   buildCrossAssetStatusFlags,
@@ -30,6 +31,7 @@ import {
   formatLinkageCorrelationDisplay,
   type CrossAssetClassAnalysisLine,
   type CrossAssetClassAnalysisRow,
+  type CrossAssetEquityEvidenceItem,
   type CrossAssetNcdProxyEvidence,
   type CrossAssetResearchViewCard,
   type CrossAssetTransmissionAxisRow,
@@ -301,7 +303,13 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
   );
 }
 
-function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] }) {
+function AssetClassAnalysisPanel({
+  rows,
+  equityEvidenceItems,
+}: {
+  rows: CrossAssetClassAnalysisRow[];
+  equityEvidenceItems: CrossAssetEquityEvidenceItem[];
+}) {
   const stockRow = rows.find((row) => row.key === "stock");
   const commodityRow = rows.find((row) => row.key === "commodities");
   const optionsRow = rows.find((row) => row.key === "options");
@@ -372,6 +380,26 @@ function AssetClassAnalysisPanel({ rows }: { rows: CrossAssetClassAnalysisRow[] 
                     </div>
                   ))}
                 </div>
+                {row.key === "stock" ? (
+                  <div className="cross-asset-class-analysis__evidence" data-testid="cross-asset-equity-evidence">
+                    {equityEvidenceItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className={`cross-asset-class-analysis__evidence-item${
+                          item.status === "ready" ? "" : " cross-asset-class-analysis__evidence-item--missing"
+                        }`}
+                        data-testid={`cross-asset-equity-evidence-${item.key}`}
+                        title={item.sourceLabel}
+                      >
+                        <span>{item.label}</span>
+                        <strong>{item.valueLabel}</strong>
+                        <small>
+                          {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} · {item.sourceLabel}
+                        </small>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -582,6 +610,7 @@ export default function CrossAssetDriversPage() {
       }),
     [kpis, latestMeta, linkageMeta, transmissionAxisRows],
   );
+  const equityEvidenceItems = useMemo(() => buildCrossAssetEquityEvidenceItems(kpis), [kpis]);
   const ncdProxyPayload = ncdFundingProxyQuery.data?.result ?? null;
   const ncdProxyEvidence = useMemo(
     () =>
@@ -735,7 +764,7 @@ export default function CrossAssetDriversPage() {
             </div>
             <ResearchViewsPanel rows={researchViewCards} />
             <TransmissionAxesPanel rows={transmissionAxisRows} />
-            <AssetClassAnalysisPanel rows={assetClassAnalysisRows} />
+            <AssetClassAnalysisPanel rows={assetClassAnalysisRows} equityEvidenceItems={equityEvidenceItems} />
 
             <div className="cross-asset-drivers-page__lede">
               <PageSectionLead
