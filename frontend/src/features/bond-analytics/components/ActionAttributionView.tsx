@@ -28,9 +28,9 @@ const ACTION_COLORS: Record<string, string> = {
 function describeMetaIssues(meta: ResultMeta | null): string[] {
   if (!meta) return [];
   const issues: string[] = [];
-  if (meta.quality_flag !== "ok") issues.push(`quality_flag=${meta.quality_flag}`);
-  if (meta.vendor_status !== "ok") issues.push(`vendor_status=${meta.vendor_status}`);
-  if (meta.fallback_mode !== "none") issues.push(`fallback_mode=${meta.fallback_mode}`);
+  if (meta.quality_flag !== "ok") issues.push(`质量标记=${meta.quality_flag}`);
+  if (meta.vendor_status !== "ok") issues.push(`供应商状态=${meta.vendor_status}`);
+  if (meta.fallback_mode !== "none") issues.push(`降级模式=${meta.fallback_mode}`);
   return issues;
 }
 
@@ -166,9 +166,9 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
-        eyebrow="Action Attribution"
+        eyebrow="动作归因"
         title="交易动作归因概览"
-        description="Reads the governed action-attribution payload and renders counts, PnL contribution, duration, and DV01 without front-end recomputation."
+        description="读取治理后的动作归因结果，展示动作数量、损益贡献、久期和 DV01，不在前端重复计算。"
         testId="action-attribution-shell-lead"
       />
       <div
@@ -193,7 +193,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         <Alert
           type="warning"
           showIcon
-          message="Provenance degraded"
+          message="证据链降级"
           description={metaIssues.join(" | ")}
           data-testid="action-attribution-result-meta-alert"
         />
@@ -206,13 +206,13 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
           description={
             <div style={{ fontSize: 13, lineHeight: 1.65 }}>
               {(data.available_components?.length ?? 0) > 0 ? (
-                <div>Available: {data.available_components!.join(" / ")}</div>
+                <div>可用组件：{data.available_components!.join(" / ")}</div>
               ) : null}
               {(data.missing_inputs?.length ?? 0) > 0 ? (
-                <div>Missing inputs: {data.missing_inputs!.join(" / ")}</div>
+                <div>缺失输入：{data.missing_inputs!.join(" / ")}</div>
               ) : null}
               {(data.blocked_components?.length ?? 0) > 0 ? (
-                <div>Blocked: {data.blocked_components!.join(" / ")}</div>
+                <div>阻塞组件：{data.blocked_components!.join(" / ")}</div>
               ) : null}
             </div>
           }
@@ -250,13 +250,13 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
       </Row>
 
       <SectionLead
-        eyebrow="Summary"
-        title="Action Summary"
-        description="Summarizes counts and PnL by action type while preserving the backend contribution values."
+        eyebrow="汇总"
+        title="动作汇总"
+        description="按动作类型汇总次数和损益，同时保留后端贡献值。"
         testId="action-attribution-summary-lead"
       />
       {data.by_action_type.length > 0 && (
-        <Card title="By Action Type" size="small">
+        <Card title="按动作类型" size="small">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {data.by_action_type.map((item) => {
               const pnl = bondNumericRaw(item.total_pnl_economic);
@@ -307,9 +307,9 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
       )}
 
       <SectionLead
-        eyebrow="Details"
+        eyebrow="明细"
         title="动作明细"
-        description="Keeps the backend action_details payload visible with type, description, PnL, duration, and DV01 deltas."
+        description="保留后端动作明细载荷中的类型、说明、损益、久期和 DV01 变动。"
         testId="action-attribution-detail-lead"
       />
       {data.action_details.length > 0 && (
@@ -334,11 +334,11 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
       )}
       <FormalResultMetaPanel
         testId="action-attribution-result-meta"
-        title="Action Attribution Provenance"
+        title="动作归因证据"
         sections={[
           {
             key: "action-attribution",
-            title: "Action attribution",
+            title: "动作归因",
             meta,
           },
         ]}

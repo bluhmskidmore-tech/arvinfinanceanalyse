@@ -139,7 +139,7 @@ export function DashboardBondCounterpartySection({
   return (
     <DashboardCockpitSection
       testId="dashboard-bond-counterparty-section"
-      eyebrow="Counterparty Risk"
+      eyebrow="对手方风险"
       title="债券资产对手方"
       state={state}
       onRetry={() => void query.refetch()}

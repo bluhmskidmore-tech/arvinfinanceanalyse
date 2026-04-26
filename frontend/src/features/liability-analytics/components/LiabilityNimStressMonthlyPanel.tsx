@@ -28,7 +28,7 @@ export function LiabilityNimStressMonthlyPanel({
       }
     >
       <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-        口径：月度日均（ADB 月度收益率/付息率；若缺失则仅展示结构）。
+        口径：月度日均（月度收益率/付息率；若缺失则仅展示结构）。
       </Text>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>

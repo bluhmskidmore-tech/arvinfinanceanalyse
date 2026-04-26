@@ -809,10 +809,10 @@ export function BondAnalyticsInstitutionalCockpit({
                 <DashboardMetric
                   label="债券只数"
                   value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
-                  detail="portfolio headlines"
+                  detail="组合头条"
                 />
                 <DashboardMetric
-                  label="Top5 集中度"
+                  label="前五集中度"
                   value={portfolioHl ? formatPct(portfolioHl.issuer_top5_weight) : "—"}
                   detail="发行人权重"
                 />
@@ -838,7 +838,7 @@ export function BondAnalyticsInstitutionalCockpit({
                     <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
                       <span style={{ color: sub, fontSize: dt.fontSize[12] }}>{item.rating}</span>
                       <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
-                        {item.count} bonds · {formatYi(item.faceValue)}
+                        {item.count} 只 · {formatYi(item.faceValue)}
                       </span>
                     </div>
                   ))}
@@ -855,7 +855,7 @@ export function BondAnalyticsInstitutionalCockpit({
                 <DashboardMetric
                   label="动作数量"
                   value={actionAttribution ? formatNumericString(actionAttribution.total_actions) : "—"}
-                  detail="action attribution"
+                  detail="动作归因"
                 />
                 <DashboardMetric
                   label="动作贡献"
@@ -898,7 +898,7 @@ export function BondAnalyticsInstitutionalCockpit({
           <Card size="small" title="决策事项" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
             <div style={compactListStyle}>
               <div style={{ color: muted, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
-                首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应 drill。
+                首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应下钻。
               </div>
               <ul style={{ margin: 0, paddingLeft: 18, color: ink, lineHeight: dt.lineHeight.relaxed }}>
                 <li>{Number.isFinite(dur) && dur >= 3.8 ? "先看久期和期限结构，再决定是否做久期调整。" : "先看收益率分布和期限桶，确认久期是否仍在舒适区。"}</li>

@@ -520,9 +520,9 @@ export function PnlAttributionView({ reportDate }: Props) {
 
       <div style={{ ...headerCardStyle, padding: designTokens.space[4] }}>
         <SectionLead
-          eyebrow="Workbench"
+          eyebrow="工作台"
           title="归因分析工作台"
-          description="先选择归因视图，再阅读对应图表和关键发现；本页消费后端归因 read model，不在前端补算正式损益。"
+          description="先选择归因视图，再阅读对应图表和关键发现；本页消费后端归因读模型，不在前端补算正式损益。"
           testId="pnl-attribution-workbench-lead"
         />
         <FilterBar style={{ ...tabBarStyle, marginTop: designTokens.space[4] }}>
@@ -564,7 +564,7 @@ export function PnlAttributionView({ reportDate }: Props) {
       </div>
 
       <SectionLead
-        eyebrow="Analysis"
+        eyebrow="分析"
         title="当前归因视图"
         description="下方内容随 tab 切换，保留现有 volume-rate、TPL market、composition、advanced + Campisi 数据边界。"
         testId="pnl-attribution-current-view-lead"

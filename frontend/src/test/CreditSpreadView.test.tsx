@@ -219,7 +219,7 @@ describe("CreditSpreadView", () => {
 
     expect(screen.getByText("信用债市值")).toBeInTheDocument();
     expect(screen.getByText("50.00 亿")).toBeInTheDocument();
-    expect(screen.getByText("Spread DV01 (万元/bp)")).toBeInTheDocument();
+    expect(screen.getByText("利差 DV01（万元/bp）")).toBeInTheDocument();
     expect(screen.getByText("加权平均利差（个券）")).toBeInTheDocument();
     expect(screen.getByText("30.00 亿")).toBeInTheDocument();
     expect(screen.getByText("-120 万")).toBeInTheDocument();

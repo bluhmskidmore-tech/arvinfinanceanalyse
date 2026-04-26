@@ -95,16 +95,16 @@ function metaWarnings(meta: ResultMeta | undefined): string[] {
   }
   const out: string[] = [];
   if (!meta.formal_use_allowed) {
-    out.push("result_meta: formal_use_allowed is false; analytical context only.");
+    out.push("结果元信息：正式使用未放行，仅可作为分析口径参考。");
   }
   if (meta.quality_flag === "stale" || meta.vendor_status === "vendor_stale") {
-    out.push("result_meta: data may be stale; confirm dates before acting.");
+    out.push("结果元信息：数据可能滞后，行动前请确认日期。");
   }
   if (meta.quality_flag === "error") {
-    out.push("result_meta: quality_flag is error.");
+    out.push("结果元信息：质量标记为错误。");
   }
   if (meta.fallback_mode !== "none") {
-    out.push("result_meta: fallback_mode is active; reduced confidence.");
+    out.push("结果元信息：当前处于降级模式，置信度降低。");
   }
   return out;
 }

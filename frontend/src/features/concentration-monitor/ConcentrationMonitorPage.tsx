@@ -160,7 +160,7 @@ function ConcentrationTable({
       <h3 style={panelTitleStyle}>{title}</h3>
       {m ? (
         <p style={{ margin: "0 0 8px", fontSize: 12, color: "#8090a8" }}>
-          HHI {displayStr(m.hhi)} · Top5 {displayStr(m.top5_concentration)}
+          HHI {displayStr(m.hhi)} · 前五 {displayStr(m.top5_concentration)}
         </p>
       ) : null}
       <div style={tableShellStyle}>
@@ -260,7 +260,7 @@ export default function ConcentrationMonitorPage() {
         tone: limitTone(maxSingleWeight, LIMITS.issuer_single_max),
       },
       {
-        label: "发行人 Top5 集中度",
+        label: "发行人前五集中度",
         currentDisplay: displayStr(issuer?.top5_concentration),
         currentNum: top5,
         limitDisplay: String(LIMITS.issuer_top5_max),
@@ -380,7 +380,7 @@ export default function ConcentrationMonitorPage() {
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.hhi), LIMITS.hhi_warning))}
               />
               <KpiCard
-                title="发行人 Top5 集中度"
+                title="发行人前五集中度"
                 value={formatRatioAsPercent(displayStr(issuer?.top5_concentration))}
                 detail="来自 concentration_by_issuer.top5_concentration。"
                 tone={limitToneToKpi(limitTone(parseRatio(issuer?.top5_concentration), LIMITS.issuer_top5_max))}
@@ -401,7 +401,7 @@ export default function ConcentrationMonitorPage() {
               />
             </div>
 
-            <h2 style={blockTitleStyle}>分项集中度（Top 市值）</h2>
+            <h2 style={blockTitleStyle}>分项集中度（前列市值）</h2>
             <div style={grid2x2Style}>
               <ConcentrationTable title="发行人集中度" metricsKey="concentration_by_issuer" data={credit} />
               <ConcentrationTable title="行业集中度" metricsKey="concentration_by_industry" data={credit} />

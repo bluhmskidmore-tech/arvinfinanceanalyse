@@ -159,7 +159,7 @@ describe("PnlPage", () => {
     expect(screen.getByTestId("pnl-page-title")).toHaveTextContent("正式损益明细");
     expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("查看正式口径损益汇总与明细");
     expect(screen.getByTestId("pnl-page-subtitle")).toHaveTextContent("不在前端重算");
-    expect(screen.getByTestId("pnl-page-role-badge")).toHaveTextContent("Formal Detail");
+    expect(screen.getByTestId("pnl-page-role-badge")).toHaveTextContent("正式明细");
     await waitFor(() => {
       expect(screen.getByTestId("pnl-ledger-link")).toHaveAttribute(
         "href",
@@ -333,7 +333,7 @@ describe("PnlPage", () => {
     expect(getFormalPnlOverview).toHaveBeenCalledWith("2025-12-31", "formal");
     expect(getFormalPnlData).toHaveBeenCalledWith("2025-12-31", "formal");
 
-    await user.click(screen.getByRole("button", { name: "Analytical" }));
+    await user.click(screen.getByRole("button", { name: "分析口径" }));
 
     await waitFor(() => {
       expect(getFormalPnlDates).toHaveBeenCalledWith("analytical");
@@ -345,7 +345,7 @@ describe("PnlPage", () => {
     expect(screen.getByTestId("pnl-formal-fi-table")).toHaveTextContent("AN-240001.IB");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("analytical");
     expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("tr_pnl_data_analytical");
-    expect(screen.getByTestId("pnl-basis-note")).toHaveTextContent("formal-only");
+    expect(screen.getByTestId("pnl-basis-note")).toHaveTextContent("正式口径");
     expect(screen.getByTestId("pnl-refresh-button")).toBeDisabled();
   });
 
@@ -399,7 +399,7 @@ describe("PnlPage", () => {
       expect(screen.getByTestId("pnl-data-section")).toHaveAttribute("data-state", "error");
     });
 
-    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("Result Meta / Evidence");
+    expect(screen.getByTestId("pnl-result-meta-panel")).toHaveTextContent("结果元信息 / 证据");
     expect(screen.getByLabelText("pnl-report-date")).toBeDisabled();
   });
 

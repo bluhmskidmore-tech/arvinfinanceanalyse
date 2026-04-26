@@ -54,15 +54,15 @@ export function MacroLatestReadinessBanner({
 
   if (isLoading) {
     tone = "loading";
-    parts.push("宏观序列 latest 读面载入中…");
+    parts.push("宏观序列最新读面载入中…");
   } else if (isError) {
     tone = "error";
-    parts.push("宏观序列 latest 读面载入失败；请使用下方区块内「重试」。");
+    parts.push("宏观序列最新读面载入失败；请使用下方区块内「重试」。");
   } else if (!hasSeries) {
     tone = "empty";
-    parts.push("宏观序列 latest 读面返回空：当前无可展示序列（非前端补数）。");
+    parts.push("宏观序列最新读面返回空：当前无可展示序列（非前端补数）。");
   } else {
-    parts.push("宏观序列 latest 读面已返回数据。");
+    parts.push("宏观序列最新读面已返回数据。");
     const stale = meta ? vendorStaleLabel(meta.vendor_status) : null;
     if (stale) {
       tone = "warn";
@@ -70,11 +70,11 @@ export function MacroLatestReadinessBanner({
     }
     if (meta?.fallback_mode === "latest_snapshot") {
       tone = tone === "ok" ? "warn" : tone;
-      parts.push("结果含快照降级（fallback_mode=latest_snapshot）。");
+      parts.push("结果含快照降级（降级模式=latest_snapshot）。");
     }
     if (meta?.quality_flag && meta.quality_flag !== "ok") {
       tone = tone === "ok" ? "warn" : tone;
-      parts.push(`quality_flag=${meta.quality_flag}。`);
+      parts.push(`质量标记=${meta.quality_flag}。`);
     }
   }
 

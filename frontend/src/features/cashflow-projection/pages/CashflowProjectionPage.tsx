@@ -262,7 +262,7 @@ export default function CashflowProjectionPage() {
             </Card>
 
             <SectionLead
-              eyebrow="Overview"
+              eyebrow="总览"
               title="现金流概览"
               description="先看久期缺口、资产负债久期和敏感度，再进入月度投影与到期资产列表，保持阅读顺序与其他标准页一致。"
             />
@@ -308,7 +308,7 @@ export default function CashflowProjectionPage() {
             </div>
 
             <SectionLead
-              eyebrow="Projection"
+              eyebrow="预测"
               title="月度投影"
               description="图表区继续展示 24 个月现金流投影，右侧保留补充指标，不改变现有图表与数据口径。"
             />
@@ -348,13 +348,13 @@ export default function CashflowProjectionPage() {
             </Row>
 
             <SectionLead
-              eyebrow="Maturity"
+              eyebrow="到期"
               title="到期资产与提示"
-              description="Top10 到期资产列表和 warning 区保持现有契约，只调整为更清晰的阅读层级。"
+          description="前十到期资产列表和预警区保持现有契约，只调整为更清晰的阅读层级。"
             />
             <Card
               size="small"
-              title="12 个月内 Top10 到期资产"
+          title="12 个月内前十到期资产"
               style={{ marginBottom: 16, borderRadius: 16, border: `1px solid ${t.colorBorderSoft}` }}
             >
               <Table

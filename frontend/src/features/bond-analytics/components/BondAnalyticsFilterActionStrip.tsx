@@ -91,7 +91,7 @@ export function BondAnalyticsFilterActionStrip({
             </div>
           {onRefreshAnalytics ? (
             <div>
-              <div style={FIELD}>Refresh</div>
+              <div style={FIELD}>刷新</div>
               <Button
                 type="default"
                 size="small"
@@ -100,7 +100,7 @@ export function BondAnalyticsFilterActionStrip({
                 onClick={() => onRefreshAnalytics()}
                 data-testid="bond-analytics-refresh-button"
               >
-                Refresh analytics
+                刷新分析
               </Button>
             </div>
           ) : null}
@@ -116,10 +116,10 @@ export function BondAnalyticsFilterActionStrip({
           >
             {analyticsRefreshError ??
               (isAnalyticsRefreshing
-                ? "Refreshing governed overview state..."
+                ? "正在刷新受治理总览状态..."
                 : lastAnalyticsRefreshRunId
-                  ? `Latest run ${lastAnalyticsRefreshRunId}`
-                  : "No refresh run has been captured yet.")}
+                  ? `最近运行 ${lastAnalyticsRefreshRunId}`
+                  : "尚未捕获刷新运行。")}
           </div>
         </div>
 

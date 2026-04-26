@@ -149,9 +149,9 @@ describe("ReturnDecompositionView", () => {
       expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
 
-    expect(await screen.findByText("Return Decomposition")).toBeInTheDocument();
-    expect(screen.getByText("Effects")).toBeInTheDocument();
-    expect(screen.getByText("Reconciliation")).toBeInTheDocument();
+    expect(await screen.findByTestId("return-decomposition-shell-lead")).toHaveTextContent("收益分解");
+    expect(screen.getByTestId("return-decomposition-effects-lead")).toHaveTextContent("效应");
+    expect(screen.getByTestId("return-decomposition-recon-lead")).toHaveTextContent("对账");
     expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("return-decomposition-period")).toHaveTextContent("MoM");
     expect(screen.getByTestId("return-decomposition-computed-at")).toHaveTextContent("2026-04-10T00:00:00Z");
@@ -159,7 +159,7 @@ describe("ReturnDecompositionView", () => {
     expect(screen.getByTestId("return-decomposition-total-mv")).toHaveTextContent("1.00 亿");
     expect(screen.getByText("320 万")).toBeInTheDocument();
     expect(screen.getByTestId("return-decomposition-by-accounting-class")).toHaveTextContent("FVTPL");
-    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("vendor_status");
+    expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("供应商状态");
     expect(screen.getAllByText("Rates").length).toBeGreaterThan(0);
   });
 
@@ -208,7 +208,7 @@ describe("ReturnDecompositionView", () => {
     );
 
     expect(await screen.findByTestId("return-decomposition-bond-details-collapse")).toBeInTheDocument();
-    await user.click(screen.getByText("鍒哥骇鎷嗚В锛堟寜鍒告槑缁嗭級"));
+    await user.click(screen.getByText("券级拆解（按券明细）"));
 
     const table = await screen.findByTestId("return-decomposition-bond-details-table");
     expect(within(table).getByText("019547")).toBeInTheDocument();
@@ -263,10 +263,10 @@ describe("ReturnDecompositionView", () => {
       expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
     expect(await screen.findByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
-      "vendor_status=vendor_stale",
+      "供应商状态=vendor_stale",
     );
     expect(screen.getByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
-      "fallback_mode=latest_snapshot",
+      "降级模式=latest_snapshot",
     );
     expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("vendor_stale");
   });

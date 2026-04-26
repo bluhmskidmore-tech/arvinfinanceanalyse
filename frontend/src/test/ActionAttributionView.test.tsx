@@ -118,16 +118,16 @@ describe("ActionAttributionView", () => {
     expect(await screen.findByTestId("action-attribution-meta")).toHaveTextContent("2026-03-31");
     expect(screen.getByTestId("action-attribution-meta")).toHaveTextContent("MoM");
     expect(await screen.findByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "Action Attribution",
+      "动作归因",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
-      "Reads the governed action-attribution payload",
+      "读取治理后的动作归因结果",
     );
     expect(screen.getByTestId("action-attribution-shell-lead")).toHaveTextContent(
       "交易动作归因概览",
     );
     expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent(
-      "Summary",
+      "汇总",
     );
     expect(screen.getByTestId("action-attribution-detail-lead")).toHaveTextContent(
       "动作明细",
@@ -136,7 +136,7 @@ describe("ActionAttributionView", () => {
     expect(screen.getByText("动作贡献损益")).toBeInTheDocument();
     expect(screen.getByText("久期变化")).toBeInTheDocument();
     expect(screen.getByText("DV01变化")).toBeInTheDocument();
-    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("Summary");
+    expect(screen.getByTestId("action-attribution-summary-lead")).toHaveTextContent("动作汇总");
     expect(screen.getAllByText("加久期").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText(/均次/).length).toBeGreaterThan(0);
 
@@ -145,7 +145,7 @@ describe("ActionAttributionView", () => {
     expect(screen.getAllByText("涉及债券").length).toBeGreaterThan(0);
     expect(screen.getByText("019547")).toBeInTheDocument();
     expect(screen.getAllByText("机会成本口径").length).toBeGreaterThan(0);
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_status");
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商状态");
     expect(screen.getByText("shadow_bench")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/鍔|鎻|鏃|螖|鈫|锛|璇婚潰|鎶ュ憡/);
   });
@@ -216,10 +216,10 @@ describe("ActionAttributionView", () => {
     );
 
     expect(await screen.findByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "vendor_status=vendor_stale",
+      "供应商状态=vendor_stale",
     );
     expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "fallback_mode=latest_snapshot",
+      "降级模式=latest_snapshot",
     );
     expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_stale");
   });

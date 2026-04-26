@@ -2,7 +2,7 @@ import { Button, Card, Tag } from "antd";
 
 import type { BondAnalyticsActiveModuleContext, BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
-import { EYEBROW, panelStyle, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
+import { EYEBROW, panelStyle, readinessStatusLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
 
 export interface BondAnalyticsDecisionRailProps {
   activeModuleContext: BondAnalyticsActiveModuleContext;
@@ -24,10 +24,12 @@ export function BondAnalyticsDecisionRail({
       <div style={{ display: "grid", gap: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 6 }}>
-            <div style={EYEBROW}>Decision rail</div>
+            <div style={EYEBROW}>决策侧栏</div>
             <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>{activeModuleContext.label}</div>
           </div>
-          <Tag color={readinessTagColor(activeReadinessItem.statusLabel)}>{activeReadinessItem.statusLabel}</Tag>
+          <Tag color={readinessTagColor(activeReadinessItem.statusLabel)}>
+            {readinessStatusLabel(activeReadinessItem.statusLabel)}
+          </Tag>
         </div>
 
         <div
@@ -49,7 +51,7 @@ export function BondAnalyticsDecisionRail({
               letterSpacing: "0.08em",
             }}
           >
-            Current decision context
+            当前决策上下文
           </div>
           <div style={{ color: "#18314d", fontSize: 13, lineHeight: 1.65 }}>{activeModuleContext.description}</div>
           <div style={{ color: activeSurface.text, fontSize: 12, lineHeight: 1.65 }}>{activeModuleContext.statusReason}</div>
@@ -65,7 +67,7 @@ export function BondAnalyticsDecisionRail({
               letterSpacing: "0.08em",
             }}
           >
-            Next watch items
+            下一步观察项
           </div>
           {watchlistItems.slice(0, 2).map((item) => (
             <div key={item.key} style={{ display: "grid", gap: 4, paddingBottom: 8, borderBottom: "1px solid #ebf0f5" }}>
@@ -76,7 +78,7 @@ export function BondAnalyticsDecisionRail({
         </div>
 
         <Button size="small" type="default" onClick={() => onOpenModuleDetail(activeModuleContext.key)}>
-          Open current drill
+          打开当前下钻
         </Button>
       </div>
     </Card>

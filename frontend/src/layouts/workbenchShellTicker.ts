@@ -12,16 +12,16 @@ export type ShellTickerItem = {
 };
 
 const fallbackShellTickerItems: ShellTickerItem[] = [
-  { key: "cgb10y", label: "10Y CGB", value: "1.94%", delta: "+2bp", tone: "up" },
+  { key: "cgb10y", label: "10年国债", value: "1.94%", delta: "+2bp", tone: "up" },
   { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "omo7d", label: "OMO 7D", value: "1.75%", delta: "+1bp", tone: "up" },
-  { key: "usd-cny", label: "USD/CNY", value: "7.21", delta: "+0.02", tone: "up" },
+  { key: "omo7d", label: "7天逆回购", value: "1.75%", delta: "+1bp", tone: "up" },
+  { key: "usd-cny", label: "美元/人民币", value: "7.21", delta: "+0.02", tone: "up" },
 ];
 
 const shellTickerSeriesSpecs = [
   {
     key: "cgb10y",
-    label: "10Y CGB",
+    label: "10年国债",
     matchers: [
       "\u4e2d\u503a\u56fd\u503a\u5230\u671f\u6536\u76ca\u7387:10\u5e74",
       "10\u5e74\u671f\u56fd\u503a\u5230\u671f\u6536\u76ca\u7387",
@@ -29,12 +29,12 @@ const shellTickerSeriesSpecs = [
   },
   {
     key: "policyBank10y",
-    label: "Policy 10Y",
+    label: "10年国开",
     matchers: ["\u4e2d\u503a\u653f\u7b56\u6027\u91d1\u878d\u503a\u5230\u671f\u6536\u76ca\u7387(\u56fd\u5f00\u884c)10\u5e74"],
   },
   {
     key: "us10y",
-    label: "US 10Y",
+    label: "10年美债",
     matchers: [
       "\u7f8e\u56fd10\u5e74\u671f\u56fd\u503a\u6536\u76ca\u7387",
       "\u7f8e\u56fd:\u56fd\u503a\u6536\u76ca\u7387:10\u5e74",
@@ -42,7 +42,7 @@ const shellTickerSeriesSpecs = [
   },
   {
     key: "cnUs10ySpread",
-    label: "CN-US 10Y",
+    label: "中美10年利差",
     matchers: [
       "\u4e2d\u7f8e\u56fd\u503a\u5229\u5dee(10Y)",
       "10Y\u4e2d\u56fd\u56fd\u503a-10Y\u7f8e\u56fd\u56fd\u503a",
@@ -55,12 +55,12 @@ const shellTickerSeriesSpecs = [
   },
   {
     key: "omo7d",
-    label: "OMO 7D",
+    label: "7天逆回购",
     matchers: ["\u516c\u5f00\u5e02\u573a7\u5929\u9006\u56de\u8d2d\u5229\u7387"],
   },
   {
     key: "usd-cny",
-    label: "USD/CNY",
+    label: "美元/人民币",
     matchers: ["\u5373\u671f\u6c47\u7387:\u7f8e\u5143\u5151\u4eba\u6c11\u5e01", "USD/CNY"],
   },
 ] as const;

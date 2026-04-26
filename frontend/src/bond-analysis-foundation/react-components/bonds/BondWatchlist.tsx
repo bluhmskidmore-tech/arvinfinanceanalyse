@@ -20,7 +20,7 @@ export function BondWatchlist({
 
   return (
     <section style={{ display: "grid", gap: 12 }}>
-      <h3 style={{ margin: 0 }}>Watchlist</h3>
+      <h3 style={{ margin: 0 }}>关注列表</h3>
       {bonds.map((bond) => (
         <div
           key={bond.bondId}

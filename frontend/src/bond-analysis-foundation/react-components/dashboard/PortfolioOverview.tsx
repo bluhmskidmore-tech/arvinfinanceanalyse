@@ -17,7 +17,7 @@ function formatCurrency(value?: number) {
 
 export function PortfolioOverview({ portfolio, onSelectHolding }: PortfolioOverviewProps) {
   if (!portfolio) {
-    return <EmptyState title="暂无组合数据" description="可以先选择默认组合或从 watchlist 创建组合。" />;
+    return <EmptyState title="暂无组合数据" description="可以先选择默认组合或从关注列表创建组合。" />;
   }
 
   return (

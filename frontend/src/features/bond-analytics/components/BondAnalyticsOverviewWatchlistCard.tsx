@@ -12,13 +12,13 @@ export function BondAnalyticsOverviewWatchlistCard({ topAnomalies }: BondAnalyti
       <div style={{ display: "grid", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: 6 }}>
-            <div style={EYEBROW}>Overview watchlist</div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>Anomalies and readiness signals</div>
+            <div style={EYEBROW}>总览观察清单</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>异常与就绪信号</div>
           </div>
           <div style={{ color: "#7a8da5", fontSize: 12 }}>
             {topAnomalies.length > 0
-              ? `${topAnomalies.length} flagged signal(s)`
-              : "No anomaly is currently raised in the overview payload."}
+              ? `${topAnomalies.length} 个标记信号`
+              : "当前总览载荷未触发异常。"}
           </div>
         </div>
 
@@ -53,8 +53,7 @@ export function BondAnalyticsOverviewWatchlistCard({ topAnomalies }: BondAnalyti
               lineHeight: 1.65,
             }}
           >
-            The overview payload is currently calm. Use the right-rail decision queue to pick the next drill surface without
-            forcing synthetic top-line metrics.
+            当前总览载荷平稳。可使用右侧决策队列选择下一步下钻页面，不强行生成合成首屏指标。
           </div>
         )}
       </div>

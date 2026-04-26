@@ -438,7 +438,7 @@ const ISSUER_SLICE_COLORS = [
 function concentrationPieOption(metrics: ConcentrationMetrics): EChartsOption {
   return {
     title: {
-      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  Top5 ${metrics.top5_concentration.display}`,
+      text: `${metrics.dimension}  HHI ${metrics.hhi.display}  前五 ${metrics.top5_concentration.display}`,
       left: "center",
       top: dt.space[1],
       textStyle: { fontSize: dt.fontSize[11], color: dt.color.neutral[600] },
@@ -578,7 +578,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         } else {
           setDetailData(null);
           setDetailError(
-            detailResult.reason instanceof Error ? detailResult.reason.message : "unknown error",
+            detailResult.reason instanceof Error ? detailResult.reason.message : "未知错误",
           );
         }
       } catch (e: unknown) {
@@ -704,9 +704,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: dt.space[4] }}>
       <SectionLead
-        eyebrow="Credit Spread"
+        eyebrow="信用利差"
         title="信用利差概览"
-        description="按报告日读取后端信用利差 read model；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
+        description="按报告日读取后端信用利差读模型；页面只展示利差、DV01、OCI 敏感度与明细，不在前端补算正式风险指标。"
         testId="credit-spread-shell-lead"
       />
       <Row gutter={16}>
@@ -726,7 +726,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="Spread DV01 (万元/bp)" value={data.spread_dv01.display} />
+            <Statistic title="利差 DV01（万元/bp）" value={data.spread_dv01.display} />
           </Card>
         </Col>
         <Col span={6}>
@@ -742,7 +742,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
             <Statistic title="OCI信用债敞口" value={formatYi(data.oci_credit_exposure)} />
           </Col>
           <Col span={8}>
-            <Statistic title="OCI Spread DV01" value={data.oci_spread_dv01.display} />
+            <Statistic title="OCI 利差 DV01" value={data.oci_spread_dv01.display} />
           </Col>
           <Col span={8}>
             <Statistic title="利差走阔25bp影响" value={formatWan(data.oci_sensitivity_25bp)} />
@@ -751,7 +751,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       </Card>
 
       <SectionLead
-        eyebrow="Scenario"
+        eyebrow="场景"
         title="利差冲击与信用分布"
         description="利差情景、评级迁徙和评级/期限分布沿用后端返回字段，前端只负责图表化展示。"
         testId="credit-spread-scenario-lead"
@@ -796,7 +796,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   textAlign: "center",
                 }}
               >
-                {data.concentration_by_rating?.dimension ?? "评级"}（Top 市值）
+                {data.concentration_by_rating?.dimension ?? "评级"}（前列市值）
               </div>
               {creditDistributionView.ratingOption ? (
                 <ReactECharts
@@ -827,7 +827,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                   textAlign: "center",
                 }}
               >
-                {data.concentration_by_tenor?.dimension ?? "期限"}（Top 市值）
+                {data.concentration_by_tenor?.dimension ?? "期限"}（前列市值）
               </div>
               {creditDistributionView.tenorOption ? (
                 <ReactECharts
@@ -867,9 +867,9 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
       </Card>
 
       <SectionLead
-        eyebrow="Detail"
+        eyebrow="明细"
         title="期限结构与集中度明细"
-        description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留 summary 并显示提示。"
+        description="深度明细端点可用时展示期限结构、历史分位和高低利差个券；不可用时保留汇总并显示提示。"
         testId="credit-spread-detail-lead"
       />
       {detailData && (
@@ -966,7 +966,7 @@ export function CreditSpreadView({ reportDate, spreadScenarios = DEFAULT_SPREAD_
                       textAlign: "center",
                     }}
                   >
-                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi.display} Top5{" "}
+                    {data.concentration_by_issuer.dimension} HHI {data.concentration_by_issuer.hhi.display} 前五{" "}
                     {data.concentration_by_issuer.top5_concentration.display}
                   </div>
                   <Row gutter={16} align="middle">

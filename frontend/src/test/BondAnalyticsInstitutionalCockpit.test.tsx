@@ -119,8 +119,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("backend 503 for portfolio headlines")).not.toBeInTheDocument();
-      expect(screen.queryByText("Request error")).not.toBeInTheDocument();
-      expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
         screen.getByText("组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。"),
       ).toBeInTheDocument();
@@ -147,8 +147,8 @@ describe("BondAnalyticsInstitutionalCockpit", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("backend 503 for top holdings")).not.toBeInTheDocument();
-      expect(screen.queryByText("Request error")).not.toBeInTheDocument();
-      expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
+      expect(screen.queryByText("请求失败")).not.toBeInTheDocument();
+      expect(screen.queryByText("不可用")).not.toBeInTheDocument();
       expect(
         screen.getByText("前十大持仓暂未返回，首页先保留组合规模与浮盈快照。"),
       ).toBeInTheDocument();

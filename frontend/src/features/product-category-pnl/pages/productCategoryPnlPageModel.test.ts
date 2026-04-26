@@ -205,6 +205,9 @@ describe("productCategoryPnlPageModel", () => {
       "vendor_status",
       "quality_flag",
     ]);
+    expect(allThree[0]?.text).toContain("降级模式");
+    expect(allThree[1]?.text).toContain("供应商状态");
+    expect(allThree[2]?.text).toContain("质量标记");
 
     expect(
       collectProductCategoryGovernanceNotices(
@@ -220,7 +223,7 @@ describe("productCategoryPnlPageModel", () => {
     );
     expect(line).toContain("t_formal");
     expect(line).toContain("t_scen");
-    expect(line).toContain("formal basis=formal");
-    expect(line).toContain("scenario basis=scenario");
+    expect(line).toContain("正式口径=formal");
+    expect(line).toContain("情景口径=scenario");
   });
 });

@@ -396,7 +396,7 @@ export default function PositionsView() {
       ) : null}
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="持仓概览"
         description="先确认报告日和观察区间，再在债券持仓与同业持仓之间切换，查看右侧分布和客户维度信息。"
       />
@@ -413,7 +413,7 @@ export default function PositionsView() {
       {tab === "bonds" ? (
         <>
           <SectionLead
-            eyebrow="Bonds"
+            eyebrow="债券"
             title="债券持仓"
             description="债券侧继续保留业务种类筛选、主表、评级/行业分布和授信主体视图，不改现有查询与分页逻辑。"
           />
@@ -638,7 +638,7 @@ export default function PositionsView() {
       ) : (
         <>
           <SectionLead
-            eyebrow="Interbank"
+            eyebrow="同业"
             title="同业持仓"
             description="同业侧继续保留产品类型、方向筛选、主表与资产/负债端客户排名，只做壳层层级收敛。"
           />

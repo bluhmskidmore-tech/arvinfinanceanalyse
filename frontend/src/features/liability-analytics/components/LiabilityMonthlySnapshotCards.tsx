@@ -29,7 +29,7 @@ export function LiabilityMonthlySnapshotCards({
   return (
     <Card size="small" title="月度概览（月日均）">
       <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-        数值均来自 governed Numeric（展示以后端下发 display 为准）。
+        数值均来自治理后的数值对象（展示以后端下发显示值为准）。
       </Text>
       <Row gutter={[12, 12]}>
         <Col xs={24} sm={12} lg={8}>
@@ -72,13 +72,13 @@ export function LiabilityMonthlySnapshotCards({
       <Row gutter={[12, 12]} style={{ marginTop: 12 }}>
         <Col xs={24} sm={12}>
           <Card size="small">
-            <Text type="secondary">YTD 日均总负债</Text>
+            <Text type="secondary">年初至今日均总负债</Text>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(ytdAvgTotalLiabilities)}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12}>
           <Card size="small">
-            <Text type="secondary">YTD 平均负债成本</Text>
+            <Text type="secondary">年初至今平均负债成本</Text>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{dispNumeric(ytdAvgLiabilityCost)}</div>
           </Card>
         </Col>

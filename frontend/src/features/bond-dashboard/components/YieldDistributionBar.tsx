@@ -75,7 +75,7 @@ export function YieldDistributionBar({
         </div>
       ) : (
         <div style={{ textAlign: "center", marginBottom: 8, fontSize: 13, color: "rgba(0,0,0,0.45)" }}>
-          按 tenor 桶汇总市值（亿元）
+          按期限桶汇总市值（亿元）
         </div>
       )}
       <ReactECharts option={option} style={{ height: 260 }} notMerge lazyUpdate />

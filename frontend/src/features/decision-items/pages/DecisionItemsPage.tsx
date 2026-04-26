@@ -86,7 +86,7 @@ const SCOPE_OPTIONS: { value: BalancePositionScope; label: string }[] = [
 
 const CURRENCY_OPTIONS: { value: BalanceCurrencyBasis; label: string }[] = [
   { value: "CNY", label: "人民币（CNY）" },
-  { value: "native", label: "本币（Native）" },
+  { value: "native", label: "本币（原币）" },
 ];
 
 function formatMetaLine(meta: ResultMeta | undefined) {
@@ -94,10 +94,10 @@ function formatMetaLine(meta: ResultMeta | undefined) {
     return "—";
   }
   return [
-    `trace ${meta.trace_id || "—"}`,
-    `source ${meta.source_version || "—"}`,
-    `rule ${meta.rule_version || "—"}`,
-    `cache ${meta.cache_version || "—"}`,
+    `追踪 ${meta.trace_id || "—"}`,
+    `来源 ${meta.source_version || "—"}`,
+    `规则 ${meta.rule_version || "—"}`,
+    `缓存 ${meta.cache_version || "—"}`,
   ].join(" · ");
 }
 
@@ -105,7 +105,7 @@ function resultMetaSubline(meta: ResultMeta | undefined) {
   if (!meta) {
     return null;
   }
-  return `basis=${meta.basis} · quality=${meta.quality_flag} · vendor=${meta.vendor_status} · fallback=${meta.fallback_mode}`;
+  return `口径=${meta.basis} · 质量=${meta.quality_flag} · 供应商=${meta.vendor_status} · 降级=${meta.fallback_mode}`;
 }
 
 export default function DecisionItemsPage() {
@@ -261,7 +261,7 @@ export default function DecisionItemsPage() {
       style={{ padding: t.space[6], background: t.color.neutral[50], minHeight: "100%" }}
     >
       <PageHeader
-        eyebrow="Workbench"
+        eyebrow="工作台"
         title="决策事项"
         description="按报告日与口径拉取资产负债分析「决策事项」读模型，可在此确认/忽略并写回同一路径的更新接口。"
         style={{ marginBottom: t.space[4] }}
@@ -284,9 +284,9 @@ export default function DecisionItemsPage() {
       ) : null}
 
       <PageSectionLead
-        eyebrow="Governance"
+        eyebrow="治理"
         title="决策工作区"
-        description="对规则生成的待办做集中处理，保留 trace / 规则版本与写回人信息以便审计。"
+        description="对规则生成的待办做集中处理，保留追踪编号、规则版本与写回人信息以便审计。"
       />
 
       <section
@@ -314,7 +314,7 @@ export default function DecisionItemsPage() {
           </div>
           <div>
             <div style={{ color: t.color.neutral[500], fontWeight: 600 }}>数据模式</div>
-            <div>{client.mode === "real" ? "正式接口（real）" : "Mock（本地模拟）"}</div>
+            <div>{client.mode === "real" ? "正式接口" : "本地模拟"}</div>
           </div>
           <div>
             <div style={{ color: t.color.neutral[500], fontWeight: 600 }}>当前用户</div>
@@ -335,7 +335,7 @@ export default function DecisionItemsPage() {
         </div>
 
         <div style={{ display: "grid", gap: t.space[1] }}>
-          <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500], fontWeight: 600 }}>result_meta</div>
+          <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500], fontWeight: 600 }}>结果元信息</div>
           <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[800] }}>{formatMetaLine(resultMeta)}</div>
           {resultMetaSubline(resultMeta) ? (
             <div style={{ fontSize: t.fontSize[11], color: t.color.neutral[500] }}>{resultMetaSubline(resultMeta)}</div>

@@ -479,7 +479,7 @@ export default function SourcePreviewPage() {
       </div>
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="预览概览"
         description="先确认当前来源数量、已选来源与批次，再进入批次历史、行级预览和规则轨迹，保持 source-preview 的阅读顺序更接近标准工作台壳层。"
       />
@@ -508,7 +508,7 @@ export default function SourcePreviewPage() {
       </div>
 
       <SectionLead
-        eyebrow="Summary"
+        eyebrow="汇总"
         title="规则预览摘要"
         description="摘要区只负责展示各来源的批次概况和人工复核信号，不在这里展开行级细节。"
       />
@@ -554,7 +554,7 @@ export default function SourcePreviewPage() {
       </section>
 
       <SectionLead
-        eyebrow="Drilldown"
+        eyebrow="下钻"
         title="来源、批次与明细下钻"
         description="先选择来源和批次，再阅读行级预览与规则轨迹；保留现有分页、刷新和后端列元数据驱动方式。"
       />
@@ -572,7 +572,7 @@ export default function SourcePreviewPage() {
             }}
           >
             <label style={{ display: "grid", gap: 8 }}>
-              <span>Source family</span>
+              <span>来源族</span>
               <select
                 aria-label="source-family"
                 value={selectedSourceFamily}
@@ -587,7 +587,7 @@ export default function SourcePreviewPage() {
             </label>
 
             <label style={{ display: "grid", gap: 8 }}>
-              <span>Ingest batch</span>
+              <span>入库批次</span>
               <select
                 aria-label="ingest-batch"
                 value={effectiveBatchId}

@@ -53,14 +53,14 @@ const TopHoldingsView = lazy(() =>
 );
 
 const TAB_ITEMS: Array<{ key: BondAnalyticsModuleKey; label: string }> = [
-  { key: "return-decomposition", label: "Return decomposition" },
-  { key: "benchmark-excess", label: "Benchmark excess" },
-  { key: "krd-curve-risk", label: "KRD curve risk" },
-  { key: "credit-spread", label: "Credit spread" },
-  { key: "portfolio-headlines", label: "Portfolio headlines" },
-  { key: "top-holdings", label: "Top holdings" },
-  { key: "action-attribution", label: "Action attribution" },
-  { key: "accounting-audit", label: "Accounting audit" },
+  { key: "return-decomposition", label: "收益分解" },
+  { key: "benchmark-excess", label: "基准超额" },
+  { key: "krd-curve-risk", label: "KRD 曲线风险" },
+  { key: "credit-spread", label: "信用利差" },
+  { key: "portfolio-headlines", label: "组合头条" },
+  { key: "top-holdings", label: "重仓券" },
+  { key: "action-attribution", label: "动作归因" },
+  { key: "accounting-audit", label: "会计分类审计" },
 ];
 
 interface BondAnalyticsDetailSectionProps {
@@ -150,9 +150,9 @@ export function BondAnalyticsDetailSection({
       data-module-key={activeTab}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>Analysis details</h3>
+        <h3 style={{ margin: 0, fontSize: 16 }}>分析明细</h3>
         <div style={{ color: "#8090a8", fontSize: 13 }}>
-          Currently viewing: {activeModule.label}
+          当前查看：{activeModule.label}
         </div>
         <div style={{ color: "#5c6b82", fontSize: 13 }}>{activeModule.description}</div>
       </div>
@@ -173,7 +173,7 @@ export function BondAnalyticsDetailSection({
             style={{ color: "#8090a8", fontSize: 13 }}
             data-testid="bond-analysis-detail-loading"
           >
-            Loading panel...
+            正在加载面板...
           </div>
         }
       >

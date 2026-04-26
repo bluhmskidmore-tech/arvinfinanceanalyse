@@ -158,7 +158,7 @@ export function DashboardBondHeadlineSection({
   return (
     <DashboardCockpitSection
       testId="dashboard-bond-headline-section"
-      eyebrow="Bond Headlines"
+      eyebrow="债券要点"
       title="债券组合头条"
       state={state}
       onRetry={() => void query.refetch()}

@@ -100,9 +100,9 @@ export function AccountingClassAuditView({ reportDate }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
-        eyebrow="Accounting Class"
+        eyebrow="会计分类"
         title="会计分类审计概览"
-        description="按报告日读取后端 accounting class audit read model；页面只对比推断路径与映射路径，不在前端重写会计分类。"
+        description="按报告日读取后端会计分类审计读模型；页面只对比推断路径与映射路径，不在前端重写会计分类。"
         testId="accounting-class-audit-shell-lead"
       />
       {data.computed_at ? (
@@ -191,9 +191,9 @@ export function AccountingClassAuditView({ reportDate }: Props) {
       </Row>
 
       <SectionLead
-        eyebrow="Rules"
+        eyebrow="规则"
         title="分类路径说明"
-        description="说明 infer_accounting_class 与 map_accounting_class 的来源和分歧含义，保留后端规则版本边界。"
+        description="说明推断会计分类与映射会计分类的来源和分歧含义，保留后端规则版本边界。"
         testId="accounting-class-audit-rules-lead"
       />
       <Card size="small">
@@ -202,19 +202,19 @@ export function AccountingClassAuditView({ reportDate }: Props) {
             本审计对比两条会计分类路径：
           </p>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
-            <li><code>infer_accounting_class</code> — Campisi/归因使用的推断路径</li>
-            <li><code>map_accounting_class</code> — 收益拆解/KRD/利差使用的映射路径</li>
+            <li>推断会计分类：Campisi/归因使用的推断路径</li>
+            <li>映射会计分类：收益拆解/KRD/利差使用的映射路径</li>
           </ul>
           <p style={{ margin: "8px 0 0" }}>
-            「分歧」表示两条路径对同一资产类别（asset_class）给出不同结果，需要人工确认。
+            「分歧」表示两条路径对同一资产类别给出不同结果，需要人工确认。
           </p>
         </div>
       </Card>
 
       <SectionLead
-        eyebrow="Details"
+        eyebrow="明细"
         title="会计分类审计明细"
-        description="明细表继续展示后端 rows，保留分歧、未分类和一致状态标记。"
+        description="明细表继续展示后端行数据，保留分歧、未分类和一致状态标记。"
         testId="accounting-class-audit-detail-lead"
       />
       {data.rows.length > 0 && (

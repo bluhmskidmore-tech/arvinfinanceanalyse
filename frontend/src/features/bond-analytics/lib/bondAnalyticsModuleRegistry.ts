@@ -25,7 +25,7 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
   {
     key: "return-decomposition",
     label: "收益拆解",
-    description: "查看 carry、roll-down、利率和利差效应的拆解结果。",
+    description: "查看票息、骑乘、利率和利差效应的拆解结果。",
     detailHint: "从明细区继续看收益效应和损益对账。",
   },
   {
@@ -48,13 +48,13 @@ export const BOND_ANALYTICS_CURRENT_MODULES: BondAnalyticsModuleDefinition[] = [
   },
   {
     key: "portfolio-headlines",
-    label: "组合 headline KPI",
+    label: "组合头条指标",
     description: "规模、收益率、久期、DV01、信用占比与发行人集中度等首屏指标。",
     detailHint: "从明细区继续看资产类别风险分布表。",
   },
   {
     key: "top-holdings",
-    label: "持仓 TopN",
+    label: "重点持仓",
     description: "按市值排序的重点持仓与权重。",
     detailHint: "从明细区继续看持仓明细与合计权重。",
   },

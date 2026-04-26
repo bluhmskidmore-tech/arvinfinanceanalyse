@@ -75,7 +75,7 @@ export function Dashboard({
         }}
       >
         <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase", opacity: 0.72 }}>
-          First-screen conclusion
+          首屏结论
         </div>
         <h1 style={{ margin: "10px 0 12px" }}>{title}</h1>
         <p style={{ fontSize: 28, margin: 0, maxWidth: 960 }}>{primaryConclusion}</p>

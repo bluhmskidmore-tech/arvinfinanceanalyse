@@ -60,10 +60,10 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
   if (correlations.length === 0) {
     return [
       {
-        indicator: "No governed linkage ranking yet",
+        indicator: "暂无治理后的联动排序",
         current: "不可用",
         mid: "不可用",
-        eval: "Pending",
+        eval: "待定",
         evalTone: "warning" as const,
       },
     ];
@@ -73,13 +73,13 @@ function linkageHeatmapRows(correlations: MacroBondLinkageTopCorrelation[]) {
     const indicator = `${row.series_name} -> ${row.target_family}${row.target_tenor ? ` (${row.target_tenor})` : ""}`;
     const current = formatLinkageCorrelationDisplay(row.correlation_3m);
     const mid = formatLinkageCorrelationDisplay(row.correlation_6m);
-    let evalLabel = "Mixed";
+    let evalLabel = "混合";
     let evalTone: "bull" | "bear" | "warning" = "warning";
     if (row.direction === "positive") {
-      evalLabel = "Positive";
+      evalLabel = "正向";
       evalTone = "bull";
     } else if (row.direction === "negative") {
-      evalLabel = "Negative";
+      evalLabel = "负向";
       evalTone = "bear";
     }
     return { indicator, current, mid, eval: evalLabel, evalTone };
@@ -129,7 +129,7 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
           投资研究判断
         </h2>
         <p style={{ margin: 0, color: t.color.neutral[600], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
-          第一屏先给出 duration / curve / credit / instrument 结论，再往下看证据和执行观察。
+          第一屏先给出久期、曲线、信用和工具结论，再往下看证据和执行观察。
         </p>
       </div>
       <div
@@ -167,11 +167,11 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
               {row.summary}
             </p>
             <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[500], lineHeight: t.lineHeight.relaxed }}>
-              Targets: {row.affectedTargets.length > 0 ? row.affectedTargets.join(", ") : "pending mapping"}
+              影响对象：{row.affectedTargets.length > 0 ? row.affectedTargets.join(", ") : "待映射"}
             </div>
             {row.evidence.length > 0 ? (
               <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[600], lineHeight: t.lineHeight.relaxed }}>
-                Evidence: {row.evidence[0]}
+                证据：{row.evidence[0]}
               </div>
             ) : null}
           </article>
@@ -711,7 +711,7 @@ export default function CrossAssetDriversPage() {
         <PageHeader
           title="跨资产驱动"
           eyebrow="市场工作台"
-          badgeLabel={client.mode === "real" ? "真实 analytical 读链路" : "本地 mock contract replay"}
+          badgeLabel={client.mode === "real" ? "真实分析口径读链路" : "本地模拟合约回放"}
           badgeTone={client.mode === "real" ? "positive" : "accent"}
           description="这页只回答一个问题：外部变量正在怎样传导到债券，不直接替代正式执行与风控口径。完整宏观序列仍在市场数据页，跨资产页只保留判断、告警和候选动作。"
         >
@@ -744,13 +744,13 @@ export default function CrossAssetDriversPage() {
               ))
             )}
             <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-              latest quality {latestMeta?.quality_flag ?? "pending"} · linkage quality {linkageMeta?.quality_flag ?? "pending"}
+              宏观最新质量 {latestMeta?.quality_flag ?? "待定"} · 联动质量 {linkageMeta?.quality_flag ?? "待定"}
             </div>
             <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-              latest generated {latestMeta?.generated_at ?? "pending"}
+              宏观最新生成时间 {latestMeta?.generated_at ?? "待定"}
             </div>
             <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-              linkage generated {linkageMeta?.generated_at ?? "pending"}
+              联动生成时间 {linkageMeta?.generated_at ?? "待定"}
             </div>
           </div>
         </SectionCard>
@@ -760,7 +760,7 @@ export default function CrossAssetDriversPage() {
               <PageSectionLead
                 eyebrow="投资研究"
                 title="研究结论先行"
-                description="先看研究判断和传导主线，再决定如何解释后面的 KPI、事件和观察项。"
+                description="先看研究判断和传导主线，再决定如何解释后面的指标、事件和观察项。"
               />
             </div>
             <ResearchViewsPanel rows={researchViewCards} />
@@ -770,8 +770,8 @@ export default function CrossAssetDriversPage() {
             <div className="cross-asset-drivers-page__lede">
               <PageSectionLead
                 eyebrow="环境上下文"
-                title="环境概览与 KPI"
-                description="以下 KPI 为跨资产头线条目；数值与变化来自同一条宏观序列链路，与下方市场判断、传导拆解一致。"
+                title="环境概览与指标"
+                description="以下指标为跨资产头线条目；数值与变化来自同一条宏观序列链路，与下方市场判断、传导拆解一致。"
               />
             </div>
             <div className="cross-asset-drivers-page__kpi-grid" data-testid="cross-asset-kpi-band">
@@ -807,7 +807,7 @@ export default function CrossAssetDriversPage() {
               </section>
 
               <section className={`${crossAssetPanelClass} cross-asset-drivers-page__panel--stack`}>
-                <h2 className="cross-asset-drivers-page__panel-title">宏观 — 债市相关性（Top）</h2>
+                <h2 className="cross-asset-drivers-page__panel-title">宏观 — 债市相关性（前列）</h2>
                 <p className="cross-asset-drivers-page__heatmap-intro">
                   使用联动分析中的滚动相关结果作参考，不替代个券估值分位或正式风险结论。
                 </p>
@@ -815,8 +815,8 @@ export default function CrossAssetDriversPage() {
                   <thead>
                     <tr>
                       <th>指标</th>
-                      <th>corr(3M)</th>
-                      <th>corr(6M)</th>
+                      <th>3月相关</th>
+                      <th>6月相关</th>
                       <th>方向</th>
                     </tr>
                   </thead>
@@ -1021,7 +1021,7 @@ export default function CrossAssetDriversPage() {
                       组合影响估算
                     </h2>
                     <p style={{ marginTop: 0, color: t.color.neutral[600], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
-                      以下数值属于 analytical estimate，只作为环境敏感度提示，不代表正式损益。
+                      以下数值属于分析口径估算，只作为环境敏感度提示，不代表正式损益。
                     </p>
                     {hasPortfolioImpact ? (
                       <div
@@ -1032,15 +1032,15 @@ export default function CrossAssetDriversPage() {
                         }}
                       >
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>rate change</div>
+                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利率变动</div>
                           <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}</div>
                         </div>
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>spread widening</div>
+                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>利差走阔</div>
                           <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}</div>
                         </div>
                         <div>
-                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>total estimate</div>
+                          <div style={{ color: t.color.neutral[500], fontSize: t.fontSize[12] }}>合计估算</div>
                           <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                         </div>
                       </div>

@@ -79,7 +79,7 @@ function formatValue(value: unknown): string {
     return "—";
   }
   if (typeof value === "boolean") {
-    return value ? "true" : "false";
+    return value ? "是" : "否";
   }
   if (Array.isArray(value)) {
     return value.length > 0 ? value.map(formatValue).join(", ") : "—";
@@ -89,6 +89,26 @@ function formatValue(value: unknown): string {
   }
   return String(value);
 }
+
+const metaLabelMap: Record<string, string> = {
+  basis: "口径",
+  result_kind: "结果类型",
+  formal_use_allowed: "正式可用",
+  scenario_flag: "情景标记",
+  quality_flag: "质量标记",
+  vendor_status: "供应商状态",
+  fallback_mode: "降级模式",
+  trace_id: "追踪编号",
+  source_version: "来源版本",
+  vendor_version: "供应商版本",
+  rule_version: "规则版本",
+  cache_version: "缓存版本",
+  generated_at: "生成时间",
+  tables_used: "使用表",
+  filters_applied: "应用筛选",
+  evidence_rows: "证据行数",
+  next_drill: "下钻建议",
+};
 
 function hasEvidence(meta: ResultMeta) {
   return (
@@ -101,8 +121,8 @@ function hasEvidence(meta: ResultMeta) {
 
 export function FormalResultMetaPanel({
   testId,
-  title = "Result Meta / Evidence",
-  emptyText = "当前还没有可展示的 provenance envelope。",
+  title = "结果元信息 / 证据",
+  emptyText = "当前还没有可展示的溯源信封。",
   sections,
 }: FormalResultMetaPanelProps) {
   const visibleSections = sections.filter((section) => section.meta);
@@ -126,44 +146,44 @@ export function FormalResultMetaPanel({
                 data-testid={`${testId}-${section.key}`}
                 style={cardStyle}
               >
-                <div style={labelStyle}>Provenance</div>
+                <div style={labelStyle}>溯源</div>
                 <div style={headingStyle}>{section.title}</div>
                 <dl style={listStyle}>
-                  <dt>basis</dt>
+                  <dt>{metaLabelMap.basis}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.basis)}</dd>
-                  <dt>result_kind</dt>
+                  <dt>{metaLabelMap.result_kind}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.result_kind)}</dd>
-                  <dt>formal_use_allowed</dt>
+                  <dt>{metaLabelMap.formal_use_allowed}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.formal_use_allowed)}</dd>
-                  <dt>scenario_flag</dt>
+                  <dt>{metaLabelMap.scenario_flag}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.scenario_flag)}</dd>
-                  <dt>quality_flag</dt>
+                  <dt>{metaLabelMap.quality_flag}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.quality_flag)}</dd>
-                  <dt>vendor_status</dt>
+                  <dt>{metaLabelMap.vendor_status}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.vendor_status)}</dd>
-                  <dt>fallback_mode</dt>
+                  <dt>{metaLabelMap.fallback_mode}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.fallback_mode)}</dd>
-                  <dt>trace_id</dt>
+                  <dt>{metaLabelMap.trace_id}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.trace_id)}</dd>
-                  <dt>source_version</dt>
+                  <dt>{metaLabelMap.source_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.source_version)}</dd>
-                  <dt>vendor_version</dt>
+                  <dt>{metaLabelMap.vendor_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.vendor_version)}</dd>
-                  <dt>rule_version</dt>
+                  <dt>{metaLabelMap.rule_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.rule_version)}</dd>
-                  <dt>cache_version</dt>
+                  <dt>{metaLabelMap.cache_version}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.cache_version)}</dd>
-                  <dt>generated_at</dt>
+                  <dt>{metaLabelMap.generated_at}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.generated_at)}</dd>
                   {hasEvidence(meta) ? (
                     <>
-                      <dt>tables_used</dt>
+                      <dt>{metaLabelMap.tables_used}</dt>
                       <dd style={{ margin: 0 }}>{formatValue(meta.tables_used)}</dd>
-                      <dt>filters_applied</dt>
+                      <dt>{metaLabelMap.filters_applied}</dt>
                       <dd style={{ margin: 0 }}>{formatValue(meta.filters_applied)}</dd>
-                      <dt>evidence_rows</dt>
+                      <dt>{metaLabelMap.evidence_rows}</dt>
                       <dd style={{ margin: 0 }}>{formatValue(meta.evidence_rows)}</dd>
-                      <dt>next_drill</dt>
+                      <dt>{metaLabelMap.next_drill}</dt>
                       <dd style={{ margin: 0 }}>{formatValue(meta.next_drill)}</dd>
                     </>
                   ) : null}

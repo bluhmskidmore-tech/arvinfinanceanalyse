@@ -9,19 +9,19 @@ type LiveResultMetaStripProps = {
   lead: string;
 };
 
-/** 紧贴主读面展示 quality / vendor / fallback，对应 contracts.ResultMeta（无额外 inline style=）。 */
+/** 紧贴主读面展示质量 / 供应商 / 降级，对应 contracts.ResultMeta（无额外 inline style=）。 */
 export function LiveResultMetaStrip({ meta, testId, lead }: LiveResultMetaStripProps) {
   if (!meta) {
     return null;
   }
   const line = [
     `${lead}`,
-    `quality=${meta.quality_flag}`,
-    `vendor_status=${meta.vendor_status}`,
-    `fallback_mode=${meta.fallback_mode}`,
-    `vendor_version=${meta.vendor_version}`,
-    `source_version=${meta.source_version}`,
-    `trace_id=${meta.trace_id}`,
+    `质量=${meta.quality_flag}`,
+    `供应商状态=${meta.vendor_status}`,
+    `降级模式=${meta.fallback_mode}`,
+    `供应商版本=${meta.vendor_version}`,
+    `来源版本=${meta.source_version}`,
+    `追踪编号=${meta.trace_id}`,
   ].join(" · ");
   return <Alert data-testid={testId} type="info" showIcon message={line} />;
 }

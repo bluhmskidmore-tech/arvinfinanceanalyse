@@ -38,7 +38,7 @@ export function BondDetailModal({ bond, open, onClose }: BondDetailModalProps) {
         </div>
 
         {!bond ? (
-          <EmptyState title="未选择债券" description="请从表格或 watchlist 中选择一只债券。" />
+          <EmptyState title="未选择债券" description="请从表格或关注列表中选择一只债券。" />
         ) : (
           <div style={{ display: "grid", gap: 16 }}>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>

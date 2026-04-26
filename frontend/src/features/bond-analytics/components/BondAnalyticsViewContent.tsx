@@ -176,7 +176,7 @@ export function BondAnalyticsViewContent() {
           债券分析日期载入失败。
         </div>
         <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
-          无法确定可用报告日，当前不启动 Bond Analytics 默认首屏查询。请重试或通过 URL 显式传入
+          无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过 URL 显式传入
           <code style={{ fontSize: designTokens.fontSize[12], marginLeft: designTokens.space[1] }}>
             ?report_date=YYYY-MM-DD
           </code>
@@ -218,7 +218,7 @@ export function BondAnalyticsViewContent() {
           债券分析暂无可用报告日。
         </div>
         <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
-          后端尚未返回可消费的 Bond Analytics 报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
+          后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
         </div>
         <button
           type="button"
@@ -250,7 +250,7 @@ export function BondAnalyticsViewContent() {
             style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[13] }}
             data-testid="bond-analysis-overview-loading"
           >
-            Loading overview...
+            正在加载总览...
           </div>
         }
       >
@@ -287,7 +287,7 @@ export function BondAnalyticsViewContent() {
               style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[13] }}
               data-testid="bond-analysis-detail-loading"
             >
-              Loading detail module...
+              正在加载明细模块...
             </div>
           }
         >

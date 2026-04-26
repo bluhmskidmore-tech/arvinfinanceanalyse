@@ -231,7 +231,7 @@ export function DashboardNewsDigestSection() {
   return (
     <DashboardCockpitSection
       testId="dashboard-news-digest-section"
-      eyebrow="News Digest"
+      eyebrow="新闻摘要"
       title="市场资讯"
       state={state}
       onRetry={() => void query.refetch()}

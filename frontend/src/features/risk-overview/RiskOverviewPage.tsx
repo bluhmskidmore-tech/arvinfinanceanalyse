@@ -710,7 +710,7 @@ export default function RiskOverviewPage() {
               tone={toneFromSignedDisplayString(cellText(credit?.credit_market_value))}
             />
             <KpiCard
-              title="Spread DV01"
+              title="利差 DV01"
               value={cellText(credit?.spread_dv01)}
               detail="spread_dv01。"
               tone={toneFromSignedDisplayString(cellText(credit?.spread_dv01))}

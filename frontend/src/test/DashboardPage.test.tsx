@@ -110,7 +110,7 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     const panel = await screen.findByTestId("dashboard-tasks-calendar");
-    expect(await within(panel).findByText("复核：当前处于 Mock 模式")).toBeInTheDocument();
+    expect(await within(panel).findByText("复核：当前处于模拟模式")).toBeInTheDocument();
     expect(within(panel).getByText("今日复核 · 来源：治理预警")).toBeInTheDocument();
     expect(
       within(panel).queryByText("暂无需要今日处理的高/中优先级事项。低优先级观察仍可在预警中心查看。"),
@@ -166,10 +166,34 @@ describe("DashboardPage", () => {
     expect(
       await within(judgment).findByText("演示：首屏定调结论占位，用于展示 Pyramid 叙事结构。"),
     ).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-module-snapshot")).toBeInTheDocument();
+    const moduleSnapshot = await screen.findByTestId("dashboard-module-snapshot");
+    expect(moduleSnapshot).toBeInTheDocument();
+    expect(within(moduleSnapshot).getAllByRole("link")).toHaveLength(6);
+    expect(
+      within(moduleSnapshot).getByRole("link", { name: /产品损益/ }),
+    ).toHaveAttribute("href", "/product-category-pnl");
+    expect(
+      within(moduleSnapshot).getByRole("link", { name: /风险总览/ }),
+    ).toHaveAttribute("href", "/risk-overview");
+    expect(
+      within(moduleSnapshot).queryByRole("link", { name: /决策事项/ }),
+    ).not.toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-alert-center")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-tasks-calendar")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-module-entry-grid")).toBeInTheDocument();
+    const moduleEntryGrid = await screen.findByTestId("dashboard-module-entry-grid");
+    expect(moduleEntryGrid).toBeInTheDocument();
+    expect(
+      within(moduleEntryGrid).getByRole("link", { name: /决策事项/ }),
+    ).toHaveAttribute("href", "/decision-items");
+    expect(
+      within(moduleEntryGrid).getByRole("link", { name: /损益解释/ }),
+    ).toHaveAttribute("href", "/pnl-bridge");
+    expect(
+      within(moduleEntryGrid).getByRole("link", { name: /持仓透视/ }),
+    ).toHaveAttribute("href", "/positions");
+    expect(
+      within(moduleEntryGrid).getByRole("link", { name: /中台配置/ }),
+    ).toHaveAttribute("href", "/platform-config");
     expect(await screen.findByTestId("dashboard-bond-headline-lead")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-macro-spot-grid")).toBeInTheDocument();
     expect(await screen.findByTestId("dashboard-news-digest-list")).toBeInTheDocument();
@@ -350,7 +374,7 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
-    expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent(/mock/i);
+    expect(await screen.findByTestId("dashboard-data-warning")).toHaveTextContent("模拟数据源");
   });
 
   it("uses one selected report date for the home snapshot query", async () => {

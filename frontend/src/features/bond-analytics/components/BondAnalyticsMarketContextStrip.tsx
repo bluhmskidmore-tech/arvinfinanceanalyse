@@ -42,7 +42,7 @@ export function BondAnalyticsMarketContextStrip({
           }}
         >
           <div style={{ display: "grid", gap: dt.space[1] }}>
-            <div style={EYEBROW}>Bond analytics cockpit</div>
+            <div style={EYEBROW}>债券分析驾驶舱</div>
             <div style={{ display: "flex", alignItems: "center", gap: dt.space[3], flexWrap: "wrap" }}>
               <h2
                 style={{
@@ -66,7 +66,7 @@ export function BondAnalyticsMarketContextStrip({
                   fontWeight: 700,
                 }}
               >
-                Governed homepage
+                受治理首页
               </span>
             </div>
           </div>
@@ -81,7 +81,7 @@ export function BondAnalyticsMarketContextStrip({
                 minWidth: 112,
               }}
             >
-              <div style={FIELD}>Report date</div>
+              <div style={FIELD}>报告日</div>
               <div style={{ fontSize: dt.fontSize[14], fontWeight: 700, color: dt.color.primary[900], ...tabularNumsStyle }}>{reportDate}</div>
             </div>
             <div
@@ -93,7 +93,7 @@ export function BondAnalyticsMarketContextStrip({
                 minWidth: 92,
               }}
             >
-              <div style={FIELD}>Period</div>
+              <div style={FIELD}>期间</div>
               <div style={{ fontSize: dt.fontSize[14], fontWeight: 700, color: dt.color.primary[900], ...tabularNumsStyle }}>{periodLabel}</div>
             </div>
             <div
@@ -105,7 +105,7 @@ export function BondAnalyticsMarketContextStrip({
                 minWidth: 128,
               }}
             >
-              <div style={FIELD}>Drill lead</div>
+              <div style={FIELD}>下钻主线</div>
               <div style={{ fontSize: dt.fontSize[13], fontWeight: 700, color: dt.color.primary[900] }}>{leadModuleLabel}</div>
               <div style={{ marginTop: dt.space[1], color: dt.color.neutral[600], fontSize: dt.fontSize[11] }}>{leadPromotionLabel}</div>
             </div>

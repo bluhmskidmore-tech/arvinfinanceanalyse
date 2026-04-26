@@ -49,7 +49,7 @@ export function PnlDebugPanel({
       }}
     >
       <summary style={{ cursor: "pointer", fontWeight: 600, color: shellTokens.colorTextPrimary }}>
-        result_meta / 调试
+        结果元信息 / 调试
       </summary>
       <div style={{ marginTop: 12 }}>
         <pre

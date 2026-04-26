@@ -3,7 +3,7 @@ import { Button, Card, Tag } from "antd";
 import { designTokens } from "../../../theme/designSystem";
 import type { BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
-import { EYEBROW, panelStyle, promotionLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
+import { EYEBROW, panelStyle, promotionLabel, readinessStatusLabel, readinessSurface, readinessTagColor } from "./bondAnalyticsCockpitTokens";
 
 const dt = designTokens;
 
@@ -48,7 +48,7 @@ function ReadinessRow({
           </div>
           <div style={{ color: dt.color.neutral[700], fontSize: dt.fontSize[12] }}>{item.description}</div>
         </div>
-        <Tag color={readinessTagColor(item.statusLabel)}>{item.statusLabel}</Tag>
+        <Tag color={readinessTagColor(item.statusLabel)}>{readinessStatusLabel(item.statusLabel)}</Tag>
       </div>
       <div style={{ color: surface.text, fontSize: dt.fontSize[12], lineHeight: 1.6 }}>{item.statusReason}</div>
       <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12], lineHeight: 1.6 }}>{item.detailHint}</div>
@@ -68,10 +68,10 @@ function ReadinessRow({
       ) : null}
       <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3], flexWrap: "wrap" }}>
         <Button size="small" type="default" onClick={() => onOpenModuleDetail(item.key)} data-testid={`bond-analysis-open-${item.key}`}>
-          Open detail
+          打开明细
         </Button>
         <div style={{ color: dt.color.neutral[500], fontSize: dt.fontSize[11] }}>
-          Current lane: {item.promotionDestination === "headline" ? "governed headline" : "drill"}
+          当前路径：{item.promotionDestination === "headline" ? "治理头条" : "下钻"}
         </div>
       </div>
     </div>
@@ -89,10 +89,10 @@ export function BondAnalyticsReadinessMatrix({ readinessItems, onOpenModuleDetai
       <div style={{ display: "grid", gap: dt.space[3] }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: dt.space[3], flexWrap: "wrap" }}>
           <div style={{ display: "grid", gap: dt.space[2] }}>
-            <div style={EYEBROW}>Module readiness</div>
-            <div style={{ fontSize: dt.fontSize[18], fontWeight: 700, color: dt.color.primary[900] }}>Drill queue and promotion boundary</div>
+            <div style={EYEBROW}>模块就绪</div>
+            <div style={{ fontSize: dt.fontSize[18], fontWeight: 700, color: dt.color.primary[900] }}>下钻队列与主位边界</div>
           </div>
-          <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12] }}>{readinessItems.length} overview-linked module(s)</div>
+          <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[12] }}>{readinessItems.length} 个总览关联模块</div>
         </div>
 
         <div style={{ display: "grid", gap: dt.space[3] }}>

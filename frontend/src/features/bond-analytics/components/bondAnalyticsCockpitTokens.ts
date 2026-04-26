@@ -135,7 +135,21 @@ export function readinessSurface(statusLabel: string) {
 }
 
 export function promotionLabel(destination: BondAnalyticsPromotionDestination) {
-  if (destination === "headline") return "Headline eligible";
-  if (destination === "main-rail") return "Main rail eligible";
-  return "Readiness / drill only";
+  if (destination === "headline") return "可进入头条";
+  if (destination === "main-rail") return "可进入主栏";
+  return "仅就绪/下钻";
+}
+
+export function readinessStatusLabel(statusLabel: string) {
+  const labels: Record<string, string> = {
+    loading: "加载中",
+    "request-error": "请求失败",
+    pending: "待加载",
+    eligible: "可提升",
+    "placeholder-blocked": "占位阻止",
+    warning: "预警",
+    "detail-first": "先看明细",
+    "detail-surface": "明细面板",
+  };
+  return labels[statusLabel] ?? statusLabel;
 }

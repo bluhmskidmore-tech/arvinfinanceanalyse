@@ -91,6 +91,7 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/preview/source-foundation/zqtz/rows", {"limit": 1, "offset": 0}),
         ("/ui/preview/source-foundation/zqtz/traces", {"limit": 1, "offset": 0}),
         ("/ui/pnl/product-category/dates", {}),
+        ("/ui/balance-movement-analysis/dates", {}),
         ("/ui/balance-analysis/dates", {}),
         ("/ui/qdb-gl-monthly-analysis/dates", {}),
     ],

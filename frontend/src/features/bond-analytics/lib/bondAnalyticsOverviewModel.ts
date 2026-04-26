@@ -92,19 +92,19 @@ interface BuildBondAnalyticsOverviewModelInput {
 
 function formatBasis(meta: ResultMeta | null | undefined): string {
   if (!meta) {
-    return "Unknown";
+    return "未知";
   }
 
   if (meta.basis === "formal") {
-    return "Formal";
+    return "正式口径";
   }
 
   if (meta.basis === "analytical") {
-    return "Analytical";
+    return "分析口径";
   }
 
   if (meta.basis === "scenario") {
-    return "Scenario";
+    return "情景口径";
   }
 
   if (meta.basis === "mock") {
@@ -116,7 +116,7 @@ function formatBasis(meta: ResultMeta | null | undefined): string {
 
 function formatIsoMoment(value: string | null | undefined): string {
   if (!value) {
-    return "Unknown";
+    return "未知";
   }
 
   const date = new Date(value);
@@ -135,29 +135,29 @@ function buildTruthStrip(
 ): BondAnalyticsTruthStrip {
   if (loading) {
     return {
-      title: "Truth and provenance",
+      title: "真值与证据",
       items: [
-        { key: "basis", label: "Basis", value: "Loading", tone: "neutral" },
-        { key: "freshness", label: "Freshness", value: "Loading", tone: "neutral" },
-        { key: "quality", label: "Quality", value: "Loading", tone: "neutral" },
-        { key: "coverage", label: "Coverage", value: "Overview narrow", tone: "neutral" },
+        { key: "basis", label: "口径", value: "加载中", tone: "neutral" },
+        { key: "freshness", label: "新鲜度", value: "加载中", tone: "neutral" },
+        { key: "quality", label: "质量", value: "加载中", tone: "neutral" },
+        { key: "coverage", label: "覆盖", value: "总览收窄", tone: "neutral" },
       ],
     };
   }
 
   if (error) {
     return {
-      title: "Truth and provenance",
+      title: "真值与证据",
       items: [
-        { key: "basis", label: "Basis", value: "Dashboard snapshot", tone: "warning" },
+        { key: "basis", label: "口径", value: "驾驶舱快照", tone: "warning" },
         {
           key: "freshness",
-          label: "Freshness",
-          value: "Action attribution unavailable",
+          label: "新鲜度",
+          value: "动作归因不可用",
           tone: "warning",
         },
-        { key: "quality", label: "Quality", value: "Partial overview", tone: "warning" },
-        { key: "coverage", label: "Coverage", value: "Dashboard snapshot only", tone: "neutral" },
+        { key: "quality", label: "质量", value: "部分总览", tone: "warning" },
+        { key: "coverage", label: "覆盖", value: "仅驾驶舱快照", tone: "neutral" },
       ],
     };
   }
@@ -173,32 +173,32 @@ function buildTruthStrip(
         : "danger";
 
   return {
-    title: "Truth and provenance",
+    title: "真值与证据",
     items: [
       {
         key: "basis",
-        label: "Basis",
+        label: "口径",
         value: formatBasis(meta),
         tone: meta?.basis === "formal" ? "success" : "warning",
       },
       {
         key: "freshness",
-        label: "Freshness",
+        label: "新鲜度",
         value: formatIsoMoment(generatedAt),
         tone: freshnessTone,
       },
       {
         key: "quality",
-        label: "Quality",
+        label: "质量",
         value: meta
-          ? `${meta.quality_flag}${meta.fallback_mode !== "none" ? " / fallback" : ""}`
-          : "Unknown",
+          ? `${meta.quality_flag}${meta.fallback_mode !== "none" ? " / 降级" : ""}`
+          : "未知",
         tone: qualityTone,
       },
       {
         key: "coverage",
-        label: "Coverage",
-        value: "Action attribution only",
+        label: "覆盖",
+        value: "仅动作归因",
         tone: "neutral",
       },
     ],
@@ -249,22 +249,22 @@ function buildTopAnomalies(
   const anomalies = new Set<string>();
 
   if (error) {
-    anomalies.add("Action attribution unavailable in homepage.");
+    anomalies.add("首页动作归因不可用。");
   }
 
   if (meta?.fallback_mode && meta.fallback_mode !== "none") {
     anomalies.add(
-      `Overview payload is using ${meta.fallback_mode.replace("_", " ")} fallback mode.`,
+      `总览结果正在使用 ${meta.fallback_mode.replace("_", " ")} 降级模式。`,
     );
   }
 
   if (meta?.quality_flag && meta.quality_flag !== "ok") {
-    anomalies.add(`Overview payload quality is ${meta.quality_flag}.`);
+    anomalies.add(`总览结果质量标记为 ${meta.quality_flag}。`);
   }
 
   if (meta?.vendor_status && meta.vendor_status !== "ok") {
     anomalies.add(
-      `Vendor status is ${meta.vendor_status.replace("_", " ")}.`,
+      `供应商状态为 ${meta.vendor_status.replace("_", " ")}。`,
     );
   }
 

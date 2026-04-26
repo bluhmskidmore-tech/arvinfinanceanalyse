@@ -135,7 +135,7 @@ export function DashboardMacroSpotSection() {
   return (
     <DashboardCockpitSection
       testId="dashboard-macro-spot-section"
-      eyebrow="Market Context"
+      eyebrow="市场上下文"
       title="市场快照"
       state={state}
       onRetry={() => void query.refetch()}

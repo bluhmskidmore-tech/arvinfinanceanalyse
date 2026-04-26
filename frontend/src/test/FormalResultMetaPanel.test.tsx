@@ -49,8 +49,8 @@ describe("FormalResultMetaPanel", () => {
     expect(panel).toHaveTextContent("vv_none");
     expect(panel).toHaveTextContent("rv_formal_meta");
     expect(panel).toHaveTextContent("cv_formal_meta");
-    expect(panel).toHaveTextContent("vendor_status");
-    expect(panel).toHaveTextContent("fallback_mode");
+    expect(panel).toHaveTextContent("供应商状态");
+    expect(panel).toHaveTextContent("降级模式");
     expect(panel).toHaveTextContent("fact_formal_pnl_fi");
     expect(panel).toHaveTextContent('"report_date":"2025-12-31"');
     expect(panel).toHaveTextContent("42");
@@ -67,7 +67,7 @@ describe("FormalResultMetaPanel", () => {
     );
 
     expect(screen.getByTestId("formal-meta-empty")).toHaveTextContent(
-      "当前还没有可展示的 provenance envelope。",
+      "当前还没有可展示的溯源信封。",
     );
   });
 });

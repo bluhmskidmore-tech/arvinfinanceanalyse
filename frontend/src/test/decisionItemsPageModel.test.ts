@@ -152,7 +152,7 @@ describe("buildDecisionItemsPageViewModel", () => {
       payload: { rows: [] },
       result_meta: makeResultMeta({ formal_use_allowed: false, fallback_mode: "latest_snapshot" }),
     });
-    expect(vm.contractWarnings.some((w) => w.includes("formal_use_allowed"))).toBe(true);
-    expect(vm.contractWarnings.some((w) => w.includes("fallback_mode"))).toBe(true);
+    expect(vm.contractWarnings.some((w) => w.includes("正式使用未放行"))).toBe(true);
+    expect(vm.contractWarnings.some((w) => w.includes("降级模式"))).toBe(true);
   });
 });

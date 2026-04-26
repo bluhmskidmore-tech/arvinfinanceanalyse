@@ -39,7 +39,7 @@ export function BondAnalyticsHeadlineZone({
         }}
       >
         <div style={{ display: "grid", gap: dt.space[4] }}>
-          <div style={EYEBROW}>Headline focus</div>
+          <div style={EYEBROW}>首屏焦点</div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: dt.space[3], flexWrap: "wrap" }}>
             <div style={{ display: "grid", gap: dt.space[2] }}>
               <div
@@ -52,11 +52,10 @@ export function BondAnalyticsHeadlineZone({
                   maxWidth: 540,
                 }}
               >
-                Lead only governed content that has already passed the truth gate.
+                只突出已经通过真值闸门的受治理内容。
               </div>
               <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed, maxWidth: 620 }}>
-                The first-screen analytic slot stays narrow by design: action attribution can lead when provenance is
-                clean, while every other module remains a readiness or drill surface.
+                首屏分析位保持收窄：动作归因只有在溯源干净时才进入主位，其余模块保留为就绪状态或下钻入口。
               </div>
             </div>
 
@@ -115,13 +114,12 @@ export function BondAnalyticsHeadlineZone({
                 gap: dt.space[2],
               }}
             >
-              <div style={{ ...EYEBROW, color: dt.color.neutral[600] }}>Gate result</div>
+              <div style={{ ...EYEBROW, color: dt.color.neutral[600] }}>闸门结果</div>
               <div style={{ fontSize: dt.fontSize[20], fontWeight: 700, color: dt.color.primary[900] }}>
-                No module is eligible for promoted analytics yet.
+                暂无模块满足主位分析条件。
               </div>
               <div style={{ color: dt.color.neutral[600], fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
-                The cockpit stays honest here: readiness, anomalies, and drill routes remain visible instead of filling the
-                first screen with inferred KPIs.
+                这里保持驾驶舱诚实：就绪状态、异常和下钻路径继续可见，不用推断指标填满首屏。
               </div>
             </div>
           )}
@@ -137,7 +135,7 @@ export function BondAnalyticsHeadlineZone({
             gap: dt.space[3],
           }}
         >
-          <div style={EYEBROW}>Governed boundary</div>
+          <div style={EYEBROW}>治理边界</div>
 
           <div style={{ display: "grid", gap: dt.space[3] }}>
             <div
@@ -148,11 +146,11 @@ export function BondAnalyticsHeadlineZone({
                 border: `1px solid ${dt.color.primary[200]}`,
               }}
             >
-              <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>Promoted now</div>
+              <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>当前主位</div>
               <div style={{ marginTop: dt.space[1], color: dt.color.neutral[600], fontSize: dt.fontSize[12], lineHeight: 1.55 }}>
                 {promotedItems.length > 0
                   ? promotedItems.map((item) => item.label).join(", ")
-                  : "None. Promotion stays blocked until overview-safe evidence exists."}
+                  : "暂无。只有出现可用于总览的证据后才会进入主位。"}
               </div>
             </div>
             <div
@@ -164,11 +162,11 @@ export function BondAnalyticsHeadlineZone({
                   warningItems.length > 0 ? `1px solid ${dt.color.warning[200]}` : `1px solid ${dt.color.primary[200]}`,
               }}
             >
-              <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>Watchouts</div>
+              <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>观察风险</div>
               <div style={{ marginTop: dt.space[1], color: dt.color.neutral[600], fontSize: dt.fontSize[12], lineHeight: 1.55 }}>
                 {warningItems.length > 0
                   ? warningItems.map((item) => item.label).join(", ")
-                  : "No immediate warning-only modules in the current overview boundary."}
+                  : "当前总览边界内没有仅预警模块。"}
               </div>
             </div>
           </div>
@@ -182,8 +180,7 @@ export function BondAnalyticsHeadlineZone({
               lineHeight: 1.65,
             }}
           >
-            Future and deferred surfaces remain visible in the top-right rail so users can see what is intentionally withheld
-            from the current governed viewport.
+            后续和暂缓页面仍显示在右上侧栏，便于用户看清哪些内容被有意留在当前受治理视图之外。
           </div>
         </div>
       </div>

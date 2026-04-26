@@ -27,7 +27,7 @@ export function Header({
     <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr auto" }}>
       <div>
         <div style={{ fontSize: 12, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-          Bond Analysis Platform
+          债券分析平台
         </div>
         <h1 style={{ margin: "6px 0", fontSize: 28 }}>{title}</h1>
         {subtitle ? <p style={{ margin: 0, color: "#475467" }}>{subtitle}</p> : null}

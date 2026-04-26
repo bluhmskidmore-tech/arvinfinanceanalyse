@@ -157,7 +157,7 @@ export default function MonthlyOperatingAnalysisBranch() {
             基于总账对账与日均月度配对文件重建月度经营分析工作簿。
           </p>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
-            Analytical workbook only: threshold scenario changes preview sheets without replacing formal product-category results.
+            仅用于分析口径工作簿：阈值情景只预览工作表，不替换正式产品分类结果。
           </p>
         </div>
         <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
@@ -182,9 +182,9 @@ export default function MonthlyOperatingAnalysisBranch() {
       </div>
 
       <SectionLead
-        eyebrow="Controls"
+        eyebrow="控制项"
         title="月度工作簿控制"
-        description="报告月份驱动 analytical workbook；刷新和审计入口沿用既有任务与 audit 链路。"
+        description="报告月份驱动分析口径工作簿；刷新和审计入口沿用既有任务与审计链路。"
         testId="monthly-operating-analysis-controls-lead"
       />
       <FilterBar style={{ marginBottom: 16 }}>
@@ -248,9 +248,9 @@ export default function MonthlyOperatingAnalysisBranch() {
       ) : null}
 
       <SectionLead
-        eyebrow="Workbook"
+        eyebrow="工作簿"
         title="月度经营分析工作表"
-        description="下方工作表继续展示后端返回的 sheets；scenario 只替换当前展示的 analytical sheets。"
+        description="下方工作表继续展示后端返回的工作表；情景只替换当前展示的分析口径工作表。"
         testId="monthly-operating-analysis-workbook-lead"
       />
       <div style={{ display: "grid", gap: 12 }}>

@@ -92,9 +92,9 @@ function resolveRequestedDate(meta: ResultMeta): string | undefined {
 
 function describeMetaDetails(meta: ResultMeta): string {
   const parts: string[] = [];
-  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`quality=${meta.quality_flag}`);
-  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`vendor=${meta.vendor_status}`);
-  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`fallback=${meta.fallback_mode}`);
-  if (meta.generated_at) parts.push(`generated_at=${meta.generated_at}`);
+  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`质量=${meta.quality_flag}`);
+  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`供应商=${meta.vendor_status}`);
+  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`降级=${meta.fallback_mode}`);
+  if (meta.generated_at) parts.push(`生成时间=${meta.generated_at}`);
   return parts.join(" · ");
 }

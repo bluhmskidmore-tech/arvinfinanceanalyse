@@ -9,8 +9,8 @@ function createReadinessItem(overrides: Partial<BondAnalyticsReadinessItem> = {}
   return {
     key: "return-decomposition",
     label: "收益拆解",
-    description: "Module description line",
-    detailHint: "Detail hint line",
+    description: "模块说明",
+    detailHint: "明细提示",
     statusLabel: "placeholder-blocked",
     statusReason: "Status reason narrative",
     promotionDestination: "readiness-only",
@@ -29,16 +29,16 @@ describe("BondAnalyticsReadinessMatrix", () => {
         key: "action-attribution",
         label: "动作归因",
         statusLabel: "warning",
-        statusReason: "Needs review",
-        detailHint: "Open drill for trades",
+        statusReason: "需要复核",
+        detailHint: "打开交易下钻",
         promotionDestination: "headline",
-        warnings: ["First warning only surfaces"],
+        warnings: ["第一条预警"],
       }),
       createReadinessItem({
         key: "credit-spread",
         label: "信用利差",
         statusLabel: "eligible",
-        statusReason: "Ready",
+        statusReason: "就绪",
         warnings: [],
       }),
     ];
@@ -46,20 +46,20 @@ describe("BondAnalyticsReadinessMatrix", () => {
     render(<BondAnalyticsReadinessMatrix readinessItems={items} onOpenModuleDetail={onOpenModuleDetail} />);
 
     expect(screen.getByTestId("bond-analysis-readiness-matrix")).toBeInTheDocument();
-    expect(screen.getByText("2 overview-linked module(s)")).toBeInTheDocument();
+    expect(screen.getByText("2 个总览关联模块")).toBeInTheDocument();
 
     const row1 = screen.getByTestId("bond-analysis-readiness-action-attribution");
     expect(row1).toHaveAttribute("data-promotion-destination", "headline");
     expect(within(row1).getByText("动作归因")).toBeInTheDocument();
-    expect(within(row1).getByText("Module description line")).toBeInTheDocument();
-    expect(within(row1).getByText("Needs review")).toBeInTheDocument();
-    expect(within(row1).getByText("Open drill for trades")).toBeInTheDocument();
-    expect(within(row1).getByText("First warning only surfaces")).toBeInTheDocument();
+    expect(within(row1).getByText("模块说明")).toBeInTheDocument();
+    expect(within(row1).getByText("需要复核")).toBeInTheDocument();
+    expect(within(row1).getByText("打开交易下钻")).toBeInTheDocument();
+    expect(within(row1).getByText("第一条预警")).toBeInTheDocument();
 
     const row2 = screen.getByTestId("bond-analysis-readiness-credit-spread");
     expect(row2).toHaveAttribute("data-promotion-destination", "readiness-only");
 
-    await user.click(within(row2).getByRole("button", { name: "Open detail" }));
+    await user.click(within(row2).getByRole("button", { name: "打开明细" }));
     expect(onOpenModuleDetail).toHaveBeenCalledWith("credit-spread");
   });
 });

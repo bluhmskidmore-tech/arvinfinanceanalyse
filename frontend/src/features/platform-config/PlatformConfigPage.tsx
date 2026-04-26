@@ -270,7 +270,7 @@ export default function PlatformConfigPage() {
       </div>
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="平台概览"
         description="先看系统状态、运行环境和数据源摘要，再下钻到健康检查卡片与数据源表格，保持配置页的阅读顺序与其他标准壳层一致。"
       />
@@ -317,7 +317,7 @@ export default function PlatformConfigPage() {
 
       <div style={{ display: "grid", gap: 24 }}>
         <SectionLead
-          eyebrow="Health"
+          eyebrow="健康"
           title="系统健康状态"
           description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
@@ -370,7 +370,7 @@ export default function PlatformConfigPage() {
         </AsyncSection>
 
         <SectionLead
-          eyebrow="Sources"
+          eyebrow="数据源"
           title="数据源列表"
           description="数据源列表继续展示最新批次、行数、更新时间和状态，作为治理页的只读汇总表。"
         />

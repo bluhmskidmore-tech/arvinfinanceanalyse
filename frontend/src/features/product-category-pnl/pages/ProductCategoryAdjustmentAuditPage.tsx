@@ -84,21 +84,21 @@ const DEFAULT_FILTERS: ProductCategoryManualAdjustmentQuery = {
 
 const PAGE_SIZE_OPTIONS = [2, 10, 20, 50];
 const CURRENT_SORT_FIELD_OPTIONS = [
-  { value: "created_at", label: "created_at" },
-  { value: "adjustment_id", label: "adjustment_id" },
-  { value: "approval_status", label: "approval_status" },
-  { value: "account_code", label: "account_code" },
+  { value: "created_at", label: "创建时间" },
+  { value: "adjustment_id", label: "调整ID" },
+  { value: "approval_status", label: "审批状态" },
+  { value: "account_code", label: "科目代码" },
 ] as const;
 const EVENT_SORT_FIELD_OPTIONS = [
-  { value: "created_at", label: "created_at" },
-  { value: "adjustment_id", label: "adjustment_id" },
-  { value: "event_type", label: "event_type" },
-  { value: "approval_status", label: "approval_status" },
-  { value: "account_code", label: "account_code" },
+  { value: "created_at", label: "创建时间" },
+  { value: "adjustment_id", label: "调整ID" },
+  { value: "event_type", label: "事件类型" },
+  { value: "approval_status", label: "审批状态" },
+  { value: "account_code", label: "科目代码" },
 ] as const;
 const SORT_DIRECTION_OPTIONS = [
-  { value: "desc", label: "desc" },
-  { value: "asc", label: "asc" },
+  { value: "desc", label: "倒序" },
+  { value: "asc", label: "正序" },
 ] as const;
 const SHARED_QUERY_FILTER_KEYS = [
   "adjustmentId",
@@ -419,7 +419,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             查看产品类别损益的手工调整当前状态、完整事件时间线和刷新结果。
           </p>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
-            Audit view records adjustment events and refresh evidence; it does not mutate formal read models directly.
+            审计视图只记录调整事件与刷新证据，不直接改写正式读模型。
           </p>
           {lastRefreshRunId ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
@@ -473,9 +473,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       </div>
 
       <SectionLead
-        eyebrow="Filters"
+        eyebrow="筛选"
         title="审计筛选与排序"
-        description="筛选条件只驱动调整审计查询、分页和导出请求，不改变产品类别损益 formal baseline。"
+        description="筛选条件只驱动调整审计查询、分页和导出请求，不改变产品类别损益正式基线。"
         testId="product-category-audit-filter-lead"
       />
       <div
@@ -528,9 +528,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             onChange={(event) => updateFilter("approvalStatus", event.target.value)}
           >
             <option value="">全部</option>
-            <option value="approved">approved</option>
-            <option value="pending">pending</option>
-            <option value="rejected">rejected</option>
+            <option value="approved">已通过</option>
+            <option value="pending">待审批</option>
+            <option value="rejected">已拒绝</option>
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
@@ -548,7 +548,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          Current sort field
+          当前列表排序字段
           <select
             data-testid="audit-current-sort-field"
             value={filterDraft.currentSortField ?? "created_at"}
@@ -567,7 +567,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          Current sort dir
+          当前列表排序方向
           <select
             data-testid="audit-current-sort-dir"
             value={filterDraft.currentSortDir ?? "desc"}
@@ -586,7 +586,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          Event sort field
+          事件列表排序字段
           <select
             data-testid="audit-event-sort-field"
             value={filterDraft.eventSortField ?? "created_at"}
@@ -605,7 +605,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          Event sort dir
+          事件列表排序方向
           <select
             data-testid="audit-event-sort-dir"
             value={filterDraft.eventSortDir ?? "desc"}
@@ -624,7 +624,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           </select>
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          created_at from (UTC)
+          创建时间起点（UTC）
           <input
             data-testid="audit-created-at-from"
             placeholder="UTC，ISO 8601，例 2006-01-02T15:04:05Z"
@@ -633,7 +633,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           />
         </label>
         <label style={{ display: "grid", gap: 8 }}>
-          created_at to (UTC)
+          创建时间终点（UTC）
           <input
             data-testid="audit-created-at-to"
             placeholder="UTC，ISO 8601，例 2006-01-02T23:59:59Z"
@@ -703,9 +703,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       </div>
 
       <SectionLead
-        eyebrow="Workflow"
+        eyebrow="流程"
         title="手工调整录入"
-        description="手工调整继续走既有 create / update / refresh workflow；本区只记录调整事件，不在前端写入正式结果。"
+        description="手工调整继续走既有新增、更新、刷新工作流；本区只记录调整事件，不在前端写入正式结果。"
         testId="product-category-audit-manual-lead"
       />
       {showManualForm ? (
@@ -744,9 +744,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                   updateField("operator", event.target.value as "ADD" | "DELTA" | "OVERRIDE")
                 }
               >
-                <option value="ADD">ADD</option>
-                <option value="DELTA">DELTA</option>
-                <option value="OVERRIDE">OVERRIDE</option>
+                <option value="ADD">新增</option>
+                <option value="DELTA">差额调整</option>
+                <option value="OVERRIDE">覆盖</option>
               </select>
             </label>
             <label style={{ display: "grid", gap: 6 }}>
@@ -790,9 +790,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                   )
                 }
               >
-                <option value="approved">approved</option>
-                <option value="pending">pending</option>
-                <option value="rejected">rejected</option>
+                <option value="approved">已通过</option>
+                <option value="pending">待审批</option>
+                <option value="rejected">已拒绝</option>
               </select>
             </label>
             {[
@@ -841,7 +841,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       ) : null}
 
       <SectionLead
-        eyebrow="Timeline"
+        eyebrow="时间线"
         title="调整审计时间线"
         description="当前状态和完整事件时间线分开展示，保留现有 current / event pagination、排序和导出语义。与主页面一致：仅当审批通过可撤销、仅当已拒绝可恢复；进行中时随整页刷新置灰。撤销、恢复、保存后触发同一 PnL 刷新工作流再拉列表。"
         testId="product-category-audit-timeline-lead"

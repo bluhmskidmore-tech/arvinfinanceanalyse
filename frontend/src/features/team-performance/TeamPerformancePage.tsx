@@ -191,7 +191,7 @@ export default function TeamPerformancePage() {
               lineHeight: 1.75,
             }}
           >
-            按产品类别维度展示各组贡献，数据来源为产品损益 read model。
+            按产品类别维度展示各组贡献，数据来源为产品损益读模型。
           </p>
         </div>
         <span
@@ -233,7 +233,7 @@ export default function TeamPerformancePage() {
       </FilterBar>
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="团队概览"
         description="先看资产端、负债端和综合净收入，再进入各组贡献表，保持团队绩效页的阅读顺序与标准壳层一致。"
       />
@@ -266,9 +266,9 @@ export default function TeamPerformancePage() {
       </div>
 
       <SectionLead
-        eyebrow="Contribution"
+        eyebrow="贡献"
         title="团队贡献"
-        description="下方表格继续按产品类别 read model 展示各组贡献，不改变现有列与数值语义。"
+        description="下方表格继续按产品类别读模型展示各组贡献，不改变现有列与数值语义。"
       />
       <AsyncSection
         title="核心指标与团队贡献"

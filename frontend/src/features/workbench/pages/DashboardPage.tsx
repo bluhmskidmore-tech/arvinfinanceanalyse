@@ -65,10 +65,10 @@ function describeAttention(meta: ResultMeta | null | undefined, title: string) {
 
   const parts = [title, meta.quality_flag];
   if (meta.fallback_mode !== "none") {
-    parts.push(`fallback=${meta.fallback_mode}`);
+    parts.push(`降级=${meta.fallback_mode}`);
   }
   if (meta.vendor_status !== "ok") {
-    parts.push(`vendor=${meta.vendor_status}`);
+    parts.push(`供应商=${meta.vendor_status}`);
   }
   return parts.join(" / ");
 }
@@ -185,8 +185,8 @@ export default function DashboardPage() {
   const overviewMeta = adapterOutput.overview.meta;
   const attributionMeta = adapterOutput.attribution.meta;
   const attentionItems = [
-    describeAttention(overviewMeta, "Overview"),
-    describeAttention(attributionMeta, "Attribution"),
+    describeAttention(overviewMeta, "总览"),
+    describeAttention(attributionMeta, "归因"),
   ].filter((item): item is string => Boolean(item));
 
   const snapshotResult = snapshotQuery.data?.result;
@@ -247,7 +247,7 @@ export default function DashboardPage() {
         caliberLabel: metric.caliberLabel,
         value: metric.value.display,
         note: metric.detail,
-        delta: formatHeroDelta(metric.delta.display, "read path"),
+        delta: formatHeroDelta(metric.delta.display, "读链路"),
         tone: metric.tone,
         history: metric.history,
       }))
@@ -255,7 +255,7 @@ export default function DashboardPage() {
   }, [sanitizedOverviewMetrics]);
 
   const governancePills = useMemo<GovernancePill[]>(() => {
-    const dateValue = effectiveReportDate || "latest";
+    const dateValue = effectiveReportDate || "最新可用";
     const dateHint = snapshotResult?.report_date
       ? `as_of_date ${snapshotResult.report_date}`
       : "用户选择 / 默认日期";
@@ -273,11 +273,11 @@ export default function DashboardPage() {
     const attentionHint =
       attentionItems.length > 0
         ? attentionItems.join(" / ")
-        : "无 quality / fallback / vendor 警示";
+        : "无质量、降级或供应商警示";
 
-    const sourceValue = client.mode === "real" ? "真实链路" : "Mock 演示";
+    const sourceValue = client.mode === "real" ? "真实链路" : "模拟演示";
     const sourceHint =
-      client.mode === "real" ? "Real API" : "仅用于界面演示，不应作为业务判断依据";
+      client.mode === "real" ? "正式接口" : "仅用于界面演示，不应作为业务判断依据";
 
     return [
       { id: "report-date", label: "报告日", value: dateValue, tone: "info", hint: dateHint },
@@ -336,7 +336,7 @@ export default function DashboardPage() {
     if (client.mode !== "real") {
       alerts.push({
         id: "mock-mode",
-        title: "当前处于 Mock 模式",
+        title: "当前处于模拟模式",
         detail: "首屏数字仅用于界面演示，不应直接作为业务判断依据。",
         severity: "high",
       });
@@ -423,8 +423,8 @@ export default function DashboardPage() {
     <section data-testid="fixed-income-dashboard-page">
       <PageHeader
         title="驾驶舱"
-        eyebrow="Dashboard Overview"
-        description={`观察日期 ${effectiveReportDate || "latest"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}
+        eyebrow="总览驾驶舱"
+        description={`观察日期 ${effectiveReportDate || "最新可用"}。首页先做状态判断、风险分流和专题下钻，不在首屏堆叠所有明细。`}
         badgeLabel={client.mode === "real" ? "管理视角" : "演示视角"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
         style={{
@@ -542,11 +542,11 @@ export default function DashboardPage() {
           }}
         >
           <div style={{ fontWeight: 700, fontSize: designTokens.fontSize[12], letterSpacing: "0.04em" }}>
-            DATA STATUS · 需人工复核
+            数据状态 · 需人工复核
           </div>
           {client.mode !== "real" ? (
             <div style={{ fontSize: 12, lineHeight: 1.5 }}>
-              当前页面正在使用 mock 数据源，首页数字仅用于界面演示，不应直接作为业务判断依据。
+              当前页面正在使用模拟数据源，首页数字仅用于界面演示，不应直接作为业务判断依据。
             </div>
           ) : null}
           {attentionItems.length > 0 ? (
@@ -583,7 +583,7 @@ export default function DashboardPage() {
           }}
         >
           <PageSectionLead
-            eyebrow="Contribution"
+            eyebrow="经营贡献"
             title="经营贡献拆解"
             description="首页保留一个足够快的经营贡献视图，用来判断是否需要继续进入正式损益拆解工作台；不会在这里伪造未接入的业务结论。"
             style={{ marginTop: 0 }}

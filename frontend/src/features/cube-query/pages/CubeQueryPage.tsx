@@ -313,7 +313,7 @@ export default function CubeQueryPage() {
       <Typography.Title level={3} style={{ marginTop: 0 }}>
         多维查询
       </Typography.Title>
-      <Text type="secondary">对正式口径事实表进行维度聚合、筛选与钻取（basis=formal）。</Text>
+      <Text type="secondary">对正式口径事实表进行维度聚合、筛选与钻取。</Text>
 
       <Card title="查询配置" style={{ marginTop: 16 }} size="small">
         <Space direction="vertical" size="middle" style={{ width: "100%" }}>
@@ -582,8 +582,8 @@ export default function CubeQueryPage() {
           style={{ display: "block", marginTop: 12 }}
           data-testid="cube-result-meta"
         >
-          trace_id={lastResult.result_meta.trace_id} · source_version=
-          {lastResult.result_meta.source_version} · quality_flag={lastResult.result_meta.quality_flag}
+          追踪编号={lastResult.result_meta.trace_id} · 来源版本=
+          {lastResult.result_meta.source_version} · 质量标记={lastResult.result_meta.quality_flag}
         </Text>
       ) : null}
     </div>

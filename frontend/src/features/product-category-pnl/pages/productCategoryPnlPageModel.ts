@@ -197,19 +197,19 @@ export function collectProductCategoryGovernanceNotices(
   if (meta.fallback_mode !== "none") {
     out.push({
       id: "fallback_mode",
-      text: `读链路回退中：fallback_mode=${meta.fallback_mode}（仅元数据展示，非前端补算）。`,
+      text: `读链路回退中：降级模式=${meta.fallback_mode}（仅元数据展示，非前端补算）。`,
     });
   }
   if (meta.vendor_status === "vendor_stale" || meta.vendor_status === "vendor_unavailable") {
     out.push({
       id: "vendor_status",
-      text: `供应侧状态需关注：vendor_status=${meta.vendor_status}。`,
+      text: `供应侧状态需关注：供应商状态=${meta.vendor_status}。`,
     });
   }
   if (meta.quality_flag !== "ok") {
     out.push({
       id: "quality_flag",
-      text: `质量标记需关注：quality_flag=${meta.quality_flag}。`,
+      text: `质量标记需关注：质量标记=${meta.quality_flag}。`,
     });
   }
   return out;
@@ -222,5 +222,5 @@ export function formatProductCategoryDualMetaDistinctLine(
   formalMeta: ResultMeta,
   scenarioMeta: ResultMeta,
 ): string {
-  return `正式与情景分开展示：formal basis=${formalMeta.basis} trace_id=${formalMeta.trace_id}；scenario basis=${scenarioMeta.basis} trace_id=${scenarioMeta.trace_id}（两路 result_meta 分卡展示，不混用）。`;
+  return `正式与情景分开展示：正式口径=${formalMeta.basis} 追踪编号=${formalMeta.trace_id}；情景口径=${scenarioMeta.basis} 追踪编号=${scenarioMeta.trace_id}（两路结果元信息分卡展示，不混用）。`;
 }

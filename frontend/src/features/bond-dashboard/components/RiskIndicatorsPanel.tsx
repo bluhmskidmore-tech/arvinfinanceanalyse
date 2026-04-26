@@ -13,7 +13,7 @@ const ROWS: {
   { label: "加权久期", key: "weighted_duration", format: (v) => `${nativeToNumber(v).toFixed(2)} 年` },
   { label: "信用占比", key: "credit_ratio", format: (v) => `${formatRatePercent(v)}%` },
   { label: "凸性(加权)", key: "weighted_convexity", format: (v) => nativeToNumber(v).toFixed(4) },
-  { label: "Spread DV01", key: "total_spread_dv01", format: (v) => `${formatDv01Wan(v)} 万元` },
+  { label: "利差 DV01", key: "total_spread_dv01", format: (v) => `${formatDv01Wan(v)} 万元` },
   { label: "1年内再投资占比", key: "reinvestment_ratio_1y", format: (v) => `${formatRatePercent(v)}%` },
 ];
 

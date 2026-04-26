@@ -213,9 +213,9 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       >
         <Space direction="vertical" size={designTokens.space[1]}>
           <SectionLead
-            eyebrow="Benchmark"
+            eyebrow="基准"
             title="基准超额收益"
-            description="按报告日、期间和基准指数读取后端归因结果；页面只展示 benchmark excess read model，不在前端重算超额收益。"
+            description="按报告日、期间和基准指数读取后端归因结果；页面只展示基准超额读模型，不在前端重算超额收益。"
             testId="benchmark-excess-shell-lead"
           />
           <span style={{ color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[13] }}>
@@ -238,7 +238,7 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       </div>
 
       <SectionLead
-        eyebrow="Summary"
+        eyebrow="汇总"
         title="组合与基准摘要"
         description="先阅读组合收益、基准收益、超额收益和久期差，再进入下方效果分解和来源明细。"
         testId="benchmark-excess-summary-lead"
@@ -300,9 +300,9 @@ export function BenchmarkExcessView({ reportDate, periodType }: Props) {
       )}
 
       <SectionLead
-        eyebrow="Attribution"
+        eyebrow="归因"
         title="超额收益归因"
-        description="分解、对账和来源明细沿用后端返回字段，保留解释项与 recon_error 的边界。"
+        description="分解、对账和来源明细沿用后端返回字段，保留解释项与对账差异的边界。"
         testId="benchmark-excess-attribution-lead"
       />
       <Card title="超额收益分解" size="small">

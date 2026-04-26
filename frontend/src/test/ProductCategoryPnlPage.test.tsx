@@ -21,13 +21,13 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-page-subtitle")).toHaveTextContent(
       "按业务分类查看损益、FTP 和净收入",
     );
-    expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("System Layer");
+    expect(screen.getByTestId("product-category-role-badge")).toHaveTextContent("系统层");
     expect(screen.getByTestId("product-category-boundary-copy")).toHaveTextContent("系统层经营口径");
     expect(screen.getByTestId("product-category-adjustment-lead")).toHaveTextContent(
       "手工调整与审计",
     );
     expect(screen.getByTestId("product-category-scenario-lead")).toHaveTextContent(
-      "scenario 查询",
+      "情景查询",
     );
     expect(screen.getByTestId("product-category-formal-table-lead")).toHaveTextContent(
       "正式产品类别损益表",
@@ -38,7 +38,7 @@ describe("ProductCategoryPnlPage", () => {
     const metaPanel = screen.getByTestId("product-category-result-meta-baseline");
     expect(metaPanel).toHaveTextContent("formal");
     expect(metaPanel).toHaveTextContent("product_category_pnl.detail");
-    expect(metaPanel).toHaveTextContent("fallback_mode");
+    expect(metaPanel).toHaveTextContent("降级模式");
     expect(metaPanel).toHaveTextContent("none");
     expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
     expect(screen.getByTestId("product-category-governance-strip")).toBeInTheDocument();
@@ -309,12 +309,12 @@ describe("ProductCategoryPnlPage", () => {
         "scenario",
       );
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
-        "true",
+        "是",
       );
       const distinct = screen.getByTestId("product-category-formal-scenario-meta-distinct");
-      expect(distinct).toHaveTextContent("formal basis=formal");
-      expect(distinct).toHaveTextContent("scenario basis=scenario");
-      expect(distinct).toHaveTextContent("trace_id=mock_product_category_pnl.detail");
+      expect(distinct).toHaveTextContent("正式口径=formal");
+      expect(distinct).toHaveTextContent("情景口径=scenario");
+      expect(distinct).toHaveTextContent("追踪编号=mock_product_category_pnl.detail");
     });
   });
 

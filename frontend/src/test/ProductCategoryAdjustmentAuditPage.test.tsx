@@ -127,7 +127,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("product-category-audit-boundary-copy")).toHaveTextContent(
       "查看产品类别损益",
     );
-    expect(screen.getByText(/Audit view records adjustment events/)).toBeInTheDocument();
+    expect(screen.getByText(/审计视图只记录调整事件与刷新证据/)).toBeInTheDocument();
     expect(screen.getByTestId("product-category-audit-filter-lead")).toHaveTextContent(
       "审计筛选与排序",
     );
@@ -1278,7 +1278,7 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
     expect(screen.getByTestId("monthly-operating-analysis-audit-boundary-copy")).toHaveTextContent(
       "手工调整",
     );
-    expect(screen.getByText(/preserves separation from legacy product-category formal results/)).toBeInTheDocument();
+    expect(screen.getByText(/保持与产品分类正式结果分离/)).toBeInTheDocument();
     expect(screen.getByTestId("monthly-operating-analysis-audit-form-lead")).toHaveTextContent(
       "月度经营调整录入",
     );

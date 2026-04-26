@@ -48,9 +48,9 @@ describe("bondAnalyticsCockpitTokens", () => {
     expect(readinessSurface("default").borderColor).toBe("#dde6f0");
   });
 
-  it("promotionLabel maps destinations to stable English labels", () => {
-    expect(promotionLabel("headline")).toBe("Headline eligible");
-    expect(promotionLabel("main-rail")).toBe("Main rail eligible");
-    expect(promotionLabel("readiness-only")).toBe("Readiness / drill only");
+  it("promotionLabel maps destinations to stable Chinese labels", () => {
+    expect(promotionLabel("headline")).toBe("可进入头条");
+    expect(promotionLabel("main-rail")).toBe("可进入主栏");
+    expect(promotionLabel("readiness-only")).toBe("仅就绪/下钻");
   });
 });

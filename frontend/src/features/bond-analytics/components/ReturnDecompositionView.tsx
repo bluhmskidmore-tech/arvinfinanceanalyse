@@ -25,14 +25,14 @@ const CHART_ACCENT = designTokens.color.info[500];
 const CHART_AXIS = { color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[11] };
 
 const WATERFALL_CATEGORIES = [
-  "Carry",
-  "Roll-down",
-  "鍒╃巼鏁堝簲",
-  "鍒╁樊鏁堝簲",
-  "FX鏁堝簲",
-  "Convexity",
-  "浜ゆ槗",
-  "鍚堣",
+  "票息",
+  "骑乘",
+  "利率效应",
+  "利差效应",
+  "外汇效应",
+  "凸性",
+  "交易",
+  "合计",
 ] as const;
 
 const TRANSPARENT_BAR = {
@@ -44,9 +44,9 @@ const TRANSPARENT_BAR = {
 function describeMetaIssues(meta: ResultMeta | null): string[] {
   if (!meta) return [];
   const issues: string[] = [];
-  if (meta.quality_flag !== "ok") issues.push(`quality_flag=${meta.quality_flag}`);
-  if (meta.vendor_status !== "ok") issues.push(`vendor_status=${meta.vendor_status}`);
-  if (meta.fallback_mode !== "none") issues.push(`fallback_mode=${meta.fallback_mode}`);
+  if (meta.quality_flag !== "ok") issues.push(`质量标记=${meta.quality_flag}`);
+  if (meta.vendor_status !== "ok") issues.push(`供应商状态=${meta.vendor_status}`);
+  if (meta.fallback_mode !== "none") issues.push(`降级模式=${meta.fallback_mode}`);
   return issues;
 }
 
@@ -88,7 +88,7 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
       axisPointer: { type: "shadow" },
       formatter: (items: unknown) => {
         const list = Array.isArray(items) ? items : [items];
-        const bar = list.find((x: { seriesName?: string }) => x.seriesName === "鏁堝簲");
+        const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
         const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
         const label = WATERFALL_CATEGORIES[idx];
         return `${label}<br/>${displayStrings[idx] ?? "-"}`;
@@ -108,7 +108,7 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
     },
     series: [
       {
-        name: "杈呭姪",
+        name: "辅助",
         type: "bar",
         stack: "waterfall",
         silent: true,
@@ -117,7 +117,7 @@ function buildWaterfallOption(d: ReturnDecompositionResponse) {
         data: helperRaw,
       },
       {
-        name: "鏁堝簲",
+        name: "效应",
         type: "bar",
         stack: "waterfall",
         data: valueRaw.map((val, i) => ({
@@ -137,59 +137,59 @@ interface Props {
 }
 
 const effectColumns = [
-  { title: "璧勪骇绫诲埆", dataIndex: "asset_class", key: "asset_class" },
-  { title: "Carry锛堢エ鎭級", dataIndex: "carry", key: "carry", render: formatWan },
-  { title: "Roll-down锛堥獞涔橈級", dataIndex: "roll_down", key: "roll_down", render: formatWan },
-  { title: "鍒╃巼鏁堝簲", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
-  { title: "鍒╁樊鏁堝簲", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
+  { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+  { title: "票息", dataIndex: "carry", key: "carry", render: formatWan },
+  { title: "骑乘", dataIndex: "roll_down", key: "roll_down", render: formatWan },
+  { title: "利率效应", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
+  { title: "利差效应", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
   {
-    title: "Convexity",
+    title: "凸性",
     dataIndex: "convexity_effect",
     key: "convexity_effect",
     render: (v: ReturnDecompositionResponse["by_asset_class"][number]["convexity_effect"]) =>
       v ? formatWan(v) : "-",
   },
-  { title: "浜ゆ槗", dataIndex: "trading", key: "trading", render: formatWan },
-  { title: "鍚堣", dataIndex: "total", key: "total", render: formatWan },
-  { title: "Bond Count", dataIndex: "bond_count", key: "bond_count" },
+  { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
+  { title: "合计", dataIndex: "total", key: "total", render: formatWan },
+  { title: "债券只数", dataIndex: "bond_count", key: "bond_count" },
 ];
 
 const accountingClassEffectColumns = effectColumns.map((col, i) =>
-  i === 0 ? { ...col, title: "浼氳鍒嗙被", key: "accounting_slice" } : col,
+  i === 0 ? { ...col, title: "会计分类", key: "accounting_slice" } : col,
 );
 
 const bondDetailColumns = [
-  { title: "鍊哄埜浠ｇ爜", dataIndex: "bond_code", key: "bond_code" },
+  { title: "债券代码", dataIndex: "bond_code", key: "bond_code" },
   {
-    title: "Bond Name",
+    title: "债券名称",
     dataIndex: "bond_name",
     key: "bond_name",
     render: (v: string | null) => v ?? "-",
   },
-  { title: "璧勪骇绫诲埆", dataIndex: "asset_class", key: "asset_class" },
-  { title: "浼氳鍒嗙被", dataIndex: "accounting_class", key: "accounting_class" },
-  { title: "Market Value", dataIndex: "market_value", key: "market_value", render: formatYi },
-  { title: "Carry锛堢エ鎭級", dataIndex: "carry", key: "carry", render: formatWan },
-  { title: "Roll-down锛堥獞涔橈級", dataIndex: "roll_down", key: "roll_down", render: formatWan },
-  { title: "鍒╃巼鏁堝簲", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
-  { title: "鍒╁樊鏁堝簲", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
+  { title: "资产类别", dataIndex: "asset_class", key: "asset_class" },
+  { title: "会计分类", dataIndex: "accounting_class", key: "accounting_class" },
+  { title: "市值", dataIndex: "market_value", key: "market_value", render: formatYi },
+  { title: "票息", dataIndex: "carry", key: "carry", render: formatWan },
+  { title: "骑乘", dataIndex: "roll_down", key: "roll_down", render: formatWan },
+  { title: "利率效应", dataIndex: "rate_effect", key: "rate_effect", render: formatWan },
+  { title: "利差效应", dataIndex: "spread_effect", key: "spread_effect", render: formatWan },
   {
-    title: "Convexity",
+    title: "凸性",
     dataIndex: "convexity_effect",
     key: "convexity_effect",
     render: (v: ReturnDecompositionResponse["bond_details"][number]["convexity_effect"]) =>
       v ? formatWan(v) : "-",
   },
-  { title: "浜ゆ槗", dataIndex: "trading", key: "trading", render: formatWan },
-  { title: "鍚堣", dataIndex: "total", key: "total", render: formatWan },
+  { title: "交易", dataIndex: "trading", key: "trading", render: formatWan },
+  { title: "合计", dataIndex: "total", key: "total", render: formatWan },
   {
-    title: "Explained (Recon)",
+    title: "解释项（对账）",
     dataIndex: "explained_for_recon",
     key: "explained_for_recon",
     render: formatWan,
   },
   {
-    title: "Economic-only Effects",
+    title: "仅经济口径效应",
     dataIndex: "economic_only_effects",
     key: "economic_only_effects",
     render: formatWan,
@@ -247,31 +247,31 @@ export function ReturnDecompositionView({
   );
 
   if (loading) return <Spin style={{ display: "block", margin: `${designTokens.space[8]}px auto` }} />;
-  if (error) return <Alert type="error" message={`鍔犺浇澶辫触锛?{error}`} />;
+  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
   const metaIssues = describeMetaIssues(meta);
-  const periodLabel = `${data.period_type} 路 ${data.period_start} 鈥?${data.period_end}`;
+  const periodLabel = `${data.period_type} · ${data.period_start} 至 ${data.period_end}`;
 
   const effects = [
-    { label: "Carry锛堢エ鎭級", value: data.carry },
-    { label: "Roll-down锛堥獞涔橈級", value: data.roll_down },
-    { label: "鍒╃巼鏁堝簲", value: data.rate_effect },
-    { label: "鍒╁樊鏁堝簲", value: data.spread_effect },
-    { label: "FX鏁堝簲", value: data.fx_effect },
-    { label: "Convexity", value: data.convexity_effect },
-    { label: "浜ゆ槗", value: data.trading },
+    { label: "票息", value: data.carry },
+    { label: "骑乘", value: data.roll_down },
+    { label: "利率效应", value: data.rate_effect },
+    { label: "利差效应", value: data.spread_effect },
+    { label: "外汇效应", value: data.fx_effect },
+    { label: "凸性", value: data.convexity_effect },
+    { label: "交易", value: data.trading },
   ];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: designTokens.space[4] }}>
       <SectionLead
-        eyebrow="Return Decomposition"
-        title="鏀剁泭鍒嗚В姒傝"
-        description="Reads the governed return-decomposition payload and shows economic, accounting, and OCI effects without front-end recomputation."
+        eyebrow="收益分解"
+        title="收益分解概览"
+        description="读取治理后的收益分解结果，展示经济、会计和 OCI 影响，不在前端重复计算。"
         testId="return-decomposition-shell-lead"
       />
-      <Card size="small" title="鎶ュ憡鏈熼棿" data-testid="return-decomposition-period">
+      <Card size="small" title="报告期间" data-testid="return-decomposition-period">
         <div style={{ fontSize: designTokens.fontSize[13], color: designTokens.color.neutral[700] }}>{periodLabel}</div>
         {data.computed_at ? (
           <div
@@ -290,7 +290,7 @@ export function ReturnDecompositionView({
         <Alert
           type="warning"
           showIcon
-          message="Provenance degraded"
+          message="证据链降级"
           description={metaIssues.join(" | ")}
           data-testid="return-decomposition-result-meta-alert"
         />
@@ -298,40 +298,40 @@ export function ReturnDecompositionView({
       <Row gutter={16}>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="缁忔祹鍙ｅ緞鍚堣" value={formatWan(data.explained_pnl_economic ?? data.explained_pnl)} />
+            <Statistic title="经济口径合计" value={formatWan(data.explained_pnl_economic ?? data.explained_pnl)} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="OCI Reserve Impact" value={formatWan(data.oci_reserve_impact)} />
+            <Statistic title="OCI 储备影响" value={formatWan(data.oci_reserve_impact)} />
           </Card>
         </Col>
         <Col span={8}>
           <Card size="small">
-            <Statistic title="Accounting PnL" value={formatWan(data.explained_pnl_accounting ?? data.explained_pnl)} />
+            <Statistic title="会计损益" value={formatWan(data.explained_pnl_accounting ?? data.explained_pnl)} />
           </Card>
         </Col>
       </Row>
       <Row gutter={16}>
         <Col span={12}>
           <Card size="small" data-testid="return-decomposition-bond-count">
-            <Statistic title="鍊哄埜鍙暟锛堥《灞傦級" value={data.bond_count} />
+            <Statistic title="债券只数（顶层）" value={data.bond_count} />
           </Card>
         </Col>
         <Col span={12}>
           <Card size="small" data-testid="return-decomposition-total-mv">
-            <Statistic title="Total Market Value" value={formatYi(data.total_market_value)} />
+            <Statistic title="总市值" value={formatYi(data.total_market_value)} />
           </Card>
         </Col>
       </Row>
 
       <SectionLead
-        eyebrow="Effects"
-        title="鏀剁泭鏁堟灉鐎戝竷"
-        description="Visualizes carry, roll-down, rate, spread, FX, convexity, and trading effects from the backend payload."
+        eyebrow="效应"
+        title="收益效应瀑布"
+        description="按后端结果展示票息、骑乘、利率、利差、外汇、凸性和交易效应。"
         testId="return-decomposition-effects-lead"
       />
-      <Card title="鏀剁泭鏁堝簲鍒嗚В" size="small">
+      <Card title="收益效应分解" size="small">
         <div style={{ display: "flex", gap: designTokens.space[3], flexWrap: "wrap" }}>
           {effects.map((e) => {
             const num = bondNumericRaw(e.value);
@@ -358,7 +358,7 @@ export function ReturnDecompositionView({
       </Card>
 
       {data.by_asset_class && data.by_asset_class.length > 0 && (
-        <Card title="By Asset Class" size="small">
+        <Card title="按资产类别" size="small">
           <Table
             dataSource={data.by_asset_class}
             columns={effectColumns}
@@ -370,7 +370,7 @@ export function ReturnDecompositionView({
       )}
 
       {data.by_accounting_class && data.by_accounting_class.length > 0 && (
-        <Card title="By Accounting Class" size="small" data-testid="return-decomposition-by-accounting-class">
+        <Card title="按会计分类" size="small" data-testid="return-decomposition-by-accounting-class">
           <Table
             dataSource={data.by_accounting_class}
             columns={accountingClassEffectColumns}
@@ -388,7 +388,7 @@ export function ReturnDecompositionView({
           items={[
             {
               key: "bond-details",
-              label: "鍒哥骇鎷嗚В锛堟寜鍒告槑缁嗭級",
+              label: "券级拆解（按券明细）",
               children: (
                 <Table
                   data-testid="return-decomposition-bond-details-table"
@@ -405,22 +405,22 @@ export function ReturnDecompositionView({
         />
       )}
       <SectionLead
-        eyebrow="Reconciliation"
+        eyebrow="对账"
         title="收益分解对账"
-        description="Keeps reconciliation totals and residuals aligned with backend semantics without front-end adjustment."
+        description="保持对账合计与残差遵循后端语义，不在前端做调整。"
         testId="return-decomposition-recon-lead"
       />
       <Card title="损益对账" size="small">
         <Row gutter={16}>
           <Col span={8}>
-            <Statistic title="Explained PnL" value={formatWan(data.explained_pnl)} />
+            <Statistic title="解释损益" value={formatWan(data.explained_pnl)} />
           </Col>
           <Col span={8}>
-            <Statistic title="Actual PnL" value={formatWan(data.actual_pnl)} />
+            <Statistic title="实际损益" value={formatWan(data.actual_pnl)} />
           </Col>
           <Col span={8}>
             <Statistic
-              title="Recon Error"
+              title="对账差异"
               value={formatWan(data.recon_error)}
               suffix={data.recon_error_pct ? `(${data.recon_error_pct.display})` : ""}
             />
@@ -432,17 +432,17 @@ export function ReturnDecompositionView({
         <Alert
           type="warning"
           showIcon
-          message="鎻愮ず"
+          message="提示"
           description={data.warnings.map((w, i) => <div key={i}>{w}</div>)}
         />
       )}
       <FormalResultMetaPanel
         testId="return-decomposition-result-meta"
-        title="Return Decomposition Provenance"
+        title="收益分解证据"
         sections={[
           {
             key: "return-decomposition",
-            title: "Return decomposition",
+            title: "收益分解",
             meta,
           },
         ]}
@@ -450,4 +450,3 @@ export function ReturnDecompositionView({
     </div>
   );
 }
-

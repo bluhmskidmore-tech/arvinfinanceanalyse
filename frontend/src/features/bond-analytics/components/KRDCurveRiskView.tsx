@@ -328,9 +328,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
-        eyebrow="KRD Curve Risk"
+        eyebrow="KRD 曲线风险"
         title="曲线风险概览"
-        description="按报告日读取后端 KRD curve risk read model；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
+        description="按报告日读取后端 KRD 曲线风险读模型；页面只展示久期、修正久期、DV01 和凸性，不在前端补算正式风险指标。"
         testId="krd-curve-risk-shell-lead"
       />
       {data.computed_at ? (
@@ -362,9 +362,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       </Row>
 
       <SectionLead
-        eyebrow="Buckets"
+        eyebrow="分桶"
         title="KRD 桶位与情景冲击"
-        description="KRD 分布和情景冲击沿用后端返回的 krd_buckets 与 scenarios，前端仅做图表和表格展示。"
+        description="KRD 分布和情景冲击沿用后端返回的桶位与情景数据，前端仅做图表和表格展示。"
         testId="krd-curve-risk-buckets-lead"
       />
       {data.krd_buckets.length > 0 && krdChartOption && (
@@ -392,9 +392,9 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       )}
 
       <SectionLead
-        eyebrow="Asset Class"
+        eyebrow="资产类别"
         title="资产类别风险拆分"
-        description="资产结构饼图和 by_asset_class 表格保留后端语义，不调整市值、久期、DV01 或权重。"
+        description="资产结构饼图和按资产类别表格保留后端语义，不调整市值、久期、DV01 或权重。"
         testId="krd-curve-risk-asset-lead"
       />
       {data.by_asset_class.length > 0 && (

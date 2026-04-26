@@ -356,7 +356,7 @@ export default function PnlPage() {
   const dataTabExtra = (
     <div style={tabBarStyle}>
       <button type="button" style={tabButtonStyle(dataTab === "fi")} onClick={() => setDataTab("fi")}>
-        FI 损益
+        固收损益
       </button>
       <button
         type="button"
@@ -399,7 +399,7 @@ export default function PnlPage() {
       }
       await Promise.all([datesQuery.refetch(), overviewQuery.refetch(), dataQuery.refetch()]);
     } catch (error) {
-      setRefreshError(error instanceof Error ? error.message : "刷新 PnL 失败");
+      setRefreshError(error instanceof Error ? error.message : "刷新损益失败");
     } finally {
       setIsRefreshing(false);
     }
@@ -424,7 +424,7 @@ export default function PnlPage() {
             data-testid="pnl-page-subtitle"
             style={pageSubtitleStyle}
           >
-            查看正式口径损益汇总与明细，包括 FI 明细和非标桥接行。页面只展示后端结果，不在前端重算。
+            查看正式口径损益汇总与明细，包括固收明细和非标桥接行。页面只展示后端结果，不在前端重算。
           </p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -437,7 +437,7 @@ export default function PnlPage() {
               border: "1px solid #d7dfea",
             }}
           >
-            Formal Detail
+            正式明细
           </span>
           <span
             style={{
@@ -464,7 +464,7 @@ export default function PnlPage() {
               textDecoration: "none",
             }}
           >
-            查看 Ledger PnL
+            查看总账损益
           </a>
         </div>
       </div>
@@ -478,14 +478,14 @@ export default function PnlPage() {
               style={tabButtonStyle(basis === "formal")}
               onClick={() => setBasis("formal")}
             >
-              Formal
+              正式口径
             </button>
             <button
               type="button"
               style={tabButtonStyle(basis === "analytical")}
               onClick={() => setBasis("analytical")}
             >
-              Analytical
+              分析口径
             </button>
           </div>
         </div>
@@ -524,15 +524,15 @@ export default function PnlPage() {
 
       {basis === "analytical" ? (
         <div data-testid="pnl-basis-note" style={basisNoteStyle}>
-          当前为 analytical 只读口径。刷新按钮仅适用于 formal 重算，`PnL Bridge` 仍保持 formal-only。
+          当前为分析口径只读视图。刷新按钮仅适用于正式重算，损益桥接仍保持正式口径。
         </div>
       ) : null}
 
       <div data-testid="pnl-overview-section" data-state={overviewState} style={{ marginBottom: 24 }}>
         <SectionLead
-          eyebrow="Overview"
+          eyebrow="总览"
           title="正式损益汇总"
-          description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式 read model。"
+          description="先确认报告日与刷新状态，再阅读 514 / 516 / 517、手工调整和损益合计；所有数值均来自后端正式读模型。"
         />
         <AsyncSection
           title="汇总概览"
@@ -545,15 +545,15 @@ export default function PnlPage() {
         >
           <div data-testid="pnl-overview-cards" style={summaryGridStyle}>
             <KpiCard
-              title="FI 明细行数"
+              title="固收明细行数"
               value={cellText(overview?.formal_fi_row_count)}
-              detail="formal_fi 明细行数（后端计数）。"
+              detail="正式固收明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
               title="非标桥接行数"
               value={cellText(overview?.nonstd_bridge_row_count)}
-              detail="nonstd_bridge 明细行数（后端计数）。"
+              detail="非标桥接明细行数（后端计数）。"
               unit="行"
             />
             <KpiCard
@@ -586,12 +586,12 @@ export default function PnlPage() {
 
       <div data-testid="pnl-data-section" data-state={dataState} style={{ marginTop: 24 }}>
         <SectionLead
-          eyebrow="Details"
+          eyebrow="明细"
           title={dataTab === "yield" ? "收益与息差（分析口径）" : "正式明细与非标桥接"}
           description={
             dataTab === "yield"
-              ? "与 V1 收益管理同源接口 `/api/analysis/yield_metrics`（经 `getLiabilityYieldMetrics`），仅展示后端返回的 KPI Numeric；不含 V1 历史曲线/散点等未暴露端点。"
-              : "FI 明细和非标桥接共用当前报告日，保留原有 tab、AG Grid 和分页行为，不改变正式 PnL 契约。"
+              ? "与收益管理同源接口 `/api/analysis/yield_metrics`（经 `getLiabilityYieldMetrics`），仅展示后端返回的指标数值；不含历史曲线/散点等未暴露端点。"
+              : "固收明细和非标桥接共用当前报告日，保留原有页签、明细表和分页行为，不改变正式损益契约。"
           }
         />
         <AsyncSection
@@ -641,25 +641,25 @@ export default function PnlPage() {
               <KpiCard
                 title="资产收益率"
                 value={formatYieldNumeric(yieldKpi?.asset_yield ?? null)}
-                detail="后端 `kpi.asset_yield`（Numeric.display）。"
+                detail="后端资产收益率显示值。"
                 tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.asset_yield ?? null))}
               />
               <KpiCard
                 title="负债成本"
                 value={formatYieldNumeric(yieldKpi?.liability_cost ?? null)}
-                detail="后端 `kpi.liability_cost`。"
+                detail="后端负债成本显示值。"
                 tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.liability_cost ?? null))}
               />
               <KpiCard
                 title="市场负债成本"
                 value={formatYieldNumeric(yieldKpi?.market_liability_cost ?? null)}
-                detail="后端 `kpi.market_liability_cost`。"
+                detail="后端市场负债成本显示值。"
                 tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.market_liability_cost ?? null))}
               />
               <KpiCard
                 title="净息差 (NIM)"
                 value={formatYieldNumeric(yieldKpi?.nim ?? null)}
-                detail="后端 `kpi.nim`。"
+                detail="后端净息差显示值。"
                 tone={toneFromSignedDisplayString(formatYieldNumeric(yieldKpi?.nim ?? null))}
               />
             </div>

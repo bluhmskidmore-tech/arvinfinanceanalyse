@@ -93,7 +93,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
       "coverage",
     ]);
     expect(model.truthStrip.items.find((item) => item.key === "basis")?.value).toBe(
-      "Formal",
+      "正式口径",
     );
     expect(model.headlineTiles).toHaveLength(1);
     expect(model.headlineTiles[0]?.key).toBe("action-attribution");
@@ -155,7 +155,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
     );
     expect(model.topAnomalies).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/latest snapshot/i),
+        expect.stringMatching(/latest snapshot/),
       ]),
     );
   });
@@ -170,16 +170,16 @@ describe("buildBondAnalyticsOverviewModel", () => {
     });
 
     expect(model.truthStrip.items).toEqual([
-      expect.objectContaining({ key: "basis", value: "Dashboard snapshot", tone: "warning" }),
+      expect.objectContaining({ key: "basis", value: "驾驶舱快照", tone: "warning" }),
       expect.objectContaining({
         key: "freshness",
-        value: "Action attribution unavailable",
+        value: "动作归因不可用",
         tone: "warning",
       }),
-      expect.objectContaining({ key: "quality", value: "Partial overview", tone: "warning" }),
-      expect.objectContaining({ key: "coverage", value: "Dashboard snapshot only", tone: "neutral" }),
+      expect.objectContaining({ key: "quality", value: "部分总览", tone: "warning" }),
+      expect.objectContaining({ key: "coverage", value: "仅驾驶舱快照", tone: "neutral" }),
     ]);
-    expect(model.topAnomalies).toEqual(["Action attribution unavailable in homepage."]);
+    expect(model.topAnomalies).toEqual(["首页动作归因不可用。"]);
     expect(model.readinessItems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

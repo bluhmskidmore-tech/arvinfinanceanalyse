@@ -88,9 +88,9 @@ function summarizeNewsPayload(event: {
     return event.payload_json;
   }
   if (event.error_code !== 0) {
-    return event.error_msg || "Vendor callback returned an empty error envelope.";
+    return event.error_msg || "供应商回调返回了空错误信封。";
   }
-  return "Empty callback envelope.";
+  return "空回调信封。";
 }
 
 function clampOffset(offset: number) {
@@ -220,7 +220,7 @@ export default function NewsEventsPage() {
       </div>
 
       <SectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="事件概览"
         description="先看事件总数、当前页和错误行，再进入筛选与明细列表，保持新闻事件页的阅读顺序和其他标准壳层一致。"
       />
@@ -240,7 +240,7 @@ export default function NewsEventsPage() {
       </div>
 
       <SectionLead
-        eyebrow="Browse"
+        eyebrow="浏览"
         title="筛选与事件列表"
         description="筛选条只控制 `topic_code`、错误开关与分页，不改变后端事件契约；下方表格继续显示服务端返回的事件流水。"
       />

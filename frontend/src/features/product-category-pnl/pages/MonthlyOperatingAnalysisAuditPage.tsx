@@ -316,7 +316,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             {COPY.subtitle}
           </p>
           <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
-            Monthly operating audit adjusts analytical branch records and preserves separation from legacy product-category formal results.
+            月度经营审计只调整分析分支记录，并保持与产品分类正式结果分离。
           </p>
           {lastActionId ? (
             <p style={{ margin: "8px 0 0", color: "#5c6b82", fontSize: 12 }}>{lastActionId}</p>
@@ -350,9 +350,9 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       </div>
 
       <SectionLead
-        eyebrow="Adjustment"
+        eyebrow="调整"
         title="月度经营调整录入"
-        description="mapping adjustment 修正映射类字段，analysis adjustment 修正指定分析单元格，均沿用既有 adjustment API。"
+        description="映射调整用于修正映射类字段，分析调整用于修正指定分析单元格，均沿用既有调整接口。"
         testId="monthly-operating-analysis-audit-form-lead"
       />
       <div style={{ display: "grid", gap: 12, marginBottom: 18 }}>
@@ -531,7 +531,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       </div>
 
       <SectionLead
-        eyebrow="Audit"
+        eyebrow="审计"
         title="月度经营调整记录"
         description="列表和事件区继续展示后端返回的 adjustments / events，并保留编辑、撤销、恢复与导出行为。"
         testId="monthly-operating-analysis-audit-list-lead"

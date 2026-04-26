@@ -452,7 +452,7 @@ export default function ProductCategoryPnlPage() {
             按业务分类查看损益、FTP 和净收入。用于经营分析，不等同于逐笔损益明细。
           </p>
           <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
-            系统层经营口径：正式基线来自 formal read model；情景预览仅在显式应用后生效。
+            系统层经营口径：正式基线来自正式读模型；情景预览仅在显式应用后生效。
           </p>
           {isRefreshing ? (
             <p data-testid="product-category-refresh-status">
@@ -477,7 +477,7 @@ export default function ProductCategoryPnlPage() {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <span data-testid="product-category-role-badge" style={modeBadgeStyle}>
-            System Layer
+            系统层
           </span>
           <span style={modeBadgeStyle}>
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
@@ -486,7 +486,7 @@ export default function ProductCategoryPnlPage() {
             查看调整审计
           </a>
           <a data-testid="product-category-ledger-link" href={ledgerPnlHref}>
-            Ledger PnL
+            总账损益
           </a>
           <button
             type="button"
@@ -539,16 +539,16 @@ export default function ProductCategoryPnlPage() {
 
       <FormalResultMetaPanel
         testId="product-category-result-meta"
-        title="Product-Category Result Meta"
+        title="产品分类结果元信息"
         sections={[
           {
             key: "baseline",
-            title: "Baseline read model",
+            title: "基线读模型",
             meta: baselineQuery.data?.result_meta,
           },
           {
             key: "scenario",
-            title: "Scenario overlay",
+            title: "场景覆盖",
             meta: scenarioQuery.data?.result_meta,
           },
         ]}
@@ -597,9 +597,9 @@ export default function ProductCategoryPnlPage() {
                   )
                 }
               >
-                <option value="ADD">ADD</option>
-                <option value="DELTA">DELTA</option>
-                <option value="OVERRIDE">OVERRIDE</option>
+                <option value="ADD">新增</option>
+                <option value="DELTA">差额调整</option>
+                <option value="OVERRIDE">覆盖</option>
               </select>
             </label>
             <label style={{ display: "grid", gap: 6 }}>
@@ -643,9 +643,9 @@ export default function ProductCategoryPnlPage() {
                   )
                 }
               >
-                <option value="approved">approved</option>
-                <option value="pending">pending</option>
-                <option value="rejected">rejected</option>
+                <option value="approved">已通过</option>
+                <option value="pending">待审批</option>
+                <option value="rejected">已拒绝</option>
               </select>
             </label>
             {[
@@ -706,9 +706,9 @@ export default function ProductCategoryPnlPage() {
       ) : null}
 
       <SectionLead
-        eyebrow="Governance"
+        eyebrow="治理"
         title="手工调整与审计"
-        description="手工调整仍走既有 create / update / revoke / restore API，完整事件时间线保留在独立审计视图。仅当审批通过可撤销、仅当已拒绝可恢复；其余审批状态下对应按钮为禁用。撤销、恢复、保存后均触发与全页「刷新损益数据」一致的 PnL 刷新工作流以更新本列表。"
+        description="手工调整仍走既有新增、更新、撤销、恢复接口，完整事件时间线保留在独立审计视图。仅当审批通过可撤销、仅当已拒绝可恢复；其余审批状态下对应按钮为禁用。撤销、恢复、保存后均触发与全页「刷新损益数据」一致的损益刷新工作流以更新本列表。"
         testId="product-category-adjustment-lead"
       />
       <AsyncSection
@@ -822,9 +822,9 @@ export default function ProductCategoryPnlPage() {
       </AsyncSection>
 
       <SectionLead
-        eyebrow="Scenario"
+        eyebrow="场景"
         title="报告口径与场景预览"
-        description="报告月份和视图模式驱动 formal baseline；FTP 场景只有点击应用后才触发 scenario 查询，不覆盖正式结果。"
+        description="报告月份和视图模式驱动正式基线；FTP 场景只有点击应用后才触发情景查询，不覆盖正式结果。"
         testId="product-category-scenario-lead"
       />
       <div
@@ -934,9 +934,9 @@ export default function ProductCategoryPnlPage() {
       </div>
 
       <SectionLead
-        eyebrow="Formal"
+        eyebrow="正式口径"
         title="正式产品类别损益表"
-        description="表格继续展示后端返回的产品类别 read model，资产/负债符号展示、scenario 行为和合计行保持原有逻辑。"
+        description="表格继续展示后端返回的产品类别读模型，资产/负债符号展示、情景行为和合计行保持原有逻辑。"
         testId="product-category-formal-table-lead"
       />
       <AsyncSection

@@ -57,7 +57,7 @@ export function BalanceAnalysisCardsSection({
       label: "总市值合计",
       value: formatBalanceAmountToYiFromYuan(overview?.total_market_value_amount),
       unit: "亿元",
-      detail: "overview.total_market_value_amount · formal",
+      detail: "正式总览 · 总市值字段",
       valueVariant: "text" as const,
     },
     {
@@ -65,7 +65,7 @@ export function BalanceAnalysisCardsSection({
       label: "摊余成本合计",
       value: formatBalanceAmountToYiFromYuan(overview?.total_amortized_cost_amount),
       unit: "亿元",
-      detail: "overview.total_amortized_cost_amount · formal",
+      detail: "正式总览 · 摊余成本字段",
       valueVariant: "text" as const,
     },
     {
@@ -73,21 +73,21 @@ export function BalanceAnalysisCardsSection({
       label: "应计利息合计",
       value: formatBalanceAmountToYiFromYuan(overview?.total_accrued_interest_amount),
       unit: "亿元",
-      detail: "overview.total_accrued_interest_amount · formal",
+      detail: "正式总览 · 应计利息字段",
       valueVariant: "text" as const,
     },
     {
       key: "summary-rows",
       label: "汇总行数",
       value: String(overview?.summary_row_count ?? "—"),
-      detail: "overview.summary_row_count · formal",
+      detail: "正式总览 · 汇总行数",
       valueVariant: "text" as const,
     },
     {
       key: "detail-rows",
       label: "明细行数",
       value: String(overview?.detail_row_count ?? "—"),
-      detail: "overview.detail_row_count · formal",
+      detail: "正式总览 · 明细行数",
       valueVariant: "text" as const,
     },
     ...(workbook?.cards ?? []).map((card) => ({
@@ -95,7 +95,7 @@ export function BalanceAnalysisCardsSection({
       label: card.label,
       value: formatBalanceAmountToYiFromWan(card.value),
       unit: "亿元",
-      detail: `${card.note ?? "workbook.cards"} · workbook`,
+      detail: `${card.note ?? "工作簿摘要"} · 工作簿`,
       valueVariant: "text" as const,
     })),
   ];
@@ -114,7 +114,7 @@ export function BalanceAnalysisCardsSection({
                 textTransform: "uppercase",
               }}
             >
-              Formal Snapshot
+              正式快照
             </span>
             <div
               style={{
@@ -139,8 +139,8 @@ export function BalanceAnalysisCardsSection({
             >
               报告日 {(overview?.report_date ?? selectedReportDate) || "—"}，范围{" "}
               {formatBalanceScopeLabel(overview?.position_scope ?? positionScope)}，币种口径{" "}
-              {formatCurrencyBasisLabel(overview?.currency_basis ?? currencyBasis)}。如果 fallback、quality 或
-              governed 信号异常，优先进入下方正式汇总驾驶舱和右侧治理栏核对，而不是依赖 analytical 衍生结论。
+              {formatCurrencyBasisLabel(overview?.currency_basis ?? currencyBasis)}。如果降级、质量或
+              治理信号异常，优先进入下方正式汇总驾驶舱和右侧治理栏核对，而不是依赖分析口径衍生结论。
             </p>
           </div>
 
@@ -148,11 +148,11 @@ export function BalanceAnalysisCardsSection({
             {(
               [
                 {
-                  label: `basis ${overviewMeta?.basis ?? "—"}`,
+                  label: `口径 ${overviewMeta?.basis ?? "—"}`,
                   tone: overviewMeta?.basis === "formal" ? "positive" : "neutral",
                 },
                 {
-                  label: `formal_use_allowed ${String(overviewMeta?.formal_use_allowed ?? "—")}`,
+                  label: `正式可用 ${String(overviewMeta?.formal_use_allowed ?? "—")}`,
                   tone: overviewMeta?.formal_use_allowed ? "positive" : "warning",
                 },
                 {
@@ -198,7 +198,7 @@ export function BalanceAnalysisCardsSection({
                 {String(overview?.summary_row_count ?? "—")}
               </strong>
               <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
-                summary rows，决定首轮汇总阅读范围
+                汇总行，决定首轮汇总阅读范围
               </span>
             </div>
             <div style={heroDetailCardStyle}>
@@ -213,7 +213,7 @@ export function BalanceAnalysisCardsSection({
                 {String(overview?.detail_row_count ?? "—")}
               </strong>
               <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
-                detail rows，下钻时再进入明细接口
+                明细行，下钻时再进入明细接口
               </span>
             </div>
             <div style={heroDetailCardStyle}>
@@ -228,7 +228,7 @@ export function BalanceAnalysisCardsSection({
                 {String(workbook?.cards.length ?? 0)}
               </strong>
               <span style={{ color: shellTokens.colorTextSecondary, fontSize: designTokens.fontSize[12] }}>
-                workbook.cards，保留业务语义更强的正式摘要
+                工作簿摘要，保留业务语义更强的正式摘要
               </span>
             </div>
           </div>
@@ -245,7 +245,7 @@ export function BalanceAnalysisCardsSection({
                 textTransform: "uppercase",
               }}
             >
-              Governed Signals
+              治理信号
             </span>
             <h2
               style={{
@@ -265,7 +265,7 @@ export function BalanceAnalysisCardsSection({
                 lineHeight: 1.7,
               }}
             >
-              这里不重算风险和利差，只把 decision_items、risk_alerts、event_calendar 的现有 governed 信号提到前面。
+              这里不重算风险和利差，只把决策事项、风险预警、事件日历的现有治理信号提到前面。
             </p>
           </div>
 

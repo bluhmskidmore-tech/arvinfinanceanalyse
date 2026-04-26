@@ -28,7 +28,7 @@ function bubbleColor(tone: RiskMatrixBubble["tone"]) {
 
 export function RiskMatrix({ items, onSelect }: RiskMatrixProps) {
   if (items.length === 0) {
-    return <EmptyState title="暂无风险矩阵" description="风险暴露可通过 analytics 或 stress test 数据填充。" />;
+    return <EmptyState title="暂无风险矩阵" description="风险暴露可通过分析或压力测试数据填充。" />;
   }
 
   return (

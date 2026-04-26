@@ -130,7 +130,7 @@ export function DashboardLiabilityCounterpartySection({
   return (
     <DashboardCockpitSection
       testId="dashboard-liability-counterparty-section"
-      eyebrow="Funding Dependence"
+      eyebrow="资金依赖"
       title="负债端对手方"
       state={state}
       onRetry={() => void query.refetch()}

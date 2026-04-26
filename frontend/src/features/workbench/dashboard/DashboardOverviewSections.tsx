@@ -152,6 +152,7 @@ const moduleEntries = [
     eyebrow: "看久期、利差与持仓结构",
     question: "收益率曲线、信用利差和组合暴露现在最该看哪一段？",
     output: "进入后先看久期、Top 持仓与信用利差。",
+    spotlight: true,
   },
   {
     id: "cross-asset",
@@ -160,6 +161,7 @@ const moduleEntries = [
     eyebrow: "看外部约束和传导",
     question: "利率、汇率、油价和风险偏好如何传导到债券定价？",
     output: "进入后先看环境得分、驱动矩阵和候选动作。",
+    spotlight: true,
   },
   {
     id: "balance-analysis",
@@ -168,6 +170,25 @@ const moduleEntries = [
     eyebrow: "看缺口、滚续和期限错配",
     question: "短端压力、滚续节奏和错配位置具体落在哪一层？",
     output: "进入后先看净缺口、basis 与压力工作台。",
+    spotlight: true,
+  },
+  {
+    id: "product-category-pnl",
+    to: "/product-category-pnl",
+    title: "产品损益",
+    eyebrow: "看经营贡献和正式产品行",
+    question: "本期经营贡献由哪些产品分类拉动，是否需要继续追到调整审计？",
+    output: "进入后先看产品分类损益、FTP 与手工调整链路。",
+    spotlight: true,
+  },
+  {
+    id: "risk-overview",
+    to: "/risk-overview",
+    title: "风险总览",
+    eyebrow: "看 DV01、张量和下钻证据",
+    question: "组合风险暴露、估值压力和重点下钻现在集中在哪些维度？",
+    output: "进入后先看风险张量、KRD 曲线与信用利差迁移。",
+    spotlight: true,
   },
   {
     id: "market-data",
@@ -176,6 +197,43 @@ const moduleEntries = [
     eyebrow: "看盘中上下文",
     question: "现券、资金、存单、期货和信用成交今天发生了什么？",
     output: "进入后先看利率行情、资金曲线和信用利差。",
+    spotlight: true,
+  },
+  {
+    id: "decision-items",
+    to: "/decision-items",
+    title: "决策事项",
+    eyebrow: "处理预警和今日确认",
+    question: "哪些规则命中项需要确认、忽略或补充备注？",
+    output: "进入后先看高/中优先级事项与处理状态。",
+    spotlight: false,
+  },
+  {
+    id: "pnl-bridge",
+    to: "/pnl-bridge",
+    title: "损益解释",
+    eyebrow: "看实际、解释和残差",
+    question: "今日损益由 carry、roll-down、利率、利差还是残差解释？",
+    output: "进入后先看桥接汇总、效应拆解和残差质量。",
+    spotlight: false,
+  },
+  {
+    id: "positions",
+    to: "/positions",
+    title: "持仓透视",
+    eyebrow: "定位具体券和客户暴露",
+    question: "哪些持仓、客户或分布项正在驱动组合变化？",
+    output: "进入后先看持仓明细、分布和客户下钻。",
+    spotlight: false,
+  },
+  {
+    id: "platform-config",
+    to: "/platform-config",
+    title: "中台配置",
+    eyebrow: "看数据源和治理状态",
+    question: "数据源、回退状态和系统健康是否支持当前业务判断？",
+    output: "进入后先看系统健康检查与数据源状态。",
+    spotlight: false,
   },
 ] as const;
 
@@ -370,7 +428,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
   return (
     <section data-testid="dashboard-global-judgment" style={panelStyle}>
       <DashboardSectionHeader
-        eyebrow="VERDICT"
+        eyebrow="定调"
         title="今日定调"
         extra={
           <span
@@ -497,7 +555,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
 export function DashboardModuleSnapshotPanel() {
   return (
     <section data-testid="dashboard-module-snapshot" style={panelStyle}>
-      <DashboardSectionHeader eyebrow="Module Snapshot" title="模块快照" />
+      <DashboardSectionHeader eyebrow="模块快照" title="模块快照" />
       <div
         style={{
           display: "grid",
@@ -505,75 +563,77 @@ export function DashboardModuleSnapshotPanel() {
           gap: designTokens.space[3],
         }}
       >
-        {moduleEntries.map((entry, index) => {
-          const palette = modulePalette[index % modulePalette.length];
-          return (
-            <Link
-              key={entry.id}
-              to={entry.to}
-              style={{
-                position: "relative",
-                display: "grid",
-                gap: designTokens.space[2],
-                minHeight: 112,
-                padding: designTokens.space[3] + 2,
-                borderRadius: designTokens.radius.md,
-                border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background: "#ffffff",
-                overflow: "hidden",
-                textDecoration: "none",
-              }}
-            >
-              <span
-                aria-hidden="true"
+        {moduleEntries
+          .filter((entry) => entry.spotlight)
+          .map((entry, index) => {
+            const palette = modulePalette[index % modulePalette.length];
+            return (
+              <Link
+                key={entry.id}
+                to={entry.to}
                 style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  bottom: 0,
-                  width: 3,
-                  background: palette.fg,
-                  opacity: 0.7,
-                }}
-              />
-              <span
-                style={{
-                  display: "inline-flex",
-                  width: "fit-content",
-                  alignItems: "center",
-                  padding: "2px 8px",
-                  borderRadius: 4,
-                  background: palette.bg,
-                  color: palette.fg,
-                  fontSize: 11,
-                  fontWeight: 700,
-                  letterSpacing: "0.02em",
+                  position: "relative",
+                  display: "grid",
+                  gap: designTokens.space[2],
+                  minHeight: 112,
+                  padding: designTokens.space[3] + 2,
+                  borderRadius: designTokens.radius.md,
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  background: "#ffffff",
+                  overflow: "hidden",
+                  textDecoration: "none",
                 }}
               >
-                {entry.title}
-              </span>
-              <span
-                style={{
-                  color: shellTokens.colorTextPrimary,
-                  fontSize: designTokens.fontSize[13],
-                  fontWeight: 700,
-                  lineHeight: 1.35,
-                }}
-              >
-                {entry.eyebrow}
-              </span>
-              <span
-                style={{
-                  color: shellTokens.colorTextSecondary,
-                  fontSize: 11,
-                  lineHeight: 1.45,
-                }}
-              >
-                {entry.output}
-              </span>
-            </Link>
-          );
-        })}
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    bottom: 0,
+                    width: 3,
+                    background: palette.fg,
+                    opacity: 0.7,
+                  }}
+                />
+                <span
+                  style={{
+                    display: "inline-flex",
+                    width: "fit-content",
+                    alignItems: "center",
+                    padding: "2px 8px",
+                    borderRadius: 4,
+                    background: palette.bg,
+                    color: palette.fg,
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  {entry.title}
+                </span>
+                <span
+                  style={{
+                    color: shellTokens.colorTextPrimary,
+                    fontSize: designTokens.fontSize[13],
+                    fontWeight: 700,
+                    lineHeight: 1.35,
+                  }}
+                >
+                  {entry.eyebrow}
+                </span>
+                <span
+                  style={{
+                    color: shellTokens.colorTextSecondary,
+                    fontSize: 11,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {entry.output}
+                </span>
+              </Link>
+            );
+          })}
       </div>
     </section>
   );
@@ -586,7 +646,7 @@ export function DashboardAlertCenterPanel({
 }) {
   return (
     <section data-testid="dashboard-alert-center" style={panelStyle}>
-      <DashboardSectionHeader eyebrow="Priority Watch" title="预警中心" />
+      <DashboardSectionHeader eyebrow="优先关注" title="预警中心" />
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {alerts.map((alert) => {
           const palette = severityPalette[alert.severity];
@@ -662,7 +722,7 @@ export function DashboardAlertCenterPanel({
 function TodoPanel({ tasks }: { tasks: DashboardHubTask[] }) {
   return (
     <section style={panelStyle}>
-      <DashboardSectionHeader eyebrow="Today" title="今日待办" />
+      <DashboardSectionHeader eyebrow="今日事项" title="今日待办" />
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {tasks.length === 0 ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
@@ -741,7 +801,7 @@ function CalendarPanel({
 
   return (
     <section style={panelStyle}>
-      <DashboardSectionHeader eyebrow="Calendar" title="关键日历" />
+      <DashboardSectionHeader eyebrow="关键日历" title="关键日历" />
       <div style={{ display: "grid", gap: designTokens.space[3] }}>
         {resolvedState.status !== "ready" ? (
           <p style={{ ...bodyTextStyle, margin: 0 }}>
@@ -841,7 +901,7 @@ export function DashboardModuleEntryGrid() {
         gap: designTokens.space[4] + designTokens.space[2],
       }}
     >
-      <DashboardSectionHeader eyebrow="Next Drill" title="模块联动入口" />
+      <DashboardSectionHeader eyebrow="下钻入口" title="模块联动入口" />
       <div className="dashboard-module-entry-grid">
         {moduleEntries.map((entry, index) => {
           const palette = modulePalette[index % modulePalette.length];

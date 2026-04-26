@@ -83,34 +83,34 @@ function hasPromotionSafeProvenance(meta: ResultMeta | null | undefined): boolea
 
 function buildDegradedProvenanceReason(meta: ResultMeta | null | undefined): string {
   if (!meta) {
-    return "No provenance envelope has been loaded for the overview payload yet.";
+    return "尚未加载总览结果的证据信封。";
   }
 
   if (meta.fallback_mode !== "none") {
-    return `Overview payload is using ${meta.fallback_mode.replace("_", " ")} fallback mode.`;
+    return `总览结果正在使用 ${meta.fallback_mode.replace("_", " ")} 降级模式。`;
   }
 
   if (meta.quality_flag !== "ok") {
-    return `Overview payload quality is ${meta.quality_flag}.`;
+    return `总览结果质量标记为 ${meta.quality_flag}。`;
   }
 
   if (meta.vendor_status !== "ok") {
-    return `Vendor status is ${meta.vendor_status.replace("_", " ")}.`;
+    return `供应商状态为 ${meta.vendor_status.replace("_", " ")}。`;
   }
 
   if (meta.formal_use_allowed !== true) {
-    return "Formal use is not allowed for this overview payload.";
+    return "该总览结果不允许正式使用。";
   }
 
   if (meta.scenario_flag) {
-    return "Scenario payloads cannot be promoted into overview headline content.";
+    return "情景结果不能提升到总览头条内容。";
   }
 
   if (meta.basis !== "formal") {
-    return `Overview payload basis is ${meta.basis}, so headline promotion stays blocked.`;
+    return `总览结果口径为 ${meta.basis}，因此仍阻止头条提升。`;
   }
 
-  return "Overview payload provenance is not strong enough for headline promotion.";
+  return "总览结果证据链强度不足，不能提升到头条。";
 }
 
 export function deriveActionAttributionReadiness(
@@ -121,7 +121,7 @@ export function deriveActionAttributionReadiness(
       tier: "status",
       statusLabel: "loading",
       statusReason:
-        "Still evaluating whether action attribution is eligible for governed overview promotion.",
+        "正在判断动作归因是否满足治理总览提升条件。",
       warnings: [],
     };
   }
@@ -139,7 +139,7 @@ export function deriveActionAttributionReadiness(
     return {
       tier: "status",
       statusLabel: "pending",
-      statusReason: "No overview action-attribution envelope has been loaded yet.",
+      statusReason: "尚未加载总览动作归因结果。",
       warnings: [],
     };
   }
@@ -158,12 +158,12 @@ export function deriveActionAttributionReadiness(
       tier: "summary",
       statusLabel: "eligible",
       statusReason:
-        "Action attribution passed the governed promotion gate and can lead the cockpit.",
+        "动作归因已通过治理提升门槛，可以进入驾驶舱头条。",
       warnings,
       summary: {
-        primaryLabel: "Action count",
+        primaryLabel: "动作数量",
         primaryValue: String(input.actionAttribution.total_actions),
-        secondaryLabel: "Action PnL",
+        secondaryLabel: "动作损益",
         secondaryValue: input.actionAttribution.total_pnl_from_actions.display,
       },
     };
@@ -174,7 +174,7 @@ export function deriveActionAttributionReadiness(
       tier: "status",
       statusLabel: "placeholder-blocked",
       statusReason:
-        "Current response is placeholder-backed, so the module stays in readiness/drill mode.",
+        "当前响应依赖占位内容，模块保持就绪/下钻模式。",
       warnings,
     };
   }
@@ -184,7 +184,7 @@ export function deriveActionAttributionReadiness(
       tier: "status",
       statusLabel: "warning",
       statusReason:
-        "Overview payload still carries warning signals, so promotion remains blocked.",
+        "总览结果仍带有预警信号，因此继续阻止提升。",
       warnings,
     };
   }
@@ -202,7 +202,7 @@ export function deriveActionAttributionReadiness(
     tier: "status",
     statusLabel: "detail-first",
     statusReason:
-      "Action attribution is loaded, but overview-safe headline content is not available yet.",
+      "动作归因已加载，但尚无适合总览头条展示的内容。",
     warnings,
   };
 }

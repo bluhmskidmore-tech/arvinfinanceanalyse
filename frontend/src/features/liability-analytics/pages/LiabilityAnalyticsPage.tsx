@@ -916,7 +916,7 @@ export default function LiabilityAnalyticsPage() {
                 <Alert
                   type="warning"
                   showIcon
-                  message="ADB 月度数据加载失败"
+                  message="日均月度数据加载失败"
                   description={(adbMonthlyQuery.error as Error)?.message ?? "请求失败"}
                 />
               ) : null}
@@ -957,4 +957,3 @@ export default function LiabilityAnalyticsPage() {
     </section>
   );
 }
-

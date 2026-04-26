@@ -267,13 +267,56 @@ function seriesRecentPoints(point: MarketObservationPoint) {
 }
 
 function seriesPolicyNote(point: MarketObservationPoint) {
-  return point.policy_note?.trim() || "analytical read path";
+  const note = point.policy_note?.trim();
+  if (!note) return "分析口径读链路";
+  const knownNotes: Record<string, string> = {
+    "analytical middle-rate observation only": "仅分析口径中间价观察",
+    "analytical index observation only": "仅分析口径指数观察",
+    "main refresh date-slice lane": "主刷新日期切片链路",
+  };
+  return knownNotes[note] ?? note;
 }
 
-function seriesFetchModeLabel(point: MarketObservationPoint) {
+function seriesFetchModeLabel(point: { fetch_mode?: string | null; fetch_granularity?: string | null }) {
   const fetchMode = point.fetch_mode ?? "date_slice";
   const granularity = point.fetch_granularity ?? "batch";
-  return `${fetchMode} / ${granularity}`;
+  const fetchModeLabels: Record<string, string> = {
+    date_slice: "日期切片",
+    latest: "最新值",
+    single_fetch: "单次抓取",
+  };
+  const granularityLabels: Record<string, string> = {
+    batch: "批量",
+    single: "单项",
+  };
+  return `${fetchModeLabels[fetchMode] ?? fetchMode} / ${granularityLabels[granularity] ?? granularity}`;
+}
+
+function refreshTierLabel(tier: string) {
+  const labels: Record<string, string> = {
+    stable: "稳定",
+    fallback: "降级",
+    isolated: "隔离",
+  };
+  return labels[tier] ?? tier;
+}
+
+function fxAnalyticalGroupTitle(title: string) {
+  const labels: Record<string, string> = {
+    "Analytical FX: middle-rates": "外汇分析：中间价",
+    "Analytical FX: indices": "外汇分析：指数",
+  };
+  return labels[title] ?? title;
+}
+
+function fxAnalyticalGroupDescription(description: string) {
+  const labels: Record<string, string> = {
+    "Catalog-observed middle-rate series remain analytical views and do not redefine the formal seam.":
+      "目录观察到的中间价序列保留为分析口径视图，不重定义正式口径边界。",
+    "RMB index / estimate index series stay analytical-only and never flow into formal FX.":
+      "人民币指数和估算指数序列保留为分析口径，不流入正式外汇读面。",
+  };
+  return labels[description] ?? description;
 }
 
 function correlationStrength(point: MacroBondLinkageTopCorrelation) {
@@ -348,7 +391,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
 
       <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.normal }}>
         目标维度：{familyLabel(point.target_family)}
-        {point.target_tenor ? ` / ${point.target_tenor}` : " / tenor unavailable"}
+        {point.target_tenor ? ` / ${point.target_tenor}` : " / 期限不可用"}
       </div>
 
       <div
@@ -359,19 +402,19 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         }}
       >
         <div>
-          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 3M</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>3月相关</div>
           <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_3m)}</div>
         </div>
         <div>
-          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 6M</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>6月相关</div>
           <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_6m)}</div>
         </div>
         <div>
-          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>corr 1Y</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>1年相关</div>
           <div style={tabularNumsStyle}>{formatCorrelation(point.correlation_1y)}</div>
         </div>
         <div>
-          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>lead / lag</div>
+          <div style={{ color: c.neutral[500], fontSize: fs[12] }}>领先/滞后</div>
           <div style={tabularNumsStyle}>{`${point.lead_lag_days} 天`}</div>
         </div>
       </div>
@@ -424,7 +467,7 @@ function renderSeriesCards(
                 fontWeight: 600,
               }}
             >
-              <span>{`tier ${marketSeriesRefreshTier(point)}`}</span>
+              <span>{`层级 ${refreshTierLabel(marketSeriesRefreshTier(point))}`}</span>
               <span>路</span>
               <span>{point.quality_flag ?? "warning"}</span>
             </div>
@@ -438,27 +481,27 @@ function renderSeriesCards(
             }}
           >
             <div>
-              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>trade_date</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>交易日</div>
               <div>{point.trade_date}</div>
             </div>
             <div>
-              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>latest</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>最新值</div>
               <div style={{ fontWeight: 600, color: c.neutral[900], ...tabularNumsStyle }}>
                 {formatChoiceMacroValue(point)}
               </div>
             </div>
             <div>
-              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>delta</div>
-              <div style={tabularNumsStyle}>{formatChoiceMacroDelta(point, { emptyDisplay: "n/a" })}</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>变动</div>
+              <div style={tabularNumsStyle}>{formatChoiceMacroDelta(point, { emptyDisplay: "无" })}</div>
             </div>
             <div>
-              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>fetch</div>
+              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>抓取</div>
               <div>{seriesFetchModeLabel(point)}</div>
             </div>
           </div>
 
           <div style={{ color: c.neutral[600], fontSize: fs[12], lineHeight: designTokens.lineHeight.relaxed }}>
-            source {point.source_version} 路 vendor {point.vendor_version}
+            来源 {point.source_version} 路供应商 {point.vendor_version}
           </div>
           <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
             {seriesPolicyNote(point)}
@@ -513,19 +556,19 @@ function MetadataPanel({
         {title}
       </h2>
       <div style={{ display: "grid", gap: s[2], color: c.neutral[600], fontSize: fs[14] }}>
-        <div>trace_id: {meta?.trace_id ?? "pending"}</div>
-        <div>basis: {meta?.basis ?? "pending"}</div>
-        <div>formal_use_allowed: {meta ? String(meta.formal_use_allowed) : "pending"}</div>
-        <div>result_kind: {meta?.result_kind ?? "pending"}</div>
-        <div>source_version: {meta?.source_version ?? "pending"}</div>
-        <div>vendor_version: {meta?.vendor_version ?? "pending"}</div>
-        <div>rule_version: {meta?.rule_version ?? "pending"}</div>
-        <div>quality_flag: {meta?.quality_flag ?? "pending"}</div>
-        <div>vendor_status: {meta?.vendor_status ?? "pending"}</div>
-        <div>fallback_mode: {meta?.fallback_mode ?? "pending"}</div>
-        <div>cache_version: {meta?.cache_version ?? "pending"}</div>
-        <div>scenario_flag: {meta ? String(meta.scenario_flag) : "pending"}</div>
-        <div>generated_at: {meta?.generated_at ?? "pending"}</div>
+        <div>追踪编号：{meta?.trace_id ?? "待定"}</div>
+        <div>口径：{meta?.basis ?? "待定"}</div>
+        <div>正式可用：{meta ? (meta.formal_use_allowed ? "是" : "否") : "待定"}</div>
+        <div>结果类型：{meta?.result_kind ?? "待定"}</div>
+        <div>来源版本：{meta?.source_version ?? "待定"}</div>
+        <div>供应商版本：{meta?.vendor_version ?? "待定"}</div>
+        <div>规则版本：{meta?.rule_version ?? "待定"}</div>
+        <div>质量标记：{meta?.quality_flag ?? "待定"}</div>
+        <div>供应商状态：{meta?.vendor_status ?? "待定"}</div>
+        <div>降级模式：{meta?.fallback_mode ?? "待定"}</div>
+        <div>缓存版本：{meta?.cache_version ?? "待定"}</div>
+        <div>情景标记：{meta ? (meta.scenario_flag ? "是" : "否") : "待定"}</div>
+        <div>生成时间：{meta?.generated_at ?? "待定"}</div>
         {extraLine ? <div>{extraLine}</div> : null}
       </div>
     </section>
@@ -694,8 +737,8 @@ export default function MarketDataPage() {
       <PageHeader
         title="市场数据"
         titleTestId="market-data-page-title"
-        eyebrow="Overview"
-        description="当前页按“市场观察、分析观察、结果证据”三层阅读顺序展示内容。宏观观察与 analytical FX 观察继续共存，但 formal FX 中间价状态和 result metadata 仍保持为独立后端读面，不在前端补算、不混入口径。"
+        eyebrow="总览"
+        description="当前页按“市场观察、分析观察、结果证据”三层阅读顺序展示内容。宏观观察与分析口径外汇观察继续共存，但正式外汇中间价状态和结果元数据仍保持为独立后端读面，不在前端补算、不混入口径。"
         badgeLabel={client.mode === "real" ? "真实 DuckDB 读路径" : "本地离线契约回放"}
         badgeTone={client.mode === "real" ? "positive" : "accent"}
         actions={
@@ -803,9 +846,9 @@ export default function MarketDataPage() {
       </PageHeader>
 
       <MarketSectionLead
-        eyebrow="Overview"
+        eyebrow="总览"
         title="市场概览"
-        description="先确认当前序列覆盖、稳定回收和 analytical 观察范围，再进入利率、资金和成交明细。"
+        description="先确认当前序列覆盖、稳定回收和分析观察范围，再进入利率、资金和成交明细。"
         flushTop
       />
       <div style={summaryGridStyle}>
@@ -829,7 +872,7 @@ export default function MarketDataPage() {
           <KpiCard
             title="降级可用"
             value={String(fallbackSeries.length)}
-            detail="latest-only / single-fetch 降级链路中的序列数量。"
+            detail="仅取最新 / 单次抓取降级链路中的序列数量。"
             tone={fallbackSeries.length > 0 ? "warning" : "default"}
           />
         </div>
@@ -846,7 +889,7 @@ export default function MarketDataPage() {
           <KpiCard
             title="稳定缺口"
             value={String(missingStableSeries.length)}
-            detail="目录中属于 stable 但当前尚未回收的序列数量。"
+            detail="目录中属于稳定主链路但当前尚未回收的序列数量。"
             tone={
               missingStableSeries.length > 5 ? "error" : missingStableSeries.length > 0 ? "warning" : "default"
             }
@@ -854,16 +897,16 @@ export default function MarketDataPage() {
         </div>
         <div data-testid="market-data-fx-analytical-group-count">
           <KpiCard
-            title="FX 观察分组"
+            title="外汇观察分组"
             value={String(fxAnalyticalGroups.length)}
-            detail="后端返回的 analytical FX 分组数量。"
+            detail="后端返回的分析口径外汇分组数量。"
           />
         </div>
         <div data-testid="market-data-fx-analytical-series-count">
           <KpiCard
-            title="FX 观察序列"
+            title="外汇观察序列"
             value={String(fxAnalyticalSeriesCount)}
-            detail="Analytical FX 观察值与 formal FX 状态保持分离。"
+            detail="分析口径外汇观察值与正式外汇状态保持分离。"
           />
         </div>
         <div data-testid="market-data-linkage-report-date">
@@ -877,14 +920,14 @@ export default function MarketDataPage() {
         </div>
       </div>
       <LiveResultMetaStrip
-        lead="市场概览·宏观读面（latest 优先）"
+        lead="市场概览·宏观读面（最新优先）"
         meta={macroMeta}
         testId="market-data-overview-live-meta"
       />
 
       <MarketSectionBlock>
         <MarketSectionLead
-          eyebrow="Core Watch"
+          eyebrow="核心观察"
           title="利率、资金、宏观深度与成交观察"
           description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
         />
@@ -916,7 +959,7 @@ export default function MarketDataPage() {
                       SHIBOR 隔夜（{RATE_TREND_DEFINITIONS[2].series_id}），数据来自各序列的 recent_points。
                     </p>
                     <LiveResultMetaStrip
-                      lead="收益率曲线·宏观 latest"
+                      lead="收益率曲线·宏观最新"
                       meta={latestQuery.data?.result_meta}
                       testId="market-data-curve-live-meta"
                     />
@@ -940,7 +983,7 @@ export default function MarketDataPage() {
                         }
                         data-testid="market-data-rate-trend-error"
                         description="无法确认收益率曲线输入，不按空数据处理；请重试或查看下方宏观序列失败态。"
-                        message="宏观 latest 载入失败"
+                        message="宏观最新载入失败"
                         showIcon
                         type="error"
                       />
@@ -1013,7 +1056,7 @@ export default function MarketDataPage() {
                             ? macroBondLinkage.environment_score.liquidity_score.toFixed(2)
                             : "—"
                         }
-                        detail="对应联动 payload 的 liquidity_score（非 V1 压力测试原样复刻）。"
+                        detail="对应联动载荷的流动性评分（非 V1 压力测试原样复刻）。"
                         tone={
                           macroBondLinkage.environment_score?.liquidity_score != null
                             ? toneFromSignedNumber(macroBondLinkage.environment_score.liquidity_score)
@@ -1025,7 +1068,7 @@ export default function MarketDataPage() {
                         value={macroBondLinkage.environment_score?.rate_direction ?? "—"}
                         detail={
                           macroBondLinkage.environment_score?.rate_direction_score != null
-                            ? `direction score ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`
+                            ? `方向评分 ${macroBondLinkage.environment_score.rate_direction_score.toFixed(2)}`
                             : "缺少方向评分。"
                         }
                         valueVariant="text"
@@ -1068,9 +1111,9 @@ export default function MarketDataPage() {
 
       <MarketSectionBlock>
         <MarketSectionLead
-          eyebrow="Observation"
+          eyebrow="观察"
           title="宏观序列与分析观察"
-          description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
+          description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与外汇分析观察，避免和正式读面混用。"
         />
         <MacroLatestReadinessBanner
           testId="market-data-macro-readiness"
@@ -1090,7 +1133,7 @@ export default function MarketDataPage() {
           <div style={{ display: "grid", gap: s[6] }}>
             {!latestQuery.isLoading && !latestQuery.isError ? (
               <LiveResultMetaStrip
-                lead="本区块·宏观 latest"
+                lead="本区块·宏观最新"
                 meta={latestQuery.data?.result_meta}
                 testId="market-data-macro-section-meta"
               />
@@ -1099,7 +1142,7 @@ export default function MarketDataPage() {
               <div style={{ marginBottom: s[3] }}>
                 <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
                 <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
-                  面向日常分析的主 refresh 读面，只显示稳定可取的序列。
+                  面向日常分析的主刷新读面，只显示稳定可取的序列。
                 </p>
               </div>
               {renderSeriesCards(stableSeries)}
@@ -1107,9 +1150,9 @@ export default function MarketDataPage() {
 
             <section data-testid="market-data-missing-stable-section">
               <div style={{ marginBottom: s[3] }}>
-                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐 stable</h2>
+                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐稳定链路</h2>
                 <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
-                  目录中归属 stable，但当前 refresh 尚未回收的序列。
+                  目录中归属稳定链路，但当前刷新尚未回收的序列。
                 </p>
               </div>
               {missingStableSeries.length > 0 ? (
@@ -1128,11 +1171,10 @@ export default function MarketDataPage() {
                     >
                       <strong>{series.series_name}</strong>
                       <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
-                        {series.series_id} 路 {marketCatalogRefreshTier(series)} 路 {series.fetch_mode ?? "date_slice"} /{" "}
-                        {series.fetch_granularity ?? "batch"}
+                        {series.series_id} 路 {refreshTierLabel(marketCatalogRefreshTier(series))} 路 {seriesFetchModeLabel(series)}
                       </div>
                       <div style={{ color: c.neutral[800], fontSize: fs[13] }}>
-                        {series.policy_note ?? "main refresh date-slice lane"}
+                        {series.policy_note ?? "主刷新日期切片链路"}
                       </div>
                     </div>
                   ))}
@@ -1148,14 +1190,14 @@ export default function MarketDataPage() {
                     fontSize: fs[14],
                   }}
                 >
-                  当前 stable 目录已全部回收。
+                  当前稳定目录已全部回收。
                 </div>
               )}
             </section>
 
             <section data-testid="market-data-fallback-section">
               <div style={{ marginBottom: s[3] }}>
-                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>降级 latest-only</h2>
+                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>仅取最新降级</h2>
                 <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
                   低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
                 </p>
@@ -1173,7 +1215,7 @@ export default function MarketDataPage() {
                     fontSize: fs[14],
                   }}
                 >
-                  当前无降级 latest-only 序列。
+                  当前无仅取最新降级序列。
                 </div>
               )}
             </section>
@@ -1183,7 +1225,7 @@ export default function MarketDataPage() {
 
         <MarketSectionInnerBlock>
           <AsyncSection
-          title="FX analytical 观察"
+          title="外汇分析观察"
           isLoading={fxAnalyticalQuery.isLoading}
           isError={fxAnalyticalQuery.isError}
           isEmpty={
@@ -1196,7 +1238,7 @@ export default function MarketDataPage() {
           <div style={{ display: "grid", gap: s[6] }}>
             {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError ? (
               <LiveResultMetaStrip
-                lead="本区块·FX analytical"
+                lead="本区块·外汇分析"
                 meta={fxAnalyticalQuery.data?.result_meta}
                 testId="market-data-fx-section-meta"
               />
@@ -1207,7 +1249,7 @@ export default function MarketDataPage() {
                 data-testid={`market-data-fx-group-${group.group_key}`}
               >
                 <div style={{ marginBottom: s[3] }}>
-                  <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>{group.title}</h2>
+                  <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>{fxAnalyticalGroupTitle(group.title)}</h2>
                   <p
                     style={{
                       marginTop: s[2],
@@ -1217,7 +1259,7 @@ export default function MarketDataPage() {
                       lineHeight: designTokens.lineHeight.relaxed,
                     }}
                   >
-                    {group.description}
+                    {fxAnalyticalGroupDescription(group.description)}
                   </p>
                 </div>
                 {renderSeriesCards(group.series, {
@@ -1232,9 +1274,9 @@ export default function MarketDataPage() {
 
       <MarketSectionBlock>
         <MarketSectionLead
-          eyebrow="Analytical"
+          eyebrow="分析口径"
           title="宏观-债市联动"
-          description="联动区保留为分析口径折叠块，继续显式标注 analytical / non-formal，不向 formal 结果读面越界。"
+          description="联动区保留为分析口径折叠块，继续显式标注分析口径和非正式口径，不向正式结果读面越界。"
         />
         <Collapse
           data-testid="market-data-linkage-collapse"
@@ -1292,7 +1334,7 @@ export default function MarketDataPage() {
                     textTransform: "uppercase",
                   }}
                 >
-                  analytical
+                  分析口径
                 </span>
                 <span
                   style={{
@@ -1306,12 +1348,12 @@ export default function MarketDataPage() {
                     fontWeight: 700,
                   }}
                 >
-                  non-formal
+                  非正式口径
                 </span>
               </div>
               <div style={{ color: c.neutral[800], fontSize: fs[14], lineHeight: designTokens.lineHeight.relaxed }}>
                 本区为宏观联动分析口径。组合影响仅用于研究和配置讨论，属于分析估算，不代表账本口径下的损益（PnL）、
-                不代表正式估值归因，也不替代 bond analytics 的正式读面。
+                不代表正式估值归因，也不替代债券分析的正式读面。
               </div>
               {macroBondLinkageWarnings.length > 0 ? (
                 <ul
@@ -1417,7 +1459,7 @@ export default function MarketDataPage() {
                 组合影响估算
               </h2>
               <p style={{ marginTop: 0, color: c.neutral[600], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
-                以下数值为 analytical estimate，基于宏观环境评分与组合在利率、利差维度上的敏感度静态映射，不代表正式损益。
+                以下数值为分析口径估算，基于宏观环境评分与组合在利率、利差维度上的敏感度静态映射，不代表正式损益。
               </p>
               {hasPortfolioImpact ? (
                 <div
@@ -1428,31 +1470,31 @@ export default function MarketDataPage() {
                   }}
                 >
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>rate change</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>利率变动</div>
                     <div style={tabularNumsStyle}>
                       {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_change_bps, " bp")}
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>spread widening</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>利差走阔</div>
                     <div style={tabularNumsStyle}>
                       {formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_widening_bps, " bp")}
                     </div>
                   </div>
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>rate impact</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>利率影响</div>
                     <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_rate_pnl_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>spread impact</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>利差影响</div>
                     <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.estimated_spread_pnl_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>total estimate</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>合计估算</div>
                     <div style={tabularNumsStyle}>{formatSignedNumber(macroBondLinkage.portfolio_impact?.total_estimated_impact)}</div>
                   </div>
                   <div>
-                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>impact ratio</div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>影响占比</div>
                     <div style={tabularNumsStyle}>{macroBondLinkage.portfolio_impact?.impact_ratio_to_market_value ?? "不可用"}</div>
                   </div>
                 </div>
@@ -1468,7 +1510,7 @@ export default function MarketDataPage() {
                     fontSize: fs[14],
                   }}
                 >
-                  当前报告日未返回组合影响估算，状态按 unavailable 处理，不在前端补零。
+                  当前报告日未返回组合影响估算，状态按不可用处理，不在前端补零。
                 </div>
               )}
             </section>
@@ -1478,7 +1520,7 @@ export default function MarketDataPage() {
                 信用利差显式维度
               </h2>
               <p style={{ marginTop: 0, color: c.neutral[600], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
-                仅按结构化字段 `target_family / target_tenor` 渲染，不从 label 或 target_yield 反推 tenor。
+                仅按结构化字段渲染，不从标签或目标收益率反推期限。
               </p>
               <div
                 style={{
@@ -1500,16 +1542,16 @@ export default function MarketDataPage() {
                       gap: s[2],
                     }}
                   >
-                    <div style={{ fontWeight: 600, color: c.neutral[900] }}>{`credit_spread_${tenor}`}</div>
+                    <div style={{ fontWeight: 600, color: c.neutral[900] }}>{`信用利差 ${tenor}`}</div>
                     {point ? (
                       <>
                         <div style={{ color: c.neutral[600], fontSize: fs[13] }}>{point.series_name}</div>
-                        <div style={tabularNumsStyle}>{`corr 1Y ${formatCorrelation(point.correlation_1y)}`}</div>
-                        <div style={tabularNumsStyle}>{`lead / lag ${point.lead_lag_days} 天`}</div>
+                        <div style={tabularNumsStyle}>{`1年相关 ${formatCorrelation(point.correlation_1y)}`}</div>
+                        <div style={tabularNumsStyle}>{`领先/滞后 ${point.lead_lag_days} 天`}</div>
                       </>
                     ) : (
                       <div style={{ color: c.neutral[500], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
-                        unavailable：当前 payload 未返回该 tenor 的结构化相关性，不在前端推断。
+                        不可用：当前载荷未返回该期限的结构化相关性，不在前端推断。
                       </div>
                     )}
                   </div>
@@ -1553,9 +1595,9 @@ export default function MarketDataPage() {
 
       <MarketSectionBlock>
         <MarketSectionLead
-          eyebrow="Evidence"
+          eyebrow="证据"
           title="目录与结果元数据"
-          description="页尾集中展示目录补充信息与 result metadata，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
+          description="页尾集中展示目录补充信息与结果元数据，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
         />
         <div style={{ ...sectionGridStyle, marginTop: 0 }}>
         <AsyncSection
@@ -1583,7 +1625,7 @@ export default function MarketDataPage() {
                   {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
                 </div>
                 <div style={{ color: c.neutral[500], fontSize: fs[12] }}>
-                  vendor_version {series.vendor_version}
+                  供应商版本 {series.vendor_version}
                 </div>
               </div>
             ))}
@@ -1593,12 +1635,12 @@ export default function MarketDataPage() {
         <MetadataPanel
           title="结果元数据"
           meta={macroMeta}
-          extraLine={`visible_vendor_versions: ${vendorVersions.join(", ") || "—"}`}
+          extraLine={`可见供应商版本：${vendorVersions.join(", ") || "—"}`}
           testId="market-data-result-meta"
         />
 
         <MetadataPanel
-          title="FX 观察元数据"
+          title="外汇观察元数据"
           meta={fxAnalyticalMeta}
           testId="market-data-fx-analytical-meta"
         />
@@ -1606,7 +1648,7 @@ export default function MarketDataPage() {
         <MetadataPanel
           title="联动元数据"
           meta={macroBondLinkageMeta}
-          extraLine={`report_date: ${linkageReportDate || "pending"}`}
+          extraLine={`报告日：${linkageReportDate || "待定"}`}
           testId="market-data-linkage-meta"
         />
       </div>

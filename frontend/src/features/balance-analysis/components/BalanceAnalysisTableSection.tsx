@@ -247,12 +247,12 @@ export function BalanceAnalysisTableSection({
         style={{ marginTop: designTokens.space[5], display: "grid", gap: designTokens.space[4] }}
       >
         <PageSectionLead
-          eyebrow="Analytical"
-          title="Supporting Analytical"
-          description="ADB 预览、会计口径拆解和高阶归因继续作为 supporting analytical 区域，帮助解释 formal 结果，但不替代正式结论。"
+          eyebrow="分析口径"
+          title="辅助分析"
+          description="日均预览、会计口径拆解和高阶归因继续作为辅助分析区域，帮助解释正式结果，但不替代正式结论。"
         />
         <SectionCard
-          title="ADB Analytical Preview"
+          title="日均分析预览"
           loading={adbComparisonQuery.isLoading}
           error={adbComparisonQuery.isError}
           onRetry={() => void adbComparisonQuery.refetch()}
@@ -330,9 +330,9 @@ export function BalanceAnalysisTableSection({
 
       <div style={{ marginTop: designTokens.space[6] }}>
         <PageSectionLead
-          eyebrow="Summary"
+          eyebrow="汇总"
           title="正式汇总驾驶舱"
-          description="先阅读分页汇总表，再进入下方 detail summary 和明细下钻，保持 summary / detail 查询分层不变。"
+          description="先阅读分页汇总表，再进入下方明细汇总和明细下钻，保持汇总与明细查询分层不变。"
         />
         <AsyncSection
           title="资产负债汇总"

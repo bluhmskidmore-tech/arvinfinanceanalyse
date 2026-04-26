@@ -118,7 +118,7 @@ describe("ProductCategoryPnlPage branch switching", () => {
       expect(screen.getByTestId("monthly-operating-analysis-boundary-copy")).toHaveTextContent(
         "月度经营分析工作簿",
       );
-      expect(screen.getByText(/Analytical workbook only/)).toBeInTheDocument();
+      expect(screen.getByText(/仅用于分析口径工作簿/)).toBeInTheDocument();
       expect(screen.getByTestId("monthly-operating-analysis-controls-lead")).toHaveTextContent(
         "月度工作簿控制",
       );

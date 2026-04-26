@@ -5,7 +5,7 @@ import { dailyNimStressFromKpi } from "../utils/nimStress";
 
 const { Text } = Typography;
 
-/** 涓浗閰嶈壊锛氱孩=涓婃定锛岀豢=涓嬭穼锛堢敤浜?NIM 鍙樺姩鏂瑰悜锛夈€?*/
+/** 中国配色：红=上升，绿=下降（用于 NIM 变动方向）。 */
 function deltaColor(deltaBp: number | null): string {
   if (deltaBp === null || !Number.isFinite(deltaBp)) {
     return "rgba(0,0,0,0.45)";
@@ -26,32 +26,32 @@ export function LiabilityNimStressPanel({
 }) {
   const stress = dailyNimStressFromKpi(yieldKpi);
   const deltaBpRaw = stress.deltaBp?.raw ?? null;
-  const bpText = stress.deltaBp?.display ?? "鈥?";
+  const bpText = stress.deltaBp?.display ?? "—";
 
   return (
-    <Card size="small" title="鍘嬪姏娴嬭瘯锛歂IM 鏁忔劅鎬э紙+50bps锛?>">
+    <Card size="small" title="压力测试：NIM 敏感性（+50bps）">
       <Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 12 }}>
-        鍙ｅ緞锛氳祫浜ф敹鐩婄巼 鈭?閲戣瀺甯傚満鍚屼笟璐熷€烘垚鏈紙鍏ㄥ彛寰?TYWL + 鍙戣鍚屼笟瀛樺崟锛夛紱鍐插嚮涓鸿礋鍊烘垚鏈?+50bps銆?
+        口径：资产收益率减金融市场同业负债成本（全口径同业往来 + 发行同业存单）；冲击为负债成本 +50bps。
       </Text>
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">璧勪骇鏀剁泭鐜?</Text>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{stress.ay?.display ?? "鈥?"}</div>
+            <Text type="secondary">资产收益率</Text>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stress.ay?.display ?? "—"}</div>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">閲戣瀺甯傚満鍚屼笟璐熷€烘垚鏈?</Text>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>{stress.mlc?.display ?? "鈥?"}</div>
+            <Text type="secondary">金融市场同业负债成本</Text>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>{stress.mlc?.display ?? "—"}</div>
             <Text type="secondary" style={{ fontSize: 12 }}>
-              锛堝鍊肩◣鍓嶏級
+              （增值税前）
             </Text>
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
           <Card size="small" styles={{ body: { background: "#fafafa" } }}>
-            <Text type="secondary">褰撳墠 NIM</Text>
+            <Text type="secondary">当前 NIM</Text>
             <div
               style={{
                 fontSize: 22,
@@ -62,7 +62,7 @@ export function LiabilityNimStressPanel({
                     : "rgba(0,0,0,0.88)",
               }}
             >
-              {stress.nim?.display ?? "鈥?"}
+              {stress.nim?.display ?? "—"}
             </div>
           </Card>
         </Col>
@@ -71,11 +71,11 @@ export function LiabilityNimStressPanel({
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
               <div>
                 <Text strong style={{ color: "#531dab" }}>
-                  鍘嬪姏鍚?NIM锛?50bps锛?
+                  压力后 NIM（+50bps）
                 </Text>
                 {stress.isCritical ? (
                   <Tag color="red" style={{ marginLeft: 8 }}>
-                    NIM 棰勮
+                    NIM 预警
                   </Tag>
                 ) : null}
               </div>
@@ -93,9 +93,9 @@ export function LiabilityNimStressPanel({
                     : "rgba(0,0,0,0.88)",
               }}
             >
-              {stress.projected?.display ?? "鈥?"}
+              {stress.projected?.display ?? "—"}
             </div>
-            <div style={{ marginTop: 8, fontWeight: 600, color: deltaColor(deltaBpRaw) }}>螖 {bpText}</div>
+            <div style={{ marginTop: 8, fontWeight: 600, color: deltaColor(deltaBpRaw) }}>变化 {bpText}</div>
           </Card>
         </Col>
       </Row>

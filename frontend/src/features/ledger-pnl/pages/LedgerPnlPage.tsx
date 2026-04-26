@@ -165,10 +165,10 @@ export default function LedgerPnlPage() {
             data-testid="ledger-pnl-page-title"
             style={{ margin: 0, fontSize: 32, fontWeight: 600, letterSpacing: "-0.03em" }}
           >
-            Ledger PnL
+            总账损益
           </h1>
           <p data-testid="ledger-pnl-page-subtitle" style={pageSubtitleStyle}>
-            科目口径损益总览、币种汇总与账户明细。页面直接消费后端 ledger 口径 read model，
+            科目口径损益总览、币种汇总与账户明细。页面直接消费后端总账口径读模型，
             不在前端补算会计科目聚合。
           </p>
         </div>

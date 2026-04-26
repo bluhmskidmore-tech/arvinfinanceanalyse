@@ -20,7 +20,7 @@ describe("buildDashboardTodoTasksFromAlerts", () => {
       },
       {
         id: "high-mock",
-        title: "当前处于 Mock 模式",
+        title: "当前处于模拟模式",
         detail: "演示数据源",
         severity: "high",
       },
@@ -29,7 +29,7 @@ describe("buildDashboardTodoTasksFromAlerts", () => {
     expect(buildDashboardTodoTasksFromAlerts(alerts)).toEqual([
       {
         id: "todo-high-mock",
-        title: "复核：当前处于 Mock 模式",
+        title: "复核：当前处于模拟模式",
         due: "今日复核 · 来源：治理预警",
         priority: "high",
       },

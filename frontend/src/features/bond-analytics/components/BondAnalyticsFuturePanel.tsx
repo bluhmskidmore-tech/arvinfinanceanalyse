@@ -11,11 +11,10 @@ export function BondAnalyticsFuturePanel({ futureVisibilityItems }: BondAnalytic
   return (
     <Card size="small" data-testid="bond-analysis-future-panel" style={panelStyle("#fbfcff")}>
       <div style={{ display: "grid", gap: 12 }}>
-        <div style={EYEBROW}>Deferred / future</div>
-        <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>Keep the next cockpit layers visible</div>
+        <div style={EYEBROW}>暂缓与后续</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#18314d" }}>保留下阶段驾驶舱层级</div>
         <div style={{ color: "#60748d", fontSize: 12, lineHeight: 1.65 }}>
-          These surfaces stay pinned in the top-right rail so users can see what is planned without confusing roadmap
-          visibility with current governed truth.
+          这些页面保留在右上侧栏，用户可以看到规划范围，同时不会把路线图可见性误读成当前受治理事实。
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           {futureVisibilityItems.map((item) => (

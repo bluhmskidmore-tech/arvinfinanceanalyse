@@ -209,35 +209,35 @@ describe("MarketDataPage", () => {
       "2026-04-10",
     );
     expect(screen.getByTestId("market-data-missing-stable-count")).toHaveTextContent("1");
-    expect(screen.getByText("待补齐 stable")).toBeInTheDocument();
+    expect(screen.getByText("待补齐稳定链路")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("market-data-missing-stable-section")).getByText("RMB Index"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
-    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("vendor_status: ok");
-    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("fallback_mode: none");
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("供应商状态：ok");
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("降级模式：none");
     expect(screen.getByTestId("market-data-macro-readiness")).toHaveTextContent("已返回数据");
     expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent(
       "vv_choice_macro_20260410",
     );
-    expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("vendor_status=ok");
+    expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("供应商状态=ok");
     expect(screen.getByTestId("market-data-macro-section-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
     expect(screen.getByText("稳定主链路")).toBeInTheDocument();
-    expect(screen.getByText("降级 latest-only")).toBeInTheDocument();
-    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("tier stable");
-    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("date_slice / batch");
-    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("main refresh date-slice lane");
+    expect(screen.getByText("仅取最新降级")).toBeInTheDocument();
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("层级 稳定");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("日期切片 / 批量");
+    expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("主刷新日期切片链路");
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("+20 bp");
     expect(screen.getByTestId("market-data-series-M001")).toHaveTextContent("2026-04-09");
-    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("tier fallback");
-    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("latest / single");
+    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("层级 降级");
+    expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("最新值 / 单项");
     expect(screen.getByTestId("market-data-series-M002")).toHaveTextContent("low-frequency latest-only lane");
     expect(screen.getByText("宏观序列观察")).toBeInTheDocument();
-    expect(screen.getByText("FX analytical 观察")).toBeInTheDocument();
+    expect(screen.getByText("外汇分析观察")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "结果元数据" })).toBeInTheDocument();
 
     expect(screen.getByText("收益率曲线")).toBeInTheDocument();
@@ -379,7 +379,7 @@ describe("MarketDataPage", () => {
     });
 
     const curveError = await screen.findByTestId("market-data-rate-trend-error");
-    expect(curveError).toHaveTextContent("宏观 latest 载入失败");
+    expect(curveError).toHaveTextContent("宏观最新载入失败");
     expect(screen.queryByTestId("market-data-rate-trend-empty")).not.toBeInTheDocument();
 
     await waitFor(() => {
@@ -484,15 +484,15 @@ describe("MarketDataPage", () => {
       getFxAnalytical,
     });
 
-    expect(await screen.findByText("Analytical FX: middle-rates")).toBeInTheDocument();
-    expect(screen.getByText("Analytical FX: indices")).toBeInTheDocument();
+    expect(await screen.findByText("外汇分析：中间价")).toBeInTheDocument();
+    expect(screen.getByText("外汇分析：指数")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-fx-analytical-group-count")).toHaveTextContent("2");
     expect(screen.getByTestId("market-data-fx-analytical-series-count")).toHaveTextContent("2");
     expect(screen.getByTestId("market-data-fx-group-middle_rate")).toHaveTextContent(
       "USD/CNY middle-rate observation",
     );
     expect(screen.getByTestId("market-data-fx-group-middle_rate")).toHaveTextContent(
-      "analytical middle-rate observation only",
+      "仅分析口径中间价观察",
     );
     expect(screen.getByTestId("market-data-fx-group-fx_index")).toHaveTextContent(
       "RMB basket index",
@@ -501,7 +501,7 @@ describe("MarketDataPage", () => {
       "tr_fx_analytical_test",
     );
     expect(screen.getByTestId("market-data-fx-section-meta")).toHaveTextContent(
-      "fallback_mode=latest_snapshot",
+      "降级模式=latest_snapshot",
     );
 
     await waitFor(() => {
@@ -515,8 +515,8 @@ describe("MarketDataPage", () => {
     renderPage(client);
 
     expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
-    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("analytical");
-    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("non-formal");
+    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析口径");
+    expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("非正式口径");
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析估算");
     expect(screen.getByTestId("market-data-linkage-warning-list")).toHaveTextContent(
       "Analytical signal only",
@@ -527,22 +527,22 @@ describe("MarketDataPage", () => {
       "组合影响估算",
     );
     expect(screen.getByTestId("market-data-linkage-portfolio-impact")).toHaveTextContent(
-      "total estimate",
+      "合计估算",
     );
     expect(screen.getByTestId("market-data-linkage-spread-slot-5Y")).toHaveTextContent(
       "10Y treasury yield",
     );
     expect(screen.getByTestId("market-data-linkage-spread-slot-3Y")).toHaveTextContent(
-      "unavailable",
+      "不可用",
     );
     expect(screen.getByTestId("market-data-linkage-spread-slot-10Y")).toHaveTextContent(
-      "unavailable",
+      "不可用",
     );
     expect(screen.getByTestId("market-data-linkage-top-correlations")).toHaveTextContent(
       "CPI YoY",
     );
     expect(screen.getByTestId("market-data-linkage-meta")).toHaveTextContent(
-      "formal_use_allowed: false",
+      "正式可用：否",
     );
     expect(screen.getByTestId("market-data-spreads-live-meta")).toHaveTextContent("联动读面");
   });
@@ -757,6 +757,6 @@ describe("MarketDataPage", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("1.405")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("tr_ncd_proxy_test");
-    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("vendor_status=ok");
+    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("供应商状态=ok");
   });
 });

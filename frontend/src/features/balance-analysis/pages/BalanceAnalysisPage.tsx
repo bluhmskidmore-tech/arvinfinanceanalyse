@@ -2169,12 +2169,12 @@ export default function BalanceAnalysisPage() {
           <span className="balance-analysis-supplemental__eyebrow">分析口径</span>
           <strong className="balance-analysis-supplemental__title">辅助分析口径</strong>
           <span className="balance-analysis-supplemental__description">
-            ADB 预览、会计口径拆解和高阶归因默认收起，作为解释正式结果的辅助材料，不替代正式结论。
+            日均预览、会计口径拆解和高阶归因默认收起，作为解释正式结果的辅助材料，不替代正式结论。
           </span>
         </summary>
         <div className="balance-analysis-supplemental__grid">
           <SectionCard
-            title="ADB 分析预览"
+            title="日均分析预览"
             loading={deferredAnalysisQueriesPending || adbComparisonQuery.isLoading}
             error={adbComparisonQuery.isError}
             onRetry={() => void adbComparisonQuery.refetch()}
@@ -2241,7 +2241,7 @@ export default function BalanceAnalysisPage() {
         <PageSectionLead
           eyebrow="工作台"
           title="工作簿与治理侧栏"
-          description="工作簿主栏承载正式 workbook 面板，右侧栏承载治理事项、事件日历、风险预警和详情下钻，保持现有契约和阅读顺序。"
+          description="工作簿主栏承载正式工作簿面板，右侧栏承载治理事项、事件日历、风险预警和详情下钻，保持现有契约和阅读顺序。"
         />
         <AsyncSection
           title="工作簿与分析面板"
@@ -2614,7 +2614,7 @@ export default function BalanceAnalysisPage() {
         <PageSectionLead
           eyebrow="真实数据"
           title="真实数据场景阅读"
-          description="以下三组面板保留原有阅读布局，但数据改为来自当前报告日的 overview、detail、workbook、decision items、risk alerts 和 event calendar；缺失切片只显示空态，不再补静态演示值。"
+          description="以下三组面板保留原有阅读布局，但数据改为来自当前报告日的总览、明细、工作簿、决策事项、风险预警和事件日历；缺失切片只显示空态，不再补静态演示值。"
           style={{ marginTop: 0 }}
         />
         <div

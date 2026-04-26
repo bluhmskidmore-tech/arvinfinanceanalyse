@@ -18,11 +18,14 @@ describe("workbench navigation mocks", () => {
     expect(new Set(paths).size).toBe(paths.length);
   });
 
-  it("includes a hidden agent entry", () => {
+  it("includes an agent entry outside the live primary navigation", () => {
     const agent = workbenchNavigation.find((s) => s.key === "agent");
     expect(agent).toBeDefined();
-    expect(agent?.navigationVisibility).toBe("hidden");
+    expect(agent?.readiness).toBe("placeholder");
+    expect(agent?.readinessLabel).toBe("智能体试用");
     expect(agent?.path).toBe("/agent");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
@@ -43,7 +46,7 @@ describe("workbench navigation mocks", () => {
     const section = workbenchNavigation.find((s) => s.key === "operations-analysis");
     expect(section?.path).toBe("/operations-analysis");
     expect(section?.readiness).toBe("live");
-    expect(section?.readinessLabel).toBe("Temporary");
+    expect(section?.readinessLabel).toBe("临时开放");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "operations-analysis")).toBe(true);
   });
 
@@ -70,7 +73,7 @@ describe("workbench navigation mocks", () => {
     for (const key of temporaryExceptionKeys) {
       const section = workbenchNavigation.find((item) => item.key === key);
       expect(section?.readiness).toBe("live");
-      expect(section?.readinessLabel).toBe("Temporary");
+      expect(section?.readinessLabel).toBe("临时开放");
       expect(section?.governanceStatus).toBe("temporary-exception");
     }
   });
@@ -116,7 +119,7 @@ describe("workbench navigation mocks", () => {
     const liab = workbenchNavigation.find((s) => s.key === "liability-analytics");
     expect(liab?.path).toBe("/liability-analytics");
     expect(liab?.readiness).toBe("live");
-    expect(liab?.readinessLabel).toBe("Live");
+    expect(liab?.readinessLabel).toBe("已开放");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "liability-analytics")).toBe(false);
   });
@@ -156,7 +159,7 @@ describe("workbench navigation mocks", () => {
   it("promotes decision-items into the live primary navigation as a temporary exception", () => {
     const section = workbenchNavigation.find((s) => s.key === "decision-items");
     expect(section?.readiness).toBe("live");
-    expect(section?.readinessLabel).toBe("Temporary");
+    expect(section?.readinessLabel).toBe("临时开放");
     expect(section?.governanceStatus).toBe("temporary-exception");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "decision-items")).toBe(false);

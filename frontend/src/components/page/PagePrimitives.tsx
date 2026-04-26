@@ -46,7 +46,7 @@ function headerBadgeStyle(tone: HeaderBadgeTone) {
 export function PageHeader({
   title,
   description,
-  eyebrow = "Overview",
+  eyebrow = "总览",
   titleTestId,
   descriptionTestId,
   badgeLabel,

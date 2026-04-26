@@ -58,8 +58,8 @@ describe("BondAnalyticsFilterActionStrip", () => {
     expect(screen.getByTestId("bond-analysis-filter-action-strip")).toBeInTheDocument();
     expect(screen.getByText("报表日期")).toBeInTheDocument();
     expect(screen.getByText("统计区间")).toBeInTheDocument();
-    expect(screen.getByText("Refresh")).toBeInTheDocument();
-    expect(screen.getByText("No refresh run has been captured yet.")).toBeInTheDocument();
+    expect(screen.getByText("刷新分析")).toBeInTheDocument();
+    expect(screen.getByText("尚未捕获刷新运行。")).toBeInTheDocument();
     expect(screen.getByText("高级筛选")).toBeInTheDocument();
 
     expect(screen.getByTitle("2026-03-31")).toBeInTheDocument();
@@ -116,7 +116,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
       />,
     );
 
-    expect(screen.getByText("Refreshing governed overview state...")).toBeInTheDocument();
+    expect(screen.getByText("正在刷新受治理总览状态...")).toBeInTheDocument();
   });
 
   it("shows latest run id when provided", () => {
@@ -135,7 +135,7 @@ describe("BondAnalyticsFilterActionStrip", () => {
       />,
     );
 
-    expect(screen.getByText("Latest run run-xyz")).toBeInTheDocument();
+    expect(screen.getByText("最近运行 run-xyz")).toBeInTheDocument();
   });
 
   it("surfaces analytics refresh errors in the refresh state panel", () => {
