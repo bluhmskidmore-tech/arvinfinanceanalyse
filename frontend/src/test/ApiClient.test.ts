@@ -1999,6 +1999,64 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to serialize explicit null optional amount fields on manual adjustment create", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        adjustment_id: "pca-test-null-1",
+        created_at: "2026-04-10T09:40:00Z",
+        stream: "product_category_pnl_adjustments",
+        report_date: "2026-02-28",
+        operator: "DELTA",
+        approval_status: "approved",
+        account_code: "13304010001",
+        currency: "CNX",
+        account_name: "测试科目",
+        monthly_pnl: "5",
+      }),
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.createProductCategoryManualAdjustment({
+      report_date: "2026-02-28",
+      operator: "DELTA",
+      approval_status: "approved",
+      account_code: "13304010001",
+      currency: "CNX",
+      account_name: "测试科目",
+      beginning_balance: null,
+      ending_balance: null,
+      monthly_pnl: "5",
+      daily_avg_balance: null,
+      annual_avg_balance: null,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/ui/pnl/product-category/manual-adjustments",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "13304010001",
+          currency: "CNX",
+          account_name: "测试科目",
+          beginning_balance: null,
+          ending_balance: null,
+          monthly_pnl: "5",
+          daily_avg_balance: null,
+          annual_avg_balance: null,
+        }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch product-category manual adjustments", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

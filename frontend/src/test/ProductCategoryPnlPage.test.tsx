@@ -255,9 +255,60 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });
 
+  it("rejects a manual create when account code is empty (no API call)", async () => {
+    const user = userEvent.setup();
+    const createAdjustmentSpy = vi.fn();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      createProductCategoryManualAdjustment: createAdjustmentSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByTestId("product-category-manual-button"));
+    const form = screen.getByTestId("product-category-manual-form");
+    await user.click(screen.getByTestId("product-category-manual-submit"));
+
+    await waitFor(() => {
+      const err = within(form).getByTestId("product-category-manual-error");
+      expect(err).toHaveTextContent("请输入科目代码。");
+    });
+    expect(createAdjustmentSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a manual create when all amount fields are empty (no API call)", async () => {
+    const user = userEvent.setup();
+    const createAdjustmentSpy = vi.fn();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      createProductCategoryManualAdjustment: createAdjustmentSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByTestId("product-category-manual-button"));
+    const form = screen.getByTestId("product-category-manual-form");
+    await user.type(
+      within(form).getByRole("textbox", { name: "手工录入-科目代码" }),
+      "13304010001",
+    );
+    await user.type(
+      within(form).getByRole("textbox", { name: "手工录入-科目名称" }),
+      "test-account",
+    );
+    await user.click(screen.getByTestId("product-category-manual-submit"));
+
+    await waitFor(() => {
+      const err = within(form).getByTestId("product-category-manual-error");
+      expect(err).toHaveTextContent("至少填写一个调整数值。");
+    });
+    expect(createAdjustmentSpy).not.toHaveBeenCalled();
+  });
+
   it("submits a manual adjustment and refreshes afterwards", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
+    const datesSpy = vi.fn(baseClient.getProductCategoryDates);
     const createAdjustmentSpy = vi.fn(async () => ({
       adjustment_id: "pca-test-1",
       event_type: "created",
@@ -289,6 +340,7 @@ describe("ProductCategoryPnlPage", () => {
 
     renderWorkbenchAppWithClient({
       ...baseClient,
+      getProductCategoryDates: datesSpy,
       createProductCategoryManualAdjustment: createAdjustmentSpy,
       refreshProductCategoryPnl: refreshSpy,
     });
@@ -308,6 +360,10 @@ describe("ProductCategoryPnlPage", () => {
       expect(refreshSpy).toHaveBeenCalledTimes(1);
       expect(screen.getByText(/pca-test-1/)).toBeInTheDocument();
     });
+    // dates 查询的 queryKey 不依赖 selectedDate，refetch 在异步提交闭包中仍能命中同一查询；
+    // baseline / adjustments 在 dates refetch 后若触发重渲染与日期对齐，其 refetch 可能落在新的 query 实例上，
+    // 故用 getProductCategoryDates 的第二次调用来钉住「任务完成后再次拉取」。
+    expect(datesSpy).toHaveBeenCalledTimes(2);
   });
 
   it("shows adjustment summary on the main page and keeps full timeline in audit view", async () => {

@@ -649,7 +649,12 @@ export default function ProductCategoryPnlPage() {
             ))}
           </div>
           {adjustmentError ? (
-            <div style={{ color: "#b42318", fontSize: 12 }}>{adjustmentError}</div>
+            <div
+              data-testid="product-category-manual-error"
+              style={{ color: "#b42318", fontSize: 12 }}
+            >
+              {adjustmentError}
+            </div>
           ) : null}
           <div style={{ display: "flex", gap: 10 }}>
             <button

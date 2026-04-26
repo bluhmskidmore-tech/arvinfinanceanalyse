@@ -129,11 +129,12 @@ This first pass is based on:
   - create route and schema exist
   - backend create path and read-model effect are exercised in `tests/test_product_category_pnl_flow.py`
   - page form submission is tested in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
-  - real-mode client serialization is tested in `frontend/src/test/ApiClient.test.ts`
+  - real-mode client serialization is tested in `frontend/src/test/ApiClient.test.ts` (full happy-path body and explicit `null` optional amount fields in JSON)
+  - page tests freeze empty create rejection: no API call when 科目代码 is blank or when all amount fields are empty (messages `请输入科目代码。` / `至少填写一个调整数值。` via `product-category-manual-error`)
+  - after successful create, `runRefreshWorkflow` is evidenced by: one `refreshProductCategoryPnl` and a second `getProductCategoryDates` fetch (code path also `refetch`es baseline/adjustments/scenario; page test stably pins `getProductCategoryDates` initial + post-refresh)
 - Why not `CLOSED`:
-  - frontend validation is present, but still relatively thin
-  - there is no explicit page-level closure contract for every create-field combination
-  - create success is coupled to refresh, but that coupling is not frozen as a standalone product rule
+  - no explicit page-level closure contract for every create-field combination (e.g. report_date empty only reachable in edge data states)
+  - long copy/UX for validation beyond the two primary empty-payload cases is not exhaustively specified
 
 ## Unit 5: Manual Adjustment List
 
