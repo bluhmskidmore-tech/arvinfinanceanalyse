@@ -329,7 +329,6 @@ $postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -Description "l
 Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
 $apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
 $workerLaunch = Start-DevScriptDetached -ScriptName "dev-worker.ps1"
-$frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 
 $workerHeartbeatPath = Join-Path $root "tmp-governance\runtime-clean\governance\dev-worker-heartbeat.json"
 $workerHeartbeatToken = [guid]::NewGuid().ToString("N")
@@ -356,6 +355,7 @@ $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
   -Url "http://127.0.0.1:7888/api/risk/tensor/dates" `
   -RequestCount 4 `
   -Description "risk tensor dates concurrent smoke"
+$frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendRoot = Wait-HttpEndpoint -Url "http://127.0.0.1:5888" -Description "frontend root"
 $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -Description "worker heartbeat"
 

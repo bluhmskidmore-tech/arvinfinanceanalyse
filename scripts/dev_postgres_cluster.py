@@ -140,19 +140,7 @@ def command_up(config: DevPostgresClusterConfig) -> dict[str, object]:
         )
 
     if not _is_port_open(config.host, config.port):
-        _run_checked(
-            [
-                str(config.bin_dir / "pg_ctl.exe"),
-                "-D",
-                str(config.data_dir),
-                "-l",
-                str(config.log_file),
-                "-o",
-                f" -h {config.host} -p {config.port} ",
-                "-w",
-                "start",
-            ]
-        )
+        _spawn_postgres_start(config)
     _wait_for_postgres_ready(config)
 
     _ensure_role_and_database(config)
@@ -536,6 +524,24 @@ def _probe_postgres_ready(config: DevPostgresClusterConfig, *, database: str | N
         return True
     except subprocess.CalledProcessError:
         return False
+
+
+def _spawn_postgres_start(config: DevPostgresClusterConfig) -> None:
+    subprocess.Popen(
+        [
+            str(config.bin_dir / "pg_ctl.exe"),
+            "-D",
+            str(config.data_dir),
+            "-l",
+            str(config.log_file),
+            "-o",
+            f" -h {config.host} -p {config.port} ",
+            "-W",
+            "start",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def _wait_for_postgres_ready(

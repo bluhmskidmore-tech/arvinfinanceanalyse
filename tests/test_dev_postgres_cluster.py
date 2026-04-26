@@ -378,6 +378,58 @@ def test_wait_for_postgres_ready_can_target_application_database(monkeypatch):
     assert seen == ["moss"]
 
 
+def test_command_up_starts_postgres_without_pg_ctl_wait(tmp_path, monkeypatch):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    bin_dir = repo_root / "pgbin"
+    data_dir = repo_root / "tmp-governance" / "pgdev" / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=bin_dir,
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=data_dir,
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=repo_root / "tmp-governance" / "runtime-clean",
+        runtime_duckdb_path=repo_root / "tmp-governance" / "runtime-clean" / "moss.duckdb",
+        runtime_governance_path=repo_root / "tmp-governance" / "runtime-clean" / "governance",
+        runtime_archive_path=repo_root / "tmp-governance" / "runtime-clean" / "archive",
+        runtime_data_input_path=repo_root / "tmp-governance" / "runtime-clean" / "data_input",
+    )
+    port_checks = {"count": 0}
+    popen_commands: list[list[str]] = []
+
+    def fake_is_port_open(_host, _port):
+        port_checks["count"] += 1
+        return port_checks["count"] > 1
+
+    monkeypatch.setattr(module, "_is_port_open", fake_is_port_open)
+    monkeypatch.setattr(
+        module.subprocess,
+        "Popen",
+        lambda args, **kwargs: popen_commands.append(args) or object(),
+    )
+    monkeypatch.setattr(module, "_wait_for_postgres_ready", lambda *args, **kwargs: None)
+    monkeypatch.setattr(module, "_ensure_role_and_database", lambda _config: None)
+    monkeypatch.setattr(module, "_apply_alembic_migrations_and_grants", lambda _config: None)
+    monkeypatch.setattr(module, "_bootstrap_kpi_if_available", lambda _config: None)
+    monkeypatch.setattr(module, "_prepare_runtime_clean_paths", lambda _config: None)
+
+    payload = module.command_up(config)
+
+    pg_ctl_start = popen_commands[0]
+    assert "-W" in pg_ctl_start
+    assert "-w" not in pg_ctl_start
+    assert "start" in pg_ctl_start
+    assert payload["running"] is True
+    assert payload["action"] == "up"
+
+
 def test_apply_alembic_migrations_and_grants_retries_transient_connection_timeout(
     tmp_path,
     monkeypatch,

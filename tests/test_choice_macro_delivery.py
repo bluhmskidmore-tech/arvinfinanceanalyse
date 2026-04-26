@@ -1565,6 +1565,139 @@ def test_public_cross_asset_headline_refresh_materializes_history_and_latest_row
     get_settings.cache_clear()
 
 
+def test_public_cross_asset_tushare_stock_rows_reach_latest_api_with_lineage(tmp_path, monkeypatch):
+    duckdb_path = tmp_path / "moss.duckdb"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    get_settings.cache_clear()
+
+    task_module = sys.modules.get("backend.app.tasks.choice_macro")
+    if task_module is None:
+        task_module = load_module(
+            "backend.app.tasks.choice_macro",
+            "backend/app/tasks/choice_macro.py",
+        )
+
+    daily_vendor_version = "vv_tushare_index_daily_000300SH_20260410"
+    daily_source_version = "sv_tushare_index_daily_fixture"
+    basic_vendor_version = "vv_tushare_index_dailybasic_000300SH_20260410"
+    basic_source_version = "sv_tushare_index_dailybasic_fixture"
+    weight_vendor_version = "vv_tushare_index_weight_000300SH_20260410"
+    weight_source_version = "sv_tushare_index_weight_fixture"
+
+    monkeypatch.setattr(
+        task_module,
+        "_load_public_cross_asset_history_rows",
+        lambda **_: [
+            {
+                "series_id": "CA.CSI300",
+                "trade_date": "2026-04-09",
+                "value_numeric": 4085.12,
+                "vendor_version": daily_vendor_version,
+                "source_version": daily_source_version,
+            },
+            {
+                "series_id": "CA.CSI300",
+                "trade_date": "2026-04-10",
+                "value_numeric": 4102.25,
+                "vendor_version": daily_vendor_version,
+                "source_version": daily_source_version,
+            },
+            {
+                "series_id": "CA.CSI300_PE",
+                "trade_date": "2026-04-09",
+                "value_numeric": 14.42,
+                "vendor_version": basic_vendor_version,
+                "source_version": basic_source_version,
+            },
+            {
+                "series_id": "CA.CSI300_PE",
+                "trade_date": "2026-04-10",
+                "value_numeric": 14.64,
+                "vendor_version": basic_vendor_version,
+                "source_version": basic_source_version,
+            },
+            {
+                "series_id": "CA.MEGA_CAP_WEIGHT",
+                "trade_date": "2026-04-10",
+                "value_numeric": 18.4,
+                "vendor_version": weight_vendor_version,
+                "source_version": weight_source_version,
+            },
+            {
+                "series_id": "CA.MEGA_CAP_TOP5_WEIGHT",
+                "trade_date": "2026-04-10",
+                "value_numeric": 13.7,
+                "vendor_version": weight_vendor_version,
+                "source_version": weight_source_version,
+            },
+        ],
+    )
+
+    refresh_payload = task_module.refresh_public_cross_asset_headlines(
+        duckdb_path=str(duckdb_path),
+        report_date="2026-04-10",
+        lookback_days=60,
+    )
+
+    assert refresh_payload["status"] == "completed"
+    assert refresh_payload["series_count"] == 4
+    assert refresh_payload["row_count"] == 6
+
+    main_module = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_module.app)
+    response = client.get("/ui/macro/choice-series/latest")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["result_meta"]["result_kind"] == "macro.choice.latest"
+    assert payload["result_meta"]["quality_flag"] == "ok"
+    assert payload["result_meta"]["source_version"] == (
+        "sv_tushare_index_daily_fixture__"
+        "sv_tushare_index_dailybasic_fixture__"
+        "sv_tushare_index_weight_fixture"
+    )
+    assert payload["result_meta"]["vendor_version"] == (
+        "vv_tushare_index_daily_000300SH_20260410__"
+        "vv_tushare_index_dailybasic_000300SH_20260410__"
+        "vv_tushare_index_weight_000300SH_20260410"
+    )
+
+    by_id = {item["series_id"]: item for item in payload["result"]["series"]}
+    assert set(by_id) == {
+        "CA.CSI300",
+        "CA.CSI300_PE",
+        "CA.MEGA_CAP_WEIGHT",
+        "CA.MEGA_CAP_TOP5_WEIGHT",
+    }
+    assert by_id["CA.CSI300"]["vendor_name"] == "tushare"
+    assert by_id["CA.CSI300"]["unit"] == "index"
+    assert by_id["CA.CSI300"]["frequency"] == "daily"
+    assert by_id["CA.CSI300"]["source_version"] == daily_source_version
+    assert by_id["CA.CSI300"]["vendor_version"] == daily_vendor_version
+    assert by_id["CA.CSI300"]["latest_change"] == pytest.approx(17.13)
+    assert by_id["CA.CSI300"]["recent_points"][0]["trade_date"] == "2026-04-10"
+    assert by_id["CA.CSI300"]["recent_points"][1]["trade_date"] == "2026-04-09"
+    assert by_id["CA.CSI300_PE"]["unit"] == "x"
+    assert by_id["CA.CSI300_PE"]["latest_change"] == pytest.approx(0.22)
+    assert by_id["CA.MEGA_CAP_WEIGHT"]["unit"] == "%"
+    assert by_id["CA.MEGA_CAP_TOP5_WEIGHT"]["unit"] == "%"
+
+    for series_id in by_id:
+        item = by_id[series_id]
+        assert item["vendor_name"] == "tushare"
+        assert item["trade_date"] == "2026-04-10"
+        assert item["quality_flag"] == "ok"
+        assert item["refresh_tier"] == "stable"
+        assert item["fetch_mode"] == "latest"
+        assert item["fetch_granularity"] == "batch"
+        assert item["policy_note"].startswith("Tushare ")
+        assert item["recent_points"][0]["source_version"].startswith("sv_tushare_")
+        assert item["recent_points"][0]["vendor_version"].startswith("vv_tushare_")
+
+    get_settings.cache_clear()
+
+
 def test_tushare_cross_asset_loader_maps_index_daily_basic_and_weight(monkeypatch):
     task_module = sys.modules.get("backend.app.tasks.choice_macro")
     if task_module is None:
