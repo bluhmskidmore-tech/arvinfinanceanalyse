@@ -111,6 +111,27 @@ def test_product_category_detail_returns_404_when_read_model_is_missing(tmp_path
     get_settings.cache_clear()
 
 
+def test_product_category_detail_does_not_mask_unexpected_value_errors(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+    route_module = importlib.import_module("backend.app.api.routes.product_category_pnl")
+
+    def raise_unexpected_value_error(*_args, **_kwargs):
+        raise ValueError("unexpected product-category failure")
+
+    monkeypatch.setattr(
+        route_module,
+        "product_category_pnl_envelope",
+        raise_unexpected_value_error,
+    )
+
+    with pytest.raises(ValueError, match="unexpected product-category failure"):
+        client.get(
+            "/ui/pnl/product-category",
+            params={"report_date": "2026-02-28", "view": "monthly"},
+        )
+    get_settings.cache_clear()
+
+
 def _load_product_category_pnl_service_module():
     """Return the module object used by API code (patch attributes here, not via string paths)."""
     return importlib.import_module("backend.app.services.product_category_pnl_service")

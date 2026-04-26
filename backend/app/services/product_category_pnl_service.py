@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
+from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.governance.locks import LockDefinition, acquire_lock
 from backend.app.governance.settings import Settings
 from backend.app.repositories.governance_repo import (
@@ -10,7 +11,6 @@ from backend.app.repositories.governance_repo import (
     GovernanceRepository,
 )
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
-from backend.app.core_finance.reconciliation_checks import completeness_check
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import (
@@ -20,10 +20,10 @@ from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentListPayload,
     ProductCategoryManualAdjustmentPayload,
-    ProductCategorySortDirection,
     ProductCategoryManualAdjustmentUpdateRequest,
     ProductCategoryPnlPayload,
     ProductCategoryPnlRow,
+    ProductCategorySortDirection,
 )
 from backend.app.services.analysis_service import (
     UnifiedAnalysisService,
@@ -38,7 +38,6 @@ from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_PNL_LOCK,
     materialize_product_category_pnl,
 )
-
 
 RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
@@ -55,6 +54,10 @@ class ProductCategoryRefreshServiceError(RuntimeError):
 
 
 class ProductCategoryRefreshConflictError(RuntimeError):
+    pass
+
+
+class ProductCategoryReadModelNotFoundError(LookupError):
     pass
 
 
@@ -426,16 +429,22 @@ def product_category_pnl_envelope(
     view: str,
     scenario_rate_pct: float | None = None,
 ) -> dict[str, object]:
-    analysis_envelope = build_analysis_service(duckdb_path).execute(
-        AnalysisQuery(
-            consumer="product_category_pnl",
-            analysis_key="product_category_pnl",
-            report_date=report_date,
-            basis="scenario" if scenario_rate_pct is not None else "formal",
-            view=view,
-            scenario_rate_pct=scenario_rate_pct,
+    try:
+        analysis_envelope = build_analysis_service(duckdb_path).execute(
+            AnalysisQuery(
+                consumer="product_category_pnl",
+                analysis_key="product_category_pnl",
+                report_date=report_date,
+                basis="scenario" if scenario_rate_pct is not None else "formal",
+                view=view,
+                scenario_rate_pct=scenario_rate_pct,
+            )
         )
-    )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail.startswith("No product-category read model rows"):
+            raise ProductCategoryReadModelNotFoundError(detail) from exc
+        raise
 
     typed_rows = [
         ProductCategoryPnlRow.model_validate(row)

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from typing import Annotated
 import importlib
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import Response
+from typing import Annotated
 
 from backend.app.governance.settings import get_settings
+from backend.app.schemas.product_category_pnl import (
+    ProductCategoryManualAdjustmentCreateRequest,
+    ProductCategoryManualAdjustmentQuery,
+    ProductCategoryManualAdjustmentUpdateRequest,
+)
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
+    ProductCategoryReadModelNotFoundError,
     ProductCategoryRefreshConflictError,
     ProductCategoryRefreshServiceError,
     create_product_category_manual_adjustment,
@@ -16,18 +19,13 @@ from backend.app.services.product_category_pnl_service import (
     list_product_category_manual_adjustments,
     product_category_dates_envelope,
     product_category_pnl_envelope,
-    product_category_refresh_status,
-    revoke_product_category_manual_adjustment,
     refresh_product_category_pnl,
     restore_product_category_manual_adjustment,
+    revoke_product_category_manual_adjustment,
     update_product_category_manual_adjustment,
 )
-from backend.app.schemas.product_category_pnl import (
-    ProductCategoryManualAdjustmentCreateRequest,
-    ProductCategoryManualAdjustmentQuery,
-    ProductCategoryManualAdjustmentUpdateRequest,
-)
-
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 
 router = APIRouter(prefix="/ui/pnl/product-category")
 
@@ -55,11 +53,8 @@ def detail(
             view=view,
             scenario_rate_pct=scenario_rate_pct,
         )
-    except ValueError as exc:
-        detail = str(exc)
-        if detail.startswith("No product-category read model rows"):
-            raise HTTPException(status_code=404, detail=detail) from exc
-        raise HTTPException(status_code=422, detail=detail) from exc
+    except ProductCategoryReadModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/refresh")
