@@ -49,6 +49,17 @@ Always check:
 - duplicate calculations in frontend
 - inconsistent filters across cards / charts / tables
 
+## MCP evidence workflow
+When touching a business metric page, workflow, adapter, formatter, selector, or data-fetch path, use the project MCP servers before deciding the implementation shape:
+
+- Use `moss-metric-contracts` to verify page contracts, metric definitions, units, calculation rules, and golden samples.
+- Use `moss-lineage-evidence` to verify source version, rule/cache lineage, fallback/stale status, and governance evidence.
+- Use `moss-data-catalog` to inspect available DuckDB tables, columns, and report dates through read-only catalog/date queries.
+- Use `gitnexus` to inspect relevant symbols, call paths, process traces, and impact before changing shared or cross-page code.
+- Use `playwright` for browser-level verification when the change affects visible frontend behavior.
+
+If an MCP server is unavailable, record which server was unavailable, what local evidence was used instead, and any residual risk. Do not guess metric definitions, units, dates, or source lineage when the required evidence is missing.
+
 ## UI and page rules
 - Each page must answer one primary business question first.
 - The first screen must make the main conclusion obvious.
