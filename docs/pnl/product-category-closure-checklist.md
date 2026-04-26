@@ -61,7 +61,7 @@ This first pass is based on:
 | --- | --- | --- | --- |
 | 1. Dates | `PARTIAL` | `P1` | dates endpoint and selector exist, but outward date semantics are not fully frozen |
 | 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, current `monthly`/`ytd` page scope, and core selector evidence exist, but field freeze and exhaustive detail coverage are not complete |
-| 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; UI semantics are only partially verified |
+| 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests now freeze 409/503/failed-terminal + polling; stale-banner contract still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | audit page list/filter/paging are strong, but sorting semantics are not fully documented as product truth |
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | export route and audit-page download flow exist, but large-volume and encoding guarantees are not fully frozen |
@@ -114,12 +114,12 @@ This first pass is based on:
 - Evidence:
   - `/refresh` and `/refresh-status` routes exist
   - queue path, sync fallback path, 409 conflict path, 503 failure path, and stale-run reconciliation are heavily tested in `tests/test_product_category_pnl_flow.py`
-  - page polling behavior is tested in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
+  - page polling behavior is tested in `frontend/src/test/ProductCategoryPnlPage.test.tsx` (queued path calls `getProductCategoryRefreshStatus` twice: `running` then `completed`)
+  - page-level refresh edge states are frozen in the same file: `ActionRequestError` with HTTP 409 (conflict copy aligned with `ProductCategoryRefreshConflictError`), HTTP 503 (sync-fallback copy aligned with `ProductCategoryRefreshServiceError`), and terminal `failed` status with `detail` (error visible alongside last run id; refresh control returns to idle)
   - page shows last run id and refresh error in `frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx`
 - Why not `CLOSED`:
-  - no dedicated page-level UX evidence for long-running refresh semantics beyond queued polling
-  - 409 and 503 are surfaced as generic error text, but the product meaning is not frozen as a contract
   - no page-level explicit stale-state banner contract exists
+  - long-running refresh UX beyond queued polling + error surfacing is not fully specified (e.g. in-flight banner copy, timeout messaging vs `runPollingTask` generic timeout)
 
 ## Unit 4: Manual Adjustment Create
 

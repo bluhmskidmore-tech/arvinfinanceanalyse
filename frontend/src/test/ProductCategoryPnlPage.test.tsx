@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
-import { createApiClient } from "../api/client";
+import { ActionRequestError, createApiClient } from "../api/client";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
@@ -112,9 +112,104 @@ describe("ProductCategoryPnlPage", () => {
 
     await waitFor(() => {
       expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(statusSpy).toHaveBeenCalledTimes(2);
       expect(statusSpy).toHaveBeenCalledWith("product_category_pnl:test-run");
       expect(screen.getByText(/product_category_pnl:test-run/)).toBeInTheDocument();
     });
+  });
+
+  it("surfaces refresh conflict (409) with explicit copy and does not record a successful run id", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => {
+      throw new ActionRequestError("Product-category refresh already in progress.", {
+        status: 409,
+      });
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(screen.queryByText(/^最近刷新任务：/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText("Product-category refresh already in progress."),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/^最近刷新任务：/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
+  });
+
+  it("surfaces sync-fallback service failure (503) with explicit copy and does not record a successful run id", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => {
+      throw new ActionRequestError("Product-category refresh failed during sync fallback.", {
+        status: 503,
+      });
+    });
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    await waitFor(() => {
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText("Product-category refresh failed during sync fallback."),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/^最近刷新任务：/)).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
+  });
+
+  it("surfaces terminal failed refresh status as an error (not silent success)", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const refreshSpy = vi.fn(async () => ({
+      status: "queued",
+      run_id: "product_category_pnl:failed-run",
+      job_name: "product_category_pnl",
+      trigger_mode: "async",
+      cache_key: "product_category_pnl.formal",
+    }));
+    const statusSpy = vi.fn(async () => ({
+      status: "failed",
+      run_id: "product_category_pnl:failed-run",
+      job_name: "product_category_pnl",
+      trigger_mode: "async",
+      cache_key: "product_category_pnl.formal",
+      detail: "Product-category refresh run failed (test).",
+    }));
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      refreshProductCategoryPnl: refreshSpy,
+      getProductCategoryRefreshStatus: statusSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Product-category refresh run failed (test).")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/product_category_pnl:failed-run/)).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });
 
   it("submits a manual adjustment and refreshes afterwards", async () => {
