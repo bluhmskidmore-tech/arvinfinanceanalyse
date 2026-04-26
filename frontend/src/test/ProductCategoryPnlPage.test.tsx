@@ -517,7 +517,35 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });
 
-  it("rejects a manual create when account code is empty (no API call)", async () => {
+  it("Unit 4: rejects a manual create when report_date is missing (no API call)", async () => {
+    const user = userEvent.setup();
+    const createAdjustmentSpy = vi.fn();
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope(
+          "product_category_pnl.dates",
+          { report_dates: [] },
+          { generated_at: "2026-05-01T12:00:00Z" },
+        ),
+      ),
+      createProductCategoryManualAdjustment: createAdjustmentSpy,
+    });
+
+    await screen.findByTestId("product-category-governance-strip");
+    await user.click(screen.getByTestId("product-category-manual-button"));
+    const form = screen.getByTestId("product-category-manual-form");
+    await user.click(screen.getByTestId("product-category-manual-submit"));
+
+    await waitFor(() => {
+      const err = within(form).getByTestId("product-category-manual-error");
+      expect(err).toHaveTextContent("请选择报表月份。");
+    });
+    expect(createAdjustmentSpy).not.toHaveBeenCalled();
+  });
+
+  it("Unit 4: rejects a manual create when account code is empty (no API call)", async () => {
     const user = userEvent.setup();
     const createAdjustmentSpy = vi.fn();
     const baseClient = createApiClient({ mode: "mock" });
@@ -538,7 +566,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(createAdjustmentSpy).not.toHaveBeenCalled();
   });
 
-  it("rejects a manual create when all amount fields are empty (no API call)", async () => {
+  it("Unit 4: rejects a manual create when all amount fields are empty (no API call)", async () => {
     const user = userEvent.setup();
     const createAdjustmentSpy = vi.fn();
     const baseClient = createApiClient({ mode: "mock" });
@@ -567,7 +595,78 @@ describe("ProductCategoryPnlPage", () => {
     expect(createAdjustmentSpy).not.toHaveBeenCalled();
   });
 
-  it("submits a manual adjustment and refreshes afterwards", async () => {
+  it("Unit 4: accepts a manual create when only beginning_balance is filled among amount fields", async () => {
+    const user = userEvent.setup();
+    const createAdjustmentSpy = vi.fn(
+      async (
+        _payload: Parameters<
+          ReturnType<typeof createApiClient>["createProductCategoryManualAdjustment"]
+        >[0],
+      ) => ({
+        adjustment_id: "pca-unit4-beginning-only",
+        event_type: "created",
+        created_at: "2026-04-10T09:40:00Z",
+        stream: "product_category_pnl_adjustments",
+        report_date: "2026-02-28",
+        operator: "DELTA",
+        approval_status: "approved",
+        account_code: "13304010001",
+        currency: "CNX",
+        account_name: "test-account",
+        monthly_pnl: null,
+        beginning_balance: "7",
+        ending_balance: null,
+        daily_avg_balance: null,
+        annual_avg_balance: null,
+      }),
+    );
+    const refreshSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "product_category_pnl:unit4-beginning-only",
+      job_name: "product_category_pnl",
+      trigger_mode: "sync-fallback",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: ["2026-01-31", "2026-02-28"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    }));
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      createProductCategoryManualAdjustment: createAdjustmentSpy,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    await user.click(screen.getByTestId("product-category-manual-button"));
+    const form = screen.getByTestId("product-category-manual-form");
+    await user.type(
+      within(form).getByRole("textbox", { name: "手工录入-科目代码" }),
+      "13304010001",
+    );
+    await user.type(
+      within(form).getByRole("textbox", { name: "手工录入-期初余额" }),
+      "7",
+    );
+    await user.click(screen.getByTestId("product-category-manual-submit"));
+
+    await waitFor(() => {
+      expect(createAdjustmentSpy).toHaveBeenCalledTimes(1);
+    });
+    expect(createAdjustmentSpy.mock.calls[0]![0]).toMatchObject({
+      report_date: "2026-02-28",
+      account_code: "13304010001",
+      beginning_balance: "7",
+      monthly_pnl: null,
+      ending_balance: null,
+      daily_avg_balance: null,
+      annual_avg_balance: null,
+    });
+    expect(refreshSpy).toHaveBeenCalled();
+  });
+
+  it("Unit 4: submits a manual adjustment and refreshes afterwards", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const datesSpy = vi.fn(baseClient.getProductCategoryDates);

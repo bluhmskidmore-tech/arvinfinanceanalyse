@@ -156,6 +156,10 @@ First-stage prohibitions:
 - do not recompute `grand_total` in frontend
 - do not change row identity during scenario display
 
+### 9.2 Manual adjustment create — client validation (main page)
+
+`ProductCategoryPnlPage` `handleManualAdjustmentSubmit` runs **before** `createProductCategoryManualAdjustment`: empty `report_date` → `请选择报表月份。`; empty `account_code` → `请输入科目代码。`; all amount fields empty → `至少填写一个调整数值。`; any single amount non-empty (with date + code) proceeds to create. Frozen test names and matrix: `docs/pnl/product-category-closure-checklist.md` Unit 4 + `frontend/src/test/ProductCategoryPnlPage.test.tsx` (`Unit 4: …` cases).
+
 ## 10. Time Semantics
 
 - `requested_report_date`: query parameter `report_date`

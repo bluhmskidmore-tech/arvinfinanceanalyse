@@ -62,7 +62,7 @@ This first pass is based on:
 | 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
 | 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, and first page-level column freeze exist; metric_id approval and exhaustive detail coverage remain open |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests freeze 409/503/failed-terminal + polling + `product-category-refresh-status` in-flight line (`runPollingTask` `onUpdate`); stale-banner / timeout UX still open |
-| 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
+| 4. Manual Adjustment Create | `PARTIAL` | `P0` | page-level client validation matrix (report_date / account_code / amounts / single-amount happy paths) is now frozen in tests + checklist; backend error shapes + broader copy still open |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; Unit 5 list/timeline failure semantics frozen (`AsyncSection` + `product-category-audit-list-timeline-async` + `within` assertions: error + no stale rows + retry); dual-control “why” still narrative |
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | list/export query symmetry + real-mode key alignment + client + page Blob pass-through evidence; backend UTF-8 BOM policy + large export + full UI↔CSV precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
@@ -71,6 +71,10 @@ This first pass is based on:
 | 10. Test Coverage | `PARTIAL` | `P0` | checklist now maps backend→client→page→golden layers; one extra pure-model guard for unknown `category_id` sort; scenario second-sample + golden full-suite still uneven |
 
 ## 5. Unit Details
+
+### 5.0 Remaining blockers (triage)
+
+Every **Why not CLOSED** bullet for Units 1–10 is classified (product vs API vs evidence vs out-of-scope) with minimal next actions in [`product-category-remaining-blockers.md`](./product-category-remaining-blockers.md).
 
 ## Unit 1: Dates
 
@@ -137,11 +141,19 @@ This first pass is based on:
   - backend create path and read-model effect are exercised in `tests/test_product_category_pnl_flow.py`
   - page form submission is tested in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
   - real-mode client serialization is tested in `frontend/src/test/ApiClient.test.ts` (full happy-path body and explicit `null` optional amount fields in JSON)
-  - page tests freeze empty create rejection: no API call when 科目代码 is blank or when all amount fields are empty (messages `请输入科目代码。` / `至少填写一个调整数值。` via `product-category-manual-error`)
+  - **Client-side create validation matrix (implemented copy only; `product-category-manual-error`):**
+
+    | Rule | Expected message | `createProductCategoryManualAdjustment` called? | Page test |
+    | --- | --- | --- | --- |
+    | `report_date` empty | `请选择报表月份。` | No | `Unit 4: rejects a manual create when report_date is missing (no API call)` — `report_dates: []` so `selectedDate` / draft stay empty |
+    | `account_code` blank | `请输入科目代码。` | No | `Unit 4: rejects a manual create when account code is empty (no API call)` |
+    | all five amount fields empty | `至少填写一个调整数值。` | No | `Unit 4: rejects a manual create when all amount fields are empty (no API call)` |
+    | any one amount non-empty (+ code + date) | — | Yes | `Unit 4: accepts a manual create when only beginning_balance is filled among amount fields` (payload `beginning_balance: "7"`, other amounts `null`); `Unit 4: submits a manual adjustment and refreshes afterwards` (`monthly_pnl` path) |
+
   - after successful create, `runRefreshWorkflow` is evidenced by: one `refreshProductCategoryPnl` and a second `getProductCategoryDates` fetch (code path also `refetch`es baseline/adjustments/scenario; page test stably pins `getProductCategoryDates` initial + post-refresh)
 - Why not `CLOSED`:
-  - no explicit page-level closure contract for every create-field combination (e.g. report_date empty only reachable in edge data states)
-  - long copy/UX for validation beyond the two primary empty-payload cases is not exhaustively specified
+  - long copy/UX for validation beyond the matrix above is not exhaustively specified
+  - backend-side validation and error shapes for create are not fully page-frozen here (frontend matrix covers `handleManualAdjustmentSubmit` guards only)
 
 ## Unit 5: Manual Adjustment List
 

@@ -1,9 +1,7 @@
-import { Collapse } from "antd";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 
-import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import type { ApiEnvelope, BalanceAnalysisOverviewPayload, ResultMeta } from "../../../api/contracts";
 import { AlertList } from "../../../components/AlertList";
@@ -14,7 +12,6 @@ import {
   PageHeader,
   PageSurfacePanel,
 } from "../../../components/page/PagePrimitives";
-import { pageInsetCardStyle } from "../../../components/page/PagePrimitiveStyles";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { shellTokens } from "../../../theme/tokens";
 import { BusinessConclusion } from "../business-analysis/BusinessConclusion";
@@ -27,8 +24,8 @@ import {
   OPERATIONS_CALENDAR_MOCK,
   OPERATIONS_WATCH_ITEMS,
 } from "../business-analysis/businessAnalysisWorkbenchMocks";
-import { KpiCard } from "../components/KpiCard";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import "./OperationsAnalysisPage.css";
 
 const DISPLAY_FONT =
   '"Alibaba PuHuiTi 3.0", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", sans-serif';
@@ -40,30 +37,18 @@ const pageShellStyle = {
 
 const heroShellStyle = {
   display: "grid",
-  gap: 18,
-  padding: "26px 26px 22px",
-  borderRadius: 28,
-  background:
-    "linear-gradient(180deg, rgba(252,251,248,0.98) 0%, rgba(247,247,242,0.94) 100%)",
+  gridTemplateColumns: "minmax(0, 0.92fr) minmax(420px, 1.08fr)",
+  gap: 22,
+  alignItems: "start",
+  padding: "24px 24px 22px",
+  borderRadius: 24,
+  background: "linear-gradient(180deg, rgba(252,251,248,0.99) 0%, rgba(246,248,246,0.98) 100%)",
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  boxShadow: "0 22px 52px rgba(22, 35, 46, 0.07)",
+  boxShadow: "0 18px 40px rgba(22, 35, 46, 0.06)",
 } as const;
 
 const heroHeaderStyle = {
   marginBottom: 0,
-} as const;
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const hubGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 18,
-  marginTop: 20,
 } as const;
 
 const controlStyle = {
@@ -108,9 +93,7 @@ const balanceOverviewGridStyle = {
 
 const operationsHeroStripStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
-  gap: 16,
-  marginTop: 4,
+  gap: 12,
 } as const;
 
 const headlineMetricShellStyle = {
@@ -173,30 +156,6 @@ const metricDetailStyle = {
   lineHeight: 1.6,
 } as const;
 
-const tripleGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 18,
-  alignItems: "start",
-  marginTop: 14,
-} as const;
-
-const contributionGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 18,
-  alignItems: "start",
-  marginTop: 14,
-} as const;
-
-const pairGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
-  gap: 18,
-  alignItems: "start",
-  marginTop: 14,
-} as const;
-
 const sectionLeadShellStyle = {
   display: "grid",
   gap: 10,
@@ -231,7 +190,7 @@ const sectionDescriptionStyle = {
 
 const sectionBlockStyle = {
   display: "grid",
-  gap: 14,
+  gap: 16,
 } as const;
 
 const focusEntryShellStyle = {
@@ -284,13 +243,6 @@ const alignedPanelContentStyle = {
   gap: 12,
   alignContent: "start",
   minHeight: 0,
-} as const;
-
-const disclosureLabelStyle = {
-  color: shellTokens.colorTextPrimary,
-  fontSize: 15,
-  fontWeight: 700,
-  letterSpacing: "-0.01em",
 } as const;
 
 const entryHeaderStyle = {
@@ -360,6 +312,7 @@ function OperationsMetricCard({
   unit,
   compact = false,
   status = "normal",
+  className,
 }: {
   label: string;
   value: string;
@@ -367,6 +320,7 @@ function OperationsMetricCard({
   unit?: string;
   compact?: boolean;
   status?: "normal" | "warning" | "danger";
+  className?: string;
 }) {
   const valueColor =
     status === "warning"
@@ -376,7 +330,7 @@ function OperationsMetricCard({
         : shellTokens.colorTextPrimary;
 
   return (
-    <div style={compact ? compactMetricShellStyle : headlineMetricShellStyle}>
+    <div className={className} style={compact ? compactMetricShellStyle : headlineMetricShellStyle}>
       <div style={metricLabelRowStyle}>
         <p style={metricLabelStyle}>{label}</p>
       </div>
@@ -432,53 +386,6 @@ function buildStatusCardContent(input: {
   return input;
 }
 
-function formatGroupCounts(groupCounts: Record<string, number> | undefined): string {
-  if (!groupCounts || Object.keys(groupCounts).length === 0) {
-    return "—";
-  }
-  return Object.entries(groupCounts)
-    .map(([key, count]) => `${key} ${count}`)
-    .join(" / ");
-}
-
-function summarizeNewsPayload(event: {
-  payload_text: string | null;
-  payload_json: string | null;
-  error_code: number;
-  error_msg: string;
-}) {
-  if (event.payload_text?.trim()) {
-    return event.payload_text;
-  }
-  if (event.payload_json?.trim()) {
-    return event.payload_json;
-  }
-  if (event.error_code !== 0) {
-    return event.error_msg || "供应商回调返回空错误信息。";
-  }
-  return "回调内容为空。";
-}
-
-function buildPnlRefreshStatusText(payload: {
-  status: string;
-  job_name?: string;
-  trigger_mode?: string;
-  cache_key?: string;
-  report_date?: string;
-  source_version?: string;
-}) {
-  return [
-    `最近结果：${payload.status}`,
-    payload.job_name ? `任务 ${payload.job_name}` : null,
-    payload.trigger_mode ? `触发 ${payload.trigger_mode}` : null,
-    payload.cache_key ? `缓存 ${payload.cache_key}` : null,
-    payload.report_date ? `报告日 ${payload.report_date}` : null,
-    payload.source_version ? `源版本 ${payload.source_version}` : null,
-  ]
-    .filter(Boolean)
-    .join(" / ");
-}
-
 /** Page-local: 受治理 result_meta 一行，不扩展指标含义，只标明 basis / 质量 / 供应商 / 回退。 */
 function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
   if (!meta) {
@@ -490,10 +397,6 @@ function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
 
 export default function OperationsAnalysisPage() {
   const client = useApiClient();
-  const [isPnlRefreshing, setIsPnlRefreshing] = useState(false);
-  const [pnlRefreshError, setPnlRefreshError] = useState<string | null>(null);
-  const [lastPnlRefreshRunId, setLastPnlRefreshRunId] = useState<string | null>(null);
-  const [lastPnlRefreshStatus, setLastPnlRefreshStatus] = useState<string | null>(null);
 
   const sourceQuery = useQuery({
     queryKey: ["operations-entry", "source-preview", client.mode],
@@ -589,10 +492,6 @@ export default function OperationsAnalysisPage() {
   const missingFxRows = useMemo(
     () => fxFormalRows.filter((row) => row.status === "missing"),
     [fxFormalRows],
-  );
-  const newsEvents = useMemo(
-    () => newsQuery.data?.result.events ?? [],
-    [newsQuery.data?.result.events],
   );
   const newsTotal = newsQuery.data?.result.total_rows ?? 0;
   const balanceSummaryRows = useMemo(
@@ -724,46 +623,46 @@ export default function OperationsAnalysisPage() {
         : `正式读面 · 汇总/明细 行数 · ${balanceProv}`;
       return [
       {
-        title: "Market Value",
+        title: "总市值",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount),
         unit: "亿元",
         detail: balanceDetail,
       },
       {
-        title: "Amortized Cost",
+        title: "摊余成本",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount),
         unit: "亿元",
         detail: balanceDetail,
       },
       {
-        title: "Accrued Interest",
+        title: "应计利息",
         value: formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount),
         unit: "亿元",
         detail: balanceDetail,
       },
       {
-        title: "Source Batches",
+        title: "源批次",
         value: sourceStatusCard.value,
         detail: sourceHeadlineDetail,
       },
       {
-        title: "Macro Latest",
+        title: "宏观点位",
         value: macroStatusCard.value,
         detail: macroHeadlineDetail,
       },
       {
-        title: "Formal FX Coverage",
+        title: "正式 FX",
         value: formalFxStatusCard.value,
         detail: formalFxHeadlineDetail,
         status: fxFormalStatusQuery.isError ? "warning" as const : "normal" as const,
       },
       {
-        title: "News Events",
+        title: "新闻事件",
         value: newsStatusCard.value,
         detail: newsHeadlineDetail,
       },
       {
-        title: "Summary Rows",
+        title: "汇总行数",
         value: String(balanceOverviewQuery.data?.result.summary_row_count ?? 0),
         detail: `${summaryDetail}（明细 ${detailRows} 行）`,
       },
@@ -789,183 +688,192 @@ export default function OperationsAnalysisPage() {
     ],
   );
 
-  async function handlePnlRefresh() {
-    setIsPnlRefreshing(true);
-    setPnlRefreshError(null);
-    try {
-      const payload = await runPollingTask({
-        start: () => client.refreshFormalPnl(),
-        getStatus: (runId) => client.getFormalPnlImportStatus(runId),
-        onUpdate: (nextPayload) => {
-          setLastPnlRefreshRunId(nextPayload.run_id ?? null);
-          setLastPnlRefreshStatus(buildPnlRefreshStatusText(nextPayload));
-        },
-      });
-      if (payload.status !== "completed") {
-        const hint =
-          payload.error_message ?? payload.detail ?? `PnL refresh not completed: ${payload.status}`;
-        const rid = payload.run_id ? ` run_id: ${payload.run_id}` : "";
-        throw new Error(`${hint}${rid}`);
-      }
-    } catch (error) {
-      setPnlRefreshError(error instanceof Error ? error.message : "刷新 PnL 失败");
-    } finally {
-      setIsPnlRefreshing(false);
-    }
-  }
+  const primaryHeadlineCards = operationsHeadlineCards.slice(0, 3);
+  const supportHeadlineCards = operationsHeadlineCards.slice(3);
 
   return (
-    <section style={pageShellStyle}>
+    <section
+      className="operations-analysis-page"
+      data-testid="operations-layout-preview"
+      style={pageShellStyle}
+    >
       <div style={heroShellStyle}>
-      <PageHeader
-        title="经营分析"
-        eyebrow="Overview"
-        description="本页先回答经营判断、贡献结构和管理动作，再把受治理专题入口与运维证据面板放到后面。首页不再把 staged 指标伪装成正式经营结论。"
-        badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
-        badgeTone={client.mode === "real" ? "positive" : "accent"}
-        style={heroHeaderStyle}
-      >
-        <PageFilterTray style={filterTrayStyle}>
-          <FilterBar>
-            <label>
-              <span style={filterLabelStyle}>
-                范围
-              </span>
-              <select style={controlStyle} disabled>
-                <option>金融市场条线</option>
-              </select>
-            </label>
-            <label>
-              <span style={filterLabelStyle}>
-                口径
-              </span>
-              <select style={controlStyle} disabled>
-                <option>静态经营</option>
-              </select>
-            </label>
-            <label>
-              <span style={filterLabelStyle}>
-                币种
-              </span>
-              <select style={controlStyle} disabled>
-                <option>全部</option>
-              </select>
-            </label>
-            <label>
-              <span style={filterLabelStyle}>
-                周期
-              </span>
-              <select style={controlStyle} disabled>
-                <option>单日截面</option>
-              </select>
-            </label>
-          </FilterBar>
-        </PageFilterTray>
-      </PageHeader>
-
-      <div data-testid="operations-business-kpis" style={operationsHeroStripStyle}>
-        {operationsHeadlineCards.map((card) => (
-          <OperationsMetricCard
-            key={card.title}
-            label={card.title}
-            value={card.value}
-            unit={card.unit}
-            detail={card.detail}
-            status={card.status}
+        <div className="operations-analysis-page__hero-main">
+          <PageHeader
+            title="经营分析"
+            eyebrow="Governed Operating View"
+            description="从正式余额读面出发，先给经营判断与可执行动作；专题入口和运维证据后置核验。"
+            badgeLabel={client.mode === "real" ? "真实只读链路" : "本地演示数据"}
+            badgeTone={client.mode === "real" ? "positive" : "accent"}
+            style={heroHeaderStyle}
           />
-        ))}
+
+          <PageFilterTray style={filterTrayStyle}>
+            <FilterBar>
+              <label>
+                <span style={filterLabelStyle}>范围</span>
+                <select style={controlStyle} disabled>
+                  <option>金融市场条线</option>
+                </select>
+              </label>
+              <label>
+                <span style={filterLabelStyle}>口径</span>
+                <select style={controlStyle} disabled>
+                  <option>静态经营</option>
+                </select>
+              </label>
+              <label>
+                <span style={filterLabelStyle}>币种</span>
+                <select style={controlStyle} disabled>
+                  <option>全部</option>
+                </select>
+              </label>
+              <label>
+                <span style={filterLabelStyle}>周期</span>
+                <select style={controlStyle} disabled>
+                  <option>单日截面</option>
+                </select>
+              </label>
+            </FilterBar>
+          </PageFilterTray>
+
+          <p className="operations-analysis-page__provenance" data-testid="operations-hero-provenance">
+            {client.mode === "real"
+              ? "链路：真实只读 API。"
+              : "链路：本地演示（mock 客户端，非生产）。"}
+            首屏只放正式余额读面和关键证据状态；源批次、宏观、新闻与正式 FX 物化/候选对账只作为可核验证据，不在这里展开明细。
+            下方「本期关注事项」「近期经营日历」仍为静态示例。
+          </p>
+        </div>
+
+        <div
+          className="operations-analysis-page__kpi-grid"
+          data-testid="operations-business-kpis"
+          style={operationsHeroStripStyle}
+        >
+          <div className="operations-analysis-page__primary-metrics">
+            {primaryHeadlineCards.map((card) => (
+              <OperationsMetricCard
+                key={card.title}
+                label={card.title}
+                value={card.value}
+                unit={card.unit}
+                detail={card.detail}
+                status={card.status}
+                className="operations-analysis-page__metric-card operations-analysis-page__metric-card--primary"
+              />
+            ))}
+          </div>
+          <div className="operations-analysis-page__support-metrics">
+            {supportHeadlineCards.map((card) => (
+              <OperationsMetricCard
+                key={card.title}
+                label={card.title}
+                value={card.value}
+                unit={card.unit}
+                detail={card.detail}
+                status={card.status}
+                compact
+                className="operations-analysis-page__metric-card operations-analysis-page__metric-card--support"
+              />
+            ))}
+          </div>
+        </div>
       </div>
-      <p data-testid="operations-hero-provenance">
-        {client.mode === "real"
-          ? "链路：真实只读 API。"
-          : "链路：本地演示（mock 客户端，非生产）。"}
-        首屏混排为：正式余额读面（市值/摊余/应计/行数列）、分析类只读（源批次/宏观/新闻）与正式 FX 物化/候选对账。下方「本期关注事项」「近期经营日历」为静态示例；「期限与集中度」为硬编码示意，非受治理读面。
-      </p>
+
+      <div className="operations-analysis-page__decision-layout">
+        <div style={sectionBlockStyle}>
+          <OperationsSectionLead
+            eyebrow="Core View"
+            title="结论、桥接与质量观察"
+            description="先阅读已被正式读链路支撑的判断，再看质量观察提示哪些口径仍待补齐。收益成本桥明确保留为示意。"
+          />
+          <div className="operations-analysis-page__decision-cards" data-testid="operations-conclusion-grid">
+            <BusinessConclusion
+              reportDate={balanceOverviewQuery.data?.result.report_date}
+              detailRowCount={balanceOverviewQuery.data?.result.detail_row_count}
+              summaryRowCount={balanceOverviewQuery.data?.result.summary_row_count}
+              marketValueAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount)}
+              amortizedCostAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
+              accruedInterestAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
+              missingFxCount={missingFxRows.length}
+            />
+            <RevenueCostBridge />
+            <QualityObservation
+              sourceCount={sourceSummaries.length}
+              macroCount={macroLatest.length}
+              newsCount={newsTotal}
+              fxMaterializedCount={fxFormalStatus?.materialized_count}
+              fxCandidateCount={fxFormalStatus?.candidate_count}
+              missingFxCount={missingFxRows.length}
+            />
+          </div>
+        </div>
+
+        <div className="operations-analysis-page__decision-rail">
+          <OperationsPanel title={recommendation.title}>
+            <div data-testid="operations-entry-recommendation" style={recommendationBodyStyle}>
+              <p style={recommendationTextStyle}>{recommendation.detail}</p>
+              <div>
+                <Link to={recommendation.actionTo} style={linkStyle}>
+                  {recommendation.actionLabel}
+                </Link>
+              </div>
+            </div>
+          </OperationsPanel>
+          <OperationsPanel title="本期关注事项（静态示例）">
+            <AlertList items={OPERATIONS_WATCH_ITEMS} />
+          </OperationsPanel>
+        </div>
       </div>
 
       <div style={sectionBlockStyle}>
-      <OperationsSectionLead
-        eyebrow="Core View"
-        title="结论、桥接与质量观察"
-        description="首屏先给出当前已被正式读链路支撑的经营判断，再用质量观察告诉你哪些指标仍是待补口径。收益成本桥继续明确标为示意。"
-      />
-      <div data-testid="operations-conclusion-grid" style={tripleGridStyle}>
-        <BusinessConclusion
-          reportDate={balanceOverviewQuery.data?.result.report_date}
-          detailRowCount={balanceOverviewQuery.data?.result.detail_row_count}
-          summaryRowCount={balanceOverviewQuery.data?.result.summary_row_count}
-          marketValueAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_market_value_amount)}
-          amortizedCostAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_amortized_cost_amount)}
-          accruedInterestAmount={formatOverviewNumber(balanceOverviewQuery.data?.result.total_accrued_interest_amount)}
-          missingFxCount={missingFxRows.length}
+        <OperationsSectionLead
+          eyebrow="Contribution"
+          title="经营贡献与行动项"
+          description="正式余额读面的汇总行、管理动作和近期日历放在同一层，方便从判断进入执行。"
         />
-        <RevenueCostBridge />
-        <QualityObservation
-          sourceCount={sourceSummaries.length}
-          macroCount={macroLatest.length}
-          newsCount={newsTotal}
-          fxMaterializedCount={fxFormalStatus?.materialized_count}
-          fxCandidateCount={fxFormalStatus?.candidate_count}
-          missingFxCount={missingFxRows.length}
-        />
-      </div>
+        <div className="operations-analysis-page__contribution-layout" data-testid="operations-contribution-grid">
+          <BusinessContributionTable
+            reportDate={latestBalanceReportDate}
+            rows={balanceSummaryRows}
+            loading={balanceSummaryQuery.isLoading}
+            error={balanceSummaryQuery.isError}
+            onRetry={() => void balanceSummaryQuery.refetch()}
+            readProvenanceLine={
+              balanceSummaryQuery.isError || !balanceSummaryQuery.data
+                ? undefined
+                : `本表受治理元数据：${formatResultMetaProvenance(balanceSummaryQuery.data.result_meta)}`
+            }
+          />
+          <div className="operations-analysis-page__side-stack">
+            <OperationsPanel title="近期经营日历（静态示例）">
+              <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
+            </OperationsPanel>
+            <ManagementOutput
+              recommendationTitle={recommendation.title}
+              recommendationDetail={recommendation.detail}
+              recommendationActionLabel={recommendation.actionLabel}
+              missingFxCount={missingFxRows.length}
+            />
+          </div>
+        </div>
       </div>
 
       <div style={sectionBlockStyle}>
-      <OperationsSectionLead
-        eyebrow="Contribution"
-        title="经营贡献与行动项"
-        description="把正式余额读面的汇总行、当前关注事项和近期经营日历放到同一层，方便从判断直接过渡到行动。"
-      />
-      <div data-testid="operations-contribution-grid" style={contributionGridStyle}>
-        <BusinessContributionTable
-          reportDate={latestBalanceReportDate}
-          rows={balanceSummaryRows}
-          loading={balanceSummaryQuery.isLoading}
-          error={balanceSummaryQuery.isError}
-          onRetry={() => void balanceSummaryQuery.refetch()}
-          readProvenanceLine={
-            balanceSummaryQuery.isError || !balanceSummaryQuery.data
-              ? undefined
-              : `本表受治理元数据：${formatResultMetaProvenance(balanceSummaryQuery.data.result_meta)}`
-          }
+        <OperationsSectionLead
+          eyebrow="Structure"
+          title="期限与集中度 / 专题入口"
+          description="期限缺口只保留结构解读；正式工作簿与细项下钻仍进入对应专题页。"
         />
-        <OperationsPanel title="本期关注事项（静态示例）">
-          <AlertList items={OPERATIONS_WATCH_ITEMS} />
-        </OperationsPanel>
-        <OperationsPanel title="近期经营日历（静态示例）">
-          <CalendarList items={OPERATIONS_CALENDAR_MOCK} />
-        </OperationsPanel>
-      </div>
-      </div>
+        <div className="operations-analysis-page__structure-layout" data-testid="operations-structure-grid">
+          <TenorConcentrationPanel />
 
-      <div style={sectionBlockStyle}>
-      <OperationsSectionLead
-        eyebrow="Structure"
-        title="期限与集中度 / 管理输出"
-        description="期限缺口和管理动作继续放在本页首屏，但只保留可读的结构解读，不再冒充正式阈值结论。"
-      />
-      <div data-testid="operations-structure-grid" style={pairGridStyle}>
-        <TenorConcentrationPanel />
-        <ManagementOutput
-          recommendationTitle={recommendation.title}
-          recommendationDetail={recommendation.detail}
-          recommendationActionLabel={recommendation.actionLabel}
-          missingFxCount={missingFxRows.length}
-        />
-      </div>
-      </div>
-
-      <div style={sectionBlockStyle}>
-      <OperationsSectionLead
-        eyebrow="专题入口"
-        title="专题入口"
-        description="经营分析页只保留专题速览和跳转，正式工作簿与细项下钻仍在对应主题页中查看。"
-      />
-      <div
-        data-testid="operations-entry-balance-section"
-        style={focusEntryShellStyle}
-      >
+          <div
+            className="operations-analysis-page__topic-entry"
+            data-testid="operations-entry-balance-section"
+            style={focusEntryShellStyle}
+          >
         <AsyncSection
           title=""
           isLoading={balanceDatesQuery.isLoading || balanceOverviewQuery.isLoading}
@@ -1052,408 +960,14 @@ export default function OperationsAnalysisPage() {
                     />
                   </div>
                 ))}
-                {/*
-                <div data-testid="operations-entry-balance-detail-rows">
-                  <KpiCard
-                    title="明细行数"
-                    value={String(balanceOverview!.detail_row_count)}
-                    detail="正式读面明细行数"
-                    valueVariant="text"
-                  />
-                </div>
-                <div data-testid="operations-entry-balance-summary-rows">
-                  <KpiCard
-                    title="汇总行数"
-                    value={String(balanceOverview!.summary_row_count)}
-                    detail="正式读面汇总行数"
-                    valueVariant="text"
-                  />
-                </div>
-                <div data-testid="operations-entry-balance-market-value">
-                  <KpiCard
-                    title="总市值合计"
-                    value={formatOverviewNumber(balanceOverview!.total_market_value_amount)}
-                    detail="正式读面总市值"
-                    valueVariant="text"
-                  />
-                </div>
-                <div data-testid="operations-entry-balance-amortized">
-                  <KpiCard
-                    title="摊余成本合计"
-                    value={formatOverviewNumber(balanceOverview!.total_amortized_cost_amount)}
-                    detail="正式读面摊余成本"
-                    valueVariant="text"
-                  />
-                </div>
-                <div data-testid="operations-entry-balance-accrued">
-                  <KpiCard
-                    title="应计利息合计"
-                    value={formatOverviewNumber(balanceOverview!.total_accrued_interest_amount)}
-                    detail="正式读面应计利息"
-                    valueVariant="text"
-                  />
-                </div>
-                */}
               </div>
             </div>
           ) : null}
         </AsyncSection>
       </div>
       </div>
+      </div>
 
-      <OperationsPanel title={recommendation.title}>
-        <div data-testid="operations-entry-recommendation" style={recommendationBodyStyle}>
-          <p style={recommendationTextStyle}>
-            {recommendation.detail}
-          </p>
-          <div>
-            <Link to={recommendation.actionTo} style={linkStyle}>
-              {recommendation.actionLabel}
-            </Link>
-          </div>
-        </div>
-      </OperationsPanel>
-
-      <Collapse
-        bordered={false}
-        defaultActiveKey={["ops-sources"]}
-        items={[
-          {
-            key: "ops-sources",
-            label: <span style={disclosureLabelStyle}>数据源与运维状态</span>,
-            children: (
-              <div>
-                <div style={summaryGridStyle}>
-                  <div data-testid="operations-entry-source-count">
-                    <KpiCard
-                      title="数据源批次"
-                      value={sourceStatusCard.value}
-                      detail={sourceHeadlineDetail}
-                      valueVariant="text"
-                      status={sourceQuery.isError ? "warning" : "normal"}
-                    />
-                  </div>
-                  <div data-testid="operations-entry-macro-count">
-                    <KpiCard
-                      title="宏观最新点位"
-                      value={macroStatusCard.value}
-                      detail={macroHeadlineDetail}
-                      valueVariant="text"
-                      status={macroCatalogQuery.isError || macroLatestQuery.isError ? "warning" : "normal"}
-                    />
-                  </div>
-                  <div data-testid="operations-entry-news-count">
-                    <KpiCard
-                      title="新闻事件"
-                      value={newsStatusCard.value}
-                      detail={newsHeadlineDetail}
-                      valueVariant="text"
-                      status={newsQuery.isError ? "warning" : "normal"}
-                    />
-                  </div>
-                  <div data-testid="operations-entry-formal-fx-count">
-                    <KpiCard
-                      title="正式 FX 状态"
-                      value={formalFxStatusCard.value}
-                      detail={formalFxHeadlineDetail}
-                      valueVariant="text"
-                      status={fxFormalStatusQuery.isError ? "warning" : "normal"}
-                    />
-                  </div>
-                </div>
-
-                <div style={hubGridStyle}>
-                  <AsyncSection
-                    title="数据源预览"
-                    isLoading={sourceQuery.isLoading}
-                    isError={sourceQuery.isError}
-                    isEmpty={!sourceQuery.isLoading && !sourceQuery.isError && sourceSummaries.length === 0}
-                    onRetry={() => void sourceQuery.refetch()}
-                    extra={
-                      <Link to="/source-preview" style={linkStyle} aria-label="进入数据源预览">
-                        进入数据源预览
-                      </Link>
-                    }
-                  >
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {sourceSummaries.map((summary) => (
-                        <div
-                          key={`${summary.source_family}:${summary.ingest_batch_id ?? summary.report_date ?? summary.source_version}`}
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            ...pageInsetCardStyle,
-                            padding: 14,
-                          }}
-                        >
-                          <strong>{summary.source_family.toUpperCase()}</strong>
-                          <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            报告日 {summary.report_date ?? "—"} / 行数 {summary.total_rows} / 人工复核{" "}
-                            {summary.manual_review_count}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-file">
-                            源文件 {summary.source_file?.trim() ? summary.source_file : "—"}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-group-counts">
-                            分组计数 {formatGroupCounts(summary.group_counts)}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-source-preview-mode">
-                            预览模式 {summary.preview_mode ?? "—"}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            区间 {summary.report_start_date ?? "—"} - {summary.report_end_date ?? "—"} / 粒度{" "}
-                            {summary.report_granularity ?? "—"}
-                            {summary.rule_version ? ` / 规则 ${summary.rule_version}` : ""}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            导入批次 {summary.ingest_batch_id ?? "latest"}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </AsyncSection>
-
-                  <AsyncSection
-                    title="宏观观察"
-                    isLoading={macroLatestQuery.isLoading || macroCatalogQuery.isLoading}
-                    isError={macroLatestQuery.isError || macroCatalogQuery.isError}
-                    isEmpty={
-                      !macroLatestQuery.isLoading &&
-                      !macroCatalogQuery.isLoading &&
-                      !macroLatestQuery.isError &&
-                      !macroCatalogQuery.isError &&
-                      macroLatest.length === 0
-                    }
-                    onRetry={() => {
-                      void macroCatalogQuery.refetch();
-                      void macroLatestQuery.refetch();
-                    }}
-                    extra={
-                      <Link to="/market-data" style={linkStyle} aria-label="进入市场数据页">
-                        进入市场数据页
-                      </Link>
-                    }
-                  >
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {macroLatest.map((point) => (
-                        <div
-                          key={point.series_id}
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            ...pageInsetCardStyle,
-                            padding: 14,
-                          }}
-                        >
-                          <strong>{point.series_name}</strong>
-                          <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            {point.trade_date} / {point.value_numeric.toFixed(2)} {point.unit}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-fetch-meta">
-                            刷新层级 {point.refresh_tier ?? "—"} / 拉取 {point.fetch_mode ?? "—"} / 粒度{" "}
-                            {point.fetch_granularity ?? "—"}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-policy-note">
-                            策略说明 {point.policy_note?.trim() ? point.policy_note : "—"}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-latest-change">
-                            最新变化{" "}
-                            {point.latest_change === null || point.latest_change === undefined
-                              ? "—"
-                              : String(point.latest_change)}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-macro-recent-points">
-                            近期点位{" "}
-                            {Array.isArray(point.recent_points) && point.recent_points.length > 0
-                              ? `有 ${point.recent_points.length} 条`
-                              : "无"}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            频率 {point.frequency ?? "—"} / 供应商版本 {point.vendor_version ?? "—"}
-                            {point.quality_flag ? ` / 质量 ${point.quality_flag}` : ""}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }}>
-                            源版本 {point.source_version}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </AsyncSection>
-
-                  <AsyncSection
-                    title="新闻事件窗"
-                    isLoading={newsQuery.isLoading}
-                    isError={newsQuery.isError}
-                    isEmpty={!newsQuery.isLoading && !newsQuery.isError && newsEvents.length === 0}
-                    onRetry={() => void newsQuery.refetch()}
-                    extra={
-                      <Link to="/news-events" style={linkStyle} aria-label="进入新闻事件窗">
-                        进入新闻事件窗
-                      </Link>
-                    }
-                  >
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {newsEvents.map((event) => (
-                        <div
-                          key={event.event_key}
-                          style={{
-                            display: "grid",
-                            gap: 6,
-                            ...pageInsetCardStyle,
-                            padding: 14,
-                          }}
-                        >
-                          <strong>{event.topic_code}</strong>
-                          <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                            分组 {event.group_id} / {event.received_at}
-                          </div>
-                          <div style={{ color: "#8090a8", fontSize: 12 }} data-testid={`operations-news-meta-${event.event_key}`}>
-                            类型 {event.content_type ?? "—"} / serial {event.serial_id ?? "—"} / req{" "}
-                            {event.request_id ?? "—"} / idx {event.item_index ?? "—"} / err{" "}
-                            {event.error_code}
-                            {event.error_msg?.trim() ? ` / ${event.error_msg}` : ""}
-                          </div>
-                          <div style={{ color: "#162033", fontSize: 14, lineHeight: 1.6 }}>
-                            {summarizeNewsPayload(event)}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </AsyncSection>
-
-                  <AsyncSection
-                    title="正式 FX 中间价状态"
-                    isLoading={fxFormalStatusQuery.isLoading}
-                    isError={fxFormalStatusQuery.isError}
-                    isEmpty={!fxFormalStatusQuery.isLoading && !fxFormalStatusQuery.isError && fxFormalRows.length === 0}
-                    onRetry={() => void fxFormalStatusQuery.refetch()}
-                  >
-                    <PageSurfacePanel
-                      testId="operations-entry-formal-fx-status"
-                      as="div"
-                      style={{ display: "grid", gap: 12 }}
-                    >
-                      <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
-                        正式 FX 中间价状态直接来自后端正式读模型，并与分析口径的市场观察分开展示。
-                      </div>
-                      <div style={{ display: "grid", gap: 8, color: "#5c6b82", fontSize: 14 }}>
-                        <div>最新交易日 {fxFormalStatus?.latest_trade_date ?? "待定"}</div>
-                        <div>沿用前值数量 {fxFormalStatus?.carry_forward_count ?? 0}</div>
-                        <div>
-                          供应商优先级 {(fxFormalStatus?.vendor_priority ?? []).join(" > ") || "待定"}
-                        </div>
-                        <div>trace_id {fxFormalStatusQuery.data?.result_meta.trace_id ?? "待定"}</div>
-                      </div>
-                      <div style={{ display: "grid", gap: 10 }}>
-                        {fxFormalRows.map((row) => (
-                          <div
-                            key={`${row.base_currency}:${row.quote_currency}`}
-                            style={{
-                              display: "grid",
-                              gap: 6,
-                              ...pageInsetCardStyle,
-                              padding: 14,
-                            }}
-                          >
-                            <strong>{row.pair_label}</strong>
-                            <div style={{ color: "#8090a8", fontSize: 12 }}>
-                              {row.series_name?.trim() || row.vendor_series_code || "—"}
-                            </div>
-                            <div style={{ color: "#5c6b82", fontSize: 13 }}>
-                              状态 {row.status} / 交易日 {row.trade_date ?? "待定"} / 观测日{" "}
-                              {row.observed_trade_date ?? "待定"} / 营业日{" "}
-                              {row.is_business_day === null ? "—" : row.is_business_day ? "是" : "否"}
-                            </div>
-                            <div style={{ color: "#8090a8", fontSize: 12 }} data-testid="operations-fx-row-versions">
-                              来源 {row.source_name ?? "—"} / 源版本 {row.source_version ?? "—"} / 供应商版本{" "}
-                              {row.vendor_version ?? "—"}
-                            </div>
-                            <div style={{ color: "#8090a8", fontSize: 12 }}>
-                              {row.status === "missing"
-                                ? `缺失 ${row.pair_label}`
-                                : `中间价 ${row.mid_rate ?? "n/a"} / 供应商 ${row.vendor_name ?? "n/a"} / 沿用前值 ${row.is_carry_forward ?? false}`}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                      {missingFxRows.length > 0 ? (
-                        <div style={{ color: "#b42318", fontSize: 13 }}>
-                          缺失的正式 FX 货币对：{missingFxRows.map((row) => row.pair_label).join(", ")}
-                        </div>
-                      ) : null}
-                    </PageSurfacePanel>
-                  </AsyncSection>
-
-                  <PageSurfacePanel as="section" style={{ display: "grid", gap: 12 }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        justifyContent: "space-between",
-                        gap: 12,
-                      }}
-                    >
-                      <div>
-                        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>PnL 表刷新</h2>
-                        <p
-                          style={{
-                            marginTop: 8,
-                            marginBottom: 0,
-                            color: "#5c6b82",
-                            fontSize: 13,
-                            lineHeight: 1.7,
-                          }}
-                        >
-                          手动触发正式损益（PnL）物化任务，与正式 FX 状态读面相互独立。
-                        </p>
-                        {lastPnlRefreshRunId ? (
-                          <p
-                            data-testid="operations-entry-pnl-refresh-run-id"
-                            style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
-                          >
-                            最近刷新任务：{lastPnlRefreshRunId}
-                          </p>
-                        ) : null}
-                        {lastPnlRefreshStatus ? (
-                          <p
-                            data-testid="operations-entry-pnl-refresh-status"
-                            style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}
-                          >
-                            {lastPnlRefreshStatus}
-                          </p>
-                        ) : null}
-                        {pnlRefreshError ? (
-                          <p style={{ marginTop: 8, marginBottom: 0, color: "#b42318", fontSize: 12 }}>
-                            {pnlRefreshError}
-                          </p>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        data-testid="operations-entry-pnl-refresh-button"
-                        onClick={() => void handlePnlRefresh()}
-                        disabled={isPnlRefreshing}
-                        style={{
-                          padding: "10px 16px",
-                          borderRadius: 12,
-                          border: "1px solid #162033",
-                          background: "#fbfcfe",
-                          color: "#162033",
-                          fontWeight: 600,
-                          cursor: isPnlRefreshing ? "progress" : "pointer",
-                          opacity: isPnlRefreshing ? 0.7 : 1,
-                        }}
-                      >
-                        {isPnlRefreshing ? "刷新中..." : "刷新 PnL 表"}
-                      </button>
-                    </div>
-                  </PageSurfacePanel>
-                </div>
-              </div>
-            ),
-          },
-        ]}
-      />
     </section>
   );
 }
