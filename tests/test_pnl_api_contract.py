@@ -1804,19 +1804,20 @@ def _seed_pnl_bridge_fx_rates(duckdb_path: Path) -> None:
               trade_date varchar,
               base_currency varchar,
               quote_currency varchar,
-              mid_rate decimal(18, 8)
+              mid_rate decimal(18, 8),
+              source_version varchar
             )
             """
         )
         conn.execute("delete from fx_daily_mid")
         conn.executemany(
             """
-            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate)
-            values (?, ?, ?, ?)
+            insert into fx_daily_mid (trade_date, base_currency, quote_currency, mid_rate, source_version)
+            values (?, ?, ?, ?, ?)
             """,
             [
-                ("2025-12-31", "USD", "CNY", "7.08270000"),
-                ("2025-10-31", "USD", "CNY", "7.04135000"),
+                ("2025-12-31", "USD", "CNY", "7.08270000", "sv_fx_daily_mid_test"),
+                ("2025-10-31", "USD", "CNY", "7.04135000", "sv_fx_daily_mid_test"),
             ],
         )
     finally:
