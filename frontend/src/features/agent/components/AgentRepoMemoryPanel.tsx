@@ -43,7 +43,7 @@ export function AgentRepoMemoryPanel({
               textTransform: "uppercase",
             }}
           >
-            Pinned Repos
+            固定仓库
           </div>
           <div
             style={{
@@ -80,7 +80,7 @@ export function AgentRepoMemoryPanel({
                 <button
                   type="button"
                   onClick={() => onMovePinnedRepoPath(path, "up")}
-                  aria-label={`上移固定 Repo ${path}`}
+                  aria-label={`上移固定仓库 ${path}`}
                   style={{
                     padding: "4px 8px",
                     borderRadius: 999,
@@ -96,7 +96,7 @@ export function AgentRepoMemoryPanel({
                 <button
                   type="button"
                   onClick={() => onMovePinnedRepoPath(path, "down")}
-                  aria-label={`下移固定 Repo ${path}`}
+                  aria-label={`下移固定仓库 ${path}`}
                   style={{
                     padding: "4px 8px",
                     borderRadius: 999,
@@ -146,7 +146,7 @@ export function AgentRepoMemoryPanel({
               textTransform: "uppercase",
             }}
           >
-            Recent Repos
+            最近仓库
           </div>
           <div
             style={{
@@ -183,7 +183,7 @@ export function AgentRepoMemoryPanel({
                 <button
                   type="button"
                   onClick={() => onPinRepoPath(path)}
-                  aria-label={`固定 Repo ${path}`}
+                  aria-label={`固定仓库 ${path}`}
                   style={{
                     padding: "4px 8px",
                     borderRadius: 999,

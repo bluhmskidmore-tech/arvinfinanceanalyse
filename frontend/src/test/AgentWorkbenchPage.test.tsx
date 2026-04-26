@@ -7,8 +7,8 @@ import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 const AGENT_PLACEHOLDER =
   "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...";
 const GITNEXUS_STATUS_BUTTON = "GitNexus 状态";
-const GITNEXUS_CONTEXT_BUTTON = "GitNexus context";
-const GITNEXUS_PROCESSES_BUTTON = "GitNexus processes";
+const GITNEXUS_CONTEXT_BUTTON = "GitNexus 上下文";
+const GITNEXUS_PROCESSES_BUTTON = "GitNexus 流程";
 const RECENT_REPO_PATHS_KEY = "moss.agent.gitnexus.recentRepoPaths.v1";
 const PINNED_REPO_PATHS_KEY = "moss.agent.gitnexus.pinnedRepoPaths.v1";
 const MAX_PINNED_REPO_PATHS = 5;
@@ -49,8 +49,8 @@ describe("AgentWorkbenchPage", () => {
 
     expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
     expect(screen.getByLabelText("process-search-input")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "固定当前 Repo" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "读取 Processes" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "固定当前仓库" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "读取流程" })).toBeInTheDocument();
     expect(screen.getByLabelText("process-name-select")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_STATUS_BUTTON })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: GITNEXUS_CONTEXT_BUTTON })).toBeInTheDocument();
@@ -68,10 +68,10 @@ describe("AgentWorkbenchPage", () => {
 
     await user.clear(screen.getByLabelText("repo-path-input"));
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\PINNED-MOSS");
-    await user.click(screen.getByRole("button", { name: "固定当前 Repo" }));
+    await user.click(screen.getByRole("button", { name: "固定当前仓库" }));
 
-    expect(screen.getByText("Pinned Repos")).toBeInTheDocument();
-    expect(screen.getByText("Recent Repos")).toBeInTheDocument();
+    expect(screen.getByText("固定仓库")).toBeInTheDocument();
+    expect(screen.getByText("最近仓库")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "F:\\PINNED-MOSS" })).toBeInTheDocument();
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([
       "F:\\PINNED-MOSS",
@@ -107,10 +107,10 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    expect(screen.getByText("Pinned Repos")).toBeInTheDocument();
-    expect(screen.queryByText("Recent Repos")).not.toBeInTheDocument();
+    expect(screen.getByText("固定仓库")).toBeInTheDocument();
+    expect(screen.queryByText("最近仓库")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "上移固定 Repo F:\\GAMMA" }));
+    await user.click(screen.getByRole("button", { name: "上移固定仓库 F:\\GAMMA" }));
 
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([
       "F:\\ALPHA",
@@ -138,7 +138,7 @@ describe("AgentWorkbenchPage", () => {
 
     render(<AgentWorkbenchPage />);
 
-    await user.click(screen.getByRole("button", { name: "固定 Repo F:\\PIN-ME" }));
+    await user.click(screen.getByRole("button", { name: "固定仓库 F:\\PIN-ME" }));
 
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toEqual([
       "F:\\PIN-ME",
@@ -150,12 +150,12 @@ describe("AgentWorkbenchPage", () => {
     expect(JSON.parse(window.localStorage.getItem(PINNED_REPO_PATHS_KEY) ?? "[]")).toHaveLength(
       MAX_PINNED_REPO_PATHS,
     );
-    expect(screen.queryByRole("button", { name: "固定 Repo F:\\PIN-ME" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "固定仓库 F:\\PIN-ME" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "取消固定 F:\\PIN-ME" }));
 
-    expect(screen.getByRole("button", { name: "固定 Repo F:\\PIN-ME" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "固定仓库 F:\\PIN-ME" })).toBeInTheDocument();
   });
 
   it("auto-refreshes processes when repo_path changes", async () => {
@@ -243,6 +243,10 @@ describe("AgentWorkbenchPage", () => {
       />,
     );
 
+    expect(screen.getByText("页面上下文")).toBeInTheDocument();
+    expect(screen.getByText(/risk-dashboard/)).toBeInTheDocument();
+    expect(screen.getByText(/selected from risk table/)).toBeInTheDocument();
+
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "解释当前选择");
     await user.click(screen.getByRole("button", { name: "查询" }));
 
@@ -294,7 +298,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
-    await user.click(screen.getByRole("button", { name: "读取 Processes" }));
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
 
     await waitFor(() => {
       const select = screen.getByLabelText("process-name-select") as HTMLSelectElement;
@@ -363,7 +367,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
-    await user.click(screen.getByRole("button", { name: "读取 Processes" }));
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
     await waitFor(() => expect(screen.getByRole("option", { name: "CheckoutFlow" })).toBeInTheDocument());
 
     const processSelect = screen.getByLabelText("process-name-select");
@@ -429,7 +433,7 @@ describe("AgentWorkbenchPage", () => {
     render(<AgentWorkbenchPage />);
 
     await user.type(screen.getByLabelText("repo-path-input"), "F:\\MOSS-SYSTEM-V1");
-    await user.click(screen.getByRole("button", { name: "读取 Processes" }));
+    await user.click(screen.getByRole("button", { name: "读取流程" }));
     await waitFor(() => expect(screen.getByRole("option", { name: "AuditFlow" })).toBeInTheDocument());
 
     await user.type(screen.getByLabelText("process-search-input"), "Audit");
@@ -724,12 +728,12 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "GitNexus context");
     await user.click(screen.getByRole("button", { name: "查询" }));
 
-    expect(await screen.findByText("Context Overview")).toBeInTheDocument();
-    expect(screen.getByText("Execution Flows")).toBeInTheDocument();
-    expect(screen.getByText("Process Graph")).toBeInTheDocument();
+    expect(await screen.findByText("上下文概览")).toBeInTheDocument();
+    expect(screen.getByText("执行流程")).toBeInTheDocument();
+    expect(screen.getByText("流程图")).toBeInTheDocument();
     expect(screen.getAllByText("CheckoutFlow").length).toBeGreaterThan(0);
     expect(
-      screen.getByText((content) => content.includes("cross_community") && content.includes("steps 6")),
+      screen.getByText((content) => content.includes("cross_community") && content.includes("步骤 6")),
     ).toBeInTheDocument();
     expect(screen.getByText(/api -> services/)).toBeInTheDocument();
     expect(screen.getByText(/services -> repositories/)).toBeInTheDocument();
@@ -741,9 +745,9 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("start_checkout")).toBeInTheDocument();
     expect(screen.getByText("calculate_total")).toBeInTheDocument();
     expect(screen.getByText("save_order")).toBeInTheDocument();
-    expect(screen.getByText("Step 1")).toBeInTheDocument();
-    expect(screen.getByText("Step 2")).toBeInTheDocument();
-    expect(screen.getByText("Step 3")).toBeInTheDocument();
+    expect(screen.getByText("步骤 1")).toBeInTheDocument();
+    expect(screen.getByText("步骤 2")).toBeInTheDocument();
+    expect(screen.getByText("步骤 3")).toBeInTheDocument();
   });
 
   it("renders process graph using backend-provided module_group and edge_label", async () => {
@@ -801,7 +805,7 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "GitNexus process");
     await user.click(screen.getByRole("button", { name: "查询" }));
 
-    expect(await screen.findByText("Process Graph")).toBeInTheDocument();
+    expect(await screen.findByText("流程图")).toBeInTheDocument();
     expect(screen.getByText(/governance -> orchestration/)).toBeInTheDocument();
     expect(screen.getByText(/core -> persistence/)).toBeInTheDocument();
     expect(screen.getAllByText("governance").length).toBeGreaterThan(0);
@@ -855,15 +859,15 @@ describe("AgentWorkbenchPage", () => {
     await user.type(screen.getByPlaceholderText(AGENT_PLACEHOLDER), "GitNexus status");
     await user.click(screen.getByRole("button", { name: "查询" }));
 
-    expect(await screen.findByText("Index Summary")).toBeInTheDocument();
+    expect(await screen.findByText("索引摘要")).toBeInTheDocument();
     expect(screen.getByText("Repo")).toBeInTheDocument();
     expect(screen.getByText("F:\\MOSS-SYSTEM-V1")).toBeInTheDocument();
     expect(screen.getByText("Nodes")).toBeInTheDocument();
     expect(screen.getByText("8462")).toBeInTheDocument();
     expect(screen.getByText("Edges")).toBeInTheDocument();
     expect(screen.getByText("23878")).toBeInTheDocument();
-    expect(screen.getByText("Execution Flows")).toBeInTheDocument();
-    expect(screen.getByText("Context Overview")).toBeInTheDocument();
+    expect(screen.getByText("执行流程")).toBeInTheDocument();
+    expect(screen.getByText("上下文概览")).toBeInTheDocument();
   });
 
   it("shows validation error when submitting with empty input", async () => {
@@ -903,7 +907,7 @@ describe("AgentWorkbenchPage", () => {
 
     expect(
       await screen.findByText(
-        "Agent 当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
+        "智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
   });
@@ -923,7 +927,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "查询" }));
 
     expect(
-      await screen.findByText("Agent 查询失败（500）"),
+      await screen.findByText("智能体查询失败（500）"),
     ).toBeInTheDocument();
   });
 
@@ -961,7 +965,7 @@ describe("AgentWorkbenchPage", () => {
     await user.click(screen.getByRole("button", { name: "查询" }));
 
     expect(
-      await screen.findByText("Agent 返回结果格式无效。"),
+      await screen.findByText("智能体返回结果格式无效。"),
     ).toBeInTheDocument();
   });
 
@@ -989,6 +993,28 @@ describe("AgentWorkbenchPage", () => {
           { dimension: "portfolio", label: "按组合下钻" },
           { dimension: "tenor_bucket", label: "按期限桶下钻" },
         ],
+        suggested_actions: [
+          {
+            type: "inspect_drill",
+            label: "继续下钻期限桶",
+            payload: {
+              dimension: "tenor_bucket",
+              page_context: {
+                page_id: "risk-dashboard",
+              },
+            },
+            requires_confirmation: true,
+          },
+          {
+            type: "inspect_lineage",
+            label: "查看血缘",
+            payload: {
+              trace_id: "tr_1",
+              tables_used: ["fact_risk_tensor"],
+            },
+            requires_confirmation: true,
+          },
+        ],
       }),
     );
 
@@ -1007,22 +1033,38 @@ describe("AgentWorkbenchPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("4.27")).toBeInTheDocument();
-    expect(screen.getByText("duration")).toBeInTheDocument();
+    expect(screen.getByText("久期")).toBeInTheDocument();
     expect(screen.getByText("证据链")).toBeInTheDocument();
     expect(
-      screen.getByText(/tables: fact_risk_tensor, dim_portfolio/),
+      screen.getByText(/表：fact_risk_tensor, dim_portfolio/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/filters: \{"currency_basis":"CNY"\}/),
+      screen.getByText(/筛选：\{"currency_basis":"CNY"\}/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/rows: 42/)).toBeInTheDocument();
-    expect(screen.getByText(/quality: ok/)).toBeInTheDocument();
+    expect(screen.getByText(/行数：42/)).toBeInTheDocument();
+    expect(screen.getByText(/质量：ok/)).toBeInTheDocument();
     expect(screen.getByText("按组合下钻")).toBeInTheDocument();
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
+    expect(screen.getByText("建议动作")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "继续下钻期限桶" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看血缘" })).toBeInTheDocument();
+    expect(screen.getAllByText("需确认后执行")).toHaveLength(2);
+    expect(screen.getByText(/inspect_drill/)).toBeInTheDocument();
+    expect(screen.getByText(/inspect_lineage/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
+    expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue(
+      "请基于当前 evidence 继续下钻：继续下钻期限桶",
+    );
+
+    await user.click(screen.getByRole("button", { name: "查看血缘" }));
+    expect(screen.getByText("动作载荷 / 血缘信息")).toBeInTheDocument();
+    expect(screen.getAllByText(/fact_risk_tensor/).length).toBeGreaterThanOrEqual(2);
+
     expect(screen.getByText("结果元信息")).toBeInTheDocument();
-    expect(screen.getByText(/trace_id: tr_1/)).toBeInTheDocument();
-    expect(screen.getByText(/basis: formal/)).toBeInTheDocument();
-    expect(screen.getByText(/generated_at: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
+    expect(screen.getByText(/追踪编号: tr_1/)).toBeInTheDocument();
+    expect(screen.getByText(/口径: formal/)).toBeInTheDocument();
+    expect(screen.getByText(/生成时间: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -1062,6 +1104,6 @@ describe("AgentWorkbenchPage", () => {
     expect(
       await screen.findByText("本次查询未返回可展示结果。请调整问题后重试。"),
     ).toBeInTheDocument();
-    expect(screen.getByText(/trace_id: tr_empty/)).toBeInTheDocument();
+    expect(screen.getByText(/追踪编号: tr_empty/)).toBeInTheDocument();
   });
 });

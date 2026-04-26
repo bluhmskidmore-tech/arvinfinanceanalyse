@@ -26,10 +26,10 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     expect(
-      await screen.findByRole("heading", { name: "Agent 工作台" }),
+      await screen.findByRole("heading", { name: "智能体工作台" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。"),
+      screen.getByText("输入自然语言问题，智能体路由到已有分析服务返回结构化结果。"),
     ).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(
@@ -105,22 +105,22 @@ describe("/agent route", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("组合久期")).toBeInTheDocument();
     expect(screen.getByText("4.27")).toBeInTheDocument();
-    expect(screen.getByText("duration")).toBeInTheDocument();
+    expect(screen.getByText("久期")).toBeInTheDocument();
     expect(screen.getByText("DV01")).toBeInTheDocument();
     expect(screen.getByText("128.5万")).toBeInTheDocument();
     expect(screen.getByText("证据链")).toBeInTheDocument();
     expect(
-      screen.getByText(/tables: fact_risk_tensor, dim_portfolio/),
+      screen.getByText(/表：fact_risk_tensor, dim_portfolio/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/filters: \{"currency_basis":"CNY"\}/),
+      screen.getByText(/筛选：\{"currency_basis":"CNY"\}/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/rows: 42/)).toBeInTheDocument();
-    expect(screen.getByText(/quality: ok/)).toBeInTheDocument();
+    expect(screen.getByText(/行数：42/)).toBeInTheDocument();
+    expect(screen.getByText(/质量：ok/)).toBeInTheDocument();
     expect(screen.getByText("结果元信息")).toBeInTheDocument();
-    expect(screen.getByText(/trace_id: tr_agent_query_001/)).toBeInTheDocument();
-    expect(screen.getByText(/basis: formal/)).toBeInTheDocument();
-    expect(screen.getByText(/generated_at: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
+    expect(screen.getByText(/追踪编号: tr_agent_query_001/)).toBeInTheDocument();
+    expect(screen.getByText(/口径: formal/)).toBeInTheDocument();
+    expect(screen.getByText(/生成时间: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
     expect(screen.getByText("按组合下钻")).toBeInTheDocument();
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
   });
@@ -150,7 +150,7 @@ describe("/agent route", () => {
 
     expect(
       await screen.findByText(
-        "Agent 当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
+        "智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
   });
@@ -189,7 +189,7 @@ describe("/agent route", () => {
       await screen.findByText("本次查询未返回可展示结果。请调整问题后重试。"),
     ).toBeInTheDocument();
     expect(screen.getByText("结果元信息")).toBeInTheDocument();
-    expect(screen.getByText(/trace_id: tr_agent_query_empty/)).toBeInTheDocument();
+    expect(screen.getByText(/追踪编号: tr_agent_query_empty/)).toBeInTheDocument();
   });
 
   it("rejects malformed nested payloads instead of crashing during render", async () => {
@@ -217,7 +217,7 @@ describe("/agent route", () => {
     await user.click(screen.getByRole("button", { name: "查询" }));
 
     expect(
-      await screen.findByText("Agent 返回结果格式无效。"),
+      await screen.findByText("智能体返回结果格式无效。"),
     ).toBeInTheDocument();
   });
 
@@ -267,7 +267,7 @@ describe("/agent route", () => {
 
     expect(
       await screen.findByText(
-        "Agent 当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
+        "智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("首个成功结果")).toBeInTheDocument();

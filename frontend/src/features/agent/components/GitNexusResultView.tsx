@@ -25,10 +25,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function formatMetaValue(value: unknown) {
   if (value === null || value === undefined) {
-    return "鈥?";
+    return "—";
   }
   if (typeof value === "string") {
-    return value.trim().length > 0 ? value : "鈥?";
+    return value.trim().length > 0 ? value : "—";
   }
   if (typeof value === "number" || typeof value === "boolean") {
     return String(value);
@@ -104,7 +104,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
               color: t.colorTextPrimary,
             }}
           >
-            Index Summary
+            索引摘要
           </div>
           {summaryMetricCards.length > 0 ? (
             <div
@@ -193,7 +193,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
               color: t.colorTextPrimary,
             }}
           >
-            Context Overview
+            上下文概览
           </div>
           {contextCard?.value ? (
             <div
@@ -247,7 +247,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                   textTransform: "uppercase",
                 }}
               >
-                Tools
+                工具
               </div>
               {toolRows.map((row, index) => (
                 <div
@@ -289,7 +289,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
               color: t.colorTextPrimary,
             }}
           >
-            Execution Flows
+            执行流程
           </div>
           {processes.length > 0 ? (
             <div
@@ -313,14 +313,14 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                     {formatMetaValue(row.name)}
                   </div>
                   <div style={{ fontSize: 12, color: t.colorTextSecondary }}>
-                    {formatMetaValue(row.type)} 路 steps {formatMetaValue(row.steps)}
+                    {formatMetaValue(row.type)} 路 步骤 {formatMetaValue(row.steps)}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div style={{ fontSize: 13, color: t.colorTextSecondary }}>
-              鏈繑鍥炴祦绋嬪垪琛ㄣ€?
+              未返回流程列表。
             </div>
           )}
           {resourceRows.length > 0 ? (
@@ -368,7 +368,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
               color: t.colorTextPrimary,
             }}
           >
-            Process Graph
+            流程图
           </div>
           <div
             style={{
@@ -422,7 +422,7 @@ export function GitNexusResultView({ cards }: { cards: GitNexusResultCard[] }) {
                           color: t.colorTextMuted,
                         }}
                       >
-                        Step {formatMetaValue(row.step)}
+                        步骤 {formatMetaValue(row.step)}
                       </span>
                       <span
                         style={{

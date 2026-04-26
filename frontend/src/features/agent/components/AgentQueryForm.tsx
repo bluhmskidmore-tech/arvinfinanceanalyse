@@ -24,6 +24,13 @@ type AgentQueryFormProps = {
   onSubmit: (event?: FormEvent<HTMLFormElement>) => void;
 };
 
+function formatQuickExampleLabel(example: string) {
+  return example
+    .replace("请给我看 ", "")
+    .replace("GitNexus context", "GitNexus 上下文")
+    .replace("GitNexus processes", "GitNexus 流程");
+}
+
 export function AgentQueryForm({
   repoPath,
   onRepoPathChange,
@@ -63,7 +70,7 @@ export function AgentQueryForm({
             fontSize: 13,
           }}
         >
-          <span>GitNexus Repo Path</span>
+          <span>GitNexus 仓库路径</span>
           <input
             aria-label="repo-path-input"
             type="text"
@@ -106,7 +113,7 @@ export function AgentQueryForm({
                 cursor: "pointer",
               }}
             >
-              {example.replace("请给我看 ", "")}
+              {formatQuickExampleLabel(example)}
             </button>
           ))}
           <button
@@ -123,7 +130,7 @@ export function AgentQueryForm({
               cursor: "pointer",
             }}
           >
-            {isCurrentRepoPinned ? "取消固定当前 Repo" : "固定当前 Repo"}
+            {isCurrentRepoPinned ? "取消固定当前仓库" : "固定当前仓库"}
           </button>
           <button
             type="button"
@@ -141,14 +148,14 @@ export function AgentQueryForm({
               opacity: processLoading ? 0.72 : 1,
             }}
           >
-            {processLoading ? "读取中..." : "读取 Processes"}
+            {processLoading ? "读取中..." : "读取流程"}
           </button>
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr) auto",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
             gap: 10,
             alignItems: "end",
           }}
@@ -161,7 +168,7 @@ export function AgentQueryForm({
               fontSize: 13,
             }}
           >
-            <span>Process Search</span>
+            <span>流程搜索</span>
             <input
               aria-label="process-search-input"
               type="text"
@@ -188,7 +195,7 @@ export function AgentQueryForm({
               fontSize: 13,
             }}
           >
-            <span>Process Name</span>
+            <span>流程名称</span>
             <select
               aria-label="process-name-select"
               value={selectedProcess}
@@ -237,6 +244,7 @@ export function AgentQueryForm({
         onSubmit={(event) => void onSubmit(event)}
         style={{
           display: "flex",
+          flexWrap: "wrap",
           gap: 12,
           marginTop: 20,
           marginBottom: 24,
@@ -248,7 +256,8 @@ export function AgentQueryForm({
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
           style={{
-            flex: 1,
+            flex: "1 1 320px",
+            minWidth: 0,
             padding: "12px 16px",
             borderRadius: 14,
             border: `1px solid ${t.colorBorder}`,

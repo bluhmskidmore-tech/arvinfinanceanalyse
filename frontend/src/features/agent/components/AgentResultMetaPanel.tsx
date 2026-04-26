@@ -5,6 +5,22 @@ type AgentResultMetaPanelProps = {
   formatValue: (value: unknown) => string;
 };
 
+const metaKeyLabels: Record<string, string> = {
+  trace_id: "追踪编号",
+  basis: "口径",
+  generated_at: "生成时间",
+  result_kind: "结果类型",
+  formal_use_allowed: "正式可用",
+  source_version: "来源版本",
+  vendor_version: "供应商版本",
+  rule_version: "规则版本",
+  cache_version: "缓存版本",
+  quality_flag: "质量标记",
+  vendor_status: "供应商状态",
+  fallback_mode: "降级模式",
+  scenario_flag: "情景标记",
+};
+
 export function AgentResultMetaPanel({ entries, formatValue }: AgentResultMetaPanelProps) {
   return (
     <div
@@ -33,7 +49,7 @@ export function AgentResultMetaPanel({ entries, formatValue }: AgentResultMetaPa
       >
         {entries.map(([key, value]) => (
           <div key={key}>
-            {key}: {formatValue(value)}
+            {metaKeyLabels[key] ?? key}: {formatValue(value)}
           </div>
         ))}
       </div>

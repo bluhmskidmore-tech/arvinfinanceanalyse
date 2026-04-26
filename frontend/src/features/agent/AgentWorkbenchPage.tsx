@@ -1,6 +1,6 @@
 ﻿import { useDeferredValue, useEffect, useRef, useState, type FormEvent } from "react";
 
-import type { AgentPageContext, AgentQueryRequest } from "../../api/contracts";
+import type { AgentPageContext, AgentQueryRequest, AgentSuggestedAction } from "../../api/contracts";
 import { shellTokens as t } from "../../theme/tokens";
 import { AgentAnswerPanel } from "./components/AgentAnswerPanel";
 import { AgentEvidencePanel } from "./components/AgentEvidencePanel";
@@ -8,6 +8,7 @@ import { AgentGenericCardsGrid } from "./components/AgentGenericCardsGrid";
 import { AgentQueryForm } from "./components/AgentQueryForm";
 import { AgentRepoMemoryPanel } from "./components/AgentRepoMemoryPanel";
 import { AgentResultMetaPanel } from "./components/AgentResultMetaPanel";
+import { AgentSuggestedActionsPanel } from "./components/AgentSuggestedActionsPanel";
 import { GitNexusResultView as AgentGitNexusResultView } from "./components/GitNexusResultView";
 
 type AgentResultCard = {
@@ -36,6 +37,7 @@ type AgentQueryResult = {
   evidence: AgentEvidence;
   result_meta: Record<string, unknown>;
   next_drill: AgentNextDrill[];
+  suggested_actions: AgentSuggestedAction[];
 };
 
 type AgentQueryError =
@@ -69,6 +71,8 @@ function isAgentQueryResult(value: unknown): value is AgentQueryResult {
     isAgentEvidence(value.evidence) &&
     Array.isArray(value.next_drill) &&
     value.next_drill.every(isAgentNextDrill) &&
+    (value.suggested_actions === undefined ||
+      (Array.isArray(value.suggested_actions) && value.suggested_actions.every(isAgentSuggestedAction))) &&
     isRecord(value.result_meta)
   );
 }
@@ -105,6 +109,16 @@ function isAgentNextDrill(value: unknown): value is AgentNextDrill {
   );
 }
 
+function isAgentSuggestedAction(value: unknown): value is AgentSuggestedAction {
+  return (
+    isRecord(value) &&
+    typeof value.type === "string" &&
+    typeof value.label === "string" &&
+    isRecord(value.payload) &&
+    typeof value.requires_confirmation === "boolean"
+  );
+}
+
 function isDisabledPayload(value: unknown): value is {
   enabled: false;
   phase: string;
@@ -122,7 +136,7 @@ function buildErrorMessage(error: unknown) {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
   }
-  return "Agent 查询失败，请稍后重试。";
+  return "智能体查询失败，请稍后重试。";
 }
 
 function hasEvidenceContent(evidence: AgentEvidence) {
@@ -139,7 +153,8 @@ function hasRenderableResult(result: AgentQueryResult) {
     result.answer.trim().length > 0 ||
     result.cards.length > 0 ||
     hasEvidenceContent(result.evidence) ||
-    result.next_drill.length > 0
+    result.next_drill.length > 0 ||
+    result.suggested_actions.length > 0
   );
 }
 
@@ -330,6 +345,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
   const [loading, setLoading] = useState(false);
   const [processLoading, setProcessLoading] = useState(false);
   const [result, setResult] = useState<AgentQueryResult | null>(null);
+  const [activeSuggestedActionPayload, setActiveSuggestedActionPayload] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState<AgentQueryError | null>(null);
   const repoPathRef = useRef(repoPath);
   const processStateRequestVersionRef = useRef(0);
@@ -450,12 +466,13 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
       }
 
       if (!response.ok) {
-        throw new Error(`Agent 查询失败（${response.status}）`);
+        throw new Error(`智能体查询失败（${response.status}）`);
       }
 
       if (!isAgentQueryResult(payload)) {
-        throw new Error("Agent 返回结果格式无效。");
+        throw new Error("智能体返回结果格式无效。");
       }
+      payload.suggested_actions = payload.suggested_actions ?? [];
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
@@ -471,6 +488,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
       }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setResult(payload);
+        setActiveSuggestedActionPayload(null);
       }
       return payload;
     } catch (requestError) {
@@ -511,7 +529,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
     if (!normalizedRepoPath) {
       setError({
         kind: "request",
-        message: "请先输入 GitNexus Repo Path。",
+        message: "请先输入 GitNexus 仓库路径。",
       });
       return;
     }
@@ -543,10 +561,11 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
       if (!response.ok || !isAgentQueryResult(payload)) {
         throw new Error(
           !response.ok
-            ? `Agent 查询失败（${response.status}）`
-            : "Agent 返回结果格式无效。",
+            ? `智能体查询失败（${response.status}）`
+            : "智能体返回结果格式无效。",
         );
       }
+      payload.suggested_actions = payload.suggested_actions ?? [];
 
       const nextProcesses = extractProcessNames(payload.cards);
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
@@ -555,6 +574,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
         setSelectedProcess(nextProcesses[0] ?? "");
         rememberRepoPath(normalizedRepoPath);
         setResult(payload);
+        setActiveSuggestedActionPayload(null);
       }
     } catch (requestError) {
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
@@ -574,7 +594,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
     if (!selectedProcess) {
       setError({
         kind: "request",
-        message: "请先从 Processes 列表选择一个流程。",
+        message: "请先从流程列表选择一个流程。",
       });
       return;
     }
@@ -602,7 +622,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
     if (!normalized) {
       setError({
         kind: "request",
-        message: "请先输入 GitNexus Repo Path。",
+        message: "请先输入 GitNexus 仓库路径。",
       });
       return;
     }
@@ -613,8 +633,26 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
     unpinRepoPath(path);
   }
 
+  function handleSuggestedAction(action: AgentSuggestedAction) {
+    if (action.type === "inspect_drill" || action.type === "refine_query") {
+      setQuery(`请基于当前 evidence 继续下钻：${action.label}`);
+      setError(null);
+      return;
+    }
+    setActiveSuggestedActionPayload(action.payload);
+  }
+
+  function formatPageContextSummary(context: AgentPageContext) {
+    return JSON.stringify({
+      page_id: context.page_id,
+      current_filters: context.current_filters,
+      selected_rows: context.selected_rows,
+      context_note: context.context_note ?? null,
+    });
+  }
+
   return (
-    <section>
+    <section style={{ minWidth: 0 }}>
       <h1
         style={{
           margin: 0,
@@ -624,7 +662,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
           color: t.colorTextPrimary,
         }}
       >
-        Agent 工作台
+        智能体工作台
       </h1>
       <p
         style={{
@@ -636,8 +674,28 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
           lineHeight: 1.75,
         }}
       >
-        输入自然语言问题，Agent 路由到已有分析服务返回结构化结果。
+        输入自然语言问题，智能体路由到已有分析服务返回结构化结果。
       </p>
+
+      {pageContext ? (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 14,
+            border: `1px solid ${t.colorBorderSoft}`,
+            background: t.colorBgSurface,
+            color: t.colorTextSecondary,
+            fontSize: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          <div style={{ color: t.colorTextMuted, marginBottom: 6 }}>页面上下文</div>
+          <code style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {formatPageContextSummary(pageContext)}
+          </code>
+        </div>
+      ) : null}
 
       <AgentQueryForm
         repoPath={repoPath}
@@ -682,7 +740,7 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
             lineHeight: 1.7,
           }}
         >
-          Agent 当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
+          智能体当前未启用。设置环境变量 MOSS_AGENT_ENABLED=true 后重启后端即可使用。
         </div>
       ) : null}
 
@@ -770,6 +828,13 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
                   ))}
                 </div>
               ) : null}
+
+              <AgentSuggestedActionsPanel
+                actions={result.suggested_actions}
+                formatValue={formatMetaValue}
+                activePayload={activeSuggestedActionPayload}
+                onActionClick={handleSuggestedAction}
+              />
             </>
           ) : (
             <div

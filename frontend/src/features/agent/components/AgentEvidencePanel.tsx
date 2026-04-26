@@ -39,13 +39,13 @@ export function AgentEvidencePanel({
           lineHeight: 1.7,
         }}
       >
-        tables: {tablesUsed.join(", ")}
+        表：{tablesUsed.join(", ")}
         <br />
-        filters: {JSON.stringify(filtersApplied)}
+        筛选：{JSON.stringify(filtersApplied)}
         <br />
-        rows: {evidenceRows}
+        行数：{evidenceRows}
         <br />
-        quality: {qualityFlag}
+        质量：{qualityFlag}
       </div>
     </div>
   );

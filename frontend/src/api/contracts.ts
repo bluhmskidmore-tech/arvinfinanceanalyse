@@ -1634,6 +1634,13 @@ export type AgentDrill = {
   label: string;
 };
 
+export type AgentSuggestedAction = {
+  type: string;
+  label: string;
+  payload: Record<string, unknown>;
+  requires_confirmation: boolean;
+};
+
 export type AgentCard = {
   type: string;
   title: string;
@@ -1664,6 +1671,7 @@ export type AgentEnvelope = {
   evidence: AgentEvidence;
   result_meta: AgentResultMeta;
   next_drill: AgentDrill[];
+  suggested_actions: AgentSuggestedAction[];
 };
 
 export type AgentDisabledResponse = {

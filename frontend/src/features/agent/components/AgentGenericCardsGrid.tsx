@@ -28,6 +28,17 @@ function columnsForCard(card: AgentGenericCard) {
   return [];
 }
 
+function formatCardType(type: string) {
+  const typeLabels: Record<string, string> = {
+    duration: "久期",
+    risk: "风险",
+    metric: "指标",
+    table: "表格",
+    resource: "资源",
+  };
+  return typeLabels[type] ?? type;
+}
+
 function renderStructuredCard(card: AgentGenericCard, formatValue: (value: unknown) => string) {
   const columns = columnsForCard(card);
   const rows = Array.isArray(card.data)
@@ -157,7 +168,7 @@ function renderScalarCard(card: AgentGenericCard) {
           letterSpacing: "0.02em",
         }}
       >
-        {card.type}
+        {formatCardType(card.type)}
       </div>
     </div>
   );
