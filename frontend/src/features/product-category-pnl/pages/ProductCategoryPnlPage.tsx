@@ -12,6 +12,7 @@ import {
   buildLedgerPnlHrefForReportDate,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
+  formatProductCategoryYieldValue,
   nextDefaultReportDateIfUnset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
@@ -969,7 +970,7 @@ export default function ProductCategoryPnlPage() {
                   >
                     {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
                   </td>
-                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.weighted_yield)}</td>
+                  <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryYieldValue(row.weighted_yield)}</td>
                 </tr>
               ))}
             </tbody>

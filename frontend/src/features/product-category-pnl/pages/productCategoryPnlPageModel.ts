@@ -57,6 +57,8 @@ export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
   negative: "#b42318",
 } as const;
 
+const YUAN_PER_YI = 100_000_000;
+
 export function formatProductCategoryValue(
   value: DecimalLike | null | undefined,
   digits = 2,
@@ -65,10 +67,10 @@ export function formatProductCategoryValue(
     return "-";
   }
   const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
+  if (!Number.isFinite(parsed)) {
     return String(value);
   }
-  return parsed.toFixed(digits);
+  return (parsed / YUAN_PER_YI).toFixed(digits);
 }
 
 export function formatProductCategoryRowDisplayValue(
@@ -80,11 +82,25 @@ export function formatProductCategoryRowDisplayValue(
     return "-";
   }
   const parsed = Number(value);
-  if (Number.isNaN(parsed)) {
+  if (!Number.isFinite(parsed)) {
     return String(value);
   }
   if (row.side === "liability") {
-    return Math.abs(parsed).toFixed(digits);
+    return (Math.abs(parsed) / YUAN_PER_YI).toFixed(digits);
+  }
+  return (parsed / YUAN_PER_YI).toFixed(digits);
+}
+
+export function formatProductCategoryYieldValue(
+  value: DecimalLike | null | undefined,
+  digits = 2,
+): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return String(value);
   }
   return parsed.toFixed(digits);
 }

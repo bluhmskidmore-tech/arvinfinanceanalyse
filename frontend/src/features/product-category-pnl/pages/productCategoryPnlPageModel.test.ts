@@ -9,6 +9,7 @@ import {
   availableViewsSupportMainPageSelector,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
+  formatProductCategoryYieldValue,
   mainPageViewsAreGovernedDetailSubset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
@@ -95,25 +96,26 @@ describe("productCategoryPnlPageModel", () => {
     expect(selectDisplayedProductCategoryGrandTotal(s, b)?.business_net_income).toBe("2");
   });
 
-  it("formats liability-side row values with absolute display while preserving asset and all-row signs", () => {
+  it("formats yuan money values as yi yuan, with liability-side absolute display", () => {
+    expect(formatProductCategoryValue("285499749.04110849")).toBe("2.85");
     expect(
       formatProductCategoryRowDisplayValue(
         row({ category_id: "repo_liabilities", side: "liability" }),
-        "-12.345",
+        "-123456789",
       ),
-    ).toBe("12.35");
+    ).toBe("1.23");
     expect(
       formatProductCategoryRowDisplayValue(
         row({ category_id: "repo_assets", side: "asset" }),
-        "-12.345",
+        "-123456789",
       ),
-    ).toBe("-12.35");
+    ).toBe("-1.23");
     expect(
       formatProductCategoryRowDisplayValue(
         row({ category_id: "asset_total", side: "all" }),
-        "-12.345",
+        "-123456789",
       ),
-    ).toBe("-12.35");
+    ).toBe("-1.23");
   });
 
   it("formats nullish values as dash and passes through invalid decimal-like strings unchanged", () => {
@@ -125,6 +127,12 @@ describe("productCategoryPnlPageModel", () => {
         "not-a-number",
       ),
     ).toBe("not-a-number");
+  });
+
+  it("formats yield values as percentages without money unit scaling", () => {
+    expect(formatProductCategoryYieldValue("2.345")).toBe("2.35");
+    expect(formatProductCategoryYieldValue(null)).toBe("-");
+    expect(formatProductCategoryYieldValue("not-a-number")).toBe("not-a-number");
   });
 
   it("returns the current visible tone colors for positive, negative, zero, and invalid values", () => {
