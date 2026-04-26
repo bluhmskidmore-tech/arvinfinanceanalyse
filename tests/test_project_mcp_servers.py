@@ -41,6 +41,15 @@ class McpProcess:
         assert "error" not in response, response.get("error")
         return dict(response["result"])
 
+    def request_error(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+        request_id = self._next_id
+        self._next_id += 1
+        self._send({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}})
+        response = self._read()
+        assert response["id"] == request_id
+        assert "error" in response, response
+        return dict(response["error"])
+
     def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})
 
@@ -146,6 +155,37 @@ def test_metric_contracts_mcp_exposes_product_category_page_trace_bundle() -> No
         ]
         assert "tests/test_product_category_pnl_flow.py" in payload["test_touchpoints"]
         assert any("zqtz holdings-side logic" in guardrail for guardrail in payload["guardrails"])
+    finally:
+        server.close()
+
+
+def test_metric_contracts_page_trace_bundle_accepts_aliases_and_rejects_unknown_pages() -> None:
+    server = McpProcess("metric-contracts")
+    try:
+        server.request("initialize")
+        server.notify("notifications/initialized")
+
+        alias_result = server.request(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "/product-category-pnl"}},
+        )
+        alias_payload = json.loads(alias_result["content"][0]["text"])
+        assert alias_payload["page_slug"] == "product-category-pnl"
+
+        missing_slug = server.request_error(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": ""}},
+        )
+        assert missing_slug["code"] == -32602
+        assert "page_slug is required" in missing_slug["message"]
+
+        unknown_slug = server.request_error(
+            "tools/call",
+            {"name": "get_page_trace_bundle", "arguments": {"page_slug": "risk-tensor"}},
+        )
+        assert unknown_slug["code"] == -32602
+        assert "Unknown page_slug: risk-tensor" in unknown_slug["message"]
+        assert "product-category-pnl" in unknown_slug["message"]
     finally:
         server.close()
 
