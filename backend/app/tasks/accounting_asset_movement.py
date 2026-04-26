@@ -17,7 +17,7 @@ from backend.app.repositories.duckdb_migrations import apply_pending_migrations_
 from backend.app.tasks.broker import register_actor_once
 
 
-RULE_VERSION = "rv_accounting_asset_movement_v1"
+RULE_VERSION = "rv_accounting_asset_movement_v2"
 CACHE_KEY = "accounting_asset_movement.monthly"
 
 
@@ -25,7 +25,7 @@ def _materialize_accounting_asset_movement(
     *,
     report_date: str,
     duckdb_path: str | None = None,
-    currency_basis: str = "CNY",
+    currency_basis: str = "CNX",
 ) -> dict[str, object]:
     settings = get_settings()
     duckdb_file = Path(duckdb_path or settings.duckdb_path)
@@ -79,7 +79,7 @@ def materialize_accounting_asset_movement_on_connection(
     conn: duckdb.DuckDBPyConnection,
     *,
     report_date: str,
-    currency_basis: str = "CNY",
+    currency_basis: str = "CNX",
 ) -> list[AccountingAssetMovementRow]:
     parsed_report_date = date.fromisoformat(report_date)
     _ensure_tables(conn)
@@ -116,6 +116,7 @@ def _load_zqtz_rows(
     report_date: str,
     currency_basis: str,
 ) -> list[ZqtzAccountingAssetBalance]:
+    zqtz_currency_basis = _zqtz_currency_basis_for(currency_basis)
     rows = conn.execute(
         """
         select
@@ -132,7 +133,7 @@ def _load_zqtz_rows(
           and currency_basis = ?
           and position_scope = 'asset'
         """,
-        [report_date, currency_basis],
+        [report_date, zqtz_currency_basis],
     ).fetchall()
     return [
         ZqtzAccountingAssetBalance(
@@ -172,7 +173,7 @@ def _load_gl_rows(
             account_code like '141%'
             or account_code like '142%'
             or account_code like '143%'
-            or account_code like '144%'
+            or account_code like '1440101%'
           )
         """,
         [report_date, currency_basis],
@@ -189,6 +190,12 @@ def _load_gl_rows(
         )
         for row in rows
     ]
+
+
+def _zqtz_currency_basis_for(currency_basis: str) -> str:
+    if str(currency_basis or "").strip().upper() == "CNX":
+        return "CNY"
+    return currency_basis
 
 
 def _insert_rows(

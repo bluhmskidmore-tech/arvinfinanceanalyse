@@ -1,3 +1,4 @@
+from backend.app.api.routes.accounting_asset_movement import router as accounting_asset_movement_router
 from backend.app.api.routes.adb_analysis import router as adb_analysis_router
 from backend.app.api.routes.agent import router as agent_router
 from backend.app.api.routes.balance_analysis import router as balance_analysis_router
@@ -29,6 +30,7 @@ from backend.app.api.routes.source_preview import router as source_preview_route
 from fastapi import APIRouter
 
 router = APIRouter()
+router.include_router(accounting_asset_movement_router, tags=["balance-movement-analysis"])
 router.include_router(adb_analysis_router)
 router.include_router(agent_router, tags=["agent"])
 router.include_router(balance_analysis_router, tags=["balance-analysis"])

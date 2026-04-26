@@ -103,7 +103,7 @@ def build_accounting_asset_movement_rows(
         ending = gl_ending[bucket]
         change = changes[bucket]
         zqtz_amount = zqtz_amounts[bucket]
-        diff = zqtz_amount - ending
+        diagnostic_diff = zqtz_amount - ending
         rows.append(
             AccountingAssetMovementRow(
                 report_date=report_date,
@@ -116,11 +116,11 @@ def build_accounting_asset_movement_rows(
                 contribution_pct=_pct(abs(change), total_abs_change),
                 zqtz_amount=zqtz_amount,
                 gl_amount=ending,
-                reconciliation_diff=diff,
+                reconciliation_diff=diagnostic_diff,
                 reconciliation_status=_reconciliation_status(
                     zqtz_amount=zqtz_amount,
                     gl_amount=ending,
-                    diff=diff,
+                    diff=diagnostic_diff,
                     tolerance=tolerance,
                 ),
                 source_version="__".join(source_versions),
@@ -147,7 +147,7 @@ def _bucket_from_gl_account(account_code: str) -> BasisBucket | None:
         return "TPL"
     if code.startswith(("142", "143")):
         return "AC"
-    if code.startswith("144"):
+    if code.startswith("1440101"):
         return "OCI"
     return None
 

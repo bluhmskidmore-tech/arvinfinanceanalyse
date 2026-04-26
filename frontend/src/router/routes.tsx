@@ -30,6 +30,9 @@ const PnlAttributionPage = lazy(
 const BalanceAnalysisPage = lazy(
   () => import("../features/balance-analysis/pages/BalanceAnalysisPage"),
 );
+const BalanceMovementAnalysisPage = lazy(
+  () => import("../features/balance-movement-analysis/pages/BalanceMovementAnalysisPage"),
+);
 const LiabilityAnalyticsPage = lazy(
   () => import("../features/liability-analytics/pages/LiabilityAnalyticsPage"),
 );
@@ -152,6 +155,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<BalanceAnalysisPage />),
+      };
+    }
+
+    if (section.path === "/balance-movement-analysis") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<BalanceMovementAnalysisPage />),
       };
     }
 

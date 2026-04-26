@@ -48,24 +48,26 @@ def test_accounting_asset_movement_materialize_writes_monthly_reconciliation_row
             "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 ("2026-02-28", "FVTPL", "asset", "CNY", "110", "100", "sv-zqtz", "rv-balance"),
-                ("2026-02-28", "AC", "asset", "CNY", "260", "265", "sv-zqtz", "rv-balance"),
+                ("2026-02-28", "AC", "asset", "CNY", "260", "225", "sv-zqtz", "rv-balance"),
                 ("2026-02-28", "FVOCI", "asset", "CNY", "80", "75", "sv-zqtz", "rv-balance"),
             ],
         )
         conn.executemany(
             "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-02-28", "14101010001", "CNY", "TPL", "100", "110", "0", "0", "0", 28, "sv-gl", "rv-gl"),
-                ("2026-02-28", "14201010001", "CNY", "AC bond", "200", "220", "0", "0", "0", 28, "sv-gl", "rv-gl"),
-                ("2026-02-28", "14301040001", "CNY", "AC other", "50", "45", "0", "0", "0", 28, "sv-gl", "rv-gl"),
-                ("2026-02-28", "14401010001", "CNY", "OCI", "70", "80", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14101010001", "CNX", "TPL", "100", "110", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14201010001", "CNX", "AC bond", "200", "220", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14301010001", "CNX", "Voucher bond", "4", "4", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14301010002", "CNX", "Voucher accrued", "1", "1", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14401010001", "CNX", "OCI debt", "70", "80", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14402010001", "CNX", "OCI equity", "90", "99", "0", "0", "0", 28, "sv-gl", "rv-gl"),
             ],
         )
 
         written = materialize_accounting_asset_movement_on_connection(
             conn,
             report_date="2026-02-28",
-            currency_basis="CNY",
+            currency_basis="CNX",
         )
         rows = conn.execute(
             """
@@ -91,10 +93,11 @@ def test_accounting_asset_movement_materialize_writes_monthly_reconciliation_row
         for row in rows
     }
 
-    assert by_bucket["AC"]["previous_balance"] == Decimal("250.00000000")
-    assert by_bucket["AC"]["current_balance"] == Decimal("265.00000000")
-    assert by_bucket["AC"]["balance_change"] == Decimal("15.00000000")
-    assert by_bucket["AC"]["zqtz_amount"] == Decimal("265.00000000")
+    assert by_bucket["AC"]["previous_balance"] == Decimal("205.00000000")
+    assert by_bucket["AC"]["current_balance"] == Decimal("225.00000000")
+    assert by_bucket["AC"]["balance_change"] == Decimal("20.00000000")
+    assert by_bucket["AC"]["zqtz_amount"] == Decimal("225.00000000")
     assert by_bucket["AC"]["reconciliation_status"] == "matched"
     assert by_bucket["TPL"]["reconciliation_status"] == "matched"
+    assert by_bucket["OCI"]["current_balance"] == Decimal("80.00000000")
     assert by_bucket["OCI"]["reconciliation_status"] == "matched"

@@ -172,6 +172,11 @@ import type { PositionsClientMethods } from "./positionsClient";
 import { buildMockApiEnvelope, buildMockMeta } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
+import {
+  createMockBalanceMovementClient,
+  createRealBalanceMovementClient,
+  type BalanceMovementClientMethods,
+} from "./balanceMovementClient";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -187,6 +192,7 @@ export type ApiClient = {
   mode: DataSourceMode;
 } & ExecutiveClientMethods
   & PnlClientMethods
+  & BalanceMovementClientMethods
   & BondAnalyticsClientMethods
   & BalanceAnalysisClientMethods
   & PositionsClientMethods
@@ -2620,6 +2626,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
   const mockClient: ApiClient = {
     mode: "mock",
+    ...createMockBalanceMovementClient(),
     async getHealth() {
       await delay();
       return { status: "ok" };
@@ -4764,6 +4771,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
   return {
     mode,
+    ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },

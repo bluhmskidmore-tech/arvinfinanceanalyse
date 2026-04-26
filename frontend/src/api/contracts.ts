@@ -1142,6 +1142,66 @@ export type ProductCategoryRefreshPayload = {
   detail?: string | null;
 };
 
+export type BalanceMovementBucket = "AC" | "OCI" | "TPL";
+export type BalanceMovementReconciliationStatus =
+  | "matched"
+  | "mismatch"
+  | "gl_only"
+  | "zqtz_only";
+
+export type BalanceMovementRow = {
+  report_date: string;
+  report_month: string;
+  currency_basis: string;
+  sort_order: number;
+  basis_bucket: BalanceMovementBucket;
+  previous_balance: DecimalLike;
+  current_balance: DecimalLike;
+  balance_change: DecimalLike;
+  change_pct: DecimalLike | null;
+  contribution_pct: DecimalLike | null;
+  zqtz_amount: DecimalLike;
+  gl_amount: DecimalLike;
+  reconciliation_diff: DecimalLike;
+  reconciliation_status: BalanceMovementReconciliationStatus;
+  source_version: string;
+  rule_version: string;
+};
+
+export type BalanceMovementSummary = {
+  previous_balance_total: DecimalLike;
+  current_balance_total: DecimalLike;
+  balance_change_total: DecimalLike;
+  zqtz_amount_total: DecimalLike;
+  reconciliation_diff_total: DecimalLike;
+  matched_bucket_count: number;
+  bucket_count: number;
+};
+
+export type BalanceMovementPayload = {
+  report_date: string;
+  currency_basis: string;
+  rows: BalanceMovementRow[];
+  summary: BalanceMovementSummary;
+  accounting_controls: string[];
+  excluded_controls: string[];
+};
+
+export type BalanceMovementDatesPayload = {
+  report_dates: string[];
+  currency_basis: string;
+};
+
+export type BalanceMovementRefreshPayload = {
+  status: string;
+  cache_key: string;
+  report_date: string;
+  currency_basis: string;
+  row_count: number;
+  source_version: string;
+  rule_version: string;
+};
+
 export type BalanceAnalysisDatesPayload = {
   report_dates: string[];
 };
