@@ -4,6 +4,8 @@ import time
 from datetime import date
 from decimal import Decimal
 
+import duckdb
+
 from tests.helpers import load_module
 
 
@@ -85,3 +87,110 @@ def test_risk_tensor_repo_round_trip_preserves_lineage_and_warnings(tmp_path):
     assert row["liability_cashflow_90d"] == Decimal("2.00000000")
     assert row["liquidity_gap_30d"] == row["asset_cashflow_30d"] - row["liability_cashflow_30d"]
     assert row["liquidity_gap_90d"] == row["asset_cashflow_90d"] - row["liability_cashflow_90d"]
+
+
+def test_risk_tensor_read_paths_do_not_mutate_legacy_schema(tmp_path):
+    repo_mod = load_module(
+        "backend.app.repositories.risk_tensor_repo",
+        "backend/app/repositories/risk_tensor_repo.py",
+    )
+    duckdb_path = tmp_path / "legacy.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_formal_risk_tensor_daily (
+                report_date varchar,
+                portfolio_dv01 decimal(24, 8),
+                krd_1y decimal(24, 8),
+                krd_3y decimal(24, 8),
+                krd_5y decimal(24, 8),
+                krd_7y decimal(24, 8),
+                krd_10y decimal(24, 8),
+                krd_30y decimal(24, 8),
+                cs01 decimal(24, 8),
+                portfolio_convexity decimal(24, 8),
+                portfolio_modified_duration decimal(24, 8),
+                issuer_concentration_hhi decimal(24, 8),
+                issuer_top5_weight decimal(24, 8),
+                liquidity_gap_30d decimal(24, 8),
+                liquidity_gap_90d decimal(24, 8),
+                liquidity_gap_30d_ratio decimal(24, 8),
+                total_market_value decimal(24, 8),
+                bond_count integer,
+                quality_flag varchar,
+                warnings_json varchar,
+                source_version varchar,
+                upstream_source_version varchar,
+                rule_version varchar,
+                cache_version varchar,
+                trace_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_risk_tensor_daily values (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-03-31",
+                Decimal("1.25"),
+                Decimal("0.25"),
+                Decimal("0"),
+                Decimal("1.00"),
+                Decimal("0"),
+                Decimal("0"),
+                Decimal("0"),
+                Decimal("0.75"),
+                Decimal("2.50"),
+                Decimal("1.50"),
+                Decimal("0.50"),
+                Decimal("1.00"),
+                Decimal("10.00"),
+                Decimal("10.00"),
+                Decimal("0.10"),
+                Decimal("100.00"),
+                2,
+                "warning",
+                '["legacy warning"]',
+                "sv_risk_tensor__sv_bond_snap_1",
+                "sv_bond_snap_1",
+                "rv_risk_tensor_formal_materialize_v1",
+                "cv_risk_tensor_formal__rv_risk_tensor_formal_materialize_v1",
+                "trace_risk_tensor_20260331",
+            ],
+        )
+    finally:
+        conn.close()
+
+    repo = repo_mod.RiskTensorRepository(str(duckdb_path))
+
+    lineage_rows = repo.list_report_date_lineage_rows()
+    row = repo.fetch_risk_tensor_row("2026-03-31")
+
+    assert lineage_rows == [
+        {
+            "report_date": "2026-03-31",
+            "upstream_source_version": "sv_bond_snap_1",
+            "liability_source_version": "",
+            "liability_rule_version": "",
+        }
+    ]
+    assert row is not None
+    assert row["asset_cashflow_30d"] == 0
+    assert row["asset_cashflow_90d"] == 0
+    assert row["liability_cashflow_30d"] == 0
+    assert row["liability_cashflow_90d"] == 0
+    assert row["liability_source_version"] == ""
+    assert row["liability_rule_version"] == ""
+    assert row["warnings"] == ["legacy warning"]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        columns = {str(row[1]) for row in conn.execute("pragma table_info('fact_formal_risk_tensor_daily')").fetchall()}
+    finally:
+        conn.close()
+    assert "asset_cashflow_30d" not in columns
+    assert "liability_source_version" not in columns

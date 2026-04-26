@@ -13,34 +13,6 @@ from backend.app.tasks.bond_analytics_materialize import CACHE_KEY as BOND_ANALY
 
 FACT_TABLE = "fact_formal_risk_tensor_daily"
 
-_GROSS_CASHFLOW_COLUMNS = (
-    "asset_cashflow_30d",
-    "asset_cashflow_90d",
-    "liability_cashflow_30d",
-    "liability_cashflow_90d",
-)
-_LINEAGE_COLUMNS = ("liability_source_version", "liability_rule_version")
-
-
-def _ensure_risk_tensor_gross_columns(path: str) -> None:
-    try:
-        conn = duckdb.connect(path, read_only=False)
-    except duckdb.IOException:
-        return
-    try:
-        if not _table_exists(conn, FACT_TABLE):
-            return
-        for column in _GROSS_CASHFLOW_COLUMNS:
-            conn.execute(
-                f"alter table {FACT_TABLE} add column if not exists {column} decimal(24, 8)"
-            )
-        for column in _LINEAGE_COLUMNS:
-            conn.execute(
-                f"alter table {FACT_TABLE} add column if not exists {column} varchar"
-            )
-    finally:
-        conn.close()
-
 
 @dataclass
 class RiskTensorRepository:
@@ -65,19 +37,36 @@ class RiskTensorRepository:
             conn.close()
 
     def list_report_date_lineage_rows(self) -> list[dict[str, object]]:
-        _ensure_risk_tensor_gross_columns(self.path)
         conn = _connect_read_only(self.path)
         if conn is None:
             return []
         try:
             if not _table_exists(conn, FACT_TABLE):
                 return []
+            table_columns = _table_columns(conn, FACT_TABLE)
+            upstream_source_version = _column_or_default(
+                table_columns,
+                "upstream_source_version",
+                "''",
+            )
+            liability_source_version = _column_or_default(
+                table_columns,
+                "liability_source_version",
+                "''",
+                coalesce=True,
+            )
+            liability_rule_version = _column_or_default(
+                table_columns,
+                "liability_rule_version",
+                "''",
+                coalesce=True,
+            )
             rows = conn.execute(
                 f"""
                 select cast(report_date as varchar) as report_date,
-                       upstream_source_version,
-                       coalesce(liability_source_version, '') as liability_source_version,
-                       coalesce(liability_rule_version, '') as liability_rule_version
+                       {upstream_source_version},
+                       {liability_source_version},
+                       {liability_rule_version}
                 from {FACT_TABLE}
                 order by cast(report_date as varchar) desc
                 """
@@ -193,13 +182,49 @@ class RiskTensorRepository:
             conn.close()
 
     def fetch_risk_tensor_row(self, report_date: str) -> dict[str, object] | None:
-        _ensure_risk_tensor_gross_columns(self.path)
         conn = _connect_read_only(self.path)
         if conn is None:
             return None
         try:
             if not _table_exists(conn, FACT_TABLE):
                 return None
+            table_columns = _table_columns(conn, FACT_TABLE)
+            asset_cashflow_30d = _column_or_default(
+                table_columns,
+                "asset_cashflow_30d",
+                "cast(0 as decimal(24, 8))",
+                coalesce=True,
+            )
+            asset_cashflow_90d = _column_or_default(
+                table_columns,
+                "asset_cashflow_90d",
+                "cast(0 as decimal(24, 8))",
+                coalesce=True,
+            )
+            liability_cashflow_30d = _column_or_default(
+                table_columns,
+                "liability_cashflow_30d",
+                "cast(0 as decimal(24, 8))",
+                coalesce=True,
+            )
+            liability_cashflow_90d = _column_or_default(
+                table_columns,
+                "liability_cashflow_90d",
+                "cast(0 as decimal(24, 8))",
+                coalesce=True,
+            )
+            liability_source_version = _column_or_default(
+                table_columns,
+                "liability_source_version",
+                "''",
+                coalesce=True,
+            )
+            liability_rule_version = _column_or_default(
+                table_columns,
+                "liability_rule_version",
+                "''",
+                coalesce=True,
+            )
             row = conn.execute(
                 f"""
                 select report_date,
@@ -215,10 +240,10 @@ class RiskTensorRepository:
                        portfolio_modified_duration,
                        issuer_concentration_hhi,
                        issuer_top5_weight,
-                       coalesce(asset_cashflow_30d, 0),
-                       coalesce(asset_cashflow_90d, 0),
-                       coalesce(liability_cashflow_30d, 0),
-                       coalesce(liability_cashflow_90d, 0),
+                       {asset_cashflow_30d},
+                       {asset_cashflow_90d},
+                       {liability_cashflow_30d},
+                       {liability_cashflow_90d},
                        liquidity_gap_30d,
                        liquidity_gap_90d,
                        liquidity_gap_30d_ratio,
@@ -228,8 +253,8 @@ class RiskTensorRepository:
                        warnings_json,
                        source_version,
                        upstream_source_version,
-                       coalesce(liability_source_version, ''),
-                       coalesce(liability_rule_version, ''),
+                       {liability_source_version},
+                       {liability_rule_version},
                        rule_version,
                        cache_version,
                        trace_id
@@ -451,6 +476,32 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table_name: str) -> bool:
         [table_name],
     ).fetchone()
     return row is not None
+
+
+def _table_columns(conn: duckdb.DuckDBPyConnection, table_name: str) -> set[str]:
+    rows = conn.execute(
+        """
+        select column_name
+        from information_schema.columns
+        where table_name = ?
+        """,
+        [table_name],
+    ).fetchall()
+    return {str(row[0]) for row in rows}
+
+
+def _column_or_default(
+    columns: set[str],
+    column_name: str,
+    default_sql: str,
+    *,
+    coalesce: bool = False,
+) -> str:
+    if column_name not in columns:
+        return f"{default_sql} as {column_name}"
+    if coalesce:
+        return f"coalesce({column_name}, {default_sql}) as {column_name}"
+    return column_name
 
 
 def _connect_read_only(path: str) -> duckdb.DuckDBPyConnection | None:
