@@ -691,9 +691,13 @@ export type ChoiceMacroRefreshPayload = {
   status: string;
   run_id?: string;
   series_count?: number;
+  row_count?: number;
   vendor_version?: string;
   source_version?: string;
   cache_key?: string;
+  warnings?: string[];
+  choice_macro?: ChoiceMacroRefreshPayload;
+  public_cross_asset?: ChoiceMacroRefreshPayload;
   detail?: string | null;
   error_message?: string | null;
 };

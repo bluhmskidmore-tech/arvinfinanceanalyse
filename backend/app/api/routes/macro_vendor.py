@@ -10,7 +10,10 @@ from backend.app.services.macro_vendor_service import (
     fx_formal_status_envelope,
     macro_vendor_envelope,
 )
-from backend.app.tasks.choice_macro import refresh_choice_macro_snapshot
+from backend.app.tasks.choice_macro import (
+    refresh_choice_macro_snapshot,
+    refresh_public_cross_asset_headlines,
+)
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter()
@@ -44,7 +47,7 @@ def choice_series_refresh(
     backfill_days: int = Query(default=0, ge=0, le=90),
 ) -> dict[str, object]:
     try:
-        return refresh_choice_macro_snapshot.fn(backfill_days=backfill_days)
+        choice_payload = refresh_choice_macro_snapshot.fn(backfill_days=backfill_days)
     except RuntimeError as exc:
         error_text = str(exc)
         normalized_error = error_text.lower()
@@ -54,6 +57,38 @@ def choice_series_refresh(
                 detail="Choice API permission denied for current account. Refresh cannot run until API entitlement is enabled.",
             ) from exc
         raise
+    public_payload = _run_public_cross_asset_headline_refresh()
+    return _merge_choice_and_public_refresh_payloads(choice_payload, public_payload)
+
+
+def _run_public_cross_asset_headline_refresh() -> dict[str, object]:
+    try:
+        return refresh_public_cross_asset_headlines()
+    except RuntimeError as exc:
+        error_text = str(exc)
+        return {
+            "status": "failed",
+            "error_message": error_text,
+            "warnings": [f"public_cross_asset refresh failed: {error_text}"],
+        }
+
+
+def _merge_choice_and_public_refresh_payloads(
+    choice_payload: dict[str, object],
+    public_payload: dict[str, object],
+) -> dict[str, object]:
+    warnings: list[str] = []
+    for payload in (choice_payload, public_payload):
+        payload_warnings = payload.get("warnings")
+        if isinstance(payload_warnings, list):
+            warnings.extend(str(item) for item in payload_warnings if str(item).strip())
+
+    return {
+        **choice_payload,
+        "choice_macro": choice_payload,
+        "public_cross_asset": public_payload,
+        "warnings": warnings,
+    }
 
 
 @router.get("/ui/macro/choice-series/refresh-status")

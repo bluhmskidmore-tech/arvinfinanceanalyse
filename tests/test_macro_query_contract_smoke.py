@@ -420,6 +420,50 @@ def test_choice_macro_latest_exposes_vendor_name_without_vendor_code(
     get_settings.cache_clear()
 
 
+def test_choice_macro_refresh_also_runs_public_cross_asset_headlines(monkeypatch):
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+    calls: list[tuple[str, int | None]] = []
+
+    class _ChoiceRefresh:
+        @staticmethod
+        def fn(backfill_days: int = 0) -> dict[str, object]:
+            calls.append(("choice", backfill_days))
+            return {
+                "status": "completed",
+                "run_id": "choice_macro_refresh:test",
+                "series_count": 2,
+                "vendor_version": "vv_choice",
+                "source_version": "sv_choice",
+                "cache_key": "macro.choice.latest",
+            }
+
+    def _public_refresh() -> dict[str, object]:
+        calls.append(("public_cross_asset", None))
+        return {
+            "status": "completed",
+            "run_id": "public_cross_asset_refresh:test",
+            "series_count": 3,
+            "row_count": 20,
+            "warnings": ["tushare index_weight used latest available date"],
+        }
+
+    monkeypatch.setattr(route_module, "refresh_choice_macro_snapshot", _ChoiceRefresh())
+    monkeypatch.setattr(route_module, "refresh_public_cross_asset_headlines", _public_refresh, raising=False)
+
+    payload = route_module.choice_series_refresh(backfill_days=7)
+
+    assert calls == [("choice", 7), ("public_cross_asset", None)]
+    assert payload["status"] == "completed"
+    assert payload["run_id"] == "choice_macro_refresh:test"
+    assert payload["choice_macro"]["series_count"] == 2
+    assert payload["public_cross_asset"]["series_count"] == 3
+    assert payload["public_cross_asset"]["row_count"] == 20
+    assert payload["warnings"] == ["tushare index_weight used latest available date"]
+
+
 def test_choice_macro_latest_filters_persisted_market_data_categories(
     tmp_path,
     monkeypatch,
