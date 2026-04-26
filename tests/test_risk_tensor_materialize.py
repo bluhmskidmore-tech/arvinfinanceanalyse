@@ -131,6 +131,37 @@ def test_risk_tensor_materialize_requires_completed_upstream_lineage(tmp_path):
         )
 
 
+def test_risk_tensor_materialize_fails_closed_on_pct_style_bond_rates(tmp_path):
+    duckdb_path, governance_dir, _bond_task_mod = _configure_upstream(tmp_path)
+    risk_task_mod = load_module(
+        "backend.app.tasks.risk_tensor_materialize",
+        "backend/app/tasks/risk_tensor_materialize.py",
+    )
+
+    import duckdb
+
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            update fact_formal_bond_analytics_daily
+            set coupon_rate = ?
+            where report_date = ?
+              and instrument_code = 'CB-001'
+            """,
+            ["2.5", REPORT_DATE],
+        )
+    finally:
+        conn.close()
+
+    with pytest.raises(RuntimeError, match="decimal-form bond analytics rates"):
+        risk_task_mod.materialize_risk_tensor_facts.fn(
+            report_date=REPORT_DATE,
+            duckdb_path=str(duckdb_path),
+            governance_dir=str(governance_dir),
+        )
+
+
 def test_risk_tensor_materialize_preserves_computed_source_version_when_write_fails(tmp_path, monkeypatch):
     duckdb_path, governance_dir, _bond_task_mod = _configure_upstream(tmp_path)
     risk_task_mod = load_module(
