@@ -60,7 +60,7 @@ This first pass is based on:
 | Unit | Status | Priority | Short reason |
 | --- | --- | --- | --- |
 | 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
-| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, current `monthly`/`ytd` page scope, and core selector evidence exist, but field freeze and exhaustive detail coverage are not complete |
+| 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, `monthly`/`ytd` scope, selector evidence, and first page-level column freeze exist; metric_id approval and exhaustive detail coverage remain open |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests now freeze 409/503/failed-terminal + polling; stale-banner contract still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; dual-control “why” still narrative |
@@ -106,9 +106,10 @@ This first pass is based on:
   - page-level sample exists in `tests/golden_samples/GS-PROD-CAT-PNL-A/`
   - dedicated detail adapter/selector unit tests: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (pure selectors in `productCategoryPnlPageModel.ts`: baseline vs scenario row source, grand total overlay, main-page `monthly`/`ytd` scope vs governed `available_views` superset)
   - first-stage field freeze exists in `docs/pnl/product-category-page-truth-contract.md` section 9.1
+  - `frontend/src/test/ProductCategoryPnlPage.test.tsx` — `Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention` overrides one known backend row (`repo_assets`) with unique raw yuan values and proves the rendered table order is category label, `cnx_scale`, `cny_scale`, `foreign_scale`, `cnx_cash`, `cny_cash`, `cny_ftp`, `cny_net`, `foreign_cash`, `foreign_ftp`, `foreign_net`, `business_net_income`, then unscaled `weighted_yield`; the same test keeps advertised `available_views` as `monthly/qtd/ytd/year_to_report_month_end` while the main page exposes only two view controls
 - Why not `CLOSED`:
   - formal `metric_id` approval is still missing
-  - core detail row/scenario/view-scope semantics now have isolated selector tests, but full field freeze and exhaustive detail semantics remain partially covered by page tests only
+  - core detail row/scenario/view-scope semantics now have isolated selector tests and one page-level table field-freeze test, but exhaustive detail semantics are not fully page-frozen
 
 ## Unit 3: Refresh + Status
 

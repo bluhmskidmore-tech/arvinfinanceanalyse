@@ -124,6 +124,66 @@ describe("ProductCategoryPnlPage", () => {
     expect(monthSelect.options).toHaveLength(0);
   });
 
+  it("Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            available_views: ["monthly", "qtd", "ytd", "year_to_report_month_end"],
+            rows: env.result.rows.map((r) =>
+              r.category_id === "repo_assets"
+                ? {
+                    ...r,
+                    cnx_scale: "101000000",
+                    cny_scale: "102000000",
+                    foreign_scale: "103000000",
+                    cnx_cash: "104000000",
+                    cny_cash: "105000000",
+                    cny_ftp: "106000000",
+                    cny_net: "-107000000",
+                    foreign_cash: "108000000",
+                    foreign_ftp: "109000000",
+                    foreign_net: "-110000000",
+                    business_net_income: "111000000",
+                    weighted_yield: "2.345",
+                  }
+                : r,
+            ),
+          },
+        };
+      }),
+    });
+
+    const table = await screen.findByTestId("product-category-table");
+    const assetRow = within(table).getByText("买入返售").closest("tr");
+    expect(assetRow).toBeTruthy();
+    expect(within(assetRow as HTMLElement).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+      "买入返售",
+      "1.01",
+      "1.02",
+      "1.03",
+      "1.04",
+      "1.05",
+      "1.06",
+      "-1.07",
+      "1.08",
+      "1.09",
+      "-1.10",
+      "1.11",
+      "2.35",
+    ]);
+
+    const viewGroup = screen.getByRole("group", { name: "视图模式" });
+    expect(within(viewGroup).getAllByRole("button")).toHaveLength(2);
+    expect(within(viewGroup).queryByText("qtd")).not.toBeInTheDocument();
+    expect(within(viewGroup).queryByText("year_to_report_month_end")).not.toBeInTheDocument();
+  });
+
   it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
     const baseClient = createApiClient({ mode: "mock" });
     const negYuan = "-123456789";
