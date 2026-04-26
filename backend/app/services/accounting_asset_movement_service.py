@@ -90,15 +90,13 @@ def accounting_asset_movement_envelope(
         source_version=_joined_latest(row.source_version for row in rows),
         rule_version=_joined_latest(row.rule_version for row in rows) or RULE_VERSION,
         cache_version=CACHE_VERSION,
-        quality_flag="warning"
-        if any(row.reconciliation_status != "matched" for row in rows)
-        else "ok",
+        quality_flag="ok",
         filters_applied={"report_date": report_date, "currency_basis": currency_basis},
         tables_used=["fact_accounting_asset_movement_monthly"],
         evidence_rows=len(rows),
         next_drill=[
             "product_category_pnl_canonical_fact: CNX 141/142/143/1440101 control accounts",
-            "fact_formal_zqtz_balance_daily: CNY auxiliary detail comparison",
+            "fact_formal_zqtz_balance_daily: CNY auxiliary diagnostic comparison; not a formal-control gate",
         ],
     )
     return build_formal_result_envelope(
