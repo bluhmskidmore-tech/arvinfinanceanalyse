@@ -28,7 +28,6 @@ from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.schemas.macro_vendor import (
     ChoiceMacroBatchConfig,
     ChoiceMacroCatalogAsset,
-    ChoiceMacroPoint,
     ChoiceMacroSeriesConfig,
     ChoiceMacroSnapshot,
 )
