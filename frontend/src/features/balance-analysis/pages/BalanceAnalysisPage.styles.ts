@@ -9,24 +9,24 @@ const c = designTokens.color;
 
 export const summaryGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: s[4],
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+  gap: s[3],
 } as const;
 
 export const firstScreenGridStyle = {
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1.45fr) minmax(300px, 0.95fr)",
-  gap: s[5],
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 360px), 1fr))",
+  gap: s[4],
   alignItems: "start",
 } as const;
 
 export const formalHeroStyle = {
   display: "grid",
-  gap: s[5],
-  padding: `${s[6]}px ${s[6]}px`,
+  gap: s[4],
+  padding: `${s[5]}px ${s[5]}px`,
   borderRadius: r.xl + s[1],
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `linear-gradient(140deg, ${c.primary[50]} 0%, ${c.neutral[50]} 52%, ${c.primary[100]} 100%)`,
+  background: c.primary[50],
   boxShadow: designTokens.shadow.card,
 } as const;
 
@@ -54,10 +54,10 @@ export const heroDetailCardStyle = {
 export const priorityBoardStyle = {
   display: "grid",
   gap: s[3],
-  padding: `${s[5]}px ${s[5]}px ${s[5] - s[1]}px`,
+  padding: `${s[4]}px`,
   borderRadius: r.xl + s[1],
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `linear-gradient(180deg, ${c.primary[50]}eb 0%, ${c.neutral[50]}f5 100%)`,
+  background: c.neutral[50],
   boxShadow: designTokens.shadow.card,
 } as const;
 
@@ -109,22 +109,16 @@ export const actionButtonStyle = {
 
 export const tableShellStyle = {
   overflowX: "auto",
+  minWidth: 0,
   borderRadius: s[4],
   border: `1px solid ${c.neutral[200]}`,
   background: c.primary[50],
 } as const;
 
-export const workbookPrimaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: s[4],
-  alignItems: "start",
-} as const;
-
 export const workbookPanelStyle = {
   borderRadius: r.lg,
   border: `1px solid ${c.neutral[200]}`,
-  background: `linear-gradient(180deg, ${c.primary[50]} 0%, ${c.info[50]} 100%)`,
+  background: c.primary[50],
   padding: s[4],
   boxShadow: designTokens.shadow.card,
 } as const;
@@ -152,32 +146,6 @@ export const workbookSecondaryGridStyle = {
   display: "grid",
   gap: s[5],
   marginTop: s[5],
-} as const;
-
-export const workbookSecondaryPanelGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-  gap: s[4],
-  alignItems: "start",
-} as const;
-
-export const workbookCockpitLayoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.8fr) minmax(320px, 0.95fr)",
-  gap: s[5],
-  marginTop: s[5],
-  alignItems: "start",
-} as const;
-
-export const workbookMainRailStyle = {
-  display: "grid",
-  gap: s[5],
-} as const;
-
-export const workbookRightRailStyle = {
-  display: "grid",
-  gap: s[3] + s[1],
-  alignContent: "start",
 } as const;
 
 export const rightRailFilterRowStyle = {

@@ -1,0 +1,105 @@
+.balance-analysis-supplemental {
+  margin-top: 24px;
+  border: 1px solid #e4ebe8;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 18px 40px rgba(19, 37, 70, 0.08);
+  overflow: hidden;
+}
+
+.balance-analysis-supplemental__summary {
+  display: grid;
+  gap: 4px;
+  padding: 16px 20px;
+  cursor: pointer;
+  color: #1c2833;
+}
+
+.balance-analysis-supplemental__eyebrow {
+  color: #7a8795;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.balance-analysis-supplemental__title {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.balance-analysis-supplemental__description {
+  color: #586575;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.balance-analysis-supplemental__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  padding: 0 20px 20px;
+  align-items: start;
+}
+
+.balance-analysis-workbook-cockpit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 420px);
+  gap: 20px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+.balance-analysis-workbook-main {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.balance-analysis-workbook-primary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.balance-analysis-workbook-secondary-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.balance-analysis-right-rail {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+}
+
+.balance-analysis-right-rail > article {
+  min-width: 0;
+}
+
+@media (max-width: 1500px) {
+  .balance-analysis-workbook-cockpit {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-analysis-right-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .balance-analysis-right-rail > [data-testid="balance-analysis-right-rail-panel-decision_items"] {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1080px) {
+  .balance-analysis-workbook-primary-grid,
+  .balance-analysis-right-rail {
+    grid-template-columns: 1fr;
+  }
+}

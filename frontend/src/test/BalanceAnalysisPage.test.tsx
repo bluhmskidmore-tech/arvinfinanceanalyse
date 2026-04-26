@@ -712,12 +712,15 @@ describe("BalanceAnalysisPage", () => {
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
-      "formal / analytical",
+      "正式/分析口径",
     );
     expect(screen.getByRole("heading", { name: "正式状态摘要" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "当前行动信号" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
+    const pageText = screen.getByTestId("balance-analysis-page").textContent ?? "";
+    expect(pageText.indexOf("正式汇总驾驶舱")).toBeLessThan(pageText.indexOf("辅助分析口径"));
+    expect(screen.getByTestId("balance-analysis-supplemental-panels")).not.toHaveAttribute("open");
 
     await waitFor(() => {
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("资产市值合计");
@@ -776,7 +779,12 @@ describe("BalanceAnalysisPage", () => {
     });
     await waitFor(() => {
       expect(screen.queryByTestId("balance-analysis-workbook-cards")).not.toBeInTheDocument();
-      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-workbook-cockpit")).toHaveClass(
+        "balance-analysis-workbook-cockpit",
+      );
+      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toHaveClass(
+        "balance-analysis-workbook-primary-grid",
+      );
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-bond_business_types"),
       ).toHaveTextContent("政策性金融债");
@@ -801,7 +809,9 @@ describe("BalanceAnalysisPage", () => {
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-issuance_business_types"),
       ).toHaveTextContent("993.30 亿元");
-      expect(screen.getByTestId("balance-analysis-workbook-secondary-panels")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-workbook-secondary-panels")).toHaveClass(
+        "balance-analysis-workbook-secondary-panels",
+      );
       expect(
         screen.getByTestId("balance-analysis-workbook-panel-industry_distribution"),
       ).toHaveTextContent("金融业");
@@ -842,7 +852,9 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByTestId("balance-analysis-workbook-secondary-grid")).not.toHaveTextContent(
         "1,234,567.89",
       );
-      expect(screen.getByTestId("balance-analysis-right-rail")).toBeInTheDocument();
+      expect(screen.getByTestId("balance-analysis-right-rail")).toHaveClass(
+        "balance-analysis-right-rail",
+      );
       expect(screen.getByTestId("balance-analysis-right-rail-panel-decision_items")).toHaveTextContent(
         "Review 1-2 year gap positioning",
       );
@@ -927,8 +939,8 @@ describe("BalanceAnalysisPage", () => {
     expect(screen.getByTestId("balance-analysis-result-meta-detail")).toHaveTextContent(
       "balance-analysis.detail",
     );
-    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB Analytical Preview");
-    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("Spot vs ADB 偏离对比");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB 分析预览");
+    expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("Spot 与 ADB 偏离对比");
     expect(screen.getByTestId("balance-analysis-adb-preview")).toHaveTextContent("ADB 月度结构预览");
     expect(
       within(screen.getByTestId("balance-analysis-adb-preview")).getAllByTestId(
@@ -1840,7 +1852,7 @@ describe("BalanceAnalysisPage", () => {
 
     const panel = await screen.findByTestId("balance-analysis-workbook-panel-maturity_gap");
     expect(panel).toHaveTextContent("-0.01 亿元");
-    expect(panel).toHaveTextContent("该期限桶为负缺口");
+    expect(panel).toHaveTextContent("负缺口，应优先结合右侧治理信号处理。");
 
     const bar0 = within(panel).getByTestId("balance-analysis-maturity-gap-bar-maturity_gap-0");
     const bar1 = within(panel).getByTestId("balance-analysis-maturity-gap-bar-maturity_gap-1");

@@ -355,7 +355,8 @@ export function WorkbenchShell() {
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
-  const isMinimalMainChrome = isBondAnalysisMinimalShell || isCrossAssetImmersiveMain;
+  const isMinimalMainChrome =
+    isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isBalanceAnalysisCompactChrome;
   const showWorkspaceHeroCard =
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
@@ -1360,7 +1361,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isBondAnalysisMinimalShell ? (
+          {!isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
             <section
               data-testid="workbench-section-subnav"
               style={{
