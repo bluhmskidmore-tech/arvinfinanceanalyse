@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MOSS 跨资产驱动 — 真实数据形态模拟（只读说明稿）</title>
+  <style>
+    body { font-family: system-ui, "Segoe UI", "Noto Sans SC", sans-serif; margin: 0; padding: 24px 32px 48px; background: #fafafa; color: #1a1a1a; line-height: 1.55; }
+    h1 { font-size: 1.25rem; margin: 0 0 8px; }
+    .muted { color: #555; font-size: 0.9rem; margin-bottom: 28px; max-width: 72ch; }
+    h2 { font-size: 1rem; margin: 32px 0 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    pre {
+      background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px; overflow: auto; font-size: 12px; line-height: 1.45;
+    }
+    .dom-snapshot {
+      background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 20px 24px; font-size: 13px;
+    }
+    .dom-snapshot section { margin: 16px 0; padding-left: 12px; border-left: 3px solid #2c5a79; }
+    .dom-snapshot h3 { margin: 0 0 8px; font-size: 0.85rem; color: #444; text-transform: uppercase; letter-spacing: 0.04em; }
+    [data-testid] { font-family: ui-monospace, monospace; font-size: 11px; color: #666; margin-bottom: 4px; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #eef2f6; margin: 2px 4px 2px 0; font-size: 12px; }
+    kbd { background: #eee; padding: 1px 5px; border-radius: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>跨资产驱动页：本系统「数据 → 页面」形态说明（模拟稿）</h1>
+  <p class="muted">
+    仅用于理解形态：下面 JSON 按 <kbd>frontend/src/api/contracts.ts</kbd> 中的 <strong>ApiEnvelope</strong>、<strong>MacroBondLinkagePayload</strong>、<strong>ChoiceMacroLatestPoint</strong> 等类型缩小示例；
+    DOM 区块顺序与 <kbd>CrossAssetDriversPage.tsx</kbd> 中渲染顺序、<strong>data-testid</strong> 一致，数值为 plausible 样例，非某次生产抓包。
+    不修改运行中系统；本文件不参与构建。
+  </p>
+
+  <h2>1）后端/接口层：典型返回（精简 JSON）</h2>
+  <p class="muted">前端用 React Query 分别拉 <code>getChoiceMacroLatest</code>、<code>getMacroBondLinkageAnalysis</code>、<code>getNcdFundingProxy</code>、<code>getResearchCalendarEvents</code> 等，再 merge 成 ViewModel。此处各给一截代表性 envelope。</p>
+
+  <pre><code>// GET …/choice-macro-latest（series 节选）
+{
+  "result_meta": {
+    "trace_id": "tr_8f2a…",
+    "basis": "analytical",
+    "quality_flag": "ok",
+    "vendor_status": "ok",
+    "fallback_mode": "none",
+    "generated_at": "2026-04-25T04:12:00Z"
+  },
+  "result": {
+    "series": [
+      {
+        "series_id": "E1000180",
+        "series_name": "中债国债到期收益率:10年",
+        "trade_date": "2026-04-24",
+        "value_numeric": 1.94,
+        "unit": "pct",
+        "latest_change": -0.02
+      },
+      {
+        "series_id": "CA.DR007",
+        "series_name": "DR007",
+        "trade_date": "2026-04-24",
+        "value_numeric": 1.82,
+        "unit": "pct"
+      }
+    ]
+  }
+}
+
+// GET …/macro-bond-linkage/analysis?report_date=2026-04-24（与 MacroBondLinkagePayload 对齐）
+{
+  "result_meta": { "quality_flag": "ok", "result_kind": "macro_bond_linkage.analysis", "generated_at": "2026-04-25T04:15:00Z" },
+  "result": {
+    "report_date": "2026-04-24",
+    "environment_score": {
+      "composite_score": 0.42,
+      "signal_description": "外部约束边际偏强，流动性仍提供缓冲；久期风格偏中性。"
+    },
+    "research_views": [
+      {
+        "key": "duration",
+        "status": "ready",
+        "stance": "neutral",
+        "confidence": "medium",
+        "summary": "久期判断在流动性与外部利率之间折中。",
+        "affected_targets": ["rates", "curve"],
+        "evidence": ["DR007 维持低位", "UST10Y 近期上行"]
+      }
+    ],
+    "transmission_axes": [
+      {
+        "axis_key": "global_rates",
+        "status": "ready",
+        "stance": "restrictive",
+        "summary": "全球利率抑制长端追涨。",
+        "impacted_views": ["duration", "curve"],
+        "required_series_ids": ["UST10Y"],
+        "warnings": []
+      }
+    ],
+    "top_correlations": [
+      {
+        "series_id": "M0001221",
+        "series_name": "工业增加值:当月同比",
+        "target_family": "国债",
+        "target_tenor": "10Y",
+        "correlation_3m": -0.18,
+        "correlation_6m": -0.11,
+        "direction": "negative"
+      }
+    ],
+    "warnings": [],
+    "computed_at": "2026-04-25T04:15:01Z"
+  }
+}
+
+// GET …/ncd-funding-proxy（失败或空时前端走 buildCrossAssetNcdProxyEvidence 的 unavailable 分支）
+{
+  "result_meta": { "quality_flag": "warning" },
+  "result": null
+}</code></pre>
+
+  <h2>2）页面层：与现网组件对应的「语义 HTML」快照（非实际运行 className）</h2>
+  <p class="muted">下列块即 <strong>跨资产驱动</strong> 主列在 <kbd>CrossAssetDriversPage.tsx</kbd> 中的逻辑顺序；右列 <code>PageOutput</code> 等若存在会占 <code>minmax(300px, 360px)</code>，此处从略或注在末。</p>
+
+  <div class="dom-snapshot">
+    <div data-testid="cross-asset-drivers-page">
+      <div data-testid="cross-asset-page">
+        <header>
+          <h2>跨资产驱动</h2>
+          <p>Overview · badge: <span class="pill">本地 mock contract replay</span> 或 <span class="pill">真实 analytical 读链路</span></p>
+          <p>这页只回答一个问题：外部变量正在怎样传导到债券…</p>
+          <p>数据日期 <strong>2026-04-24</strong> · 完整序列请转到 市场数据</p>
+          <div data-testid="cross-asset-status-flags">
+            <span class="pill">stale</span>
+            <span class="pill">fallback</span>
+            <span class="pill">analytical-only</span>
+          </div>
+        </header>
+
+        <section>
+          <h3>PageSectionLead · Investment Research</h3>
+          <p><strong>研究结论先行</strong> — 先看研究判断和传导主线…</p>
+
+          <section data-testid="cross-asset-research-views">
+            <h3>投资研究判断</h3>
+            <article data-testid="cross-asset-research-card-duration">
+              <div>久期判断 · ready / backend</div>
+              <div>stance: neutral · confidence: medium</div>
+              <p>久期判断在流动性与外部利率之间折中。</p>
+              <p>Targets: rates, curve</p>
+              <p>Evidence: DR007 维持低位</p>
+            </article>
+            <!-- curve / credit / instrument 卡片结构同，略 -->
+          </section>
+
+          <section data-testid="cross-asset-transmission-axes">
+            <h3>传导主线</h3>
+            <article data-testid="cross-asset-transmission-axis-global_rates">
+              <div>Global rates</div>
+              <div>ready · backend · stance: restrictive</div>
+              <p>全球利率抑制长端追涨。</p>
+              <p>Required series: UST10Y</p>
+            </article>
+          </section>
+
+          <section data-testid="cross-asset-asset-class-analysis" class="cross-asset-class-analysis">
+            <h3>跨资产结论</h3>
+            <p class="cross-asset-class-analysis__description">双数据来源口径：Choice 接入码与 Tushare/公共补充源并列展示…</p>
+            <article data-testid="cross-asset-asset-analysis-stock">…股票 / 商品 / 期权 三块 + pending 侧栏…</article>
+          </section>
+
+          <section>
+            <h3>PageSectionLead · Context / 环境概览</h3>
+            <div data-testid="cross-asset-kpi-band">
+              <article><!-- MiniKpiCard: key=E1000180, label=中债国债10Y, value=1.94%, sparkline --></article>
+              <article><!-- MiniKpiCard: DR007 1.82% --></article>
+              <!-- 更多 KPI 由 resolveCrossAssetKpis(latestSeries) 展开 -->
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <section>
+                <h3>市场判断</h3>
+                <p>外部约束边际偏强，流动性仍提供缓冲；久期风格偏中性。</p>
+                <p><span class="pill">主导因素 …</span> <span class="pill">次要扰动 …</span> <span class="pill">风格判断 …</span></p>
+              </section>
+              <section>
+                <h3>驱动拆解</h3>
+                <!-- buildDriverColumns(env) 多列 card + bullets -->
+              </section>
+            </div>
+          </section>
+
+          <section data-testid="cross-asset-candidate-actions"><h3>市场候选动作</h3><ul><li>…</li></ul></section>
+
+          <section data-testid="cross-asset-ncd-proxy">
+            <h3>NCD / 资金代理</h3>
+            <p data-testid="cross-asset-ncd-proxy-warning">NCD 资金代理数据不可用（请求失败或空载荷）。</p>
+          </section>
+
+          <section>
+            <h3>跨资产走势（近 20 日，统一基准 = 100）</h3>
+            <div><!-- ReactECharts + buildCrossAssetTrendOption --></div>
+          </section>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <section data-testid="cross-asset-event-calendar"><h3>事件与供给日历</h3></section>
+            <section data-testid="cross-asset-watch-list"><h3>观察名单</h3></section>
+          </div>
+
+          <section>
+            <h3>宏观 - 债券联动（评分与组合影响）</h3>
+            <p data-testid="cross-asset-linkage-warning-list">warnings 列表…</p>
+            <table><!-- 热力/相关行：linkageHeatmapRows → 指标 / 3M / 6M / Eval --></table>
+          </section>
+
+          <section data-testid="cross-asset-page-output">
+            <h3>PageOutput（若布局为双列 grid 则居右列 300–360px）</h3>
+            <p>组合影响、下载物等视 AsyncSection 数据而定。</p>
+          </section>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <h2>3）和「设计参考 HTML」差在哪里？</h2>
+  <ul class="muted" style="max-width:72ch;">
+    <li>现网页面是 <strong>React + inline style + designTokens</strong>，不是单文件静态稿；区块更多（研究四卡、传导轴、资产类结论、NCD 代理、联动表、PageOutput）。</li>
+    <li>真实 DOM 里大量 <code>style={{…t.space…}}</code>，没有统一成你满意的那套「暖纸 + Jakarta」CSS 类名。</li>
+    <li>KPI 带来源 <code>resolveCrossAssetKpis</code>，与桌面包 mock 的 8 固定指标可能不一致。</li>
+  </ul>
+</body>
+</html>

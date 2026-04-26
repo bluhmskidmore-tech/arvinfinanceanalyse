@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MOSS 跨资产驱动 — 设计预览（独立稿，不接入产品构建）</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --font-sans: "DM Sans", system-ui, sans-serif;
+      --font-mono: "JetBrains Mono", ui-monospace, monospace;
+      /* 与现 tokens 同族：机构蓝青，略提高对比可读性 */
+      --primary-50: #eff4f8;
+      --primary-600: #2c5a79;
+      --primary-800: #1f3c52;
+      --neutral-50: #f1f3f2;
+      --neutral-200: #e4ebe8;
+      --neutral-500: #7a8795;
+      --neutral-800: #3d4a56;
+      --neutral-900: #1c2833;
+      --profit: #15803d;
+      --loss: #b91c1c;
+      --warning: #b56f22;
+      --info: #2f79bb;
+      --shadow: 0 1px 2px rgba(28, 40, 51, 0.06), 0 4px 12px rgba(28, 40, 51, 0.04);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 20px;
+      --space-6: 24px;
+    }
+    [data-theme="dark"] {
+      --neutral-50: #121a22;
+      --neutral-200: #2a3540;
+      --neutral-500: #8b99a8;
+      --neutral-800: #dce4ea;
+      --neutral-900: #f0f4f7;
+      --primary-50: #1a252e;
+      --primary-600: #5d9ac4;
+      --primary-800: #a8c9e0;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: var(--font-sans);
+      background: var(--neutral-50);
+      color: var(--neutral-900);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .wrap { max-width: 1280px; margin: 0 auto; padding: var(--space-5); }
+    .hero {
+      display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+      gap: var(--space-4); margin-bottom: var(--space-6);
+    }
+    .hero h1 { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .hero p { margin: var(--space-2) 0 0; color: var(--neutral-500); max-width: 52ch; font-size: 0.9rem; }
+    .theme-toggle {
+      font-family: var(--font-sans);
+      font-size: 0.8rem; font-weight: 600;
+      padding: var(--space-2) var(--space-3);
+      border-radius: 999px;
+      border: 1px solid var(--neutral-200);
+      background: var(--primary-50);
+      color: var(--primary-800);
+      cursor: pointer;
+    }
+    .label { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--primary-600); margin-bottom: var(--space-3); }
+    .swatches { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+    .swatch {
+      width: 88px; padding: var(--space-2); border-radius: var(--radius-sm);
+      border: 1px solid var(--neutral-200); font-size: 0.7rem; font-weight: 600; font-family: var(--font-mono);
+    }
+    .section { margin-bottom: var(--space-6); }
+    .mock-shell {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--neutral-200);
+      box-shadow: var(--shadow);
+      min-height: 480px;
+    }
+    [data-theme="dark"] .mock-shell { border-color: var(--neutral-200); }
+    .mock-rail {
+      background: var(--primary-50);
+      padding: var(--space-3);
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-right: 1px solid var(--neutral-200);
+    }
+    .mock-rail a {
+      display: block; padding: var(--space-2) var(--space-2);
+      color: var(--neutral-500); text-decoration: none; border-radius: var(--space-2);
+    }
+    .mock-rail a.current { background: #fff; color: var(--primary-800); box-shadow: var(--shadow); }
+    [data-theme="dark"] .mock-rail a.current { background: var(--neutral-200); }
+    .mock-main { padding: var(--space-4); background: #fff; }
+    [data-theme="dark"] .mock-main { background: var(--neutral-50); }
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: var(--space-3);
+      margin-bottom: var(--space-4);
+    }
+    .kpi {
+      background: var(--primary-50);
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      min-height: 120px;
+      display: flex; flex-direction: column;
+    }
+    .kpi .t { font-size: 0.7rem; color: var(--neutral-500); font-weight: 600; }
+    .kpi .v { font-family: var(--font-mono); font-size: 1.25rem; font-weight: 700; margin-top: var(--space-2); font-variant-numeric: tabular-nums; }
+    .kpi .d { color: var(--profit); font-size: 0.8rem; font-weight: 600; margin-top: var(--space-1); }
+    .kpi .spark { margin-top: auto; height: 28px; background: linear-gradient(180deg, rgba(44,90,121,0.12), transparent); border-radius: 4px; }
+    .panel {
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      background: #fff;
+      margin-bottom: var(--space-3);
+    }
+    [data-theme="dark"] .panel { background: #1a2229; }
+    .panel h2 { margin: 0 0 var(--space-2); font-size: 1rem; }
+    .panel .lead { margin: 0 0 var(--space-3); font-size: 0.85rem; color: var(--neutral-500); }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-3); }
+    .card {
+      border: 1px solid var(--neutral-200);
+      border-radius: var(--radius-sm);
+      padding: var(--space-3);
+      background: var(--neutral-50);
+    }
+    [data-theme="dark"] .card { background: #141c22; }
+    .card .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; font-weight: 700; }
+    .pill { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: var(--primary-50); color: var(--primary-800); font-weight: 600; }
+    .table-wrap { overflow: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { text-align: left; padding: var(--space-2); border-bottom: 1px solid var(--neutral-200); }
+    th { color: var(--neutral-500); font-weight: 600; }
+    td { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 0.75rem; }
+    .type-spec { display: grid; gap: var(--space-2); }
+    .type-spec .line { font-size: 0.9rem; }
+    .type-spec .d2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; }
+    .type-spec .mono { font-family: var(--font-mono); }
+    .note { font-size: 0.75rem; color: var(--neutral-500); margin-top: var(--space-4); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <h1>MOSS — 跨资产驱动（设计预览）</h1>
+        <p>固定收益 / 多资产研究向工作台一屏：结论先行、证据可下钻、数据tabular对齐。本文件为独立 HTML，不修改仓库内应用代码。</p>
+      </div>
+      <button type="button" class="theme-toggle" id="themeBtn">切换深 / 浅</button>
+    </div>
+
+    <div class="section">
+      <div class="label">色彩与语义（延续现有主色，强化层级）</div>
+      <div class="swatches">
+        <div class="swatch" style="background:#2c5a79;color:#fff;">#2c5a79 主色</div>
+        <div class="swatch" style="background:#eff4f8;">#eff4f8 面</div>
+        <div class="swatch" style="background:#1c2833;color:#fff;">#1c2833 文</div>
+        <div class="swatch" style="background:#15803d;color:#fff;">#15803d 多</div>
+        <div class="swatch" style="background:#b91c1c;color:#fff;">#b91c1c 空</div>
+        <div class="swatch" style="background:#b56f22;color:#fff;">#b56f22 警</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">字体样张</div>
+      <div class="panel type-spec">
+        <div class="line d2">DM Sans：页面标题、卡片标题、说明（替代泛用无衬线，略有个性但仍机构可信）</div>
+        <div class="line">正文：跨资产页信息密度高，13–14px 基线、行高 1.5，段落与表头一致使用 DM Sans。</div>
+        <div class="line mono">JetBrains Mono：利率、相关系数、久期、bp — tabular-nums 对齐，避免数字跳动。</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="label">页面结构示意（与当前能力域对齐）</div>
+      <div class="mock-shell">
+        <nav class="mock-rail" aria-label="工作台账导航示意">
+          <a href="#">总览工作台</a>
+          <a href="#">市场工作台</a>
+          <a href="#" class="current">跨资产驱动</a>
+          <a href="#">市场数据</a>
+          <a href="#">新闻事件</a>
+        </nav>
+        <main class="mock-main">
+          <div class="kpi-row" aria-label="KPI 行示意">
+            <div class="kpi"><div class="t">10Y 国债</div><div class="v">2.32%</div><div class="d">+1.2bp</div><div class="spark"></div></div>
+            <div class="kpi"><div class="t">NCD 1Y</div><div class="v">2.18%</div><div class="d" style="color:var(--loss)">-0.8bp</div><div class="spark"></div></div>
+            <div class="kpi"><div class="t">DR007</div><div class="v">1.92%</div><div class="d">+0bp</div><div class="spark"></div></div>
+            <div class="kpi"><div class="t">USD/CNY</div><div class="v">7.24</div><div class="d" style="color:var(--loss)">-15pips</div><div class="spark"></div></div>
+          </div>
+          <div class="panel">
+            <h2>投资研究判断</h2>
+            <p class="lead">先给 duration / curve / credit / instrument 四块结论，再下钻证据与执行观察（与现页 copy 一致）。</p>
+            <div class="cards">
+              <div class="card"><div class="row">Duration <span class="pill">ready</span></div><p style="margin:8px 0 0;font-size:0.8rem;">中性偏短，关注资金节奏与长端供给。</p></div>
+              <div class="card"><div class="row">Curve <span class="pill">pending</span></div><p style="margin:8px 0 0;font-size:0.8rem;">2s10s 趋平，做陡需等央行信号明确。</p></div>
+              <div class="card"><div class="row">Credit <span class="pill">ready</span></div><p style="margin:8px 0 0;font-size:0.85rem;">高等级利差压缩趋缓，事件驱动为主。</p></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>宏观—债券联动（节选）</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>指标 → 目标</th><th>3M</th><th>6M</th><th>评价</th></tr></thead>
+                <tbody>
+                  <tr><td>工业增加值 → 10Y</td><td>-0.12</td><td>-0.08</td><td style="color:var(--info)">Mixed</td></tr>
+                  <tr><td>M2 同比 → 信用债</td><td>0.21</td><td>0.15</td><td style="color:var(--profit)">Pos</td></tr>
+                  <tr><td>US CPI → 汇率</td><td>-0.19</td><td>-0.11</td><td style="color:var(--loss)">Neg</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <p class="note">
+      动效建议：仅保留 150–250ms 的进入与悬停，表格行 hover 用 neutral-100 条带，避免大面积渐变。
+      本稿为 /gstack-design-consultation 独立产出；未修改 frontend、backend 中的任何源文件。
+    </p>
+  </div>
+  <script>
+    document.getElementById("themeBtn").addEventListener("click", function () {
+      var r = document.documentElement;
+      r.setAttribute("data-theme", r.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    });
+  </script>
+</body>
+</html>
