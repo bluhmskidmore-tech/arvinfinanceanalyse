@@ -11,6 +11,7 @@ import type {
 } from "../../../api/contracts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
+import { nextDefaultReportDateIfUnset } from "./productCategoryPnlPageModel";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -209,8 +210,9 @@ function LegacyProductCategoryAdjustmentAuditBody() {
   });
 
   useEffect(() => {
-    if (!selectedDate && datesQuery.data?.result.report_dates.length) {
-      setSelectedDate(datesQuery.data.result.report_dates[0] ?? "");
+    const next = nextDefaultReportDateIfUnset(selectedDate, datesQuery.data?.result.report_dates);
+    if (next !== null) {
+      setSelectedDate(next);
     }
   }, [datesQuery.data, selectedDate]);
 

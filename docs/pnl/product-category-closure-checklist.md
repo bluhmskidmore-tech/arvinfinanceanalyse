@@ -81,10 +81,12 @@ This first pass is based on:
   - backend date ordering is asserted in `tests/test_product_category_pnl_flow.py`
   - page selector consumes returned dates in `frontend/src/features/product-category-pnl/pages/ProductCategoryPnlPage.tsx`
   - basic UI consumption is exercised in `frontend/src/test/ProductCategoryPnlPage.test.tsx`
+  - default `selectedDate` and ledger deep-link query encoding are frozen as pure helpers in `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts` (`nextDefaultReportDateIfUnset`, `buildLedgerPnlHrefForReportDate`), reused on the main page and legacy audit body
+  - dedicated unit tests: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts`
+  - page truth contract subsection: `docs/pnl/product-category-page-truth-contract.md` section 10.1
 - Why not `CLOSED`:
   - `as_of_date` is still an explicit outward contract gap
-  - fallback-date semantics are not frozen at page level
-  - there is no dedicated formatter/selector test for date semantics alone
+  - fallback-date semantics are not frozen at page level beyond the default-first-list-item rule documented in section 10.1
 
 ## Unit 2: Detail
 

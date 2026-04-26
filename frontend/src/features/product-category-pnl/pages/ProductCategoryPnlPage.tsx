@@ -9,6 +9,7 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 import {
+  buildLedgerPnlHrefForReportDate,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   selectDisplayedProductCategoryGrandTotal,
@@ -344,9 +345,7 @@ export default function ProductCategoryPnlPage() {
       </span>
     </div>
   ) : null;
-  const ledgerPnlHref = selectedDate
-    ? `/ledger-pnl?report_date=${encodeURIComponent(selectedDate)}`
-    : "/ledger-pnl";
+  const ledgerPnlHref = buildLedgerPnlHrefForReportDate(selectedDate);
 
   if (selectedBranch === "monthly_operating_analysis") {
     return (

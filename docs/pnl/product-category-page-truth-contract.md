@@ -165,6 +165,13 @@ First-stage prohibitions:
 
 No silent fallback is allowed. If degradation occurs, it must be visible.
 
+### 10.1 Report-date list and default selection (UI)
+
+- The report-date dropdown is populated from `GET /ui/pnl/product-category/dates` → `result.report_dates` in the order returned by the API (backend ordering is asserted in `tests/test_product_category_pnl_flow.py`).
+- When local `selectedDate` is empty and `report_dates` is non-empty, the page sets `selectedDate` to the **first** list entry (`nextDefaultReportDateIfUnset` in `productCategoryPnlPageModel.ts`). This applies to the main product-category PnL page and the legacy manual-adjustment audit body on the same feature.
+- The link from this page to `/ledger-pnl` for the same calendar selection uses `buildLedgerPnlHrefForReportDate`: empty selection → `/ledger-pnl` with no query; otherwise `report_date` is passed via `encodeURIComponent`.
+- This subsection does not add an outward `as_of_date`; section 10 above remains the source of truth for that gap.
+
 ## 11. Result Meta Visibility
 
 The page must make these fields inspectable:
@@ -206,6 +213,7 @@ Current evidence for this page-level contract:
 - `tests/test_product_category_pnl_flow.py`
 - `tests/test_product_category_mapping_contract.py`
 - `frontend/src/test/ProductCategoryPnlPage.test.tsx`
+- `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts`
 - `frontend/src/test/ProductCategoryBranchSwitcher.test.tsx`
 - `frontend/src/test/ApiClient.test.ts`
 - `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md`

@@ -129,3 +129,31 @@ export function selectDisplayedProductCategoryGrandTotal<
 >(scenarioGrand: T | null | undefined, baselineGrand: T | null | undefined): T | undefined {
   return scenarioGrand ?? baselineGrand ?? undefined;
 }
+
+/**
+ * Next value for page `selectedDate` when the user has not chosen one yet.
+ *
+ * - Non-empty `selectedDate` is never overridden (returns `null`).
+ * - Missing or empty `report_dates` yields no default (returns `null`).
+ * - Otherwise returns the first list element; API list order is authoritative (see backend flow tests).
+ */
+export function nextDefaultReportDateIfUnset(
+  selectedDate: string,
+  reportDates: string[] | undefined,
+): string | null {
+  if (selectedDate) {
+    return null;
+  }
+  if (!reportDates?.length) {
+    return null;
+  }
+  return reportDates[0] ?? "";
+}
+
+/** Deep link to ledger PnL for the same `report_date` as the product-category page selection. */
+export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
+  if (!reportDate) {
+    return "/ledger-pnl";
+  }
+  return `/ledger-pnl?report_date=${encodeURIComponent(reportDate)}`;
+}
