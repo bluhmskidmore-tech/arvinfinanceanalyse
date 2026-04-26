@@ -123,6 +123,10 @@ def _v16_external_supply_auction_calendar(conn: duckdb.DuckDBPyConnection) -> No
     _run_sql_slice(conn, "17_external_supply_auction_calendar.sql")
 
 
+def _v17_accounting_asset_movement(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "18_accounting_asset_movement.sql")
+
+
 def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(1, "baseline snapshot tables", _v1_snapshot_tables)
     registry.register(2, "baseline bond analytics", _v2_bond_analytics)
@@ -140,6 +144,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(14, "std external macro + vw_external_macro_daily", _v14_std_external_macro)
     registry.register(15, "legacy read views (choice macro/news, yield, fx)", _v15_external_vw_legacy)
     registry.register(16, "supply auction research calendar read model", _v16_external_supply_auction_calendar)
+    registry.register(17, "accounting asset movement monthly read model", _v17_accounting_asset_movement)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

@@ -86,6 +86,11 @@
       "path": "17_external_supply_auction_calendar.sql",
       "ensure_module": "backend.app.repositories.research_calendar_repo",
       "ensure_symbol": "ensure_supply_auction_calendar_schema"
+    },
+    {
+      "path": "18_accounting_asset_movement.sql",
+      "ensure_module": "backend.app.tasks.accounting_asset_movement",
+      "ensure_symbol": "_ensure_tables"
     }
   ]
 }
