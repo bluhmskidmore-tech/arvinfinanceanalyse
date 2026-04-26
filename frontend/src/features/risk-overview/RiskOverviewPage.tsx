@@ -141,6 +141,13 @@ export default function RiskOverviewPage() {
     retry: false,
   });
 
+  const blockedReportDates = datesQuery.data?.result.blocked_report_dates ?? [];
+  const selectedBlockedReportDate = explicitReportDate
+    ? blockedReportDates.find((entry) => entry.report_date === explicitReportDate)
+    : undefined;
+  const latestBlockedReportDate = [...blockedReportDates].sort((a, b) => b.report_date.localeCompare(a.report_date))[0];
+  const highlightedBlockedReportDate = selectedBlockedReportDate ?? latestBlockedReportDate;
+
   const reportDate = useMemo(() => {
     if (explicitReportDate) {
       return explicitReportDate;
@@ -308,6 +315,21 @@ export default function RiskOverviewPage() {
               </span>
             </>
           )}
+          {highlightedBlockedReportDate ? (
+            <>
+              <br />
+              <span data-testid="risk-overview-blocked-dates">
+                Backend blocked stale dates: {blockedReportDates.length}. Highlighted blocked:{" "}
+                <strong>{highlightedBlockedReportDate.report_date}</strong>
+                {highlightedBlockedReportDate.reason
+                  ? ` (${highlightedBlockedReportDate.reason})`
+                  : null}
+                {selectedBlockedReportDate
+                  ? " Selected report_date is blocked by freshness validation."
+                  : null}
+              </span>
+            </>
+          ) : null}
         </div>
       </div>
 

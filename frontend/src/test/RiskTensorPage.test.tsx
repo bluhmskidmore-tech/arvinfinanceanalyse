@@ -111,6 +111,46 @@ describe("RiskTensorPage", () => {
     });
   });
 
+  it("surfaces backend-blocked stale dates without using them as the default", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_dates_with_blocked"),
+      result: {
+        report_dates: ["2026-02-28"],
+        blocked_report_dates: [
+          {
+            report_date: "2026-02-26",
+            reason: "older stale tensor",
+          },
+          {
+            report_date: "2026-02-27",
+            reason: "risk tensor source lineage is stale",
+          },
+        ],
+      },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_${reportDate}`),
+      result: tensorResult(reportDate),
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const blockedDates = await screen.findByTestId("risk-tensor-blocked-dates");
+    expect(blockedDates).toHaveTextContent("2026-02-27");
+    expect(blockedDates).toHaveTextContent("risk tensor source lineage is stale");
+    expect(blockedDates).not.toHaveTextContent("older stale tensor");
+
+    await waitFor(() => {
+      expect(getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+      expect(getRiskTensor).not.toHaveBeenCalledWith("2026-02-27");
+    });
+  });
+
   it("honors report_date in the URL querystring", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({

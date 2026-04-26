@@ -588,8 +588,14 @@ export type RiskTensorPayload = {
   warnings: string[];
 };
 
+export type BlockedReportDate = {
+  report_date: string;
+  reason: string;
+};
+
 export type RiskTensorDatesPayload = {
   report_dates: string[];
+  blocked_report_dates?: BlockedReportDate[];
 };
 
 export type PlaceholderSnapshot = {

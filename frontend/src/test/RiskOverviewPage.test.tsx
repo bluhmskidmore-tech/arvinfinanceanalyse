@@ -154,6 +154,78 @@ describe("RiskOverviewPage", () => {
     expect(client.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-02-28");
   });
 
+  it("surfaces backend-blocked stale dates without using them as the default", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const client: ApiClient = {
+      ...base,
+      getRiskTensorDates: vi.fn(async () => ({
+        result_meta: { ...meta, result_kind: "risk.tensor.dates" },
+        result: {
+          report_dates: ["2026-02-28"],
+          blocked_report_dates: [
+            {
+              report_date: "2026-02-26",
+              reason: "older stale tensor",
+            },
+            {
+              report_date: "2026-02-27",
+              reason: "risk tensor source lineage is stale",
+            },
+          ],
+        },
+      })),
+      getRiskTensor: vi.fn(async (reportDate: string) => tensorEnvelope({ report_date: reportDate })),
+      getBondAnalyticsKrdCurveRisk: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.krd_curve_risk" },
+        result: {
+          report_date: reportDate,
+          portfolio_duration: formatRawAsNumeric({ raw: 3, unit: "ratio", sign_aware: false }),
+          portfolio_modified_duration: formatRawAsNumeric({ raw: 3.1, unit: "ratio", sign_aware: false }),
+          portfolio_dv01: formatRawAsNumeric({ raw: 100, unit: "dv01", sign_aware: false }),
+          portfolio_convexity: formatRawAsNumeric({ raw: 0.5, unit: "ratio", sign_aware: false }),
+          krd_buckets: [],
+          scenarios: [],
+          by_asset_class: [],
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+      getBondAnalyticsCreditSpreadMigration: vi.fn(async (reportDate: string) => ({
+        result_meta: { ...meta, result_kind: "bond_analytics.credit_spread_migration" },
+        result: {
+          report_date: reportDate,
+          credit_bond_count: 10,
+          credit_market_value: formatRawAsNumeric({ raw: 1, unit: "yuan", sign_aware: false }),
+          credit_weight: formatRawAsNumeric({ raw: 0.1, unit: "ratio", sign_aware: false }),
+          spread_dv01: formatRawAsNumeric({ raw: 2, unit: "dv01", sign_aware: false }),
+          weighted_avg_spread: formatRawAsNumeric({ raw: 100, unit: "bp", sign_aware: false }),
+          weighted_avg_spread_duration: formatRawAsNumeric({ raw: 4, unit: "ratio", sign_aware: false }),
+          spread_scenarios: [],
+          migration_scenarios: [],
+          oci_credit_exposure: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: false }),
+          oci_spread_dv01: formatRawAsNumeric({ raw: 0, unit: "dv01", sign_aware: false }),
+          oci_sensitivity_25bp: formatRawAsNumeric({ raw: 0, unit: "yuan", sign_aware: true }),
+          warnings: [],
+          computed_at: "2026-04-12T00:00:00Z",
+        },
+      })),
+    };
+
+    renderRiskOverview(client, "/risk-overview");
+
+    const blockedDates = await screen.findByTestId("risk-overview-blocked-dates");
+    expect(blockedDates).toHaveTextContent("2026-02-27");
+    expect(blockedDates).toHaveTextContent("risk tensor source lineage is stale");
+    expect(blockedDates).not.toHaveTextContent("older stale tensor");
+
+    await waitFor(() => {
+      expect(client.getRiskTensor).toHaveBeenCalledWith("2026-02-28");
+      expect(client.getRiskTensor).not.toHaveBeenCalledWith("2026-02-27");
+      expect(client.getBondAnalyticsKrdCurveRisk).toHaveBeenCalledWith("2026-02-28");
+      expect(client.getBondAnalyticsCreditSpreadMigration).toHaveBeenCalledWith("2026-02-28");
+    });
+  });
+
   it("does not fall back to a hardcoded report date when backend dates are empty", async () => {
     const base = createApiClient({ mode: "mock" });
     const client: ApiClient = {
