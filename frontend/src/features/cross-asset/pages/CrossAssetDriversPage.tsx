@@ -858,27 +858,34 @@ export default function CrossAssetDriversPage() {
                 description="完成研究判断后，再查看价格走势、事件流和观察名单，避免把短噪音误当成主结论。"
               />
             </div>
-            <section className={crossAssetPanelClass}>
-              <h2 className="cross-asset-drivers-page__panel-title" style={{ margin: `0 0 ${t.space[2]}px` }}>
-                跨资产走势（近 20 日，统一基准 = 100）
-              </h2>
-              <p style={{ margin: `0 0 ${t.space[2]}px`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
-                所有序列使用首日 = 100 的归一化结果，便于直接比较方向与节奏。
-              </p>
-              {latestQuery.isLoading ? (
-                <div style={{ height: 360, display: "flex", alignItems: "center", justifyContent: "center", color: t.color.neutral[500] }}>
-                  正在加载宏观序列…
-                </div>
-              ) : trendOption ? (
-                <div className="cross-asset-trend-chart" style={{ minWidth: 0, width: "100%" }}>
-                  <ReactECharts option={trendOption} style={{ height: 360, width: "100%" }} notMerge lazyUpdate />
-                </div>
-              ) : (
-                <div style={{ height: 200, color: t.color.neutral[500], fontSize: t.fontSize[13] }}>
-                  当前没有足够历史点，无法绘制跨资产走势。
-                </div>
-              )}
-            </section>
+            <div data-testid="cross-asset-trend-panel" style={{ minWidth: 0 }}>
+              <SectionCard title="跨资产走势（近 20 日，统一基准 = 100）" style={{ minWidth: 0 }}>
+                <p style={{ margin: `0 0 ${t.space[3]}px`, color: t.color.neutral[500], fontSize: t.fontSize[12] }}>
+                  所有序列使用首日 = 100 的归一化结果，便于直接比较方向与节奏。
+                </p>
+                {latestQuery.isLoading ? (
+                  <div
+                    style={{
+                      height: 360,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: t.color.neutral[500],
+                    }}
+                  >
+                    正在加载宏观序列…
+                  </div>
+                ) : trendOption ? (
+                  <div className="cross-asset-trend-chart" style={{ minWidth: 0, width: "100%" }}>
+                    <ReactECharts option={trendOption} style={{ height: 360, width: "100%" }} notMerge lazyUpdate />
+                  </div>
+                ) : (
+                  <div style={{ minHeight: 120, color: t.color.neutral[500], fontSize: t.fontSize[13] }}>
+                    当前没有足够历史点，无法绘制跨资产走势。
+                  </div>
+                )}
+              </SectionCard>
+            </div>
 
             <div
               style={{

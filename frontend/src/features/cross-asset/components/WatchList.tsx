@@ -4,11 +4,12 @@ import type { CrossAssetWatchRow } from "../lib/crossAssetDriversPageModel";
 
 const t = designTokens;
 
-const SIGNAL = {
-  yellow: "\u{1F7E1}",
-  green: "\u{1F7E2}",
-  red: "\u{1F534}",
-} as const;
+/** Token-colored dots; avoids emoji blocks that clash with antd + tabular UI. */
+const SIGNAL_DOT: Record<CrossAssetWatchRow["signal"], { bg: string; hint: string }> = {
+  green: { bg: t.color.semantic.profit, hint: "偏多" },
+  yellow: { bg: t.color.warning[500], hint: "待确认" },
+  red: { bg: t.color.semantic.loss, hint: "偏空" },
+};
 
 export type WatchListProps = {
   rows: CrossAssetWatchRow[];
@@ -61,10 +62,23 @@ export function WatchList({ rows }: WatchListProps) {
                       lineHeight: t.lineHeight.normal,
                     }}
                   >
-                    <span aria-hidden style={{ fontSize: t.fontSize[16], lineHeight: 1, marginRight: t.space[2] }}>
-                      {SIGNAL[row.signal]}
-                    </span>
-                    {row.signalText}
+                    <div style={{ display: "inline-flex", alignItems: "flex-start", gap: t.space[2] }}>
+                      <span
+                        title={SIGNAL_DOT[row.signal].hint}
+                        aria-label={SIGNAL_DOT[row.signal].hint}
+                        style={{
+                          display: "inline-block",
+                          width: 8,
+                          height: 8,
+                          marginTop: 5,
+                          borderRadius: "50%",
+                          background: SIGNAL_DOT[row.signal].bg,
+                          flexShrink: 0,
+                          boxShadow: `0 0 0 1px ${t.color.neutral[200]}`,
+                        }}
+                      />
+                      <span>{row.signalText}</span>
+                    </div>
                   </td>
                 </tr>
               ))}

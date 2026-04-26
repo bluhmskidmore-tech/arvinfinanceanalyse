@@ -68,13 +68,14 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       bottom: 0,
       left: "center",
       width: "92%",
-      itemWidth: 12,
-      itemHeight: 8,
+      /** Thin line cap matches line series; avoids tall color blocks that read like unrelated icons. */
+      itemWidth: 16,
+      itemHeight: 2,
       itemGap: 10,
       pageIconSize: 10,
       pageTextStyle: { color: c.neutral[500] },
       textStyle: { fontSize: fs[11], color: c.neutral[500] },
-      padding: [2, 4, 6, 4],
+      padding: [2, 4, 8, 4],
     },
     tooltip: {
       trigger: "axis",
