@@ -69,6 +69,14 @@ select {
   min-width: 0;
 }
 
+.workbench-shell-section-label {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #7a8795;
+  font-weight: 700;
+}
+
 .portfolio-workbench-light-hint {
   display: flex;
   flex-wrap: wrap;
@@ -116,6 +124,38 @@ select {
   color: #2c5a79;
   text-decoration: none;
   white-space: nowrap;
+}
+
+.workbench-agent-dialog-trigger {
+  display: grid;
+  width: 100%;
+  height: auto;
+  text-align: left;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: transparent;
+  color: #586575;
+  border: 1px solid transparent;
+}
+
+.workbench-agent-dialog-trigger__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.workbench-agent-dialog-trigger__hint {
+  color: #7a8795;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.workbench-agent-dialog .ant-modal-body {
+  max-height: 78vh;
+  overflow-y: auto;
+  padding-top: 8px;
 }
 
 .dashboard-hero-summary {

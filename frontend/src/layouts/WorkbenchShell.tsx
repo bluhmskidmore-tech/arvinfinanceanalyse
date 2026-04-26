@@ -12,7 +12,8 @@ import {
   TrophyOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { useMemo, type ReactNode } from "react";
+import { Button, Modal } from "antd";
+import { useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
@@ -30,6 +31,7 @@ import {
 } from "../mocks/navigation";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
+import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -131,14 +133,6 @@ function supportLinkStyle(active: boolean) {
   } as const;
 }
 
-const shellSectionLabelStyle = {
-  fontSize: 9,
-  letterSpacing: "0.18em",
-  textTransform: "uppercase",
-  color: shellTokens.colorTextMuted,
-  fontWeight: 700,
-} as const;
-
 type ShellTickerTone = "up" | "down";
 
 type ShellTickerItem = {
@@ -150,31 +144,31 @@ type ShellTickerItem = {
 };
 
 const fallbackShellTickerItems: ShellTickerItem[] = [
-  { key: "cgb10y", label: "10Y CGB", value: "1.94%", delta: "+2bp", tone: "up" },
+  { key: "cgb10y", label: "10年国债", value: "1.94%", delta: "+2bp", tone: "up" },
   { key: "dr007", label: "DR007", value: "1.82%", delta: "-6bp", tone: "down" },
-  { key: "omo7d", label: "OMO 7D", value: "1.75%", delta: "+1bp", tone: "up" },
-  { key: "usd-cny", label: "USD/CNY", value: "7.21", delta: "+0.02", tone: "up" },
+  { key: "omo7d", label: "7天逆回购", value: "1.75%", delta: "+1bp", tone: "up" },
+  { key: "usd-cny", label: "美元/人民币", value: "7.21", delta: "+0.02", tone: "up" },
 ] as const;
 
 const shellTickerSeriesSpecs = [
   {
     key: "cgb10y",
-    label: "10Y CGB",
+    label: "10年国债",
     matchers: ["中债国债到期收益率:10年", "10年期国债到期收益率"],
   },
   {
     key: "policyBank10y",
-    label: "Policy 10Y",
+    label: "10年国开",
     matchers: ["中债政策性金融债到期收益率(国开行)10年"],
   },
   {
     key: "us10y",
-    label: "US 10Y",
+    label: "10年美债",
     matchers: ["美国10年期国债收益率", "美国:国债收益率:10年"],
   },
   {
     key: "cnUs10ySpread",
-    label: "CN-US 10Y",
+    label: "中美10年利差",
     matchers: ["中美国债利差(10Y)", "10Y中国国债-10Y美国国债"],
   },
   {
@@ -184,12 +178,12 @@ const shellTickerSeriesSpecs = [
   },
   {
     key: "omo7d",
-    label: "OMO 7D",
+    label: "7天逆回购",
     matchers: ["公开市场7天逆回购利率"],
   },
   {
     key: "usd-cny",
-    label: "USD/CNY",
+    label: "美元/人民币",
     matchers: ["即期汇率:美元兑人民币", "USD/CNY"],
   },
 ] as const;
@@ -324,7 +318,7 @@ const portfolioStages: PortfolioStage[] = [
   },
   {
     title: "仓位与结构",
-    description: "需要解释变化时，再看持仓、负债结构和 ADB 口径的形态变化。",
+    description: "需要解释变化时，再看持仓、负债结构和日均口径的形态变化。",
     sectionKeys: ["positions", "liability-analytics", "average-balance"],
   },
   {
@@ -341,6 +335,7 @@ function findSectionByKey(sections: WorkbenchSection[], key: string) {
 export function WorkbenchShell() {
   const client = useApiClient();
   const location = useLocation();
+  const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const pathnameResolved = resolveWorkbenchPathAlias(location.pathname);
   const searchParams = new URLSearchParams(location.search);
   const currentSection = findWorkbenchSectionByPath(location.pathname, workbenchNavigation);
@@ -379,8 +374,8 @@ export function WorkbenchShell() {
   const shellReportDate =
     explicitReportDate ||
     (isBondAnalysisMinimalShell
-      ? bondAnalyticsDatesQuery.data?.result?.report_dates[0] ?? "Latest available"
-      : "Route default");
+      ? bondAnalyticsDatesQuery.data?.result?.report_dates[0] ?? "可用最新日"
+      : "默认路由");
   const shellTickerItems = useMemo(
     () => buildShellTickerItems(shellTickerQuery.data?.result?.series ?? []),
     [shellTickerQuery.data?.result?.series],
@@ -489,7 +484,7 @@ export function WorkbenchShell() {
                 color: shellTokens.colorTextMuted,
               }}
             >
-              Current Scope
+              当前范围
             </span>
             <div
               style={{
@@ -504,7 +499,7 @@ export function WorkbenchShell() {
         ) : null} */}
 
         {/* <nav
-          aria-label="Primary workspaces"
+          aria-label="主工作台"
           data-testid="workbench-group-nav"
           style={{ display: "grid", gap: isBondAnalysisMinimalShell ? 6 : 10 }}
         >
@@ -606,7 +601,7 @@ export function WorkbenchShell() {
                 color: shellTokens.colorTextMuted,
               }}
             >
-              Reserved Modules
+              保留模块
             </div>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
@@ -652,9 +647,9 @@ export function WorkbenchShell() {
         )} */}
 
         <section style={{ display: "grid", gap: 6 }}>
-          <span style={shellSectionLabelStyle}>Workspaces</span>
+          <span className="workbench-shell-section-label">工作台</span>
           <nav
-            aria-label="Primary workspaces"
+            aria-label="主工作台"
             data-testid="workbench-group-nav"
             style={{ display: "grid", gap: 2 }}
           >
@@ -718,9 +713,39 @@ export function WorkbenchShell() {
               borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
-            <span style={shellSectionLabelStyle}>Reserved Modules</span>
+            <span className="workbench-shell-section-label">保留模块</span>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
+
+              if (item.key === "agent") {
+                return (
+                  <Button
+                    key={item.key}
+                    type="text"
+                    className="workbench-agent-dialog-trigger"
+                    onClick={() => setAgentDialogOpen(true)}
+                  >
+                    <div className="workbench-agent-dialog-trigger__main">
+                      <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
+                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{item.label}</span>
+                      <span
+                        style={{
+                          ...sectionBadgeStyle(item),
+                          borderRadius: 999,
+                          padding: "1px 6px",
+                          fontSize: 10,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {item.readinessLabel}
+                      </span>
+                    </div>
+                    <span className="workbench-agent-dialog-trigger__hint">
+                      对话框
+                    </span>
+                  </Button>
+                );
+              }
 
               return (
                 <NavLink
@@ -766,7 +791,7 @@ export function WorkbenchShell() {
             borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
           }}
         >
-          <span style={shellSectionLabelStyle}>Support</span>
+          <span className="workbench-shell-section-label">支持入口</span>
           {shellUtilityEntries.map((item) => {
             const active = item.to !== "/" && pathnameResolved === item.to;
 
@@ -902,7 +927,7 @@ export function WorkbenchShell() {
                 textTransform: "uppercase",
               }}
             >
-              Shell Market Ticker
+              市场快讯
             </span>
             {shellTickerItems.map((item) => (
               <div
@@ -976,7 +1001,7 @@ export function WorkbenchShell() {
                 className="portfolio-workbench-light-hint"
               >
                 <span className="portfolio-workbench-light-hint__eyebrow">
-                  Portfolio Workbench
+                  组合工作台
                 </span>
                 <p className="portfolio-workbench-light-hint__copy">
                   <strong className="portfolio-workbench-light-hint__strong">先以正式余额下结论</strong>
@@ -1023,7 +1048,7 @@ export function WorkbenchShell() {
                         letterSpacing: "0.08em",
                       }}
                     >
-                      Portfolio Workbench
+                      组合工作台
                     </span>
                     <div
                       style={{
@@ -1045,7 +1070,7 @@ export function WorkbenchShell() {
                         lineHeight: 1.8,
                       }}
                     >
-                      当前工作台聚合 {currentGroup.label} 的核心 live 页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把 placeholder 或 analytical 结果误读成正式结论。
+                      当前工作台聚合 {currentGroup.label} 的核心页面。首屏不再平铺全部入口，而是先用正式链路做判断，再进入结构、仓位和归因页面解释原因，避免把占位页或分析口径结果误读成正式结论。
                     </div>
                   </div>
 
@@ -1060,7 +1085,7 @@ export function WorkbenchShell() {
                       {
                         label: "可访问页面",
                         value: `${currentGroupSectionCount}`,
-                        detail: "当前分组内 live route",
+                        detail: "当前分组内已开放页面",
                       },
                       {
                         label: "默认入口",
@@ -1212,7 +1237,7 @@ export function WorkbenchShell() {
                       letterSpacing: "0.08em",
                     }}
                   >
-                    Phase 1 Status
+                    一期状态
                   </span>
                   <div
                     style={{
@@ -1381,7 +1406,7 @@ export function WorkbenchShell() {
                     textTransform: "uppercase",
                   }}
                 >
-                  {isPortfolioGroup ? "All Live Pages" : "In This Workspace"}
+                  {isPortfolioGroup ? "全部已开放页面" : "当前工作台页面"}
                 </span>
                 <div
                   style={{
@@ -1434,7 +1459,7 @@ export function WorkbenchShell() {
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.6 }}>{currentSection.readinessNote}</div>
               <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
-                如需先查看可验证的数据页面，请优先使用当前工作台中的 live 子页面。
+                如需先查看可验证的数据页面，请优先使用当前工作台中的已开放子页面。
               </div>
             </section>
           ) : null}
@@ -1452,13 +1477,12 @@ export function WorkbenchShell() {
                 gap: 8,
               }}
             >
-              <div style={{ fontWeight: 700 }}>Temporary exception</div>
+              <div style={{ fontWeight: 700 }}>临时例外</div>
               <div style={{ fontSize: 14, lineHeight: 1.6 }}>
                 {currentSection.governanceBanner ?? currentSection.readinessNote}
               </div>
               <div style={{ fontSize: 13, color: shellTokens.colorTextMuted }}>
-                Wave 1 keeps this route visible only while its page contract closes; do not treat
-                it as a fully governed surface.
+                第一阶段仅在页面契约收口期间保留该路由可见；不要把它视为已完全治理的页面。
               </div>
             </section>
           ) : null}
@@ -1466,6 +1490,17 @@ export function WorkbenchShell() {
           <Outlet />
         </main>
       </div>
+      <Modal
+        title="智能体对话框"
+        open={agentDialogOpen}
+        onCancel={() => setAgentDialogOpen(false)}
+        footer={null}
+        width="min(1120px, 92vw)"
+        destroyOnHidden={false}
+        className="workbench-agent-dialog"
+      >
+        <AgentWorkbenchPage />
+      </Modal>
     </div>
   );
 }

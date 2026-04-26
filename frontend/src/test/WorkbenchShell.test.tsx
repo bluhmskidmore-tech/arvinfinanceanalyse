@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
@@ -78,8 +79,17 @@ describe("WorkbenchShell", () => {
     renderShellAt("/");
 
     expect(
-      await screen.findByRole("link", { name: /Agent Workbench/ }),
+      await screen.findByRole("button", { name: /智能体工作台/ }),
     ).toBeInTheDocument();
+  });
+
+  it("opens Agent Workbench in a dialog from the system shell", async () => {
+    renderShellAt("/");
+
+    await userEvent.click(await screen.findByRole("button", { name: /智能体工作台/ }));
+
+    expect(await screen.findByRole("dialog", { name: "智能体对话框" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "智能体工作台" })).toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -163,10 +173,10 @@ describe("WorkbenchShell", () => {
     expect(pageContext).toHaveTextContent("债券分析");
     expect(pageContext).toHaveTextContent("2026-03-31");
 
-    expect(marketTicker).toHaveTextContent("Shell Market Ticker");
-    expect(marketTicker).toHaveTextContent("10Y");
+    expect(marketTicker).toHaveTextContent("市场快讯");
+    expect(marketTicker).toHaveTextContent("10年国债");
     expect(marketTicker).toHaveTextContent("DR007");
-    expect(marketTicker).toHaveTextContent("USD/CNY");
+    expect(marketTicker).toHaveTextContent("美元/人民币");
 
     expect(operatorZone).toHaveTextContent("报表中心");
     expect(operatorZone).toHaveTextContent("中台配置");
@@ -264,7 +274,7 @@ describe("WorkbenchShell", () => {
     renderShellAt("/", client);
 
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
-    expect(marketTicker).toHaveTextContent("10Y CGB");
+    expect(marketTicker).toHaveTextContent("10年国债");
     expect(marketTicker).toHaveTextContent("DR007");
     expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
   });
@@ -470,9 +480,9 @@ describe("WorkbenchShell", () => {
     const marketTicker = await screen.findByTestId("workbench-market-ticker");
 
     await waitFor(() => {
-      expect(marketTicker).toHaveTextContent("US 10Y");
-      expect(marketTicker).toHaveTextContent("CN-US 10Y");
-      expect(marketTicker).toHaveTextContent("Policy 10Y");
+      expect(marketTicker).toHaveTextContent("10年美债");
+      expect(marketTicker).toHaveTextContent("中美10年利差");
+      expect(marketTicker).toHaveTextContent("10年国开");
       expect(marketTicker).toHaveTextContent("4.12%");
       expect(marketTicker).toHaveTextContent("-205bp");
       expect(marketTicker).toHaveTextContent("2.09%");
@@ -510,8 +520,17 @@ describe("WorkbenchShell", () => {
   it("renders the reserved modules section outside the grouped workspace nav", async () => {
     renderShellAt("/");
 
-    expect(await screen.findByText("Reserved Modules")).toBeInTheDocument();
+    expect(await screen.findByText("保留模块")).toBeInTheDocument();
     for (const section of secondaryWorkbenchNavigation) {
+      if (section.key === "agent") {
+        const button = screen
+          .getAllByRole("button")
+          .find((candidate) => candidate.textContent?.includes(section.label));
+        expect(button).toBeDefined();
+        expect(button).toHaveTextContent(section.label);
+        continue;
+      }
+
       const link = screen
         .getAllByRole("link")
         .find((candidate) => candidate.getAttribute("href") === section.path);
@@ -557,6 +576,6 @@ describe("WorkbenchShell", () => {
     const banner = await screen.findByTestId("workbench-governance-banner");
     expect(banner).toBeInTheDocument();
     expect(screen.getByText("operations body")).toBeInTheDocument();
-    expect(banner).toHaveTextContent(/temporary exception/i);
+    expect(banner).toHaveTextContent(/临时例外/i);
   });
 });
