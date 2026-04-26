@@ -15,7 +15,7 @@ import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkben
 
 function renderDashboard(client?: ApiClient) {
   if (!client) {
-    return renderWorkbenchApp(["/"]);
+    return renderWorkbenchApp(["/"], { client: createApiClient({ mode: "mock" }) });
   }
 
   const router = createWorkbenchMemoryRouter(["/"]);
