@@ -68,7 +68,7 @@ This first pass is based on:
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
 | 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
 | 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; formal-table `AsyncSection` refetch-error semantics now page-frozen; full column matrix remains open |
-| 10. Test Coverage | `PARTIAL` | `P0` | backend and frontend tests are substantial and a golden sample exists, but closure coverage is still uneven |
+| 10. Test Coverage | `PARTIAL` | `P0` | checklist now maps backend→client→page→golden layers; one extra pure-model guard for unknown `category_id` sort; scenario second-sample + golden full-suite still uneven |
 
 ## 5. Unit Details
 
@@ -237,15 +237,26 @@ This first pass is based on:
 - Status: `PARTIAL`
 - Priority: `P0`
 - Evidence:
-  - backend flow coverage is substantial in `tests/test_product_category_pnl_flow.py`
-  - mapping contract exists in `tests/test_product_category_mapping_contract.py`
-  - UI page tests exist for the main page and independent audit page
-  - real-mode client request serialization is covered in `frontend/src/test/ApiClient.test.ts`
-  - a governed page-level golden sample now exists at `GS-PROD-CAT-PNL-A`
+  - **Coverage map (where to look first):**
+
+    | Layer | Primary artifacts | Role in closure |
+    | --- | --- | --- |
+    | Backend flow / API integration | `tests/test_product_category_pnl_flow.py` | Dates, detail, refresh queue + sync fallback + status, manual adjustments CRUD, export filters, materialization, idempotent detail requests, invalid view / 404 / envelope error paths |
+    | Mapping / tree authority | `tests/test_product_category_mapping_contract.py` | Category tree and mapping invariants tied to the read model (no client invention of categories) |
+    | `result_meta` on UI envelopes | `tests/test_result_meta_on_all_ui_endpoints.py` | `GET /ui/pnl/product-category/dates` in the global meta sweep; `test_product_category_scenario_request_sets_scenario_basis` pins formal vs scenario `basis` on `GET /ui/pnl/product-category` |
+    | Pure model (selectors, formatters, governance helpers) | `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` | View superset vs main-page scope, row source (baseline vs scenario), `grand_total` body drop, money vs yield formatting, tones, governance notices, dual-meta line |
+    | Pure model (date / deep-link helpers) | `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts` | `nextDefaultReportDateIfUnset`, `buildLedgerPnlHrefForReportDate` |
+    | Main page (Workbench route) | `frontend/src/test/ProductCategoryPnlPage.test.tsx` | Shell, dates Unit 1, detail column freeze Unit 2, refresh + error paths Unit 3, manual form validation + submit + lifecycle, governance strip, Unit 9 table + formal `AsyncSection` refetch error |
+    | Adjustment audit page | `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` | Filters, dual sort, list/timeline `AsyncSection` error + retry, export query symmetry + Blob pass-through |
+    | HTTP client (real mode) | `frontend/src/test/ApiClient.test.ts` | Product-category: dates, detail + `scenario_rate_pct`, refresh + refresh-status, manual adjustments list/filter/export/revoke/edit/restore; list vs export query key parity; mock-mode row order smoke |
+    | Golden sample (artifact + narrative) | `tests/golden_samples/GS-PROD-CAT-PNL-A/` (`request.json`, `response.json`, `assertions.md`, `approval.md`); `docs/pnl/product-category-golden-sample-a.md` | Frozen formal (+ companion scenario probe) contract boundary for one report date / view |
+    | Adjacent UI | `frontend/src/test/ProductCategoryBranchSwitcher.test.tsx` | Branch switcher wiring (referenced from truth contract § references) |
+
+  - **Small model-level separation added for forward-compatible rows:** `productCategoryPnlPageModel.test.ts` — `sorts unknown category_id rows after governed display-order rows` documents `selectProductCategoryDetailRows` behavior for IDs not in `DISPLAY_ORDER` (stable tie-break at `Number.MAX_SAFE_INTEGER`).
 - Why not `CLOSED`:
-  - there is not yet a clean separation between page tests, selector tests, and formatter tests
-  - scenario remains a companion probe rather than a second frozen page sample
-  - full-suite golden-sample verification still has unrelated existing failures elsewhere in the repo
+  - scenario is still a **companion probe** (`product-category-golden-sample-a.md` + ApiClient scenario test), not a second full page-level golden **matrix** sample
+  - **full-repo** golden-sample / e2e verification is explicitly out of scope for this unit’s evidence map; remaining unevenness is process-wide, not product-category-only
+  - page vs model boundaries are **documented** in the map above, but exhaustive per-field pairing of every page assertion to a pure helper assertion is not claimed
 
 ## 6. Current Distribution
 

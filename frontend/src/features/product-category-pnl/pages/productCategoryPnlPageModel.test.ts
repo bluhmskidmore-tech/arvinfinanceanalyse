@@ -111,6 +111,18 @@ describe("productCategoryPnlPageModel", () => {
     expect(out.map((r) => r.category_id)).toEqual(["bond_investment"]);
   });
 
+  it("sorts unknown category_id rows after governed display-order rows", () => {
+    const baseline = [
+      row({ category_id: "zz_unknown_future_category" }),
+      row({ category_id: "bond_investment" }),
+    ];
+    const out = selectProductCategoryDetailRows(baseline, undefined);
+    expect(out.map((r) => r.category_id)).toEqual([
+      "bond_investment",
+      "zz_unknown_future_category",
+    ]);
+  });
+
   it("selects scenario grand total when present, otherwise baseline", () => {
     const b = row({ category_id: "grand_total", business_net_income: "1" });
     const s = row({ category_id: "grand_total", business_net_income: "2" });

@@ -220,11 +220,15 @@ Current evidence for this page-level contract:
 
 - `tests/test_product_category_pnl_flow.py`
 - `tests/test_product_category_mapping_contract.py`
+- `tests/test_result_meta_on_all_ui_endpoints.py` (product-category dates sweep + formal vs scenario `basis` on detail)
 - `frontend/src/test/ProductCategoryPnlPage.test.tsx` (including governance-strip degraded-meta and formal/scenario distinct-line cases)
-- `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (governance notice helpers)
+- `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx` (audit list, export, and `AsyncSection` failure semantics)
+- `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (selectors, formatters, governance notice helpers, unknown `category_id` sort fallback)
 - `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts`
 - `frontend/src/test/ProductCategoryBranchSwitcher.test.tsx`
 - `frontend/src/test/ApiClient.test.ts`
+- `tests/golden_samples/GS-PROD-CAT-PNL-A/` + `docs/pnl/product-category-golden-sample-a.md`
+- Layered coverage index: `docs/pnl/product-category-closure-checklist.md` → **Unit 10: Test Coverage**
 - `docs/BALANCE_ANALYSIS_SPEC_FOR_CODEX.md`
 
 ## 14. Open Gaps
