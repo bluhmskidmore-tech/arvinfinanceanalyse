@@ -170,6 +170,7 @@ import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
+import { buildProductCategoryMockYuanPayload } from "./productCategoryPnlMock";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -2007,8 +2008,12 @@ function buildMockProductCategoryPnlEnvelope(
     children: [],
     scenario_rate_pct: scenarioRate,
   };
-  const assetRows = rows.filter((row) => row.side === "asset");
-  const liabilityRows = rows.filter((row) => row.side === "liability");
+  const yuanPayload = buildProductCategoryMockYuanPayload({
+    rows,
+    assetTotal,
+    liabilityTotal,
+    grandTotal,
+  });
 
   return buildMockApiEnvelope(
     "product_category_pnl.detail",
@@ -2017,10 +2022,10 @@ function buildMockProductCategoryPnlEnvelope(
       view: options.view,
       available_views: ["monthly", "qtd", "ytd", "year_to_report_month_end"],
       scenario_rate_pct: scenarioRate,
-      rows: [...assetRows, assetTotal, ...liabilityRows, liabilityTotal, grandTotal],
-      asset_total: assetTotal,
-      liability_total: liabilityTotal,
-      grand_total: grandTotal,
+      rows: yuanPayload.rows,
+      asset_total: yuanPayload.assetTotal,
+      liability_total: yuanPayload.liabilityTotal,
+      grand_total: yuanPayload.grandTotal,
     },
     {
       basis: scenarioRate ? "scenario" : "formal",
