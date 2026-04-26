@@ -6,6 +6,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+
 ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
@@ -71,7 +73,7 @@ def project_bond_cashflows(
             continue
 
         face_value = _coerce_decimal(_get_value(row, "face_value", "face_value_amount", "face_value_native"))
-        coupon_rate = _coerce_decimal(_get_value(row, "coupon_rate"))
+        coupon_rate = _coerce_rate_decimal(_get_value(row, "coupon_rate"))
         interest_mode = _get_text(row, "interest_mode")
         interval_months = _coupon_interval_months(interest_mode)
 
@@ -84,7 +86,7 @@ def project_bond_cashflows(
                         instrument_code=_get_text(row, "instrument_code"),
                         instrument_name=_get_text(row, "instrument_name"),
                         side="asset",
-                        amount=face_value * coupon_rate,
+                        amount=_bullet_coupon_amount(face_value, coupon_rate, row, maturity_date),
                         currency_code=_get_text(row, "currency_code", default="CNY"),
                     )
                 )
@@ -163,7 +165,7 @@ def project_zqtz_cashflows(
         sign = Decimal("1") if side == "asset" else Decimal("-1")
 
         principal = _coerce_decimal(_get_value(row, "face_value", "face_value_amount", "face_value_native"))
-        coupon_rate = _coerce_decimal(_get_value(row, "coupon_rate"))
+        coupon_rate = _coerce_rate_decimal(_get_value(row, "coupon_rate"))
         interest_mode = _get_text(row, "interest_mode")
         interval_months = _coupon_interval_months(interest_mode)
 
@@ -176,7 +178,7 @@ def project_zqtz_cashflows(
                         instrument_code=_get_text(row, "instrument_code"),
                         instrument_name=_get_text(row, "instrument_name"),
                         side=side,
-                        amount=sign * principal * coupon_rate,
+                        amount=sign * _bullet_coupon_amount(principal, coupon_rate, row, maturity_date),
                         currency_code=_get_text(row, "currency_code", default="CNY"),
                     )
                 )
@@ -435,7 +437,7 @@ def _project_tyw_row_cashflows(row: dict[str, Any], report_date: date, horizon_e
     code = _get_text(row, "position_id", default=_get_text(row, "instrument_code"))
     name = _get_text(row, "counterparty_name", default=_get_text(row, "instrument_name"))
     sign = Decimal("1") if scope == "asset" else Decimal("-1")
-    funding_rate = _coerce_decimal(_get_value(row, "funding_cost_rate"))
+    funding_rate = _coerce_rate_decimal(_get_value(row, "funding_cost_rate"))
     days = max(0, (maturity_date - report_date).days)
 
     events: list[CashflowEvent] = []
@@ -488,6 +490,19 @@ def _coupon_amount(face_value: Decimal, coupon_rate: Decimal, interval_months: i
         return ZERO
     periods_per_year = Decimal(12 // interval_months)
     return face_value * coupon_rate / periods_per_year
+
+
+def _bullet_coupon_amount(
+    face_value: Decimal,
+    coupon_rate: Decimal,
+    row: dict[str, Any],
+    maturity_date: date,
+) -> Decimal:
+    value_date = _coerce_date(_get_value(row, "value_date", "interest_start_date", "start_date"))
+    if value_date is None or value_date >= maturity_date:
+        return face_value * coupon_rate
+    years = Decimal((maturity_date - value_date).days) / DAYS_IN_YEAR
+    return face_value * coupon_rate * years
 
 
 def _coupon_dates_between(
@@ -549,9 +564,9 @@ def _row_scope(row: dict[str, Any]) -> str:
     if not position_scope:
         return "asset"
     normalized = position_scope.lower()
-    if "asset" in normalized or "璧勪骇" in normalized:
+    if any(token in normalized for token in ("asset", "璧勴骇", "璧勘骇", "璧勷骇", "\u8d44\u4ea7", "\u8cc7\u7522")):
         return "asset"
-    if "liab" in normalized or "liability" in normalized or "璐熷€?" in normalized:
+    if any(token in normalized for token in ("liab", "liability", "璐熷€?", "\u8d1f\u503a", "\u8ca0\u50b5")):
         return "liability"
     return normalized
 
@@ -582,6 +597,13 @@ def _coerce_decimal(value: Any) -> Decimal:
     if isinstance(value, Decimal):
         return value
     return Decimal(str(value))
+
+
+def _coerce_rate_decimal(value: Any) -> Decimal:
+    normalized = normalize_annual_rate_to_decimal(value)
+    if normalized is None:
+        return ZERO
+    return Decimal(str(normalized))
 
 
 def _coerce_optional_decimal(value: Any) -> Decimal | None:

@@ -157,6 +157,14 @@ class TestBuildKrdPositionMetrics:
         expected_dv01 = m["market_value"] * m["modified_duration"] / Decimal("10000")
         assert abs(m["dv01"] - expected_dv01) < Decimal("0.01")
 
+    def test_zero_wind_modified_duration_is_preserved(self):
+        metrics = build_krd_position_metrics(
+            [BOND_5Y],
+            report_date=REPORT_DATE,
+            wind_metrics={"B5Y": {"mod_duration": Decimal("0")}},
+        )
+        assert metrics[0]["modified_duration"] == Decimal("0")
+
 
 # ---------------------------------------------------------------------------
 # compute_krd_by_tenor
@@ -200,10 +208,9 @@ class TestComputeKrdByTenor:
         result = compute_krd_by_tenor([BOND_5Y], report_date=REPORT_DATE)
         krd_sum = sum(r["krd"] for r in result)
         metrics = build_krd_position_metrics([BOND_5Y], report_date=REPORT_DATE)
-        macaulay_dur = metrics[0]["duration"]
-        # KRD sum == weight * duration == 1 * duration for single bond
-        assert abs(krd_sum - macaulay_dur) < Decimal("0.001"), (
-            f"KRD sum {krd_sum} != Macaulay duration {macaulay_dur}"
+        modified_dur = metrics[0]["modified_duration"]
+        assert abs(krd_sum - modified_dur) < Decimal("0.001"), (
+            f"KRD sum {krd_sum} != modified duration {modified_dur}"
         )
 
     def test_parallel_shift_krd_sum_approx_modified_duration(self):
@@ -220,11 +227,8 @@ class TestComputeKrdByTenor:
         portfolio_mod_dur = sum(
             m["weight"] * m["modified_duration"] for m in metrics
         )
-        # KRD sum is weight * Macaulay; portfolio_mod_dur is weight * modified.
-        # They should be within ~10 % of each other for typical bonds.
-        ratio = abs(krd_sum - portfolio_mod_dur) / (portfolio_mod_dur + Decimal("0.0001"))
-        assert ratio < Decimal("0.15"), (
-            f"KRD sum {krd_sum} too far from portfolio mod_dur {portfolio_mod_dur}"
+        assert abs(krd_sum - portfolio_mod_dur) < Decimal("0.001"), (
+            f"KRD sum {krd_sum} != portfolio mod_dur {portfolio_mod_dur}"
         )
 
     def test_zero_coupon_bond_krd_at_maturity_bucket(self):

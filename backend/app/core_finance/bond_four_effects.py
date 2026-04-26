@@ -10,6 +10,7 @@ from decimal import Decimal
 from typing import Any, Dict
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
+from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
 
 from .bond_duration import (
     estimate_convexity_bond,
@@ -39,6 +40,13 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
     return default
 
 
+def _annual_rate_decimal(value: Any) -> Decimal:
+    normalized = normalize_annual_rate_to_decimal(value)
+    if normalized is None:
+        return Decimal("0")
+    return Decimal(str(normalized))
+
+
 def compute_bond_four_effects(
     bond: Dict[str, Any],
     num_days: int,
@@ -58,14 +66,14 @@ def compute_bond_four_effects(
       否则退化为 total_price_change + income_return（净价变动 + 票息估算），
       此时 selection_effect 会系统性吸收面值/市值差异（折溢价债券误差约 5-10%）。
     """
-    coupon = safe_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
+    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
     face = safe_decimal(_get_bond_field(bond, "face_value_start", "face_value"))
     mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
     mv_end = safe_decimal(_get_bond_field(bond, "market_value_end"))
     bond_code = str(_get_bond_field(bond, "bond_code", default=""))
     asset_class = _get_bond_field(bond, "asset_class_start", "asset_class", default="")
     ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = safe_decimal(ytm_raw) if ytm_raw is not None else None
+    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
 
     # 应计利息（全价基准）
     ai_start_raw = _get_bond_field(bond, "accrued_interest_start", "accrued_interest", default=None)
@@ -181,9 +189,9 @@ def compute_bond_six_effects(
             "mod_duration": fx["mod_duration"],
         }
 
-    coupon = safe_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
+    coupon = _annual_rate_decimal(_get_bond_field(bond, "coupon_rate_start", "coupon_rate"))
     ytm_raw = _get_bond_field(bond, "yield_to_maturity_start", "yield_to_maturity")
-    ytm = safe_decimal(ytm_raw) if ytm_raw is not None else None
+    ytm = _annual_rate_decimal(ytm_raw) if ytm_raw is not None else None
     mv_start = safe_decimal(_get_bond_field(bond, "market_value_start"))
     mat = _get_bond_field(bond, "maturity_date_start", "maturity_date")
     if mat is not None and hasattr(mat, "date"):

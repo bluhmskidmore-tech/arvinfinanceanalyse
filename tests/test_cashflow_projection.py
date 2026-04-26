@@ -83,6 +83,35 @@ def test_bond_cashflow_projection_treats_bullet_as_maturity_only_coupon():
     ]
 
 
+def test_bullet_bond_with_value_date_projects_full_maturity_coupon():
+    module = _core_module()
+
+    events = module.project_bond_cashflows(
+        [
+            {
+                "instrument_code": "BOND-BULLET-3Y",
+                "instrument_name": "Three Year Bullet Bond",
+                "value_date": date(2024, 7, 15),
+                "maturity_date": date(2027, 7, 15),
+                "face_value": Decimal("100"),
+                "coupon_rate": Decimal("0.06"),
+                "interest_mode": "bullet",
+                "currency_code": "CNY",
+            }
+        ],
+        report_date=date(2026, 1, 14),
+        horizon_months=24,
+    )
+
+    assert [
+        (event.event_type, event.event_date.isoformat(), event.amount)
+        for event in events
+    ] == [
+        ("coupon", "2027-07-15", Decimal("18.00")),
+        ("principal", "2027-07-15", Decimal("100")),
+    ]
+
+
 def test_liability_cashflow_projection():
     module = _core_module()
 
@@ -109,6 +138,41 @@ def test_liability_cashflow_projection():
         ("funding_cost", "2026-01-31", Decimal("-3.0")),
         ("maturity", "2026-01-31", Decimal("-365")),
     ]
+
+
+def test_interbank_percent_funding_rate_is_normalized():
+    module = _core_module()
+
+    events = module.project_tyw_cashflows(
+        [
+            {
+                "position_id": "TYW-PCT",
+                "counterparty_name": "Bank A",
+                "position_scope": "asset",
+                "maturity_date": date(2026, 1, 31),
+                "principal_amount": Decimal("365"),
+                "funding_cost_rate": Decimal("10.0"),
+                "currency_code": "CNY",
+            }
+        ],
+        report_date=date(2026, 1, 1),
+        horizon_months=12,
+    )
+
+    assert [
+        (event.event_type, event.event_date.isoformat(), event.amount)
+        for event in events
+    ] == [
+        ("funding_income", "2026-01-31", Decimal("3.0")),
+        ("maturity", "2026-01-31", Decimal("365")),
+    ]
+
+
+def test_scope_recognizes_non_mojibake_chinese_asset_and_liability_labels():
+    module = _core_module()
+
+    assert module._row_scope({"position_scope": "资产"}) == "asset"
+    assert module._row_scope({"position_scope": "负债"}) == "liability"
 
 
 def test_monthly_bucket_aggregation():

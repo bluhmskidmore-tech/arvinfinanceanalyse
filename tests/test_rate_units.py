@@ -160,10 +160,10 @@ class TestNormalizeAnnualRateToDecimal:
         result = normalize_annual_rate_to_decimal(0.0)
         assert result == 0.0
 
-    def test_one(self):
-        """1.0 (edge case) → 1.0 (treated as decimal)"""
+    def test_one_percent_boundary(self):
+        """1.0 (edge case) -> 0.01 (treated as one percent)."""
         result = normalize_annual_rate_to_decimal(1.0)
-        assert result == 1.0
+        assert result == 0.01
 
     def test_just_above_one(self):
         """1.5 (percentage) → 0.015"""
@@ -217,8 +217,8 @@ class TestNormalizeAnnualRateToDecimal:
 
     def test_boundary_at_one(self):
         """Test boundary behavior around 1.0."""
-        # Exactly 1.0 is treated as decimal
-        assert normalize_annual_rate_to_decimal(1.0) == 1.0
+        # Exactly 1.0 is treated as a percentage point value.
+        assert normalize_annual_rate_to_decimal(1.0) == 0.01
 
         # Just above 1.0 is treated as percentage
         assert normalize_annual_rate_to_decimal(1.0001) == 0.010001

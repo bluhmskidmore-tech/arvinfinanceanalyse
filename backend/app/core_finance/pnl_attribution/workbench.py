@@ -682,7 +682,7 @@ def build_advanced_attribution_summary(
         "report_date": report_date,
         "portfolio_carry": float(carry_payload.get("portfolio_carry") or 0.0),
         "portfolio_rolldown": float(carry_payload.get("portfolio_rolldown") or 0.0),
-        "static_return_annualized": float(carry_payload.get("portfolio_static_return") or 0.0) * 12.0,
+        "static_return_annualized": float(carry_payload.get("portfolio_static_return") or 0.0),
         "treasury_effect_total": float(spread_payload.get("total_treasury_effect") or 0.0),
         "spread_effect_total": float(spread_payload.get("total_spread_effect") or 0.0),
         "spread_driver": str(spread_payload.get("primary_driver") or "unknown"),

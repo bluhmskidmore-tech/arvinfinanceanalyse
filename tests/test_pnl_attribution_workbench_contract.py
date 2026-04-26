@@ -104,4 +104,4 @@ def test_build_advanced_attribution_summary_keeps_single_annualization() -> None
         },
     )
 
-    assert payload["static_return_annualized"] == pytest.approx(27.24)
+    assert payload["static_return_annualized"] == pytest.approx(2.27)

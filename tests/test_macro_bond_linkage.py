@@ -1003,6 +1003,12 @@ def test_equity_bond_spread_axis_uses_explicit_rule_table_thresholds():
     assert neutral.stance == "neutral"
 
 
+def test_mean_empty_sequence_returns_zero_for_optional_macro_windows():
+    mod = _core_module()
+
+    assert mod._mean([]) == 0.0
+
+
 def test_duration_summary_mentions_equity_when_supportive_equity_axis_promotes_bullish_stance():
     mod = _core_module()
 

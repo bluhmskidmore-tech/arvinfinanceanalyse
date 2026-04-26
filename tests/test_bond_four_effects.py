@@ -69,6 +69,18 @@ class TestIncomeEffect:
         expected = Decimal("0.03") * Decimal("10000000") * Decimal("30") / Decimal("365")
         assert float(result["income_return"]) == pytest.approx(float(expected), rel=1e-6)
 
+    def test_percent_coupon_input_is_normalized_before_accrual(self):
+        bond = _make_bond(coupon_rate=3.0, face_value=10_000_000.0)
+        result = compute_bond_four_effects(
+            bond,
+            num_days=30,
+            benchmark_yield_change=Decimal("0"),
+            spread_change=Decimal("0"),
+            report_date=date(2026, 1, 1),
+        )
+        expected = Decimal("0.03") * Decimal("10000000") * Decimal("30") / Decimal("365")
+        assert result["income_return"] == pytest.approx(expected)
+
     def test_income_scales_with_days(self):
         bond = _make_bond(coupon_rate=0.04, face_value=5_000_000.0)
         r30 = compute_bond_four_effects(

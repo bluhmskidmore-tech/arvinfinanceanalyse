@@ -122,6 +122,20 @@ class TestRateUnitCoercion:
         assert result["treasury_3y"] == pytest.approx(2.80, abs=1e-6)
         assert result["treasury_5y"] == pytest.approx(3.10, abs=1e-6)
 
+    def test_low_percent_input_under_two_is_not_scaled(self):
+        """Chinese government yields can be valid percent values below 2%."""
+        market = {
+            "treasury_1y": 1.42,
+            "treasury_3y": 1.58,
+            "treasury_5y": 1.68,
+            "treasury_7y": 1.81,
+            "treasury_10y": 1.91,
+            "treasury_30y": 1.95,
+        }
+        result = _coerce_percent_curve(market)
+        assert result["treasury_1y"] == pytest.approx(1.42)
+        assert result["treasury_10y"] == pytest.approx(1.91)
+
     def test_mixed_zero_values(self):
         """Zero values should not trigger scaling."""
         market = {

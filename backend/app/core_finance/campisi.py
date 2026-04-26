@@ -38,7 +38,7 @@ def _coerce_percent_curve(m: dict[str, Any] | None) -> dict[str, float]:
         return {}
     out = {k: float(m.get(k) or 0) for k in _TREASURY_KEYS}
     vals = [v for v in out.values() if v and v > 0]
-    if vals and max(vals) < 2.0:
+    if vals and max(vals) < 0.5:
         for k in out:
             out[k] = out[k] * 100.0
     return out

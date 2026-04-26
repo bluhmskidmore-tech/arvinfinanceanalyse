@@ -67,6 +67,6 @@ def normalize_annual_rate_to_decimal(raw: Any) -> float | None:
         return None
     if v > 100:
         return None
-    if v > 1:
+    if v >= 1:
         return v / 100.0
     return v

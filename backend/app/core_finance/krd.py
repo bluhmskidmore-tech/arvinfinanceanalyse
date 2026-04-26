@@ -146,8 +146,12 @@ def _coerce_date(value: Any) -> date | None:
 def _optional_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
-    converted = safe_decimal(value)
-    return converted if converted != Decimal("0") else None
+    if isinstance(value, str) and not value.strip():
+        return None
+    try:
+        return value if isinstance(value, Decimal) else Decimal(str(value))
+    except Exception:
+        return None
 
 
 def classify_asset_class(bond_type: str | None) -> str:
@@ -275,17 +279,27 @@ def build_krd_position_metrics(
             wind_metrics={bond_code: wind_bond} if wind_bond else None,
             coupon_frequency=coupon_frequency,
         )
-        modified_duration = modified_duration_from_macaulay(
-            duration=duration,
-            ytm=ytm,
-            coupon_frequency=max(coupon_frequency, 1),
-            wind_mod_dur=_optional_decimal(wind_bond.get("mod_duration")),
+        wind_mod_duration = _optional_decimal(wind_bond.get("mod_duration"))
+        modified_duration = (
+            wind_mod_duration
+            if wind_mod_duration is not None
+            else modified_duration_from_macaulay(
+                duration=duration,
+                ytm=ytm,
+                coupon_frequency=max(coupon_frequency, 1),
+                wind_mod_dur=None,
+            )
         )
-        convexity = estimate_convexity_bond(
-            duration=duration,
-            ytm=ytm,
-            wind_convexity=_optional_decimal(wind_bond.get("convexity")),
-            coupon_frequency=max(coupon_frequency, 1),
+        wind_convexity = _optional_decimal(wind_bond.get("convexity"))
+        convexity = (
+            wind_convexity
+            if wind_convexity is not None
+            else estimate_convexity_bond(
+                duration=duration,
+                ytm=ytm,
+                wind_convexity=None,
+                coupon_frequency=max(coupon_frequency, 1),
+            )
         )
         weight = market_value / total_market_value if total_market_value > 0 else Decimal("0")
         metrics.append(
@@ -343,7 +357,7 @@ def compute_krd_by_tenor(
         tenor_bucket = metric["tenor_bucket"]
         if tenor_bucket not in tenor_map:
             continue
-        tenor_map[tenor_bucket]["krd"] += metric["weight"] * safe_decimal(metric["duration"])
+        tenor_map[tenor_bucket]["krd"] += metric["weight"] * safe_decimal(metric["modified_duration"])
         tenor_map[tenor_bucket]["dv01"] += safe_decimal(metric["dv01"])
         tenor_map[tenor_bucket]["market_value_weight"] += (
             safe_decimal(metric["market_value"]) / total_market_value
