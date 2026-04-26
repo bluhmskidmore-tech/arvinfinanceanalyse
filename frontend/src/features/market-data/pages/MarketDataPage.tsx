@@ -117,6 +117,10 @@ const marketSectionBlockStyle = {
   marginTop: 48,
 } as const;
 
+const marketSectionInnerBlockStyle = {
+  marginTop: s[5],
+} as const;
+
 const marketSectionLeadStyle = {
   marginBottom: 24,
 } as const;
@@ -128,6 +132,10 @@ const marketSectionLeadFlushTopStyle = {
 
 function MarketSectionBlock({ children }: { children: ReactNode }) {
   return <div style={marketSectionBlockStyle}>{children}</div>;
+}
+
+function MarketSectionInnerBlock({ children }: { children: ReactNode }) {
+  return <div style={marketSectionInnerBlockStyle}>{children}</div>;
 }
 
 function MarketSectionLead({
@@ -794,11 +802,11 @@ export default function MarketDataPage() {
         </div>
       </PageHeader>
 
-      <PageSectionLead
+      <MarketSectionLead
         eyebrow="Overview"
         title="市场概览"
         description="先确认当前序列覆盖、稳定回收和 analytical 观察范围，再进入利率、资金和成交明细。"
-        style={{ marginTop: 0, marginBottom: 24 }}
+        flushTop
       />
       <div style={summaryGridStyle}>
         <div data-testid="market-data-catalog-count">
@@ -874,12 +882,11 @@ export default function MarketDataPage() {
         testId="market-data-overview-live-meta"
       />
 
-      <div style={{ marginTop: 48 }}>
-        <PageSectionLead
+      <MarketSectionBlock>
+        <MarketSectionLead
           eyebrow="Core Watch"
           title="利率、资金、宏观深度与成交观察"
           description="左侧保留利率行情主表；右侧「宏观深度」页签聚合 V3 client 已支持的曲线（Choice）、结构化信用利差槽位与联动环境/组合影响摘要。V1 其余 `/api/macro/*` 决策类端点未暴露则不在此实现。"
-          style={{ marginBottom: 24 }}
         />
         <div style={terminalRowGridStyle}>
         <RateQuoteTable />
@@ -1039,7 +1046,7 @@ export default function MarketDataPage() {
           />
         </div>
       </div>
-      </div>
+      </MarketSectionBlock>
 
       <div style={observationGridStyle}>
         <MoneyMarketTable />
@@ -1059,12 +1066,11 @@ export default function MarketDataPage() {
         <NewsAndCalendar />
       </div>
 
-      <div style={{ marginTop: 48 }}>
-        <PageSectionLead
+      <MarketSectionBlock>
+        <MarketSectionLead
           eyebrow="Observation"
           title="宏观序列与分析观察"
           description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与 FX analytical 观察，避免和 formal 读面混用。"
-          style={{ marginBottom: 24 }}
         />
         <MacroLatestReadinessBanner
           testId="market-data-macro-readiness"
@@ -1073,8 +1079,8 @@ export default function MarketDataPage() {
           hasSeries={visibleLatestSeries.length > 0}
           meta={latestQuery.data?.result_meta}
         />
-      <div style={{ marginTop: 48 }}>
-        <AsyncSection
+        <MarketSectionInnerBlock>
+          <AsyncSection
           title="宏观序列观察"
           isLoading={latestQuery.isLoading}
           isError={latestQuery.isError}
@@ -1172,10 +1178,11 @@ export default function MarketDataPage() {
               )}
             </section>
           </div>
-        </AsyncSection>
-      </div>
+          </AsyncSection>
+        </MarketSectionInnerBlock>
 
-        <AsyncSection
+        <MarketSectionInnerBlock>
+          <AsyncSection
           title="FX analytical 观察"
           isLoading={fxAnalyticalQuery.isLoading}
           isError={fxAnalyticalQuery.isError}
@@ -1219,15 +1226,15 @@ export default function MarketDataPage() {
               </section>
             ))}
           </div>
-        </AsyncSection>
-      </div>
+          </AsyncSection>
+        </MarketSectionInnerBlock>
+      </MarketSectionBlock>
 
-      <div style={{ marginTop: 48 }}>
-        <PageSectionLead
+      <MarketSectionBlock>
+        <MarketSectionLead
           eyebrow="Analytical"
           title="宏观-债市联动"
           description="联动区保留为分析口径折叠块，继续显式标注 analytical / non-formal，不向 formal 结果读面越界。"
-          style={{ marginBottom: 24 }}
         />
         <Collapse
           data-testid="market-data-linkage-collapse"
@@ -1542,14 +1549,13 @@ export default function MarketDataPage() {
           },
         ]}
       />
-      </div>
+      </MarketSectionBlock>
 
-      <div style={{ marginTop: 48 }}>
-        <PageSectionLead
+      <MarketSectionBlock>
+        <MarketSectionLead
           eyebrow="Evidence"
           title="目录与结果元数据"
           description="页尾集中展示目录补充信息与 result metadata，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
-          style={{ marginBottom: 24 }}
         />
         <div style={{ ...sectionGridStyle, marginTop: 0 }}>
         <AsyncSection
@@ -1604,7 +1610,7 @@ export default function MarketDataPage() {
           testId="market-data-linkage-meta"
         />
       </div>
-      </div>
+      </MarketSectionBlock>
     </section>
   );
 }
