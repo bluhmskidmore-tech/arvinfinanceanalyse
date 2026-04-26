@@ -279,7 +279,7 @@ describe("ProductCategoryPnlPage", () => {
     );
   });
 
-  it("polls refresh status when the refresh job is queued", async () => {
+  it("Unit 3: refresh shows in-flight status (queued→running), disables refresh, then records last run id", async () => {
     const user = userEvent.setup();
     const baseClient = createApiClient({ mode: "mock" });
     const refreshSpy = vi.fn(async () => ({
@@ -289,26 +289,34 @@ describe("ProductCategoryPnlPage", () => {
       trigger_mode: "async",
       cache_key: "product_category_pnl.formal",
     }));
-    const statusSpy = vi
-      .fn()
-      .mockResolvedValueOnce({
-        status: "running",
-        run_id: "product_category_pnl:test-run",
-        job_name: "product_category_pnl",
-        trigger_mode: "async",
-        cache_key: "product_category_pnl.formal",
-      })
-      .mockResolvedValueOnce({
-        status: "completed",
-        run_id: "product_category_pnl:test-run",
-        job_name: "product_category_pnl",
-        trigger_mode: "async",
-        cache_key: "product_category_pnl.formal",
-        month_count: 2,
-        report_dates: ["2026-01-31", "2026-02-28"],
-        rule_version: "rv_product_category_pnl_v1",
-        source_version: "sv_test",
-      });
+    const statusSpy = vi.fn();
+    statusSpy.mockImplementationOnce(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                status: "running",
+                run_id: "product_category_pnl:test-run",
+                job_name: "product_category_pnl",
+                trigger_mode: "async",
+                cache_key: "product_category_pnl.formal",
+              }),
+            100,
+          ),
+        ),
+    );
+    statusSpy.mockResolvedValueOnce({
+      status: "completed",
+      run_id: "product_category_pnl:test-run",
+      job_name: "product_category_pnl",
+      trigger_mode: "async",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: ["2026-01-31", "2026-02-28"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    });
 
     renderWorkbenchAppWithClient({
       ...baseClient,
@@ -319,12 +327,28 @@ describe("ProductCategoryPnlPage", () => {
     await screen.findByTestId("product-category-table");
     await user.click(screen.getByTestId("product-category-refresh-button"));
 
+    expect(screen.getByTestId("product-category-refresh-button")).toBeDisabled();
+
+    await waitFor(() => {
+      const statusLine = screen.getByTestId("product-category-refresh-status");
+      expect(statusLine).toHaveTextContent("queued");
+      expect(statusLine).toHaveTextContent("product_category_pnl:test-run");
+    });
+
+    await waitFor(() => {
+      const statusLine = screen.getByTestId("product-category-refresh-status");
+      expect(statusLine).toHaveTextContent("running");
+    });
+
     await waitFor(() => {
       expect(refreshSpy).toHaveBeenCalledTimes(1);
       expect(statusSpy).toHaveBeenCalledTimes(2);
       expect(statusSpy).toHaveBeenCalledWith("product_category_pnl:test-run");
-      expect(screen.getByText(/product_category_pnl:test-run/)).toBeInTheDocument();
+      expect(screen.getByTestId("product-category-refresh-button")).not.toBeDisabled();
     });
+
+    expect(screen.queryByTestId("product-category-refresh-status")).not.toBeInTheDocument();
+    expect(screen.getByText(/^最近刷新任务：/)).toHaveTextContent("product_category_pnl:test-run");
   });
 
   it("surfaces refresh conflict (409) with explicit copy and does not record a successful run id", async () => {
@@ -354,6 +378,7 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     expect(screen.queryByText(/^最近刷新任务：/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-refresh-status")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });
 
@@ -382,6 +407,7 @@ describe("ProductCategoryPnlPage", () => {
     });
 
     expect(screen.queryByText(/^最近刷新任务：/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-refresh-status")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });
 
@@ -417,6 +443,7 @@ describe("ProductCategoryPnlPage", () => {
       expect(screen.getByText("Product-category refresh run failed (test).")).toBeInTheDocument();
     });
 
+    expect(screen.queryByTestId("product-category-refresh-status")).not.toBeInTheDocument();
     expect(screen.getByText(/product_category_pnl:failed-run/)).toBeInTheDocument();
     expect(screen.getByTestId("product-category-refresh-button")).toHaveTextContent("刷新损益数据");
   });

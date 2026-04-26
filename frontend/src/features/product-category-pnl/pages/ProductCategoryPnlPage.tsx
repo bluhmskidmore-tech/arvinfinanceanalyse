@@ -77,6 +77,14 @@ const sectionDescriptionStyle = {
   lineHeight: 1.7,
 } as const;
 
+function formatProductCategoryRefreshStatusLine(
+  snapshot: { status: string; run_id?: string } | null,
+): string {
+  const statusPart = snapshot ? `状态：${snapshot.status}` : "状态：启动中…";
+  const runPart = snapshot?.run_id ? `；run_id：${snapshot.run_id}` : "";
+  return `正在刷新产品分类损益数据。${statusPart}${runPart}。刷新期间「刷新损益数据」等部分控件将暂时不可用。`;
+}
+
 function buildAdjustmentDraft(reportDate: string): ProductCategoryManualAdjustmentRequest {
   return {
     report_date: reportDate,
@@ -116,6 +124,9 @@ export default function ProductCategoryPnlPage() {
   const [scenarioRate, setScenarioRate] = useState("1.75");
   const [appliedScenarioRate, setAppliedScenarioRate] = useState("");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshPollSnapshot, setRefreshPollSnapshot] = useState<{ status: string; run_id?: string } | null>(
+    null,
+  );
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [lastRefreshRunId, setLastRefreshRunId] = useState<string | null>(null);
   const [showManualForm, setShowManualForm] = useState(false);
@@ -202,6 +213,9 @@ export default function ProductCategoryPnlPage() {
     const payload = await runPollingTask({
       start: () => client.refreshProductCategoryPnl(),
       getStatus: (runId) => client.getProductCategoryRefreshStatus(runId),
+      onUpdate: (pollPayload) => {
+        setRefreshPollSnapshot({ status: pollPayload.status, run_id: pollPayload.run_id });
+      },
     });
     setLastRefreshRunId(payload.run_id);
     if (payload.status !== "completed") {
@@ -218,12 +232,14 @@ export default function ProductCategoryPnlPage() {
   async function handleRefresh() {
     setIsRefreshing(true);
     setRefreshError(null);
+    setRefreshPollSnapshot(null);
     try {
       await runRefreshWorkflow();
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "刷新损益数据失败");
     } finally {
       setIsRefreshing(false);
+      setRefreshPollSnapshot(null);
     }
   }
 
@@ -437,6 +453,11 @@ export default function ProductCategoryPnlPage() {
           <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
             系统层经营口径：正式基线来自 formal read model；情景预览仅在显式应用后生效。
           </p>
+          {isRefreshing ? (
+            <p data-testid="product-category-refresh-status">
+              {formatProductCategoryRefreshStatusLine(refreshPollSnapshot)}
+            </p>
+          ) : null}
           {lastRefreshRunId ? (
             <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
               最近刷新任务：{lastRefreshRunId}
