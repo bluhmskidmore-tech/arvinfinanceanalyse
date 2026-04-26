@@ -12,6 +12,7 @@ import {
   buildLedgerPnlHrefForReportDate,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
+  nextDefaultReportDateIfUnset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
   toneForProductCategoryValue,
@@ -128,8 +129,9 @@ export default function ProductCategoryPnlPage() {
   });
 
   useEffect(() => {
-    if (!selectedDate && datesQuery.data?.result.report_dates.length) {
-      setSelectedDate(datesQuery.data.result.report_dates[0] ?? "");
+    const next = nextDefaultReportDateIfUnset(selectedDate, datesQuery.data?.result.report_dates);
+    if (next !== null) {
+      setSelectedDate(next);
     }
   }, [datesQuery.data, selectedDate]);
 
