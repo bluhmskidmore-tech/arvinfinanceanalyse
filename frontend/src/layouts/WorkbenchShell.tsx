@@ -378,11 +378,11 @@ export function WorkbenchShell() {
   const shellReportDate =
     explicitReportDate ||
     (isBondAnalysisMinimalShell
-      ? bondAnalyticsDatesQuery.data?.result.report_dates[0] ?? "Latest available"
+      ? bondAnalyticsDatesQuery.data?.result?.report_dates[0] ?? "Latest available"
       : "Route default");
   const shellTickerItems = useMemo(
-    () => buildShellTickerItems(shellTickerQuery.data?.result.series ?? []),
-    [shellTickerQuery.data?.result.series],
+    () => buildShellTickerItems(shellTickerQuery.data?.result?.series ?? []),
+    [shellTickerQuery.data?.result?.series],
   );
   const portfolioLeadSections = portfolioFlow
     .map((item) => ({

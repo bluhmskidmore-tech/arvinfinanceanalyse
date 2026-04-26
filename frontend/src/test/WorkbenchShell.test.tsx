@@ -249,6 +249,20 @@ describe("WorkbenchShell", () => {
     });
   });
 
+  it("keeps shell ticker fallback when macro latest payload has no result", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getChoiceMacroLatest: async () => ({}),
+    } as unknown as ApiClient;
+
+    renderShellAt("/", client);
+
+    const marketTicker = await screen.findByTestId("workbench-market-ticker");
+    expect(marketTicker).toHaveTextContent("10Y CGB");
+    expect(marketTicker).toHaveTextContent("DR007");
+    expect(screen.queryByText("Unexpected Application Error!")).not.toBeInTheDocument();
+  });
+
   it("prefers stable series_id matching for shell tickers before falling back to series_name", async () => {
     const client = {
       ...createApiClient({ mode: "mock" }),

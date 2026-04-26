@@ -56,8 +56,8 @@ describe("createApiClient · parseEnvMode", () => {
     });
 
     it("throws Error when VITE_DATA_SOURCE is unset", () => {
+      vi.stubEnv("VITE_DATA_SOURCE", undefined);
       vi.stubEnv("PROD", true);
-      // VITE_DATA_SOURCE undefined
       expect(() => createApiClient()).toThrow(/VITE_DATA_SOURCE/);
     });
 
