@@ -67,7 +67,7 @@ This first pass is based on:
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | export shares applied filter/sort with list (code+tests); BOM / scale / precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
 | 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
-| 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | there is some discipline and formatting logic, but not enough explicit evidence to call it fully closed |
+| 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; full column matrix & formal-table AsyncSection error states remain open |
 | 10. Test Coverage | `PARTIAL` | `P0` | backend and frontend tests are substantial and a golden sample exists, but closure coverage is still uneven |
 
 ## 5. Unit Details
@@ -208,12 +208,16 @@ This first pass is based on:
 - Evidence:
   - the main page is relatively disciplined and mostly renders backend-returned rows
   - display order is explicit in `ProductCategoryPnlPage.tsx`
-  - liability display normalization and number formatting are centralized in page helpers
-  - no evidence of client-side re-aggregation of formal totals beyond scenario selection
+  - liability display normalization and number formatting are centralized in `productCategoryPnlPageModel` (`formatProductCategoryRowDisplayValue`, etc.) and covered by `productCategoryPnlPageModel.test.ts` (e.g. liability vs asset sign rules, `grand_total` removed from `selectProductCategoryDetailRows`, yield vs money scaling)
+  - `frontend/src/test/ProductCategoryPnlPage.test.tsx` — `ProductCategoryPnlPage > Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)`:
+    - overrides `getProductCategoryPnl` so `repo_liabilities` / `repo_assets` share the same raw yuan string for `business_net_income` (`-123456789`)
+    - rendered 营业减收入 column (second-to-last tbody cell): liability row `1.23` (absolute), asset row `-1.23` (signed)
+    - rendered 加权收益率 column (last tbody cell): liability `1.41`, asset `1.47`, matching mock `weighted_yield` (no yi-yuan money scaling; accidental `formatProductCategoryValue` would collapse toward `0.00`)
+    - literal `grand_total` does not appear in the table; the summary total is only via `product-category-footer-total` (`result.grand_total` path)
 - Why not `CLOSED`:
-  - consistency is mostly implied by implementation, not frozen by dedicated tests
-  - stale/fallback/no-data semantics are not fully covered
-  - there is still page-side display transformation for liability values, which needs explicit governance if it is to count as fully closed
+  - AsyncSection stale/fallback/empty error semantics for the formal table are not fully covered (adjacent Unit 3 refresh/load evidence gaps)
+  - exhaustive column-by-column cross-field matrix (every metric × row kind) is not page-frozen; only a minimal Unit 9 slice is evidenced
+  - `category_id` / `side` in the test are taken from the existing mock’s known rows (`repo_liabilities` / `repo_assets`), not inferred from other domains
 
 ## Unit 10: Test Coverage
 

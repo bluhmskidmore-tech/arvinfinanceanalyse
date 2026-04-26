@@ -58,6 +58,46 @@ describe("ProductCategoryPnlPage", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(20);
   });
 
+  it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const negYuan = "-123456789";
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((r) => {
+              if (r.category_id === "repo_liabilities") {
+                return { ...r, business_net_income: negYuan };
+              }
+              if (r.category_id === "repo_assets") {
+                return { ...r, business_net_income: negYuan };
+              }
+              return r;
+            }),
+          },
+        };
+      }),
+    });
+    const table = await screen.findByTestId("product-category-table");
+    const liabilityRow = screen.getByText("卖出回购").closest("tr");
+    const assetRow = screen.getByText("买入返售").closest("tr");
+    expect(liabilityRow).toBeTruthy();
+    expect(assetRow).toBeTruthy();
+    const liabilityCells = within(liabilityRow as HTMLElement).getAllByRole("cell");
+    const assetCells = within(assetRow as HTMLElement).getAllByRole("cell");
+    // 营业减收入 = 倒数第二列；加权收益率 = 最后一列（与表头一致，避免列序魔法数漂移）
+    expect(liabilityCells.at(-2)).toHaveTextContent("1.23");
+    expect(assetCells.at(-2)).toHaveTextContent("-1.23");
+    expect(liabilityCells.at(-1)).toHaveTextContent("1.41");
+    expect(assetCells.at(-1)).toHaveTextContent("1.47");
+    expect(within(table).queryByText("grand_total")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");
+  });
+
   it("applies a scenario rate only after the apply action", async () => {
     const user = userEvent.setup();
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
