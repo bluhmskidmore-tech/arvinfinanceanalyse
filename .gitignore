@@ -9,6 +9,9 @@ frontend/.env.local
 .omx/
 .cursor/
 tmp-governance/
+.gitnexus/
+.gitnexus-tool/
+.tmp-gitnexus*/
 
 ## Data and generated artifacts
 data/
@@ -50,6 +53,7 @@ __pycache__/
 
 # Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
 .pytest_cache/
+.pytest-tmp*/
 .tmp_pytest/
 py_temp_pytest/
 tmp_pytest_*/

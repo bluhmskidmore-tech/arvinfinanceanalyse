@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "node",
+      "args": [".tmp-gitnexus-v13/node_modules/gitnexus/dist/cli/index.js", "mcp"]
+    },
+    "moss-metric-contracts": {
+      "command": "python",
+      "args": ["scripts/mcp/moss_project_mcp.py", "metric-contracts"]
+    },
+    "moss-lineage-evidence": {
+      "command": "python",
+      "args": ["scripts/mcp/moss_project_mcp.py", "lineage-evidence"],
+      "env": {
+        "MOSS_GOVERNANCE_PATH": "data/governance"
+      }
+    },
+    "moss-data-catalog": {
+      "command": "python",
+      "args": ["scripts/mcp/moss_project_mcp.py", "data-catalog"],
+      "env": {
+        "MOSS_DUCKDB_PATH": "data/moss.duckdb"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}
