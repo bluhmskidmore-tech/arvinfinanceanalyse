@@ -173,6 +173,7 @@ def test_scope_recognizes_non_mojibake_chinese_asset_and_liability_labels():
 
     assert module._row_scope({"position_scope": "资产"}) == "asset"
     assert module._row_scope({"position_scope": "负债"}) == "liability"
+    assert module._row_scope({"position_scope": "璧勪骇"}) == "asset"
 
 
 def test_monthly_bucket_aggregation():

@@ -6,8 +6,6 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
-
 ZERO = Decimal("0")
 ONE_BPS = Decimal("0.0001")
 DAYS_IN_YEAR = Decimal("365")
@@ -564,7 +562,7 @@ def _row_scope(row: dict[str, Any]) -> str:
     if not position_scope:
         return "asset"
     normalized = position_scope.lower()
-    if any(token in normalized for token in ("asset", "璧勴骇", "璧勘骇", "璧勷骇", "\u8d44\u4ea7", "\u8cc7\u7522")):
+    if any(token in normalized for token in ("asset", "璧勪骇", "璧勴骇", "璧勘骇", "璧勷骇", "\u8d44\u4ea7", "\u8cc7\u7522")):
         return "asset"
     if any(token in normalized for token in ("liab", "liability", "璐熷€?", "\u8d1f\u503a", "\u8ca0\u50b5")):
         return "liability"
@@ -600,6 +598,8 @@ def _coerce_decimal(value: Any) -> Decimal:
 
 
 def _coerce_rate_decimal(value: Any) -> Decimal:
+    from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
+
     normalized = normalize_annual_rate_to_decimal(value)
     if normalized is None:
         return ZERO
