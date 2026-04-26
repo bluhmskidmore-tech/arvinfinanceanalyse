@@ -358,25 +358,26 @@ export default function ProductCategoryPnlPage() {
         )
       : null;
 
-  const reportExtra = baseline ? (
-    <div
-      data-testid="product-category-summary"
-      style={{
-        display: "flex",
-        gap: 12,
-        flexWrap: "wrap",
-        justifyContent: "flex-end",
-        color: "#5c6b82",
-        fontSize: 13,
-      }}
-    >
-      <span>当前场景：{currentSceneRate}%</span>
-      <span>基准场景：{baselineRate}%</span>
-      <span style={{ color: "#162033", fontWeight: 700 }}>
-        合计：{formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
-      </span>
-    </div>
-  ) : null;
+  const reportExtra =
+    baseline && !baselineQuery.isError ? (
+      <div
+        data-testid="product-category-summary"
+        style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap",
+          justifyContent: "flex-end",
+          color: "#5c6b82",
+          fontSize: 13,
+        }}
+      >
+        <span>当前场景：{currentSceneRate}%</span>
+        <span>基准场景：{baselineRate}%</span>
+        <span style={{ color: "#162033", fontWeight: 700 }}>
+          合计：{formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
+        </span>
+      </div>
+    ) : null;
   const ledgerPnlHref = buildLedgerPnlHrefForReportDate(selectedDate);
 
   if (selectedBranch === "monthly_operating_analysis") {
@@ -1023,7 +1024,7 @@ export default function ProductCategoryPnlPage() {
         </div>
       </AsyncSection>
 
-      {displayedGrandTotal ? (
+      {displayedGrandTotal && !baselineQuery.isError ? (
         <div
           data-testid="product-category-footer-total"
           style={{

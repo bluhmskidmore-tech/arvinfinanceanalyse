@@ -67,7 +67,7 @@ This first pass is based on:
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | list/export query symmetry + real-mode key alignment + client + page Blob pass-through evidence; backend UTF-8 BOM policy + large export + full UI↔CSV precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
 | 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
-| 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; full column matrix & formal-table AsyncSection error states remain open |
+| 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | model + page test freeze liability abs vs asset signed money, footer-only grand total, yield unscaled in table; formal-table `AsyncSection` refetch-error semantics now page-frozen; full column matrix remains open |
 | 10. Test Coverage | `PARTIAL` | `P0` | backend and frontend tests are substantial and a golden sample exists, but closure coverage is still uneven |
 
 ## 5. Unit Details
@@ -226,8 +226,9 @@ This first pass is based on:
     - rendered 营业减收入 column (second-to-last tbody cell): liability row `1.23` (absolute), asset row `-1.23` (signed)
     - rendered 加权收益率 column (last tbody cell): liability `1.41`, asset `1.47`, matching mock `weighted_yield` (no yi-yuan money scaling; accidental `formatProductCategoryValue` would collapse toward `0.00`)
     - literal `grand_total` does not appear in the table; the summary total is only via `product-category-footer-total` (`result.grand_total` path)
+  - **Formal table `AsyncSection` on failed baseline refetch (no silent stale success UI):** `ProductCategoryPnlPage.tsx` wires the formal table through `AsyncSection` with `isError={baselineQuery.isError}`; React Query v5 `QueryObserverRefetchErrorResult` keeps `isError: true` after a refetch failure even when prior `data` exists, so the error branch replaces table children (see `frontend/src/components/AsyncSection.tsx`). **`product-category-summary`** (passed as `extra`) and **`product-category-footer-total`** are gated with `!baselineQuery.isError` so cached baseline money is not shown beside the error state as if the load succeeded.
+  - **`frontend/src/test/ProductCategoryPnlPage.test.tsx` — `Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer`:** initial `getProductCategoryPnl` succeeds with `repo_assets` row label `unit9-formal-asyncsection-stale-marker`; after `product-category-refresh-button` (sync-completed refresh mock so `runRefreshWorkflow` runs `baselineQuery.refetch()`), the next `getProductCategoryPnl` rejects; within the `<section>` that contains the title `产品类别损益分析表（单位：亿元）`, asserts `数据载入失败。` + retry copy + `重试`; document-wide asserts `product-category-table`, the stale marker, `product-category-summary`, and `product-category-footer-total` are absent.
 - Why not `CLOSED`:
-  - AsyncSection stale/fallback/empty error semantics for the formal table are not fully covered (adjacent Unit 3 refresh/load evidence gaps)
   - exhaustive column-by-column cross-field matrix (every metric × row kind) is not page-frozen; only a minimal Unit 9 slice is evidenced
   - `category_id` / `side` in the test are taken from the existing mock’s known rows (`repo_liabilities` / `repo_assets`), not inferred from other domains
 

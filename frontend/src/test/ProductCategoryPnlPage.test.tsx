@@ -224,6 +224,75 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");
   });
 
+  it("Unit 9: formal baseline refetch failure shows AsyncSection error; no stale table, summary, or footer", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const uniqueMarker = "unit9-formal-asyncsection-stale-marker";
+    let denyBaselinePnl = false;
+    const pnlSpy = vi.fn(async (options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) => {
+      if (denyBaselinePnl) {
+        throw new Error("unit9-baseline-refetch-failed");
+      }
+      const env = buildMockProductCategoryPnlEnvelope(options);
+      return {
+        ...env,
+        result: {
+          ...env.result,
+          rows: env.result.rows.map((r) =>
+            r.category_id === "repo_assets" ? { ...r, category_name: uniqueMarker } : r,
+          ),
+        },
+      };
+    });
+    const refreshSpy = vi.fn(async () => ({
+      status: "completed",
+      run_id: "product_category_pnl:unit9-formal-error",
+      job_name: "product_category_pnl",
+      trigger_mode: "sync-fallback",
+      cache_key: "product_category_pnl.formal",
+      month_count: 2,
+      report_dates: ["2026-01-31", "2026-02-28"],
+      rule_version: "rv_product_category_pnl_v1",
+      source_version: "sv_test",
+    }));
+
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: pnlSpy,
+      refreshProductCategoryPnl: refreshSpy,
+    });
+
+    const table = await screen.findByTestId("product-category-table");
+    expect(within(table).getByText(uniqueMarker)).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-summary")).toHaveTextContent("合计：");
+    expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent(
+      "全部市场科目 + 投资收益合计：",
+    );
+
+    denyBaselinePnl = true;
+    await user.click(screen.getByTestId("product-category-refresh-button"));
+
+    const formalTableTitle = await screen.findByText("产品类别损益分析表（单位：亿元）");
+    const formalSection = formalTableTitle.closest("section");
+    expect(formalSection).toBeTruthy();
+
+    await waitFor(() => {
+      expect(within(formalSection!).getByText("数据载入失败。")).toBeInTheDocument();
+      expect(
+        within(formalSection!).getByText("当前页面保留重试入口，不在浏览器端自行拼接正式口径。"),
+      ).toBeInTheDocument();
+    });
+    expect(within(formalSection!).getByRole("button", { name: "重试" })).toBeInTheDocument();
+
+    expect(screen.queryByTestId("product-category-table")).not.toBeInTheDocument();
+    expect(screen.queryByText(uniqueMarker)).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("product-category-footer-total")).not.toBeInTheDocument();
+
+    expect(refreshSpy).toHaveBeenCalledTimes(1);
+    expect(pnlSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
+  });
+
   it("applies a scenario rate only after the apply action", async () => {
     const user = userEvent.setup();
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
