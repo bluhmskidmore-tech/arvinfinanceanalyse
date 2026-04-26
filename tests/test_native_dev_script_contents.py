@@ -122,3 +122,33 @@ def test_dev_governance_maintenance_script_runs_compaction_and_layering():
     assert "dev-python.ps1" in script
     assert "compact_source_preview_governance.py" in script
     assert "build_source_manifest_layers.py" in script
+
+
+def test_codex_verify_page_script_plans_product_category_checks():
+    script = (ROOT / "scripts" / "codex-verify-page.ps1").read_text(encoding="utf-8")
+    assert "ValidateSet(\"product-category-pnl\")" in script
+    assert "DryRun" in script
+    assert "CODEx verify page" in script
+    assert "tests/test_project_mcp_servers.py" in script
+    assert "tests/test_product_category_pnl_flow.py" in script
+    assert "tests/test_product_category_mapping_contract.py" in script
+    assert "ProductCategoryPnlPage.test.tsx" in script
+    assert "ProductCategoryBranchSwitcher.test.tsx" in script
+    assert "productCategoryPnlPageModel.test.ts" in script
+    assert "npm.cmd" in script
+    assert "debt:audit" in script
+    assert "typecheck" in script
+
+
+def test_codex_page_smoke_script_emits_product_category_checklist():
+    script = (ROOT / "scripts" / "codex-page-smoke.ps1").read_text(encoding="utf-8")
+    assert "ValidateSet(\"product-category-pnl\")" in script
+    assert "CODEx page smoke" in script
+    assert "/product-category-pnl" in script
+    assert "/ui/pnl/product-category" in script
+    assert "Playwright MCP" in script
+    assert "no data" in script
+    assert "stale data" in script
+    assert "fallback" in script
+    assert "loading failure" in script
+    assert "ZQTZ holdings-side logic" in script
