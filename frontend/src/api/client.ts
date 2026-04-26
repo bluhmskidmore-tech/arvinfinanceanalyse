@@ -795,25 +795,18 @@ function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPa
       {
         row_key: "shibor_fixing",
         label: "Shibor fixing",
-        "1M": 1.412,
-        "3M": 1.4345,
-        "6M": 1.4535,
-        "9M": 1.4695,
-        "1Y": 1.4825,
+        "1M": 1.405,
+        "3M": 1.4275,
+        "6M": 1.4505,
+        "9M": 1.464,
+        "1Y": 1.478,
         quote_count: null,
       },
-      {
-        row_key: "quote_median",
-        label: "Quote median",
-        "1M": 1.44,
-        "3M": 1.45,
-        "6M": 1.48,
-        "9M": 1.49,
-        "1Y": 1.5,
-        quote_count: 287,
-      },
     ],
-    warnings: ["Proxy only; not actual NCD issuance matrix."],
+    warnings: [
+      "Proxy only; not actual NCD issuance matrix.",
+      "Using landed external warehouse Shibor; quote medians unavailable.",
+    ],
   };
 }
 

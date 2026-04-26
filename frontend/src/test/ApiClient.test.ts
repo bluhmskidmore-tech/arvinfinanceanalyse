@@ -3035,9 +3035,11 @@ describe("createApiClient", () => {
     const client = createApiClient({ mode: "mock" });
     const envelope = await client.getNcdFundingProxy();
     expect(envelope.result.is_actual_ncd_matrix).toBe(false);
-    expect(envelope.result.proxy_label).toContain("not NCD");
-    expect(envelope.result.warnings.some((w) => /proxy/i.test(w) || /NCD|matrix/i.test(w))).toBe(
-      true,
+    expect(envelope.result.rows).toHaveLength(1);
+    expect(envelope.result.rows[0].label).toBe("Shibor fixing");
+    expect(envelope.result.rows.some((row) => row.row_key === "quote_median")).toBe(false);
+    expect(envelope.result.warnings.join(" ")).toMatch(
+      /warehouse|landed|quote medians unavailable/i,
     );
   });
 

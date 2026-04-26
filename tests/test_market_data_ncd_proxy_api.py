@@ -73,6 +73,10 @@ def test_ncd_proxy_reads_landed_shibor_with_live_env_ignored(tmp_path, monkeypat
     assert payload.rows[0].tenor_1m == 1.412
     assert payload.rows[0].tenor_3m == 1.4345
     assert payload.rows[0].tenor_1y == 1.4825
+    assert payload.warnings == [
+        "Proxy only; not actual NCD issuance matrix.",
+        "Using landed external warehouse Shibor; quote medians unavailable.",
+    ]
 
     get_settings.cache_clear()
 
@@ -184,7 +188,10 @@ def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypat
                         "quote_count": None,
                     }
                 ],
-                "warnings": ["Proxy only; not actual NCD issuance matrix."],
+                "warnings": [
+                    "Proxy only; not actual NCD issuance matrix.",
+                    "Using landed external warehouse Shibor; quote medians unavailable.",
+                ],
             },
         },
     )
@@ -200,3 +207,7 @@ def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypat
     assert payload["result"]["proxy_label"] == "Tushare Shibor funding proxy"
     assert payload["result"]["is_actual_ncd_matrix"] is False
     assert payload["result"]["rows"][0]["label"] == "Shibor fixing"
+    assert payload["result"]["warnings"] == [
+        "Proxy only; not actual NCD issuance matrix.",
+        "Using landed external warehouse Shibor; quote medians unavailable.",
+    ]

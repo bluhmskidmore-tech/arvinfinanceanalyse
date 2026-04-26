@@ -925,13 +925,13 @@ def test_macro_bond_linkage_landed_equity_axes_flow_into_research_view_evidence(
 
     payload = svc.get_macro_bond_linkage(REPORT_DATE)["result"]
     views = {row["key"]: row for row in payload["research_views"]}
-    assert any("equity-bond" in item.lower() for item in views["duration"]["evidence"])
-    assert any("equity-bond" in item.lower() for item in views["credit"]["evidence"])
-    assert any("mega-cap" in item.lower() for item in views["credit"]["evidence"])
-    assert any("equity-bond" in item.lower() for item in views["instrument"]["evidence"])
-    assert any("mega-cap" in item.lower() for item in views["instrument"]["evidence"])
-    assert "equity" in views["duration"]["summary"].lower()
-    assert "equity" in views["credit"]["summary"].lower()
+    assert any("股债：" in item for item in views["duration"]["evidence"])
+    assert any("股债：" in item for item in views["credit"]["evidence"])
+    assert any("大票结构：" in item for item in views["credit"]["evidence"])
+    assert any("股债：" in item for item in views["instrument"]["evidence"])
+    assert any("大票结构：" in item for item in views["instrument"]["evidence"])
+    assert "股" in views["duration"]["summary"]
+    assert "股" in views["credit"]["summary"]
     assert "2026-04-10" in next(
         row for row in payload["transmission_axes"] if row["axis_key"] == "mega_cap_equities"
     )["summary"]
@@ -1070,7 +1070,7 @@ def test_duration_summary_mentions_equity_when_supportive_equity_axis_promotes_b
     )
 
     assert view.stance == "bullish"
-    assert "equity" in view.summary.lower()
+    assert "股债" in view.summary
 
 
 def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_already_make_it_bullish():
@@ -1140,7 +1140,7 @@ def test_duration_summary_does_not_overattribute_to_equity_when_global_rates_alr
     )
 
     assert view.stance == "bullish"
-    assert "because the equity-bond spread axis is supportive" not in view.summary.lower()
+    assert "股债相对估值传导轴偏有利" not in view.summary
 
 
 def test_mega_cap_equity_axis_uses_explicit_rule_table_thresholds():

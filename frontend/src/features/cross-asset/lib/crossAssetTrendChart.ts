@@ -51,38 +51,68 @@ export function buildCrossAssetTrendOption(series: ChoiceMacroLatestPoint[]): EC
       type: "line" as const,
       smooth: 0.25,
       showSymbol: false,
+      connectNulls: true,
       lineStyle: { width: 1.5, color: CHART_COLORS[idx % CHART_COLORS.length] },
       data: display,
+      emphasis: { lineStyle: { width: 2.25 } },
     };
   });
 
-  const s = designTokens.space;
   const fs = designTokens.fontSize;
   return {
     color: CHART_COLORS,
-    grid: { left: s[9], right: s[4], top: s[8], bottom: s[7] },
+    grid: { left: 8, right: 16, top: 20, bottom: 104, containLabel: true },
     legend: {
       type: "scroll",
-      top: s[1],
+      orient: "horizontal",
+      bottom: 0,
+      left: "center",
+      width: "92%",
+      itemWidth: 12,
+      itemHeight: 8,
+      itemGap: 10,
+      pageIconSize: 10,
+      pageTextStyle: { color: c.neutral[500] },
       textStyle: { fontSize: fs[11], color: c.neutral[500] },
+      padding: [2, 4, 6, 4],
     },
     tooltip: {
       trigger: "axis",
+      confine: true,
+      axisPointer: { type: "line", lineStyle: { color: c.neutral[300], width: 1, type: "dashed" } },
       backgroundColor: c.neutral[50],
       borderColor: c.neutral[200],
       borderWidth: 1,
       textStyle: { fontSize: fs[11], color: c.neutral[700] },
+      formatter: (raw: unknown) => {
+        if (!Array.isArray(raw) || raw.length === 0) {
+          return "";
+        }
+        const first = raw[0] as { axisValueLabel?: string; axisValue?: string };
+        const date = first.axisValueLabel ?? first.axisValue ?? "";
+        const lines = (raw as Array<{ marker?: string; seriesName?: string; value?: unknown }>).map((p) => {
+          const v = p.value;
+          const str =
+            v == null || (typeof v === "number" && Number.isNaN(v))
+              ? "—"
+              : typeof v === "number"
+                ? v.toFixed(1)
+                : String(v);
+          return `${p.marker ?? ""}${p.seriesName ?? ""}：${str}`;
+        });
+        return `${date}\n${lines.join("\n")}`;
+      },
     },
     xAxis: {
       type: "category",
       data: axisDates,
-      axisLabel: { fontSize: fs[11], color: c.neutral[500] },
+      axisLabel: { fontSize: fs[11], color: c.neutral[500], hideOverlap: true, margin: 10 },
       axisLine: { lineStyle: { color: c.neutral[300] } },
+      axisTick: { alignWithLabel: true },
     },
     yAxis: {
       type: "value",
-      name: "基期=100",
-      nameTextStyle: { fontSize: fs[11], color: c.neutral[500] },
+      scale: true,
       axisLabel: { fontSize: fs[11], color: c.neutral[500] },
       splitLine: { lineStyle: { color: c.neutral[200], opacity: 0.65 } },
     },

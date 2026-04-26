@@ -295,6 +295,13 @@
   max-width: 52ch !important;
 }
 
+.cross-asset-trend-chart {
+  min-width: 0;
+  width: 100%;
+  position: relative;
+  overflow: visible;
+}
+
 .cross-asset-drivers-page__panel-title {
   margin: 0 0 14px;
   font-size: 1rem;

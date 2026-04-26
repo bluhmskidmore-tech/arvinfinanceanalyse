@@ -163,18 +163,18 @@ EQUITY_BOND_SPREAD_RULES: tuple[EquityBondSpreadRule, ...] = (
         stance="restrictive",
         spread_min=4.0,
         index_pct_change_min=0.25,
-        summary="Equity-bond spread remains wide and equities are rising, which restrains bond risk appetite.",
+        summary="股债利差仍处高位且权益上行，对债市风险偏好形成压制。",
     ),
     EquityBondSpreadRule(
         stance="conflicted",
         spread_min=4.0,
         index_pct_change_max=-0.25,
-        summary="Equity-bond spread is wide, but equities are falling, leaving the cross-asset message conflicted.",
+        summary="股债利差虽宽，但权益走弱，跨资产信息存在冲突。",
     ),
     EquityBondSpreadRule(
         stance="supportive",
         spread_max=2.75,
-        summary="Equity-bond spread has compressed enough to support a more constructive bond view.",
+        summary="股债利差已压至一定区间，对债券观点可更建设性。",
     ),
 )
 
@@ -183,13 +183,13 @@ MEGA_CAP_EQUITY_RULES: tuple[MegaCapEquityRule, ...] = (
         stance="restrictive",
         concentration_min=22.0,
         index_pct_change_min=0.5,
-        summary="Mega-cap concentration is high and leadership is rising, which leans against adding bond beta aggressively.",
+        summary="大市值集中度高且龙头在走强，不宜激进加大债券久期/贝塔。",
     ),
     MegaCapEquityRule(
         stance="supportive",
         concentration_min=22.0,
         index_pct_change_max=-0.5,
-        summary="Mega-cap concentration is high but leadership is fading, which supports a more defensive equity backdrop for bonds.",
+        summary="大市值集中度高但龙头动能走弱，对债券而言权益侧更偏防御。",
     ),
 )
 
@@ -1095,11 +1095,11 @@ def _build_global_rates_axis(
 ) -> MacroBondTransmissionAxisResult:
     stance = _axis_stance_from_score(macro_environment.rate_direction_score, reverse=True)
     if stance == "supportive":
-        summary = "Rate direction signals are easing and support adding duration risk."
+        summary = "利率方向信号偏宽松，对拉长久期风险有支撑。"
     elif stance == "restrictive":
-        summary = "Rate direction signals are tightening and argue for tighter duration risk budgets."
+        summary = "利率方向信号偏紧，宜收紧久期风险预算。"
     else:
-        summary = "Rate direction is mixed and does not justify a strong duration call."
+        summary = "利率方向信号混杂，不宜给出强烈的久期方向判断。"
     return MacroBondTransmissionAxisResult(
         axis_key="global_rates",
         status="ready",
@@ -1116,11 +1116,11 @@ def _build_liquidity_axis(
 ) -> MacroBondTransmissionAxisResult:
     stance = _axis_stance_from_score(macro_environment.liquidity_score)
     if stance == "supportive":
-        summary = "Funding conditions are supportive and favor rates, NCD carry, and high-grade credit."
+        summary = "资金环境偏松，对利率、NCD 票息与高等级信用更友好。"
     elif stance == "restrictive":
-        summary = "Funding conditions are restrictive and argue against extending risk through NCD or credit."
+        summary = "资金环境偏紧，不宜通过 NCD 或信用过度拉长风险。"
     else:
-        summary = "Liquidity conditions are balanced and warrant neutral implementation."
+        summary = "流动性环境中性，宜保持中性的实现与久期/敞口。"
     return MacroBondTransmissionAxisResult(
         axis_key="liquidity",
         status="ready",
@@ -1139,13 +1139,13 @@ def _build_commodities_inflation_axis(
     growth_stance = _axis_stance_from_score(macro_environment.growth_score, neutral_threshold=0.2)
     stance = _merge_axis_stances(inflation_stance, growth_stance)
     if stance == "supportive":
-        summary = "Inflation pressure is subdued enough to support rates and high-grade spread carry."
+        summary = "通胀压力相对温和，对利率端与高等级利差票息有支撑。"
     elif stance == "restrictive":
-        summary = "Inflation and growth pressure argue against aggressive duration or spread compression calls."
+        summary = "通胀与增长压力并存，不宜激进拉长久期或押注利差压缩。"
     elif stance == "conflicted":
-        summary = "Growth and inflation signals conflict, so commodity-linked inflation pressure is inconclusive."
+        summary = "增长与通胀信号打架，商品关联的通胀压力尚难定论。"
     else:
-        summary = "Commodity and inflation signals are neutral for current bond research views."
+        summary = "商品与通胀信号对当前债市研究判断整体中性。"
     return MacroBondTransmissionAxisResult(
         axis_key="commodities_inflation",
         status="ready",
@@ -1163,10 +1163,10 @@ def _build_equity_bond_spread_axis(
     if signal is None:
         return _build_pending_axis(
             axis_key="equity_bond_spread",
-            summary="Pending governed equity spread proxy; do not infer from unrelated signals.",
+            summary="受治理的股债利差代理未就绪，请勿用无关序列推断。",
             impacted_views=["duration", "credit"],
             required_series_ids=["tushare.index.000300.SH.daily", "tushare.index.000300.SH.dailybasic"],
-            warnings=["missing governed proxy series"],
+            warnings=["受治理的代理序列缺失"],
         )
 
     matched_rule = _match_equity_bond_spread_rule(signal)
@@ -1174,9 +1174,8 @@ def _build_equity_bond_spread_axis(
     pct_change = signal.index_pct_change
     move_text = f"{pct_change:.2f}%" if pct_change is not None else "n/a"
     context = (
-        f"CSI300 equity-bond spread is {signal.spread_pct:.2f}ppt "
-        f"(earnings yield {signal.earnings_yield_pct:.2f}% - CN10Y {signal.bond_yield_pct:.2f}%), "
-        f"with CSI300 move {move_text} on {signal.trade_date.isoformat()}."
+        f"沪深300 股债溢价约 {signal.spread_pct:.2f} 个百分点（盈利收益率 {signal.earnings_yield_pct:.2f}% - 中债 10Y {signal.bond_yield_pct:.2f}%），"
+        f"指数当日涨跌 {move_text}，交易日 {signal.trade_date.isoformat()}。"
     )
     summary = f"{matched_rule.summary} {context}" if matched_rule is not None else context
     return MacroBondTransmissionAxisResult(
@@ -1196,10 +1195,10 @@ def _build_mega_cap_equities_axis(
     if signal is None:
         return _build_pending_axis(
             axis_key="mega_cap_equities",
-            summary="Pending governed mega-cap equity leadership proxy; do not infer from unrelated signals.",
+            summary="受治理的大市值龙头代理未就绪，请勿用无关序列推断。",
             impacted_views=["credit", "instrument"],
             required_series_ids=["tushare.index.000300.SH.weight"],
-            warnings=["missing governed proxy series"],
+            warnings=["受治理的代理序列缺失"],
         )
 
     matched_rule = _match_mega_cap_equity_rule(signal)
@@ -1207,9 +1206,9 @@ def _build_mega_cap_equities_axis(
     leaders = ", ".join(signal.leading_constituents[:3]) or "n/a"
     move_text = f"{signal.index_pct_change:.2f}%" if signal.index_pct_change is not None else "n/a"
     context = (
-        f"CSI300 top10 weight concentration is {signal.top10_weight_sum:.2f}% "
-        f"(top5 {signal.top5_weight_sum:.2f}%) on {signal.weight_trade_date.isoformat()}, with latest index move {move_text}; "
-        f"leaders include {leaders}."
+        f"沪深300 前十大成分股权重合计 {signal.top10_weight_sum:.2f}%（前五大 {signal.top5_weight_sum:.2f}%），"
+        f"权重日 {signal.weight_trade_date.isoformat()}，最近指数涨跌幅 {move_text}；"
+        f"主要龙头包括 {leaders}。"
     )
     summary = f"{matched_rule.summary} {context}" if matched_rule is not None else context
     return MacroBondTransmissionAxisResult(
@@ -1309,23 +1308,23 @@ def _build_duration_view(
         and equity_axis.status == "ready"
         and equity_axis.stance == "supportive"
     ):
-        summary = "Backend research supports longer duration because the equity-bond spread axis is supportive."
+        summary = "研究判断倾向更长久期：股债相对估值传导轴偏有利。"
     elif stance == "bullish":
-        summary = "Backend research supports longer duration across rates, NCD, and high-grade credit."
+        summary = "研究判断倾向在利率、NCD 与高等级信用上拉长或维持久期空间。"
     elif stance == "bearish":
-        summary = "Backend research favors keeping duration tight across rates, NCD, and high-grade credit."
+        summary = "研究判断倾向在利率、NCD 与高等级信用上保持偏紧的久期。"
     elif stance == "conflicted" and equity_axis.status == "ready" and equity_axis.stance == "restrictive":
-        summary = "Duration inputs conflict: rates are supportive, but the equity-bond spread axis is restrictive."
+        summary = "久期判断存在冲突：利率侧偏有利，但股债相对估值轴偏紧。"
     elif stance == "conflicted":
-        summary = "Duration inputs conflict across rate direction and inflation pressure; keep duration balanced."
+        summary = "利率方向与通胀/商品压力在久期上存在冲突，宜保持久期平衡。"
     else:
-        summary = "Duration inputs are mixed, so keep the duration stance neutral."
+        summary = "久期相关输入偏混杂，久期上宜保持中性。"
     evidence = [
-        f"global_rates: {global_axis.summary}",
-        f"liquidity: {liquidity_axis.summary}",
+        f"全球利率：{global_axis.summary}",
+        f"流动性：{liquidity_axis.summary}",
     ]
     if equity_axis.status == "ready":
-        evidence.append(f"equity-bond: {equity_axis.summary}")
+        evidence.append(f"股债：{equity_axis.summary}")
     top_duration = _find_top_correlation(correlations, {"treasury", "cdb"})
     if top_duration is not None:
         evidence.append(_format_correlation_evidence(top_duration))
@@ -1361,14 +1360,14 @@ def _build_curve_view(
         stance = "conflicted"
 
     summary = {
-        "bullish": "Curve conditions favor owning front-end rates and NCD carry rather than flattening defensively.",
-        "bearish": "Curve conditions argue for staying defensive on rates and NCD curve exposure.",
-        "conflicted": "Curve inputs disagree across duration and liquidity; avoid a large curve tilt.",
-        "neutral": "Curve inputs are balanced and do not support a strong rates or NCD curve tilt.",
+        "bullish": "曲线环境更偏持有短端与 NCD 票息，而非为防御而过度拉平。",
+        "bearish": "曲线环境对利率与 NCD 曲线风险暴露偏防御。",
+        "conflicted": "久期与流动性在曲线上的信号不一致，避免大幅曲线押注。",
+        "neutral": "曲线输入较均衡，不支撑强烈的利率或 NCD 曲线倾向。",
     }[stance]
     evidence = [
-        f"global_rates: {global_axis.summary}",
-        f"liquidity: {liquidity_axis.summary}",
+        f"全球利率：{global_axis.summary}",
+        f"流动性：{liquidity_axis.summary}",
     ]
     top_curve = _find_top_correlation(correlations, {"treasury", "cdb"})
     if top_curve is not None:
@@ -1420,23 +1419,23 @@ def _build_credit_view(
         and mega_cap_axis.status == "ready"
         and mega_cap_axis.stance == "restrictive"
     ):
-        summary = "High-grade credit should stay defensive because both equity-bond spread and mega-cap leadership are restrictive."
+        summary = "股债相对估值与大市值结构两条轴均偏紧，高等级信用宜保持防守。"
     elif stance == "bullish":
-        summary = "High-grade credit is supported, but the tranche remains limited to high-grade spread risk only."
+        summary = "高等级信用有支撑，但范围仍应限定在高等级的利差/票息内。"
     elif stance == "bearish":
-        summary = "High-grade credit should stay defensive while liquidity or inflation pressure remains restrictive."
+        summary = "在流动性或通胀/商品端仍偏紧时，高等级信用宜守势。"
     elif stance == "conflicted":
-        summary = "High-grade credit inputs conflict; keep spread exposure selective and high quality only."
+        summary = "高等级信用各输入有冲突，利差敞口应精选、只做高质量。"
     else:
-        summary = "High-grade credit inputs are balanced, so keep spread exposure neutral."
+        summary = "高等级信用各输入较均衡，利差敞口宜中性。"
     evidence = [
-        f"liquidity: {liquidity_axis.summary}",
-        f"commodities_inflation: {inflation_axis.summary}",
+        f"流动性：{liquidity_axis.summary}",
+        f"商品与通胀：{inflation_axis.summary}",
     ]
     if equity_axis.status == "ready":
-        evidence.append(f"equity-bond: {equity_axis.summary}")
+        evidence.append(f"股债：{equity_axis.summary}")
     if mega_cap_axis.status == "ready":
-        evidence.append(f"mega-cap: {mega_cap_axis.summary}")
+        evidence.append(f"大票结构：{mega_cap_axis.summary}")
     top_credit = _find_top_correlation(correlations, {"credit_spread", "aaa_credit"})
     if top_credit is not None:
         evidence.append(_format_correlation_evidence(top_credit))
@@ -1483,20 +1482,20 @@ def _build_instrument_view(
         stance = "neutral"
 
     summary = {
-        "bullish": "Prefer rates first, then NCD carry, with high-grade credit as a controlled extension.",
-        "bearish": "Keep implementation defensive across rates, NCD, and high-grade credit until pressure eases.",
-        "conflicted": "Instrument preferences are mixed; keep allocations balanced across rates, NCD, and high-grade credit.",
-        "neutral": "No strong instrument tilt is supported across rates, NCD, and high-grade credit.",
+        "bullish": "配置顺序上优先利率，其次 NCD 票息，高等级信用在可控范围内延伸。",
+        "bearish": "在压力未缓解前，对利率、NCD 与高等级信用的实现均偏防守。",
+        "conflicted": "各品种倾向混杂，在利率、NCD 与高等级信用间保持均衡。",
+        "neutral": "在利率、NCD 与高等级信用上无强烈品种偏斜。",
     }[stance]
     evidence = [
-        f"global_rates: {global_axis.summary}",
-        f"liquidity: {liquidity_axis.summary}",
-        f"commodities_inflation: {inflation_axis.summary}",
+        f"全球利率：{global_axis.summary}",
+        f"流动性：{liquidity_axis.summary}",
+        f"商品与通胀：{inflation_axis.summary}",
     ]
     if equity_axis.status == "ready":
-        evidence.append(f"equity-bond: {equity_axis.summary}")
+        evidence.append(f"股债：{equity_axis.summary}")
     if mega_cap_axis.status == "ready":
-        evidence.append(f"mega-cap: {mega_cap_axis.summary}")
+        evidence.append(f"大票结构：{mega_cap_axis.summary}")
     top_instrument = _find_top_correlation(correlations, {"treasury", "cdb", "credit_spread", "aaa_credit"})
     if top_instrument is not None:
         evidence.append(_format_correlation_evidence(top_instrument))
@@ -1564,8 +1563,8 @@ def _format_correlation_evidence(correlation: MacroBondCorrelation) -> str:
     target_label = family if tenor is None else f"{family} {tenor}"
     strength = _correlation_rank(correlation)
     return (
-        f"Top supported correlation: {correlation.series_name} vs {target_label} "
-        f"(strength {round(strength, 3)}, lead_lag_days {correlation.lead_lag_days})."
+        f"主相关：{correlation.series_name} 对 {target_label} "
+        f"（强度 {round(strength, 3)}，领先滞后 {correlation.lead_lag_days} 日）。"
     )
 
 

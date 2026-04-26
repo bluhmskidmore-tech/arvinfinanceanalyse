@@ -489,27 +489,32 @@ describe("crossAssetDriversPageModel", () => {
       available: true,
       result: {
         as_of_date: "2026-04-23",
-        proxy_label: "Test proxy",
+        proxy_label: "Tushare Shibor funding proxy",
         is_actual_ncd_matrix: false,
         rows: [
           {
-            row_key: "a",
-            label: "Row A",
-            "1M": 1.1,
-            "3M": 1.2,
-            "6M": null,
-            "9M": null,
-            "1Y": 1.4,
-            quote_count: 1,
+            row_key: "shibor_fixing",
+            label: "Shibor fixing",
+            "1M": 1.405,
+            "3M": 1.4275,
+            "6M": 1.4505,
+            "9M": 1.464,
+            "1Y": 1.478,
+            quote_count: null,
           },
         ],
-        warnings: ["Proxy only."],
+        warnings: [
+          "Proxy only; not actual NCD issuance matrix.",
+          "Using landed external warehouse Shibor; quote medians unavailable.",
+        ],
       },
     });
     expect(evidence.isActualNcdMatrix).toBe(false);
-    expect(evidence.proxyWarning).toContain("Proxy");
-    expect(evidence.proxyWarning).toMatch(/代理|Proxy|不是真实|not an actual/i);
-    expect(evidence.rowCaptions[0]).toContain("Row A");
+    expect(evidence.proxyWarning).toMatch(/not actual NCD issuance matrix/i);
+    expect(evidence.proxyWarning).toMatch(/warehouse|landed|quote medians unavailable/i);
+    expect(evidence.rowCaptions[0]).toContain("Shibor fixing");
+    expect(evidence.rowCaptions[0]).toContain("9M 1.464");
+    expect(evidence.rowCaptions.some((line) => /Quote median/i.test(line))).toBe(false);
 
     const actions = buildCrossAssetCandidateActions({
       env: {},
@@ -520,10 +525,15 @@ describe("crossAssetDriversPageModel", () => {
         proxy_label: "Test proxy",
         is_actual_ncd_matrix: false,
         rows: [],
-        warnings: ["Proxy only."],
+        warnings: [
+          "Proxy only; not actual NCD issuance matrix.",
+          "Using landed external warehouse Shibor; quote medians unavailable.",
+        ],
       },
     });
     expect(actions[0].action).toContain("NCD");
+    expect(actions[0].reason).toMatch(/not actual NCD issuance matrix/i);
+    expect(actions[0].reason).toMatch(/quote medians unavailable/i);
     expect(actions[0].action).not.toMatch(/真实|actual\s+NCD\s+issuance\s+matrix/i);
   });
 
@@ -643,6 +653,6 @@ describe("crossAssetDriversPageModel", () => {
     expect(actions[0].reason.toLowerCase()).toContain("duration");
     expect(actions.some((row) => row.evidence.includes("global_rates"))).toBe(true);
     expect(watchRows[0].note).toContain("duration");
-    expect(watchRows[0].signalText).toContain("Global rates");
+    expect(watchRows[0].signalText).toContain("全球利率");
   });
 });

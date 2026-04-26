@@ -26,6 +26,7 @@ import {
   buildCrossAssetWatchList,
   buildResearchSummaryCards,
   buildTransmissionAxisRows,
+  formatImpactedViewsForDisplay,
   formatLinkageCorrelationDisplay,
   type CrossAssetClassAnalysisLine,
   type CrossAssetClassAnalysisRow,
@@ -247,7 +248,7 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
           传导主线
         </h2>
         <p style={{ margin: 0, color: t.color.neutral[600], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
-          Unsupported axes stay visible as pending signals instead of being inferred from unrelated data.
+          缺数据的主线会标为「待信号」，不会用无关序列去硬猜结论。
         </p>
       </div>
       <div style={{ display: "grid", gap: t.space[3] }}>
@@ -267,14 +268,17 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
             <div style={{ display: "flex", justifyContent: "space-between", gap: t.space[2], alignItems: "center" }}>
               <div style={{ fontSize: t.fontSize[14], fontWeight: 700, color: t.color.neutral[900] }}>{row.label}</div>
               <div style={{ display: "flex", gap: t.space[2], flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={row.status === "ready" ? "ready" : "pending_signal"} />
-                <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={row.source} />
+                <StatusPill
+                  status={row.status === "ready" ? "normal" : "caution"}
+                  label={row.status === "ready" ? "已就绪" : "待信号"}
+                />
+                <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={row.source === "backend" ? "后端" : "兜底"} />
               </div>
             </div>
             <div style={{ display: "flex", gap: t.space[2], flexWrap: "wrap" }}>
-              <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.stance} />
+              <StatusPill status={row.status === "ready" ? "normal" : "warning"} label={row.stanceLabel} />
               {row.impactedViews.length > 0 ? (
-                <StatusPill status="caution" label={`views ${row.impactedViews.join(", ")}`} />
+                <StatusPill status="caution" label={`影响：${formatImpactedViewsForDisplay(row.impactedViews)}`} />
               ) : null}
             </div>
             <p style={{ margin: 0, color: t.color.neutral[700], fontSize: t.fontSize[13], lineHeight: t.lineHeight.relaxed }}>
@@ -282,7 +286,7 @@ function TransmissionAxesPanel({ rows }: { rows: CrossAssetTransmissionAxisRow[]
             </p>
             {row.requiredSeriesIds.length > 0 ? (
               <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[500] }}>
-                Required series: {row.requiredSeriesIds.join(", ")}
+                依赖序列：{row.requiredSeriesIds.join("、")}
               </div>
             ) : null}
             {row.warnings.length > 0 ? (
@@ -862,11 +866,13 @@ export default function CrossAssetDriversPage() {
                 所有序列使用首日 = 100 的归一化结果，便于直接比较方向与节奏。
               </p>
               {latestQuery.isLoading ? (
-                <div style={{ height: 320, display: "flex", alignItems: "center", justifyContent: "center", color: t.color.neutral[500] }}>
+                <div style={{ height: 360, display: "flex", alignItems: "center", justifyContent: "center", color: t.color.neutral[500] }}>
                   正在加载宏观序列…
                 </div>
               ) : trendOption ? (
-                <ReactECharts option={trendOption} style={{ height: 320, width: "100%" }} notMerge lazyUpdate />
+                <div className="cross-asset-trend-chart" style={{ minWidth: 0, width: "100%" }}>
+                  <ReactECharts option={trendOption} style={{ height: 360, width: "100%" }} notMerge lazyUpdate />
+                </div>
               ) : (
                 <div style={{ height: 200, color: t.color.neutral[500], fontSize: t.fontSize[13] }}>
                   当前没有足够历史点，无法绘制跨资产走势。

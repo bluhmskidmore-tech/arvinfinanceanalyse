@@ -728,25 +728,18 @@ describe("MarketDataPage", () => {
           {
             row_key: "shibor_fixing",
             label: "Shibor fixing",
-            "1M": 1.412,
-            "3M": 1.4345,
-            "6M": 1.4535,
-            "9M": 1.4695,
-            "1Y": 1.4825,
+            "1M": 1.405,
+            "3M": 1.4275,
+            "6M": 1.4505,
+            "9M": 1.464,
+            "1Y": 1.478,
             quote_count: null,
           },
-          {
-            row_key: "quote_median",
-            label: "Quote median",
-            "1M": 1.44,
-            "3M": 1.45,
-            "6M": 1.48,
-            "9M": 1.49,
-            "1Y": 1.5,
-            quote_count: 287,
-          },
         ],
-        warnings: ["Proxy only; not actual NCD issuance matrix."],
+        warnings: [
+          "Using landed external warehouse Shibor; quote medians unavailable.",
+          "Proxy only; not actual NCD issuance matrix.",
+        ],
       },
     }));
 
@@ -758,10 +751,11 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("market-data-ncd-matrix")).toBeInTheDocument();
     expect(await screen.findByText("Tushare Shibor funding proxy")).toBeInTheDocument();
     expect(await screen.findByText("Shibor fixing")).toBeInTheDocument();
-    expect(await screen.findByText("Quote median")).toBeInTheDocument();
-    expect(await screen.findByText(/not actual NCD issuance matrix/i)).toBeInTheDocument();
-    expect(await screen.findByText("1.412")).toBeInTheDocument();
-    expect(await screen.findByText("1.500")).toBeInTheDocument();
+    expect(screen.queryByText("Quote median")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/quote medians unavailable|not actual NCD issuance matrix/i),
+    ).toBeInTheDocument();
+    expect(await screen.findByText("1.405")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("tr_ncd_proxy_test");
     expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("vendor_status=ok");
   });

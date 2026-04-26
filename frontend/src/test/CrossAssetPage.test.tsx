@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 
@@ -163,6 +163,11 @@ describe("CrossAssetPage", () => {
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
     expect(await screen.findByTestId("cross-asset-ncd-proxy")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-ncd-proxy-warning")).toBeInTheDocument();
+    await waitFor(() => {
+      const warning = screen.getByTestId("cross-asset-ncd-proxy-warning");
+      expect(warning).toHaveTextContent(/not actual NCD issuance matrix/i);
+      expect(warning).toHaveTextContent(/landed|quote medians unavailable/i);
+    });
     expect(await screen.findByText("Duration view favors adding exposure.")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-research-views")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-transmission-axes")).toBeInTheDocument();
@@ -175,6 +180,8 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent(
       "Global rates cap aggressive long-end chasing.",
     );
+    expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent("已就绪");
+    expect(screen.getByTestId("cross-asset-transmission-axis-global_rates")).toHaveTextContent("偏紧");
     expect(screen.getByTestId("cross-asset-transmission-axis-equity_bond_spread")).toHaveTextContent(
       "CSI300 equity-bond spread",
     );

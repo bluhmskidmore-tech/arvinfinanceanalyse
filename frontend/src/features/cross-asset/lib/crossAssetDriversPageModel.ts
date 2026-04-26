@@ -35,11 +35,11 @@ const RESEARCH_VIEW_LABEL: Record<(typeof RESEARCH_VIEW_ORDER)[number], string> 
 };
 
 const TRANSMISSION_AXIS_LABEL: Record<(typeof TRANSMISSION_AXIS_ORDER)[number], string> = {
-  global_rates: "Global rates",
-  liquidity: "Liquidity",
-  equity_bond_spread: "Equity-bond spread",
-  commodities_inflation: "Commodities and inflation",
-  mega_cap_equities: "Mega-cap equities",
+  global_rates: "全球利率",
+  liquidity: "流动性",
+  equity_bond_spread: "股债相对估值",
+  commodities_inflation: "商品与通胀",
+  mega_cap_equities: "大市值结构",
 };
 
 export type CrossAssetStatusFlag = {
@@ -65,7 +65,10 @@ export type CrossAssetTransmissionAxisRow = {
   axisKey: string;
   label: string;
   status: "ready" | "pending_signal";
+  /** 经 normalizeLabel，与后端原始 stance 对应，供 tone/证据字符串使用 */
   stance: string;
+  /** 侧栏/卡片上展示的短中文标签 */
+  stanceLabel: string;
   summary: string;
   impactedViews: string[];
   requiredSeriesIds: string[];
@@ -158,7 +161,7 @@ function hasPublicSupplementSeries(series: ChoiceMacroLatestPoint[]) {
 }
 
 function ncdRowCaption(row: NcdFundingProxyPayload["rows"][number]) {
-  const parts = (["1M", "3M", "6M", "1Y"] as const)
+  const parts = (["1M", "3M", "6M", "9M", "1Y"] as const)
     .map((k) => (row[k] != null ? `${k} ${row[k]}` : null))
     .filter(Boolean);
   return `${row.label}: ${parts.join(" · ")}`;
@@ -184,11 +187,12 @@ export function buildCrossAssetNcdProxyEvidence(input: {
     payload.is_actual_ncd_matrix === false
       ? "此为资金利率代理，不是真实 NCD 发行矩阵；禁止当作正式 NCD 表使用。"
       : "后端标记为实际矩阵，仍请核对数据血缘。";
+  const warnings = payload.warnings.map((warning) => warning.trim()).filter(Boolean);
   return {
     asOfDate: payload.as_of_date,
     proxyLabel: payload.proxy_label,
     isActualNcdMatrix: payload.is_actual_ncd_matrix,
-    proxyWarning: (payload.warnings[0] ?? defaultProxyWarn).trim(),
+    proxyWarning: warnings.length > 0 ? warnings.join(" ") : defaultProxyWarn,
     rowCaptions: payload.rows.slice(0, 3).map((row) => ncdRowCaption(row)),
     sourceMeta: "backend",
   };
@@ -300,6 +304,32 @@ function normalizeLabel(value: string) {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+/** UI 短标签；原始 stance 仍保留在 `row.stance` 供逻辑与 tone 判断 */
+function transmissionStanceLabel(raw: string): string {
+  const key = raw.trim().toLowerCase().replace(/\s+/g, "_");
+  const table: Record<string, string> = {
+    supportive: "偏有利",
+    neutral: "中性",
+    restrictive: "偏紧",
+    conflicted: "有冲突",
+    risk_on: "风险偏强",
+    risk_off: "风险偏弱",
+  };
+  return table[key] ?? normalizeLabel(raw);
+}
+
+/** 将 impacted_views 的 key 译成与研究判断区一致的短名 */
+export function formatImpactedViewsForDisplay(views: string[]): string {
+  return views
+    .map((k) => {
+      if ((RESEARCH_VIEW_ORDER as readonly string[]).includes(k)) {
+        return RESEARCH_VIEW_LABEL[k as (typeof RESEARCH_VIEW_ORDER)[number]];
+      }
+      return k;
+    })
+    .join("、");
 }
 
 function stanceTone(stance: string): ActionTone {
@@ -507,6 +537,7 @@ function transmissionAxisFromSource(
     label: typedKey ? TRANSMISSION_AXIS_LABEL[typedKey] : normalizeLabel(axis.axis_key),
     status: axis.status,
     stance: normalizeLabel(axis.stance),
+    stanceLabel: transmissionStanceLabel(axis.stance),
     summary: axis.summary,
     impactedViews: axis.impacted_views ?? [],
     requiredSeriesIds: axis.required_series_ids ?? [],
@@ -1023,10 +1054,11 @@ export function buildCrossAssetCandidateActions(input: {
   const rows: CrossAssetCandidateAction[] = [];
   const ncd = input.ncdProxy;
   if (ncd && ncd.is_actual_ncd_matrix === false) {
+    const warnings = ncd.warnings.map((warning) => warning.trim()).filter(Boolean);
     rows.push({
       tone: "warning",
       action: "将 NCD/资金仅视为代理旁证。",
-      reason: ncd.warnings[0] ?? "Not an actual NCD issuance matrix.",
+      reason: warnings.length > 0 ? warnings.join(" ") : "Not an actual NCD issuance matrix.",
       evidence: ncd.proxy_label,
     });
   }
