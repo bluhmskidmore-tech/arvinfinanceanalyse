@@ -123,7 +123,6 @@ function buildResearchCalendarEventNoteShort(event: ResearchCalendarApiEventRow)
   if (parts.length > 0) {
     return parts.join(" · ");
   }
-  const issuer = event.issuer?.trim();
   return [researchCalendarInstrumentZh(event.instrument_type), term]
     .filter((s) => Boolean(s && String(s).length > 0))
     .join(" · ") || null;
