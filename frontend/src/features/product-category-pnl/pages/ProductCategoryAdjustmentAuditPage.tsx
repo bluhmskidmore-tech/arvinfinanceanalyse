@@ -12,6 +12,7 @@ import type {
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
 import { nextDefaultReportDateIfUnset } from "./productCategoryPnlPageModel";
+import { buildProductCategoryAuditListExportQuery } from "./productCategoryAdjustmentAuditPageModel";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -394,19 +395,10 @@ function LegacyProductCategoryAdjustmentAuditBody() {
 
   async function handleExport() {
     try {
-      const payload = await client.exportProductCategoryManualAdjustmentsCsv(selectedDate, {
-        adjustmentId: appliedFilters.adjustmentId,
-        adjustmentIdExact: appliedFilters.adjustmentIdExact,
-        accountCode: appliedFilters.accountCode,
-        approvalStatus: appliedFilters.approvalStatus,
-        eventType: appliedFilters.eventType,
-        currentSortField: appliedFilters.currentSortField,
-        currentSortDir: appliedFilters.currentSortDir,
-        eventSortField: appliedFilters.eventSortField,
-        eventSortDir: appliedFilters.eventSortDir,
-        createdAtFrom: appliedFilters.createdAtFrom,
-        createdAtTo: appliedFilters.createdAtTo,
-      });
+      const payload = await client.exportProductCategoryManualAdjustmentsCsv(
+        selectedDate,
+        buildProductCategoryAuditListExportQuery(appliedFilters),
+      );
       downloadAuditCsv(payload.filename, payload.content);
     } catch (error) {
       setAdjustmentError(error instanceof Error ? error.message : "导出审计失败");

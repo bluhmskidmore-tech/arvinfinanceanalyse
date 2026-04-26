@@ -206,7 +206,7 @@ describe("createApiClient", () => {
   });
 
   it("uses real mode to fetch executive endpoints", async () => {
-    const fetchMock = vi.fn(async () => ({
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => ({
       ok: true,
       json: async () => ({
         result_meta: {
@@ -2116,6 +2116,74 @@ describe("createApiClient", () => {
         }),
       }),
     );
+  });
+
+  it("uses the same filter and sort query keys for real-mode list and export (export omits pagination only)", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        report_date: "2026-02-28",
+        adjustment_count: 0,
+        adjustment_limit: 5,
+        adjustment_offset: 10,
+        event_total: 0,
+        event_limit: 10,
+        event_offset: 20,
+        adjustments: [],
+        events: [],
+      }),
+      headers: new Headers({
+        "Content-Disposition": 'attachment; filename="x.csv"',
+      }),
+      text: async () => "",
+    }));
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const shared = {
+      adjustmentId: "pca-1",
+      adjustmentIdExact: true,
+      accountCode: "5140",
+      approvalStatus: "approved",
+      eventType: "edited",
+      currentSortField: "account_code" as const,
+      currentSortDir: "asc" as const,
+      eventSortField: "event_type" as const,
+      eventSortDir: "desc" as const,
+      createdAtFrom: "2026-04-10T00:00:00Z",
+      createdAtTo: "2026-04-10T23:59:59Z",
+    };
+
+    await client.getProductCategoryManualAdjustments("2026-02-28", {
+      ...shared,
+      adjustmentLimit: 5,
+      adjustmentOffset: 10,
+      limit: 10,
+      offset: 20,
+    });
+    await client.exportProductCategoryManualAdjustmentsCsv("2026-02-28", shared);
+
+    const fetchCalls = fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit?]>;
+    const listUrl = new URL(String(fetchCalls[0]?.[0]));
+    const exportUrl = new URL(String(fetchCalls[1]?.[0]));
+    const listParams = listUrl.searchParams;
+    const exportParams = exportUrl.searchParams;
+
+    for (const key of exportParams.keys()) {
+      expect(exportParams.get(key)).toBe(listParams.get(key));
+    }
+    expect(listParams.get("adjustment_limit")).toBe("5");
+    expect(listParams.get("adjustment_offset")).toBe("10");
+    expect(listParams.get("limit")).toBe("10");
+    expect(listParams.get("offset")).toBe("20");
+    expect(exportParams.has("adjustment_limit")).toBe(false);
+    expect(exportParams.has("adjustment_offset")).toBe(false);
+    expect(exportParams.has("limit")).toBe(false);
+    expect(exportParams.has("offset")).toBe(false);
   });
 
   it("uses real mode to revoke a product-category manual adjustment", async () => {

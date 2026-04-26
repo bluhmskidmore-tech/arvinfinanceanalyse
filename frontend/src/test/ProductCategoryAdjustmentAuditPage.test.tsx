@@ -6,8 +6,43 @@ import { vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
 import type { ProductCategoryManualAdjustmentQuery } from "../api/contracts";
+import { buildProductCategoryAuditListExportQuery } from "../features/product-category-pnl/pages/productCategoryAdjustmentAuditPageModel";
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
+
+function manualAdjustmentListOptionsWithoutPagination(
+  options: ProductCategoryManualAdjustmentQuery & {
+    adjustmentLimit?: number;
+    adjustmentOffset?: number;
+    limit?: number;
+    offset?: number;
+  },
+) {
+  const { adjustmentLimit: _a, adjustmentOffset: _b, limit: _l, offset: _o, ...rest } = options;
+  return rest;
+}
+
+describe("buildProductCategoryAuditListExportQuery", () => {
+  it("keeps the same filter + current_sort_* + event_sort_* fields the list call uses, without pagination", () => {
+    const applied: ProductCategoryManualAdjustmentQuery = {
+      adjustmentId: "x",
+      adjustmentIdExact: true,
+      accountCode: "5140",
+      approvalStatus: "approved",
+      eventType: "edited",
+      currentSortField: "approval_status",
+      currentSortDir: "asc",
+      eventSortField: "event_type",
+      eventSortDir: "asc",
+      createdAtFrom: "2026-01-01T00:00:00Z",
+      createdAtTo: "2026-12-31T00:00:00Z",
+    };
+    const listPayload = { ...applied, adjustmentLimit: 3, adjustmentOffset: 2, limit: 5, offset: 1 };
+    expect(manualAdjustmentListOptionsWithoutPagination(listPayload)).toEqual(
+      buildProductCategoryAuditListExportQuery(applied),
+    );
+  });
+});
 
 function renderAuditPageWithClient(client: ReturnType<typeof createApiClient>) {
   const router = createWorkbenchMemoryRouter(["/product-category-pnl/audit"]);
@@ -276,6 +311,100 @@ describe("ProductCategoryAdjustmentAuditPage", () => {
         offset: 2,
       });
     });
+  });
+
+  it("CSV export uses the same applied filter+sort as the list request (omits only pagination options)", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const exportSpy = vi.fn(async () => ({
+      filename: "export.csv",
+      content: "x",
+    }));
+    const listSpy = vi.fn(async (_reportDate: string, _options?: ProductCategoryManualAdjustmentQuery) => ({
+      report_date: "2026-02-28",
+      adjustment_count: 1,
+      adjustment_limit: 20,
+      adjustment_offset: 0,
+      event_total: 0,
+      event_limit: 20,
+      event_offset: 0,
+      adjustments: [
+        {
+          adjustment_id: "pca-dummy",
+          event_type: "created",
+          created_at: "2026-04-10T10:00:00Z",
+          stream: "product_category_pnl_adjustments",
+          report_date: "2026-02-28",
+          operator: "DELTA",
+          approval_status: "approved",
+          account_code: "51400000000",
+          currency: "CNX",
+          account_name: "dummy",
+        },
+      ],
+      events: [],
+    }));
+
+    renderAuditPageWithClient({
+      ...baseClient,
+      getProductCategoryManualAdjustments: listSpy,
+      exportProductCategoryManualAdjustmentsCsv: exportSpy,
+    });
+
+    await screen.findByTestId("audit-current-state");
+    await user.selectOptions(screen.getByTestId("audit-current-sort-field"), "account_code");
+    await user.selectOptions(screen.getByTestId("audit-current-sort-dir"), "asc");
+    await user.selectOptions(screen.getByTestId("audit-event-sort-field"), "event_type");
+    await user.selectOptions(screen.getByTestId("audit-event-sort-dir"), "asc");
+    await user.type(screen.getByTestId("audit-filter-account-code"), "5140");
+    await user.click(screen.getByTestId("audit-apply-filters"));
+
+    await waitFor(() => {
+      expect(listSpy).toHaveBeenCalled();
+    });
+    const listArgs = listSpy.mock.calls.at(-1);
+    expect(listArgs?.[0]).toBe("2026-02-28");
+    expect(exportSpy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId("audit-export-button"));
+
+    await waitFor(() => {
+      expect(exportSpy).toHaveBeenCalledWith("2026-02-28", {
+        adjustmentId: "",
+        adjustmentIdExact: false,
+        accountCode: "5140",
+        approvalStatus: "",
+        eventType: "",
+        currentSortField: "account_code",
+        currentSortDir: "asc",
+        eventSortField: "event_type",
+        eventSortDir: "asc",
+        createdAtFrom: "",
+        createdAtTo: "",
+      });
+    });
+    expect(
+      manualAdjustmentListOptionsWithoutPagination(listArgs![1] as ProductCategoryManualAdjustmentQuery & {
+        adjustmentLimit?: number;
+        adjustmentOffset?: number;
+        limit?: number;
+        offset?: number;
+      }),
+    ).toEqual(
+      buildProductCategoryAuditListExportQuery({
+        adjustmentId: "",
+        adjustmentIdExact: false,
+        accountCode: "5140",
+        approvalStatus: "",
+        eventType: "",
+        currentSortField: "account_code",
+        currentSortDir: "asc",
+        eventSortField: "event_type",
+        eventSortDir: "asc",
+        createdAtFrom: "",
+        createdAtTo: "",
+      }),
+    );
   });
 
   it("pages current-state rows and exports the filtered audit dataset", async () => {

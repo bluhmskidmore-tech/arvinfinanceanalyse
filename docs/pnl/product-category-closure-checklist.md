@@ -63,8 +63,8 @@ This first pass is based on:
 | 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, current `monthly`/`ytd` page scope, and core selector evidence exist, but field freeze and exhaustive detail coverage are not complete |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests now freeze 409/503/failed-terminal + polling; stale-banner contract still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
-| 5. Manual Adjustment List | `PARTIAL` | `P1` | audit page list/filter/paging are strong, but sorting semantics are not fully documented as product truth |
-| 6. Manual Adjustment Export | `PARTIAL` | `P1` | export route and audit-page download flow exist, but large-volume and encoding guarantees are not fully frozen |
+| 5. Manual Adjustment List | `PARTIAL` | `P1` | list+sort query evidence in audit tests + ApiClient; dual-control “why” still narrative |
+| 6. Manual Adjustment Export | `PARTIAL` | `P1` | export shares applied filter/sort with list (code+tests); BOM / scale / precision still open |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
 | 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
 | 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | there is some discipline and formatting logic, but not enough explicit evidence to call it fully closed |
@@ -144,9 +144,11 @@ This first pass is based on:
   - backend filtering, pagination, UTC timestamp validation, and export query symmetry are exercised in `tests/test_product_category_pnl_flow.py`
   - independent audit view renders current-state rows and timeline rows in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
   - audit filters and timeline pagination are exercised in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
+  - current-state `current_sort_field` / `current_sort_dir` and event-timeline `event_sort_field` / `event_sort_dir` are shown to serialize into `getProductCategoryManualAdjustments` options (page tests) and into real HTTP query strings in `frontend/src/test/ApiClient.test.ts` (`buildManualAdjustmentSearchParams` in `api/client.ts`)
+  - `ProductCategoryAdjustmentAuditPage.tsx` uses explicit `CURRENT_QUERY_FILTER_KEYS` vs `EVENT_QUERY_FILTER_KEYS` to reset pagination on apply; `keeps current and event sort controls independent` test freezes dual-sort behavior
   - real-mode query serialization is covered in `frontend/src/test/ApiClient.test.ts`
 - Why not `CLOSED`:
-  - the business reason for dual sort controls is still not frozen as product truth
+  - the product rationale for two independent sort controls (vs a single model) is still a narrative gap, not a code gap
   - page-level stale/failure semantics for the list view are not fully documented
   - list closure mostly lives in the audit page rather than the main page, which increases cognitive split
 
@@ -158,7 +160,9 @@ This first pass is based on:
   - export route exists
   - filtered export behavior and CSV section ordering are covered in `tests/test_product_category_pnl_flow.py`
   - audit-page export flow is exercised in `frontend/src/test/ProductCategoryAdjustmentAuditPage.test.tsx`
+  - `buildProductCategoryAuditListExportQuery` in `ProductCategoryAdjustmentAuditPage.tsx` is the single object passed to `exportProductCategoryManualAdjustmentsCsv` and matches the list request’s filter+sort options without `adjustment_limit` / `adjustment_offset` / `limit` / `offset` (proven in `ProductCategoryAdjustmentAuditPage.test.tsx` and `buildProductCategoryAuditListExportQuery` unit block)
   - real-mode export request and filename parsing are covered in `frontend/src/test/ApiClient.test.ts`
+  - `uses the same filter and sort query keys for real-mode list and export (export omits pagination only)` in `ApiClient.test.ts` asserts per-key equality between list and export query strings, excluding pagination keys
 - Why not `CLOSED`:
   - no clear evidence for UTF-8 BOM policy
   - no frozen behavior for very large exports
