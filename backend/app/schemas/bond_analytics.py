@@ -616,14 +616,14 @@ class ActionAttributionResponse(BaseModel):
 
 
 ACTION_TYPE_NAMES: dict[str, str] = {
-    "ADD_DURATION": "鍔犱箙鏈?",
-    "REDUCE_DURATION": "鍑忎箙鏈?",
-    "SWITCH": "鎹㈠埜",
-    "CREDIT_DOWN": "淇＄敤涓嬫矇",
-    "CREDIT_UP": "淇＄敤涓婃敹",
-    "TIMING_BUY": "鎷╂椂涔板叆",
-    "TIMING_SELL": "鎷╂椂鍗栧嚭",
-    "HEDGE": "瀵瑰啿鎿嶄綔",
+    "ADD_DURATION": "加久期",
+    "REDUCE_DURATION": "减久期",
+    "SWITCH": "换券",
+    "CREDIT_DOWN": "信用下沉",
+    "CREDIT_UP": "信用上收",
+    "TIMING_BUY": "择时买入",
+    "TIMING_SELL": "择时卖出",
+    "HEDGE": "对冲操作",
 }
 
 

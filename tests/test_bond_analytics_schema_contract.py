@@ -34,8 +34,10 @@ def test_period_type_enum_values():
 
 
 def test_action_type_names_contains_core_keys():
-    for key in ("ADD_DURATION", "REDUCE_DURATION", "SWITCH", "HEDGE"):
-        assert key in ACTION_TYPE_NAMES
+    assert ACTION_TYPE_NAMES["ADD_DURATION"] == "加久期"
+    assert ACTION_TYPE_NAMES["REDUCE_DURATION"] == "减久期"
+    assert ACTION_TYPE_NAMES["SWITCH"] == "换券"
+    assert ACTION_TYPE_NAMES["HEDGE"] == "对冲操作"
 
 
 def test_asset_class_breakdown_defaults():

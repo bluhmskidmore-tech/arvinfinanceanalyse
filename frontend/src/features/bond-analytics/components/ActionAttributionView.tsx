@@ -35,9 +35,9 @@ function describeMetaIssues(meta: ResultMeta | null): string[] {
 }
 
 const detailColumns = [
-  { title: "鏃ユ湡", dataIndex: "action_date", key: "action_date", width: 100 },
+  { title: "日期", dataIndex: "action_date", key: "action_date", width: 100 },
   {
-    title: "绫诲瀷",
+    title: "类型",
     dataIndex: "action_type",
     key: "action_type",
     width: 100,
@@ -47,9 +47,9 @@ const detailColumns = [
       </Tag>
     ),
   },
-  { title: "鎻忚堪", dataIndex: "description", key: "description", ellipsis: true },
+  { title: "描述", dataIndex: "description", key: "description", ellipsis: true },
   {
-    title: "鎹熺泭璐＄尞",
+    title: "损益贡献",
     dataIndex: "pnl_economic",
     key: "pnl_economic",
     width: 120,
@@ -60,14 +60,14 @@ const detailColumns = [
     },
   },
   {
-    title: "螖涔呮湡",
+    title: "Δ久期",
     dataIndex: "delta_duration",
     key: "delta_duration",
     width: 80,
     render: (v: Numeric) => v.display,
   },
   {
-    title: "浼氳鎹熺泭",
+    title: "会计损益",
     dataIndex: "pnl_accounting",
     key: "pnl_accounting",
     width: 110,
@@ -78,35 +78,35 @@ const detailColumns = [
     },
   },
   {
-    title: "螖DV01",
+    title: "ΔDV01",
     dataIndex: "delta_dv01",
     key: "delta_dv01",
     width: 100,
     render: (v: Numeric) => v.display,
   },
   {
-    title: "螖鍒╁樊DV01",
+    title: "Δ利差DV01",
     dataIndex: "delta_spread_dv01",
     key: "delta_spread_dv01",
     width: 110,
     render: (v: Numeric) => v.display,
   },
   {
-    title: "娑夊強鍊哄埜",
+    title: "涉及债券",
     dataIndex: "bonds_involved",
     key: "bonds_involved",
     width: 120,
     render: (codes: string[]) => (codes?.length ? codes.join(", ") : "-"),
   },
   {
-    title: "鏈轰細鎴愭湰",
+    title: "机会成本",
     key: "opportunity_cost",
     width: 100,
     render: (_: unknown, row: { opportunity_cost?: Numeric }) =>
       row.opportunity_cost ? formatWan(row.opportunity_cost) : "-",
   },
   {
-    title: "鏈轰細鎴愭湰鍙ｅ緞",
+    title: "机会成本口径",
     key: "opportunity_cost_method",
     width: 110,
     ellipsis: true,
@@ -150,7 +150,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
   }, [client, reportDate, periodType]);
 
   if (loading) return <Spin style={{ display: "block", margin: "40px auto" }} />;
-  if (error) return <Alert type="error" message={`鍔犺浇澶辫触锛?{error}`} />;
+  if (error) return <Alert type="error" message={`加载失败：${error}`} />;
   if (!data) return null;
 
   const hasReadinessMeta =
@@ -167,7 +167,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <SectionLead
         eyebrow="Action Attribution"
-        title="浜ゆ槗鍔ㄤ綔褰掑洜姒傝"
+        title="交易动作归因概览"
         description="Reads the governed action-attribution payload and renders counts, PnL contribution, duration, and DV01 without front-end recomputation."
         testId="action-attribution-shell-lead"
       />
@@ -175,17 +175,17 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         style={{ fontSize: 12, color: "#8090a8", lineHeight: 1.65 }}
         data-testid="action-attribution-meta"
       >
-        <span>鎶ュ憡鏃?{data.report_date}</span>
+        <span>报告日 {data.report_date}</span>
         <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
-        <span>鏈熼棿 {data.period_type}</span>
+        <span>期间 {data.period_type}</span>
         <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
         <span>
-          {data.period_start} 鈥?{data.period_end}
+          {data.period_start} — {data.period_end}
         </span>
         {data.computed_at ? (
           <>
             <span style={{ margin: "0 0.5em", opacity: 0.45 }}>|</span>
-            <span>璁＄畻鏃堕棿 {data.computed_at}</span>
+            <span>计算时间 {data.computed_at}</span>
           </>
         ) : null}
       </div>
@@ -202,7 +202,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         <Alert
           type={data.status && data.status !== "ok" ? "warning" : "info"}
           showIcon
-          message={data.status ? `璇婚潰鐘舵€侊細${data.status}` : "璇婚潰缁勪欢淇℃伅"}
+          message={data.status ? `读面状态：${data.status}` : "读面组件信息"}
           description={
             <div style={{ fontSize: 13, lineHeight: 1.65 }}>
               {(data.available_components?.length ?? 0) > 0 ? (
@@ -222,28 +222,28 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
       <Row gutter={16}>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="鍔ㄤ綔鏁伴噺" value={data.total_actions} />
+            <Statistic title="动作数量" value={data.total_actions} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
-            <Statistic title="鍔ㄤ綔璐＄尞鎹熺泭" value={formatWan(data.total_pnl_from_actions)} />
+            <Statistic title="动作贡献损益" value={formatWan(data.total_pnl_from_actions)} />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
             <Statistic
-              title="涔呮湡鍙樺寲"
-              value={`${data.period_start_duration.display} 鈫?${data.period_end_duration.display}`}
-              suffix={`螖 ${data.duration_change_from_actions.display}`}
+              title="久期变化"
+              value={`${data.period_start_duration.display} → ${data.period_end_duration.display}`}
+              suffix={`Δ ${data.duration_change_from_actions.display}`}
             />
           </Card>
         </Col>
         <Col span={6}>
           <Card size="small">
             <Statistic
-              title="DV01鍙樺寲"
-              value={`${formatWan(data.period_start_dv01)} 鈫?${formatWan(data.period_end_dv01)}`}
+              title="DV01变化"
+              value={`${formatWan(data.period_start_dv01)} → ${formatWan(data.period_end_dv01)}`}
             />
           </Card>
         </Col>
@@ -268,7 +268,8 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                     {item.action_type_name}
                   </Tag>
                   <span style={{ width: 50, textAlign: "right", fontSize: 12, color: "#5c6b82" }}>
-                    {item.action_count}娆?                  </span>
+                    {item.action_count}次
+                  </span>
                   <div style={{ flex: 1, height: 20, background: "#f0f0f0", borderRadius: 4, overflow: "hidden" }}>
                     <div
                       style={{
@@ -289,13 +290,13 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
                     }}
                   >
                     <div style={{ fontVariantNumeric: "tabular-nums", color: pnl >= 0 ? "#cf1322" : "#3f8600" }}>
-                      缁忔祹 {formatWan(item.total_pnl_economic)}
+                      经济 {formatWan(item.total_pnl_economic)}
                     </div>
                     <div style={{ fontVariantNumeric: "tabular-nums" }}>
-                      浼氳 {formatWan(item.total_pnl_accounting)}
+                      会计 {formatWan(item.total_pnl_accounting)}
                     </div>
                     <div style={{ fontVariantNumeric: "tabular-nums" }}>
-                      鍧囨 {formatWan(item.avg_pnl_per_action)}
+                      均次 {formatWan(item.avg_pnl_per_action)}
                     </div>
                   </div>
                 </div>
@@ -307,12 +308,12 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
 
       <SectionLead
         eyebrow="Details"
-        title="鍔ㄤ綔鏄庣粏"
+        title="动作明细"
         description="Keeps the backend action_details payload visible with type, description, PnL, duration, and DV01 deltas."
         testId="action-attribution-detail-lead"
       />
       {data.action_details.length > 0 && (
-        <Card title="鍔ㄤ綔鏄庣粏" size="small">
+        <Card title="动作明细" size="small">
           <Table
             dataSource={data.action_details}
             columns={detailColumns}
@@ -327,7 +328,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
         <Alert
           type="warning"
           showIcon
-          message="鎻愮ず"
+          message="提示"
           description={data.warnings.map((w, i) => <div key={i}>{w}</div>)}
         />
       )}
