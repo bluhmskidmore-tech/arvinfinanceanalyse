@@ -59,7 +59,7 @@ This first pass is based on:
 
 | Unit | Status | Priority | Short reason |
 | --- | --- | --- | --- |
-| 1. Dates | `PARTIAL` | `P1` | dates endpoint and selector exist, but outward date semantics are not fully frozen |
+| 1. Dates | `PARTIAL` | `P1` | page tests now pin first `report_dates` vs empty list for PnL/adjustments/ledger; `as_of_date` gap + fallback semantics still open |
 | 2. Detail | `PARTIAL` | `P0` | formal/scenario/detail chain, current `monthly`/`ytd` page scope, and core selector evidence exist, but field freeze and exhaustive detail coverage are not complete |
 | 3. Refresh + Status | `PARTIAL` | `P0` | queue, sync fallback, and status flow exist; page tests now freeze 409/503/failed-terminal + polling; stale-banner contract still open |
 | 4. Manual Adjustment Create | `PARTIAL` | `P0` | create path works in backend and page UI, but closure evidence is not complete enough for `CLOSED` |
@@ -84,6 +84,9 @@ This first pass is based on:
   - default `selectedDate` and ledger deep-link query encoding are frozen as pure helpers in `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.ts` (`nextDefaultReportDateIfUnset`, `buildLedgerPnlHrefForReportDate`), reused on the main page and legacy audit body
   - dedicated unit tests: `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts`
   - page truth contract subsection: `docs/pnl/product-category-page-truth-contract.md` section 10.1
+  - `frontend/src/test/ProductCategoryPnlPage.test.tsx` — page-level date wiring (mock client only):
+    - `Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link`: `getProductCategoryDates` returns `report_dates: ["2026-03-31", "2026-02-28", "2026-01-31"]` (API order); spies show every `getProductCategoryPnl` call uses `reportDate: 2026-03-31` and `view: monthly`, every `getProductCategoryManualAdjustments` call uses `2026-03-31`, and `product-category-ledger-link` is `/ledger-pnl?report_date=2026-03-31`
+    - `Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates`: `report_dates: []` with `result_meta.generated_at` set to `2026-05-01T12:00:00Z`; `getProductCategoryPnl` / `getProductCategoryManualAdjustments` are never invoked, ledger link stays `/ledger-pnl`, `product-category-as-of-date-gap` text remains exactly `PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY` (no injected `generated_at` / report date), month `<select>` has zero `<option>` rows
 - Why not `CLOSED`:
   - `as_of_date` is still an explicit outward contract gap
   - fallback-date semantics are not frozen at page level beyond the default-first-list-item rule documented in section 10.1

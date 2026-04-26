@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
+import { PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY } from "../features/product-category-pnl/pages/productCategoryPnlPageModel";
+import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -56,6 +58,70 @@ describe("ProductCategoryPnlPage", () => {
       "/ledger-pnl?report_date=2026-02-28",
     );
     expect(within(table).getAllByRole("row")).toHaveLength(20);
+  });
+
+  it("Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const firstDate = "2026-03-31";
+    const pnlSpy = vi.fn((options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+      baseClient.getProductCategoryPnl(options),
+    );
+    const adjSpy = vi.fn(
+      (reportDate: string, opts?: Parameters<typeof baseClient.getProductCategoryManualAdjustments>[1]) =>
+        baseClient.getProductCategoryManualAdjustments(reportDate, opts),
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [firstDate, "2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryPnl: pnlSpy,
+      getProductCategoryManualAdjustments: adjSpy,
+    });
+    await screen.findByTestId("product-category-table");
+    await waitFor(() => {
+      expect(pnlSpy).toHaveBeenCalled();
+      expect(adjSpy).toHaveBeenCalled();
+    });
+    expect(pnlSpy.mock.calls.every((call) => call[0]!.reportDate === firstDate)).toBe(true);
+    expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ view: "monthly" });
+    expect(adjSpy.mock.calls.every((call) => call[0] === firstDate)).toBe(true);
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
+      "href",
+      "/ledger-pnl?report_date=2026-03-31",
+    );
+  });
+
+  it("Unit 1: empty report_dates skips PnL and adjustments fetches; ledger stays bare; as_of gap does not inject meta dates", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const guard = () => Promise.reject(new Error("unexpected product-category dependent fetch"));
+    const pnlSpy = vi.fn(guard);
+    const adjSpy = vi.fn(guard);
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope(
+          "product_category_pnl.dates",
+          { report_dates: [] },
+          { generated_at: "2026-05-01T12:00:00Z" },
+        ),
+      ),
+      getProductCategoryPnl: pnlSpy,
+      getProductCategoryManualAdjustments: adjSpy,
+    });
+    await screen.findByTestId("product-category-governance-strip");
+    await waitFor(() => {
+      expect(pnlSpy).not.toHaveBeenCalled();
+      expect(adjSpy).not.toHaveBeenCalled();
+    });
+    expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute("href", "/ledger-pnl");
+    const gap = screen.getByTestId("product-category-as-of-date-gap");
+    expect(gap.textContent).toBe(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY);
+    expect(gap.textContent).not.toContain("2026-05-01");
+    const monthSelect = screen.getByRole("combobox", { name: "选择报表月份" }) as HTMLSelectElement;
+    expect(monthSelect.options).toHaveLength(0);
   });
 
   it("Unit 9: table 营业减收入 uses liability absolute and asset signed display, and grand_total is only in footer (not in tbody)", async () => {
