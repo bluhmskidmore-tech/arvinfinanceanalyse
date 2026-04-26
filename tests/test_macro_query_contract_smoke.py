@@ -311,6 +311,115 @@ def test_choice_macro_latest_reads_persisted_market_data_categories(
     get_settings.cache_clear()
 
 
+def test_choice_macro_latest_exposes_vendor_name_without_vendor_code(
+    tmp_path,
+    monkeypatch,
+):
+    duckdb_path = tmp_path / "macro-latest-vendor-name.duckdb"
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_choice_macro_daily (
+              series_id varchar,
+              series_name varchar,
+              trade_date varchar,
+              value_numeric double,
+              frequency varchar,
+              unit varchar,
+              source_version varchar,
+              vendor_version varchar,
+              rule_version varchar,
+              quality_flag varchar,
+              run_id varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table phase1_macro_vendor_catalog (
+              series_id varchar,
+              series_name varchar,
+              vendor_name varchar,
+              vendor_version varchar,
+              frequency varchar,
+              unit varchar,
+              vendor_series_code varchar,
+              batch_id varchar,
+              catalog_version varchar,
+              theme varchar,
+              is_core boolean,
+              tags_json varchar,
+              request_options varchar,
+              fetch_mode varchar,
+              fetch_granularity varchar,
+              refresh_tier varchar,
+              policy_note varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_choice_macro_daily values
+              (
+                'CA.MEGA_CAP_WEIGHT',
+                '沪深300前十大权重合计',
+                '2026-04-10',
+                23.5367,
+                'daily',
+                '%',
+                'sv_tushare_index_weight',
+                'vv_tushare_index_weight',
+                'rv_public_cross_asset_headline_v1',
+                'ok',
+                'public_cross_asset_refresh:2026-04-10'
+              )
+            """
+        )
+        conn.execute(
+            """
+            insert into phase1_macro_vendor_catalog values
+              (
+                'CA.MEGA_CAP_WEIGHT',
+                '沪深300前十大权重合计',
+                'tushare',
+                'vv_tushare_index_weight',
+                'daily',
+                '%',
+                'index_weight:000300.SH.top10_weight',
+                'public_cross_asset_headline',
+                '2026-04-21.public-cross-asset-headline.v1',
+                'macro_market',
+                true,
+                '["tushare","market","equity","mega_cap","cross_asset"]',
+                'lookback_days=60',
+                'date_slice',
+                'batch',
+                'stable',
+                'Tushare index_weight top10 concentration supplement for mega-cap equity leadership'
+              )
+            """
+        )
+    finally:
+        conn.close()
+
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+    route_module = load_module(
+        "backend.app.api.routes.macro_vendor",
+        "backend/app/api/routes/macro_vendor.py",
+    )
+
+    payload = route_module.choice_series_latest()
+
+    point = payload["result"]["series"][0]
+    assert point["series_id"] == "CA.MEGA_CAP_WEIGHT"
+    assert point["vendor_name"] == "tushare"
+    assert "vendor_series_code" not in point
+    assert "batch_id" not in point
+    get_settings.cache_clear()
+
+
 def test_choice_macro_latest_filters_persisted_market_data_categories(
     tmp_path,
     monkeypatch,

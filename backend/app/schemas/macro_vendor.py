@@ -127,6 +127,7 @@ class ChoiceMacroLatestPoint(BaseModel):
     unit: str
     source_version: str
     vendor_version: str
+    vendor_name: str | None = None
     refresh_tier: ChoiceMacroRefreshTier | None = None
     fetch_mode: ChoiceMacroFetchMode | None = None
     fetch_granularity: ChoiceMacroFetchGranularity | None = None

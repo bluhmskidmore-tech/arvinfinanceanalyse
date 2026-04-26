@@ -249,6 +249,7 @@ def load_choice_macro_latest_payload(
             {
                 "frequency": latest["frequency"],
                 "unit": latest["unit"],
+                "vendor_name": None,
                 "refresh_tier": None,
                 "fetch_mode": None,
                 "fetch_granularity": None,
@@ -276,6 +277,7 @@ def load_choice_macro_latest_payload(
                 unit=str(catalog["unit"] or latest["unit"]),
                 source_version=str(latest["source_version"]),
                 vendor_version=str(latest["vendor_version"]),
+                vendor_name=_as_optional_string(catalog.get("vendor_name")),
                 refresh_tier=refresh_tier,
                 fetch_mode=_as_optional_string(catalog.get("fetch_mode")),
                 fetch_granularity=_as_optional_string(catalog.get("fetch_granularity")),
@@ -775,6 +777,7 @@ def _load_choice_macro_catalog_map(
     }
     select_columns = [
         "series_id",
+        _catalog_column_expr("vendor_name", available_columns, "NULL"),
         _catalog_column_expr("refresh_tier", available_columns, "NULL"),
         _catalog_column_expr("fetch_mode", available_columns, "NULL"),
         _catalog_column_expr("fetch_granularity", available_columns, "NULL"),
@@ -793,6 +796,7 @@ def _load_choice_macro_catalog_map(
     catalog_by_series: dict[str, dict[str, object]] = {}
     for (
         series_id,
+        vendor_name,
         refresh_tier,
         fetch_mode,
         fetch_granularity,
@@ -802,6 +806,7 @@ def _load_choice_macro_catalog_map(
     ) in rows:
         category = category_by_series.get(str(series_id), {})
         catalog_by_series[str(series_id)] = {
+            "vendor_name": _as_optional_string(vendor_name),
             "refresh_tier": _as_optional_string(category.get("refresh_tier") or refresh_tier),
             "fetch_mode": _as_optional_string(category.get("fetch_mode") or fetch_mode),
             "fetch_granularity": _as_optional_string(

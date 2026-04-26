@@ -719,6 +719,7 @@ export type ChoiceMacroLatestPoint = {
   unit: string;
   source_version: string;
   vendor_version: string;
+  vendor_name?: string | null;
   refresh_tier?: "stable" | "fallback" | "isolated" | null;
   fetch_mode?: "date_slice" | "latest" | null;
   fetch_granularity?: "batch" | "single" | null;

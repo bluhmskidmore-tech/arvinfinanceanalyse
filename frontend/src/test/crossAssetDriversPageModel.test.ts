@@ -299,13 +299,26 @@ describe("crossAssetDriversPageModel", () => {
   });
 
   it("builds asset-class analysis rows with direction, source, and pending data labels", () => {
+    const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
     const kpis = resolveCrossAssetKpis([
       makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
-      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16 }),
-      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, { unit: "%", latest_change: 0.2 }),
-      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, { unit: "%", latest_change: 0.1 }),
-      makePoint("CA.BRENT", "Brent spot price", 82.3, { unit: "USD/bbl", latest_change: 4.8 }),
-      makePoint("CA.STEEL", "Steel spot price", 8500, { unit: "CNY/t", latest_change: 3.2 }),
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16, ...vendor("tushare") }),
+      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
+        unit: "%",
+        latest_change: 0.2,
+        ...vendor("tushare"),
+      }),
+      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, {
+        unit: "%",
+        latest_change: 0.1,
+        ...vendor("tushare"),
+      }),
+      makePoint("CA.BRENT", "Brent spot price", 82.3, { unit: "USD/bbl", latest_change: 4.8, ...vendor("fred") }),
+      makePoint("CA.STEEL", "Steel spot price", 8500, {
+        unit: "CNY/t",
+        latest_change: 3.2,
+        ...vendor("public_spot_price_qh"),
+      }),
     ]);
     const axes = buildTransmissionAxisRows({
       transmissionAxes: [
@@ -344,10 +357,12 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[0].lines[1].dataLabel).toContain("股债利差轴 ready");
     expect(rows[0].lines[2].dataLabel).toContain("23.54%");
     expect(rows[0].lines[2].dataLabel).toContain("15.53%");
+    expect(rows[0].lines[2].sourceLabel).toContain("Tushare: CA.MEGA_CAP_WEIGHT");
     expect(rows[0].lines[2].sourceLabel).toContain("tushare.index.000300.SH.weight");
     expect(rows[0].lines[0].explanation).toContain("金融条件指数");
     expect(rows[1].status).toBe("ready");
     expect(rows[1].lines.map((line) => line.key)).toEqual(["energy", "ferrous", "nonferrous"]);
+    expect(rows[1].lines[0].sourceLabel).toContain("公共补充源(fred): CA.BRENT");
     expect(rows[1].lines[0].sourceLabel).toContain("公共补充源");
     expect(rows[1].lines[0].sourceLabel).toContain("CA.BRENT");
     expect(rows[1].lines[1].sourceLabel).toContain("公共补充源");

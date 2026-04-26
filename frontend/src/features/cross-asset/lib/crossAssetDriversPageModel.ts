@@ -599,16 +599,26 @@ function dataLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: strin
 }
 
 function sourceLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: string) {
-  if (!hasUsableKpi(kpi)) {
+  const resolved = kpi;
+  if (!resolved || !hasUsableKpi(resolved)) {
     return fallback;
   }
-  const sourcePrefix: Record<ResolvedCrossAssetKpi["sourceKind"], string> = {
-    choice: "Choice接入码",
-    public: "Tushare/公共补充源",
-    derived: "派生指标",
-    missing: "缺接入码",
-  };
-  return `${sourcePrefix[kpi!.sourceKind]}: ${kpi!.resolvedSeriesId}`;
+  const normalizedVendor = resolved.vendorName?.trim().toLowerCase();
+  let sourcePrefix: string;
+  if (resolved.sourceKind === "choice") {
+    sourcePrefix = "Choice接入码";
+  } else if (resolved.sourceKind === "public" && normalizedVendor === "tushare") {
+    sourcePrefix = "Tushare";
+  } else if (resolved.sourceKind === "public" && normalizedVendor) {
+    sourcePrefix = `公共补充源(${resolved.vendorName})`;
+  } else if (resolved.sourceKind === "public") {
+    sourcePrefix = "Tushare/公共补充源";
+  } else if (resolved.sourceKind === "derived") {
+    sourcePrefix = "派生指标";
+  } else {
+    sourcePrefix = "缺接入码";
+  }
+  return `${sourcePrefix}: ${resolved.resolvedSeriesId}`;
 }
 
 function combinedSourceLabel(kpis: Array<ResolvedCrossAssetKpi | undefined>, fallback: string) {
