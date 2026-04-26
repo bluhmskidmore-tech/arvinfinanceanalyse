@@ -12,6 +12,7 @@ import { resolveCrossAssetKpis } from "../features/cross-asset/lib/crossAssetKpi
 import {
   buildCrossAssetCandidateActions,
   buildCrossAssetDriversViewModel,
+  buildCrossAssetEquityEvidenceItems,
   buildCrossAssetEventItems,
   buildCrossAssetNcdProxyEvidence,
   buildCrossAssetClassAnalysisRows,
@@ -379,6 +380,43 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
     expect(rows[2].lines[0].explanation).toContain("No governed equity-options input");
+  });
+
+  it("builds stock index and mega-cap evidence items with unit, date, and source trace", () => {
+    const vendor = (vendor_name: string) => ({ vendor_name }) as Partial<ChoiceMacroLatestPoint>;
+    const kpis = resolveCrossAssetKpis([
+      makePoint("EMM01843735", "CSI 300", 3924.5, { unit: "index", latest_change: 1.8 }),
+      makePoint("CA.CSI300_PE", "CSI300 PE", 14.58, { unit: "x", latest_change: 0.16, ...vendor("tushare") }),
+      makePoint("CA.MEGA_CAP_WEIGHT", "CSI300 Top10 weight", 23.5367, {
+        unit: "%",
+        latest_change: 0.2,
+        ...vendor("tushare"),
+      }),
+      makePoint("CA.MEGA_CAP_TOP5_WEIGHT", "CSI300 Top5 weight", 15.532, {
+        unit: "%",
+        latest_change: 0.1,
+        ...vendor("tushare"),
+      }),
+    ]);
+
+    const items = buildCrossAssetEquityEvidenceItems(kpis);
+
+    expect(items.map((item) => item.key)).toEqual([
+      "broad_index",
+      "csi300_pe",
+      "mega_cap_weight",
+      "mega_cap_top5_weight",
+    ]);
+    expect(items[0]).toMatchObject({
+      sourceLabel: "Choice接入码: EMM01843735",
+      unitLabel: "index",
+      tradeDate: "2026-04-10",
+    });
+    expect(items[1].sourceLabel).toBe("Tushare: CA.CSI300_PE");
+    expect(items[1].unitLabel).toBe("x");
+    expect(items[2].valueLabel).toBe("23.54%");
+    expect(items[2].unitLabel).toBe("%");
+    expect(items[3].sourceLabel).toBe("Tushare: CA.MEGA_CAP_TOP5_WEIGHT");
   });
 
   it("marks retained Choice-backed card lines as source_blocked when vendor status is unavailable", () => {

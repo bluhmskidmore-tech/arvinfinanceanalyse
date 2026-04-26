@@ -133,6 +133,7 @@ export type ResolvedCrossAssetKpi = {
   sourceKind: "choice" | "public" | "derived" | "missing";
   vendorName?: string | null;
   tradeDate: string | null;
+  unit: string | null;
   valueLabel: string;
   changeLabel: string;
   changeTone: "positive" | "negative" | "warning" | "default";
@@ -338,6 +339,7 @@ function resolveSpreadSlot(
       sourceKind: sourceKindFromSeriesId(preBp.series_id),
       vendorName: preBp.vendor_name,
       tradeDate: preBp.trade_date,
+      unit: preBp.unit,
       valueLabel: valueLabelForSlot("bp", preBp.value_numeric),
       changeLabel: changeLabelForSlot("bp", delta),
       changeTone: toneForChange("bp", delta),
@@ -376,6 +378,7 @@ function resolveSpreadSlot(
       sourceKind: "missing",
       vendorName: null,
       tradeDate: null,
+      unit: null,
       valueLabel: "—",
       changeLabel: "—",
       changeTone: "default",
@@ -396,6 +399,7 @@ function resolveSpreadSlot(
     sourceKind: sourceKindFromSeriesId(resolvedId),
     vendorName: null,
     tradeDate: latestTradeDate([hi, lo]),
+    unit: "bp",
     valueLabel: valueLabelForSlot("bp", vBp),
     changeLabel: changeLabelForSlot("bp", delta),
     changeTone: toneForChange("bp", delta),
@@ -422,6 +426,7 @@ function resolveSingleSlot(slot: CrossAssetSingleSlot, byId: Map<string, ChoiceM
     sourceKind: sourceKindFromSeriesId(id),
     vendorName: point?.vendor_name,
     tradeDate: point?.trade_date ?? null,
+    unit: point?.unit ?? null,
     valueLabel: valueLabelForSlot(slot.format, point?.value_numeric),
     changeLabel: changeLabelForSlot(slot.format, delta),
     changeTone: toneForChange(slot.format, delta),

@@ -96,6 +96,17 @@ export type CrossAssetClassAnalysisRow = {
   lines: CrossAssetClassAnalysisLine[];
 };
 
+export type CrossAssetEquityEvidenceItem = {
+  key: "broad_index" | "csi300_pe" | "mega_cap_weight" | "mega_cap_top5_weight";
+  label: string;
+  status: "ready" | "missing_dependency";
+  valueLabel: string;
+  changeLabel: string;
+  unitLabel: string;
+  tradeDate: string | null;
+  sourceLabel: string;
+};
+
 export type CrossAssetCandidateAction = {
   tone: ActionTone;
   action: string;
@@ -642,6 +653,58 @@ function stateLabelFromKpi(
     return "stale";
   }
   return "ready";
+}
+
+const EQUITY_EVIDENCE_DEFINITIONS = [
+  {
+    key: "broad_index",
+    kpiKey: "financial_conditions",
+    label: "指数层面",
+    unitFallback: "index",
+    sourceFallback: "需登记 Choice 接入码或 Tushare 指数输入",
+  },
+  {
+    key: "csi300_pe",
+    kpiKey: "csi300_pe",
+    label: "沪深300市盈率",
+    unitFallback: "x",
+    sourceFallback: "需登记 Tushare index_dailybasic",
+  },
+  {
+    key: "mega_cap_weight",
+    kpiKey: "mega_cap_weight",
+    label: "沪深300前十大权重",
+    unitFallback: "%",
+    sourceFallback: "需登记 Choice 大市值权重码 / Tushare index_weight",
+  },
+  {
+    key: "mega_cap_top5_weight",
+    kpiKey: "mega_cap_top5_weight",
+    label: "沪深300前五大权重",
+    unitFallback: "%",
+    sourceFallback: "需登记 Choice 大市值权重码 / Tushare index_weight",
+  },
+] as const;
+
+function unitLabelFromKpi(kpi: ResolvedCrossAssetKpi | undefined, fallback: string) {
+  const unit = kpi?.unit?.trim();
+  return unit || fallback;
+}
+
+export function buildCrossAssetEquityEvidenceItems(kpis: ResolvedCrossAssetKpi[]): CrossAssetEquityEvidenceItem[] {
+  return EQUITY_EVIDENCE_DEFINITIONS.map((definition) => {
+    const kpi = kpiByKey(kpis, definition.kpiKey);
+    return {
+      key: definition.key,
+      label: definition.label,
+      status: hasUsableKpi(kpi) ? "ready" : "missing_dependency",
+      valueLabel: kpi?.valueLabel ?? "—",
+      changeLabel: kpi?.changeLabel ?? "—",
+      unitLabel: unitLabelFromKpi(kpi, definition.unitFallback),
+      tradeDate: kpi?.tradeDate ?? null,
+      sourceLabel: sourceLabelFromKpi(kpi, definition.sourceFallback),
+    };
+  });
 }
 
 function axisByKey(rows: CrossAssetTransmissionAxisRow[], key: string) {
