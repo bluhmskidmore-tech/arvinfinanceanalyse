@@ -1,4 +1,4 @@
-import type { DecimalLike, ProductCategoryPnlRow } from "../../../api/contracts";
+import type { DecimalLike, ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
 
 /** Display order for category rows; does not re-aggregate backend totals. */
 const DISPLAY_ORDER = [
@@ -172,4 +172,55 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
     return "/ledger-pnl";
   }
   return `/ledger-pnl?report_date=${encodeURIComponent(reportDate)}`;
+}
+
+/** Page-visible copy: standalone `as_of_date` is a known outward contract gap (see truth contract §10). */
+export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
+  "as_of_date：无独立外显字段（显式合同缺口；勿用本页 report_date 或 generated_at 代替）。 ";
+
+export type ProductCategoryGovernanceNotice = {
+  id: "fallback_mode" | "vendor_status" | "quality_flag";
+  text: string;
+};
+
+/**
+ * Notices for degraded governance signals from a single `result_meta` (typ. formal baseline on first screen).
+ * Does not invent dates or categories; only reflects backend-reported fields.
+ */
+export function collectProductCategoryGovernanceNotices(
+  meta: ResultMeta | null | undefined,
+): ProductCategoryGovernanceNotice[] {
+  if (!meta) {
+    return [];
+  }
+  const out: ProductCategoryGovernanceNotice[] = [];
+  if (meta.fallback_mode !== "none") {
+    out.push({
+      id: "fallback_mode",
+      text: `读链路回退中：fallback_mode=${meta.fallback_mode}（仅元数据展示，非前端补算）。`,
+    });
+  }
+  if (meta.vendor_status === "vendor_stale" || meta.vendor_status === "vendor_unavailable") {
+    out.push({
+      id: "vendor_status",
+      text: `供应侧状态需关注：vendor_status=${meta.vendor_status}。`,
+    });
+  }
+  if (meta.quality_flag !== "ok") {
+    out.push({
+      id: "quality_flag",
+      text: `质量标记需关注：quality_flag=${meta.quality_flag}。`,
+    });
+  }
+  return out;
+}
+
+/**
+ * One-line evidence that formal vs scenario `result_meta` are separate envelopes (trace/basis not assumed equal).
+ */
+export function formatProductCategoryDualMetaDistinctLine(
+  formalMeta: ResultMeta,
+  scenarioMeta: ResultMeta,
+): string {
+  return `正式与情景分开展示：formal basis=${formalMeta.basis} trace_id=${formalMeta.trace_id}；scenario basis=${scenarioMeta.basis} trace_id=${scenarioMeta.trace_id}（两路 result_meta 分卡展示，不混用）。`;
 }

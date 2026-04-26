@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import { ActionRequestError, createApiClient } from "../api/client";
+import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
@@ -38,6 +39,14 @@ describe("ProductCategoryPnlPage", () => {
     expect(metaPanel).toHaveTextContent("fallback_mode");
     expect(metaPanel).toHaveTextContent("none");
     expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
+    expect(screen.getByTestId("product-category-governance-strip")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-as-of-date-gap")).toHaveTextContent("as_of_date");
+    expect(
+      screen.queryByTestId("product-category-governance-notice-fallback_mode"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("product-category-formal-scenario-meta-distinct"),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-audit-link")).toHaveAttribute(
       "href",
       "/product-category-pnl/audit",
@@ -67,7 +76,41 @@ describe("ProductCategoryPnlPage", () => {
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
         "true",
       );
+      const distinct = screen.getByTestId("product-category-formal-scenario-meta-distinct");
+      expect(distinct).toHaveTextContent("formal basis=formal");
+      expect(distinct).toHaveTextContent("scenario basis=scenario");
+      expect(distinct).toHaveTextContent("trace_id=mock_product_category_pnl.detail");
     });
+  });
+
+  it("surfaces degraded result_meta (fallback, vendor, quality) in the governance strip, not only inside the meta panel", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        return {
+          ...env,
+          result_meta: {
+            ...env.result_meta,
+            fallback_mode: "latest_snapshot" as const,
+            vendor_status: "vendor_stale" as const,
+            quality_flag: "warning" as const,
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-governance-notice-fallback_mode")).toHaveTextContent(
+      "latest_snapshot",
+    );
+    expect(screen.getByTestId("product-category-governance-notice-vendor_status")).toHaveTextContent(
+      "vendor_stale",
+    );
+    expect(screen.getByTestId("product-category-governance-notice-quality_flag")).toHaveTextContent(
+      "warning",
+    );
   });
 
   it("polls refresh status when the refresh job is queued", async () => {

@@ -189,6 +189,14 @@ The page must make these fields inspectable:
 - `cache_version`
 - `generated_at`
 
+In addition, the first-screen governance strip (above the `FormalResultMetaPanel`) must not stay silent when:
+
+- `fallback_mode` is not `none` (dedicated `role="status"` line; copy references the raw field value)
+- `vendor_status` is `vendor_stale` or `vendor_unavailable`, or `quality_flag` is not `ok` (dedicated status lines; no ZQTZ/holdings inference)
+- both formal baseline and scenario responses are loaded: a one-line line states that the two `result_meta` values are shown in separate cards and lists `basis` + `trace_id` for each (they must not be merged into a single effective meta)
+
+The strip also states the explicit outward gap that there is no standalone `as_of_date` field (see §10); the page does not fabricate a calendar `as_of_date`.
+
 The page must explicitly surface:
 
 - no data
@@ -212,7 +220,8 @@ Current evidence for this page-level contract:
 
 - `tests/test_product_category_pnl_flow.py`
 - `tests/test_product_category_mapping_contract.py`
-- `frontend/src/test/ProductCategoryPnlPage.test.tsx`
+- `frontend/src/test/ProductCategoryPnlPage.test.tsx` (including governance-strip degraded-meta and formal/scenario distinct-line cases)
+- `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.test.ts` (governance notice helpers)
 - `frontend/src/features/product-category-pnl/pages/productCategoryPnlPageModel.dateSemantics.test.ts`
 - `frontend/src/test/ProductCategoryBranchSwitcher.test.tsx`
 - `frontend/src/test/ApiClient.test.ts`

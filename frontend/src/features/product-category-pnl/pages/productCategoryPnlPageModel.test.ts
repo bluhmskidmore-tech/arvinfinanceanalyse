@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProductCategoryPnlRow } from "../../../api/contracts";
+import type { ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
 
 import {
+  PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   PRODUCT_CATEGORY_VALUE_TONE_COLORS,
   PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS,
   PRODUCT_CATEGORY_MAIN_PAGE_VIEWS,
   availableViewsSupportMainPageSelector,
+  collectProductCategoryGovernanceNotices,
+  formatProductCategoryDualMetaDistinctLine,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
@@ -15,6 +18,25 @@ import {
   selectProductCategoryDetailRows,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
+
+function resultMeta(overrides: Partial<ResultMeta>): ResultMeta {
+  return {
+    trace_id: "trace_base",
+    basis: "formal",
+    result_kind: "product_category_pnl.detail",
+    formal_use_allowed: true,
+    source_version: "sv_x",
+    vendor_version: "vv_x",
+    rule_version: "rv_x",
+    cache_version: "cv_x",
+    quality_flag: "ok",
+    vendor_status: "ok",
+    fallback_mode: "none",
+    scenario_flag: false,
+    generated_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
 
 function row(partial: Pick<ProductCategoryPnlRow, "category_id"> & Partial<ProductCategoryPnlRow>): ProductCategoryPnlRow {
   return {
@@ -148,5 +170,45 @@ describe("productCategoryPnlPageModel", () => {
       PRODUCT_CATEGORY_VALUE_TONE_COLORS.default,
     );
     expect(toneForProductCategoryValue(null)).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.default);
+  });
+
+  it("exposes a stable as_of_date gap string for the page (no invented as_of_date)", () => {
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("as_of_date");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("无独立外显");
+  });
+
+  it("collects governance notices for fallback, vendor, and quality degradation from result_meta", () => {
+    expect(collectProductCategoryGovernanceNotices(undefined)).toEqual([]);
+    expect(collectProductCategoryGovernanceNotices(resultMeta({}))).toEqual([]);
+
+    const allThree = collectProductCategoryGovernanceNotices(
+      resultMeta({
+        fallback_mode: "latest_snapshot",
+        vendor_status: "vendor_stale",
+        quality_flag: "stale",
+      }),
+    );
+    expect(allThree.map((n) => n.id)).toEqual([
+      "fallback_mode",
+      "vendor_status",
+      "quality_flag",
+    ]);
+
+    expect(
+      collectProductCategoryGovernanceNotices(
+        resultMeta({ vendor_status: "vendor_unavailable" }),
+    ).map((n) => n.id),
+  ).toEqual(["vendor_status"]);
+  });
+
+  it("formats a dual-meta line that keeps formal vs scenario trace_id distinguishable", () => {
+    const line = formatProductCategoryDualMetaDistinctLine(
+      resultMeta({ basis: "formal", trace_id: "t_formal" }),
+      resultMeta({ basis: "scenario", trace_id: "t_scen", scenario_flag: true }),
+    );
+    expect(line).toContain("t_formal");
+    expect(line).toContain("t_scen");
+    expect(line).toContain("formal basis=formal");
+    expect(line).toContain("scenario basis=scenario");
   });
 });

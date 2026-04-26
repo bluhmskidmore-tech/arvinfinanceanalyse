@@ -8,8 +8,12 @@ import type { ProductCategoryManualAdjustmentRequest } from "../../../api/contra
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
+import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
 import {
+  PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   buildLedgerPnlHrefForReportDate,
+  collectProductCategoryGovernanceNotices,
+  formatProductCategoryDualMetaDistinctLine,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
@@ -329,6 +333,15 @@ export default function ProductCategoryPnlPage() {
     setShowManualForm(true);
   }
 
+  const governanceNotices = collectProductCategoryGovernanceNotices(baselineQuery.data?.result_meta);
+  const formalScenarioDistinct =
+    baselineQuery.data?.result_meta && scenarioQuery.data?.result_meta
+      ? formatProductCategoryDualMetaDistinctLine(
+          baselineQuery.data.result_meta,
+          scenarioQuery.data.result_meta,
+        )
+      : null;
+
   const reportExtra = baseline ? (
     <div
       data-testid="product-category-summary"
@@ -495,6 +508,12 @@ export default function ProductCategoryPnlPage() {
           </button>
         </div>
       </div>
+
+      <ProductCategoryGovernanceStrip
+        asOfDateGapText={PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY}
+        notices={governanceNotices}
+        formalScenarioDistinct={formalScenarioDistinct}
+      />
 
       <FormalResultMetaPanel
         testId="product-category-result-meta"

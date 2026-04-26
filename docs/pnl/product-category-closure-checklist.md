@@ -66,7 +66,7 @@ This first pass is based on:
 | 5. Manual Adjustment List | `PARTIAL` | `P1` | audit page list/filter/paging are strong, but sorting semantics are not fully documented as product truth |
 | 6. Manual Adjustment Export | `PARTIAL` | `P1` | export route and audit-page download flow exist, but large-volume and encoding guarantees are not fully frozen |
 | 7. Manual Adjustment Lifecycle | `PARTIAL` | `P0` | edit/revoke/restore are implemented and tested, but not fully closed at UX/guardrail level |
-| 8. Governance / Traceability | `PARTIAL` | `P0` | result metadata and run lineage exist, but degraded-state visibility is not fully closed at page level |
+| 8. Governance / Traceability | `PARTIAL` | `P0` | page-level strip + tests cover fallback/vendor/quality, dual-meta line, and explicit as_of_date gap; broader stale-banner contract still open |
 | 9. Frontend Cross-Field Consistency | `PARTIAL` | `P0` | there is some discipline and formatting logic, but not enough explicit evidence to call it fully closed |
 | 10. Test Coverage | `PARTIAL` | `P0` | backend and frontend tests are substantial and a golden sample exists, but closure coverage is still uneven |
 
@@ -187,12 +187,12 @@ This first pass is based on:
   - `result_meta` is present and checked across UI endpoints in `tests/test_result_meta_on_all_ui_endpoints.py`
   - refresh governance records and run lineage are exercised in `tests/test_product_category_pnl_flow.py`
   - the main page now renders baseline/scenario `result_meta` through `product-category-result-meta`, with page tests checking basis, fallback mode, trace id, and scenario flag visibility
+  - a first-screen governance strip (`product-category-governance-strip`) surfaces: explicit `as_of_date` contract gap, non-`none` `fallback_mode`, degraded `vendor_status` / `quality_flag`, and a one-line formal vs scenario `result_meta` distinction when the scenario query is active (`ProductCategoryGovernanceStrip.tsx` + `collectProductCategoryGovernanceNotices` / `formatProductCategoryDualMetaDistinctLine` in `productCategoryPnlPageModel.ts`); page and model unit tests in `ProductCategoryPnlPage.test.tsx` and `productCategoryPnlPageModel.test.ts`
   - truth-chain ADR now fixes row authority in `docs/pnl/adr-product-category-truth-chain.md`
   - page truth contract and golden sample contract now exist under `docs/pnl/`
 - Why not `CLOSED`:
-  - degraded or fallback semantics are not fully frozen at page-UI level
-  - no standalone outward `as_of_date`
-  - page-level governance visibility now exists, but the exact degraded-state UX contract remains partial
+  - no standalone outward `as_of_date` from the API (page only states the gap; no invented date)
+  - page-level non-silent coverage for the strip is in place, but a fuller stale/refresh/cross-endpoint UX contract (e.g. in-flight/stale banner matrix) is not yet frozen
 
 ## Unit 9: Frontend Cross-Field Consistency
 
