@@ -184,12 +184,13 @@ This first pass is based on:
 - Evidence:
   - `result_meta` is present and checked across UI endpoints in `tests/test_result_meta_on_all_ui_endpoints.py`
   - refresh governance records and run lineage are exercised in `tests/test_product_category_pnl_flow.py`
+  - the main page now renders baseline/scenario `result_meta` through `product-category-result-meta`, with page tests checking basis, fallback mode, trace id, and scenario flag visibility
   - truth-chain ADR now fixes row authority in `docs/pnl/adr-product-category-truth-chain.md`
   - page truth contract and golden sample contract now exist under `docs/pnl/`
 - Why not `CLOSED`:
   - degraded or fallback semantics are not fully frozen at page-UI level
   - no standalone outward `as_of_date`
-  - page-level governance visibility still depends on raw result metadata rather than a stable UX contract
+  - page-level governance visibility now exists, but the exact degraded-state UX contract remains partial
 
 ## Unit 9: Frontend Cross-Field Consistency
 

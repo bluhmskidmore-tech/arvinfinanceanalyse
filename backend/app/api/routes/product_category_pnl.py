@@ -8,6 +8,7 @@ from fastapi.responses import Response
 
 from backend.app.governance.settings import get_settings
 from backend.app.services.product_category_pnl_service import (
+    AVAILABLE_VIEWS,
     ProductCategoryRefreshConflictError,
     ProductCategoryRefreshServiceError,
     create_product_category_manual_adjustment,
@@ -42,12 +43,23 @@ def detail(
     view: str = Query("monthly"),
     scenario_rate_pct: float | None = Query(None),
 ) -> dict[str, object]:
-    return product_category_pnl_envelope(
-        get_settings().duckdb_path,
-        report_date=report_date,
-        view=view,
-        scenario_rate_pct=scenario_rate_pct,
-    )
+    if view not in AVAILABLE_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category view={view!r}; expected one of {AVAILABLE_VIEWS}",
+        )
+    try:
+        return product_category_pnl_envelope(
+            get_settings().duckdb_path,
+            report_date=report_date,
+            view=view,
+            scenario_rate_pct=scenario_rate_pct,
+        )
+    except ValueError as exc:
+        detail = str(exc)
+        if detail.startswith("No product-category read model rows"):
+            raise HTTPException(status_code=404, detail=detail) from exc
+        raise HTTPException(status_code=422, detail=detail) from exc
 
 
 @router.post("/refresh")

@@ -85,6 +85,32 @@ def test_product_category_completeness_check_flags_inconsistent_totals() -> None
     assert check["diff"] == -1.0
 
 
+def test_product_category_detail_rejects_invalid_view(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "weekly"},
+    )
+
+    assert response.status_code == 422
+    assert "Unsupported product-category view='weekly'" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
+def test_product_category_detail_returns_404_when_read_model_is_missing(tmp_path, monkeypatch):
+    client, _ = _build_product_category_client(tmp_path, monkeypatch)
+
+    response = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    )
+
+    assert response.status_code == 404
+    assert "No product-category read model rows" in response.json()["detail"]
+    get_settings.cache_clear()
+
+
 def _load_product_category_pnl_service_module():
     """Return the module object used by API code (patch attributes here, not via string paths)."""
     return importlib.import_module("backend.app.services.product_category_pnl_service")

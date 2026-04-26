@@ -5,6 +5,7 @@ import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { ProductCategoryManualAdjustmentRequest } from "../../../api/contracts";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
 import {
@@ -492,6 +493,23 @@ export default function ProductCategoryPnlPage() {
           </button>
         </div>
       </div>
+
+      <FormalResultMetaPanel
+        testId="product-category-result-meta"
+        title="Product-Category Result Meta"
+        sections={[
+          {
+            key: "baseline",
+            title: "Baseline read model",
+            meta: baselineQuery.data?.result_meta,
+          },
+          {
+            key: "scenario",
+            title: "Scenario overlay",
+            meta: scenarioQuery.data?.result_meta,
+          },
+        ]}
+      />
 
       {showManualForm ? (
         <div

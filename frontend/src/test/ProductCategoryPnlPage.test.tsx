@@ -32,6 +32,12 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("1.75");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.85");
     expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");
+    const metaPanel = screen.getByTestId("product-category-result-meta-baseline");
+    expect(metaPanel).toHaveTextContent("formal");
+    expect(metaPanel).toHaveTextContent("product_category_pnl.detail");
+    expect(metaPanel).toHaveTextContent("fallback_mode");
+    expect(metaPanel).toHaveTextContent("none");
+    expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
     expect(screen.getByTestId("product-category-audit-link")).toHaveAttribute(
       "href",
       "/product-category-pnl/audit",
@@ -55,6 +61,12 @@ describe("ProductCategoryPnlPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.50");
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("0.52");
+      expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
+        "scenario",
+      );
+      expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
+        "true",
+      );
     });
   });
 
