@@ -1,36 +1,17 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
-import { ApiClientProvider, createApiClient } from "../api/client";
-import { routerFuture } from "../router/routerFuture";
-import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
+import { createApiClient } from "../api/client";
+import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
-  const router = createWorkbenchMemoryRouter(["/product-category-pnl"]);
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        retry: 0,
-        refetchOnWindowFocus: false,
-      },
-    },
-  });
-
-  return render(
-    <ApiClientProvider client={client}>
-      <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} future={routerFuture} />
-      </QueryClientProvider>
-    </ApiClientProvider>,
-  );
+  return renderWorkbenchApp(["/product-category-pnl"], { client });
 }
 
 describe("ProductCategoryPnlPage", () => {
   it("renders the page shell, summary, and table structure", async () => {
-    renderWorkbenchApp(["/product-category-pnl"]);
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     const table = await screen.findByTestId("product-category-table");
     expect(screen.getByTestId("product-category-page-title")).toHaveTextContent("产品分类损益");
@@ -64,7 +45,7 @@ describe("ProductCategoryPnlPage", () => {
 
   it("applies a scenario rate only after the apply action", async () => {
     const user = userEvent.setup();
-    renderWorkbenchApp(["/product-category-pnl"]);
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("product-category-table");
     const selects = screen.getAllByRole("combobox");

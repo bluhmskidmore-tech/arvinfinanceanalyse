@@ -624,9 +624,33 @@ def _validate_exec_overview(actual: dict[str, Any], expected: dict[str, Any]) ->
             ("result_meta", "vendor_status"),
             ("result_meta", "fallback_mode"),
             ("result_meta", "scenario_flag"),
-            ("result",),
+            ("result", "title"),
         ],
     )
+    actual_metrics = actual["result"]["metrics"]
+    expected_metrics = expected["result"]["metrics"]
+    assert len(actual_metrics) == len(expected_metrics) == 4
+
+    actual_by_id = {str(metric["id"]): metric for metric in actual_metrics}
+    expected_by_id = {str(metric["id"]): metric for metric in expected_metrics}
+    assert list(actual_by_id) == list(expected_by_id)
+
+    for metric_id, expected_metric in expected_by_id.items():
+        actual_metric = actual_by_id[metric_id]
+        assert "history" in actual_metric
+        _assert_paths_equal(
+            actual_metric,
+            expected_metric,
+            [
+                ("id",),
+                ("label",),
+                ("caliber_label",),
+                ("value", "display"),
+                ("delta", "display"),
+                ("tone",),
+                ("detail",),
+            ],
+        )
 
 
 def _validate_exec_pnl_attr(actual: dict[str, Any], expected: dict[str, Any]) -> None:
