@@ -33,6 +33,10 @@ RUNTIME_DUCKDB_SEED_TABLES = (
     "fact_formal_zqtz_balance_daily",
     "fact_formal_tyw_balance_daily",
 )
+RUNTIME_GOVERNANCE_SEED_FILES = (
+    "cache_manifest.jsonl",
+    "cache_build_run.jsonl",
+)
 
 
 @dataclass(frozen=True)
@@ -401,6 +405,7 @@ def _prepare_runtime_clean_paths(config: DevPostgresClusterConfig) -> None:
         if source.exists() and not target.exists():
             shutil.copy2(source, target)
     _seed_runtime_duckdb_from_repo_if_needed(config)
+    _seed_runtime_governance_from_repo_if_needed(config)
 
 
 def _find_kpi_bootstrap_file(config: DevPostgresClusterConfig) -> Path | None:
@@ -445,6 +450,22 @@ def _seed_runtime_duckdb_from_repo_if_needed(config: DevPostgresClusterConfig) -
 
     runtime_duckdb.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(repo_duckdb, runtime_duckdb)
+
+
+def _seed_runtime_governance_from_repo_if_needed(config: DevPostgresClusterConfig) -> None:
+    if not _duckdb_has_seed_data(config.runtime_duckdb_path):
+        return
+
+    repo_governance = config.repo_root / "data" / "governance"
+    if not repo_governance.exists():
+        return
+
+    config.runtime_governance_path.mkdir(parents=True, exist_ok=True)
+    for file_name in RUNTIME_GOVERNANCE_SEED_FILES:
+        source = repo_governance / file_name
+        target = config.runtime_governance_path / file_name
+        if source.exists() and not target.exists():
+            shutil.copy2(source, target)
 
 
 def _resolve_storage_root_for_env(config: DevPostgresClusterConfig) -> Path:

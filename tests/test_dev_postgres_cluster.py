@@ -133,6 +133,54 @@ def test_prepare_runtime_clean_paths_seeds_runtime_duckdb_from_repo_when_runtime
     assert rows == [("2026-02-28",)]
 
 
+def test_prepare_runtime_clean_paths_seeds_formal_governance_with_runtime_duckdb(tmp_path):
+    module = load_module(
+        "scripts.dev_postgres_cluster",
+        "scripts/dev_postgres_cluster.py",
+    )
+
+    repo_root = tmp_path / "repo"
+    source_root = repo_root / "data_input"
+    source_root.mkdir(parents=True, exist_ok=True)
+    runtime_root = repo_root / "tmp-governance" / "runtime-clean"
+    runtime_data_input = runtime_root / "data_input"
+    runtime_data_input.mkdir(parents=True, exist_ok=True)
+
+    repo_duckdb = repo_root / "data" / "moss.duckdb"
+    repo_duckdb.parent.mkdir(parents=True, exist_ok=True)
+    with duckdb.connect(str(repo_duckdb), read_only=False) as conn:
+        conn.execute("create table fact_formal_bond_analytics_daily (report_date varchar)")
+        conn.execute("insert into fact_formal_bond_analytics_daily values ('2026-02-28')")
+
+    repo_governance = repo_root / "data" / "governance"
+    repo_governance.mkdir(parents=True, exist_ok=True)
+    for file_name in module.RUNTIME_GOVERNANCE_SEED_FILES:
+        (repo_governance / file_name).write_text(
+            f'{{"stream": "{file_name}"}}\n',
+            encoding="utf-8",
+        )
+
+    config = module.DevPostgresClusterConfig(
+        repo_root=repo_root,
+        bin_dir=repo_root / "pgbin",
+        cluster_root=repo_root / "tmp-governance" / "pgdev",
+        data_dir=repo_root / "tmp-governance" / "pgdev" / "data",
+        log_file=repo_root / "tmp-governance" / "pgdev" / "postgres.log",
+        runtime_root=runtime_root,
+        runtime_duckdb_path=runtime_root / "moss.duckdb",
+        runtime_governance_path=runtime_root / "governance",
+        runtime_archive_path=runtime_root / "archive",
+        runtime_data_input_path=runtime_data_input,
+    )
+
+    module._prepare_runtime_clean_paths(config)
+
+    for file_name in module.RUNTIME_GOVERNANCE_SEED_FILES:
+        assert (runtime_root / "governance" / file_name).read_text(encoding="utf-8") == (
+            f'{{"stream": "{file_name}"}}\n'
+        )
+
+
 def test_dev_postgres_cluster_env_mapping_falls_back_to_repo_data_root_when_runtime_duckdb_is_empty(
     tmp_path,
 ):
