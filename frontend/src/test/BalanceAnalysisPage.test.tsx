@@ -873,6 +873,18 @@ describe("BalanceAnalysisPage", () => {
         ),
       ).toBeInTheDocument();
     });
+    expect(screen.getByText("真实数据场景阅读")).toBeInTheDocument();
+    expect(screen.queryByText("情景演示与静态参考")).not.toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-summary-row")).toHaveTextContent(
+      "资产端合计 3,287.80 亿元",
+    );
+    expect(screen.getByTestId("balance-analysis-summary-row")).not.toHaveTextContent(
+      "资产以债券投资为主，占市场资产 93.3%",
+    );
+    expect(screen.getByTestId("balance-analysis-contribution-row")).toHaveTextContent(
+      "Review 1-2 year gap positioning",
+    );
+    expect(screen.getByTestId("balance-analysis-bottom-row")).toHaveTextContent("repo-1 maturity");
     expect(screen.getByText("第 1 / 2 页")).toBeInTheDocument();
 
     await waitFor(() => {

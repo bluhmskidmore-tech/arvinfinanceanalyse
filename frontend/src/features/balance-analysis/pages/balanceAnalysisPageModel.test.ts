@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
+  buildBalanceStageRealDataModel,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
@@ -167,6 +168,222 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "marketValueAmount")).toBe("1,845.73");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "amortizedCostAmount")).toBe("1,852.22");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "accruedInterestAmount")).toBe("0.14");
+    });
+  });
+
+  describe("stage real-data model", () => {
+    it("derives staged summary, contribution, risk, and calendar panels from workbook payloads", () => {
+      const model = buildBalanceStageRealDataModel({
+        overview: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          detail_row_count: 3,
+          summary_row_count: 2,
+          total_market_value_amount: "0",
+          total_amortized_cost_amount: "0",
+          total_accrued_interest_amount: "0",
+        },
+        workbook: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          cards: [
+            { key: "bond_assets_excluding_issue", label: "债券资产", value: "2000000" },
+            { key: "interbank_assets", label: "同业资产", value: "1000000" },
+            { key: "issuance_liabilities", label: "发行类负债", value: "500000" },
+            { key: "interbank_liabilities", label: "同业负债", value: "250000" },
+          ],
+          tables: [
+            {
+              key: "bond_business_types",
+              title: "债券业务种类",
+              section_kind: "table",
+              columns: [],
+              rows: [{ bond_type: "政策性金融债", balance_amount: "2000000", share: "1" }],
+            },
+            {
+              key: "issuance_business_types",
+              title: "发行类分析",
+              section_kind: "table",
+              columns: [],
+              rows: [{ bond_type: "同业存单", balance_amount: "500000", share: "1" }],
+            },
+            {
+              key: "maturity_gap",
+              title: "期限缺口分析",
+              section_kind: "table",
+              columns: [],
+              rows: [
+                {
+                  bucket: "已到期/逾期",
+                  asset_total_amount: "0",
+                  full_scope_liability_amount: "10000",
+                  full_scope_gap_amount: "-10000",
+                },
+                {
+                  bucket: "3-6个月",
+                  asset_total_amount: "5000",
+                  full_scope_liability_amount: "30000",
+                  full_scope_gap_amount: "-25000",
+                },
+                {
+                  bucket: "1-2年",
+                  asset_total_amount: "60000",
+                  full_scope_liability_amount: "10000",
+                  full_scope_gap_amount: "50000",
+                },
+              ],
+            },
+          ],
+          operational_sections: [],
+        },
+        decisionRows: [
+          {
+            decision_key: "decision-1",
+            title: "Review 3-6 month gap",
+            action_label: "Review gap",
+            severity: "high",
+            reason: "Bucket gap is -25000 wan yuan.",
+            source_section: "maturity_gap",
+            rule_id: "rule-gap",
+            rule_version: "v1",
+            latest_status: {
+              decision_key: "decision-1",
+              status: "pending",
+              updated_at: null,
+              updated_by: null,
+              comment: null,
+            },
+          },
+        ],
+        riskAlertRows: [
+          {
+            title: "Negative gap in 3-6 months",
+            severity: "high",
+            reason: "Gap dropped to -25000 wan yuan.",
+            source_section: "maturity_gap",
+            rule_id: "risk-gap",
+            rule_version: "v1",
+          },
+        ],
+        eventCalendarRows: [
+          {
+            event_date: "2026-03-05",
+            event_type: "funding_rollover",
+            title: "repo-1 maturity",
+            source: "internal_governed_schedule",
+            impact_hint: "liability book / repo",
+            source_section: "maturity_gap",
+          },
+        ],
+      });
+
+      expect(model.hasRealData).toBe(true);
+      expect(model.summary.content).toContain("资产端合计 300.00 亿元");
+      expect(model.summary.content).toContain("发行类首位为 同业存单");
+      expect(model.summary.allocationNetValue).toBe("225.00");
+      expect(model.contribution.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            item: "债券资产",
+            assetBal: "200.00",
+            assetPct: "66.7%",
+            netGap: "+200.00",
+          }),
+          expect.objectContaining({
+            item: "发行类负债",
+            liabBal: "50.00",
+            liabPct: "66.7%",
+            netGap: "-50.00",
+          }),
+          expect.objectContaining({
+            item: "3-6个月全口径缺口",
+            netGap: "-2.50",
+            rowKind: "gap",
+          }),
+        ]),
+      );
+      expect(model.contribution.watchItems[0]).toMatchObject({
+        level: "danger",
+        title: "Review 3-6 month gap",
+      });
+      expect(model.contribution.watchItems[0].detail).toContain("-2.50 亿元");
+      expect(model.bottom.maturityCategories).toEqual(["已到期/逾期", "3-6个月", "1-2年"]);
+      expect(model.bottom.gapSeries).toEqual([-1, -2.5, 5]);
+      expect(model.bottom.riskMetrics).toEqual(
+        expect.arrayContaining([
+          { label: "资产/全口径负债比", value: "4.00x" },
+          { label: "1年内全口径缺口", value: "-3.50 亿" },
+        ]),
+      );
+      expect(model.bottom.calendarItems[0]).toMatchObject({
+        date: "2026-03-05",
+        event: "repo-1 maturity",
+        amount: "maturity_gap",
+        level: "high",
+      });
+    });
+
+    it("uses explicit no-data rows instead of static demonstration numbers", () => {
+      const model = buildBalanceStageRealDataModel({});
+
+      expect(model.hasRealData).toBe(false);
+      expect(model.summary.content).toContain("未返回可用于 stage 的真实 workbook 切片");
+      expect(model.contribution.rows).toEqual([
+        {
+          item: "暂无真实数据",
+          assetBal: "—",
+          assetPct: "—",
+          liabBal: "—",
+          liabPct: "—",
+          netGap: "—",
+          rowKind: "empty",
+        },
+      ]);
+      expect(model.contribution.watchItems[0].title).toBe("当前报告日未返回治理事项");
+      expect(model.bottom.calendarItems[0].event).toBe("当前报告日未返回事件日历");
+    });
+    it("uses detail summary fallback in stage summary copy when workbook is unavailable", () => {
+      const model = buildBalanceStageRealDataModel({
+        overview: {
+          report_date: "2026-03-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          detail_row_count: 2,
+          summary_row_count: 2,
+          total_market_value_amount: "14000000000",
+          total_amortized_cost_amount: "14000000000",
+          total_accrued_interest_amount: "0",
+        },
+        summaryRows: [
+          {
+            source_family: "combined",
+            position_scope: "asset",
+            currency_basis: "CNY",
+            row_count: 1,
+            market_value_amount: "10000000000",
+            amortized_cost_amount: "10000000000",
+            accrued_interest_amount: "0",
+          },
+          {
+            source_family: "combined",
+            position_scope: "liability",
+            currency_basis: "CNY",
+            row_count: 1,
+            market_value_amount: "4000000000",
+            amortized_cost_amount: "4000000000",
+            accrued_interest_amount: "0",
+          },
+        ],
+      });
+
+      expect(model.hasRealData).toBe(true);
+      expect(model.summary.allocationItems.map((item) => item.value)).toEqual([100, -40]);
+      expect(model.summary.allocationNetValue).toBe("60.00");
+      expect(model.summary.content).toContain("100.00");
+      expect(model.summary.content).toContain("40.00");
+      expect(model.summary.content).not.toContain("workbook");
     });
   });
 });

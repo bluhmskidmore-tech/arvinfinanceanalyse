@@ -78,6 +78,7 @@ import {
   formatBalanceWorkbookCellDisplay,
   formatBalanceWorkbookWanAmountDisplay,
   formatBalanceWorkbookWanTextDisplay,
+  buildBalanceStageRealDataModel,
   gapChartBarWidthPercent,
   maxAbsFiniteChartScale,
   maxFiniteChartScale,
@@ -1558,6 +1559,15 @@ export default function BalanceAnalysisPage() {
       tone: "info" as const,
     },
   ];
+  const stageDecisionRows = decisionRows.length > 0 ? decisionRows : workbookDecisionRows;
+  const stageModel = buildBalanceStageRealDataModel({
+    overview,
+    summaryRows: detailQuery.data?.result.summary ?? [],
+    workbook,
+    decisionRows: stageDecisionRows,
+    eventCalendarRows,
+    riskAlertRows,
+  });
   const secondaryWorkbookTables = workbookTables.filter(
     (table) =>
       !primaryWorkbookTableKeys.includes(table.key as (typeof primaryWorkbookTableKeys)[number]) &&
@@ -2599,9 +2609,9 @@ export default function BalanceAnalysisPage() {
 
       <section style={stagedScenarioShellStyle}>
         <PageSectionLead
-          eyebrow="Staged"
-          title="情景演示与静态参考"
-          description="以下三组面板继续保留为阶段性演示/场景阅读区，用来帮助讨论期限结构、缺口和风险故事线；它们不是 formal 结论，不参与首屏判断。"
+          eyebrow="Real Data"
+          title="真实数据场景阅读"
+          description="以下三组面板保留原有阅读布局，但数据改为来自当前报告日的 overview、detail、workbook、decision items、risk alerts 和 event calendar；缺失切片只显示空态，不再补静态演示值。"
           style={{ marginTop: 0 }}
         />
         <div
@@ -2615,12 +2625,13 @@ export default function BalanceAnalysisPage() {
             lineHeight: 1.7,
           }}
         >
-          演示区保留原有静态图表和 narrative，方便和真实工作簿结果做对照；如需做正式判断，请优先以上方
-          overview、summary、detail 和 governed signals 为准。
+          当前区块已切换为真实数据派生视图，报告日为 {stageModel.summary.tags[0]?.label ?? "—"}；
+          仍以页面上方 formal overview、summary、detail 和 governed signals 作为正式判断来源。
+          {stageModel.hasRealData ? "" : " 当前筛选条件下未返回可展示的真实 stage 切片。"}
         </div>
-        <BalanceSummaryRow />
-        <BalanceContributionRow />
-        <BalanceBottomRow />
+        <BalanceSummaryRow model={stageModel.summary} />
+        <BalanceContributionRow model={stageModel.contribution} />
+        <BalanceBottomRow model={stageModel.bottom} />
       </section>
 
       {resultMetaSections.length > 0 && (

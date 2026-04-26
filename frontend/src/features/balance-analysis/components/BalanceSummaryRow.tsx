@@ -1,50 +1,11 @@
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { SummaryBlock } from "../../../components/SummaryBlock";
 import { useBalanceAnalysisThreeColumnGridStyle } from "./balanceAnalysisLayout";
+import type { BalanceStageSummaryModel } from "../pages/balanceAnalysisPageModel";
 
-const summaryContent = [
-  "资产以债券投资为主，占市场资产 93.3%；中长端配置偏稳，资产收益率 2.07%。",
-  "负债以发行类债务为主，占市场负债 66.3%；其中国金存单占发行 81.8%。",
-  "1年内净缺口 -373.0 亿，91天-1年缺口最大；需回购补量关注滚续节奏与成本。",
-].join("\n");
-
-const allocationChartOption: EChartsOption = {
-  title: {
-    text: "收益成本分配（静态口径）",
-    left: 0,
-    top: 0,
-    textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
-  },
-  grid: { left: 8, right: 8, top: 40, bottom: 28 },
-  tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
-  xAxis: { type: "value", axisLabel: { formatter: "{value}" } },
-  yAxis: {
-    type: "category",
-    data: ["债券投资", "同业资产", "发行负债", "同业负债"],
-    axisLabel: { width: 72, overflow: "truncate" },
-  },
-  series: [
-    {
-      type: "bar",
-      data: [
-        { value: 23.11, itemStyle: { color: "#2563eb" } },
-        { value: 6.8, itemStyle: { color: "#3b82f6" } },
-        { value: -9.4, itemStyle: { color: "#dc2626" } },
-        { value: -4.2, itemStyle: { color: "#f97316" } },
-      ],
-      barWidth: 18,
-    },
-  ],
+type BalanceSummaryRowProps = {
+  model: BalanceStageSummaryModel;
 };
-
-const riskRows: { dim: string; current: string; stress: string; scenario: string; level: "low" | "mid" | "high" }[] =
-  [
-    { dim: "期限错配", current: "偏高", stress: "中性", scenario: "压力测试", level: "high" },
-    { dim: "流动性压力", current: "中性", stress: "中性", scenario: "压力测试", level: "mid" },
-    { dim: "负债滚续", current: "偏高", stress: "关注", scenario: "压力测试", level: "high" },
-    { dim: "对手方集中度", current: "中性", stress: "中性", scenario: "压力测试", level: "mid" },
-    { dim: "异常资产", current: "低", stress: "低", scenario: "压力测试", level: "low" },
-  ];
 
 function cellBg(level: "low" | "mid" | "high") {
   if (level === "low") {
@@ -56,8 +17,41 @@ function cellBg(level: "low" | "mid" | "high") {
   return "#fef9c3";
 }
 
-export function BalanceSummaryRow() {
+function buildAllocationChartOption(model: BalanceStageSummaryModel): EChartsOption {
+  const items = model.allocationItems.length
+    ? model.allocationItems
+    : [{ label: "无真实数据", value: 0, color: "#94a3b8" }];
+  return {
+    title: {
+      text: "收益成本分配（真实数据）",
+      left: 0,
+      top: 0,
+      textStyle: { fontSize: 14, fontWeight: 700, color: "#162033" },
+    },
+    grid: { left: 8, right: 8, top: 40, bottom: 28 },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    xAxis: { type: "value", axisLabel: { formatter: "{value}" } },
+    yAxis: {
+      type: "category",
+      data: items.map((item) => item.label),
+      axisLabel: { width: 72, overflow: "truncate" },
+    },
+    series: [
+      {
+        type: "bar",
+        data: items.map((item) => ({
+          value: item.value,
+          itemStyle: { color: item.color },
+        })),
+        barWidth: 18,
+      },
+    ],
+  };
+}
+
+export function BalanceSummaryRow({ model }: BalanceSummaryRowProps) {
   const gridStyle = useBalanceAnalysisThreeColumnGridStyle();
+  const allocationChartOption = buildAllocationChartOption(model);
 
   return (
     <div data-testid="balance-analysis-summary-row" style={gridStyle}>
@@ -71,12 +65,8 @@ export function BalanceSummaryRow() {
       >
         <SummaryBlock
           title="本期资产负债摘要"
-          content={summaryContent}
-          tags={[
-            { label: "资产特征", color: "blue" },
-            { label: "负债特征", color: "geekblue" },
-            { label: "缺口压力", color: "orange" },
-          ]}
+          content={model.content}
+          tags={model.tags}
         />
       </div>
       <div
@@ -89,7 +79,9 @@ export function BalanceSummaryRow() {
         }}
       >
         <ReactECharts option={allocationChartOption} style={{ height: 240 }} opts={{ renderer: "canvas" }} />
-        <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "#15803d" }}>净值: +16.31</div>
+        <div style={{ textAlign: "right", fontSize: 13, fontWeight: 600, color: "#15803d" }}>
+          净值: {model.allocationNetValue}
+        </div>
       </div>
       <div
         style={{
@@ -110,7 +102,7 @@ export function BalanceSummaryRow() {
             </tr>
           </thead>
           <tbody>
-            {riskRows.map((row) => (
+            {model.riskRows.map((row) => (
               <tr key={row.dim}>
                 <td style={{ padding: "6px 4px", color: "#162033", fontWeight: 600 }}>{row.dim}</td>
                 <td style={{ padding: 4, background: cellBg(row.level), borderRadius: 6 }}>{row.current}</td>
