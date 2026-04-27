@@ -7,6 +7,7 @@ from uuid import uuid4
 import duckdb
 
 from backend.app.services.accounting_asset_movement_service import (
+    accounting_asset_movement_dates_envelope,
     accounting_asset_movement_envelope,
 )
 from backend.app.tasks.accounting_asset_movement import (
@@ -97,6 +98,178 @@ def test_balance_movement_analysis_service_keeps_zqtz_gap_out_of_formal_quality(
     assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("1.00000000")
     assert by_bucket["TPL"]["reconciliation_status"] == "mismatch"
     assert envelope["result_meta"]["quality_flag"] == "ok"
+
+
+def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              report_month varchar,
+              currency_basis varchar,
+              sort_order integer,
+              basis_bucket varchar,
+              previous_balance decimal(24, 8),
+              current_balance decimal(24, 8),
+              balance_change decimal(24, 8),
+              change_pct decimal(24, 8),
+              contribution_pct decimal(24, 8),
+              zqtz_amount decimal(24, 8),
+              gl_amount decimal(24, 8),
+              reconciliation_diff decimal(24, 8),
+              reconciliation_status varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.execute(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?)",
+            ["2026-02-28", "14101010001", "CNX"],
+        )
+        conn.execute(
+            """
+            insert into fact_accounting_asset_movement_monthly values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                "2026-01-31",
+                "2026-01",
+                "CNX",
+                1,
+                "AC",
+                "90",
+                "100",
+                "10",
+                "11.11111111",
+                "100",
+                "100",
+                "100",
+                "0",
+                "matched",
+                "sv-read-model",
+                "rv-read-model",
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_dates_envelope(
+        str(duckdb_path),
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["report_dates"] == ["2026-01-31"]
+    assert envelope["result_meta"]["tables_used"] == [
+        "fact_accounting_asset_movement_monthly"
+    ]
+
+
+def test_balance_movement_dates_source_version_is_currency_scoped():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              report_month varchar,
+              currency_basis varchar,
+              sort_order integer,
+              basis_bucket varchar,
+              previous_balance decimal(24, 8),
+              current_balance decimal(24, 8),
+              balance_change decimal(24, 8),
+              change_pct decimal(24, 8),
+              contribution_pct decimal(24, 8),
+              zqtz_amount decimal(24, 8),
+              gl_amount decimal(24, 8),
+              reconciliation_diff decimal(24, 8),
+              reconciliation_status varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_accounting_asset_movement_monthly values (
+              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
+            """,
+            [
+                (
+                    "2026-02-28",
+                    "2026-02",
+                    "CNY",
+                    1,
+                    "AC",
+                    "90",
+                    "100",
+                    "10",
+                    "11.11111111",
+                    "100",
+                    "100",
+                    "100",
+                    "0",
+                    "matched",
+                    "sv-cny-latest",
+                    "rv-cny",
+                ),
+                (
+                    "2026-01-31",
+                    "2026-01",
+                    "CNX",
+                    1,
+                    "AC",
+                    "80",
+                    "90",
+                    "10",
+                    "12.50000000",
+                    "100",
+                    "90",
+                    "90",
+                    "0",
+                    "matched",
+                    "sv-cnx-selected",
+                    "rv-cnx",
+                ),
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_dates_envelope(
+        str(duckdb_path),
+        currency_basis="CNX",
+    )
+
+    assert envelope["result"]["report_dates"] == ["2026-01-31"]
+    assert envelope["result_meta"]["source_version"] == "sv-cnx-selected"
+    assert envelope["result_meta"]["filters_applied"] == {"currency_basis": "CNX"}
 
 
 def _seed_source_tables_and_materialize(

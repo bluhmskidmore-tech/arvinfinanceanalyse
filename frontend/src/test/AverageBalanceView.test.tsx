@@ -83,6 +83,33 @@ function renderView(clientOverrides?: Record<string, unknown>) {
             weighted_rate: 1.61,
           },
         ],
+        accounting_basis_daily_avg: {
+          report_date: "2026-04-14",
+          currency_basis: "CNX",
+          daily_avg_total: 500000000,
+          accounting_controls: ["142%", "143%", "1440101%", "141%"],
+          excluded_controls: ["144020%"],
+          rows: [
+            {
+              basis_bucket: "AC",
+              daily_avg_balance: 220000000,
+              daily_avg_pct: 44,
+              source_account_patterns: ["142%", "143%"],
+            },
+            {
+              basis_bucket: "OCI",
+              daily_avg_balance: 150000000,
+              daily_avg_pct: 30,
+              source_account_patterns: ["1440101%"],
+            },
+            {
+              basis_bucket: "TPL",
+              daily_avg_balance: 130000000,
+              daily_avg_pct: 26,
+              source_account_patterns: ["141%"],
+            },
+          ],
+        },
       };
     },
     async getAdbMonthly() {
@@ -218,6 +245,12 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("资产收益率（年化）")).toBeInTheDocument();
     expect(screen.getByText("负债付息率（年化）")).toBeInTheDocument();
     expect(screen.getByText("NIM（年化）")).toBeInTheDocument();
+    const accountingBasis = screen.getByTestId("adb-accounting-basis-daily-avg");
+    expect(accountingBasis).toHaveTextContent("AC");
+    expect(accountingBasis).toHaveTextContent("OCI");
+    expect(accountingBasis).toHaveTextContent("TPL");
+    expect(accountingBasis).toHaveTextContent("44.00");
+    expect(accountingBasis).toHaveTextContent("144020%");
 
     expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();

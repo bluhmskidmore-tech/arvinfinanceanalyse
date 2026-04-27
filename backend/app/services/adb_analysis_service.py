@@ -39,6 +39,13 @@ IB_ASSET_PRED = (
 ADB_CACHE_VERSION = "cv_adb_analysis_v1"
 ADB_EMPTY_SOURCE_VERSION = "sv_adb_empty"
 ADB_RULE_VERSION = "rv_adb_analysis_v1"
+ACCOUNTING_BASIS_CURRENCY = "CNX"
+ACCOUNTING_BASIS_BUCKETS = (
+    ("AC", ("142%", "143%")),
+    ("OCI", ("1440101%",)),
+    ("TPL", ("141%",)),
+)
+ACCOUNTING_BASIS_EXCLUDED_CONTROLS = ("144020%",)
 
 
 def _conn_ro(path: str) -> duckdb.DuckDBPyConnection:
@@ -99,6 +106,9 @@ def _build_analytical_envelope(
     result_payload: dict[str, Any],
     source_versions: list[str],
     rule_versions: list[str],
+    filters_applied: dict[str, object] | None = None,
+    tables_used: list[str] | None = None,
+    evidence_rows: int | None = None,
 ) -> dict[str, Any]:
     return build_result_envelope(
         basis="analytical",
@@ -110,6 +120,9 @@ def _build_analytical_envelope(
         quality_flag="ok",
         vendor_version="vv_none",
         result_payload=result_payload,
+        filters_applied=filters_applied,
+        tables_used=tables_used,
+        evidence_rows=evidence_rows,
     )
 
 
@@ -210,6 +223,105 @@ def _collect_version_strings(
     field: str,
 ) -> list[str]:
     return [str(row.get(field) or "") for rows in row_lists for row in rows]
+
+
+def _accounting_basis_bucket(account_code: object) -> str | None:
+    code = str(account_code or "").strip()
+    if code.startswith("141"):
+        return "TPL"
+    if code.startswith(("142", "143")):
+        return "AC"
+    if code.startswith("1440101"):
+        return "OCI"
+    return None
+
+
+def _load_accounting_basis_daily_average(
+    duckdb_path: str,
+    report_date: date,
+    currency_basis: str = ACCOUNTING_BASIS_CURRENCY,
+) -> tuple[dict[str, Any], list[str], list[str], int]:
+    empty = {
+        "report_date": report_date.strftime("%Y-%m-%d"),
+        "currency_basis": currency_basis,
+        "daily_avg_total": 0.0,
+        "rows": [
+            {
+                "basis_bucket": bucket,
+                "daily_avg_balance": 0.0,
+                "daily_avg_pct": None,
+                "source_account_patterns": list(patterns),
+            }
+            for bucket, patterns in ACCOUNTING_BASIS_BUCKETS
+        ],
+        "accounting_controls": [
+            pattern for _bucket, patterns in ACCOUNTING_BASIS_BUCKETS for pattern in patterns
+        ],
+        "excluded_controls": list(ACCOUNTING_BASIS_EXCLUDED_CONTROLS),
+    }
+    if not Path(duckdb_path).exists():
+        return empty, [], [], 0
+
+    conn = _conn_ro(duckdb_path)
+    try:
+        if not _table_exists(conn, "product_category_pnl_canonical_fact"):
+            return empty, [], [], 0
+        cursor = conn.execute(
+            """
+            select
+              account_code,
+              daily_avg_balance,
+              source_version,
+              rule_version
+            from product_category_pnl_canonical_fact
+            where report_date = ?
+              and currency = ?
+              and (
+                account_code like '141%'
+                or account_code like '142%'
+                or account_code like '143%'
+                or account_code like '1440101%'
+                or account_code like '144020%'
+              )
+            """,
+            [report_date.strftime("%Y-%m-%d"), currency_basis],
+        )
+        rows = [_dict_from_row(list(cursor.description or []), row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    totals = {bucket: Decimal("0") for bucket, _patterns in ACCOUNTING_BASIS_BUCKETS}
+    source_versions: list[str] = []
+    rule_versions: list[str] = []
+    evidence_rows = 0
+    for row in rows:
+        bucket = _accounting_basis_bucket(row.get("account_code"))
+        if bucket is None:
+            continue
+        totals[bucket] += _decimal_or_zero(row.get("daily_avg_balance"))
+        source_versions.append(str(row.get("source_version") or ""))
+        rule_versions.append(str(row.get("rule_version") or ""))
+        evidence_rows += 1
+
+    daily_avg_total = sum(totals.values(), Decimal("0"))
+    payload = {
+        **empty,
+        "daily_avg_total": float(daily_avg_total),
+        "rows": [
+            {
+                "basis_bucket": bucket,
+                "daily_avg_balance": float(totals[bucket]),
+                "daily_avg_pct": (
+                    float(totals[bucket] / daily_avg_total * Decimal("100"))
+                    if daily_avg_total != Decimal("0")
+                    else None
+                ),
+                "source_account_patterns": list(patterns),
+            }
+            for bucket, patterns in ACCOUNTING_BASIS_BUCKETS
+        ],
+    }
+    return payload, source_versions, rule_versions, evidence_rows
 
 
 def _load_adb_raw_data(
@@ -979,22 +1091,39 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
         result_payload=payload,
         source_versions=source_versions,
         rule_versions=rule_versions,
+        filters_applied={"start_date": start_date, "end_date": end_date},
+        tables_used=["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
     )
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
     settings = get_settings()
+    parsed_end_date = _parse_date(end_date)
     payload, source_versions, rule_versions = get_adb_comparison(
         str(settings.duckdb_path),
         _parse_date(start_date),
-        _parse_date(end_date),
+        parsed_end_date,
         top_n=top_n,
     )
+    accounting_basis, basis_source_versions, basis_rule_versions, _basis_evidence_rows = (
+        _load_accounting_basis_daily_average(str(settings.duckdb_path), parsed_end_date)
+    )
+    payload["accounting_basis_daily_avg"] = accounting_basis
     return _build_analytical_envelope(
         result_kind="adb.comparison",
         result_payload=payload,
-        source_versions=source_versions,
-        rule_versions=rule_versions,
+        source_versions=source_versions + basis_source_versions,
+        rule_versions=rule_versions + basis_rule_versions,
+        filters_applied={
+            "start_date": start_date,
+            "end_date": end_date,
+            "accounting_basis_currency": ACCOUNTING_BASIS_CURRENCY,
+        },
+        tables_used=[
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+            "product_category_pnl_canonical_fact",
+        ],
     )
 
 
@@ -1009,4 +1138,6 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         result_payload=payload,
         source_versions=source_versions,
         rule_versions=rule_versions,
+        filters_applied={"year": year},
+        tables_used=["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
     )

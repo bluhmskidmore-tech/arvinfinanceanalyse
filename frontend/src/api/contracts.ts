@@ -2836,6 +2836,22 @@ export type AdbCategoryItem = {
   weighted_rate?: number | null;
 };
 
+export type AdbAccountingBasisDailyAvgItem = {
+  basis_bucket: "AC" | "OCI" | "TPL" | string;
+  daily_avg_balance: number;
+  daily_avg_pct: number | null;
+  source_account_patterns: string[];
+};
+
+export type AdbAccountingBasisDailyAvg = {
+  report_date: string;
+  currency_basis: string;
+  daily_avg_total: number;
+  rows: AdbAccountingBasisDailyAvgItem[];
+  accounting_controls: string[];
+  excluded_controls: string[];
+};
+
 export type AdbComparisonResponse = {
   result_meta?: ResultMeta;
   report_date: string;
@@ -2852,6 +2868,7 @@ export type AdbComparisonResponse = {
   net_interest_margin: number | null;
   assets_breakdown: AdbCategoryItem[];
   liabilities_breakdown: AdbCategoryItem[];
+  accounting_basis_daily_avg?: AdbAccountingBasisDailyAvg;
   detail?: string;
 };
 

@@ -21,6 +21,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
+  AdbAccountingBasisDailyAvgItem,
   AdbCategoryItem,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
@@ -140,6 +141,33 @@ function buildDetailColumns(kind: BreakdownKind): ColumnsType<AdbCategoryItem> {
     { title: "日均(亿元)", dataIndex: "avg_balance", key: "avg_balance", align: "right", render: (value: number) => (value / YI).toFixed(2) },
     { title: "占比(%)", dataIndex: "proportion", key: "proportion", align: "right", render: (value: number) => value.toFixed(2) },
     { title: kind === "asset" ? "收益率(%)" : "付息率(%)", dataIndex: "weighted_rate", key: "weighted_rate", align: "right", render: (value: number | null | undefined) => formatPct(value) },
+  ];
+}
+
+function buildAccountingBasisColumns(): ColumnsType<AdbAccountingBasisDailyAvgItem> {
+  return [
+    { title: "分类", dataIndex: "basis_bucket", key: "basis_bucket" },
+    {
+      title: "日均余额(亿元)",
+      dataIndex: "daily_avg_balance",
+      key: "daily_avg_balance",
+      align: "right",
+      render: (value: number) => (value / YI).toFixed(2),
+    },
+    {
+      title: "占比(%)",
+      dataIndex: "daily_avg_pct",
+      key: "daily_avg_pct",
+      align: "right",
+      render: (value: number | null | undefined) =>
+        value === null || value === undefined ? "—" : value.toFixed(2),
+    },
+    {
+      title: "控制科目",
+      dataIndex: "source_account_patterns",
+      key: "source_account_patterns",
+      render: (value: string[]) => value.join(" / "),
+    },
   ];
 }
 
@@ -320,6 +348,7 @@ export default function AverageBalanceView() {
 
   const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
   const dailyLiabilityColumns = useMemo(() => buildDetailColumns("liability"), []);
+  const accountingBasisColumns = useMemo(() => buildAccountingBasisColumns(), []);
   const monthlyAssetColumns = useMemo(() => buildMonthlyBreakdownColumns("asset"), []);
   const monthlyLiabilityColumns = useMemo(() => buildMonthlyBreakdownColumns("liability"), []);
 
@@ -476,6 +505,31 @@ export default function AverageBalanceView() {
                       testId="adb-daily-result-meta"
                     />
                     {deviationWarning ? <Alert type="warning" showIcon message={deviationWarning} /> : null}
+
+                    {dailyData.accounting_basis_daily_avg ? (
+                      <Card
+                        data-testid="adb-accounting-basis-daily-avg"
+                        title="AC / OCI / TPL 日均口径"
+                        size="small"
+                      >
+                        <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                          <Text type="secondary">
+                            数据源：日均表 daily_avg_balance；控制科目{" "}
+                            {dailyData.accounting_basis_daily_avg.accounting_controls.join(" / ")}
+                            ；排除{" "}
+                            {dailyData.accounting_basis_daily_avg.excluded_controls.join(" / ")}
+                            股权 OCI。
+                          </Text>
+                          <Table<AdbAccountingBasisDailyAvgItem>
+                            size="small"
+                            pagination={false}
+                            rowKey={(row) => row.basis_bucket}
+                            columns={accountingBasisColumns}
+                            dataSource={dailyData.accounting_basis_daily_avg.rows}
+                          />
+                        </Space>
+                      </Card>
+                    ) : null}
 
                     <Row gutter={[16, 16]}>
                       {[

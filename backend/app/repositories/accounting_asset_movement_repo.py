@@ -15,14 +15,8 @@ class AccountingAssetMovementRepository:
             rows = conn.execute(
                 """
                 select distinct cast(report_date as varchar)
-                from product_category_pnl_canonical_fact
-                where currency = ?
-                  and (
-                    account_code like '141%'
-                    or account_code like '142%'
-                    or account_code like '143%'
-                    or account_code like '1440101%'
-                  )
+                from fact_accounting_asset_movement_monthly
+                where currency_basis = ?
                 order by cast(report_date as varchar) desc
                 """,
                 [currency_basis],
@@ -34,16 +28,18 @@ class AccountingAssetMovementRepository:
                 conn.close()
         return [str(row[0]) for row in rows]
 
-    def latest_source_version(self) -> str:
+    def latest_source_version(self, *, currency_basis: str = "CNX") -> str:
         try:
             conn = duckdb.connect(self.path, read_only=True)
             row = conn.execute(
                 """
                 select source_version
                 from fact_accounting_asset_movement_monthly
+                where currency_basis = ?
                 order by report_date desc, sort_order asc
                 limit 1
-                """
+                """,
+                [currency_basis],
             ).fetchone()
         except duckdb.Error:
             return "sv_accounting_asset_movement_empty"

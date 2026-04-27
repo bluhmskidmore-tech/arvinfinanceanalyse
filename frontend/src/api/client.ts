@@ -2347,6 +2347,11 @@ function normalizeAdbComparisonResponse(
   const liabilitiesBreakdown = mapBreakdown(
     Array.isArray(raw.liabilities_breakdown) ? raw.liabilities_breakdown : [],
   );
+  const accountingBasisRaw =
+    raw.accounting_basis_daily_avg && typeof raw.accounting_basis_daily_avg === "object"
+      ? (raw.accounting_basis_daily_avg as Record<string, unknown>)
+      : null;
+  const accountingBasisRows = accountingBasisRaw?.rows;
 
   return {
     result_meta: resultMeta,
@@ -2371,6 +2376,33 @@ function normalizeAdbComparisonResponse(
         : Number(raw.net_interest_margin),
     assets_breakdown: assetsBreakdown,
     liabilities_breakdown: liabilitiesBreakdown,
+    accounting_basis_daily_avg: accountingBasisRaw
+      ? {
+          report_date: String(accountingBasisRaw.report_date ?? ""),
+          currency_basis: String(accountingBasisRaw.currency_basis ?? ""),
+          daily_avg_total: Number(accountingBasisRaw.daily_avg_total ?? 0),
+          rows: (Array.isArray(accountingBasisRows) ? accountingBasisRows : []).map((item) => {
+            const row = item as Record<string, unknown>;
+            return {
+              basis_bucket: String(row.basis_bucket ?? ""),
+              daily_avg_balance: Number(row.daily_avg_balance ?? 0),
+              daily_avg_pct:
+                row.daily_avg_pct === null || row.daily_avg_pct === undefined
+                  ? null
+                  : Number(row.daily_avg_pct),
+              source_account_patterns: Array.isArray(row.source_account_patterns)
+                ? row.source_account_patterns.map(String)
+                : [],
+            };
+          }),
+          accounting_controls: Array.isArray(accountingBasisRaw.accounting_controls)
+            ? accountingBasisRaw.accounting_controls.map(String)
+            : [],
+          excluded_controls: Array.isArray(accountingBasisRaw.excluded_controls)
+            ? accountingBasisRaw.excluded_controls.map(String)
+            : [],
+        }
+      : undefined,
     detail: raw.detail ? String(raw.detail) : undefined,
   };
 }

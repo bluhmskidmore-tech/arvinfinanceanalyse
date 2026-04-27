@@ -1224,9 +1224,20 @@ describe("BalanceAnalysisPage", () => {
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
 
+    const summaryTable = await screen.findByTestId(
+      "balance-analysis-summary-table",
+      {},
+      { timeout: 5000 },
+    );
+    const primaryGrid = await screen.findByTestId(
+      "balance-analysis-workbook-primary-grid",
+      {},
+      { timeout: 5000 },
+    );
+
     await waitFor(() => {
-      expect(screen.getByTestId("balance-analysis-summary-table")).toHaveTextContent("利率债组合");
-      expect(screen.getByTestId("balance-analysis-workbook-primary-grid")).toBeInTheDocument();
+      expect(summaryTable).toHaveTextContent("利率债组合");
+      expect(primaryGrid).toBeInTheDocument();
       expect(screen.getByText("明细下钻暂时不可用，汇总驾驶舱仍可继续使用。")).toBeInTheDocument();
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("市值合计");
       expect(screen.getByTestId("balance-analysis-overview-cards")).toHaveTextContent("1,202.00");

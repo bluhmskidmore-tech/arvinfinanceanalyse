@@ -283,6 +283,21 @@ describe("createApiClient", () => {
           net_interest_margin: null,
           assets_breakdown: [],
           liabilities_breakdown: [],
+          accounting_basis_daily_avg: {
+            report_date: "2025-06-03",
+            currency_basis: "CNX",
+            daily_avg_total: "500000000",
+            accounting_controls: ["142%", "143%", "1440101%", "141%"],
+            excluded_controls: ["144020%"],
+            rows: [
+              {
+                basis_bucket: "AC",
+                daily_avg_balance: "220000000",
+                daily_avg_pct: "44",
+                source_account_patterns: ["142%", "143%"],
+              },
+            ],
+          },
         },
       }),
     }));
@@ -299,6 +314,14 @@ describe("createApiClient", () => {
     expect(payload).not.toHaveProperty("liabilities");
     expect(payload.result_meta?.result_kind).toBe("adb.comparison");
     expect(payload.result_meta?.source_version).toBe("sv_adb");
+    expect(payload.accounting_basis_daily_avg?.daily_avg_total).toBe(500000000);
+    expect(payload.accounting_basis_daily_avg?.rows[0]).toMatchObject({
+      basis_bucket: "AC",
+      daily_avg_balance: 220000000,
+      daily_avg_pct: 44,
+      source_account_patterns: ["142%", "143%"],
+    });
+    expect(payload.accounting_basis_daily_avg?.excluded_controls).toEqual(["144020%"]);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/analysis/adb/comparison?start_date=2025-06-02&end_date=2025-06-03&top_n=5",

@@ -46,14 +46,11 @@ def accounting_asset_movement_dates_envelope(
     meta = build_formal_result_meta(
         trace_id="tr_balance_movement_dates",
         result_kind="balance-analysis.movement.dates",
-        source_version=repo.latest_source_version(),
+        source_version=repo.latest_source_version(currency_basis=currency_basis),
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
         filters_applied={"currency_basis": currency_basis},
-        tables_used=[
-            "product_category_pnl_canonical_fact",
-            "fact_accounting_asset_movement_monthly",
-        ],
+        tables_used=["fact_accounting_asset_movement_monthly"],
     )
     return build_formal_result_envelope(
         result_meta=meta,

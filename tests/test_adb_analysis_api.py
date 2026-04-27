@@ -31,6 +31,46 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
         "backend/app/repositories/snapshot_repo.py",
     )
     snapshot_mod.ensure_snapshot_tables(conn)
+    conn.execute(
+        """
+        create table if not exists product_category_pnl_canonical_fact (
+          report_date varchar,
+          account_code varchar,
+          currency varchar,
+          account_name varchar,
+          beginning_balance decimal(24, 8),
+          ending_balance decimal(24, 8),
+          monthly_pnl decimal(24, 8),
+          daily_avg_balance decimal(24, 8),
+          annual_avg_balance decimal(24, 8),
+          days_in_period integer,
+          source_version varchar,
+          rule_version varchar
+        )
+        """
+    )
+
+
+def _insert_daily_average_account(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    account_code: str,
+    daily_avg_balance: Decimal,
+) -> None:
+    conn.execute(
+        """
+        insert into product_category_pnl_canonical_fact values
+        (?, ?, 'CNX', ?, 0, 0, 0, ?, ?, 30, 'sv-daily-avg', 'rv-daily-avg')
+        """,
+        [
+            report_date,
+            account_code,
+            f"Account {account_code}",
+            daily_avg_balance,
+            daily_avg_balance,
+        ],
+    )
 
 
 def _insert_zqtz(
@@ -184,6 +224,36 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
             principal=Decimal("50000000"),
             rate=Decimal("2.5"),
         )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("200000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("20000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("150000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-03",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("999999999"),
+        )
     finally:
         conn.close()
 
@@ -227,6 +297,17 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "asset_yield" in payload
     assert "liability_cost" in payload
     assert "net_interest_margin" in payload
+    basis_rows = {
+        row["basis_bucket"]: row
+        for row in payload["accounting_basis_daily_avg"]["rows"]
+    }
+    assert payload["accounting_basis_daily_avg"]["currency_basis"] == "CNX"
+    assert payload["accounting_basis_daily_avg"]["daily_avg_total"] == 500000000
+    assert basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert basis_rows["AC"]["daily_avg_pct"] == 44
+    assert basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert basis_rows["TPL"]["daily_avg_balance"] == 130000000
+    assert payload["accounting_basis_daily_avg"]["excluded_controls"] == ["144020%"]
 
     alias = client.get(
         "/api/analysis/adb/comparison",

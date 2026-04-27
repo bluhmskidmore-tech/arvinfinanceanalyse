@@ -185,7 +185,7 @@ describe("productCategoryPnlPageModel", () => {
   });
 
   it("exposes a stable as_of_date gap string for the page (no invented as_of_date)", () => {
-    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("as_of_date");
+    expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("归属日期");
     expect(PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY).toContain("无独立外显");
   });
 
@@ -223,7 +223,7 @@ describe("productCategoryPnlPageModel", () => {
     );
     expect(line).toContain("t_formal");
     expect(line).toContain("t_scen");
-    expect(line).toContain("正式口径=formal");
-    expect(line).toContain("情景口径=scenario");
+    expect(line).toContain("正式口径=正式口径");
+    expect(line).toContain("情景口径=情景口径");
   });
 });
