@@ -97,7 +97,7 @@ export function CalendarList({ items }: CalendarListProps) {
                 href={it.sourceUrl}
                 target="_blank"
                 rel="noreferrer noopener"
-                style={{ color: "#2c5a79", fontWeight: 600, fontSize: 12, textDecoration: "none" }}
+                style={{ color: cal.color.primary[600], fontWeight: 600, fontSize: 12, textDecoration: "none" }}
               >
                 {it.sourceLabel?.trim() ? `${it.sourceLabel.trim()} · 打开原文` : "查看原文"}
               </a>

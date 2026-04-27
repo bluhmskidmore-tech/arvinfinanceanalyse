@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { displayTokens } from "../theme/displayTokens";
 import type { DataSectionState } from "./DataSection.types";
 
 type DataSectionProps = {
@@ -13,19 +14,19 @@ type DataSectionProps = {
 const SECTION_STYLE = {
   height: "100%",
   padding: 24,
-  borderRadius: 20,
-  background: "#fbfcfe",
-  border: "1px solid #e4ebf5",
-  boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+  borderRadius: displayTokens.radius.section,
+  background: displayTokens.surface.section,
+  border: displayTokens.surface.sectionBorder,
+  boxShadow: displayTokens.surface.sectionShadow,
 } as const;
 
 const RETRY_BTN_STYLE = {
   width: "fit-content",
-  border: "1px solid #d7dfea",
-  background: "#ffffff",
+  border: displayTokens.interactive.retryBorder,
+  background: displayTokens.interactive.retryBg,
   borderRadius: 12,
   padding: "10px 16px",
-  color: "#162033",
+  color: displayTokens.interactive.retryText,
   cursor: "pointer",
 } as const;
 
@@ -38,8 +39,18 @@ const BANNER_BASE = {
   fontSize: 13,
 } as const;
 
-const STALE_BANNER = { ...BANNER_BASE, background: "#fff8f1", color: "#8a4b14", border: "1px solid #f1d3b5" };
-const FALLBACK_BANNER = { ...BANNER_BASE, background: "#fff4e8", color: "#b35a16", border: "1px solid #f1d3b5" };
+const STALE_BANNER = {
+  ...BANNER_BASE,
+  background: displayTokens.banner.staleBg,
+  color: displayTokens.banner.staleText,
+  border: displayTokens.banner.staleBorder,
+};
+const FALLBACK_BANNER = {
+  ...BANNER_BASE,
+  background: displayTokens.banner.fallbackBg,
+  color: displayTokens.banner.fallbackText,
+  border: displayTokens.banner.fallbackBorder,
+};
 
 export function DataSection({ title, extra, state, onRetry, children }: DataSectionProps) {
   const header = renderHeader(title, extra);
@@ -79,7 +90,7 @@ function renderBody(opts: {
   if (state.kind === "loading") {
     return (
       <div data-testid="data-section-loading">
-        <span style={{ color: "#8090a8" }}>正在载入</span>
+        <span style={{ color: displayTokens.text.muted }}>正在载入</span>
         <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
           {Array.from({ length: 4 }).map((_, index) => (
             <div
@@ -87,7 +98,7 @@ function renderBody(opts: {
               style={{
                 height: 12,
                 borderRadius: 999,
-                background: index === 0 ? "#e7edf5" : "#eef3f8",
+                background: index === 0 ? displayTokens.surface.track : displayTokens.surface.trackAlt,
                 width: index === 0 ? "76%" : index === 3 ? "61%" : "100%",
               }}
             />
@@ -100,8 +111,8 @@ function renderBody(opts: {
   if (state.kind === "error") {
     return (
       <div data-testid="data-section-error" style={{ display: "grid", gap: 12, alignItems: "start" }}>
-        <span style={{ color: "#b74c45", fontWeight: 600 }}>数据载入失败。</span>
-        <span style={{ color: "#5c6b82" }}>
+        <span style={{ color: displayTokens.text.error, fontWeight: 600 }}>数据载入失败。</span>
+        <span style={{ color: displayTokens.text.secondary }}>
           {state.message ?? "当前页面保留重试入口，不在浏览器端自行拼接正式口径。"}
         </span>
         <button type="button" onClick={onRetry} style={RETRY_BTN_STYLE}>
@@ -113,7 +124,7 @@ function renderBody(opts: {
 
   if (state.kind === "empty") {
     return (
-      <div data-testid="data-section-empty" style={{ color: "#8090a8" }}>
+      <div data-testid="data-section-empty" style={{ color: displayTokens.text.muted }}>
         {state.hint ?? "当前暂无可展示内容。"}
       </div>
     );
@@ -121,8 +132,11 @@ function renderBody(opts: {
 
   if (state.kind === "vendor_unavailable") {
     return (
-      <div data-testid="data-section-vendor-unavailable" style={{ display: "grid", gap: 6, color: "#5c6b82" }}>
-        <span style={{ color: "#8a4b14", fontWeight: 600 }}>该业务域数据暂不可用。</span>
+      <div
+        data-testid="data-section-vendor-unavailable"
+        style={{ display: "grid", gap: 6, color: displayTokens.text.secondary }}
+      >
+        <span style={{ color: displayTokens.text.onWarningSoft, fontWeight: 600 }}>该业务域数据暂不可用。</span>
         {state.details ? <span>{state.details}</span> : null}
       </div>
     );
@@ -130,8 +144,11 @@ function renderBody(opts: {
 
   if (state.kind === "explicit_miss") {
     return (
-      <div data-testid="data-section-explicit-miss" style={{ display: "grid", gap: 6, color: "#5c6b82" }}>
-        <span style={{ color: "#b35a16", fontWeight: 600 }}>
+      <div
+        data-testid="data-section-explicit-miss"
+        style={{ display: "grid", gap: 6, color: displayTokens.text.secondary }}
+      >
+        <span style={{ color: displayTokens.text.onWarning, fontWeight: 600 }}>
           指定报告日{state.requested_date ? ` ${state.requested_date} ` : ""}无数据。
         </span>
         {state.details ? <span>{state.details}</span> : null}

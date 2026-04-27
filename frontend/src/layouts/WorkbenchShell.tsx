@@ -29,6 +29,7 @@ import {
   type WorkbenchSection,
   workbenchNavigation,
 } from "../mocks/navigation";
+import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
@@ -90,10 +91,10 @@ function groupButtonStyle(active: boolean) {
     gap: 10,
     padding: "9px 10px",
     borderRadius: 12,
-    background: active ? "rgba(221, 233, 241, 0.64)" : "transparent",
+    background: active ? designTokens.color.primary[50] : "transparent",
     color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
     border: "1px solid transparent",
-    boxShadow: active ? "inset 2px 0 0 #2c5a79" : "none",
+    boxShadow: active ? `inset 2px 0 0 ${designTokens.color.primary[600]}` : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;

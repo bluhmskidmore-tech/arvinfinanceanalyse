@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { displayTokens } from "../theme/displayTokens";
+
 export type KpiCardProps = {
   /** @deprecated Prefer `label`; kept for existing call sites. */
   title?: string;
@@ -21,19 +23,19 @@ export type KpiCardProps = {
 
 type ToneKey = NonNullable<KpiCardProps["tone"]>;
 
-const TITLE_COLOR = "#64748b";
-const UNIT_COLOR = "#94a3b8";
-const DETAIL_COLOR = "#94a3b8";
+const TITLE_COLOR = displayTokens.kpi.label;
+const UNIT_COLOR = displayTokens.kpi.unit;
+const DETAIL_COLOR = displayTokens.kpi.detail;
 
 const VALUE_COLORS: Record<ToneKey, string> = {
-  default: "#1e293b",
-  positive: "#15803d",
-  negative: "#dc2626",
-  warning: "#d97706",
-  error: "#dc2626",
+  default: displayTokens.kpi.valueDefault,
+  positive: displayTokens.kpi.valuePositive,
+  negative: displayTokens.kpi.valueNegative,
+  warning: displayTokens.kpi.valueWarning,
+  error: displayTokens.kpi.valueNegative,
 };
 
-const CARD_SHADOW = "0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05)";
+const CARD_SHADOW = displayTokens.kpi.cardShadow;
 
 function resolveToneFromHints(props: Pick<KpiCardProps, "status" | "trend">): ToneKey {
   if (props.status === "warning") {
@@ -71,7 +73,7 @@ function MiniSparkline({ data }: { data: number[] }) {
     <svg width={w} height={h} aria-hidden style={{ flexShrink: 0 }}>
       <polyline
         fill="none"
-        stroke="#94a3b8"
+        stroke={displayTokens.kpi.sparklineStroke}
         strokeWidth="1.5"
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -129,8 +131,8 @@ export function KpiCard({
         minHeight: isMetric ? 152 : 132,
         padding: "18px 18px 16px",
         borderRadius: 12,
-        background: "#ffffff",
-        border: "1px solid #e2e8f0",
+        background: displayTokens.kpi.cardBg,
+        border: displayTokens.kpi.cardBorder,
         boxShadow: CARD_SHADOW,
         display: "flex",
         flexDirection: "column",
@@ -153,8 +155,8 @@ export function KpiCard({
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: "#f1f5f9",
-              color: "#64748b",
+              background: displayTokens.kpi.iconBg,
+              color: displayTokens.kpi.iconFg,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

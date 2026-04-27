@@ -5,89 +5,94 @@
 
 export const designTokens = {
   color: {
-    /** Institutional blue-green primary scale (accent anchored ~ #2c5a79) */
+    /**
+     * Institutional blue primary — 与「总览工作台」主导航/主按钮深蓝对齐（锚点 #1850a1）。
+     */
     primary: {
-      50: "#eff4f8",
-      100: "#dde9f1",
-      200: "#bcd4e4",
-      300: "#8fb4cd",
-      400: "#5d8faf",
-      500: "#3f7394",
-      600: "#2c5a79",
-      700: "#254963",
-      800: "#1f3c52",
-      900: "#172f40",
+      50: "#e8f1fb",
+      100: "#d0e3f6",
+      200: "#a8c9ec",
+      300: "#79a7de",
+      400: "#4d84cc",
+      500: "#2f68b8",
+      600: "#1850a1",
+      700: "#144287",
+      800: "#10356a",
+      900: "#0c2a54",
     },
+    /** 状态绿 — 与总览 KPI 顶条、严格/正向标签的森林绿一致（锚点 #2d8a5e） */
     success: {
-      50: "#ecf8f0",
-      100: "#d6efe0",
-      200: "#b0dfc8",
-      300: "#83c9a8",
+      50: "#ecf8f2",
+      100: "#d5efe0",
+      200: "#aedfc8",
+      300: "#7fc8a4",
       400: "#52ad84",
-      500: "#3c7a58",
-      600: "#306648",
-      700: "#27543c",
-      800: "#1f4330",
-      900: "#163424",
+      500: "#2d8a5e",
+      600: "#25714d",
+      700: "#1d5c40",
+      800: "#174833",
+      900: "#123828",
     },
+    /** 警示橙 — 与总览「中」优先级、DV01 等强调一致（锚点 #d97706） */
     warning: {
-      50: "#faf3e7",
-      100: "#f3e4cc",
-      200: "#e9cfa5",
-      300: "#dab57a",
-      400: "#c9944f",
-      500: "#b56f22",
-      600: "#935a1c",
-      700: "#764816",
-      800: "#5e3912",
-      900: "#4a2e0f",
+      50: "#fff9eb",
+      100: "#fef0d4",
+      200: "#fde0a8",
+      300: "#fbc874",
+      400: "#f8a93a",
+      500: "#d97706",
+      600: "#b35c05",
+      700: "#8f4708",
+      800: "#713a0c",
+      900: "#5c300e",
     },
     danger: {
-      50: "#fbeceb",
-      100: "#f5d5d2",
-      200: "#ecb0aa",
-      300: "#de8279",
-      400: "#cf5d52",
-      500: "#b04f42",
-      600: "#934038",
-      700: "#78342e",
-      800: "#602923",
-      900: "#4d211d",
+      50: "#fef2f2",
+      100: "#fee2e2",
+      200: "#fecaca",
+      300: "#fca5a5",
+      400: "#f87171",
+      500: "#ef4444",
+      600: "#dc2626",
+      700: "#b91c1c",
+      800: "#991b1b",
+      900: "#7f1d1d",
     },
+    /** 信息/链接蓝 — 与总览内链、次强调亮蓝一致（锚点 #3b82f6） */
     info: {
-      50: "#e8f4fc",
-      100: "#d2e8f8",
-      200: "#a8d0f0",
-      300: "#74b2e5",
-      400: "#4495d7",
-      500: "#2f79bb",
-      600: "#25649c",
-      700: "#1e527f",
-      800: "#184066",
-      900: "#12334f",
+      50: "#eff6ff",
+      100: "#dbeafe",
+      200: "#bfdbfe",
+      300: "#93c5fd",
+      400: "#60a5fa",
+      500: "#3b82f6",
+      600: "#2563eb",
+      700: "#1d4ed8",
+      800: "#1e40af",
+      900: "#1e3a8a",
     },
-    /** Neutral / gray for surfaces, borders, readable text */
+    /** Neutral — 背景与正文灰贴近总览（#f5f7f9 底、#1f2937 / #6b7280 字） */
     neutral: {
-      50: "#f1f3f2",
-      100: "#e9eeeb",
-      200: "#e4ebe8",
-      300: "#d6dedc",
-      400: "#bec8c6",
-      500: "#9eadab",
-      600: "#7a8795",
-      700: "#586575",
-      800: "#3d4a56",
-      900: "#1c2833",
+      50: "#f5f7f9",
+      100: "#eceff3",
+      200: "#e2e6ec",
+      300: "#d1d5db",
+      400: "#9ca3af",
+      500: "#8b95a1",
+      600: "#6b7280",
+      700: "#4b5563",
+      800: "#374151",
+      900: "#1f2937",
     },
     semantic: {
       /** Positive P&L, surplus, favorable move */
-      profit: "#15803d",
+      profit: "#2d8a5e",
       /** Negative P&L, deficit */
-      loss: "#b91c1c",
+      loss: "#ef4444",
       /** Market-style up (often aligned with profit in CN bond context) */
-      up: "#15803d",
+      up: "#2d8a5e",
       /** Market-style down */
-      down: "#b91c1c",
+      down: "#ef4444",
     },
   },
   /** 4px-based spacing scale */
@@ -122,12 +127,11 @@ export const designTokens = {
   },
   fontFamily: {
     /**
-     * UI + 中文：使用系统黑体栈，避免页面级外部字体依赖。
-     * Ant Design `ConfigProvider` 使用本字段作为全局 `fontFamily`。
+     * UI：Plus Jakarta Sans（拉丁）+ 中文系统栈；经 index.html Google Fonts 加载。
      */
-    sans: '"PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
-    /** 数字列、KPI 等 */
-    tabular: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans Mono", monospace',
+    sans: '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif',
+    /** 数字列、KPI（IBM Plex Mono + tabular nums） */
+    tabular: '"IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace',
   },
   radius: {
     sm: 6,

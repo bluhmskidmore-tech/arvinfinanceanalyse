@@ -1,9 +1,18 @@
 :root {
   color-scheme: light;
-  color: #1c2833;
-  background: #f1f3f2;
-  --moss-font-sans: "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui, sans-serif;
-  --moss-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Noto Sans Mono", monospace;
+  /* 与 theme/designSystem.ts 展示色系同步 — 修改时请同时改 TS token */
+  color: #1f2937;
+  background: #f5f7f9;
+  --moss-color-text-primary: #1f2937;
+  --moss-color-text-secondary: #6b7280;
+  --moss-color-text-muted: #8b95a1;
+  --moss-color-link: #1850a1;
+  --moss-color-primary-rgb: 24, 80, 161;
+  --moss-color-success-rgb: 45, 138, 94;
+  --moss-border-hover: #d1d5db;
+  --moss-font-sans: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei UI", "Noto Sans SC", system-ui,
+    sans-serif;
+  --moss-font-mono: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
   --moss-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
   font-family: var(--moss-font-sans);
   line-height: 1.5;
@@ -29,9 +38,9 @@ body,
 
 body {
   background:
-    radial-gradient(circle at top left, rgba(44, 90, 121, 0.08), transparent 28%),
-    radial-gradient(circle at top right, rgba(90, 118, 107, 0.08), transparent 24%),
-    linear-gradient(180deg, #faf9f5 0%, #eef2ef 100%);
+    radial-gradient(circle at top left, rgba(var(--moss-color-primary-rgb), 0.09), transparent 32%),
+    radial-gradient(circle at top right, rgba(var(--moss-color-success-rgb), 0.07), transparent 28%),
+    linear-gradient(180deg, #fafbfd 0%, #f5f7f9 100%);
 }
 
 a {
@@ -73,7 +82,7 @@ select {
   font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: #7a8795;
+  color: var(--moss-color-text-muted);
   font-weight: 700;
 }
 
@@ -87,7 +96,7 @@ select {
 }
 
 .portfolio-workbench-light-hint__eyebrow {
-  color: #7a8795;
+  color: var(--moss-color-text-muted);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -97,14 +106,14 @@ select {
 .portfolio-workbench-light-hint__copy {
   margin: 0;
   flex: 1 1 240px;
-  color: #586575;
+  color: var(--moss-color-text-secondary);
   font-size: 13px;
   line-height: 1.65;
   min-width: 0;
 }
 
 .portfolio-workbench-light-hint__strong {
-  color: #1c2833;
+  color: var(--moss-color-text-primary);
 }
 
 .portfolio-workbench-light-hint__nav {
@@ -117,11 +126,11 @@ select {
 }
 
 .portfolio-workbench-light-hint__nav-label {
-  color: #7a8795;
+  color: var(--moss-color-text-muted);
 }
 
 .portfolio-workbench-light-hint__nav-link {
-  color: #2c5a79;
+  color: var(--moss-color-link);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -135,7 +144,7 @@ select {
   padding: 8px 10px;
   border-radius: 10px;
   background: transparent;
-  color: #586575;
+  color: var(--moss-color-text-secondary);
   border: 1px solid transparent;
 }
 
@@ -147,7 +156,7 @@ select {
 }
 
 .workbench-agent-dialog-trigger__hint {
-  color: #7a8795;
+  color: var(--moss-color-text-muted);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -213,7 +222,7 @@ select {
 }
 
 .dashboard-overview-hero-strip > article:hover {
-  border-color: #c9d4d2;
+  border-color: var(--moss-border-hover);
   box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
   transform: translateY(-1px);
 }
@@ -225,7 +234,7 @@ select {
 
 .dashboard-module-entry-grid > a:hover,
 .dashboard-overview-command-grid a:hover {
-  border-color: #c9d4d2;
+  border-color: var(--moss-border-hover);
   box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
   transform: translateY(-1px);
 }
@@ -300,7 +309,7 @@ select {
 }
 
 [data-testid="dashboard-bond-headline-kpi"]:hover {
-  border-color: #c9d4d2;
+  border-color: var(--moss-border-hover);
   box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
   transform: translateY(-1px);
 }

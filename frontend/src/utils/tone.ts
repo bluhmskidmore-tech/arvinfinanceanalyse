@@ -6,14 +6,16 @@
  * component file.
  */
 import type { Numeric } from "../api/contracts";
+import { designTokens } from "../theme/designSystem";
 
 export type Tone = "positive" | "neutral" | "warning" | "negative";
 
+/** 与 `designSystem` 语义色一致，供点、标签、图表注记等复用 */
 export const TONE_COLOR: Record<Tone, string> = {
-  positive: "#2f8f63",
-  neutral: "#6d7f99",
-  warning: "#b35a16",
-  negative: "#c1554b",
+  positive: designTokens.color.semantic.profit,
+  neutral: designTokens.color.neutral[600],
+  warning: designTokens.color.warning[700],
+  negative: designTokens.color.semantic.loss,
 };
 
 /**
