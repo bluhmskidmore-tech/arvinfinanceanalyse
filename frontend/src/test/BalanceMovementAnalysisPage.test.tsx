@@ -52,9 +52,15 @@ describe("BalanceMovementAnalysisPage", () => {
       "144020%",
     );
     const trendTable = screen.getByTestId("balance-movement-analysis-trend-table");
-    expect(within(trendTable).getByText("2026-02")).toBeInTheDocument();
-    expect(within(trendTable).getByText("+129.80 亿")).toBeInTheDocument();
-    expect(within(trendTable).getByText("2026-01")).toBeInTheDocument();
+    expect(within(trendTable).getByText("分类")).toBeInTheDocument();
+    expect(within(trendTable).getByText("项目")).toBeInTheDocument();
+    expect(within(trendTable).getAllByText("2026年2月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("比上月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("比首月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getByText("期末余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("ZQTZ诊断差异")).toBeInTheDocument();
+    expect(within(trendTable).getAllByText("+129.80").length).toBeGreaterThan(0);
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {

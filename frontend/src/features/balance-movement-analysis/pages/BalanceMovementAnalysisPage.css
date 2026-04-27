@@ -52,8 +52,15 @@
   font-size: 13px;
 }
 
-.balance-movement-table-scroll {
+.balance-movement-table-scroll,
+.balance-movement-matrix-scroll {
   overflow-x: auto;
+}
+
+.balance-movement-matrix-scroll {
+  border: 1px solid #d7dfea;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .balance-movement-trend-table {
@@ -83,8 +90,86 @@
   font-weight: 700;
 }
 
+.balance-movement-report-matrix {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  background: #ffffff;
+  color: #26364a;
+  font-size: 13px;
+}
+
+.balance-movement-report-matrix th {
+  height: 36px;
+  padding: 0 8px;
+  border-right: 1px solid #d7dfea;
+  border-bottom: 1px solid #d7dfea;
+  background: #f6f9fc;
+  color: #26364a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.balance-movement-report-matrix th:first-child,
+.balance-movement-report-matrix td:first-child {
+  width: 220px;
+  min-width: 220px;
+  text-align: center;
+}
+
+.balance-movement-report-matrix td {
+  height: 40px;
+  padding: 0 8px;
+  border-right: 1px solid #edf1f6;
+  border-bottom: 1px solid #edf1f6;
+  color: #26364a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.balance-movement-report-matrix td:first-child {
+  border-right: 1px solid #d7dfea;
+  font-weight: 700;
+  text-align: center;
+}
+
+.balance-movement-report-matrix tr:nth-child(4n) td {
+  border-bottom-color: #d7dfea;
+}
+
+.balance-movement-report-matrix__gap td {
+  height: 16px;
+  border-bottom: 1px solid #d7dfea;
+  color: transparent;
+}
+
+.balance-movement-report-matrix__section th {
+  border-top: 1px solid #d7dfea;
+  background: #f8fafc;
+}
+
 @media (max-width: 720px) {
   .balance-movement-conclusion__controls {
     text-align: left;
+  }
+
+  .balance-movement-report-matrix {
+    min-width: 920px;
+    font-size: 12px;
+  }
+
+  .balance-movement-report-matrix th {
+    font-size: 12px;
+  }
+
+  .balance-movement-report-matrix th:first-child,
+  .balance-movement-report-matrix td:first-child {
+    width: 150px;
+    min-width: 150px;
   }
 }

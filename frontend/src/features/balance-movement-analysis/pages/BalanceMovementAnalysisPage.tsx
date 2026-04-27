@@ -121,6 +121,69 @@ function trendDelta(
   return currentValue - previousValue;
 }
 
+function formatTrendMonthLabel(reportMonth: string) {
+  const [year, month] = reportMonth.split("-");
+  const monthNumber = Number(month);
+  if (!year || !Number.isFinite(monthNumber)) {
+    return reportMonth;
+  }
+  return `${year}年${monthNumber}月`;
+}
+
+function formatYiCell(value: string | number | null | undefined) {
+  return formatYiFixed(value, 2);
+}
+
+function formatSignedYiCell(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const n = Number(value) / 100000000;
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function compareTrendCell(
+  months: BalanceMovementTrendMonth[],
+  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined,
+  baselineOffset: number,
+) {
+  const currentMonth = months[months.length - 1];
+  const baselineMonth = months[months.length - 1 - baselineOffset];
+  if (!currentMonth || !baselineMonth) {
+    return "-";
+  }
+  return formatSignedYiCell(trendDelta(getValue(currentMonth), getValue(baselineMonth)));
+}
+
+function compareTrendCellToFirst(
+  months: BalanceMovementTrendMonth[],
+  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined,
+) {
+  const currentMonth = months[months.length - 1];
+  const firstMonth = months[0];
+  if (!currentMonth || !firstMonth || currentMonth.report_date === firstMonth.report_date) {
+    return "-";
+  }
+  return formatSignedYiCell(trendDelta(getValue(currentMonth), getValue(firstMonth)));
+}
+
+function sumTrendRowValues(
+  month: BalanceMovementTrendMonth,
+  getValue: (row: BalanceMovementRow) => string | number | null | undefined,
+) {
+  return month.rows.reduce((total, row) => {
+    const value = Number(getValue(row));
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
+
 function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
   const currentParts = currentReportDate.split("-").map(Number);
   const previousParts = previousReportDate.split("-").map(Number);
@@ -177,6 +240,7 @@ export default function BalanceMovementAnalysisPage() {
   );
   const summary = detailQuery.data?.result.summary;
   const trendMonths = detailQuery.data?.result.trend_months ?? [];
+  const reportMatrixMonths = useMemo(() => [...trendMonths].reverse(), [trendMonths]);
   const currentTrendMonth = trendMonths[0];
   const previousTrendMonth = trendMonths[1];
   const rowByBucket = useMemo(
@@ -443,38 +507,86 @@ export default function BalanceMovementAnalysisPage() {
           isEmpty={trendMonths.length === 0}
           onRetry={() => void detailQuery.refetch()}
         >
-          <div className="balance-movement-table-scroll">
+          <div className="balance-movement-matrix-scroll">
             <table
               data-testid="balance-movement-analysis-trend-table"
-              className="balance-movement-trend-table"
+              className="balance-movement-report-matrix"
             >
               <thead>
                 <tr>
-                  <th>月份</th>
-                  <th>总余额变动</th>
-                  <th>AC余额</th>
-                  <th>AC占比</th>
-                  <th>OCI余额</th>
-                  <th>OCI占比</th>
-                  <th>TPL余额</th>
-                  <th>TPL占比</th>
+                  <th>分类</th>
+                  {reportMatrixMonths.map((month) => (
+                    <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
+                  ))}
+                  <th>比上月</th>
+                  <th>比首月</th>
                 </tr>
               </thead>
               <tbody>
-                {trendMonths.map((month) => {
-                  const ac = trendBucket(month, "AC");
-                  const oci = trendBucket(month, "OCI");
-                  const tpl = trendBucket(month, "TPL");
+                {balanceMovementBuckets.map((bucket) => (
+                  <tr key={bucket}>
+                    <td>{bucket}</td>
+                    {reportMatrixMonths.map((month) => (
+                      <td key={`${bucket}-${month.report_date}`}>
+                        {formatYiCell(trendBucket(month, bucket)?.current_balance)}
+                      </td>
+                    ))}
+                    <td>
+                      {compareTrendCell(
+                        reportMatrixMonths,
+                        (month) => trendBucket(month, bucket)?.current_balance,
+                        1,
+                      )}
+                    </td>
+                    <td>
+                      {compareTrendCellToFirst(
+                        reportMatrixMonths,
+                        (month) => trendBucket(month, bucket)?.current_balance,
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="balance-movement-report-matrix__gap">
+                  <td colSpan={reportMatrixMonths.length + 3} />
+                </tr>
+                <tr className="balance-movement-report-matrix__section">
+                  <th>项目</th>
+                  {reportMatrixMonths.map((month) => (
+                    <th key={`project-${month.report_date}`}>
+                      {formatTrendMonthLabel(month.report_month)}
+                    </th>
+                  ))}
+                  <th>比上月</th>
+                  <th>比首月</th>
+                </tr>
+                {[
+                  {
+                    key: "current-balance-total",
+                    label: "期末余额",
+                    getValue: (month: BalanceMovementTrendMonth) => month.current_balance_total,
+                  },
+                  {
+                    key: "balance-change-total",
+                    label: "余额变动",
+                    getValue: (month: BalanceMovementTrendMonth) => month.balance_change_total,
+                  },
+                  {
+                    key: "diagnostic-diff-total",
+                    label: "ZQTZ诊断差异",
+                    getValue: (month: BalanceMovementTrendMonth) =>
+                      sumTrendRowValues(month, (row) => row.reconciliation_diff),
+                  },
+                ].map((row) => {
                   return (
-                    <tr key={month.report_date}>
-                      <td>{month.report_month}</td>
-                      <td>{formatSignedYi(month.balance_change_total)}</td>
-                      <td>{formatBalanceAmountToYiFromYuan(ac?.current_balance)}</td>
-                      <td>{formatPct(ac?.current_balance_pct)}</td>
-                      <td>{formatBalanceAmountToYiFromYuan(oci?.current_balance)}</td>
-                      <td>{formatPct(oci?.current_balance_pct)}</td>
-                      <td>{formatBalanceAmountToYiFromYuan(tpl?.current_balance)}</td>
-                      <td>{formatPct(tpl?.current_balance_pct)}</td>
+                    <tr key={row.key}>
+                      <td>{row.label}</td>
+                      {reportMatrixMonths.map((month) => (
+                        <td key={`${row.key}-${month.report_date}`}>
+                          {formatYiCell(row.getValue(month))}
+                        </td>
+                      ))}
+                      <td>{compareTrendCell(reportMatrixMonths, row.getValue, 1)}</td>
+                      <td>{compareTrendCellToFirst(reportMatrixMonths, row.getValue)}</td>
                     </tr>
                   );
                 })}
