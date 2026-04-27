@@ -102,6 +102,15 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(matrixTitle).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-structure-chart")).toBeInTheDocument();
     expect(screen.getAllByTestId("balance-movement-echarts-stub").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId("balance-movement-analysis-structure-share-table-title")).toHaveTextContent(
+      "结构占比明细",
+    );
+    const shareEvolutionTable = screen.getByTestId("balance-movement-analysis-structure-share-table");
+    expect(within(shareEvolutionTable).getByText("26-01")).toBeInTheDocument();
+    expect(within(shareEvolutionTable).getByText("26-02")).toBeInTheDocument();
+    expect(within(shareEvolutionTable).getByText("环比·AC")).toBeInTheDocument();
+    expect(within(shareEvolutionTable).getByText("同比·AC")).toBeInTheDocument();
+    expect(within(shareEvolutionTable).getByText("较首月·AC")).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-structure-insight")).toHaveTextContent(
       "AC占比",
     );

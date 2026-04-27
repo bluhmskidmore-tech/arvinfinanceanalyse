@@ -374,6 +374,48 @@ function formatSignedPoint(value: number) {
   return `${sign}${value.toFixed(2)}pp`;
 }
 
+function formatShareEvolutionPct(value: number) {
+  return `${value.toFixed(2)}%`;
+}
+
+function formatShareEvolutionYi(value: number | undefined) {
+  if (value === undefined || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${value.toFixed(2)} 亿`;
+}
+
+/** 用于同比：返回 report_month 的上年同月 `YYYY-MM` */
+function priorYearSameMonth(reportMonth: string): string {
+  const [y, m] = reportMonth.split("-").map(Number);
+  if (!Number.isFinite(y) || !Number.isFinite(m)) {
+    return "";
+  }
+  return `${y - 1}-${String(m).padStart(2, "0")}`;
+}
+
+function formatSignedYiDelta(
+  current: number | undefined,
+  base: number | undefined,
+): string {
+  if (
+    current === undefined ||
+    base === undefined ||
+    !Number.isFinite(current) ||
+    !Number.isFinite(base)
+  ) {
+    return "—";
+  }
+  const d = current - base;
+  const sign = d > 0 ? "+" : "";
+  return `${sign}${d.toFixed(2)} 亿`;
+}
+
+type StructureShareTableRow = {
+  point: AccountingBasisStackedSharePoint;
+  reportMonth: string;
+};
+
 function numericValue(value: string | number | null | undefined) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
@@ -575,9 +617,22 @@ export default function BalanceMovementAnalysisPage() {
     () => buildBusinessCategoryMatrixRows(businessMatrixMonths),
     [businessMatrixMonths],
   );
+  const structureShareTableRows = useMemo((): StructureShareTableRow[] => {
+    return accountingMatrixMonths.map((month) => ({
+      point: toSharePoint(month),
+      reportMonth: month.report_month,
+    }));
+  }, [accountingMatrixMonths]);
+  const shareRowByReportMonth = useMemo(() => {
+    const map = new Map<string, StructureShareTableRow>();
+    for (const row of structureShareTableRows) {
+      map.set(row.reportMonth, row);
+    }
+    return map;
+  }, [structureShareTableRows]);
   const balanceStructureTrend = useMemo(
-    () => accountingMatrixMonths.map(toSharePoint),
-    [accountingMatrixMonths],
+    () => structureShareTableRows.map((row) => row.point),
+    [structureShareTableRows],
   );
   const balanceStructureInsight = useMemo(() => {
     const first = balanceStructureTrend[0];
@@ -1053,6 +1108,125 @@ export default function BalanceMovementAnalysisPage() {
               rows={balanceStructureTrend}
               title="金融投资账户结构演变：余额口径"
             />
+            {balanceStructureTrend.length > 0 ? (
+              <>
+                <p
+                  className="balance-movement-share-evolution-table__title"
+                  data-testid="balance-movement-analysis-structure-share-table-title"
+                >
+                  结构占比明细（与上图一致，余额口径）
+                </p>
+                <p className="balance-movement-share-evolution-table__note">
+                  环比为时间序列中相对<strong>上一行月份</strong>的变动；同比为相对<strong>上年同月</strong>（近 6
+                  个月趋势中含该月时显示，否则为 —）。
+                </p>
+                <div
+                  className="balance-movement-share-evolution-table-scroll"
+                  data-testid="balance-movement-analysis-structure-share-table"
+                >
+                  <table className="balance-movement-share-evolution-table">
+                    <thead>
+                      <tr>
+                        <th scope="col">月份</th>
+                        <th scope="col">AC（%）</th>
+                        <th scope="col">OCI（%）</th>
+                        <th scope="col">TPL（%）</th>
+                        <th scope="col">合计（亿）</th>
+                        <th scope="col">AC（亿）</th>
+                        <th scope="col">OCI（亿）</th>
+                        <th scope="col">TPL（亿）</th>
+                        <th scope="col">环比·AC</th>
+                        <th scope="col">环比·OCI</th>
+                        <th scope="col">环比·TPL</th>
+                        <th scope="col">环比·合计</th>
+                        <th scope="col">同比·AC</th>
+                        <th scope="col">同比·OCI</th>
+                        <th scope="col">同比·TPL</th>
+                        <th scope="col">同比·合计</th>
+                        {balanceStructureTrend.length > 1 ? (
+                          <>
+                            <th scope="col">较首月·AC</th>
+                            <th scope="col">较首月·OCI</th>
+                            <th scope="col">较首月·TPL</th>
+                          </>
+                        ) : null}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {structureShareTableRows.map((item, index) => {
+                        const { point, reportMonth } = item;
+                        const first = structureShareTableRows[0];
+                        const prev = index > 0 ? structureShareTableRows[index - 1] : null;
+                        const yoyKey = priorYearSameMonth(reportMonth);
+                        const yoy = yoyKey ? shareRowByReportMonth.get(yoyKey) : undefined;
+                        const showFirstDelta = balanceStructureTrend.length > 1 && first !== undefined;
+                        return (
+                          <tr key={point.monthLabel}>
+                            <th scope="row">{point.monthLabel}</th>
+                            <td>{formatShareEvolutionPct(point.AC)}</td>
+                            <td>{formatShareEvolutionPct(point.OCI)}</td>
+                            <td>{formatShareEvolutionPct(point.TPL)}</td>
+                            <td>{formatShareEvolutionYi(point.totalValueYi)}</td>
+                            <td>{formatShareEvolutionYi(point.acValueYi)}</td>
+                            <td>{formatShareEvolutionYi(point.ociValueYi)}</td>
+                            <td>{formatShareEvolutionYi(point.tplValueYi)}</td>
+                            <td>
+                              {prev
+                                ? formatSignedPoint(point.AC - prev.point.AC)
+                                : "—"}
+                            </td>
+                            <td>
+                              {prev
+                                ? formatSignedPoint(point.OCI - prev.point.OCI)
+                                : "—"}
+                            </td>
+                            <td>
+                              {prev
+                                ? formatSignedPoint(point.TPL - prev.point.TPL)
+                                : "—"}
+                            </td>
+                            <td>
+                              {formatSignedYiDelta(
+                                point.totalValueYi,
+                                prev?.point.totalValueYi,
+                              )}
+                            </td>
+                            <td>
+                              {yoy
+                                ? formatSignedPoint(point.AC - yoy.point.AC)
+                                : "—"}
+                            </td>
+                            <td>
+                              {yoy
+                                ? formatSignedPoint(point.OCI - yoy.point.OCI)
+                                : "—"}
+                            </td>
+                            <td>
+                              {yoy
+                                ? formatSignedPoint(point.TPL - yoy.point.TPL)
+                                : "—"}
+                            </td>
+                            <td>
+                              {formatSignedYiDelta(
+                                point.totalValueYi,
+                                yoy?.point.totalValueYi,
+                              )}
+                            </td>
+                            {showFirstDelta ? (
+                              <>
+                                <td>{formatSignedPoint(point.AC - first.point.AC)}</td>
+                                <td>{formatSignedPoint(point.OCI - first.point.OCI)}</td>
+                                <td>{formatSignedPoint(point.TPL - first.point.TPL)}</td>
+                              </>
+                            ) : null}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : null}
             {balanceStructureInsight ? (
               <div
                 className="balance-movement-structure-chart__insight"
