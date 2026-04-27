@@ -467,7 +467,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
         >
           {verdict.reasons.map((reason, index) => (
             <div
-              key={`${reason.label}-${index}`}
+              key={`verdict-reason-${index}`}
               style={{
                 display: "grid",
                 gridTemplateColumns: "10px minmax(0, 1fr)",
@@ -526,7 +526,7 @@ export function DashboardGlobalJudgmentPanel({ verdict }: { verdict: VerdictPayl
           }}
         >
           {verdict.suggestions.map((s, index) => (
-            <li key={`${s.text}-${index}`} style={{ paddingLeft: 2 }}>
+            <li key={`verdict-suggestion-${index}`} style={{ paddingLeft: 2 }}>
               <span style={{ color: shellTokens.colorTextPrimary }}>{s.text}</span>
               {s.link ? (
                 <>

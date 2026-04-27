@@ -17,6 +17,8 @@ import type {
   PnlAttributionPayload,
   ResultMeta,
   VerdictPayload,
+  VerdictReason,
+  VerdictSuggestion,
 } from "../../../api/contracts";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Tone } from "../../../utils/tone";
@@ -111,18 +113,87 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
 }
 
 /**
+ * 将 API 可能返回的非常规标量（嵌套对象、无原型对象等）规范为可安全参与模板字符串与 JSX 的字符串，
+ * 避免 `String(x)` / `` `${x}` `` 抛出 “Cannot convert object to primitive value”。
+ */
+function coerceVerdictText(value: unknown, fallback: string): string {
+  if (value == null) {
+    return fallback;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "symbol") {
+    return fallback;
+  }
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return fallback;
+    }
+  }
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function coerceVerdictLink(value: unknown): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  return null;
+}
+
+function coerceVerdictTone(value: unknown): VerdictPayload["tone"] {
+  if (value === "positive" || value === "neutral" || value === "warning" || value === "negative") {
+    return value;
+  }
+  return "neutral";
+}
+
+/**
  * 把后端 verdict 中的 reasons 也过一遍显示净化器，
  * 避免 hero strip 已经净化、但 verdict 仍然漏出表名/字段名/英文术语。
  */
 function sanitizeVerdict(verdict: VerdictPayload | null): VerdictPayload | null {
-  if (!verdict) return null;
+  if (!verdict || typeof verdict !== "object") {
+    return null;
+  }
+
+  const reasonsRaw = Array.isArray(verdict.reasons) ? verdict.reasons : [];
+  const suggestionsRaw = Array.isArray(verdict.suggestions) ? verdict.suggestions : [];
+
   return {
-    ...verdict,
-    reasons: verdict.reasons.map((r) => ({
-      ...r,
-      label: sanitizeMetricLabel(r.label),
-      detail: sanitizeMetricDetail(r.detail),
-    })),
+    conclusion: coerceVerdictText(verdict.conclusion, ""),
+    tone: coerceVerdictTone(verdict.tone),
+    reasons: reasonsRaw.map((raw) => {
+      const r = raw && typeof raw === "object" ? (raw as Partial<VerdictReason>) : {};
+      return {
+        label: sanitizeMetricLabel(coerceVerdictText(r.label, "")),
+        value: coerceVerdictText(r.value, "—"),
+        detail: sanitizeMetricDetail(coerceVerdictText(r.detail, "")),
+        tone: coerceVerdictTone(r.tone),
+      };
+    }),
+    suggestions: suggestionsRaw.map((raw) => {
+      const s = raw && typeof raw === "object" ? (raw as Partial<VerdictSuggestion>) : {};
+      return {
+        text: coerceVerdictText(s.text, ""),
+        link: coerceVerdictLink(s.link),
+      };
+    }),
   };
 }
 

@@ -263,9 +263,9 @@
 }
 
 .balance-movement-matrix-scroll {
-  border: 1px solid #d7dfea;
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid #0a72c8;
+  border-radius: 0;
+  background: #000000;
 }
 
 .balance-movement-structure-chart {
@@ -380,6 +380,70 @@
   background: #f8fafc;
 }
 
+.balance-movement-report-matrix--workbook {
+  min-width: 1560px;
+  background: #000000;
+  color: #ffffff;
+  font-size: 18px;
+}
+
+.balance-movement-report-matrix--workbook th {
+  height: 36px;
+  padding: 0 8px;
+  border-right: 2px solid #5f6368;
+  border-bottom: 1px solid #0f0f0f;
+  background: #0872c9;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.balance-movement-report-matrix--workbook th:first-child,
+.balance-movement-report-matrix--workbook td:first-child {
+  width: 380px;
+  min-width: 380px;
+}
+
+.balance-movement-report-matrix--workbook td {
+  height: 39px;
+  padding: 0 10px;
+  border-right: 2px solid #b8b8b8;
+  border-bottom: 1px solid #8f8f8f;
+  background: #000000;
+  color: #ffffff;
+  font-size: 17px;
+  text-align: right;
+}
+
+.balance-movement-report-matrix--workbook td:first-child {
+  border-right: 2px solid #b8b8b8;
+  background: #000000;
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.balance-movement-report-matrix--workbook tr:nth-child(4n) td {
+  border-bottom-color: #d8d8d8;
+}
+
+.balance-movement-report-matrix--workbook .balance-movement-report-matrix__gap td {
+  height: 76px;
+  border-right: 2px solid #b8b8b8;
+  border-bottom: 1px solid #8f8f8f;
+  background: #000000;
+}
+
+.balance-movement-report-matrix--workbook .balance-movement-report-matrix__section th {
+  border-top: 2px solid #b8b8b8;
+  border-right: 2px solid #5f6368;
+  border-bottom: 1px solid #0f0f0f;
+  background: #0872c9;
+  color: #ffffff;
+}
+
 @media (max-width: 720px) {
   .balance-movement-conclusion__controls {
     text-align: left;
@@ -407,14 +471,29 @@
     font-size: 12px;
   }
 
+  .balance-movement-report-matrix--workbook {
+    min-width: 1220px;
+    font-size: 14px;
+  }
+
   .balance-movement-report-matrix th {
     font-size: 12px;
+  }
+
+  .balance-movement-report-matrix--workbook th {
+    font-size: 18px;
   }
 
   .balance-movement-report-matrix th:first-child,
   .balance-movement-report-matrix td:first-child {
     width: 150px;
     min-width: 150px;
+  }
+
+  .balance-movement-report-matrix--workbook th:first-child,
+  .balance-movement-report-matrix--workbook td:first-child {
+    width: 240px;
+    min-width: 240px;
   }
 
   .balance-movement-structure-chart__insight {

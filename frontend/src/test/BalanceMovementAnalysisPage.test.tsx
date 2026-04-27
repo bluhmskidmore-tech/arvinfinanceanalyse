@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { vi } from "vitest";
 
 import { createApiClient } from "../api/client";
+import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../lib/echarts", () => ({
@@ -76,6 +77,12 @@ describe("BalanceMovementAnalysisPage", () => {
       "期初 43.11% 期末 42.44%",
     );
 
+    const matrixTitle = screen.getByText("月度余额分析矩阵");
+    const detailTitle = screen.getByText("明细 / 对账：AC / OCI / TPL 余额变动");
+    expect(
+      matrixTitle.compareDocumentPosition(detailTitle) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
     const table = screen.getByTestId("balance-movement-analysis-table");
     expect(within(table).getByText("AC")).toBeInTheDocument();
     expect(within(table).getByText("42.44%")).toBeInTheDocument();
@@ -88,7 +95,7 @@ describe("BalanceMovementAnalysisPage", () => {
       "144020%",
     );
     const trendTable = screen.getByTestId("balance-movement-analysis-trend-table");
-    expect(screen.getByText("月度余额分析矩阵")).toBeInTheDocument();
+    expect(matrixTitle).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-structure-chart")).toBeInTheDocument();
     expect(screen.getAllByTestId("balance-movement-echarts-stub").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByTestId("balance-movement-analysis-structure-insight")).toHaveTextContent(
@@ -100,9 +107,19 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("比上月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("比年初").length).toBeGreaterThan(0);
-    expect(within(trendTable).getByText("期末余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("AC期末余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("AC期末占比")).toBeInTheDocument();
+    expect(within(trendTable).getByText("AC余额变动")).toBeInTheDocument();
+    expect(within(trendTable).getByText("AC变动贡献")).toBeInTheDocument();
+    expect(within(trendTable).getByText("OCI期末余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("TPL期末余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("期末余额合计")).toBeInTheDocument();
+    expect(within(trendTable).getByText("余额变动合计")).toBeInTheDocument();
+    expect(within(trendTable).getByText("总账控制余额")).toBeInTheDocument();
+    expect(within(trendTable).getByText("ZQTZ辅助余额")).toBeInTheDocument();
     expect(within(trendTable).getByText("ZQTZ诊断差异")).toBeInTheDocument();
-    expect(within(trendTable).getAllByText("+129.80").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("+129.80 亿").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("-0.67pp").length).toBeGreaterThan(0);
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {
@@ -178,13 +195,10 @@ describe("BalanceMovementAnalysisPage", () => {
     const emptyDatesClient: typeof baseClient = {
       ...baseClient,
       async getBalanceMovementDates(currencyBasis = "CNX") {
-        return {
-          status: "success",
-          result: {
-            report_dates: [],
-            currency_basis: currencyBasis,
-          },
-        };
+        return buildMockApiEnvelope("balance-analysis.movement.dates", {
+          report_dates: [],
+          currency_basis: currencyBasis,
+        });
       },
     };
 

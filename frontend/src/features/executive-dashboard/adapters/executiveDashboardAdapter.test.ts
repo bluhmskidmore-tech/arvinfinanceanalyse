@@ -7,6 +7,7 @@ import type {
   OverviewPayload,
   PnlAttributionPayload,
   ResultMeta,
+  VerdictPayload,
 } from "../../../api/contracts";
 import { adaptDashboard } from "./executiveDashboardAdapter";
 
@@ -294,6 +295,39 @@ describe("adaptDashboard · loading / error", () => {
     });
     expect(out.overview.state.kind).toBe("error");
     expect(out.attribution.state.kind).toBe("error");
+  });
+});
+
+describe("adaptDashboard · verdict coercion", () => {
+  it("normalizes malformed verdict fields so list keys and JSX do not throw", () => {
+    const noProto = Object.create(null) as object;
+    const badVerdict = {
+      conclusion: "定调结论",
+      tone: "neutral" as const,
+      reasons: [
+        {
+          label: noProto,
+          value: noProto,
+          detail: noProto,
+          tone: "neutral" as const,
+        },
+      ],
+      suggestions: [{ text: noProto, link: null }],
+    };
+
+    const out = adaptDashboard({
+      overviewEnv: makeOverviewEnv(),
+      attributionEnv: makeAttributionEnv(),
+      overviewLoading: false,
+      overviewError: false,
+      attributionLoading: false,
+      attributionError: false,
+      verdictPayload: badVerdict as unknown as VerdictPayload,
+    });
+
+    expect(out.verdict?.suggestions[0]?.text).toBe("{}");
+    expect(out.verdict?.reasons[0]?.value).toBe("{}");
+    expect(out.verdict?.reasons[0]?.tone).toBe("neutral");
   });
 });
 

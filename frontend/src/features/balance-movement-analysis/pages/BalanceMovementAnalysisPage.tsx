@@ -10,6 +10,8 @@ import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import "./BalanceMovementAnalysisPage.css";
 
 const pageHeaderStyle = {
@@ -19,22 +21,20 @@ const pageHeaderStyle = {
   gap: 16,
   padding: 20,
   borderRadius: 18,
-  border: "1px solid #d7dfea",
-  background: "#fbfcfe",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
   marginBottom: 18,
 } as const;
 
-const badgeStyle = {
+const chipTypography = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 12px",
   borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
 } as const;
 
 const cardGridStyle = {
@@ -158,31 +158,6 @@ function formatSignedYiCell(value: string | number | null | undefined) {
   })}`;
 }
 
-function compareTrendCell(
-  months: BalanceMovementTrendMonth[],
-  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined,
-  baselineOffset: number,
-) {
-  const currentMonth = months[months.length - 1];
-  const baselineMonth = months[months.length - 1 - baselineOffset];
-  if (!currentMonth || !baselineMonth) {
-    return "-";
-  }
-  return formatSignedYiCell(trendDelta(getValue(currentMonth), getValue(baselineMonth)));
-}
-
-function compareTrendCellToFirst(
-  months: BalanceMovementTrendMonth[],
-  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined,
-) {
-  const currentMonth = months[months.length - 1];
-  const firstMonth = months[0];
-  if (!currentMonth || !firstMonth || currentMonth.report_date === firstMonth.report_date) {
-    return "-";
-  }
-  return formatSignedYiCell(trendDelta(getValue(currentMonth), getValue(firstMonth)));
-}
-
 function sumTrendRowValues(
   month: BalanceMovementTrendMonth,
   getValue: (row: BalanceMovementRow) => string | number | null | undefined,
@@ -192,6 +167,147 @@ function sumTrendRowValues(
     return Number.isFinite(value) ? total + value : total;
   }, 0);
 }
+
+type BalanceMovementMatrixValueKind = "amount" | "percent";
+
+type BalanceMovementMatrixRow = {
+  key: string;
+  label: string;
+  valueKind: BalanceMovementMatrixValueKind;
+  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined;
+};
+
+function formatMatrixValue(
+  value: string | number | null | undefined,
+  valueKind: BalanceMovementMatrixValueKind,
+) {
+  if (valueKind === "percent") {
+    return formatPct(value);
+  }
+  const formatted = formatYiCell(value);
+  return formatted === "-" ? formatted : `${formatted} 亿`;
+}
+
+function formatSignedPercentPoint(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}pp`;
+}
+
+function formatSignedMatrixValue(
+  value: string | number | null | undefined,
+  valueKind: BalanceMovementMatrixValueKind,
+) {
+  if (valueKind === "percent") {
+    return formatSignedPercentPoint(value);
+  }
+  const formatted = formatSignedYiCell(value);
+  return formatted === "-" ? formatted : `${formatted} 亿`;
+}
+
+function compareMatrixCell(
+  months: BalanceMovementTrendMonth[],
+  row: BalanceMovementMatrixRow,
+  baselineOffset: number,
+) {
+  const currentMonth = months[months.length - 1];
+  const baselineMonth = months[months.length - 1 - baselineOffset];
+  if (!currentMonth || !baselineMonth) {
+    return "-";
+  }
+  return formatSignedMatrixValue(
+    trendDelta(row.getValue(currentMonth), row.getValue(baselineMonth)),
+    row.valueKind,
+  );
+}
+
+function compareMatrixCellToFirst(
+  months: BalanceMovementTrendMonth[],
+  row: BalanceMovementMatrixRow,
+) {
+  const currentMonth = months[months.length - 1];
+  const firstMonth = months[0];
+  if (!currentMonth || !firstMonth || currentMonth.report_date === firstMonth.report_date) {
+    return "-";
+  }
+  return formatSignedMatrixValue(
+    trendDelta(row.getValue(currentMonth), row.getValue(firstMonth)),
+    row.valueKind,
+  );
+}
+
+const balanceCategoryMatrixRows: BalanceMovementMatrixRow[] = balanceMovementBuckets.flatMap(
+  (bucket) => [
+    {
+      key: `${bucket}-current-balance`,
+      label: `${bucket}期末余额`,
+      valueKind: "amount" as const,
+      getValue: (month: BalanceMovementTrendMonth) => trendBucket(month, bucket)?.current_balance,
+    },
+    {
+      key: `${bucket}-current-share`,
+      label: `${bucket}期末占比`,
+      valueKind: "percent" as const,
+      getValue: (month: BalanceMovementTrendMonth) =>
+        trendBucket(month, bucket)?.current_balance_pct,
+    },
+    {
+      key: `${bucket}-balance-change`,
+      label: `${bucket}余额变动`,
+      valueKind: "amount" as const,
+      getValue: (month: BalanceMovementTrendMonth) => trendBucket(month, bucket)?.balance_change,
+    },
+    {
+      key: `${bucket}-change-contribution`,
+      label: `${bucket}变动贡献`,
+      valueKind: "percent" as const,
+      getValue: (month: BalanceMovementTrendMonth) =>
+        trendBucket(month, bucket)?.contribution_pct,
+    },
+  ],
+);
+
+const balanceProjectMatrixRows: BalanceMovementMatrixRow[] = [
+  {
+    key: "current-balance-total",
+    label: "期末余额合计",
+    valueKind: "amount",
+    getValue: (month) => month.current_balance_total,
+  },
+  {
+    key: "balance-change-total",
+    label: "余额变动合计",
+    valueKind: "amount",
+    getValue: (month) => month.balance_change_total,
+  },
+  {
+    key: "gl-total",
+    label: "总账控制余额",
+    valueKind: "amount",
+    getValue: (month) => sumTrendRowValues(month, (row) => row.gl_amount),
+  },
+  {
+    key: "zqtz-total",
+    label: "ZQTZ辅助余额",
+    valueKind: "amount",
+    getValue: (month) => sumTrendRowValues(month, (row) => row.zqtz_amount),
+  },
+  {
+    key: "diagnostic-diff-total",
+    label: "ZQTZ诊断差异",
+    valueKind: "amount",
+    getValue: (month) => sumTrendRowValues(month, (row) => row.reconciliation_diff),
+  },
+];
 
 function formatTrendAxisMonth(reportMonth: string) {
   const [year, month] = reportMonth.split("-");
@@ -529,14 +645,34 @@ export default function BalanceMovementAnalysisPage() {
           </h1>
           <p
             data-testid="balance-movement-analysis-subtitle"
-            style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}
+            style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
           >
             AC / OCI / TPL 月末余额、月度变动与总账控制数对账。
           </p>
         </div>
         <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-          <span style={badgeStyle}>正式总账控制</span>
-          <span style={badgeStyle}>{client.mode === "real" ? "正式接口" : "本地模拟"}</span>
+          <span
+            style={{
+              ...chipTypography,
+              background: designTokens.color.primary[50],
+              color: designTokens.color.primary[600],
+            }}
+          >
+            正式总账控制
+          </span>
+          <span
+            style={{
+              ...chipTypography,
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
+            }}
+          >
+            {client.mode === "real" ? "正式接口" : "本地模拟"}
+          </span>
         </div>
       </div>
 
@@ -777,6 +913,92 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
+      {trendMonths.length > 0 ? (
+        <AsyncSection
+          title="月度余额分析矩阵"
+          isLoading={detailQuery.isLoading}
+          isError={detailQuery.isError}
+          isEmpty={trendMonths.length === 0}
+          onRetry={() => void detailQuery.refetch()}
+        >
+          <div className="balance-movement-matrix-scroll">
+            <table
+              data-testid="balance-movement-analysis-trend-table"
+              className="balance-movement-report-matrix balance-movement-report-matrix--workbook"
+            >
+              <thead>
+                <tr>
+                  <th>分类</th>
+                  {reportMatrixMonths.map((month) => (
+                    <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
+                  ))}
+                  <th>比上月</th>
+                  <th>比年初</th>
+                </tr>
+              </thead>
+              <tbody>
+                {balanceCategoryMatrixRows.map((row) => (
+                  <tr key={row.key}>
+                    <td>{row.label}</td>
+                    {reportMatrixMonths.map((month) => (
+                      <td key={`${row.key}-${month.report_date}`}>
+                        {formatMatrixValue(row.getValue(month), row.valueKind)}
+                      </td>
+                    ))}
+                    <td>{compareMatrixCell(reportMatrixMonths, row, 1)}</td>
+                    <td>{compareMatrixCellToFirst(reportMatrixMonths, row)}</td>
+                  </tr>
+                ))}
+                <tr className="balance-movement-report-matrix__gap">
+                  <td colSpan={reportMatrixMonths.length + 3} />
+                </tr>
+                <tr className="balance-movement-report-matrix__section">
+                  <th>项目</th>
+                  {reportMatrixMonths.map((month) => (
+                    <th key={`project-${month.report_date}`}>
+                      {formatTrendMonthLabel(month.report_month)}
+                    </th>
+                  ))}
+                  <th>比上月</th>
+                  <th>比年初</th>
+                </tr>
+                {balanceProjectMatrixRows.map((row) => {
+                  return (
+                    <tr key={row.key}>
+                      <td>{row.label}</td>
+                      {reportMatrixMonths.map((month) => (
+                        <td key={`${row.key}-${month.report_date}`}>
+                          {formatMatrixValue(row.getValue(month), row.valueKind)}
+                        </td>
+                      ))}
+                      <td>{compareMatrixCell(reportMatrixMonths, row, 1)}</td>
+                      <td>{compareMatrixCellToFirst(reportMatrixMonths, row)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div
+            className="balance-movement-structure-chart"
+            data-testid="balance-movement-analysis-structure-chart"
+          >
+            <AccountingBasisStackedShareChart
+              rows={balanceStructureTrend}
+              title="金融投资账户结构演变：余额口径"
+            />
+            {balanceStructureInsight ? (
+              <div
+                className="balance-movement-structure-chart__insight"
+                data-testid="balance-movement-analysis-structure-insight"
+              >
+                {balanceStructureInsight}
+              </div>
+            ) : null}
+          </div>
+        </AsyncSection>
+      ) : null}
+
       <AsyncSection
         title="明细 / 对账：AC / OCI / TPL 余额变动"
         isLoading={detailQuery.isLoading}
@@ -836,120 +1058,6 @@ export default function BalanceMovementAnalysisPage() {
           </table>
         </div>
       </AsyncSection>
-
-      {trendMonths.length > 0 ? (
-        <AsyncSection
-          title="月度余额分析矩阵"
-          isLoading={detailQuery.isLoading}
-          isError={detailQuery.isError}
-          isEmpty={trendMonths.length === 0}
-          onRetry={() => void detailQuery.refetch()}
-        >
-          <div className="balance-movement-matrix-scroll">
-            <table
-              data-testid="balance-movement-analysis-trend-table"
-              className="balance-movement-report-matrix"
-            >
-              <thead>
-                <tr>
-                  <th>分类</th>
-                  {reportMatrixMonths.map((month) => (
-                    <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
-                  ))}
-                  <th>比上月</th>
-                  <th>比年初</th>
-                </tr>
-              </thead>
-              <tbody>
-                {balanceMovementBuckets.map((bucket) => (
-                  <tr key={bucket}>
-                    <td>{bucket}</td>
-                    {reportMatrixMonths.map((month) => (
-                      <td key={`${bucket}-${month.report_date}`}>
-                        {formatYiCell(trendBucket(month, bucket)?.current_balance)}
-                      </td>
-                    ))}
-                    <td>
-                      {compareTrendCell(
-                        reportMatrixMonths,
-                        (month) => trendBucket(month, bucket)?.current_balance,
-                        1,
-                      )}
-                    </td>
-                    <td>
-                      {compareTrendCellToFirst(
-                        reportMatrixMonths,
-                        (month) => trendBucket(month, bucket)?.current_balance,
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="balance-movement-report-matrix__gap">
-                  <td colSpan={reportMatrixMonths.length + 3} />
-                </tr>
-                <tr className="balance-movement-report-matrix__section">
-                  <th>项目</th>
-                  {reportMatrixMonths.map((month) => (
-                    <th key={`project-${month.report_date}`}>
-                      {formatTrendMonthLabel(month.report_month)}
-                    </th>
-                  ))}
-                  <th>比上月</th>
-                  <th>比年初</th>
-                </tr>
-                {[
-                  {
-                    key: "current-balance-total",
-                    label: "期末余额",
-                    getValue: (month: BalanceMovementTrendMonth) => month.current_balance_total,
-                  },
-                  {
-                    key: "balance-change-total",
-                    label: "余额变动",
-                    getValue: (month: BalanceMovementTrendMonth) => month.balance_change_total,
-                  },
-                  {
-                    key: "diagnostic-diff-total",
-                    label: "ZQTZ诊断差异",
-                    getValue: (month: BalanceMovementTrendMonth) =>
-                      sumTrendRowValues(month, (row) => row.reconciliation_diff),
-                  },
-                ].map((row) => {
-                  return (
-                    <tr key={row.key}>
-                      <td>{row.label}</td>
-                      {reportMatrixMonths.map((month) => (
-                        <td key={`${row.key}-${month.report_date}`}>
-                          {formatYiCell(row.getValue(month))}
-                        </td>
-                      ))}
-                      <td>{compareTrendCell(reportMatrixMonths, row.getValue, 1)}</td>
-                      <td>{compareTrendCellToFirst(reportMatrixMonths, row.getValue)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <div
-            className="balance-movement-structure-chart"
-            data-testid="balance-movement-analysis-structure-chart"
-          >
-            <AccountingBasisStackedShareChart
-              rows={balanceStructureTrend}
-              title="金融投资账户结构演变：余额口径"
-            />
-            {balanceStructureInsight ? (
-              <div
-                className="balance-movement-structure-chart__insight"
-                data-testid="balance-movement-analysis-structure-insight"
-              >
-                {balanceStructureInsight}
-              </div>
-            ) : null}
-          </div>
-        </AsyncSection>
-      ) : null}
 
       {detailQuery.data?.result.accounting_controls ? (
         <div
