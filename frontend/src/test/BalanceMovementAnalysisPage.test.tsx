@@ -16,6 +16,14 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(await screen.findByTestId("balance-movement-analysis-summary")).toHaveTextContent(
       "3,358.73",
     );
+    const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
+    expect(conclusion).toHaveTextContent("总账控制核对通过");
+    expect(conclusion).toHaveTextContent("3,358.733093 亿");
+    expect(conclusion).toHaveTextContent("AC 42.44%");
+    expect(conclusion).toHaveTextContent("OCI 31.49%");
+    expect(conclusion).toHaveTextContent("TPL 26.07%");
+    expect(conclusion).toHaveTextContent("排除 144020 股权 OCI");
+    expect(conclusion).toHaveTextContent("ZQTZ 诊断差异仅用于提示明细扫描差异");
 
     const table = screen.getByTestId("balance-movement-analysis-table");
     expect(within(table).getByText("AC")).toBeInTheDocument();

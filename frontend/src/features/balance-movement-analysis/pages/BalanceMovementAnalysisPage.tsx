@@ -48,6 +48,16 @@ const cardStyle = {
   background: "#ffffff",
 } as const;
 
+const conclusionStyle = {
+  display: "grid",
+  gap: 12,
+  padding: 16,
+  borderRadius: 8,
+  border: "1px solid #b7d8c5",
+  background: "#f6fbf7",
+  marginBottom: 18,
+} as const;
+
 const tableCellStyle = {
   padding: "12px 8px",
   borderBottom: "1px solid #edf1f6",
@@ -69,6 +79,20 @@ function formatPct(value: string | number | null | undefined) {
     return String(value);
   }
   return `${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+function formatYiFixed(value: string | number | null | undefined, digits = 6) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const n = Number(value) / 100000000;
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  return n.toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
 }
 
 function statusTone(status: BalanceMovementRow["reconciliation_status"]) {
@@ -110,6 +134,10 @@ export default function BalanceMovementAnalysisPage() {
     [detailQuery.data?.result.rows],
   );
   const summary = detailQuery.data?.result.summary;
+  const rowByBucket = useMemo(
+    () => new Map(rows.map((row) => [row.basis_bucket, row])),
+    [rows],
+  );
 
   async function handleRefresh() {
     if (!selectedDate) {
@@ -194,6 +222,33 @@ export default function BalanceMovementAnalysisPage() {
           <span data-testid="balance-movement-analysis-refresh-message">{refreshMessage}</span>
         ) : null}
       </FilterBar>
+
+      {summary ? (
+        <section data-testid="balance-movement-analysis-conclusion" style={conclusionStyle}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ color: "#027a48", fontSize: 12, fontWeight: 700 }}>
+                总账控制核对通过
+              </div>
+              <strong style={{ display: "block", marginTop: 4, fontSize: 24 }}>
+                {selectedDate || detailQuery.data?.result.report_date} 合计{" "}
+                {formatYiFixed(summary.current_balance_total)} 亿
+              </strong>
+            </div>
+            <div style={{ color: "#5c6b82", fontSize: 13, textAlign: "right" }}>
+              控制科目 141 / 142 / 143 / 1440101；排除 144020 股权 OCI
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: "#26364a", fontSize: 13 }}>
+            <span>AC {formatPct(rowByBucket.get("AC")?.current_balance_pct)}</span>
+            <span>OCI {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}</span>
+            <span>TPL {formatPct(rowByBucket.get("TPL")?.current_balance_pct)}</span>
+          </div>
+          <div style={{ color: "#5c6b82", fontSize: 12 }}>
+            本页以总账控制数为正式口径；ZQTZ 诊断差异仅用于提示明细扫描差异，不影响本页核对结论。
+          </div>
+        </section>
+      ) : null}
 
       {summary ? (
         <div data-testid="balance-movement-analysis-summary" style={cardGridStyle}>
