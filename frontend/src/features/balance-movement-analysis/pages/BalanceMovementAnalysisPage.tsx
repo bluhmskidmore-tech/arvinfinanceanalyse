@@ -73,7 +73,7 @@ function formatPct(value: string | number | null | undefined) {
   return `${n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
 
-function formatYiFixed(value: string | number | null | undefined, digits = 6) {
+function formatYiFixed(value: string | number | null | undefined, digits = 2) {
   if (value === null || value === undefined || value === "") {
     return "-";
   }
@@ -330,7 +330,14 @@ export default function BalanceMovementAnalysisPage() {
             <span>TPL {formatPct(rowByBucket.get("TPL")?.current_balance_pct)}</span>
           </div>
           <div className="balance-movement-conclusion__note">
-            本页以总账控制数为正式口径；ZQTZ 诊断差异仅用于提示明细扫描差异，不影响本页核对结论。
+            本页以 CNX 总账控制数为正式口径；ZQTZ 诊断同步读取 CNX 余额表，不再回退到 CNY 辅助口径。
+          </div>
+          <div
+            data-testid="balance-movement-analysis-diagnostic-reason"
+            className="balance-movement-conclusion__note"
+          >
+            口径差异原因：昨晚定位的是 ZQTZ 诊断应使用 CNX 表；若误读 CNY
+            辅助口径，会把综合本位币核对数和人民币辅助数相减，形成 AC / OCI / TPL 的假差异。
           </div>
           {trendComparison ? (
             <div

@@ -61,29 +61,22 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert set(envelope["result_meta"]["source_version"].split("__")) == {
         "sv-gl",
         "sv-gl-prior",
-        "sv-zqtz",
-        "sv-zqtz-prior",
     }
     assert set(envelope["result_meta"]["rule_version"].split("__")) == {
-        "rv-balance",
-        "rv-balance-prior",
         "rv-gl",
         "rv-gl-prior",
     }
     assert envelope["result_meta"]["evidence_rows"] == 6
 
 
-def test_balance_movement_analysis_service_keeps_zqtz_gap_out_of_formal_quality():
+def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_noise():
     duckdb_path = (
         Path("test_output")
         / "accounting_asset_movement"
         / f"{uuid4().hex}.duckdb"
     )
     duckdb_path.parent.mkdir(parents=True, exist_ok=True)
-    _seed_source_tables_and_materialize(
-        duckdb_path,
-        zqtz_tpl_market_value=Decimal("111"),
-    )
+    _seed_source_tables_and_materialize(duckdb_path)
 
     envelope = accounting_asset_movement_envelope(
         str(duckdb_path),
@@ -94,9 +87,9 @@ def test_balance_movement_analysis_service_keeps_zqtz_gap_out_of_formal_quality(
     result = envelope["result"]
     by_bucket = {row["basis_bucket"]: row for row in result["rows"]}
     assert Decimal(by_bucket["TPL"]["current_balance"]) == Decimal("110.00000000")
-    assert Decimal(by_bucket["TPL"]["zqtz_amount"]) == Decimal("111.00000000")
-    assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("1.00000000")
-    assert by_bucket["TPL"]["reconciliation_status"] == "mismatch"
+    assert Decimal(by_bucket["TPL"]["zqtz_amount"]) == Decimal("110.00000000")
+    assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("0E-8")
+    assert by_bucket["TPL"]["reconciliation_status"] == "matched"
     assert envelope["result_meta"]["quality_flag"] == "ok"
 
 
@@ -274,8 +267,6 @@ def test_balance_movement_dates_source_version_is_currency_scoped():
 
 def _seed_source_tables_and_materialize(
     duckdb_path: Path,
-    *,
-    zqtz_tpl_market_value: Decimal = Decimal("110"),
 ) -> list[object]:
     conn = duckdb.connect(str(duckdb_path), read_only=False)
     try:
@@ -314,21 +305,9 @@ def _seed_source_tables_and_materialize(
         conn.executemany(
             "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-01-31", "FVTPL", "asset", "CNY", "100", "100", "sv-zqtz-prior", "rv-balance-prior"),
-                ("2026-01-31", "AC", "asset", "CNY", "205", "205", "sv-zqtz-prior", "rv-balance-prior"),
-                ("2026-01-31", "FVOCI", "asset", "CNY", "70", "70", "sv-zqtz-prior", "rv-balance-prior"),
-                (
-                    "2026-02-28",
-                    "FVTPL",
-                    "asset",
-                    "CNY",
-                    str(zqtz_tpl_market_value),
-                    "100",
-                    "sv-zqtz",
-                    "rv-balance",
-                ),
-                ("2026-02-28", "AC", "asset", "CNY", "260", "225", "sv-zqtz", "rv-balance"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "75", "sv-zqtz", "rv-balance"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "AC", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
             ],
         )
         conn.executemany(

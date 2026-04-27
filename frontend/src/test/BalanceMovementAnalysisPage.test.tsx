@@ -18,12 +18,21 @@ describe("BalanceMovementAnalysisPage", () => {
     );
     const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
     expect(conclusion).toHaveTextContent("总账控制核对通过");
-    expect(conclusion).toHaveTextContent("3,358.733093 亿");
+    expect(conclusion).toHaveTextContent("3,358.73 亿");
     expect(conclusion).toHaveTextContent("AC 42.44%");
     expect(conclusion).toHaveTextContent("OCI 31.49%");
     expect(conclusion).toHaveTextContent("TPL 26.07%");
     expect(conclusion).toHaveTextContent("排除 144020 股权 OCI");
-    expect(conclusion).toHaveTextContent("ZQTZ 诊断差异仅用于提示明细扫描差异");
+    expect(conclusion).toHaveTextContent("ZQTZ 诊断同步读取 CNX 余额表");
+    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
+      "口径差异原因",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
+      "ZQTZ 诊断应使用 CNX 表",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-diagnostic-reason")).toHaveTextContent(
+      "误读 CNY",
+    );
     expect(await screen.findByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
       "较 2026-01-31 +129.80 亿",
     );

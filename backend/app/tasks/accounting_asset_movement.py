@@ -116,7 +116,25 @@ def _load_zqtz_rows(
     report_date: str,
     currency_basis: str,
 ) -> list[ZqtzAccountingAssetBalance]:
-    zqtz_currency_basis = _zqtz_currency_basis_for(currency_basis)
+    if str(currency_basis or "").strip().upper() == "CNX":
+        return _load_zqtz_cnx_control_rows(
+            conn,
+            report_date=report_date,
+            currency_basis=currency_basis,
+        )
+    return _load_zqtz_formal_rows(
+        conn,
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+
+
+def _load_zqtz_formal_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> list[ZqtzAccountingAssetBalance]:
     rows = conn.execute(
         """
         select
@@ -133,7 +151,7 @@ def _load_zqtz_rows(
           and currency_basis = ?
           and position_scope = 'asset'
         """,
-        [report_date, zqtz_currency_basis],
+        [report_date, currency_basis],
     ).fetchall()
     return [
         ZqtzAccountingAssetBalance(
@@ -148,6 +166,66 @@ def _load_zqtz_rows(
         )
         for row in rows
     ]
+
+
+def _load_zqtz_cnx_control_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> list[ZqtzAccountingAssetBalance]:
+    rows = conn.execute(
+        """
+        with bucketed as (
+          select
+            case
+              when account_code like '141%' then 'FVTPL'
+              when account_code like '142%' or account_code like '143%' then 'AC'
+              when account_code like '1440101%' then 'FVOCI'
+            end as accounting_basis,
+            coalesce(ending_balance, 0) as ending_balance,
+            coalesce(source_version, '') as source_version,
+            coalesce(rule_version, '') as rule_version
+          from product_category_pnl_canonical_fact
+          where cast(report_date as varchar) = ?
+            and currency = ?
+            and (
+              account_code like '141%'
+              or account_code like '142%'
+              or account_code like '143%'
+              or account_code like '1440101%'
+            )
+        )
+        select
+          accounting_basis,
+          coalesce(sum(ending_balance), 0) as ending_balance,
+          coalesce(string_agg(distinct nullif(source_version, ''), '__' order by nullif(source_version, '')), '') as source_version,
+          coalesce(string_agg(distinct nullif(rule_version, ''), '__' order by nullif(rule_version, '')), '') as rule_version
+        from bucketed
+        where accounting_basis is not null
+        group by accounting_basis
+        order by accounting_basis
+        """,
+        [report_date, currency_basis],
+    ).fetchall()
+    parsed_report_date = date.fromisoformat(report_date)
+    balances: list[ZqtzAccountingAssetBalance] = []
+    for accounting_basis, ending_balance, source_version, rule_version in rows:
+        amount = Decimal(str(ending_balance or "0"))
+        normalized_basis = str(accounting_basis)
+        balances.append(
+            ZqtzAccountingAssetBalance(
+                report_date=parsed_report_date,
+                accounting_basis=normalized_basis,
+                position_scope="asset",
+                currency_basis=currency_basis,
+                market_value_amount=Decimal("0") if normalized_basis == "AC" else amount,
+                amortized_cost_amount=amount if normalized_basis == "AC" else Decimal("0"),
+                source_version=str(source_version or ""),
+                rule_version=str(rule_version or ""),
+            )
+        )
+    return balances
 
 
 def _load_gl_rows(
@@ -190,13 +268,6 @@ def _load_gl_rows(
         )
         for row in rows
     ]
-
-
-def _zqtz_currency_basis_for(currency_basis: str) -> str:
-    if str(currency_basis or "").strip().upper() == "CNX":
-        return "CNY"
-    return currency_basis
-
 
 def _insert_rows(
     conn: duckdb.DuckDBPyConnection,

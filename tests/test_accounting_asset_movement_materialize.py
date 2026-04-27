@@ -47,9 +47,9 @@ def test_accounting_asset_movement_materialize_writes_monthly_reconciliation_row
         conn.executemany(
             "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-02-28", "FVTPL", "asset", "CNY", "110", "100", "sv-zqtz", "rv-balance"),
-                ("2026-02-28", "AC", "asset", "CNY", "260", "225", "sv-zqtz", "rv-balance"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "80", "75", "sv-zqtz", "rv-balance"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "AC", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
             ],
         )
         conn.executemany(

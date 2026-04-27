@@ -104,7 +104,7 @@ def accounting_asset_movement_envelope(
         evidence_rows=len(evidence_rows),
         next_drill=[
             "product_category_pnl_canonical_fact: CNX 141/142/143/1440101 control accounts",
-            "fact_formal_zqtz_balance_daily: CNY auxiliary diagnostic comparison; not a formal-control gate",
+            "product_category_pnl_canonical_fact: CNX ZQTZ diagnostic bucket comparison; not a CNY fallback",
         ],
     )
     return build_formal_result_envelope(
