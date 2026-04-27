@@ -15,6 +15,8 @@ import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
 import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
+import { designTokens } from "../../theme/designSystem";
+import { displayTokens } from "../../theme/displayTokens";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -48,7 +50,7 @@ const pageSubtitleStyle = {
   marginTop: 10,
   marginBottom: 0,
   maxWidth: 860,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
 } as const;
@@ -75,20 +77,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -105,18 +107,18 @@ const controlStyle = {
   minWidth: 180,
   padding: "10px 12px",
   borderRadius: 12,
-  border: "1px solid #d7dfea",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
   background: "#ffffff",
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const formalOnlyNoteStyle = {
   marginBottom: 18,
   padding: "12px 14px",
   borderRadius: 14,
-  border: "1px solid #d7dfea",
-  background: "#f7f9fc",
-  color: "#5c6b82",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: designTokens.color.neutral[50],
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.65,
 } as const;
@@ -174,23 +176,23 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     if (value >= 0) {
       helperRaw.push(running);
       valueRaw.push(value);
-      barColors.push("#cf1322");
+      barColors.push(designTokens.color.semantic.loss);
       running += value;
     } else {
       helperRaw.push(running + value);
       valueRaw.push(-value);
-      barColors.push("#3f8600");
+      barColors.push(designTokens.color.semantic.profit);
       running += value;
     }
   }
 
   helperRaw.push(0);
   valueRaw.push(summary.total_explained_pnl.raw ?? 0);
-  barColors.push("#1f5eff");
+  barColors.push(designTokens.color.primary[600]);
 
   helperRaw.push(0);
   valueRaw.push(summary.total_actual_pnl.raw ?? 0);
-  barColors.push("#1f5eff");
+  barColors.push(designTokens.color.primary[600]);
 
   return {
     tooltip: {
@@ -208,12 +210,12 @@ function buildWaterfallOption(summary: PnlBridgeSummary): EChartsOption {
     xAxis: {
       type: "category",
       data: [...BRIDGE_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: "#5c6b82" },
+      axisLabel: { interval: 0, rotate: 22, fontSize: 11, color: designTokens.color.neutral[600] },
     },
     yAxis: {
       type: "value",
-      splitLine: { lineStyle: { type: "dashed" as const, color: "#e4ebf5" } },
-      axisLabel: { fontSize: 11, color: "#5c6b82" },
+      splitLine: { lineStyle: { type: "dashed" as const, color: designTokens.color.neutral[200] } },
+      axisLabel: { fontSize: 11, color: designTokens.color.neutral[600] },
     },
     series: [
       {
@@ -512,9 +514,9 @@ export default function PnlBridgePage() {
             data-testid="pnl-bridge-page-role-badge"
             style={{
               ...modeBadgeStyle,
-              background: "#f7f9fc",
-              color: "#162033",
-              border: "1px solid #d7dfea",
+              background: designTokens.color.neutral[50],
+              color: designTokens.color.neutral[900],
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
             正式解释
@@ -522,8 +524,12 @@ export default function PnlBridgePage() {
           <span
             style={{
               ...modeBadgeStyle,
-              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
             }}
           >
             {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
@@ -533,7 +539,7 @@ export default function PnlBridgePage() {
 
       <FilterBar style={controlBarStyle}>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="pnl-bridge-report-date"
             value={selectedReportDate}
@@ -590,19 +596,34 @@ export default function PnlBridgePage() {
                 style={{
                   marginBottom: 20,
                   borderRadius: 16,
-                  border: "1px solid #dbe7f5",
-                  background: "#f7fbff",
-                  boxShadow: "0 10px 24px rgba(31, 94, 255, 0.06)",
+                  border: `1px solid ${designTokens.color.primary[200]}`,
+                  background: designTokens.color.primary[50],
+                  boxShadow: designTokens.shadow.card,
                 }}
               >
                 <div style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "#6b7f99" }}>
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      letterSpacing: "0.06em",
+                      textTransform: "uppercase",
+                      color: designTokens.color.neutral[600],
+                    }}
+                  >
                     {conclusion.title}
                   </span>
-                  <div style={{ fontSize: 20, fontWeight: 600, color: "#162033", lineHeight: 1.4 }}>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 600,
+                      color: designTokens.color.neutral[900],
+                      lineHeight: 1.4,
+                    }}
+                  >
                     {conclusion.body}
                   </div>
-                  <div style={{ color: "#5c6b82", fontSize: 13, lineHeight: 1.7 }}>
+                  <div style={{ color: designTokens.color.neutral[600], fontSize: 13, lineHeight: 1.7 }}>
                     {conclusion.detail}
                   </div>
                 </div>
@@ -652,8 +673,8 @@ export default function PnlBridgePage() {
                   style={{
                     marginTop: 24,
                     borderRadius: 18,
-                    border: "1px solid #e8edf4",
-                    boxShadow: "0 18px 40px rgba(19, 37, 70, 0.08)",
+                    border: `1px solid ${designTokens.color.neutral[200]}`,
+                    boxShadow: designTokens.shadow.card,
                     background: "#ffffff",
                   }}
                   styles={{ body: { padding: "12px 16px 16px" } }}
@@ -671,12 +692,14 @@ export default function PnlBridgePage() {
                     marginTop: 24,
                     padding: 16,
                     borderRadius: 14,
-                    background: "#fffbeb",
-                    border: "1px solid #f5e0a8",
+                    background: designTokens.color.warning[50],
+                    border: `1px solid ${designTokens.color.warning[200]}`,
                   }}
                 >
-                  <div style={{ fontWeight: 600, marginBottom: 8, color: "#92400e" }}>预警</div>
-                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, color: designTokens.color.warning[800] }}>
+                    预警
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: designTokens.color.neutral[600] }}>
                     {warnings.map((warning) => (
                       <li key={warning} style={{ marginBottom: 6 }}>
                         {warning}

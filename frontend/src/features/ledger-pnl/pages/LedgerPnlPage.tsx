@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type { LedgerMoneyValue } from "../../../api/contracts";
@@ -74,7 +76,7 @@ export default function LedgerPnlPage() {
     retry: false,
   });
 
-  const reportDates = datesQuery.data?.result.dates ?? [];
+  const reportDates = useMemo(() => datesQuery.data?.result.dates ?? [], [datesQuery.data?.result.dates]);
 
   useEffect(() => {
     const firstDate = reportDates[0];
@@ -175,8 +177,12 @@ export default function LedgerPnlPage() {
         <span
           style={{
             ...modeBadgeStyle,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            background:
+              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+            color:
+              client.mode === "real"
+                ? displayTokens.apiMode.realForeground
+                : displayTokens.apiMode.mockForeground,
           }}
         >
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}

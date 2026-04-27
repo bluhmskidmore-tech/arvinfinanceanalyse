@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Table, Tabs } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
+import { designTokens } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 type TabKey = "interbank" | "main";
@@ -44,7 +45,16 @@ export function BondFuturesTable() {
         key: "change",
         align: "right",
         render: (v: string) => (
-          <span style={{ color: v.startsWith("-") ? "#2f8f63" : "#c0392b", fontVariantNumeric: "tabular-nums" }}>{v}</span>
+          <span
+            style={{
+              color: v.startsWith("-")
+                ? designTokens.color.semantic.profit
+                : designTokens.color.semantic.loss,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {v}
+          </span>
         ),
       },
       {
@@ -53,7 +63,16 @@ export function BondFuturesTable() {
         key: "changePct",
         align: "right",
         render: (v: string) => (
-          <span style={{ color: v.startsWith("-") ? "#2f8f63" : "#c0392b", fontVariantNumeric: "tabular-nums" }}>{v}</span>
+          <span
+            style={{
+              color: v.startsWith("-")
+                ? designTokens.color.semantic.profit
+                : designTokens.color.semantic.loss,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {v}
+          </span>
         ),
       },
       { title: "成交量", dataIndex: "volume", key: "volume", align: "right" },

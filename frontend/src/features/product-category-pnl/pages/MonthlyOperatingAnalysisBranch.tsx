@@ -5,6 +5,8 @@ import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { QdbGlMonthlyAnalysisSheet } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -13,22 +15,20 @@ const pageHeaderStyle = {
   gap: 16,
   padding: 20,
   borderRadius: 18,
-  border: "1px solid #d7dfea",
-  background: "#fbfcfe",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
   marginBottom: 18,
 } as const;
 
-const modeBadgeStyle = {
+const chipTypography = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 12px",
   borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
 } as const;
 
 const sectionLeadWrapStyle = {
@@ -42,20 +42,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -153,15 +153,28 @@ export default function MonthlyOperatingAnalysisBranch() {
       <div style={pageHeaderStyle}>
         <div>
           <h1 data-testid="monthly-operating-analysis-page-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>月度经营分析</h1>
-          <p data-testid="monthly-operating-analysis-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+          <p
+            data-testid="monthly-operating-analysis-boundary-copy"
+            style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
+          >
             基于总账对账与日均月度配对文件重建月度经营分析工作簿。
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
             仅用于分析口径工作簿：阈值情景只预览工作表，不替换正式产品分类结果。
           </p>
         </div>
         <div style={{ display: "grid", gap: 10, justifyItems: "end" }}>
-          <span style={modeBadgeStyle}>
+          <span
+            style={{
+              ...chipTypography,
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
+            }}
+          >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <label style={{ display: "grid", gap: 8 }}>
@@ -235,13 +248,13 @@ export default function MonthlyOperatingAnalysisBranch() {
       </FilterBar>
 
       {refreshRunId ? (
-        <div style={{ marginBottom: 12, color: "#5c6b82", fontSize: 12 }}>{refreshRunId}</div>
+        <div style={{ marginBottom: 12, color: designTokens.color.neutral[600], fontSize: 12 }}>{refreshRunId}</div>
       ) : null}
 
       {scenarioSummary ? (
         <div
           data-testid="monthly-operating-analysis-scenario-summary"
-          style={{ marginBottom: 12, color: "#162033", fontSize: 13 }}
+          style={{ marginBottom: 12, color: designTokens.color.neutral[900], fontSize: 13 }}
         >
           {scenarioSummary}
         </div>
@@ -261,13 +274,13 @@ export default function MonthlyOperatingAnalysisBranch() {
             style={{
               padding: 16,
               borderRadius: 16,
-              border: "1px solid #d7dfea",
-              background: "#fbfcfe",
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+              background: designTokens.color.neutral[50],
             }}
           >
             <h2 style={{ marginTop: 0 }}>{sheet.title}</h2>
             {sheet.rows.length > 0 ? (
-              <div style={{ color: "#5c6b82", fontSize: 13 }}>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13 }}>
                 {sheet.columns.map((column) => (
                   <span key={column} style={{ marginRight: 12 }}>
                     {column}
@@ -275,7 +288,7 @@ export default function MonthlyOperatingAnalysisBranch() {
                 ))}
               </div>
             ) : (
-              <div style={{ color: "#8090a8", fontSize: 13 }}>当前没有可展示数据。</div>
+              <div style={{ color: designTokens.color.neutral[500], fontSize: 13 }}>当前没有可展示数据。</div>
             )}
           </section>
         ))}

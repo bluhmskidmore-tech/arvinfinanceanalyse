@@ -5,6 +5,7 @@ import { useSearchParams } from "react-router-dom";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
@@ -81,9 +82,9 @@ function chipButtonStyle(active: boolean) {
   return {
     padding: "8px 12px",
     borderRadius: 999,
-    border: active ? "1px solid #1f5eff" : `1px solid ${t.colorBorderSoft}`,
-    background: active ? "#edf3ff" : "#ffffff",
-    color: active ? "#1f5eff" : t.colorTextPrimary,
+    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${t.colorBorderSoft}`,
+    background: active ? designTokens.color.primary[50] : "#ffffff",
+    color: active ? designTokens.color.primary[600] : t.colorTextPrimary,
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -192,7 +193,7 @@ export default function RiskTensorPage() {
         {
           type: "bar",
           data,
-          itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: designTokens.color.primary[600], borderRadius: [6, 6, 0, 0] },
         },
       ],
     };
@@ -254,7 +255,7 @@ export default function RiskTensorPage() {
     const radarValues = [duration, dv01, convexity, cs01, hhi, liqRatio];
 
     return {
-      color: ["#1f5eff"],
+      color: [designTokens.color.primary[600]],
       tooltip: {
         trigger: "item",
         borderColor: t.colorBorderSoft,
@@ -278,13 +279,13 @@ export default function RiskTensorPage() {
         {
           type: "radar",
           symbolSize: 5,
-          lineStyle: { width: 1.5, color: "#1f5eff" },
+          lineStyle: { width: 1.5, color: designTokens.color.primary[600] },
           areaStyle: {
             color: "rgba(31, 94, 255, 0.15)",
           },
           itemStyle: {
-            color: "#1f5eff",
-            borderColor: "#1f5eff",
+            color: designTokens.color.primary[600],
+            borderColor: designTokens.color.primary[600],
           },
           data: [
             {

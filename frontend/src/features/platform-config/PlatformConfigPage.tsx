@@ -2,6 +2,8 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../api/client";
+import { designTokens } from "../../theme/designSystem";
+import { displayTokens } from "../../theme/displayTokens";
 import type {
   HealthCheckStatus,
   HealthResponse,
@@ -257,8 +259,12 @@ export default function PlatformConfigPage() {
             alignItems: "center",
             padding: "8px 12px",
             borderRadius: 999,
-            background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-            color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+            background:
+              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+            color:
+              client.mode === "real"
+                ? displayTokens.apiMode.realForeground
+                : displayTokens.apiMode.mockForeground,
             fontSize: 12,
             fontWeight: 600,
             letterSpacing: "0.04em",

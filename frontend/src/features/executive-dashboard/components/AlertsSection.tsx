@@ -1,4 +1,5 @@
 import type { AlertsPayload } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 import { AsyncSection } from "./AsyncSection";
 
 type AlertsSectionProps = {
@@ -10,9 +11,9 @@ type AlertsSectionProps = {
 };
 
 const severityColor = {
-  high: { bg: "#fde8e6", fg: "#b74c45" },
-  medium: { bg: "#fff3dd", fg: "#cc7a1a" },
-  low: { bg: "#e6f0ff", fg: "#1f5eff" },
+  high: { bg: designTokens.color.danger[50], fg: designTokens.color.danger[600] },
+  medium: { bg: designTokens.color.warning[50], fg: designTokens.color.warning[700] },
+  low: { bg: designTokens.color.primary[50], fg: designTokens.color.primary[600] },
 } as const;
 
 const severityLabel = {

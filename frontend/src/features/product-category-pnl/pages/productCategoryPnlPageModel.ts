@@ -1,4 +1,5 @@
 import type { DecimalLike, ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 
 /** Display order for category rows; does not re-aggregate backend totals. */
 const DISPLAY_ORDER = [
@@ -52,9 +53,9 @@ export function availableViewsSupportMainPageSelector(availableViews: string[]):
 }
 
 export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
-  default: "#162033",
-  positive: "#12723b",
-  negative: "#b42318",
+  default: designTokens.color.neutral[900],
+  positive: designTokens.color.semantic.profit,
+  negative: designTokens.color.semantic.loss,
 } as const;
 
 const YUAN_PER_YI = 100_000_000;

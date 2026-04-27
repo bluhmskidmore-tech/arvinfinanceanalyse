@@ -13,6 +13,8 @@ import { AsyncSection } from "../../executive-dashboard/components/AsyncSection"
 import MonthlyOperatingAnalysisAuditPage from "./MonthlyOperatingAnalysisAuditPage";
 import { nextDefaultReportDateIfUnset } from "./productCategoryPnlPageModel";
 import { buildProductCategoryAuditListExportQuery } from "./productCategoryAdjustmentAuditPageModel";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -21,22 +23,20 @@ const pageHeaderStyle = {
   gap: 16,
   padding: 20,
   borderRadius: 18,
-  border: "1px solid #d7dfea",
-  background: "#fbfcfe",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
   marginBottom: 18,
 } as const;
 
-const modeBadgeStyle = {
+const chipTypography = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 12px",
   borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
 } as const;
 
 const sectionLeadWrapStyle = {
@@ -50,20 +50,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -415,30 +415,40 @@ function LegacyProductCategoryAdjustmentAuditBody() {
       <div style={pageHeaderStyle}>
         <div>
           <h1 data-testid="product-category-audit-page-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>产品损益调整审计</h1>
-          <p data-testid="product-category-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+          <p data-testid="product-category-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}>
             查看产品类别损益的手工调整当前状态、完整事件时间线和刷新结果。
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
             审计视图只记录调整事件与刷新证据，不直接改写正式读模型。
           </p>
           {lastRefreshRunId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近刷新任务：{lastRefreshRunId}
             </p>
           ) : null}
           {lastAdjustmentId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近录入调整：{lastAdjustmentId}
             </p>
           ) : null}
           {adjustmentError ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#b42318", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}>
               {adjustmentError}
             </p>
           ) : null}
         </div>
         <FilterBar style={{ justifyContent: "flex-end" }}>
-          <span style={modeBadgeStyle}>
+          <span
+            style={{
+              ...chipTypography,
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
+            }}
+          >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <a href="/product-category-pnl">返回产品损益页</a>
@@ -486,8 +496,8 @@ function LegacyProductCategoryAdjustmentAuditBody() {
           marginBottom: 18,
           padding: 18,
           borderRadius: 18,
-          border: "1px solid #d7dfea",
-          background: "#fbfcfe",
+          border: `1px solid ${designTokens.color.neutral[200]}`,
+          background: designTokens.color.neutral[50],
         }}
       >
         <label style={{ display: "grid", gap: 8 }}>
@@ -717,8 +727,8 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             marginBottom: 18,
             padding: 18,
             borderRadius: 18,
-            border: "1px solid #d7dfea",
-            background: "#fbfcfe",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.neutral[50],
           }}
         >
           <div style={{ fontWeight: 600 }}>
@@ -878,7 +888,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                     </option>
                   ))}
                 </select>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>
+                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
                   {currentTotal === 0
                     ? "0 / 0"
                     : `${currentOffset + 1}-${Math.min(currentOffset + currentLimit, currentTotal)} / ${currentTotal}`}
@@ -913,15 +923,15 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                   alignItems: "center",
                   padding: 12,
                   borderRadius: 12,
-                  border: "1px solid #d7dfea",
+                  border: `1px solid ${designTokens.color.neutral[200]}`,
                 }}
               >
                 <div>
                   <div style={{ fontWeight: 600 }}>{item.account_code}</div>
-                  <div style={{ color: "#5c6b82", fontSize: 12 }}>
+                  <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
                     {item.account_name || "未填写科目名称"}
                   </div>
-                  <div style={{ color: "#8090a8", fontSize: 12 }}>
+                  <div style={{ color: designTokens.color.neutral[500], fontSize: 12 }}>
                     最近事件：{item.event_type}
                   </div>
                 </div>
@@ -976,7 +986,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontWeight: 600 }}>完整事件时间线（{eventTotal}）</div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>
+                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
                   {eventTotal === 0
                     ? "0 / 0"
                     : `${eventOffset + 1}-${Math.min(eventOffset + eventLimit, eventTotal)} / ${eventTotal}`}
@@ -1009,7 +1019,7 @@ function LegacyProductCategoryAdjustmentAuditBody() {
                   gap: 12,
                   padding: 12,
                   borderRadius: 12,
-                  border: "1px dashed #d7dfea",
+                  border: `1px dashed ${designTokens.color.neutral[200]}`,
                   background: "#fcfdff",
                 }}
               >

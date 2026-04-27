@@ -12,7 +12,9 @@ import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
+import { displayTokens } from "../../theme/displayTokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
@@ -40,7 +42,7 @@ const pageSubtitleStyle = {
   marginTop: 10,
   marginBottom: 0,
   maxWidth: 860,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
 } as const;
@@ -67,20 +69,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -97,18 +99,18 @@ const controlStyle = {
   minWidth: 180,
   padding: "10px 12px",
   borderRadius: 12,
-  border: "1px solid #d7dfea",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
   background: "#ffffff",
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const basisNoteStyle = {
   marginBottom: 18,
   padding: "12px 14px",
   borderRadius: 14,
-  border: "1px solid #d7dfea",
-  background: "#f7f9fc",
-  color: "#5c6b82",
+  border: `1px solid ${shellTokens.colorBorderSoft}`,
+  background: designTokens.color.neutral[50],
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.65,
 } as const;
@@ -124,9 +126,9 @@ function tabButtonStyle(active: boolean) {
   return {
     padding: "10px 16px",
     borderRadius: 12,
-    border: active ? "1px solid #1f5eff" : "1px solid #d7dfea",
-    background: active ? "#edf3ff" : "#ffffff",
-    color: active ? "#1f5eff" : "#162033",
+    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${shellTokens.colorBorderSoft}`,
+    background: active ? designTokens.color.primary[50] : "#ffffff",
+    color: active ? designTokens.color.primary[600] : designTokens.color.neutral[900],
     fontWeight: 600,
     cursor: "pointer",
   } as const;
@@ -432,9 +434,9 @@ export default function PnlPage() {
             data-testid="pnl-page-role-badge"
             style={{
               ...modeBadgeStyle,
-              background: "#f7f9fc",
-              color: "#162033",
-              border: "1px solid #d7dfea",
+              background: designTokens.color.neutral[50],
+              color: designTokens.color.neutral[900],
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
             }}
           >
             正式明细
@@ -442,8 +444,12 @@ export default function PnlPage() {
           <span
             style={{
               ...modeBadgeStyle,
-              background: client.mode === "real" ? "#e8f6ee" : "#edf3ff",
-              color: client.mode === "real" ? "#2f8f63" : "#1f5eff",
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
             }}
           >
             {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
@@ -456,9 +462,9 @@ export default function PnlPage() {
               alignItems: "center",
               padding: "8px 12px",
               borderRadius: 999,
-              border: "1px solid #d7dfea",
+              border: `1px solid ${shellTokens.colorBorderSoft}`,
               background: "#ffffff",
-              color: "#162033",
+              color: designTokens.color.neutral[900],
               fontSize: 12,
               fontWeight: 600,
               textDecoration: "none",
@@ -471,7 +477,7 @@ export default function PnlPage() {
 
       <FilterBar style={controlBarStyle}>
         <div>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>口径</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>口径</span>
           <div style={tabBarStyle}>
             <button
               type="button"
@@ -490,7 +496,7 @@ export default function PnlPage() {
           </div>
         </div>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="pnl-report-date"
             value={selectedReportDate}

@@ -7,6 +7,8 @@ import type {
   QdbGlMonthlyAnalysisManualAdjustmentPayload,
   QdbGlMonthlyAnalysisManualAdjustmentRequest,
 } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -15,22 +17,20 @@ const pageHeaderStyle = {
   gap: 16,
   padding: 20,
   borderRadius: 18,
-  border: "1px solid #d7dfea",
-  background: "#fbfcfe",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
   marginBottom: 18,
 } as const;
 
-const modeBadgeStyle = {
+const chipTypography = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 12px",
   borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
 } as const;
 
 const sectionLeadWrapStyle = {
@@ -44,20 +44,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -312,21 +312,31 @@ export default function MonthlyOperatingAnalysisAuditPage() {
       <div style={pageHeaderStyle}>
         <div>
           <h1 data-testid="monthly-operating-analysis-audit-title" style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{COPY.title}</h1>
-          <p data-testid="monthly-operating-analysis-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 14 }}>
+          <p data-testid="monthly-operating-analysis-audit-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}>
             {COPY.subtitle}
           </p>
-          <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+          <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
             月度经营审计只调整分析分支记录，并保持与产品分类正式结果分离。
           </p>
           {lastActionId ? (
-            <p style={{ margin: "8px 0 0", color: "#5c6b82", fontSize: 12 }}>{lastActionId}</p>
+            <p style={{ margin: "8px 0 0", color: designTokens.color.neutral[600], fontSize: 12 }}>{lastActionId}</p>
           ) : null}
           {errorMessage ? (
-            <p style={{ margin: "8px 0 0", color: "#b42318", fontSize: 12 }}>{errorMessage}</p>
+            <p style={{ margin: "8px 0 0", color: designTokens.color.danger[700], fontSize: 12 }}>{errorMessage}</p>
           ) : null}
         </div>
         <FilterBar style={{ justifyContent: "flex-end" }}>
-          <span style={modeBadgeStyle}>
+          <span
+            style={{
+              ...chipTypography,
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
+            }}
+          >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <label style={{ display: "grid", gap: 8 }}>
@@ -363,8 +373,8 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             gap: 12,
             padding: 12,
             borderRadius: 12,
-            border: "1px solid #d7dfea",
-            background: "#fbfcfe",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.neutral[50],
           }}
         >
           <label style={{ display: "grid", gap: 6 }}>
@@ -401,7 +411,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             <>
               <div style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.mappingTarget}</span>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>{COPY.mappingHint}</span>
+                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{COPY.mappingHint}</span>
               </div>
               <label style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.mappingAccountCode}</span>
@@ -443,7 +453,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             <>
               <div style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.analysisTarget}</span>
-                <span style={{ color: "#5c6b82", fontSize: 12 }}>{COPY.analysisHint}</span>
+                <span style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{COPY.analysisHint}</span>
               </div>
               <label style={{ display: "grid", gap: 6 }}>
                 <span>{COPY.sectionKey}</span>
@@ -548,13 +558,13 @@ export default function MonthlyOperatingAnalysisAuditPage() {
               alignItems: "center",
               padding: 12,
               borderRadius: 12,
-              border: "1px solid #d7dfea",
-              background: "#fbfcfe",
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+              background: designTokens.color.neutral[50],
             }}
           >
             <div>
               <div>{item.adjustment_class}</div>
-              <div style={{ color: "#5c6b82", fontSize: 12 }}>{serializeTarget(item)}</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>{serializeTarget(item)}</div>
             </div>
             <div>{item.value}</div>
             <div>{item.approval_status}</div>
@@ -608,7 +618,7 @@ export default function MonthlyOperatingAnalysisAuditPage() {
           </div>
         ))}
         {(adjustmentsQuery.data?.adjustments ?? []).length === 0 ? (
-          <div style={{ color: "#8090a8", fontSize: 13 }}>{COPY.empty}</div>
+          <div style={{ color: designTokens.color.neutral[500], fontSize: 13 }}>{COPY.empty}</div>
         ) : null}
       </div>
 
@@ -622,8 +632,8 @@ export default function MonthlyOperatingAnalysisAuditPage() {
             style={{
               padding: 12,
               borderRadius: 12,
-              border: "1px dashed #d7dfea",
-              background: "#fcfdff",
+              border: `1px dashed ${designTokens.color.neutral[200]}`,
+              background: designTokens.color.neutral[50],
             }}
           >
             {item.event_type} / {item.adjustment_id}

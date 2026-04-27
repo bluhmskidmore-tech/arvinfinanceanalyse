@@ -1,4 +1,5 @@
 import type { SummaryPayload } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 import { AsyncSection } from "./AsyncSection";
 
 type SummarySectionProps = {
@@ -11,9 +12,9 @@ type SummarySectionProps = {
 };
 
 const toneMap = {
-  positive: { bg: "#e8f6ee", fg: "#2f8f63" },
-  neutral: { bg: "#edf1f5", fg: "#5c6b82" },
-  warning: { bg: "#fff3dd", fg: "#cc7a1a" },
+  positive: { bg: designTokens.color.success[50], fg: designTokens.color.success[600] },
+  neutral: { bg: designTokens.color.neutral[100], fg: designTokens.color.neutral[600] },
+  warning: { bg: designTokens.color.warning[50], fg: designTokens.color.warning[700] },
 } as const;
 
 export function SummarySection({

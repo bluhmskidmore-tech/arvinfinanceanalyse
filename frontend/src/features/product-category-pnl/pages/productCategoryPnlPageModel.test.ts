@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProductCategoryPnlRow, ResultMeta } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
@@ -171,9 +172,9 @@ describe("productCategoryPnlPageModel", () => {
 
   it("returns the current visible tone colors for positive, negative, zero, and invalid values", () => {
     expect(PRODUCT_CATEGORY_VALUE_TONE_COLORS).toEqual({
-      default: "#162033",
-      positive: "#12723b",
-      negative: "#b42318",
+      default: designTokens.color.neutral[900],
+      positive: designTokens.color.semantic.profit,
+      negative: designTokens.color.semantic.loss,
     });
     expect(toneForProductCategoryValue("12.3")).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.positive);
     expect(toneForProductCategoryValue("-12.3")).toBe(PRODUCT_CATEGORY_VALUE_TONE_COLORS.negative);

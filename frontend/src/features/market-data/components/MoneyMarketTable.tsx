@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 
+import { designTokens } from "../../../theme/designSystem";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
 
 type MoneyRow = {
@@ -23,12 +24,12 @@ const DATA: MoneyRow[] = [
 
 function deltaBpColor(bp: number) {
   if (bp < 0) {
-    return "#2f8f63";
+    return designTokens.color.semantic.profit;
   }
   if (bp > 0) {
-    return "#c0392b";
+    return designTokens.color.semantic.loss;
   }
-  return "#31425b";
+  return designTokens.color.neutral[700];
 }
 
 export function MoneyMarketTable() {

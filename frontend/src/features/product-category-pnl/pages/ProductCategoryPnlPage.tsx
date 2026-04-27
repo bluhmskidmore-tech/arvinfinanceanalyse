@@ -22,6 +22,8 @@ import {
   selectProductCategoryDetailRows,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -30,22 +32,20 @@ const pageHeaderStyle = {
   gap: 16,
   padding: 20,
   borderRadius: 18,
-  border: "1px solid #d7dfea",
-  background: "#fbfcfe",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
   marginBottom: 18,
 } as const;
 
-const modeBadgeStyle = {
+const chipTypography = {
   display: "inline-flex",
   alignItems: "center",
   padding: "8px 12px",
   borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
   fontSize: 12,
   fontWeight: 600,
   letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  textTransform: "uppercase" as const,
 } as const;
 
 const sectionLeadWrapStyle = {
@@ -59,20 +59,20 @@ const sectionEyebrowStyle = {
   fontWeight: 700,
   letterSpacing: "0.08em",
   textTransform: "uppercase",
-  color: "#8090a8",
+  color: designTokens.color.neutral[500],
 } as const;
 
 const sectionTitleStyle = {
   margin: 0,
   fontSize: 18,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const sectionDescriptionStyle = {
   margin: 0,
   maxWidth: 900,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 13,
   lineHeight: 1.7,
 } as const;
@@ -367,13 +367,13 @@ export default function ProductCategoryPnlPage() {
           gap: 12,
           flexWrap: "wrap",
           justifyContent: "flex-end",
-          color: "#5c6b82",
+          color: designTokens.color.neutral[600],
           fontSize: 13,
         }}
       >
         <span>当前场景：{currentSceneRate}%</span>
         <span>基准场景：{baselineRate}%</span>
-        <span style={{ color: "#162033", fontWeight: 700 }}>
+        <span style={{ color: designTokens.color.neutral[900], fontWeight: 700 }}>
           合计：{formatProductCategoryValue(displayedGrandTotal?.business_net_income)}
         </span>
       </div>
@@ -444,14 +444,14 @@ export default function ProductCategoryPnlPage() {
             style={{
               marginTop: 8,
               marginBottom: 0,
-              color: "#5c6b82",
+              color: designTokens.color.neutral[600],
               fontSize: 14,
               lineHeight: 1.7,
             }}
           >
             按业务分类查看损益、FTP 和净收入。用于经营分析，不等同于逐笔损益明细。
           </p>
-          <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+          <p data-testid="product-category-boundary-copy" style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
             系统层经营口径：正式基线来自正式读模型；情景预览仅在显式应用后生效。
           </p>
           {isRefreshing ? (
@@ -460,26 +460,43 @@ export default function ProductCategoryPnlPage() {
             </p>
           ) : null}
           {lastRefreshRunId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近刷新任务：{lastRefreshRunId}
             </p>
           ) : null}
           {lastAdjustmentId ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#5c6b82", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 12 }}>
               最近录入调整：{lastAdjustmentId}
             </p>
           ) : null}
           {refreshError ? (
-            <p style={{ marginTop: 8, marginBottom: 0, color: "#b42318", fontSize: 12 }}>
+            <p style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.danger[700], fontSize: 12 }}>
               {refreshError}
             </p>
           ) : null}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <span data-testid="product-category-role-badge" style={modeBadgeStyle}>
+          <span
+            data-testid="product-category-role-badge"
+            style={{
+              ...chipTypography,
+              background: designTokens.color.primary[50],
+              color: designTokens.color.primary[600],
+            }}
+          >
             系统层
           </span>
-          <span style={modeBadgeStyle}>
+          <span
+            style={{
+              ...chipTypography,
+              background:
+                client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+              color:
+                client.mode === "real"
+                  ? displayTokens.apiMode.realForeground
+                  : displayTokens.apiMode.mockForeground,
+            }}
+          >
             {client.mode === "real" ? "正式只读链路" : "本地离线契约回放"}
           </span>
           <a data-testid="product-category-audit-link" href="/product-category-pnl/audit">
@@ -502,9 +519,9 @@ export default function ProductCategoryPnlPage() {
             style={{
               padding: "10px 16px",
               borderRadius: 12,
-              border: "1px solid #162033",
-              background: "#fbfcfe",
-              color: "#162033",
+              border: `1px solid ${designTokens.color.neutral[900]}`,
+              background: designTokens.color.neutral[50],
+              color: designTokens.color.neutral[900],
               fontWeight: 600,
             }}
           >
@@ -518,9 +535,9 @@ export default function ProductCategoryPnlPage() {
             style={{
               padding: "10px 16px",
               borderRadius: 12,
-              border: "1px solid #162033",
-              background: "#fbfcfe",
-              color: "#162033",
+              border: `1px solid ${designTokens.color.neutral[900]}`,
+              background: designTokens.color.neutral[50],
+              color: designTokens.color.neutral[900],
               fontWeight: 600,
               cursor: isRefreshing ? "progress" : "pointer",
               opacity: isRefreshing ? 0.7 : 1,
@@ -563,8 +580,8 @@ export default function ProductCategoryPnlPage() {
             marginBottom: 18,
             padding: 18,
             borderRadius: 18,
-            border: "1px solid #d7dfea",
-            background: "#fbfcfe",
+            border: `1px solid ${designTokens.color.neutral[200]}`,
+            background: designTokens.color.neutral[50],
           }}
         >
           <div style={{ fontWeight: 600 }}>
@@ -673,7 +690,7 @@ export default function ProductCategoryPnlPage() {
           {adjustmentError ? (
             <div
               data-testid="product-category-manual-error"
-              style={{ color: "#b42318", fontSize: 12 }}
+              style={{ color: designTokens.color.danger[700], fontSize: 12 }}
             >
               {adjustmentError}
             </div>
@@ -737,15 +754,15 @@ export default function ProductCategoryPnlPage() {
                 alignItems: "center",
                 padding: 12,
                 borderRadius: 12,
-                border: "1px solid #d7dfea",
+                border: `1px solid ${designTokens.color.neutral[200]}`,
               }}
             >
               <div>
                 <div style={{ fontWeight: 600 }}>{item.account_code}</div>
-                <div style={{ color: "#5c6b82", fontSize: 12 }}>
+                <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
                   {item.account_name || "未填写科目名称"}
                 </div>
-                <div style={{ color: "#8090a8", fontSize: 12 }}>
+                <div style={{ color: designTokens.color.neutral[500], fontSize: 12 }}>
                   最近事件：{item.event_type}
                 </div>
               </div>
@@ -801,13 +818,13 @@ export default function ProductCategoryPnlPage() {
               gap: 12,
               padding: 12,
               borderRadius: 12,
-              border: "1px dashed #d7dfea",
-              background: "#fcfdff",
+              border: `1px dashed ${designTokens.color.neutral[200]}`,
+              background: designTokens.color.neutral[50],
             }}
           >
             <div style={{ display: "grid", gap: 4 }}>
               <div style={{ fontWeight: 600 }}>完整事件时间线已迁移到独立审计视图</div>
-              <div style={{ color: "#5c6b82", fontSize: 12 }}>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 12 }}>
                 当前报表月份共有 {(adjustmentsQuery.data?.events ?? []).length} 条调整事件。
               </div>
             </div>
@@ -835,17 +852,17 @@ export default function ProductCategoryPnlPage() {
           marginBottom: 18,
           padding: 18,
           borderRadius: 18,
-          border: "1px solid #d7dfea",
-          background: "#fbfcfe",
+          border: `1px solid ${designTokens.color.neutral[200]}`,
+          background: designTokens.color.neutral[50],
         }}
       >
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: "#5c6b82" }}>
+        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
           选择报表月份
           <select
             aria-label="选择报表月份"
             value={selectedDate}
             onChange={(event) => setSelectedDate(event.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
           >
             {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
               <option key={reportDate} value={reportDate}>
@@ -855,7 +872,7 @@ export default function ProductCategoryPnlPage() {
           </select>
         </label>
 
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: "#5c6b82" }}>
+        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
           视图模式
           <div
             role="group"
@@ -872,9 +889,15 @@ export default function ProductCategoryPnlPage() {
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
-                border: "1px solid #d7dfea",
-                background: selectedView === "monthly" ? "#162033" : "#fbfcfe",
-                color: selectedView === "monthly" ? "#fbfcfe" : "#162033",
+                border: `1px solid ${designTokens.color.neutral[200]}`,
+                background:
+                  selectedView === "monthly"
+                    ? designTokens.color.neutral[900]
+                    : designTokens.color.neutral[50],
+                color:
+                  selectedView === "monthly"
+                    ? designTokens.color.neutral[50]
+                    : designTokens.color.neutral[900],
                 fontWeight: 600,
               }}
             >
@@ -886,9 +909,15 @@ export default function ProductCategoryPnlPage() {
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
-                border: "1px solid #d7dfea",
-                background: selectedView === "ytd" ? "#162033" : "#fbfcfe",
-                color: selectedView === "ytd" ? "#fbfcfe" : "#162033",
+                border: `1px solid ${designTokens.color.neutral[200]}`,
+                background:
+                  selectedView === "ytd"
+                    ? designTokens.color.neutral[900]
+                    : designTokens.color.neutral[50],
+                color:
+                  selectedView === "ytd"
+                    ? designTokens.color.neutral[50]
+                    : designTokens.color.neutral[900],
                 fontWeight: 600,
               }}
             >
@@ -897,13 +926,13 @@ export default function ProductCategoryPnlPage() {
           </div>
         </label>
 
-        <label style={{ display: "grid", gap: 8, fontSize: 13, color: "#5c6b82" }}>
+        <label style={{ display: "grid", gap: 8, fontSize: 13, color: designTokens.color.neutral[600] }}>
           FTP 场景
           <select
             aria-label="FTP 场景"
             value={scenarioRate}
             onChange={(event) => setScenarioRate(event.target.value)}
-            style={{ padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
           >
             {["1.75", "2.00", "2.50", "3.00"].map((value) => (
               <option key={value} value={value}>
@@ -922,9 +951,9 @@ export default function ProductCategoryPnlPage() {
           style={{
             padding: "11px 14px",
             borderRadius: 12,
-            border: "1px solid #cddcff",
-            background: "#e7efff",
-            color: "#1f5eff",
+            border: `1px solid ${designTokens.color.primary[200]}`,
+            background: designTokens.color.primary[100],
+            color: designTokens.color.primary[600],
             fontWeight: 600,
             cursor: "pointer",
           }}
@@ -957,13 +986,25 @@ export default function ProductCategoryPnlPage() {
             }}
           >
             <thead>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #d7dfea", background: "#eef4fb" }}>
+              <tr
+                style={{
+                  textAlign: "left",
+                  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                  background: designTokens.color.primary[50],
+                }}
+              >
                 <th rowSpan={2} style={{ padding: "12px 8px" }}>产品类别</th>
                 <th colSpan={3} style={{ padding: "12px 8px", textAlign: "center" }}>规模日均</th>
                 <th colSpan={8} style={{ padding: "12px 8px", textAlign: "center" }}>损益</th>
                 <th rowSpan={2} style={{ padding: "12px 8px", textAlign: "right" }}>加权收益率</th>
               </tr>
-              <tr style={{ textAlign: "left", borderBottom: "1px solid #d7dfea", background: "#eef4fb" }}>
+              <tr
+                style={{
+                  textAlign: "left",
+                  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+                  background: designTokens.color.primary[50],
+                }}
+              >
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>综本</th>
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>人民币</th>
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>外币</th>
@@ -974,7 +1015,15 @@ export default function ProductCategoryPnlPage() {
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>外币</th>
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>外币FTP</th>
                 <th style={{ padding: "12px 8px", textAlign: "right" }}>外币减收入</th>
-                <th style={{ padding: "12px 8px", textAlign: "right", background: "#fff8dc" }}>营业减收入</th>
+                <th
+                  style={{
+                    padding: "12px 8px",
+                    textAlign: "right",
+                    background: designTokens.color.warning[50],
+                  }}
+                >
+                  营业减收入
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -982,8 +1031,8 @@ export default function ProductCategoryPnlPage() {
                 <tr
                   key={row.category_id}
                   style={{
-                    borderBottom: "1px solid #edf1f6",
-                    background: row.is_total ? "#edf4ff" : "#ffffff",
+                    borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+                    background: row.is_total ? designTokens.color.primary[100] : displayTokens.surface.section,
                     fontWeight: row.is_total ? 700 : 400,
                   }}
                 >
@@ -997,12 +1046,28 @@ export default function ProductCategoryPnlPage() {
                   <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_scale)}</td>
                   <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cnx_cash)}</td>
                   <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.cny_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatProductCategoryRowDisplayValue(row, row.cny_ftp)}</td>
+                  <td
+                    style={{
+                      padding: "12px 8px",
+                      textAlign: "right",
+                      color: designTokens.color.primary[600],
+                    }}
+                  >
+                    {formatProductCategoryRowDisplayValue(row, row.cny_ftp)}
+                  </td>
                   <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.cny_net) }}>
                     {formatProductCategoryRowDisplayValue(row, row.cny_net)}
                   </td>
                   <td style={{ padding: "12px 8px", textAlign: "right" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_cash)}</td>
-                  <td style={{ padding: "12px 8px", textAlign: "right", color: "#1f5eff" }}>{formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}</td>
+                  <td
+                    style={{
+                      padding: "12px 8px",
+                      textAlign: "right",
+                      color: designTokens.color.primary[600],
+                    }}
+                  >
+                    {formatProductCategoryRowDisplayValue(row, row.foreign_ftp)}
+                  </td>
                   <td style={{ padding: "12px 8px", textAlign: "right", color: toneForProductCategoryValue(row.foreign_net) }}>
                     {formatProductCategoryRowDisplayValue(row, row.foreign_net)}
                   </td>
@@ -1011,7 +1076,7 @@ export default function ProductCategoryPnlPage() {
                       padding: "12px 8px",
                       textAlign: "right",
                       color: toneForProductCategoryValue(row.business_net_income),
-                      background: "#fff8dc",
+                      background: designTokens.color.warning[50],
                     }}
                   >
                     {formatProductCategoryRowDisplayValue(row, row.business_net_income)}
@@ -1031,8 +1096,8 @@ export default function ProductCategoryPnlPage() {
             marginTop: 16,
             padding: "14px 18px",
             borderRadius: 16,
-            background: "#162033",
-            color: "#fbfcfe",
+            background: designTokens.color.neutral[900],
+            color: designTokens.color.neutral[50],
             fontWeight: 700,
             textAlign: "center",
           }}

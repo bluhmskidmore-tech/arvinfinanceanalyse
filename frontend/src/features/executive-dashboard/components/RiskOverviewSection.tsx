@@ -1,4 +1,5 @@
 import type { RiskOverviewPayload } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 import { AsyncSection } from "./AsyncSection";
 
 type RiskOverviewSectionProps = {
@@ -9,9 +10,9 @@ type RiskOverviewSectionProps = {
 };
 
 const statusMap = {
-  stable: { bg: "#e8f6ee", fg: "#2f8f63", label: "稳定" },
-  watch: { bg: "#fff3dd", fg: "#cc7a1a", label: "关注" },
-  warning: { bg: "#fde8e6", fg: "#b74c45", label: "预警" },
+  stable: { bg: designTokens.color.success[50], fg: designTokens.color.success[600], label: "稳定" },
+  watch: { bg: designTokens.color.warning[50], fg: designTokens.color.warning[700], label: "关注" },
+  warning: { bg: designTokens.color.danger[50], fg: designTokens.color.danger[600], label: "预警" },
 } as const;
 
 export function RiskOverviewSection({

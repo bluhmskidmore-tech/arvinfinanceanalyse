@@ -10,6 +10,8 @@ import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
 } from "../bond-analytics/types";
+import { designTokens } from "../../theme/designSystem";
+import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { KpiCard } from "../workbench/components/KpiCard";
 import {
@@ -35,7 +37,7 @@ const controlBarStyle = {
 const tableShellStyle = {
   overflowX: "auto",
   borderRadius: 16,
-  border: "1px solid #e4ebf5",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
   marginTop: 18,
 } as const;
@@ -49,31 +51,31 @@ const tableStyle = {
 const thStyle = {
   textAlign: "left" as const,
   padding: "10px 12px",
-  borderBottom: "1px solid #e4ebf5",
-  color: "#5c6b82",
+  borderBottom: `1px solid ${designTokens.color.neutral[200]}`,
+  color: designTokens.color.neutral[600],
   fontSize: 13,
 };
 
 const tdStyle = {
   padding: "12px",
-  borderBottom: "1px solid #eef2f7",
-  color: "#162033",
+  borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+  color: designTokens.color.neutral[900],
 };
 
 const blockTitleStyle = {
   margin: "24px 0 0",
   fontSize: 16,
   fontWeight: 600,
-  color: "#162033",
+  color: designTokens.color.neutral[900],
 } as const;
 
 const drillDownIntroStyle = {
   margin: "28px 0 12px",
   padding: "14px 16px",
   borderRadius: 14,
-  border: "1px solid #e4ebf5",
-  background: "#f6f9fc",
-  color: "#5c6b82",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  background: designTokens.color.neutral[50],
+  color: designTokens.color.neutral[600],
   fontSize: 14,
   lineHeight: 1.65,
 } as const;
@@ -82,7 +84,7 @@ const drillCardStyle = {
   marginTop: 18,
   padding: 16,
   borderRadius: 16,
-  border: "1px solid #e4ebf5",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
   background: "#ffffff",
 } as const;
 
@@ -97,9 +99,9 @@ function drillChipStyle(active: boolean) {
   return {
     padding: "8px 12px",
     borderRadius: 999,
-    border: active ? "1px solid #1f5eff" : "1px solid #d7dfea",
-    background: active ? "#edf3ff" : "#ffffff",
-    color: active ? "#1f5eff" : "#162033",
+    border: active ? `1px solid ${designTokens.color.primary[600]}` : `1px solid ${shellTokens.colorBorderSoft}`,
+    background: active ? designTokens.color.primary[50] : "#ffffff",
+    color: active ? designTokens.color.primary[600] : designTokens.color.neutral[900],
     fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
@@ -216,25 +218,28 @@ export default function RiskOverviewPage() {
       xAxis: {
         type: "category",
         data: labels,
-        axisLabel: { color: "#5c6b82" },
+        axisLabel: { color: designTokens.color.neutral[600] },
       },
       yAxis: {
         type: "value",
-        axisLabel: { color: "#5c6b82" },
+        axisLabel: { color: designTokens.color.neutral[600] },
         splitLine: { lineStyle: { color: "#eef2f7" } },
       },
       series: [
         {
           type: "bar",
           data,
-          itemStyle: { color: "#1f5eff", borderRadius: [6, 6, 0, 0] },
+          itemStyle: { color: designTokens.color.primary[600], borderRadius: [6, 6, 0, 0] },
         },
       ],
     };
   }, [tensorResult]);
 
-  const tenorRows = krd?.krd_buckets ?? [];
-  const issuerRows = credit?.concentration_by_issuer?.top_items ?? [];
+  const tenorRows = useMemo(() => krd?.krd_buckets ?? [], [krd?.krd_buckets]);
+  const issuerRows = useMemo(
+    () => credit?.concentration_by_issuer?.top_items ?? [],
+    [credit?.concentration_by_issuer?.top_items],
+  );
 
   useEffect(() => {
     if (tenorRows.length === 0) {
@@ -281,7 +286,7 @@ export default function RiskOverviewPage() {
             marginTop: 10,
             marginBottom: 0,
             maxWidth: 860,
-            color: "#5c6b82",
+            color: designTokens.color.neutral[600],
             fontSize: 15,
             lineHeight: 1.75,
           }}
@@ -299,7 +304,7 @@ export default function RiskOverviewPage() {
             borderRadius: 12,
             border: "1px solid #d7dfea",
             background: "#ffffff",
-            color: "#162033",
+            color: designTokens.color.neutral[900],
             fontSize: 14,
           }}
         >
@@ -391,7 +396,7 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
                 KRD 分桶（DV01）
@@ -405,7 +410,7 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
                 集中度
@@ -434,7 +439,7 @@ export default function RiskOverviewPage() {
                   margin: "24px 0 12px",
                   fontSize: 16,
                   fontWeight: 600,
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                 }}
               >
                 流动性缺口（市值）
@@ -486,7 +491,7 @@ export default function RiskOverviewPage() {
                       : "1px solid #e8d9a8",
                   background:
                     tensorResult.quality_flag === "ok" ? "#f6f9fc" : "#fffbeb",
-                  color: "#162033",
+                  color: designTokens.color.neutral[900],
                   fontSize: 14,
                 }}
               >
@@ -503,9 +508,9 @@ export default function RiskOverviewPage() {
                           : tensorResult.quality_flag}
                 </div>
                 {tensorResult.warnings.length === 0 ? (
-                  <div style={{ color: "#5c6b82" }}>无预警。</div>
+                  <div style={{ color: designTokens.color.neutral[600] }}>无预警。</div>
                 ) : (
-                  <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
+                  <ul style={{ margin: 0, paddingLeft: 20, color: designTokens.color.neutral[600] }}>
                     {tensorResult.warnings.map((w, i) => (
                       <li key={i}>{w}</li>
                     ))}
@@ -518,7 +523,7 @@ export default function RiskOverviewPage() {
       </div>
 
       <div style={drillDownIntroStyle}>
-        <strong style={{ color: "#162033" }}>债券分析下钻与补充</strong>
+        <strong style={{ color: designTokens.color.neutral[900] }}>债券分析下钻与补充</strong>
         ：以下接口来自{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/krd-curve-risk</code> 与{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/credit-spread-migration</code>
@@ -583,8 +588,8 @@ export default function RiskOverviewPage() {
 
           {selectedTenorRow ? (
             <div data-testid="risk-overview-tenor-drill" style={drillCardStyle}>
-              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
-              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
+              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
                 使用债券分析的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
               </div>
               <div style={drillChipRowStyle}>
@@ -599,10 +604,10 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
                 当前桶：<strong>{selectedTenorRow.tenor}</strong>
               </div>
-              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
+              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
                 KRD：{selectedTenorRow.krd.display} · DV01：{selectedTenorRow.dv01.display} · 市值权重：
                 {selectedTenorRow.market_value_weight.display}
               </div>
@@ -746,8 +751,8 @@ export default function RiskOverviewPage() {
 
           {selectedIssuerRow ? (
             <div data-testid="risk-overview-issuer-drill" style={drillCardStyle}>
-              <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
-              <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
+              <div style={{ color: designTokens.color.neutral[900], fontSize: 15, fontWeight: 600 }}>发行人维度下钻</div>
+              <div style={{ color: designTokens.color.neutral[600], fontSize: 13, marginTop: 6 }}>
                 使用信用利差迁移读面的 `concentration_by_issuer.top_items` 作为 issuer drill。
               </div>
               <div style={drillChipRowStyle}>
@@ -762,10 +767,10 @@ export default function RiskOverviewPage() {
                   </button>
                 ))}
               </div>
-              <div style={{ marginTop: 12, color: "#162033", fontSize: 14 }}>
+              <div style={{ marginTop: 12, color: designTokens.color.neutral[900], fontSize: 14 }}>
                 当前发行人：<strong>{selectedIssuerRow.name}</strong>
               </div>
-              <div style={{ marginTop: 8, color: "#5c6b82", fontSize: 13 }}>
+              <div style={{ marginTop: 8, color: designTokens.color.neutral[600], fontSize: 13 }}>
                 权重：{selectedIssuerRow.weight.display} · 市值：{selectedIssuerRow.market_value.display}
               </div>
             </div>

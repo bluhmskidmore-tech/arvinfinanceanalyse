@@ -1,6 +1,7 @@
 import type {
   ContributionPayload,
 } from "../../../api/contracts";
+import { designTokens } from "../../../theme/designSystem";
 import { AsyncSection } from "./AsyncSection";
 
 type ContributionSectionProps = {
@@ -43,10 +44,10 @@ export default function ContributionSection({
           </thead>
           <tbody>
             {data?.rows.map((row) => (
-              <tr key={row.id} style={{ borderTop: "1px solid #edf1f5" }}>
+              <tr key={row.id} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
                 <td style={{ paddingBlock: 14 }}>{row.name}</td>
-                <td style={{ paddingBlock: 14, color: "#5c6b82" }}>{row.owner}</td>
-                <td style={{ paddingBlock: 14, color: "#2f8f63", fontWeight: 600 }}>
+                <td style={{ paddingBlock: 14, color: designTokens.color.neutral[600] }}>{row.owner}</td>
+                <td style={{ paddingBlock: 14, color: designTokens.color.semantic.profit, fontWeight: 600 }}>
                   {row.contribution.display}
                 </td>
                 <td style={{ paddingBlock: 14, minWidth: 140 }}>
@@ -54,7 +55,7 @@ export default function ContributionSection({
                     style={{
                       height: 8,
                       borderRadius: 999,
-                      background: "#ecf1f6",
+                      background: designTokens.color.neutral[100],
                       overflow: "hidden",
                     }}
                   >
@@ -63,7 +64,7 @@ export default function ContributionSection({
                         width: `${row.completion}%`,
                         height: "100%",
                         borderRadius: 999,
-                        background: "#1f5eff",
+                        background: designTokens.color.primary[600],
                       }}
                     />
                   </div>
@@ -73,8 +74,8 @@ export default function ContributionSection({
                     style={{
                       padding: "4px 10px",
                       borderRadius: 999,
-                      background: "#edf1f5",
-                      color: "#5c6b82",
+                      background: designTokens.color.neutral[100],
+                      color: designTokens.color.neutral[600],
                       fontSize: 12,
                     }}
                   >

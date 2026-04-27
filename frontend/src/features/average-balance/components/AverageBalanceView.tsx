@@ -36,6 +36,8 @@ import AdbMonthlyHorizontalChart, {
   type AdbMonthlyHorizontalChartRow,
 } from "./AdbMonthlyHorizontalChart";
 import AdbMonthlyBreakdownTable from "./AdbMonthlyBreakdownTable";
+import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 
 const { Title, Paragraph, Text } = Typography;
 const YI = 100_000_000;
@@ -67,7 +69,7 @@ const pageSubtitleStyle = {
   marginTop: 8,
   marginBottom: 0,
   maxWidth: 920,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 14,
   lineHeight: 1.7,
 } as const;
@@ -75,19 +77,6 @@ const pageSubtitleStyle = {
 const analysisBriefStyle = {
   marginTop: 14,
   maxWidth: 920,
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  background: "#edf3ff",
-  color: "#1f5eff",
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
 } as const;
 
 const sectionLeadWrapStyle = {
@@ -685,7 +674,24 @@ export default function AverageBalanceView() {
             <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
           </Space>
         </div>
-        <span style={modeBadgeStyle}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "8px 12px",
+            borderRadius: 999,
+            background:
+              client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
+            color:
+              client.mode === "real"
+                ? displayTokens.apiMode.realForeground
+                : displayTokens.apiMode.mockForeground,
+            fontSize: 12,
+            fontWeight: 600,
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+          }}
+        >
           {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
         </span>
       </div>
