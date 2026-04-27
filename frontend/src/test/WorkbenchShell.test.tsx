@@ -44,6 +44,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "cross-asset", element: <div>cross-asset body</div> },
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
+          { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
@@ -124,7 +125,7 @@ describe("WorkbenchShell", () => {
     expect(board).toHaveTextContent("损益桥接");
   });
 
-  it("shows only a compact portfolio hint on balance-analysis (not the full lead, flow, or board)", async () => {
+  it("keeps portfolio page selection with a compact hint on balance-analysis", async () => {
     renderShellAt("/balance-analysis");
 
     expect(await screen.findByText("balance-analysis body")).toBeInTheDocument();
@@ -135,7 +136,27 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
     expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("workbench-section-subnav")).not.toBeInTheDocument();
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/balance-analysis");
+    expect(hrefs).toContain("/balance-movement-analysis");
+  });
+
+  it("keeps portfolio page selection while hiding helper chrome on balance-movement-analysis", async () => {
+    renderShellAt("/balance-movement-analysis");
+
+    expect(await screen.findByText("balance-movement body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/balance-movement-analysis");
   });
 
   it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {

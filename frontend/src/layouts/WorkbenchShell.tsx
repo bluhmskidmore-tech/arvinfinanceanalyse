@@ -348,13 +348,18 @@ export function WorkbenchShell() {
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
+  const isBalanceMovementAnalysisCompactChrome =
+    currentSection.key === "balance-movement-analysis";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
+  const isPortfolioPageOwnedChrome =
+    isBalanceAnalysisCompactChrome || isBalanceMovementAnalysisCompactChrome;
   const isMinimalMainChrome =
-    isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isBalanceAnalysisCompactChrome;
+    isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isPortfolioPageOwnedChrome;
   const showWorkspaceHeroCard =
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
+    !isBalanceMovementAnalysisCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";
@@ -1298,7 +1303,7 @@ export function WorkbenchShell() {
             gap: 20,
           }}
         >
-          {isPortfolioGroup && !isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
+          {isPortfolioGroup && !isBondAnalysisMinimalShell && !isPortfolioPageOwnedChrome ? (
             <section
               data-testid="portfolio-workbench-board"
               style={{
@@ -1386,7 +1391,7 @@ export function WorkbenchShell() {
             </section>
           ) : null}
 
-          {!isBondAnalysisMinimalShell && !isBalanceAnalysisCompactChrome ? (
+          {!isBondAnalysisMinimalShell ? (
             <section
               data-testid="workbench-section-subnav"
               style={{
