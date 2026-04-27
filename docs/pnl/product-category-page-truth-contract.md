@@ -74,6 +74,7 @@ Any edit that changes page meaning must trace through that full chain.
 - Allowed scenario path: explicit `scenario_rate_pct`
 - Analytical overlay is not the default interpretation of this page
 - Mock data must not masquerade as governed truth
+- `ytd` and `year_to_report_month_end` are natural-year views: they use available facts from January through the requested report month, retain ending-balance cash semantics, use source `annual_avg_balance` for FTP scale, and return `quality_flag=warning` when months in that interval are missing.
 
 ## 7. Row Authority
 
@@ -215,6 +216,7 @@ Before the page can be treated as stable truth, these must remain true:
 
 - `asset_total.business_net_income + liability_total.business_net_income == grand_total.business_net_income`
 - `ytd` and `year_to_report_month_end` payloads match under the currently governed rules
+- partial YTD payloads are allowed, but must surface `result_meta.quality_flag=warning`
 - approved manual adjustments can change governed output through the same API path
 - scenario requests change scenario-owned fields without changing baseline row identity
 

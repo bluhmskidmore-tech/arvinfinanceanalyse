@@ -276,7 +276,7 @@ def _build_report_rows(
     if view == "monthly":
         return facts_by_report_date[report_date]
     if view in {"ytd", "year_to_report_month_end"}:
-        return facts_by_report_date[report_date]
+        return _build_ytd_report_rows(facts_by_report_date, report_date, view)
     if view != "qtd":
         raise ValueError(f"Unsupported view={view}")
 
@@ -326,6 +326,67 @@ def _build_report_rows(
                 beginning_balance=ZERO,
                 ending_balance=Decimal(str(data["ending_balance"])),
                 monthly_pnl=ZERO,
+                daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / weight,
+                annual_avg_balance=Decimal(str(data["annual_avg_balance"])),
+                days_in_period=int(data["days_in_period"]),
+            )
+        )
+    return result
+
+
+def _build_ytd_report_rows(
+    facts_by_report_date: dict[date, list[CanonicalFactRow]],
+    report_date: date,
+    view: str,
+) -> list[CanonicalFactRow]:
+    year_months = [
+        item_date
+        for item_date in sorted(facts_by_report_date)
+        if item_date.year == report_date.year and item_date.month <= report_date.month
+    ]
+    if not year_months:
+        return facts_by_report_date[report_date]
+
+    combined: dict[tuple[str, str], dict[str, Decimal | str | int | date]] = {}
+    for item_date in year_months:
+        days = Decimal(monthrange(item_date.year, item_date.month)[1])
+        for row in facts_by_report_date[item_date]:
+            key = (row.account_code, row.currency)
+            current = combined.setdefault(
+                key,
+                {
+                    "report_date": report_date,
+                    "account_code": row.account_code,
+                    "currency": row.currency,
+                    "account_name": row.account_name,
+                    "beginning_balance": row.beginning_balance,
+                    "ending_balance": ZERO,
+                    "monthly_pnl": ZERO,
+                    "daily_avg_balance": ZERO,
+                    "annual_avg_balance": row.annual_avg_balance,
+                    "weight": ZERO,
+                    "days_in_period": _days_for_view(report_date, view),
+                },
+            )
+            current["account_name"] = row.account_name
+            current["ending_balance"] = Decimal(str(current["ending_balance"])) + row.ending_balance
+            current["monthly_pnl"] = Decimal(str(current["monthly_pnl"])) + row.monthly_pnl
+            current["daily_avg_balance"] = Decimal(str(current["daily_avg_balance"])) + (row.daily_avg_balance * days)
+            current["annual_avg_balance"] = row.annual_avg_balance
+            current["weight"] = Decimal(str(current["weight"])) + days
+
+    result: list[CanonicalFactRow] = []
+    for data in combined.values():
+        weight = Decimal(str(data["weight"])) or Decimal("1")
+        result.append(
+            CanonicalFactRow(
+                report_date=report_date,
+                account_code=str(data["account_code"]),
+                currency=str(data["currency"]),
+                account_name=str(data["account_name"]),
+                beginning_balance=Decimal(str(data["beginning_balance"])),
+                ending_balance=Decimal(str(data["ending_balance"])),
+                monthly_pnl=Decimal(str(data["monthly_pnl"])),
                 daily_avg_balance=Decimal(str(data["daily_avg_balance"])) / weight,
                 annual_avg_balance=Decimal(str(data["annual_avg_balance"])),
                 days_in_period=int(data["days_in_period"]),

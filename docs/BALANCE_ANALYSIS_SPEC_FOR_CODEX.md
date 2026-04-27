@@ -52,7 +52,7 @@ API 允许：`monthly` | `qtd` | `ytd` | `year_to_report_month_end`（见 `produ
 
 - **`monthly`**：使用 `report_date` 当月事实列表，不做跨月合并。
 - **`qtd`**：将本季度内**已存在事实的月份**按 `(account_code, currency)` 合并：对每月 `daily_avg_balance` 按**当月天数**加权累加，再除以总天数，得到季度内**加权平均的月日均**；`ending_balance`、`annual_avg_balance` 取合并迭代中**最后一月**的值；`beginning_balance`、`monthly_pnl` 在合并结果中置零（见实现）。
-- **`ytd` / `year_to_report_month_end`**：与 `monthly` 相同，直接使用 `report_date` 当月事实，**不**做 YTD 多月合并（若产品语义需要「真·年初至今合并」，当前实现未做，属 gap，改前须更 PRD/规则文档）。
+- **`ytd` / `year_to_report_month_end`**：按自然年度切换，使用同一年 1 月至 `report_date` 月末的可用月度事实组装 YTD。损益侧仍使用 `ending_balance` 口径，FTP 规模仍使用源文件 `annual_avg_balance`；若年初至报告月存在缺月，响应允许返回部分 YTD，但 `result_meta.quality_flag` 必须为 `warning`。
 
 ## 5. 规模（Scale）用哪一列：`_scale_field`
 
@@ -72,7 +72,7 @@ API 允许：`monthly` | `qtd` | `ytd` | `year_to_report_month_end`（见 `produ
 对**无子节点**的类别：
 
 - **`view == "monthly"`**：`cash_field = "monthly_pnl"`，`sign = +1`（对 `pnl_accounts` 模式匹配求和后再乘符号）。
-- **非 monthly**：`cash_field = "ending_balance"`，`sign = -1`。
+- **非 monthly**：`cash_field = "ending_balance"`，`sign = -1`；YTD / year-to-report-month-end 在年度区间内聚合该字段。
 
 科目匹配：`exact=True` 用于 scale；`exact=False` 时 `account_code.startswith(target)`。模式前缀 `-` 表示该模式贡献为减项。
 
