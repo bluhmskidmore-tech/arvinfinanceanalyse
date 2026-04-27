@@ -411,8 +411,79 @@ def test_product_category_pnl_all_views_determinism_and_meta_contract(tmp_path, 
     get_settings.cache_clear()
 
 
-def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path, monkeypatch):
-    """当前实现中 ytd 与 year_to_report_month_end 共用当月事实与相同 FTP 天数口径（非「真 YTD 多月合并」）；结果负载应一致。"""
+def test_product_category_ytd_aggregates_year_months_with_interval_adjustments(tmp_path, monkeypatch):
+    """YTD uses year-to-date rows, keeps ending-balance cash semantics, and includes approved adjustments in the interval."""
+    data_root = tmp_path / "data_input"
+    source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
+    source_dir.mkdir(parents=True)
+    _write_month_pair(source_dir, "202601", january=True)
+    _write_month_pair(source_dir, "202602", january=False)
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    monkeypatch.setenv("MOSS_PRODUCT_CATEGORY_SOURCE_DIR", str(source_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    get_settings.cache_clear()
+
+    GovernanceRepository(base_dir=governance_dir).append(
+        PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
+        {
+            "report_date": "2026-01-31",
+            "operator": "DELTA",
+            "approval_status": "approved",
+            "account_code": "51402010001",
+            "currency": "CNX",
+            "account_name": "YTD interval adjustment",
+            "ending_balance": "-10",
+        },
+    )
+
+    task_module = load_module(
+        "backend.app.tasks.product_category_pnl",
+        "backend/app/tasks/product_category_pnl.py",
+    )
+    task_module.materialize_product_category_pnl.fn(
+        duckdb_path=str(duckdb_path),
+        source_dir=str(source_dir),
+        governance_dir=str(governance_dir),
+    )
+
+    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+
+    jan_monthly = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-01-31", "view": "monthly"},
+    ).json()
+    feb_monthly = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "monthly"},
+    ).json()
+    ytd = client.get(
+        "/ui/pnl/product-category",
+        params={"report_date": "2026-02-28", "view": "ytd"},
+    ).json()
+
+    jan_bond = next(row for row in jan_monthly["result"]["rows"] if row["category_id"] == "bond_tpl")
+    feb_bond = next(row for row in feb_monthly["result"]["rows"] if row["category_id"] == "bond_tpl")
+    ytd_bond = next(row for row in ytd["result"]["rows"] if row["category_id"] == "bond_tpl")
+
+    expected_cnx_cash = (
+        Decimal(str(jan_bond["cnx_cash"]))
+        + Decimal(str(feb_bond["cnx_cash"]))
+        + Decimal("10")
+    )
+    assert Decimal(str(ytd_bond["cnx_cash"])) == expected_cnx_cash
+    assert Decimal(str(ytd_bond["cnx_scale"])) == Decimal("220.00000000")
+    assert ytd["result_meta"]["quality_flag"] == "ok"
+    get_settings.cache_clear()
+
+
+def test_product_category_partial_ytd_returns_warning_and_matches_year_to_report_month_end(
+    tmp_path,
+    monkeypatch,
+):
+    """Missing year months are allowed as partial YTD, but the governed response must be visibly warning."""
     data_root = tmp_path / "data_input"
     source_dir = data_root / "pnl_\u603b\u8d26\u5bf9\u8d26-\u65e5\u5747"
     source_dir.mkdir(parents=True)
@@ -448,7 +519,7 @@ def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path,
     ).json()
 
     def _normalize_view_labels(payload: dict) -> dict:
-        """ytd 与 year_to_report_month_end 仅行内 view 标签不同，数值与结构应对齐。"""
+        """ytd and year_to_report_month_end differ only by view labels under current governed rules."""
         p = copy.deepcopy(payload)
         sentinel = "normalized_view"
         p["view"] = sentinel
@@ -460,6 +531,8 @@ def test_product_category_ytd_matches_year_to_report_month_end_payload(tmp_path,
         return p
 
     assert _normalize_view_labels(ytd["result"]) == _normalize_view_labels(ytre["result"])
+    assert ytd["result_meta"]["quality_flag"] == "warning"
+    assert ytre["result_meta"]["quality_flag"] == "warning"
     assert ytd["result_meta"]["source_version"] == ytre["result_meta"]["source_version"]
     assert ytd["result_meta"]["rule_version"] == ytre["result_meta"]["rule_version"]
     assert ytd["result_meta"]["cache_version"] == ytre["result_meta"]["cache_version"]

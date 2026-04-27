@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from backend.app.core_finance.reconciliation_checks import completeness_check
@@ -42,6 +42,7 @@ from backend.app.tasks.product_category_pnl import (
 RULE_VERSION = "rv_product_category_pnl_v1"
 CACHE_VERSION = "cv_product_category_pnl_v1"
 AVAILABLE_VIEWS = ["monthly", "qtd", "ytd", "year_to_report_month_end"]
+YTD_VIEWS = {"ytd", "year_to_report_month_end"}
 PENDING_SOURCE_VERSION = "sv_product_category_pending"
 PRODUCT_CATEGORY_JOB_NAME = "product_category_pnl"
 PRODUCT_CATEGORY_CACHE_KEY = "product_category_pnl.formal"
@@ -458,6 +459,11 @@ def product_category_pnl_envelope(
         liability_total=liability_total,
         grand_total=grand_total,
     )
+    partial_ytd = _is_partial_ytd_view(
+        report_dates=ProductCategoryPnlRepository(duckdb_path).list_report_dates(),
+        report_date=report_date,
+        view=view,
+    )
     payload = ProductCategoryPnlPayload(
         report_date=report_date,
         view=view,
@@ -470,7 +476,7 @@ def product_category_pnl_envelope(
     )
     result_meta = (
         analysis_envelope.result_meta.model_copy(update={"quality_flag": "warning"})
-        if completeness["breached"]
+        if completeness["breached"] or partial_ytd
         else analysis_envelope.result_meta
     )
     return build_formal_result_envelope(
@@ -495,6 +501,27 @@ def _product_category_completeness_check(
         pnl_total=float(expected_total),
         threshold_yuan=0.01,
     )
+
+
+def _is_partial_ytd_view(*, report_dates: list[str], report_date: str, view: str) -> bool:
+    if view not in YTD_VIEWS:
+        return False
+    try:
+        target = date.fromisoformat(report_date)
+    except ValueError:
+        return False
+
+    available_months: set[int] = set()
+    for item in report_dates:
+        try:
+            item_date = date.fromisoformat(str(item))
+        except ValueError:
+            continue
+        if item_date.year == target.year and item_date.month <= target.month:
+            available_months.add(item_date.month)
+
+    expected_months = set(range(1, target.month + 1))
+    return not expected_months.issubset(available_months)
 
 
 def _build_run_id() -> str:
