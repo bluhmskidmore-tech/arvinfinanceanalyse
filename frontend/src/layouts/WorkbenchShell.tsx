@@ -733,7 +733,7 @@ export function WorkbenchShell() {
                   >
                     <div className="workbench-agent-dialog-trigger__main">
                       <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
-                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>{item.label}</span>
+                      <span style={{ flex: 1, fontSize: 12, fontWeight: 600 }}>智能体对话</span>
                       <span
                         style={{
                           ...sectionBadgeStyle(item),
@@ -747,7 +747,7 @@ export function WorkbenchShell() {
                       </span>
                     </div>
                     <span className="workbench-agent-dialog-trigger__hint">
-                      对话框
+                      基于当前页面提问
                     </span>
                   </Button>
                 );
@@ -1497,7 +1497,7 @@ export function WorkbenchShell() {
         </main>
       </div>
       <Modal
-        title="智能体对话框"
+        title="智能体对话"
         open={agentDialogOpen}
         onCancel={() => setAgentDialogOpen(false)}
         footer={null}

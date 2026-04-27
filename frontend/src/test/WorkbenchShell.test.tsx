@@ -80,17 +80,19 @@ describe("WorkbenchShell", () => {
     renderShellAt("/");
 
     expect(
-      await screen.findByRole("button", { name: /智能体工作台/ }),
+      await screen.findByRole("button", { name: /智能体对话/ }),
     ).toBeInTheDocument();
   });
 
   it("opens Agent Workbench in a dialog from the system shell", async () => {
     renderShellAt("/");
 
-    await userEvent.click(await screen.findByRole("button", { name: /智能体工作台/ }));
+    const [agentTrigger] = await screen.findAllByRole("button", { name: /智能体对话/ });
+    await userEvent.click(agentTrigger);
 
-    expect(await screen.findByRole("dialog", { name: "智能体对话框" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "智能体工作台" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "智能体对话" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "智能体对话" })).toBeInTheDocument();
+    expect(screen.getAllByText("基于当前页面提问").length).toBeGreaterThan(0);
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -544,11 +546,12 @@ describe("WorkbenchShell", () => {
     expect(await screen.findByText("保留模块")).toBeInTheDocument();
     for (const section of secondaryWorkbenchNavigation) {
       if (section.key === "agent") {
+        const expectedLabel = "智能体对话";
         const button = screen
           .getAllByRole("button")
-          .find((candidate) => candidate.textContent?.includes(section.label));
+          .find((candidate) => candidate.textContent?.includes(expectedLabel));
         expect(button).toBeDefined();
-        expect(button).toHaveTextContent(section.label);
+        expect(button).toHaveTextContent(expectedLabel);
         continue;
       }
 

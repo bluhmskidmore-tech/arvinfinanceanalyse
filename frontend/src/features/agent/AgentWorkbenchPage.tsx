@@ -198,6 +198,10 @@ function formatMetaValue(value: unknown) {
 }
 
 const GITNEXUS_QUICK_EXAMPLES = [
+  "解释当前页面的主要结论和风险点",
+  "组合概览：规模、损益、久期和信用风险有什么变化？",
+  "本日损益主要由什么驱动？请给证据和下一步复核建议。",
+  "当前久期和信用集中度有什么异常？",
   "请给我看 GitNexus 状态",
   "请给我看 GitNexus context",
   "请给我看 GitNexus processes",
@@ -668,7 +672,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
               color: t.colorTextPrimary,
             }}
           >
-            智能体工作台
+            智能体对话
           </h1>
           <p
             style={{
@@ -680,7 +684,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
               lineHeight: 1.75,
             }}
           >
-            输入自然语言问题，智能体路由到已有分析服务返回结构化结果。
+            像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。
           </p>
         </>
       ) : null}
@@ -706,6 +710,7 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       ) : null}
 
       <AgentQueryForm
+        pageContext={pageContext}
         repoPath={repoPath}
         onRepoPathChange={setRepoPath}
         quickExamples={GITNEXUS_QUICK_EXAMPLES}

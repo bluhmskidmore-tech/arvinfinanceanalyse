@@ -167,6 +167,191 @@ select {
   padding-top: 8px;
 }
 
+.agent-chat-composer {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0 22px;
+  padding: 16px;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 252, 0.94)),
+    radial-gradient(circle at top left, rgba(var(--moss-color-primary-rgb), 0.11), transparent 36%);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08);
+}
+
+.agent-chat-composer__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-chat-composer__eyebrow {
+  color: var(--moss-color-link);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.agent-chat-composer__title {
+  margin-top: 2px;
+  color: var(--moss-color-text-primary);
+  font-size: 18px;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+
+.agent-chat-composer__hint {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.agent-chat-composer__quick-row,
+.agent-chat-composer__tool-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.agent-chat-composer__quick-button,
+.agent-chat-composer__tool-button,
+.agent-chat-composer__secondary-action {
+  border: 1px solid #d7dee8;
+  background: #fff;
+  color: var(--moss-color-text-secondary);
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.agent-chat-composer__quick-button {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.agent-chat-composer__quick-button:hover,
+.agent-chat-composer__tool-button:hover,
+.agent-chat-composer__secondary-action:hover {
+  border-color: #b9c6d8;
+  color: var(--moss-color-link);
+}
+
+.agent-chat-composer__form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.agent-chat-composer__input {
+  min-width: 0;
+  min-height: 116px;
+  padding: 14px 16px;
+  border: 1px solid #cfd8e6;
+  border-radius: 8px;
+  outline: none;
+  resize: vertical;
+  background: #fff;
+  color: var(--moss-color-text-primary);
+  font-size: 15px;
+  line-height: 1.7;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.agent-chat-composer__input:focus {
+  border-color: var(--moss-color-link);
+  box-shadow: 0 0 0 3px rgba(var(--moss-color-primary-rgb), 0.12);
+}
+
+.agent-chat-composer__send {
+  min-width: 92px;
+  padding: 14px 22px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 760;
+  box-shadow: 0 10px 22px rgba(var(--moss-color-primary-rgb), 0.22);
+}
+
+.agent-chat-composer__send:disabled,
+.agent-chat-composer__tool-button:disabled,
+.agent-chat-composer__secondary-action:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.agent-chat-composer__advanced {
+  border-top: 1px dashed #d5dce7;
+  padding-top: 10px;
+  color: var(--moss-color-text-secondary);
+  font-size: 13px;
+}
+
+.agent-chat-composer__advanced summary {
+  cursor: pointer;
+  color: var(--moss-color-text-muted);
+  font-weight: 700;
+}
+
+.agent-chat-composer__advanced-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.agent-chat-composer__field {
+  display: grid;
+  gap: 6px;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.agent-chat-composer__field input,
+.agent-chat-composer__field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d7dee8;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--moss-color-text-primary);
+  outline: none;
+}
+
+.agent-chat-composer__tool-button,
+.agent-chat-composer__secondary-action {
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.agent-chat-composer__process-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+@media (max-width: 720px) {
+  .agent-chat-composer__header,
+  .agent-chat-composer__form {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-chat-composer__header {
+    display: grid;
+  }
+
+  .agent-chat-composer__send {
+    width: 100%;
+  }
+}
+
 .dashboard-hero-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
