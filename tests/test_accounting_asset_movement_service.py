@@ -43,7 +43,7 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert envelope["result_meta"]["result_kind"] == "balance-analysis.movement.detail"
 
 
-def test_balance_movement_analysis_service_warns_on_zqtz_diagnostic_gap():
+def test_balance_movement_analysis_service_keeps_zqtz_gap_out_of_formal_quality():
     duckdb_path = (
         Path("test_output")
         / "accounting_asset_movement"
@@ -67,7 +67,7 @@ def test_balance_movement_analysis_service_warns_on_zqtz_diagnostic_gap():
     assert Decimal(by_bucket["TPL"]["zqtz_amount"]) == Decimal("111.00000000")
     assert Decimal(by_bucket["TPL"]["reconciliation_diff"]) == Decimal("1.00000000")
     assert by_bucket["TPL"]["reconciliation_status"] == "mismatch"
-    assert envelope["result_meta"]["quality_flag"] == "warning"
+    assert envelope["result_meta"]["quality_flag"] == "ok"
 
 
 def _seed_source_tables_and_materialize(
