@@ -253,10 +253,12 @@ type BusinessMovementMatrixRow = {
 
 function buildAccountingBasisMatrixRows(
   accountingByDate: Map<string, BalanceMovementTrendMonth>,
+  options?: { keyPrefix?: string },
 ): BusinessMovementMatrixRow[] {
+  const keyPrefix = options?.keyPrefix ?? "basis";
   return [
     {
-      key: "basis-ac",
+      key: `${keyPrefix}-ac`,
       label: "AC",
       side: "asset",
       emphasis: true,
@@ -265,7 +267,7 @@ function buildAccountingBasisMatrixRows(
       getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "AC"),
     },
     {
-      key: "basis-oci",
+      key: `${keyPrefix}-oci`,
       label: "OCI",
       side: "asset",
       emphasis: true,
@@ -274,7 +276,7 @@ function buildAccountingBasisMatrixRows(
       getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "OCI"),
     },
     {
-      key: "basis-fvtpl",
+      key: `${keyPrefix}-fvtpl`,
       label: "FVTPL",
       side: "asset",
       emphasis: true,
@@ -283,7 +285,7 @@ function buildAccountingBasisMatrixRows(
       getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "TPL"),
     },
     {
-      key: "basis-ac-oci-fvtpl-total",
+      key: `${keyPrefix}-ac-oci-fvtpl-total`,
       label: "AC/OCI/FVTPL 合计",
       side: "asset",
       emphasis: true,
@@ -704,6 +706,21 @@ export default function BalanceMovementAnalysisPage() {
     () => buildAccountingBasisMatrixRows(accountingByReportDate),
     [accountingByReportDate],
   );
+  const accountingBasisProjectMatrixRows = useMemo(
+    () => buildAccountingBasisMatrixRows(accountingByReportDate, { keyPrefix: "project-basis" }),
+    [accountingByReportDate],
+  );
+  const businessProjectTableRows = useMemo((): BusinessMovementMatrixRow[] => {
+    const idx = businessProjectMatrixRows.findIndex((row) => row.key === "asset-total");
+    if (idx < 0) {
+      return [...businessProjectMatrixRows];
+    }
+    return [
+      ...businessProjectMatrixRows.slice(0, idx + 1),
+      ...accountingBasisProjectMatrixRows,
+      ...businessProjectMatrixRows.slice(idx + 1),
+    ];
+  }, [accountingBasisProjectMatrixRows]);
   const businessMatrixAssetRows = useMemo(
     () => businessMatrixRows.filter((row) => row.side === "asset"),
     [businessMatrixRows],
@@ -1186,11 +1203,15 @@ export default function BalanceMovementAnalysisPage() {
                   <th scope="col">较上月</th>
                   <th scope="col">较年初</th>
                 </tr>
-                {businessProjectMatrixRows.map((row) => {
+                {businessProjectTableRows.map((row) => {
                   const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
                   const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
                   return (
-                    <tr key={row.key} data-side={row.side}>
+                    <tr
+                      key={row.key}
+                      data-side={row.side}
+                      className={row.emphasis ? "balance-movement-report-matrix__row--emphasis" : undefined}
+                    >
                       <th scope="row" title={row.sourceNote}>
                         {row.label}
                       </th>

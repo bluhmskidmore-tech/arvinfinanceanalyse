@@ -126,12 +126,12 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getByText("资产端-存放同业境内-定期")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-存放同业境外-定期")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-同业存单")).toBeInTheDocument();
-    expect(within(trendTable).getByText("FVTPL")).toBeInTheDocument();
-    expect(within(trendTable).getByText("AC/OCI/FVTPL 合计")).toBeInTheDocument();
+    expect(within(trendTable).getAllByText("FVTPL").length).toBe(2);
+    expect(within(trendTable).getAllByText("AC/OCI/FVTPL 合计").length).toBe(2);
     const basisEmphasisRows = trendTable.querySelectorAll(
       ".balance-movement-report-matrix__row--emphasis",
     );
-    expect(basisEmphasisRows.length).toBe(4);
+    expect(basisEmphasisRows.length).toBe(8);
     expect(within(trendTable).getByText("负债端-同业存放")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-同业拆入")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-卖出回购")).toBeInTheDocument();
