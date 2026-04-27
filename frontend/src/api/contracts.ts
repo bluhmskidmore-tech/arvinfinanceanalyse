@@ -1212,12 +1212,37 @@ export type BalanceMovementTrendMonth = {
   rows: BalanceMovementRow[];
 };
 
+export type BalanceBusinessMovementRow = {
+  report_date: string;
+  report_month: string;
+  currency_basis: string;
+  side: "asset" | "liability";
+  sort_order: number;
+  row_key: string;
+  row_label: string;
+  current_balance: DecimalLike;
+  source_kind: "ledger" | "zqtz";
+  source_note: string;
+  source_version: string;
+  rule_version: string;
+};
+
+export type BalanceBusinessMovementTrendMonth = {
+  report_date: string;
+  report_month: string;
+  asset_balance_total: DecimalLike;
+  liability_balance_total: DecimalLike;
+  net_balance_total: DecimalLike;
+  rows: BalanceBusinessMovementRow[];
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
   rows: BalanceMovementRow[];
   summary: BalanceMovementSummary;
   trend_months: BalanceMovementTrendMonth[];
+  business_trend_months: BalanceBusinessMovementTrendMonth[];
   accounting_controls: string[];
   excluded_controls: string[];
 };

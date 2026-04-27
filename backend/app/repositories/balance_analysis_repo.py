@@ -29,26 +29,27 @@ def _zqtz_snapshot_row_from_tuple(row: tuple) -> ZqtzSnapshotRow:
         account_category=row[5] or "",
         asset_class=row[6] or "",
         bond_type=row[7] or "",
-        issuer_name=row[8] or "",
-        industry_name=row[9] or "",
-        rating=row[10] or "",
-        currency_code=normalize_currency_code(row[11] or ""),
-        face_value_native=row[12],
-        market_value_native=row[13],
-        amortized_cost_native=row[14],
-        accrued_interest_native=row[15],
-        coupon_rate=row[16],
-        ytm_value=row[17],
-        maturity_date=row[18],
-        overdue_days=row[20],
-        value_date=row[27],
-        customer_attribute=str(row[28] or ""),
-        is_issuance_like=bool(row[21]),
-        interest_mode=row[22] or "",
-        source_version=row[23] or "",
-        rule_version=row[24] or "",
-        ingest_batch_id=row[25] or "",
-        trace_id=row[26] or "",
+        issuer_name=row[9] or "",
+        industry_name=row[10] or "",
+        rating=row[11] or "",
+        currency_code=normalize_currency_code(row[12] or ""),
+        face_value_native=row[13],
+        market_value_native=row[14],
+        amortized_cost_native=row[15],
+        accrued_interest_native=row[16],
+        coupon_rate=row[17],
+        ytm_value=row[18],
+        maturity_date=row[19],
+        overdue_days=row[21],
+        value_date=row[28],
+        customer_attribute=str(row[29] or ""),
+        is_issuance_like=bool(row[22]),
+        interest_mode=row[23] or "",
+        source_version=row[24] or "",
+        rule_version=row[25] or "",
+        ingest_batch_id=row[26] or "",
+        trace_id=row[27] or "",
+        business_type_primary=row[8] or "",
     )
 
 
@@ -99,7 +100,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   account_category, asset_class, bond_type, issuer_name, industry_name, rating,
+                   account_category, asset_class, bond_type, business_type_primary, issuer_name, industry_name, rating,
                    currency_code, face_value_native, market_value_native, amortized_cost_native,
                    accrued_interest_native, coupon_rate, ytm_value, maturity_date, next_call_date,
                    overdue_days, is_issuance_like, interest_mode, source_version, rule_version,
@@ -319,6 +320,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       account_category,
                       asset_class,
                       bond_type,
+                      business_type_primary,
                       issuer_name,
                       industry_name,
                       rating,
@@ -345,7 +347,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                       ingest_batch_id,
                       trace_id
                     ) values
-                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -357,6 +359,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                             row.account_category,
                             row.asset_class,
                             row.bond_type,
+                            row.business_type_primary,
                             row.issuer_name,
                             row.industry_name,
                             row.rating,
@@ -501,7 +504,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
         rows = self._fetch_rows(
             f"""
             select report_date, instrument_code, instrument_name, portfolio_name, cost_center,
-                   account_category, asset_class, bond_type, issuer_name, industry_name, rating, invest_type_std,
+                   account_category, asset_class, bond_type, business_type_primary, issuer_name, industry_name, rating, invest_type_std,
                    accounting_basis, position_scope, currency_basis, currency_code, face_value_amount,
                    market_value_amount, amortized_cost_amount, accrued_interest_amount, coupon_rate,
                    ytm_value, maturity_date, interest_mode, is_issuance_like, overdue_principal_days,
@@ -522,6 +525,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
             "account_category",
             "asset_class",
             "bond_type",
+            "business_type_primary",
             "issuer_name",
             "industry_name",
             "rating",

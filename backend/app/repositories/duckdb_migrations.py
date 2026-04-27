@@ -50,10 +50,19 @@ def ensure_balance_zqtz_legacy_columns(conn: duckdb.DuckDBPyConnection) -> None:
         return
     for statement in (
         "alter table fact_formal_zqtz_balance_daily add column if not exists account_category varchar",
+        "alter table fact_formal_zqtz_balance_daily add column if not exists business_type_primary varchar",
         "alter table fact_formal_zqtz_balance_daily add column if not exists overdue_principal_days integer",
         "alter table fact_formal_zqtz_balance_daily add column if not exists overdue_interest_days integer",
         "alter table fact_formal_zqtz_balance_daily add column if not exists value_date varchar",
         "alter table fact_formal_zqtz_balance_daily add column if not exists customer_attribute varchar",
+    ):
+        conn.execute(statement)
+
+
+def _v18_zqtz_business_type_primary(conn: duckdb.DuckDBPyConnection) -> None:
+    for statement in (
+        "alter table zqtz_bond_daily_snapshot add column if not exists business_type_primary varchar",
+        "alter table fact_formal_zqtz_balance_daily add column if not exists business_type_primary varchar",
     ):
         conn.execute(statement)
 
@@ -145,6 +154,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(15, "legacy read views (choice macro/news, yield, fx)", _v15_external_vw_legacy)
     registry.register(16, "supply auction research calendar read model", _v16_external_supply_auction_calendar)
     registry.register(17, "accounting asset movement monthly read model", _v17_accounting_asset_movement)
+    registry.register(18, "ZQTZ business type 1 lineage for balance analysis", _v18_zqtz_business_type_primary)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

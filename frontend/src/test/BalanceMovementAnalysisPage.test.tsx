@@ -107,19 +107,21 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("比上月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("比年初").length).toBeGreaterThan(0);
-    expect(within(trendTable).getByText("AC期末余额")).toBeInTheDocument();
-    expect(within(trendTable).getByText("AC期末占比")).toBeInTheDocument();
-    expect(within(trendTable).getByText("AC余额变动")).toBeInTheDocument();
-    expect(within(trendTable).getByText("AC变动贡献")).toBeInTheDocument();
-    expect(within(trendTable).getByText("OCI期末余额")).toBeInTheDocument();
-    expect(within(trendTable).getByText("TPL期末余额")).toBeInTheDocument();
-    expect(within(trendTable).getByText("期末余额合计")).toBeInTheDocument();
-    expect(within(trendTable).getByText("余额变动合计")).toBeInTheDocument();
-    expect(within(trendTable).getByText("总账控制余额")).toBeInTheDocument();
-    expect(within(trendTable).getByText("ZQTZ辅助余额")).toBeInTheDocument();
-    expect(within(trendTable).getByText("ZQTZ诊断差异")).toBeInTheDocument();
-    expect(within(trendTable).getAllByText("+129.80 亿").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("-0.67pp").length).toBeGreaterThan(0);
+    expect(within(trendTable).getByText("资产端-拆放同业")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端-买入返售")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端-同业存放-活期")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端-存放同业境内-定期")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端-存放同业境外-定期")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端-同业存单")).toBeInTheDocument();
+    expect(within(trendTable).getByText("负债端-同业存放")).toBeInTheDocument();
+    expect(within(trendTable).getByText("负债端-同业拆入")).toBeInTheDocument();
+    expect(within(trendTable).getByText("负债端-卖出回购")).toBeInTheDocument();
+    expect(within(trendTable).getByText("负债端-同业存单")).toBeInTheDocument();
+    expect(within(trendTable).getByText("资产端合计")).toBeInTheDocument();
+    expect(within(trendTable).getByText("负债端合计")).toBeInTheDocument();
+    expect(within(trendTable).getByText("同业净额")).toBeInTheDocument();
+    expect(within(trendTable).getAllByText("+71.00 亿").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("-83.00 亿").length).toBeGreaterThan(0);
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {

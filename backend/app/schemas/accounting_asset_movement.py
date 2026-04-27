@@ -51,6 +51,34 @@ class AccountingAssetMovementTrendMonthPayload(BaseModel):
     rows: list[AccountingAssetMovementRowPayload]
 
 
+class AccountingBusinessMovementRowPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    report_month: str
+    currency_basis: str
+    side: Literal["asset", "liability"]
+    sort_order: int
+    row_key: str
+    row_label: str
+    current_balance: Decimal
+    source_kind: Literal["ledger", "zqtz"]
+    source_note: str
+    source_version: str
+    rule_version: str
+
+
+class AccountingBusinessMovementTrendMonthPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    report_month: str
+    asset_balance_total: Decimal
+    liability_balance_total: Decimal
+    net_balance_total: Decimal
+    rows: list[AccountingBusinessMovementRowPayload]
+
+
 class AccountingAssetMovementPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +87,7 @@ class AccountingAssetMovementPayload(BaseModel):
     rows: list[AccountingAssetMovementRowPayload]
     summary: AccountingAssetMovementSummaryPayload
     trend_months: list[AccountingAssetMovementTrendMonthPayload]
+    business_trend_months: list[AccountingBusinessMovementTrendMonthPayload]
     accounting_controls: list[str]
     excluded_controls: list[str]
 

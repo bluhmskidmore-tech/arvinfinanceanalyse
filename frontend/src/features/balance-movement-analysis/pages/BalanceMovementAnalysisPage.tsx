@@ -2,7 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
-import type { BalanceMovementRow, BalanceMovementTrendMonth } from "../../../api/contracts";
+import type {
+  BalanceBusinessMovementTrendMonth,
+  BalanceMovementRow,
+  BalanceMovementTrendMonth,
+} from "../../../api/contracts";
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
 } from "../../../components/charts/AccountingBasisStackedShareChart";
@@ -158,24 +162,7 @@ function formatSignedYiCell(value: string | number | null | undefined) {
   })}`;
 }
 
-function sumTrendRowValues(
-  month: BalanceMovementTrendMonth,
-  getValue: (row: BalanceMovementRow) => string | number | null | undefined,
-) {
-  return month.rows.reduce((total, row) => {
-    const value = Number(getValue(row));
-    return Number.isFinite(value) ? total + value : total;
-  }, 0);
-}
-
 type BalanceMovementMatrixValueKind = "amount" | "percent";
-
-type BalanceMovementMatrixRow = {
-  key: string;
-  label: string;
-  valueKind: BalanceMovementMatrixValueKind;
-  getValue: (month: BalanceMovementTrendMonth) => string | number | null | undefined;
-};
 
 function formatMatrixValue(
   value: string | number | null | undefined,
@@ -214,9 +201,22 @@ function formatSignedMatrixValue(
   return formatted === "-" ? formatted : `${formatted} 亿`;
 }
 
-function compareMatrixCell(
-  months: BalanceMovementTrendMonth[],
-  row: BalanceMovementMatrixRow,
+type BusinessMovementMatrixRow = {
+  key: string;
+  label: string;
+  side: "asset" | "liability" | "total";
+  sourceNote?: string;
+  valueKind: BalanceMovementMatrixValueKind;
+  getValue: (month: BalanceBusinessMovementTrendMonth) => string | number | null | undefined;
+};
+
+function businessTrendRow(month: BalanceBusinessMovementTrendMonth, rowKey: string) {
+  return month.rows.find((row) => row.row_key === rowKey);
+}
+
+function compareBusinessMatrixCell(
+  months: BalanceBusinessMovementTrendMonth[],
+  row: BusinessMovementMatrixRow,
   baselineOffset: number,
 ) {
   const currentMonth = months[months.length - 1];
@@ -230,9 +230,9 @@ function compareMatrixCell(
   );
 }
 
-function compareMatrixCellToFirst(
-  months: BalanceMovementTrendMonth[],
-  row: BalanceMovementMatrixRow,
+function compareBusinessMatrixCellToFirst(
+  months: BalanceBusinessMovementTrendMonth[],
+  row: BusinessMovementMatrixRow,
 ) {
   const currentMonth = months[months.length - 1];
   const firstMonth = months[0];
@@ -245,67 +245,73 @@ function compareMatrixCellToFirst(
   );
 }
 
-const balanceCategoryMatrixRows: BalanceMovementMatrixRow[] = balanceMovementBuckets.flatMap(
-  (bucket) => [
-    {
-      key: `${bucket}-current-balance`,
-      label: `${bucket}期末余额`,
+function buildBusinessCategoryMatrixRows(
+  months: BalanceBusinessMovementTrendMonth[],
+): BusinessMovementMatrixRow[] {
+  const latestMonth = months[months.length - 1];
+  const rowDefs = new Map<
+    string,
+    { label: string; side: "asset" | "liability"; sourceNote?: string; sortOrder: number }
+  >();
+  for (const month of months) {
+    for (const row of month.rows) {
+      if (!rowDefs.has(row.row_key)) {
+        rowDefs.set(row.row_key, {
+          label: row.row_label,
+          side: row.side,
+          sourceNote: row.source_note,
+          sortOrder: row.sort_order,
+        });
+      }
+    }
+  }
+  if (latestMonth) {
+    for (const row of latestMonth.rows) {
+      rowDefs.set(row.row_key, {
+        label: row.row_label,
+        side: row.side,
+        sourceNote: row.source_note,
+        sortOrder: row.sort_order,
+      });
+    }
+  }
+  return Array.from(rowDefs.entries())
+    .sort(([, left], [, right]) => left.sortOrder - right.sortOrder)
+    .map(([rowKey, row]) => ({
+      key: rowKey,
+      label: row.label,
+      side: row.side,
+      sourceNote: row.sourceNote,
       valueKind: "amount" as const,
-      getValue: (month: BalanceMovementTrendMonth) => trendBucket(month, bucket)?.current_balance,
-    },
-    {
-      key: `${bucket}-current-share`,
-      label: `${bucket}期末占比`,
-      valueKind: "percent" as const,
-      getValue: (month: BalanceMovementTrendMonth) =>
-        trendBucket(month, bucket)?.current_balance_pct,
-    },
-    {
-      key: `${bucket}-balance-change`,
-      label: `${bucket}余额变动`,
-      valueKind: "amount" as const,
-      getValue: (month: BalanceMovementTrendMonth) => trendBucket(month, bucket)?.balance_change,
-    },
-    {
-      key: `${bucket}-change-contribution`,
-      label: `${bucket}变动贡献`,
-      valueKind: "percent" as const,
-      getValue: (month: BalanceMovementTrendMonth) =>
-        trendBucket(month, bucket)?.contribution_pct,
-    },
-  ],
-);
+      getValue: (month: BalanceBusinessMovementTrendMonth) =>
+        businessTrendRow(month, rowKey)?.current_balance,
+    }));
+}
 
-const balanceProjectMatrixRows: BalanceMovementMatrixRow[] = [
+const businessProjectMatrixRows: BusinessMovementMatrixRow[] = [
   {
-    key: "current-balance-total",
-    label: "期末余额合计",
+    key: "asset-total",
+    label: "资产端合计",
+    side: "total",
+    sourceNote: "资产端同业业务行合计，含 ZQTZSHOW 资产端同业存单",
     valueKind: "amount",
-    getValue: (month) => month.current_balance_total,
+    getValue: (month) => month.asset_balance_total,
   },
   {
-    key: "balance-change-total",
-    label: "余额变动合计",
+    key: "liability-total",
+    label: "负债端合计",
+    side: "total",
+    sourceNote: "负债端同业业务行合计",
     valueKind: "amount",
-    getValue: (month) => month.balance_change_total,
+    getValue: (month) => month.liability_balance_total,
   },
   {
-    key: "gl-total",
-    label: "总账控制余额",
+    key: "net-total",
+    label: "同业净额",
+    side: "total",
+    sourceNote: "资产端合计 + 负债端合计，保留总账余额符号",
     valueKind: "amount",
-    getValue: (month) => sumTrendRowValues(month, (row) => row.gl_amount),
-  },
-  {
-    key: "zqtz-total",
-    label: "ZQTZ辅助余额",
-    valueKind: "amount",
-    getValue: (month) => sumTrendRowValues(month, (row) => row.zqtz_amount),
-  },
-  {
-    key: "diagnostic-diff-total",
-    label: "ZQTZ诊断差异",
-    valueKind: "amount",
-    getValue: (month) => sumTrendRowValues(month, (row) => row.reconciliation_diff),
+    getValue: (month) => month.net_balance_total,
   },
 ];
 
@@ -528,10 +534,22 @@ export default function BalanceMovementAnalysisPage() {
     () => detailQuery.data?.result.trend_months ?? [],
     [detailQuery.data?.result.trend_months],
   );
-  const reportMatrixMonths = useMemo(() => [...trendMonths].reverse(), [trendMonths]);
+  const businessTrendMonths = useMemo(
+    () => detailQuery.data?.result.business_trend_months ?? [],
+    [detailQuery.data?.result.business_trend_months],
+  );
+  const accountingMatrixMonths = useMemo(() => [...trendMonths].reverse(), [trendMonths]);
+  const businessMatrixMonths = useMemo(
+    () => [...businessTrendMonths].reverse(),
+    [businessTrendMonths],
+  );
+  const businessMatrixRows = useMemo(
+    () => buildBusinessCategoryMatrixRows(businessMatrixMonths),
+    [businessMatrixMonths],
+  );
   const balanceStructureTrend = useMemo(
-    () => reportMatrixMonths.map(toSharePoint),
-    [reportMatrixMonths],
+    () => accountingMatrixMonths.map(toSharePoint),
+    [accountingMatrixMonths],
   );
   const balanceStructureInsight = useMemo(() => {
     const first = balanceStructureTrend[0];
@@ -913,12 +931,12 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
-      {trendMonths.length > 0 ? (
+      {businessTrendMonths.length > 0 ? (
         <AsyncSection
           title="月度余额分析矩阵"
           isLoading={detailQuery.isLoading}
           isError={detailQuery.isError}
-          isEmpty={trendMonths.length === 0}
+          isEmpty={businessTrendMonths.length === 0}
           onRetry={() => void detailQuery.refetch()}
         >
           <div className="balance-movement-matrix-scroll">
@@ -929,7 +947,7 @@ export default function BalanceMovementAnalysisPage() {
               <thead>
                 <tr>
                   <th>分类</th>
-                  {reportMatrixMonths.map((month) => (
+                  {businessMatrixMonths.map((month) => (
                     <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
                   ))}
                   <th>比上月</th>
@@ -937,24 +955,24 @@ export default function BalanceMovementAnalysisPage() {
                 </tr>
               </thead>
               <tbody>
-                {balanceCategoryMatrixRows.map((row) => (
+                {businessMatrixRows.map((row) => (
                   <tr key={row.key}>
-                    <td>{row.label}</td>
-                    {reportMatrixMonths.map((month) => (
+                    <td title={row.sourceNote}>{row.label}</td>
+                    {businessMatrixMonths.map((month) => (
                       <td key={`${row.key}-${month.report_date}`}>
                         {formatMatrixValue(row.getValue(month), row.valueKind)}
                       </td>
                     ))}
-                    <td>{compareMatrixCell(reportMatrixMonths, row, 1)}</td>
-                    <td>{compareMatrixCellToFirst(reportMatrixMonths, row)}</td>
+                    <td>{compareBusinessMatrixCell(businessMatrixMonths, row, 1)}</td>
+                    <td>{compareBusinessMatrixCellToFirst(businessMatrixMonths, row)}</td>
                   </tr>
                 ))}
                 <tr className="balance-movement-report-matrix__gap">
-                  <td colSpan={reportMatrixMonths.length + 3} />
+                  <td colSpan={businessMatrixMonths.length + 3} />
                 </tr>
                 <tr className="balance-movement-report-matrix__section">
                   <th>项目</th>
-                  {reportMatrixMonths.map((month) => (
+                  {businessMatrixMonths.map((month) => (
                     <th key={`project-${month.report_date}`}>
                       {formatTrendMonthLabel(month.report_month)}
                     </th>
@@ -962,17 +980,17 @@ export default function BalanceMovementAnalysisPage() {
                   <th>比上月</th>
                   <th>比年初</th>
                 </tr>
-                {balanceProjectMatrixRows.map((row) => {
+                {businessProjectMatrixRows.map((row) => {
                   return (
                     <tr key={row.key}>
-                      <td>{row.label}</td>
-                      {reportMatrixMonths.map((month) => (
+                      <td title={row.sourceNote}>{row.label}</td>
+                      {businessMatrixMonths.map((month) => (
                         <td key={`${row.key}-${month.report_date}`}>
                           {formatMatrixValue(row.getValue(month), row.valueKind)}
                         </td>
                       ))}
-                      <td>{compareMatrixCell(reportMatrixMonths, row, 1)}</td>
-                      <td>{compareMatrixCellToFirst(reportMatrixMonths, row)}</td>
+                      <td>{compareBusinessMatrixCell(businessMatrixMonths, row, 1)}</td>
+                      <td>{compareBusinessMatrixCellToFirst(businessMatrixMonths, row)}</td>
                     </tr>
                   );
                 })}

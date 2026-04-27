@@ -8,6 +8,8 @@ from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
 from backend.app.schemas.accounting_asset_movement import (
+    AccountingBusinessMovementRowPayload,
+    AccountingBusinessMovementTrendMonthPayload,
     AccountingAssetMovementDatesPayload,
     AccountingAssetMovementPayload,
     AccountingAssetMovementRefreshPayload,
@@ -81,7 +83,17 @@ def accounting_asset_movement_envelope(
             month_count=6,
         )
     )
+    business_trend_months = _build_business_trend_months(
+        repo.fetch_recent_business_rows(
+            report_date=report_date,
+            currency_basis=currency_basis,
+            month_count=6,
+        )
+    )
     evidence_rows = [row for month in trend_months for row in month.rows] or rows
+    business_evidence_rows = [
+        row for month in business_trend_months for row in month.rows
+    ]
 
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
@@ -89,22 +101,35 @@ def accounting_asset_movement_envelope(
         rows=rows,
         summary=_build_summary(rows),
         trend_months=trend_months,
+        business_trend_months=business_trend_months,
         accounting_controls=CONTROL_ACCOUNTS,
         excluded_controls=EXCLUDED_CONTROLS,
     )
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_movement_{report_date}_{currency_basis}",
         result_kind="balance-analysis.movement.detail",
-        source_version=_joined_latest(row.source_version for row in evidence_rows),
-        rule_version=_joined_latest(row.rule_version for row in evidence_rows) or RULE_VERSION,
+        source_version=_joined_latest(
+            row.source_version for row in [*evidence_rows, *business_evidence_rows]
+        ),
+        rule_version=_joined_latest(
+            row.rule_version for row in [*evidence_rows, *business_evidence_rows]
+        )
+        or RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="ok",
         filters_applied={"report_date": report_date, "currency_basis": currency_basis},
-        tables_used=["fact_accounting_asset_movement_monthly"],
-        evidence_rows=len(evidence_rows),
+        tables_used=[
+            "fact_accounting_asset_movement_monthly",
+            "product_category_pnl_canonical_fact",
+            "fact_formal_zqtz_balance_daily",
+        ],
+        evidence_rows=len(evidence_rows)
+        + sum(len(month.rows) for month in business_trend_months),
         next_drill=[
             "product_category_pnl_canonical_fact: CNX 141/142/143/1440101 control accounts",
             "product_category_pnl_canonical_fact: CNX ZQTZ diagnostic bucket comparison; not a CNY fallback",
+            "product_category_pnl_canonical_fact: interbank asset/liability business rows from ledger balances",
+            "fact_formal_zqtz_balance_daily: asset-side NCD from ZQTZSHOW business type 1",
         ],
     )
     return build_formal_result_envelope(
@@ -191,6 +216,38 @@ def _build_trend_months(
                     (row.balance_change for row in rows),
                     Decimal("0"),
                 ),
+                rows=rows,
+            )
+        )
+    return trend_months
+
+
+def _build_business_trend_months(
+    raw_rows: list[dict[str, object]],
+) -> list[AccountingBusinessMovementTrendMonthPayload]:
+    grouped: dict[str, list[AccountingBusinessMovementRowPayload]] = {}
+    for raw_row in raw_rows:
+        row = AccountingBusinessMovementRowPayload.model_validate(raw_row)
+        grouped.setdefault(row.report_date, []).append(row)
+
+    trend_months: list[AccountingBusinessMovementTrendMonthPayload] = []
+    for report_date in sorted(grouped.keys(), reverse=True):
+        rows = sorted(grouped[report_date], key=lambda row: row.sort_order)
+        asset_total = sum(
+            (row.current_balance for row in rows if row.side == "asset"),
+            Decimal("0"),
+        )
+        liability_total = sum(
+            (row.current_balance for row in rows if row.side == "liability"),
+            Decimal("0"),
+        )
+        trend_months.append(
+            AccountingBusinessMovementTrendMonthPayload(
+                report_date=report_date,
+                report_month=rows[0].report_month,
+                asset_balance_total=asset_total,
+                liability_balance_total=liability_total,
+                net_balance_total=asset_total + liability_total,
                 rows=rows,
             )
         )

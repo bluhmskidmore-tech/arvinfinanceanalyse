@@ -96,8 +96,39 @@ def replace_zqtz_snapshot_rows(
         return 0
     conn.executemany(
         f"""
-        insert into {ZQTZ_TABLE} values (
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        insert into {ZQTZ_TABLE} (
+          report_date,
+          instrument_code,
+          instrument_name,
+          portfolio_name,
+          cost_center,
+          account_category,
+          asset_class,
+          bond_type,
+          business_type_primary,
+          issuer_name,
+          industry_name,
+          rating,
+          currency_code,
+          face_value_native,
+          market_value_native,
+          amortized_cost_native,
+          accrued_interest_native,
+          coupon_rate,
+          ytm_value,
+          maturity_date,
+          next_call_date,
+          overdue_days,
+          is_issuance_like,
+          interest_mode,
+          source_version,
+          rule_version,
+          ingest_batch_id,
+          trace_id,
+          value_date,
+          customer_attribute
+        ) values (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
         )
         """,
         [
@@ -110,6 +141,7 @@ def replace_zqtz_snapshot_rows(
                 r["account_category"],
                 r["asset_class"],
                 r["bond_type"],
+                r.get("business_type_primary") or "",
                 r["issuer_name"],
                 r["industry_name"],
                 r["rating"],

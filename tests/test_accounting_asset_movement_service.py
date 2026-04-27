@@ -43,6 +43,22 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert Decimal(by_bucket["OCI"]["current_balance"]) == Decimal("80.00000000")
     assert Decimal(by_bucket["TPL"]["current_balance"]) == Decimal("110.00000000")
     assert result["summary"]["matched_bucket_count"] == 3
+    business_month = result["business_trend_months"][0]
+    assert business_month["report_date"] == "2026-02-28"
+    business_rows = {row["row_key"]: row for row in business_month["rows"]}
+    assert Decimal(business_rows["asset_interbank_lending"]["current_balance"]) == Decimal("80.00000000")
+    assert Decimal(business_rows["asset_reverse_repo"]["current_balance"]) == Decimal("90.00000000")
+    assert Decimal(business_rows["asset_interbank_current_deposit"]["current_balance"]) == Decimal("35.00000000")
+    assert Decimal(business_rows["asset_domestic_interbank_term_deposit"]["current_balance"]) == Decimal("45.00000000")
+    assert Decimal(business_rows["asset_overseas_interbank_term_deposit"]["current_balance"]) == Decimal("25.00000000")
+    assert Decimal(business_rows["asset_zqtz_interbank_cd"]["current_balance"]) == Decimal("18.00000000")
+    assert business_rows["asset_zqtz_interbank_cd"]["source_kind"] == "zqtz"
+    assert Decimal(business_rows["liability_interbank_deposits"]["current_balance"]) == Decimal("-90.00000000")
+    assert Decimal(business_rows["liability_interbank_borrowings"]["current_balance"]) == Decimal("-35.00000000")
+    assert Decimal(business_rows["liability_repo"]["current_balance"]) == Decimal("-95.00000000")
+    assert Decimal(business_rows["liability_interbank_cd"]["current_balance"]) == Decimal("-40.00000000")
+    assert Decimal(business_month["asset_balance_total"]) == Decimal("293.00000000")
+    assert Decimal(business_month["liability_balance_total"]) == Decimal("-260.00000000")
     assert [month["report_date"] for month in result["trend_months"]] == [
         "2026-02-28",
         "2026-01-31",
@@ -61,12 +77,16 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert set(envelope["result_meta"]["source_version"].split("__")) == {
         "sv-gl",
         "sv-gl-prior",
+        "sv-zqtz",
+        "sv-zqtz-prior",
     }
     assert set(envelope["result_meta"]["rule_version"].split("__")) == {
         "rv-gl",
         "rv-gl-prior",
+        "rv-zqtz",
+        "rv-zqtz-prior",
     }
-    assert envelope["result_meta"]["evidence_rows"] == 6
+    assert envelope["result_meta"]["evidence_rows"] == 26
 
 
 def test_balance_movement_analysis_service_uses_cnx_diagnostic_and_ignores_cny_noise():
@@ -277,6 +297,8 @@ def _seed_source_tables_and_materialize(
               accounting_basis varchar,
               position_scope varchar,
               currency_basis varchar,
+              bond_type varchar,
+              business_type_primary varchar,
               market_value_amount decimal(24, 8),
               amortized_cost_amount decimal(24, 8),
               source_version varchar,
@@ -303,11 +325,13 @@ def _seed_source_tables_and_materialize(
             """
         )
         conn.executemany(
-            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-02-28", "FVTPL", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "AC", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-01-31", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "12", "12", "sv-zqtz-prior", "rv-zqtz-prior"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "其他债券", "同业存单", "18", "18", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVTPL", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "AC", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "国债", "国债", "999", "999", "sv-zqtz-cny", "rv-balance-cny"),
             ],
         )
         conn.executemany(
@@ -319,12 +343,42 @@ def _seed_source_tables_and_materialize(
                 ("2026-01-31", "14301010002", "CNX", "Voucher accrued", "1", "1", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
                 ("2026-01-31", "14401010001", "CNX", "OCI debt", "65", "70", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
                 ("2026-01-31", "14402010001", "CNX", "OCI equity", "90", "99", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "12001000001", "CNX", "拆放同业", "35", "40", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "12101000001", "CNX", "拆放同业", "8", "10", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14001000001", "CNX", "买入返售", "65", "70", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14004000001", "CNX", "排除买入返售", "999", "999", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14005000001", "CNX", "排除买入返售", "999", "999", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "11401000001", "CNX", "同业存放-活期", "25", "30", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "11501000001", "CNX", "存放同业境内-定期", "35", "40", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "11601000001", "CNX", "存放同业境外-定期", "15", "20", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "23401000001", "CNX", "同业存放", "-45", "-50", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "23501000001", "CNX", "同业存放", "-8", "-10", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "24101000001", "CNX", "同业拆入", "-15", "-20", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "24201000001", "CNX", "同业拆入", "-3", "-5", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "25501000001", "CNX", "卖出回购", "-60", "-70", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "27205000001", "CNX", "同业存单", "-10", "-11", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "27206000001", "CNX", "同业存单", "-8", "-9", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
                 ("2026-02-28", "14101010001", "CNX", "TPL", "100", "110", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14201010001", "CNX", "AC bond", "200", "220", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14301010001", "CNX", "Voucher bond", "4", "4", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14301010002", "CNX", "Voucher accrued", "1", "1", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14401010001", "CNX", "OCI debt", "70", "80", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14402010001", "CNX", "OCI equity", "90", "99", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "12001000001", "CNX", "拆放同业", "40", "60", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "12101000001", "CNX", "拆放同业", "10", "20", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14001000001", "CNX", "买入返售", "70", "90", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14004000001", "CNX", "排除买入返售", "999", "999", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "14005000001", "CNX", "排除买入返售", "999", "999", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "11401000001", "CNX", "同业存放-活期", "30", "35", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "11501000001", "CNX", "存放同业境内-定期", "40", "45", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "11601000001", "CNX", "存放同业境外-定期", "20", "25", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "23401000001", "CNX", "同业存放", "-50", "-70", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "23501000001", "CNX", "同业存放", "-10", "-20", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "24101000001", "CNX", "同业拆入", "-20", "-25", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "24201000001", "CNX", "同业拆入", "-5", "-10", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "25501000001", "CNX", "卖出回购", "-70", "-95", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "27205000001", "CNX", "同业存单", "-11", "-25", "0", "0", "0", 28, "sv-gl", "rv-gl"),
+                ("2026-02-28", "27206000001", "CNX", "同业存单", "-9", "-15", "0", "0", "0", 28, "sv-gl", "rv-gl"),
             ],
         )
         materialize_accounting_asset_movement_on_connection(

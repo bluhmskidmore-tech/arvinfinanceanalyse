@@ -8,6 +8,7 @@ create table if not exists fact_formal_zqtz_balance_daily (
   account_category varchar,
   asset_class varchar,
   bond_type varchar,
+  business_type_primary varchar,
   issuer_name varchar,
   industry_name varchar,
   rating varchar,

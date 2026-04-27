@@ -156,6 +156,173 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
           rule_version: "rv_accounting_asset_movement_v2",
         },
       ];
+      const currentBusinessRows: BalanceMovementPayload["business_trend_months"][number]["rows"] = [
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 10,
+          row_key: "asset_interbank_lending",
+          row_label: "资产端-拆放同业",
+          current_balance: "8000000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：120% + 121%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 20,
+          row_key: "asset_reverse_repo",
+          row_label: "资产端-买入返售",
+          current_balance: "9000000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：140%，排除 14004% / 14005%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 30,
+          row_key: "asset_interbank_current_deposit",
+          row_label: "资产端-同业存放-活期",
+          current_balance: "3500000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：114%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 40,
+          row_key: "asset_domestic_interbank_term_deposit",
+          row_label: "资产端-存放同业境内-定期",
+          current_balance: "4500000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：115%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 50,
+          row_key: "asset_overseas_interbank_term_deposit",
+          row_label: "资产端-存放同业境外-定期",
+          current_balance: "2500000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：116%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset",
+          sort_order: 60,
+          row_key: "asset_zqtz_interbank_cd",
+          row_label: "资产端-同业存单",
+          current_balance: "1800000000",
+          source_kind: "zqtz",
+          source_note: "ZQTZSHOW 业务种类1=同业存单",
+          source_version: "sv_mock_zqtz",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "liability",
+          sort_order: 110,
+          row_key: "liability_interbank_deposits",
+          row_label: "负债端-同业存放",
+          current_balance: "-9000000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：234% + 235%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "liability",
+          sort_order: 120,
+          row_key: "liability_interbank_borrowings",
+          row_label: "负债端-同业拆入",
+          current_balance: "-3500000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：241% + 242%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "liability",
+          sort_order: 130,
+          row_key: "liability_repo",
+          row_label: "负债端-卖出回购",
+          current_balance: "-9500000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：255%",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+        {
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "liability",
+          sort_order: 140,
+          row_key: "liability_interbank_cd",
+          row_label: "负债端-同业存单",
+          current_balance: "-4000000000",
+          source_kind: "ledger",
+          source_note: "总账对账科目余额：27205000001 + 27206000001",
+          source_version: "sv_mock",
+          rule_version: "rv_accounting_asset_movement_v2",
+        },
+      ];
+      const previousBusinessRows = currentBusinessRows.map((row) => ({
+        ...row,
+        report_date: "2026-01-31",
+        report_month: "2026-01",
+        current_balance:
+          row.row_key === "asset_interbank_lending"
+            ? "5000000000"
+            : row.row_key === "asset_reverse_repo"
+              ? "7000000000"
+              : row.row_key === "asset_interbank_current_deposit"
+                ? "3000000000"
+                : row.row_key === "asset_domestic_interbank_term_deposit"
+                  ? "4000000000"
+                  : row.row_key === "asset_overseas_interbank_term_deposit"
+                    ? "2000000000"
+                    : row.row_key === "asset_zqtz_interbank_cd"
+                      ? "1200000000"
+                      : row.row_key === "liability_interbank_deposits"
+                        ? "-6000000000"
+                        : row.row_key === "liability_interbank_borrowings"
+                          ? "-2500000000"
+                          : row.row_key === "liability_repo"
+                            ? "-7000000000"
+                            : "-2000000000",
+      }));
 
       return buildMockApiEnvelope(
         "balance-analysis.movement.detail",
@@ -187,6 +354,24 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
               current_balance_total: "322893467752.04",
               balance_change_total: "14454898913.70",
               rows: previousRows,
+            },
+          ],
+          business_trend_months: [
+            {
+              report_date: reportDate,
+              report_month: reportMonth,
+              asset_balance_total: "29300000000",
+              liability_balance_total: "-26000000000",
+              net_balance_total: "3300000000",
+              rows: currentBusinessRows,
+            },
+            {
+              report_date: "2026-01-31",
+              report_month: "2026-01",
+              asset_balance_total: "22200000000",
+              liability_balance_total: "-17700000000",
+              net_balance_total: "4500000000",
+              rows: previousBusinessRows,
             },
           ],
           rows: currentRows,

@@ -149,6 +149,7 @@ def parse_zqtz_snapshot_rows_from_bytes(
                 "account_category": account_category,
                 "asset_class": asset_class,
                 "bond_type": business_kind or business_one,
+                "business_type_primary": business_one,
                 "issuer_name": _text(raw_row, ZQTZ_ISSUER) or None,
                 "industry_name": _text(raw_row, ZQTZ_INDUSTRY) or None,
                 "rating": _text(raw_row, ZQTZ_RATING) or None,
