@@ -461,6 +461,11 @@
   font-size: 13px;
 }
 
+.balance-movement-report-matrix--monthly tr.balance-movement-report-matrix__row--emphasis th,
+.balance-movement-report-matrix--monthly tr.balance-movement-report-matrix__row--emphasis td {
+  font-weight: 700;
+}
+
 /* 明细表数值列：与 tableCellStyle 一致，用 class 避免增加全仓 TSX style 计数 */
 .balance-movement-detail-table__num {
   padding: 12px 8px;

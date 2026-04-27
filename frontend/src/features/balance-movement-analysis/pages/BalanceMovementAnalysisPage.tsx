@@ -122,6 +122,37 @@ function trendBucket(
   return month?.rows.find((row) => row.basis_bucket === bucket);
 }
 
+function basisBucketBalanceForBusiness(
+  accountingByDate: Map<string, BalanceMovementTrendMonth>,
+  businessMonth: BalanceBusinessMovementTrendMonth,
+  bucket: BalanceMovementRow["basis_bucket"],
+) {
+  const am = accountingByDate.get(businessMonth.report_date);
+  if (!am) {
+    return undefined;
+  }
+  return trendBucket(am, bucket)?.current_balance;
+}
+
+function basisThreeBucketSum(
+  accountingByDate: Map<string, BalanceMovementTrendMonth>,
+  businessMonth: BalanceBusinessMovementTrendMonth,
+) {
+  const ac = basisBucketBalanceForBusiness(accountingByDate, businessMonth, "AC");
+  const oci = basisBucketBalanceForBusiness(accountingByDate, businessMonth, "OCI");
+  const tpl = basisBucketBalanceForBusiness(accountingByDate, businessMonth, "TPL");
+  if (ac === undefined || oci === undefined || tpl === undefined) {
+    return undefined;
+  }
+  const a = Number(ac);
+  const o = Number(oci);
+  const t = Number(tpl);
+  if (!Number.isFinite(a) || !Number.isFinite(o) || !Number.isFinite(t)) {
+    return undefined;
+  }
+  return a + o + t;
+}
+
 function trendDelta(
   current: string | number | null | undefined,
   previous: string | number | null | undefined,
@@ -214,9 +245,54 @@ type BusinessMovementMatrixRow = {
   label: string;
   side: "asset" | "liability" | "total";
   sourceNote?: string;
+  /** 三桶分类行：整行加粗 */
+  emphasis?: boolean;
   valueKind: BalanceMovementMatrixValueKind;
   getValue: (month: BalanceBusinessMovementTrendMonth) => string | number | null | undefined;
 };
+
+function buildAccountingBasisMatrixRows(
+  accountingByDate: Map<string, BalanceMovementTrendMonth>,
+): BusinessMovementMatrixRow[] {
+  return [
+    {
+      key: "basis-ac",
+      label: "AC",
+      side: "asset",
+      emphasis: true,
+      sourceNote: "总账控制数：以摊余成本计量（AC）",
+      valueKind: "amount",
+      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "AC"),
+    },
+    {
+      key: "basis-oci",
+      label: "OCI",
+      side: "asset",
+      emphasis: true,
+      sourceNote: "总账控制数：以公允价值计量且其变动计入其他综合收益（OCI）",
+      valueKind: "amount",
+      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "OCI"),
+    },
+    {
+      key: "basis-fvtpl",
+      label: "FVTPL",
+      side: "asset",
+      emphasis: true,
+      sourceNote: "总账 TPL 桶，与以公允价值计量且其变动计入当期损益（FVTPL）一致",
+      valueKind: "amount",
+      getValue: (bm) => basisBucketBalanceForBusiness(accountingByDate, bm, "TPL"),
+    },
+    {
+      key: "basis-ac-oci-fvtpl-total",
+      label: "AC/OCI/FVTPL 合计",
+      side: "asset",
+      emphasis: true,
+      sourceNote: "AC+OCI+TPL 分类余额加总，与上三行同口径",
+      valueKind: "amount",
+      getValue: (bm) => basisThreeBucketSum(accountingByDate, bm),
+    },
+  ];
+}
 
 function businessTrendRow(month: BalanceBusinessMovementTrendMonth, rowKey: string) {
   return month.rows.find((row) => row.row_key === rowKey);
@@ -616,6 +692,33 @@ export default function BalanceMovementAnalysisPage() {
   const businessMatrixRows = useMemo(
     () => buildBusinessCategoryMatrixRows(businessMatrixMonths),
     [businessMatrixMonths],
+  );
+  const accountingByReportDate = useMemo(() => {
+    const map = new Map<string, BalanceMovementTrendMonth>();
+    for (const month of accountingMatrixMonths) {
+      map.set(month.report_date, month);
+    }
+    return map;
+  }, [accountingMatrixMonths]);
+  const accountingBasisMatrixRows = useMemo(
+    () => buildAccountingBasisMatrixRows(accountingByReportDate),
+    [accountingByReportDate],
+  );
+  const businessMatrixAssetRows = useMemo(
+    () => businessMatrixRows.filter((row) => row.side === "asset"),
+    [businessMatrixRows],
+  );
+  const businessMatrixLiabilityRows = useMemo(
+    () => businessMatrixRows.filter((row) => row.side === "liability"),
+    [businessMatrixRows],
+  );
+  const monthlyMatrixCategoryRows = useMemo(
+    () => [
+      ...businessMatrixAssetRows,
+      ...accountingBasisMatrixRows,
+      ...businessMatrixLiabilityRows,
+    ],
+    [businessMatrixAssetRows, accountingBasisMatrixRows, businessMatrixLiabilityRows],
   );
   const structureShareTableRows = useMemo((): StructureShareTableRow[] => {
     return accountingMatrixMonths.map((month) => ({
@@ -1045,11 +1148,15 @@ export default function BalanceMovementAnalysisPage() {
                 </tr>
               </thead>
               <tbody>
-                {businessMatrixRows.map((row) => {
+                {monthlyMatrixCategoryRows.map((row) => {
                   const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
                   const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
                   return (
-                    <tr key={row.key} data-side={row.side}>
+                    <tr
+                      key={row.key}
+                      data-side={row.side}
+                      className={row.emphasis ? "balance-movement-report-matrix__row--emphasis" : undefined}
+                    >
                       <th scope="row" title={row.sourceNote}>
                         {row.label}
                       </th>
