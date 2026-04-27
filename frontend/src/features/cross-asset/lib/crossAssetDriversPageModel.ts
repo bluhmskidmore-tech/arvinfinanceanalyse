@@ -211,7 +211,7 @@ export function buildCrossAssetNcdProxyEvidence(input: {
 
 function formatScore(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
-    return "n/a";
+    return "暂无";
   }
   return value.toFixed(2);
 }
@@ -257,9 +257,9 @@ function summarizeNewsText(event: ChoiceNewsEvent) {
     }
   }
   if (event.error_code !== 0) {
-    return event.error_msg?.trim() || "vendor callback error";
+    return event.error_msg?.trim() || "供应商回调错误";
   }
-  return "empty event payload";
+  return "事件内容为空";
 }
 
 function eventSeverity(event: ChoiceNewsEvent): CalendarItem["level"] {
@@ -283,7 +283,7 @@ function eventSeverity(event: ChoiceNewsEvent): CalendarItem["level"] {
 
 function calendarDateLabel(raw: string) {
   if (!raw.trim()) {
-    return "n/a";
+    return "暂无";
   }
   if (raw.length >= 10) {
     return raw.slice(5, 10);
@@ -303,15 +303,44 @@ function signalFromTone(changeTone: ResolvedCrossAssetKpi["changeTone"]): WatchS
 
 function signalTextFromTone(changeTone: ResolvedCrossAssetKpi["changeTone"]) {
   if (changeTone === "positive") {
-    return "Move is extending.";
+    return "变化仍在延续。";
   }
   if (changeTone === "negative") {
-    return "Move is fading.";
+    return "变化正在减弱。";
   }
-  return "Signal needs confirmation.";
+  return "信号仍需确认。";
 }
 
 function normalizeLabel(value: string) {
+  const key = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const labels: Record<string, string> = {
+    bullish: "偏多",
+    bearish: "偏空",
+    neutral: "中性",
+    front_end_preferred: "短端优先",
+    steepening_bias: "陡峭化倾向",
+    selective: "精选",
+    defensive: "防御",
+    barbell: "杠铃",
+    balanced: "均衡",
+    high: "高",
+    medium: "中",
+    low: "低",
+    pending_signal: "待信号",
+    ready: "已就绪",
+    backend: "后端",
+    fallback: "兜底",
+    rates: "利率",
+    ncd: "同业存单",
+    high_grade_credit: "高等级信用",
+    duration: "久期",
+    curve: "曲线",
+    credit: "信用",
+    instrument: "品种",
+  };
+  if (labels[key]) {
+    return labels[key];
+  }
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
@@ -382,12 +411,12 @@ function buildFallbackResearchViews(input: {
     confidence: Math.abs(rate) > 0.25 || Math.abs(liq) > 0.25 ? "medium" : "low",
     summary:
       rate < -0.2 && liq >= 0
-        ? `Fallback read: easing rates and supportive liquidity favor duration (${formatScore(rate)} / ${formatScore(liq)}).`
+        ? `兜底判断：利率下行且流动性偏有利，支持久期 (${formatScore(rate)} / ${formatScore(liq)})。`
         : rate > 0.2
-          ? `Fallback read: higher rate pressure caps long duration (${formatScore(rate)}).`
-          : `Fallback read: duration conviction is limited while rates and liquidity stay mixed.`,
+          ? `兜底判断：利率压力偏高，限制长久期 (${formatScore(rate)})。`
+          : `兜底判断：利率与流动性信号混合，久期信心有限。`,
     affected_targets: ["rates", "ncd", "high_grade_credit"],
-    evidence: [`liquidity_score ${formatScore(liq)}`, `rate_direction_score ${formatScore(rate)}`],
+    evidence: [`流动性评分 ${formatScore(liq)}`, `利率方向评分 ${formatScore(rate)}`],
   };
 
   const curve: MacroBondResearchView = {
@@ -397,12 +426,12 @@ function buildFallbackResearchViews(input: {
     confidence: Math.abs(liq) > 0.2 ? "medium" : "low",
     summary:
       liq > 0.15
-        ? `Fallback read: front-end carry still benefits from easier funding (${formatScore(liq)}).`
+        ? `兜底判断：资金更宽松，短端票息仍受益 (${formatScore(liq)})。`
         : rate < -0.15
-          ? `Fallback read: falling-rate setup leaves room for selective extension.`
-          : "Fallback read: curve message is balanced rather than directional.",
+          ? `兜底判断：利率下行环境给选择性拉长留出空间。`
+          : "兜底判断：曲线信息偏均衡，方向性不足。",
     affected_targets: ["rates", "ncd"],
-    evidence: [`liquidity_score ${formatScore(liq)}`, `rate_direction_score ${formatScore(rate)}`],
+    evidence: [`流动性评分 ${formatScore(liq)}`, `利率方向评分 ${formatScore(rate)}`],
   };
 
   const credit: MacroBondResearchView = {
@@ -411,14 +440,14 @@ function buildFallbackResearchViews(input: {
     stance: creditCorr?.direction === "negative" ? "selective" : growth < -0.1 ? "defensive" : "neutral",
     confidence: creditCorr ? "medium" : "low",
     summary: creditCorr
-      ? `Fallback read: credit should stay selective while ${creditCorr.target_family} remains the dominant linkage.`
+      ? `兜底判断：${creditCorr.target_family} 仍是主导联动，信用应保持精选。`
       : growth < -0.1
-        ? "Fallback read: softer growth argues for staying in higher-quality credit only."
-        : "Fallback read: no strong governed credit stance is available yet.",
+        ? "兜底判断：增长偏弱，应仅保留高等级信用。"
+        : "兜底判断：当前没有足够强的治理后信用方向。",
     affected_targets: ["high_grade_credit"],
     evidence: creditCorr
-      ? [`${creditCorr.target_family} corr6m ${formatLinkageCorrelationDisplay(creditCorr.correlation_6m)}`]
-      : [`growth_score ${formatScore(growth)}`],
+      ? [`${creditCorr.target_family} 6月相关 ${formatLinkageCorrelationDisplay(creditCorr.correlation_6m)}`]
+      : [`增长评分 ${formatScore(growth)}`],
   };
 
   const instrument: MacroBondResearchView = {
@@ -428,8 +457,8 @@ function buildFallbackResearchViews(input: {
     confidence: topCorr ? "medium" : "low",
     summary:
       liq > 0
-        ? "Fallback read: keep implementation concentrated in rates, NCD, and high-grade credit."
-        : "Fallback read: stay balanced across rates, NCD, and high-grade credit until conviction improves.",
+        ? "兜底判断：执行集中在利率、同业存单和高等级信用。"
+        : "兜底判断：在信心提升前，利率、同业存单和高等级信用保持均衡。",
     affected_targets: ["rates", "ncd", "high_grade_credit"],
     evidence: topCorr
       ? [`${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()]
@@ -445,25 +474,25 @@ function fallbackAxis(axisKey: (typeof TRANSMISSION_AXIS_ORDER)[number]): MacroB
       axis_key: axisKey,
       status: "pending_signal",
       stance: "neutral",
-      summary: "Pending governed equity-bond spread proxy; do not infer from unrelated signals.",
+      summary: "治理后的股债利差代理待接入，不从无关信号推断。",
       impacted_views: ["duration", "credit"],
       required_series_ids: ["CA.CSI300"],
-      warnings: ["missing governed proxy series"],
+      warnings: ["缺少治理后的代理序列"],
     };
   }
   return {
     axis_key: axisKey,
     status: "pending_signal",
     stance: "neutral",
-    summary: "Pending governed mega-cap leadership proxy; keep this axis visible but unresolved.",
+    summary: "治理后的大市值引领代理待接入，本主线保留展示但暂不下结论。",
     impacted_views: ["duration", "instrument"],
     required_series_ids: ["CA.MEGA_CAP_LEADERSHIP"],
-    warnings: ["missing governed proxy series"],
+    warnings: ["缺少治理后的代理序列"],
   };
 }
 
 const HEURISTIC_AXIS_WARNING =
-  "Heuristic read from environment scores only; not a governed transmission-axis signal.";
+  "仅来自环境评分的启发式判断，不是治理后的传导主线信号。";
 
 function buildFallbackTransmissionAxes(input: {
   env: Partial<MacroBondLinkageEnvironmentScore>;
@@ -479,10 +508,10 @@ function buildFallbackTransmissionAxes(input: {
       stance: rate > 0.15 ? "restrictive" : rate < -0.15 ? "supportive" : "neutral",
       summary:
         rate > 0.15
-          ? `Fallback read: global rates are a constraint on aggressive duration (${formatScore(rate)}).`
+          ? `兜底判断：全球利率对激进久期形成约束 (${formatScore(rate)})。`
           : rate < -0.15
-            ? `Fallback read: softer global rates reduce long-end pressure (${formatScore(rate)}).`
-            : "Fallback read: global-rate pressure is balanced.",
+            ? `兜底判断：全球利率趋软，减轻长端压力 (${formatScore(rate)})。`
+            : "兜底判断：全球利率压力偏均衡。",
       impacted_views: ["duration", "curve"],
       required_series_ids: [],
       warnings: [HEURISTIC_AXIS_WARNING],
@@ -493,10 +522,10 @@ function buildFallbackTransmissionAxes(input: {
       stance: liq > 0.15 ? "supportive" : liq < -0.15 ? "restrictive" : "neutral",
       summary:
         liq > 0.15
-          ? `Fallback read: funding conditions remain supportive (${formatScore(liq)}).`
+          ? `兜底判断：资金条件仍偏有利 (${formatScore(liq)})。`
           : liq < -0.15
-            ? `Fallback read: tighter liquidity is a headwind (${formatScore(liq)}).`
-            : "Fallback read: liquidity is not sending a strong signal.",
+            ? `兜底判断：流动性收紧形成逆风 (${formatScore(liq)})。`
+            : "兜底判断：流动性没有给出强信号。",
       impacted_views: ["duration", "curve", "instrument"],
       required_series_ids: [],
       warnings: [HEURISTIC_AXIS_WARNING],
@@ -508,10 +537,10 @@ function buildFallbackTransmissionAxes(input: {
       stance: inflation > 0.15 ? "restrictive" : inflation < -0.15 ? "supportive" : "neutral",
       summary:
         inflation > 0.15
-          ? `Fallback read: commodity-inflation pressure limits valuation expansion (${formatScore(inflation)}).`
+          ? `兜底判断：商品与通胀压力限制估值扩张 (${formatScore(inflation)})。`
           : inflation < -0.15
-            ? `Fallback read: softer inflation helps duration and high-grade carry.`
-            : "Fallback read: commodities and inflation are not dominant today.",
+            ? `兜底判断：通胀趋软，有利于久期和高等级票息。`
+            : "兜底判断：商品与通胀今天不是主导因素。",
       impacted_views: ["duration", "credit", "instrument"],
       required_series_ids: [],
       warnings: [HEURISTIC_AXIS_WARNING],
@@ -578,7 +607,7 @@ function explanationFromKpi(kpi: ResolvedCrossAssetKpi | undefined, pending: str
   if (!kpi) {
     return pending;
   }
-  return `${kpi.label} is ${kpi.valueLabel}, latest move ${kpi.changeLabel}.`;
+  return `${kpi.label} 当前为 ${kpi.valueLabel}，最新变化 ${kpi.changeLabel}。`;
 }
 
 function hasUsableKpi(kpi: ResolvedCrossAssetKpi | undefined): kpi is ResolvedCrossAssetKpi {
@@ -759,7 +788,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       sourceLabel: sourceLabelFromKpi(broadIndex, "需登记 Choice 接入码或 Tushare 指数输入"),
       explanation: explanationFromKpi(
         broadIndex,
-        "Pending governed broad-index input; do not turn this into stock-picking or sector rotation.",
+        "治理后的宽基指数输入待接入，不转成选股或行业轮动结论。",
       ),
     },
     {
@@ -777,18 +806,18 @@ export function buildCrossAssetClassAnalysisRows(input: {
               : "missing_dependency",
       direction: equityAxis?.stance ?? directionFromKpi(csi300Pe),
       dataLabel: combinedDataLabel(
-        [compactKpiData(csi300Pe), equityAxis?.status === "ready" ? "股债利差轴 ready" : null],
+        [compactKpiData(csi300Pe), equityAxis?.status === "ready" ? "股债利差轴已就绪" : null],
         "等待 CA.CSI300_PE / 股债利差轴",
       ),
       sourceLabel: [
         combinedSourceLabel([csi300Pe], "需登记 Tushare index_dailybasic"),
-        equityAxis?.status === "ready" ? `双源轴(${equityAxis.source}): ${equityAxis.requiredSeriesIds.join(", ")}` : null,
+        equityAxis?.status === "ready" ? `双源轴(${normalizeLabel(equityAxis.source)}): ${equityAxis.requiredSeriesIds.join(", ")}` : null,
       ]
         .filter(Boolean)
         .join("；"),
       explanation:
         equityAxis?.summary ??
-        explanationFromKpi(csi300Pe, "Pending governed CSI300 valuation and equity-bond spread input."),
+        explanationFromKpi(csi300Pe, "治理后的沪深300估值与股债利差输入待接入。"),
     },
     {
       key: "mega_cap_weight",
@@ -810,13 +839,13 @@ export function buildCrossAssetClassAnalysisRows(input: {
       ),
       sourceLabel: [
         combinedSourceLabel([megaCapTop10, megaCapTop5], "需登记 Choice 大市值权重码 / Tushare index_weight"),
-        megaCapAxis?.status === "ready" ? `双源轴(${megaCapAxis.source}): ${megaCapAxis.requiredSeriesIds.join(", ")}` : null,
+        megaCapAxis?.status === "ready" ? `双源轴(${normalizeLabel(megaCapAxis.source)}): ${megaCapAxis.requiredSeriesIds.join(", ")}` : null,
       ]
         .filter(Boolean)
         .join("；"),
       explanation:
         megaCapAxis?.summary ??
-        explanationFromKpi(megaCapTop10, "Pending governed mega-cap leadership proxy; keep the large-cap-weight channel unresolved."),
+        explanationFromKpi(megaCapTop10, "治理后的大市值引领代理待接入，大盘权重通道暂不下结论。"),
     },
   ];
   const commodityLines: CrossAssetClassAnalysisLine[] = [
@@ -828,7 +857,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: directionFromKpi(energy),
       dataLabel: dataLabelFromKpi(energy, "等待 CA.BRENT"),
       sourceLabel: sourceLabelFromKpi(energy, "需登记能源 Choice 接入码或公共补充源"),
-      explanation: explanationFromKpi(energy, "Pending governed energy-chain input."),
+      explanation: explanationFromKpi(energy, "治理后的能源链输入待接入。"),
     },
     {
       key: "ferrous",
@@ -838,22 +867,22 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: directionFromKpi(ferrous),
       dataLabel: dataLabelFromKpi(ferrous, "等待 CA.STEEL"),
       sourceLabel: sourceLabelFromKpi(ferrous, "需登记黑色系 Choice 接入码或公共补充源"),
-      explanation: explanationFromKpi(ferrous, "Pending governed ferrous-chain input."),
+      explanation: explanationFromKpi(ferrous, "治理后的黑色链输入待接入。"),
     },
     {
       key: "nonferrous",
       label: "有色",
       status: "pending_signal",
       stateLabel: "missing_dependency",
-      direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "pending",
+      direction: commodityAxis?.status === "ready" ? commodityAxis.stance : "待接入",
       dataLabel: "需补齐铜/铝 Choice 接入码或公共补充治理输入",
       sourceLabel: commodityAxis?.requiredSeriesIds.length
-        ? `${commodityAxis.source}: ${commodityAxis.requiredSeriesIds.join(", ")}`
-        : "missing",
+        ? `${normalizeLabel(commodityAxis.source)}: ${commodityAxis.requiredSeriesIds.join(", ")}`
+        : "缺失",
       explanation:
         commodityAxis?.status === "ready"
           ? commodityAxis.summary
-          : "Pending governed non-ferrous input; do not proxy copper/aluminum with oil or steel.",
+          : "治理后的有色输入待接入，不用原油或钢材代理铜铝。",
     },
   ];
   const optionLines: CrossAssetClassAnalysisLine[] = [
@@ -862,30 +891,30 @@ export function buildCrossAssetClassAnalysisRows(input: {
       label: "权益期权",
       status: "pending_signal",
       stateLabel: "pending_definition",
-      direction: "pending",
-      dataLabel: "需登记 IV / skew / put-call Choice 接入码或期权治理源",
-      sourceLabel: "missing",
-      explanation: "No governed equity-options input for volatility, skew, or put-call pressure.",
+      direction: "待接入",
+      dataLabel: "需登记隐含波动率、偏度、看跌看涨比 Choice 接入码或期权治理源",
+      sourceLabel: "缺失",
+      explanation: "治理后的权益期权输入尚不可用，无法判断波动率、偏度或看跌看涨压力。",
     },
     {
       key: "commodity_options",
       label: "商品期权",
       status: "pending_signal",
       stateLabel: "pending_definition",
-      direction: "pending",
-      dataLabel: "需登记商品期权 IV / skew / tail-risk Choice 接入码或期权治理源",
-      sourceLabel: "missing",
-      explanation: "No governed commodity-options input for tail risk or supply-shock pricing.",
+      direction: "待接入",
+      dataLabel: "需登记商品期权隐含波动率、偏度、尾部风险 Choice 接入码或期权治理源",
+      sourceLabel: "缺失",
+      explanation: "治理后的商品期权输入尚不可用，无法判断尾部风险或供给冲击定价。",
     },
     {
       key: "rates_bond_options",
       label: "利率/债券期权",
       status: "pending_signal",
       stateLabel: "pending_definition",
-      direction: "pending",
-      dataLabel: "需登记 rates vol / curve vol Choice 接入码或利率期权治理源",
-      sourceLabel: "missing",
-      explanation: "No governed rates or bond-options input for duration volatility or curve risk.",
+      direction: "待接入",
+      dataLabel: "需登记利率波动率、曲线波动率 Choice 接入码或利率期权治理源",
+      sourceLabel: "缺失",
+      explanation: "当前没有治理后的利率或债券期权输入可用于久期波动和曲线风险。",
     },
   ];
   const stockReady = stockLines.some((line) => line.status === "ready") || equityAxis?.status === "ready";
@@ -900,7 +929,7 @@ export function buildCrossAssetClassAnalysisRows(input: {
       explanation:
         equityAxis?.summary ??
         megaCapAxis?.summary ??
-        "Pending governed equity analysis; keep equity evidence separate from bond conclusions until the proxy is confirmed.",
+        "治理后的股票分析待接入；代理确认前，股票证据与债券结论保持分离。",
       lines: stockLines,
     },
     {
@@ -910,16 +939,16 @@ export function buildCrossAssetClassAnalysisRows(input: {
       direction: commodityAxis?.stance ?? commodityLines.find((line) => line.status === "ready")?.direction ?? "pending",
       explanation:
         commodityAxis?.summary ??
-        "Pending governed commodity chain read; use only visible Brent / steel evidence and avoid adding unsupported inflation pressure.",
+        "治理后的商品链条判断待接入；只使用已展示的布伦特和钢材证据，不追加无支持的通胀压力判断。",
       lines: commodityLines,
     },
     {
       key: "options",
       label: "期权分析",
       status: "pending_signal",
-      direction: "definition pending",
+      direction: "定义待确认",
       explanation:
-        "Options analysis definition pending: no governed volatility, skew, or put-call input is available in the current cross-asset chain.",
+        "期权分析定义待确认：当前跨资产链条尚无治理后的波动率、偏度或看跌看涨比输入。",
       lines: optionLines,
     },
   ];
@@ -1022,72 +1051,72 @@ export function buildCrossAssetStatusFlags(input: {
     const modules = loadingFailures.join(", ");
     flags.push({
       id: "loading-failure",
-      label: `loading failure · ${modules}`,
+      label: `加载失败 · ${modules}`,
       tone: "danger",
-      detail: `Failed to load ${modules}; do not treat fallback cards as a complete cross-asset read.`,
+      detail: `${modules} 加载失败；不要把兜底卡片当作完整跨资产判断。`,
     });
   }
 
   if (input.latestMeta && !input.latestMeta.formal_use_allowed) {
     flags.push({
       id: "analytical-only",
-      label: "analytical only",
+      label: "仅分析口径",
       tone: "warning",
-      detail: "This page reads the analytical chain and does not replace formal execution output.",
+      detail: "本页读取分析链路，不替代正式执行输出。",
     });
   }
 
   if (hasStaleMeta(input.latestMeta) || hasStaleMeta(input.linkageMeta)) {
     flags.push({
       id: "stale",
-      label: "stale",
+      label: "可能陈旧",
       tone: "warning",
-      detail: "Result metadata is stale or vendor-stale; confirm dates before using the readout.",
+      detail: "结果元数据或供应商状态显示可能陈旧；使用前请确认日期。",
     });
   }
 
   if (hasBlockedMeta(input.latestMeta) || hasBlockedMeta(input.linkageMeta)) {
     flags.push({
       id: "source-blocked",
-      label: "source_blocked",
+      label: "来源受限",
       tone: "danger",
-      detail: "One vendor source is unavailable or permission-blocked; use retained rows and public supplements with explicit caution.",
+      detail: "存在供应商来源不可用或权限受限；使用保留行和公共补充源时需显式谨慎。",
     });
   }
 
   if (hasFallbackMeta(input.latestMeta) || hasFallbackMeta(input.linkageMeta) || hasFallbackSeries(input.latestSeries)) {
     flags.push({
       id: "fallback",
-      label: "fallback",
+      label: "降级快照",
       tone: "caution",
-      detail: "Fallback snapshots are present, so conclusions should be used with reduced confidence.",
+      detail: "当前包含降级快照，结论置信度需要下调。",
     });
   }
 
   if (hasChoiceSeries(input.latestSeries) && hasPublicSupplementSeries(input.latestSeries)) {
     flags.push({
       id: "dual-source",
-      label: "dual source ready",
+      label: "双源就绪",
       tone: "normal",
-      detail: "Choice rows and Tushare/public supplement rows are both present in the governed cross-asset chain.",
+      detail: "Choice 行与 Tushare/公共补充行都已进入治理后的跨资产链路。",
     });
   }
 
   if (hasPublicSupplementSeries(input.latestSeries) && !hasChoiceSeries(input.latestSeries)) {
     flags.push({
       id: "choice-source-missing",
-      label: "choice source missing",
+      label: "Choice 来源缺失",
       tone: "caution",
-      detail: "Public/Tushare supplements are available, but no Choice-coded row is present for this snapshot.",
+      detail: "公共/Tushare 补充源可用，但当前快照没有 Choice 编码行。",
     });
   }
 
   if (input.latestSeries.length === 0 || (!input.crossAssetDataDate && !input.linkageReportDate)) {
     flags.push({
       id: "no-data",
-      label: "no data",
+      label: "暂无数据",
       tone: "danger",
-      detail: "There is not enough governed data yet to form a cross-asset read.",
+      detail: "治理后数据不足，尚不能形成跨资产判断。",
     });
   }
 
@@ -1153,7 +1182,7 @@ export function buildCrossAssetCandidateActions(input: {
     rows.push({
       tone: "warning",
       action: "将 NCD/资金仅视为代理旁证。",
-      reason: warnings.length > 0 ? warnings.join(" ") : "Not an actual NCD issuance matrix.",
+      reason: warnings.length > 0 ? warnings.join(" ") : "不是实际同业存单发行矩阵。",
       evidence: ncd.proxy_label,
     });
   }
@@ -1169,41 +1198,41 @@ export function buildCrossAssetCandidateActions(input: {
   if (durationCard) {
     rows.push({
       tone: stanceTone(durationCard.stance),
-      action: "Anchor the first trade discussion on duration.",
-      reason: `duration view: ${durationCard.summary}`,
+      action: "第一轮交易讨论先锚定久期。",
+      reason: `久期判断：${durationCard.summary}`,
       evidence:
         durationCard.evidence[0] ??
-        `${globalRatesAxis?.axisKey ?? firstAxis?.axisKey ?? "liquidity"} | ${globalRatesAxis?.summary ?? firstAxis?.summary ?? "no axis detail"}`,
+        `${globalRatesAxis?.label ?? firstAxis?.label ?? "流动性"} | ${globalRatesAxis?.summary ?? firstAxis?.summary ?? "暂无主线明细"}`,
     });
   }
 
   if (instrumentCard) {
     rows.push({
       tone: stanceTone(instrumentCard.stance),
-      action: "Keep instrument preference inside rates, NCD, and high-grade credit.",
-      reason: `instrument view: ${instrumentCard.summary}`,
+      action: "品种偏好限定在利率、同业存单和高等级信用内。",
+      reason: `品种判断：${instrumentCard.summary}`,
       evidence:
         instrumentCard.evidence[0] ??
         (instrumentCard.affectedTargets.length > 0
-          ? `targets ${instrumentCard.affectedTargets.join(", ")}`
-          : "instrument targets pending"),
+          ? `影响对象 ${formatImpactedViewsForDisplay(instrumentCard.affectedTargets)}`
+          : "品种影响对象待确认"),
     });
   }
 
   if (globalRatesAxis) {
     rows.push({
       tone: stanceTone(globalRatesAxis.stance),
-      action: "Use the global-rates axis as the risk cap for long-end positioning.",
-      reason: `global_rates axis: ${globalRatesAxis.summary}`,
-      evidence: `${globalRatesAxis.axisKey} | ${globalRatesAxis.stance}`,
+      action: "用全球利率主线约束长端仓位风险上限。",
+      reason: `全球利率主线：${globalRatesAxis.summary}`,
+      evidence: `${globalRatesAxis.label} | ${globalRatesAxis.stanceLabel}`,
     });
   }
 
   if (pendingAxis) {
     rows.push({
       tone: "warning",
-      action: `Keep ${pendingAxis.label} visible as pending.`,
-      reason: `${pendingAxis.label} is still waiting for a governed signal and should not be fabricated.`,
+      action: `${pendingAxis.label} 保留为待确认。`,
+      reason: `${pendingAxis.label} 仍在等待治理后信号，不能补造结论。`,
       evidence: pendingAxis.warnings[0] ?? pendingAxis.summary,
     });
   }
@@ -1211,19 +1240,19 @@ export function buildCrossAssetCandidateActions(input: {
   if (rows.length === 0) {
     rows.push({
       tone: topCorr?.direction === "positive" ? "bull" : "warning",
-      action: "Hold off on a candidate action.",
-      reason: "There is not enough aligned research-view evidence yet.",
+      action: "暂缓候选动作。",
+      reason: "当前对齐的研究判断证据不足。",
       evidence: topCorr
         ? `${topCorr.series_name} -> ${topCorr.target_family} ${topCorr.target_tenor ?? ""}`.trim()
-        : "environment score and top correlations remain weak",
+        : "环境评分与头部相关性仍偏弱",
     });
   }
 
   if (input.linkageWarnings.length > 0) {
     rows.push({
       tone: "warning",
-      action: "Check provenance before escalation.",
-      reason: "Analytical warnings still need to be read alongside the investment-research output.",
+      action: "升级前先检查来源链路。",
+      reason: "分析预警仍需与投资研究输出一起阅读。",
       evidence: input.linkageWarnings[0],
     });
   }
@@ -1246,11 +1275,11 @@ export function buildCrossAssetEventItems(input: {
   }
 
   const warningRows = (input.linkageWarnings ?? []).map((warning, index) => ({
-    date: input.reportDate ? input.reportDate.slice(5) : "n/a",
+    date: input.reportDate ? input.reportDate.slice(5) : "暂无",
     event: warning,
-    amount: "linkage warning",
+    amount: "联动预警",
     level: "high" as const,
-    note: `warning ${index + 1}`,
+    note: `预警 ${index + 1}`,
   }));
 
   const newsRows = (input.newsEvents ?? [])
@@ -1298,17 +1327,17 @@ export function buildCrossAssetWatchList(input: {
       const axisRow = readyAxes[index % Math.max(readyAxes.length, 1)];
       const correlationNote =
         topCorr && index === 0
-          ? `corr ${topCorr.target_family}${topCorr.target_tenor ? ` ${topCorr.target_tenor}` : ""}`
+          ? `相关 ${topCorr.target_family}${topCorr.target_tenor ? ` ${topCorr.target_tenor}` : ""}`
           : "";
       return {
         name: kpi.label,
         current: kpi.valueLabel,
         note: researchCard
-          ? `${kpi.tag} · ${researchCard.key}: ${researchCard.summary}`
+          ? `${kpi.tag} · ${researchCard.label}: ${researchCard.summary}`
           : `${kpi.tag} · ${kpi.changeLabel}`,
         signal: signalFromTone(kpi.changeTone),
         signalText: warningText && index === 0
-          ? `Check provenance first. ${axisRow ? `${axisRow.label}: ${axisRow.summary}` : ""}`.trim()
+          ? `先检查来源链路。${axisRow ? `${axisRow.label}: ${axisRow.summary}` : ""}`.trim()
           : [signalTextFromTone(kpi.changeTone), axisRow ? `${axisRow.label}: ${axisRow.summary}` : "", correlationNote]
               .filter(Boolean)
               .join(" · "),

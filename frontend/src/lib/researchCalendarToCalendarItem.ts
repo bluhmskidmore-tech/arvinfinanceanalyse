@@ -19,7 +19,7 @@ export function researchCalendarEventHubKind(
 export function mapResearchCalendarEventToCalendarItem(event: ResearchCalendarEvent): CalendarItem {
   const raw = event.date.trim();
   const date =
-    raw.length === 0 ? "n/a" : raw.length >= 10 ? raw.slice(5, 10) : raw;
+    raw.length === 0 ? "暂无" : raw.length >= 10 ? raw.slice(5, 10) : raw;
   return {
     date,
     event: event.title,

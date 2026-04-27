@@ -104,10 +104,10 @@ describe("crossAssetDriversPageModel", () => {
     );
     const stale = flags.find((f) => f.id === "stale");
     const fallback = flags.find((f) => f.id === "fallback");
-    expect(stale?.label).toBe("stale");
+    expect(stale?.label).toBe("可能陈旧");
     expect(stale?.tone).toBe("warning");
-    expect(fallback?.label).toBe("fallback");
-    expect(fallback?.detail).toContain("Fallback");
+    expect(fallback?.label).toBe("降级快照");
+    expect(fallback?.detail).toContain("降级快照");
   });
 
   it("marks the cross-asset chain as dual-source when Choice and Tushare supplements coexist", () => {
@@ -121,7 +121,7 @@ describe("crossAssetDriversPageModel", () => {
       linkageReportDate: "2026-04-24",
     });
 
-    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("dual source ready");
+    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
   });
 
   it("keeps source_blocked visible when Choice is unavailable but retained Choice rows still exist", () => {
@@ -135,8 +135,8 @@ describe("crossAssetDriversPageModel", () => {
       linkageReportDate: "2026-04-24",
     });
 
-    expect(flags.find((flag) => flag.id === "source-blocked")?.label).toBe("source_blocked");
-    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("dual source ready");
+    expect(flags.find((flag) => flag.id === "source-blocked")?.label).toBe("来源受限");
+    expect(flags.find((flag) => flag.id === "dual-source")?.label).toBe("双源就绪");
   });
 
   it("puts failed module ids on the loading-failure flag label for header-only pill visibility", () => {
@@ -148,7 +148,7 @@ describe("crossAssetDriversPageModel", () => {
     });
     const loadFail = flags.find((f) => f.id === "loading-failure");
     expect(loadFail?.label).toBe(
-      "loading failure · choice_macro.latest, macro_bond_linkage.analysis",
+      "加载失败 · choice_macro.latest, macro_bond_linkage.analysis",
     );
     expect(loadFail?.label).toContain("choice_macro.latest");
   });
@@ -179,7 +179,7 @@ describe("crossAssetDriversPageModel", () => {
     });
 
     expect(rows).not.toHaveLength(0);
-    expect(rows[0].evidence).toContain("liquidity_score");
+    expect(rows[0].evidence).toContain("流动性评分");
     expect(rows.some((row) => row.evidence.includes("credit_spread"))).toBe(true);
   });
 
@@ -243,7 +243,7 @@ describe("crossAssetDriversPageModel", () => {
     const instrument = rows.find((r) => r.key === "instrument");
     expect(instrument?.source).toBe("fallback");
     expect(instrument?.status).toBe("pending_signal");
-    expect(instrument?.summary).toContain("Fallback read");
+    expect(instrument?.summary).toContain("兜底判断");
   });
 
   it("surfaces governed transmission axes and pending-signal placeholders in page order", () => {
@@ -276,9 +276,9 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[0].status).toBe("ready");
     expect(rows[1].source).toBe("fallback");
     expect(rows[1].status).toBe("pending_signal");
-    expect(rows[1].warnings.some((w) => w.includes("Heuristic"))).toBe(true);
+    expect(rows[1].warnings.some((w) => w.includes("启发式"))).toBe(true);
     expect(rows[2].status).toBe("pending_signal");
-    expect(rows[2].warnings.some((w) => w.toLowerCase().includes("governed"))).toBe(true);
+    expect(rows[2].warnings.some((w) => w.includes("治理"))).toBe(true);
     expect(rows[3].status).toBe("pending_signal");
     expect(rows[4].status).toBe("pending_signal");
   });
@@ -355,7 +355,7 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[0].lines[0].sourceLabel).toContain("Choice");
     expect(rows[0].lines[0].sourceLabel).toContain("EMM01843735");
     expect(rows[0].lines[1].dataLabel).toContain("14.58");
-    expect(rows[0].lines[1].dataLabel).toContain("股债利差轴 ready");
+    expect(rows[0].lines[1].dataLabel).toContain("股债利差轴已就绪");
     expect(rows[0].lines[2].dataLabel).toContain("23.54%");
     expect(rows[0].lines[2].dataLabel).toContain("15.53%");
     expect(rows[0].lines[2].sourceLabel).toContain("Tushare: CA.MEGA_CAP_WEIGHT");
@@ -379,7 +379,7 @@ describe("crossAssetDriversPageModel", () => {
     expect(rows[2].lines.every((line) => line.stateLabel === "pending_definition")).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("Choice"))).toBe(true);
     expect(rows[2].lines.every((line) => line.dataLabel.includes("治理源"))).toBe(true);
-    expect(rows[2].lines[0].explanation).toContain("No governed equity-options input");
+    expect(rows[2].lines[0].explanation).toContain("治理后的权益期权输入尚不可用");
   });
 
   it("builds stock index and mega-cap evidence items with unit, date, and source trace", () => {
@@ -742,8 +742,8 @@ describe("crossAssetDriversPageModel", () => {
     });
 
     expect(actions[0].reason.toLowerCase()).toContain("duration");
-    expect(actions.some((row) => row.evidence.includes("global_rates"))).toBe(true);
-    expect(watchRows[0].note).toContain("duration");
+    expect(actions.some((row) => row.evidence.includes("全球利率"))).toBe(true);
+    expect(watchRows[0].note).toContain("久期判断");
     expect(watchRows[0].signalText).toContain("全球利率");
   });
 });

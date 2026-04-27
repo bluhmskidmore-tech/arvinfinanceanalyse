@@ -44,7 +44,7 @@ describe("CrossAssetPage", () => {
 
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("dual source ready");
+      expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("双源就绪");
     });
 
     const evidence = await screen.findByTestId("cross-asset-equity-evidence");
@@ -223,10 +223,10 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("\u5f85\u63a5\u5165\u6e05\u5355");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Choice");
     expect(screen.getByTestId("cross-asset-asset-class-analysis")).toHaveTextContent("Tushare");
-    expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("source_blocked");
+    expect(screen.getByTestId("cross-asset-status-flags")).toHaveTextContent("来源受限");
     const stockBroadIndex = screen.getByTestId("cross-asset-asset-analysis-stock-broad_index");
     expect(stockBroadIndex).toBeInTheDocument();
-    expect(stockBroadIndex).toHaveTextContent("source_blocked");
+    expect(stockBroadIndex).toHaveTextContent("来源受限");
     expect(stockBroadIndex).not.toHaveTextContent("EMM01843735");
     expect(stockBroadIndex.querySelector(".cross-asset-class-analysis__line-source")?.getAttribute("title")).toContain(
       "EMM01843735",
@@ -243,8 +243,8 @@ describe("CrossAssetPage", () => {
     expect(equityEvidence).toHaveTextContent("index");
     expect(equityEvidence).toHaveTextContent("x");
     expect(equityEvidence).toHaveTextContent("%");
-    expect(screen.getByTestId("cross-asset-equity-evidence-broad_index")).toHaveTextContent("source_blocked");
-    expect(screen.getByTestId("cross-asset-equity-evidence-csi300_pe")).toHaveTextContent("fallback");
+    expect(screen.getByTestId("cross-asset-equity-evidence-broad_index")).toHaveTextContent("来源受限");
+    expect(screen.getByTestId("cross-asset-equity-evidence-csi300_pe")).toHaveTextContent("降级");
     const commoditiesEnergy = screen.getByTestId("cross-asset-asset-analysis-commodities-energy");
     expect(commoditiesEnergy).toBeInTheDocument();
     expect(commoditiesEnergy).not.toHaveTextContent("CA.BRENT");
@@ -289,8 +289,8 @@ describe("CrossAssetPage", () => {
     expect(screen.getByTestId("cross-asset-watch-list")).toBeInTheDocument();
     expect(screen.getByTestId("cross-asset-page-output")).toBeInTheDocument();
     expect(await screen.findByText("国债供给窗口")).toBeInTheDocument();
-    expect(screen.getByTestId("cross-asset-event-calendar")).not.toHaveTextContent("analytical only");
-    expect((await screen.findAllByText("analytical only")).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("cross-asset-event-calendar")).not.toHaveTextContent("仅分析口径");
+    expect((await screen.findAllByText("仅分析口径")).length).toBeGreaterThan(0);
   });
 
   it("surfaces a first-screen loading failure when the latest macro chain fails", async () => {
@@ -305,7 +305,7 @@ describe("CrossAssetPage", () => {
 
     expect(await screen.findByTestId("cross-asset-drivers-page")).toBeInTheDocument();
     const firstScreenFlags = await screen.findByTestId("cross-asset-status-flags");
-    expect(firstScreenFlags).toHaveTextContent("loading failure");
+    expect(firstScreenFlags).toHaveTextContent("加载失败");
     expect(firstScreenFlags).toHaveTextContent("choice_macro.latest");
   });
 });

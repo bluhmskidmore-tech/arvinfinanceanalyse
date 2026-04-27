@@ -155,8 +155,8 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
             <div style={{ display: "flex", justifyContent: "space-between", gap: t.space[2], alignItems: "center" }}>
               <div style={{ fontSize: t.fontSize[14], fontWeight: 700, color: t.color.neutral[900] }}>{row.label}</div>
               <div style={{ display: "flex", gap: t.space[2], flexWrap: "wrap", justifyContent: "flex-end" }}>
-                <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={row.status === "ready" ? "ready" : "pending"} />
-                <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={row.source} />
+                <StatusPill status={row.status === "ready" ? "normal" : "caution"} label={researchStatusLabel(row.status)} />
+                <StatusPill status={row.source === "backend" ? "normal" : "warning"} label={researchSourceLabel(row.source)} />
               </div>
             </div>
             <div style={{ display: "flex", gap: t.space[2], flexWrap: "wrap" }}>
@@ -167,7 +167,7 @@ function ResearchViewsPanel({ rows }: { rows: CrossAssetResearchViewCard[] }) {
               {row.summary}
             </p>
             <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[500], lineHeight: t.lineHeight.relaxed }}>
-              影响对象：{row.affectedTargets.length > 0 ? row.affectedTargets.join(", ") : "待映射"}
+              影响对象：{row.affectedTargets.length > 0 ? formatImpactedViewsForDisplay(row.affectedTargets) : "待映射"}
             </div>
             {row.evidence.length > 0 ? (
               <div style={{ fontSize: t.fontSize[12], color: t.color.neutral[600], lineHeight: t.lineHeight.relaxed }}>
@@ -394,7 +394,7 @@ function AssetClassAnalysisPanel({
                         <span>{item.label}</span>
                         <strong>{item.valueLabel}</strong>
                         <small>
-                          {item.status} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} ·{" "}
+                          {evidenceStatusLabel(item.status)} · {item.changeLabel} · {item.unitLabel} · {item.tradeDate ?? "—"} ·{" "}
                           {item.sourceLabel}
                         </small>
                       </div>
@@ -463,7 +463,7 @@ const UI = {
   readyJudgment: "\u5df2\u5f62\u6210\u5224\u65ad",
   pendingList: "\u5f85\u63a5\u5165\u6e05\u5355",
   pendingNote:
-    "\u671f\u6743\u3001\u6ce2\u52a8\u7387\u548c\u90e8\u5206\u5546\u54c1\u94fe\u6761\u4ecd\u6309 pending-confirmation \u5904\u7406\uff1b\u7f3a\u53e3\u4f18\u5148\u8865 Choice \u63a5\u5165\u7801\uff0c\u4e5f\u53ef\u63a5 Tushare/\u516c\u5171\u8865\u5145\u6cbb\u7406\u6e90\uff0c\u4e0d\u7528\u76f8\u90bb\u8d44\u4ea7\u66ff\u4ee3\u3002",
+    "\u671f\u6743\u3001\u6ce2\u52a8\u7387\u548c\u90e8\u5206\u5546\u54c1\u94fe\u6761\u4ecd\u6309\u5f85\u786e\u8ba4\u5904\u7406\uff1b\u7f3a\u53e3\u4f18\u5148\u8865 Choice \u63a5\u5165\u7801\uff0c\u4e5f\u53ef\u63a5 Tushare/\u516c\u5171\u8865\u5145\u6cbb\u7406\u6e90\uff0c\u4e0d\u7528\u76f8\u90bb\u8d44\u4ea7\u66ff\u4ee3\u3002",
   stock: "\u80a1\u7968",
   commodity: "\u5546\u54c1",
   options: "\u671f\u6743",
@@ -483,7 +483,33 @@ function analysisStatusLabel(status: CrossAssetClassAnalysisRow["status"]) {
 }
 
 function lineStatusLabel(stateLabel: CrossAssetClassAnalysisLine["stateLabel"]) {
-  return stateLabel;
+  const labels: Record<CrossAssetClassAnalysisLine["stateLabel"], string> = {
+    ready: "已就绪",
+    stale: "可能陈旧",
+    source_blocked: "来源受限",
+    missing_dependency: "缺少依赖",
+    pending_definition: "定义待确认",
+  };
+  return labels[stateLabel];
+}
+
+function researchStatusLabel(status: CrossAssetResearchViewCard["status"]) {
+  return status === "ready" ? "已就绪" : "待信号";
+}
+
+function researchSourceLabel(source: CrossAssetResearchViewCard["source"]) {
+  return source === "backend" ? "后端" : "兜底";
+}
+
+function evidenceStatusLabel(status: CrossAssetEquityEvidenceItem["status"]) {
+  const labels: Record<CrossAssetEquityEvidenceItem["status"], string> = {
+    ready: "已就绪",
+    stale: "可能陈旧",
+    fallback: "降级",
+    source_blocked: "来源受限",
+    missing_dependency: "缺少依赖",
+  };
+  return labels[status];
 }
 
 function assetDirectionLabel(direction: string) {
