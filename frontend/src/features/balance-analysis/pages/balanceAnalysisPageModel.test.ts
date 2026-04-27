@@ -276,6 +276,14 @@ describe("balanceAnalysisPageModel", () => {
             impact_hint: "liability book / repo",
             source_section: "maturity_gap",
           },
+          {
+            event_date: "2026-03-08",
+            event_type: "asset_maturity",
+            title: "asset-1 maturity",
+            source: "internal_governed_schedule",
+            impact_hint: "asset book / interbank",
+            source_section: "maturity_gap",
+          },
         ],
       });
 
@@ -322,6 +330,12 @@ describe("balanceAnalysisPageModel", () => {
         event: "repo-1 maturity",
         amount: "maturity_gap",
         level: "high",
+      });
+      expect(model.bottom.calendarItems[1]).toMatchObject({
+        date: "2026-03-08",
+        event: "asset-1 maturity",
+        amount: "maturity_gap",
+        level: "medium",
       });
     });
 

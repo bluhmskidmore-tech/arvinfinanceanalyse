@@ -2031,7 +2031,7 @@ function buildMockBalanceAnalysisWorkbook(
           rows: [
             {
               event_date: "2026-01-31",
-              event_type: "资产到期",
+              event_type: "asset_maturity",
               title: "资产一到期",
               source: "内部治理日程",
               impact_hint: "资产账簿 / 拆放同业",
@@ -2039,7 +2039,7 @@ function buildMockBalanceAnalysisWorkbook(
             },
             {
               event_date: "2026-02-05",
-              event_type: "融资滚续",
+              event_type: "funding_rollover",
               title: "回购一到期",
               source: "内部治理日程",
               impact_hint: "负债账簿 / 卖出回购",
