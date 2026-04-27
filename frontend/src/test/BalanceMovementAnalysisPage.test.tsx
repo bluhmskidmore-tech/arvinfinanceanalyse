@@ -19,6 +19,7 @@ describe("BalanceMovementAnalysisPage", () => {
 
     const table = screen.getByTestId("balance-movement-analysis-table");
     expect(within(table).getByText("AC")).toBeInTheDocument();
+    expect(within(table).getByText("42.44%")).toBeInTheDocument();
     expect(within(table).getByText("OCI")).toBeInTheDocument();
     expect(within(table).getByText("TPL")).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-controls")).toHaveTextContent(

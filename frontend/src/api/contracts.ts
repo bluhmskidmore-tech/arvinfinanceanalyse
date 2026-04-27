@@ -1157,6 +1157,8 @@ export type BalanceMovementRow = {
   basis_bucket: BalanceMovementBucket;
   previous_balance: DecimalLike;
   current_balance: DecimalLike;
+  previous_balance_pct: DecimalLike | null;
+  current_balance_pct: DecimalLike | null;
   balance_change: DecimalLike;
   change_pct: DecimalLike | null;
   contribution_pct: DecimalLike | null;

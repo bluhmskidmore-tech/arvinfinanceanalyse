@@ -232,7 +232,9 @@ export default function BalanceMovementAnalysisPage() {
               <tr style={{ textAlign: "left", borderBottom: "1px solid #d7dfea" }}>
                 <th style={{ padding: "12px 8px" }}>分类</th>
                 <th style={tableCellStyle}>期初余额(亿)</th>
+                <th style={tableCellStyle}>期初占比</th>
                 <th style={tableCellStyle}>期末余额(亿)</th>
+                <th style={tableCellStyle}>期末占比</th>
                 <th style={tableCellStyle}>变动(亿)</th>
                 <th style={tableCellStyle}>变动率</th>
                 <th style={tableCellStyle}>变动贡献</th>
@@ -250,9 +252,11 @@ export default function BalanceMovementAnalysisPage() {
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.previous_balance)}
                   </td>
+                  <td style={tableCellStyle}>{formatPct(row.previous_balance_pct)}</td>
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.current_balance)}
                   </td>
+                  <td style={tableCellStyle}>{formatPct(row.current_balance_pct)}</td>
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.balance_change)}
                   </td>

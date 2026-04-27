@@ -16,6 +16,8 @@ class AccountingAssetMovementRowPayload(BaseModel):
     basis_bucket: Literal["AC", "OCI", "TPL"]
     previous_balance: Decimal
     current_balance: Decimal
+    previous_balance_pct: Decimal | None = None
+    current_balance_pct: Decimal | None = None
     balance_change: Decimal
     change_pct: Decimal | None
     contribution_pct: Decimal | None

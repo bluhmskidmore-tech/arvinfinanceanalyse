@@ -67,14 +67,15 @@ def accounting_asset_movement_envelope(
     currency_basis: str = "CNX",
 ) -> dict[str, object]:
     repo = AccountingAssetMovementRepository(duckdb_path)
-    rows = [
+    rows_without_pct = [
         AccountingAssetMovementRowPayload.model_validate(row)
         for row in repo.fetch_rows(report_date=report_date, currency_basis=currency_basis)
     ]
-    if not rows:
+    if not rows_without_pct:
         raise AccountingAssetMovementReadModelNotFoundError(
             f"No balance movement rows for report_date={report_date}, currency_basis={currency_basis}."
         )
+    rows = _with_balance_percentages(rows_without_pct)
 
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
@@ -134,6 +135,28 @@ def _build_summary(
         matched_bucket_count=sum(1 for row in rows if row.reconciliation_status == "matched"),
         bucket_count=len(rows),
     )
+
+
+def _with_balance_percentages(
+    rows: list[AccountingAssetMovementRowPayload],
+) -> list[AccountingAssetMovementRowPayload]:
+    previous_total = sum((row.previous_balance for row in rows), Decimal("0"))
+    current_total = sum((row.current_balance for row in rows), Decimal("0"))
+    return [
+        row.model_copy(
+            update={
+                "previous_balance_pct": _pct(row.previous_balance, previous_total),
+                "current_balance_pct": _pct(row.current_balance, current_total),
+            },
+        )
+        for row in rows
+    ]
+
+
+def _pct(numerator: Decimal, denominator: Decimal) -> Decimal | None:
+    if denominator == Decimal("0"):
+        return None
+    return numerator / denominator * Decimal("100")
 
 
 def _joined_latest(values: Iterable[object]) -> str:

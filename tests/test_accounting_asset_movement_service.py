@@ -36,6 +36,9 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert Decimal(result["summary"]["current_balance_total"]) == Decimal("415.00000000")
     by_bucket = {row["basis_bucket"]: row for row in result["rows"]}
     assert Decimal(by_bucket["AC"]["current_balance"]) == Decimal("225.00000000")
+    assert Decimal(by_bucket["AC"]["current_balance_pct"]).quantize(
+        Decimal("0.000001")
+    ) == Decimal("54.216867")
     assert Decimal(by_bucket["OCI"]["current_balance"]) == Decimal("80.00000000")
     assert Decimal(by_bucket["TPL"]["current_balance"]) == Decimal("110.00000000")
     assert result["summary"]["matched_bucket_count"] == 3
