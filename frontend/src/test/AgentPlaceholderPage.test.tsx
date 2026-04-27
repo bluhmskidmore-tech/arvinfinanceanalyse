@@ -26,18 +26,18 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     expect(
-      await screen.findByRole("heading", { name: "智能体工作台" }),
+      await screen.findByRole("heading", { name: "智能体对话" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("输入自然语言问题，智能体路由到已有分析服务返回结构化结果。"),
+      screen.getByText("像聊天一样提问；智能体只读取已有分析服务和证据，返回结论、依据、页面上下文和下一步建议。"),
     ).toBeInTheDocument();
     expect(
       screen.getByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+        "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "查询" }),
+      screen.getByRole("button", { name: "发送" }),
     ).toBeInTheDocument();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -73,11 +73,11 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+        "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
       ),
       "久期风险",
     );
-    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledTimes(1);
@@ -142,11 +142,11 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+        "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
       ),
       "组合概览",
     );
-    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(
       await screen.findByText(
@@ -177,7 +177,7 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     const input = await screen.findByPlaceholderText(
-      "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+      "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
     );
     await user.type(input, "组合概览{enter}");
 
@@ -210,11 +210,11 @@ describe("/agent route", () => {
 
     await user.type(
       await screen.findByPlaceholderText(
-        "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+        "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
       ),
       "组合概览",
     );
-    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(
       await screen.findByText("智能体返回结果格式无效。"),
@@ -254,16 +254,16 @@ describe("/agent route", () => {
     renderWorkbenchApp(["/agent"]);
 
     const input = await screen.findByPlaceholderText(
-      "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...",
+      "问一句业务问题，例如：今天损益为什么变动？当前久期风险在哪里？",
     );
 
     await user.type(input, "组合概览");
-    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
     expect(await screen.findByText("首个成功结果")).toBeInTheDocument();
 
     await user.clear(input);
     await user.type(input, "久期风险");
-    await user.click(screen.getByRole("button", { name: "查询" }));
+    await user.click(screen.getByRole("button", { name: "发送" }));
 
     expect(
       await screen.findByText(
