@@ -239,7 +239,10 @@ export default function BalanceMovementAnalysisPage() {
     [detailQuery.data?.result.rows],
   );
   const summary = detailQuery.data?.result.summary;
-  const trendMonths = detailQuery.data?.result.trend_months ?? [];
+  const trendMonths = useMemo(
+    () => detailQuery.data?.result.trend_months ?? [],
+    [detailQuery.data?.result.trend_months],
+  );
   const reportMatrixMonths = useMemo(() => [...trendMonths].reverse(), [trendMonths]);
   const currentTrendMonth = trendMonths[0];
   const previousTrendMonth = trendMonths[1];
