@@ -20,8 +20,12 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
+import AccountingBasisStackedShareChart, {
+  type AccountingBasisStackedSharePoint,
+} from "../../../components/charts/AccountingBasisStackedShareChart";
 import type {
   AdbAccountingBasisDailyAvgItem,
+  AdbAccountingBasisDailyAvgTrendItem,
   AdbCategoryItem,
   AdbMonthlyBreakdownItem,
   AdbMonthlyDataItem,
@@ -40,6 +44,16 @@ type RangeKey = "7d" | "30d" | "ytd" | "custom";
 type PageTab = "daily" | "monthly";
 type BreakdownKind = "asset" | "liability";
 type MonthlyBarRow = AdbMonthlyHorizontalChartRow;
+type AccountingBasisBucket = "AC" | "OCI" | "TPL";
+type MonthlyMatrixValueKind = "amount" | "pct";
+type MonthlyMatrixRow = {
+  rowKey: string;
+  label: string;
+  valueKind: MonthlyMatrixValueKind;
+  values: Record<string, number | null | undefined>;
+};
+
+const accountingBasisBuckets: AccountingBasisBucket[] = ["AC", "OCI", "TPL"];
 
 const pageHeaderStyle = {
   display: "flex",
@@ -56,6 +70,11 @@ const pageSubtitleStyle = {
   color: "#5c6b82",
   fontSize: 14,
   lineHeight: 1.7,
+} as const;
+
+const analysisBriefStyle = {
+  marginTop: 14,
+  maxWidth: 920,
 } as const;
 
 const modeBadgeStyle = {
@@ -186,6 +205,187 @@ function buildMonthlyRows(breakdown: AdbMonthlyBreakdownItem[]): MonthlyBarRow[]
     .sort((left, right) => right.avg_balance - left.avg_balance)
     .slice(0, 10)
     .map((row) => ({ category: row.category, avgYi: row.avg_balance / YI, weightedRate: row.weighted_rate ?? null }));
+}
+
+function sortMonthsAscending(months: AdbMonthlyDataItem[]): AdbMonthlyDataItem[] {
+  return months.slice().sort((left, right) => left.month.localeCompare(right.month));
+}
+
+function formatMatrixValue(
+  value: number | null | undefined,
+  valueKind: MonthlyMatrixValueKind,
+  signed = false,
+): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "—";
+  const sign = signed && value > 0 ? "+" : "";
+  if (valueKind === "pct") {
+    return `${sign}${value.toFixed(2)}${signed ? "pp" : "%"}`;
+  }
+  return `${sign}${(value / YI).toFixed(2)}`;
+}
+
+function getMatrixDelta(row: MonthlyMatrixRow, months: AdbMonthlyDataItem[], baseIndex: number) {
+  const latest = months[months.length - 1];
+  const base = months[baseIndex];
+  if (!latest || !base) return null;
+  const latestValue = row.values[latest.month];
+  const baseValue = row.values[base.month];
+  if (
+    latestValue === null ||
+    latestValue === undefined ||
+    baseValue === null ||
+    baseValue === undefined
+  ) {
+    return null;
+  }
+  return latestValue - baseValue;
+}
+
+function buildMonthlyMatrixColumns(
+  months: AdbMonthlyDataItem[],
+  firstColumnTitle: "分类" | "项目",
+): ColumnsType<MonthlyMatrixRow> {
+  return [
+    {
+      title: firstColumnTitle,
+      dataIndex: "label",
+      key: "label",
+      fixed: "left",
+      width: 180,
+    },
+    ...months.map((month) => ({
+      title: month.month_label,
+      key: month.month,
+      align: "right" as const,
+      width: 120,
+      render: (_: unknown, row: MonthlyMatrixRow) =>
+        formatMatrixValue(row.values[month.month], row.valueKind),
+    })),
+    {
+      title: "比上月",
+      key: "compare-previous",
+      align: "right" as const,
+      width: 110,
+      render: (_: unknown, row: MonthlyMatrixRow) =>
+        formatMatrixValue(getMatrixDelta(row, months, months.length - 2), row.valueKind, true),
+    },
+    {
+      title: "比年初",
+      key: "compare-year-start",
+      align: "right" as const,
+      width: 110,
+      render: (_: unknown, row: MonthlyMatrixRow) =>
+        formatMatrixValue(getMatrixDelta(row, months, 0), row.valueKind, true),
+    },
+  ];
+}
+
+function buildMonthlyCategoryMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMatrixRow[] {
+  const rows = new Map<string, MonthlyMatrixRow>();
+  const ensureRow = (rowKey: string, label: string) => {
+    const existing = rows.get(rowKey);
+    if (existing) return existing;
+    const row: MonthlyMatrixRow = { rowKey, label, valueKind: "amount", values: {} };
+    rows.set(rowKey, row);
+    return row;
+  };
+
+  for (const month of months) {
+    for (const item of month.breakdown_assets) {
+      ensureRow(`asset-${item.category}`, `资产：${item.category}`).values[month.month] =
+        item.avg_balance;
+    }
+    for (const item of month.breakdown_liabilities) {
+      ensureRow(`liability-${item.category}`, `负债：${item.category}`).values[month.month] =
+        item.avg_balance;
+    }
+  }
+
+  const latest = months[months.length - 1];
+  return Array.from(rows.values()).sort((left, right) => {
+    const leftValue = latest ? (left.values[latest.month] ?? 0) : 0;
+    const rightValue = latest ? (right.values[latest.month] ?? 0) : 0;
+    return rightValue - leftValue;
+  });
+}
+
+function buildMonthlyProjectMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMatrixRow[] {
+  const rows: MonthlyMatrixRow[] = [
+    { rowKey: "avg-assets", label: "日均资产", valueKind: "amount", values: {} },
+    { rowKey: "avg-liabilities", label: "日均负债", valueKind: "amount", values: {} },
+    { rowKey: "asset-yield", label: "资产收益率", valueKind: "pct", values: {} },
+    { rowKey: "liability-cost", label: "负债付息率", valueKind: "pct", values: {} },
+    { rowKey: "nim", label: "NIM", valueKind: "pct", values: {} },
+  ];
+  for (const month of months) {
+    rows[0].values[month.month] = month.avg_assets;
+    rows[1].values[month.month] = month.avg_liabilities;
+    rows[2].values[month.month] = month.asset_yield;
+    rows[3].values[month.month] = month.liability_cost;
+    rows[4].values[month.month] = month.net_interest_margin;
+  }
+  return rows;
+}
+
+function formatAccountingBasisTrendMonth(reportMonth: string) {
+  const [year, month] = reportMonth.split("-");
+  const monthNumber = Number(month);
+  if (!year || !Number.isFinite(monthNumber)) {
+    return reportMonth;
+  }
+  return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
+}
+
+function buildAccountingBasisSharePoint(
+  reportMonth: string,
+  dailyAvgTotal: number,
+  rows: AdbAccountingBasisDailyAvgItem[],
+): AccountingBasisStackedSharePoint {
+  const point: AccountingBasisStackedSharePoint = {
+    monthLabel: formatAccountingBasisTrendMonth(reportMonth),
+    AC: 0,
+    OCI: 0,
+    TPL: 0,
+    totalValueYi: dailyAvgTotal / YI,
+  };
+  for (const bucket of accountingBasisBuckets) {
+    const row = rows.find((item) => item.basis_bucket === bucket);
+    const balance = row?.daily_avg_balance ?? 0;
+    const share =
+      row?.daily_avg_pct ?? (dailyAvgTotal > 0 ? (balance / dailyAvgTotal) * 100 : 0);
+    point[bucket] = Number.isFinite(share) ? share : 0;
+    if (bucket === "AC") point.acValueYi = balance / YI;
+    if (bucket === "OCI") point.ociValueYi = balance / YI;
+    if (bucket === "TPL") point.tplValueYi = balance / YI;
+  }
+  return point;
+}
+
+function buildAccountingBasisTrendRows(
+  trend: AdbAccountingBasisDailyAvgTrendItem[] | undefined,
+): AccountingBasisStackedSharePoint[] {
+  return (trend ?? [])
+    .slice()
+    .sort((left, right) => left.report_month.localeCompare(right.report_month))
+    .map((item) =>
+      buildAccountingBasisSharePoint(item.report_month, item.daily_avg_total, item.rows),
+    );
+}
+
+function formatSignedPoint(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}pp`;
+}
+
+function buildShareInsight(rows: AccountingBasisStackedSharePoint[]) {
+  const first = rows[0];
+  const latest = rows[rows.length - 1];
+  if (!first || !latest || first.monthLabel === latest.monthLabel) {
+    return null;
+  }
+  return `AC占比较首月 ${formatSignedPoint(latest.AC - first.AC)}，OCI ${formatSignedPoint(
+    latest.OCI - first.OCI,
+  )}，TPL ${formatSignedPoint(latest.TPL - first.TPL)}。`;
 }
 
 function SectionLead(props: {
@@ -345,6 +545,45 @@ export default function AverageBalanceView() {
   const selectedMonthData = monthlyData?.months.find((item) => item.month === selectedMonth) ?? null;
   const monthlyAssetRows = useMemo(() => buildMonthlyRows(selectedMonthData?.breakdown_assets ?? []), [selectedMonthData?.breakdown_assets]);
   const monthlyLiabilityRows = useMemo(() => buildMonthlyRows(selectedMonthData?.breakdown_liabilities ?? []), [selectedMonthData?.breakdown_liabilities]);
+  const monthlyMatrixMonths = useMemo(
+    () => sortMonthsAscending(monthlyData?.months ?? []),
+    [monthlyData?.months],
+  );
+  const monthlyCategoryMatrixRows = useMemo(
+    () => buildMonthlyCategoryMatrixRows(monthlyMatrixMonths),
+    [monthlyMatrixMonths],
+  );
+  const monthlyProjectMatrixRows = useMemo(
+    () => buildMonthlyProjectMatrixRows(monthlyMatrixMonths),
+    [monthlyMatrixMonths],
+  );
+  const monthlyCategoryMatrixColumns = useMemo(
+    () => buildMonthlyMatrixColumns(monthlyMatrixMonths, "分类"),
+    [monthlyMatrixMonths],
+  );
+  const monthlyProjectMatrixColumns = useMemo(
+    () => buildMonthlyMatrixColumns(monthlyMatrixMonths, "项目"),
+    [monthlyMatrixMonths],
+  );
+  const dailyAccountingBasisRows = useMemo<AccountingBasisStackedSharePoint[]>(() => {
+    const basis = dailyData?.accounting_basis_daily_avg;
+    if (!basis) return [];
+    return [
+      buildAccountingBasisSharePoint(
+        basis.report_month ?? basis.report_date.slice(0, 7),
+        basis.daily_avg_total,
+        basis.rows,
+      ),
+    ];
+  }, [dailyData?.accounting_basis_daily_avg]);
+  const monthlyAccountingBasisTrendRows = useMemo(
+    () => buildAccountingBasisTrendRows(monthlyData?.accounting_basis_daily_avg_trend),
+    [monthlyData?.accounting_basis_daily_avg_trend],
+  );
+  const monthlyAccountingBasisInsight = useMemo(
+    () => buildShareInsight(monthlyAccountingBasisTrendRows),
+    [monthlyAccountingBasisTrendRows],
+  );
 
   const dailyAssetColumns = useMemo(() => buildDetailColumns("asset"), []);
   const dailyLiabilityColumns = useMemo(() => buildDetailColumns("liability"), []);
@@ -427,12 +666,20 @@ export default function AverageBalanceView() {
       <div style={pageHeaderStyle}>
         <div>
           <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
-            日均管理
+            日均分析
           </Title>
           <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
-            聚焦期末时点与日均偏离、区间日均结构与月度 NIM 变化。页面只消费后端返回结果，
+            围绕期末是否偏离日均、偏离主因、区间日均结构与月度 NIM 变化展开。页面只消费后端返回结果，
             不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。
           </Paragraph>
+          <Alert
+            data-testid="average-balance-analysis-brief"
+            type="info"
+            showIcon
+            style={analysisBriefStyle}
+            message="日均分析回答什么"
+            description="期末是否偏离日均，偏离由资产/负债哪类驱动，以及月度日均结构和 NIM 是否变化。"
+          />
           <Space size="small" style={{ marginTop: 10, flexWrap: "wrap" }}>
             <Text type="secondary">当前页面为资产负债分析的分析口径子视图。</Text>
             <Link to={formalAnalysisHref}>打开正式资产负债分析</Link>
@@ -520,6 +767,11 @@ export default function AverageBalanceView() {
                             {dailyData.accounting_basis_daily_avg.excluded_controls.join(" / ")}
                             股权 OCI。
                           </Text>
+                          <AccountingBasisStackedShareChart
+                            rows={dailyAccountingBasisRows}
+                            title="金融投资账户结构演变：日均口径"
+                            height={300}
+                          />
                           <Table<AdbAccountingBasisDailyAvgItem>
                             size="small"
                             pagination={false}
@@ -634,6 +886,56 @@ export default function AverageBalanceView() {
                         </Col>
                       ))}
                     </Row>
+
+                    {monthlyAccountingBasisTrendRows.length > 0 ? (
+                      <Card
+                        data-testid="adb-accounting-basis-monthly-trend"
+                        title="AC / OCI / TPL 月度日均趋势"
+                        size="small"
+                      >
+                        <Space direction="vertical" size="small" style={{ width: "100%" }}>
+                          <Text type="secondary">
+                            数据源：日均表 daily_avg_balance；控制科目 141 / 142 / 143 /
+                            1440101，排除 144020 股权 OCI。
+                          </Text>
+                          <AccountingBasisStackedShareChart
+                            rows={monthlyAccountingBasisTrendRows}
+                            title="金融投资账户结构演变：月度日均口径"
+                          />
+                          {monthlyAccountingBasisInsight ? (
+                            <Text strong>{monthlyAccountingBasisInsight}</Text>
+                          ) : null}
+                        </Space>
+                      </Card>
+                    ) : null}
+
+                    <Card
+                      data-testid="adb-monthly-analysis-matrix"
+                      title="月度日均分析矩阵"
+                      size="small"
+                    >
+                      <Space direction="vertical" size="middle">
+                        <Text type="secondary">
+                          单位：金额为亿元，收益率、付息率、NIM 为%；比上月、比年初均取最新月份相对变化。
+                        </Text>
+                        <Table<MonthlyMatrixRow>
+                          size="small"
+                          pagination={false}
+                          rowKey={(row) => row.rowKey}
+                          columns={monthlyCategoryMatrixColumns}
+                          dataSource={monthlyCategoryMatrixRows}
+                          scroll={{ x: "max-content" }}
+                        />
+                        <Table<MonthlyMatrixRow>
+                          size="small"
+                          pagination={false}
+                          rowKey={(row) => row.rowKey}
+                          columns={monthlyProjectMatrixColumns}
+                          dataSource={monthlyProjectMatrixRows}
+                          scroll={{ x: "max-content" }}
+                        />
+                      </Space>
+                    </Card>
 
                     <Card title="月度汇总表" size="small">
                       <Table<AdbMonthlyDataItem>

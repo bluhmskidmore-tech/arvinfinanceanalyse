@@ -120,6 +120,64 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         ytd_asset_yield: 2.41,
         ytd_liability_cost: 1.62,
         ytd_nim: 0.79,
+        accounting_basis_daily_avg_trend: [
+          {
+            report_date: "2026-02-28",
+            report_month: "2026-02",
+            currency_basis: "CNX",
+            daily_avg_total: 481800000,
+            accounting_controls: ["142%", "143%", "1440101%", "141%"],
+            excluded_controls: ["144020%"],
+            rows: [
+              {
+                basis_bucket: "AC",
+                daily_avg_balance: 190000000,
+                daily_avg_pct: 39.44,
+                source_account_patterns: ["142%", "143%"],
+              },
+              {
+                basis_bucket: "OCI",
+                daily_avg_balance: 160000000,
+                daily_avg_pct: 33.21,
+                source_account_patterns: ["1440101%"],
+              },
+              {
+                basis_bucket: "TPL",
+                daily_avg_balance: 131800000,
+                daily_avg_pct: 27.36,
+                source_account_patterns: ["141%"],
+              },
+            ],
+          },
+          {
+            report_date: "2026-03-31",
+            report_month: "2026-03",
+            currency_basis: "CNX",
+            daily_avg_total: 500000000,
+            accounting_controls: ["142%", "143%", "1440101%", "141%"],
+            excluded_controls: ["144020%"],
+            rows: [
+              {
+                basis_bucket: "AC",
+                daily_avg_balance: 220000000,
+                daily_avg_pct: 44,
+                source_account_patterns: ["142%", "143%"],
+              },
+              {
+                basis_bucket: "OCI",
+                daily_avg_balance: 150000000,
+                daily_avg_pct: 30,
+                source_account_patterns: ["1440101%"],
+              },
+              {
+                basis_bucket: "TPL",
+                daily_avg_balance: 130000000,
+                daily_avg_pct: 26,
+                source_account_patterns: ["141%"],
+              },
+            ],
+          },
+        ],
         months: [
           {
             month: "2026-03",
@@ -218,11 +276,15 @@ describe("AverageBalanceView", () => {
   it("renders the daily analysis tab with preset ranges, KPI cards, warning copy, and breakdown tables", async () => {
     renderView();
 
-    expect(await screen.findByRole("heading", { name: "日均管理" })).toBeInTheDocument();
-    expect(screen.getByTestId("average-balance-page-title")).toHaveTextContent("日均管理");
+    expect(await screen.findByRole("heading", { name: "日均分析" })).toBeInTheDocument();
+    expect(screen.getByTestId("average-balance-page-title")).toHaveTextContent("日均分析");
     expect(screen.getByTestId("average-balance-page-subtitle")).toHaveTextContent(
-      "不在前端补算正式金融口径",
+      "期末是否偏离日均",
     );
+    const analysisBrief = screen.getByTestId("average-balance-analysis-brief");
+    expect(analysisBrief).toHaveTextContent("期末是否偏离日均");
+    expect(analysisBrief).toHaveTextContent("偏离由资产/负债哪类驱动");
+    expect(analysisBrief).toHaveTextContent("月度日均结构和 NIM");
     expect(screen.getByRole("heading", { name: "区间日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "日均分析" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "月度统计" })).toBeInTheDocument();
@@ -251,6 +313,7 @@ describe("AverageBalanceView", () => {
     expect(accountingBasis).toHaveTextContent("TPL");
     expect(accountingBasis).toHaveTextContent("44.00");
     expect(accountingBasis).toHaveTextContent("144020%");
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
 
     expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
@@ -259,7 +322,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getAllByText("日均(亿元)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("收益率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付息率(%)").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(1);
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
     expect(screen.getByRole("link", { name: "打开正式资产负债分析" })).toHaveAttribute(
       "href",
       "/balance-analysis?report_date=2026-04-14&position_scope=all&currency_basis=CNY",
@@ -286,8 +349,24 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getByText("月份")).toBeInTheDocument();
     expect(screen.getByText("天数")).toBeInTheDocument();
+    expect(screen.getByTestId("adb-accounting-basis-monthly-trend")).toHaveTextContent(
+      "AC / OCI / TPL",
+    );
+    const matrix = screen.getByTestId("adb-monthly-analysis-matrix");
+    expect(matrix).toHaveTextContent("分类");
+    expect(matrix).toHaveTextContent("项目");
+    expect(matrix).toHaveTextContent("2026年2月");
+    expect(matrix).toHaveTextContent("2026年3月");
+    expect(matrix).toHaveTextContent("比上月");
+    expect(matrix).toHaveTextContent("比年初");
+    expect(matrix).toHaveTextContent("资产：债券投资");
+    expect(matrix).toHaveTextContent("负债：同业负债");
+    expect(matrix).toHaveTextContent("日均资产");
+    expect(matrix).toHaveTextContent("日均负债");
+    expect(matrix).toHaveTextContent("资产收益率");
+    expect(matrix).toHaveTextContent("NIM");
     expect(screen.getAllByTestId("adb-monthly-breakdown-table")).toHaveLength(2);
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
   });
 
   it("shows an explicit error state when report dates fail and no daily query can start", async () => {

@@ -1,8 +1,13 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { vi } from "vitest";
 
 import { createApiClient } from "../api/client";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
+
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="balance-movement-echarts-stub" />,
+}));
 
 describe("BalanceMovementAnalysisPage", () => {
   it("renders AC OCI TPL balance movement from the governed read model", async () => {
@@ -39,6 +44,37 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
       "TPL +51.63 亿、OCI +44.87 亿、AC +33.29 亿",
     );
+    const businessSummary = await screen.findByTestId(
+      "balance-movement-analysis-business-summary",
+    );
+    expect(businessSummary).toHaveTextContent(
+      "本月余额增加 129.80 亿，最大驱动是 TPL",
+    );
+    expect(businessSummary).toHaveTextContent(
+      "结构整体稳定，最大占比变化为 AC -0.67pp",
+    );
+    expect(businessSummary).toHaveTextContent(
+      "AC 压舱石占比 42.44%，较期初 -0.67pp",
+    );
+    expect(businessSummary).toHaveTextContent(
+      "OCI 配置占比 31.49%，较期初 +0.12pp",
+    );
+    expect(businessSummary).toHaveTextContent(
+      "TPL 增量最大：+51.63 亿，贡献 39.78%",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-driver-chart")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
+      "TPL +51.63 亿 39.78%",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
+      "OCI +44.87 亿 34.57%",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-driver-ranking")).toHaveTextContent(
+      "AC +33.29 亿 25.65%",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-structure-shift")).toHaveTextContent(
+      "期初 43.11% 期末 42.44%",
+    );
 
     const table = screen.getByTestId("balance-movement-analysis-table");
     expect(within(table).getByText("AC")).toBeInTheDocument();
@@ -52,12 +88,18 @@ describe("BalanceMovementAnalysisPage", () => {
       "144020%",
     );
     const trendTable = screen.getByTestId("balance-movement-analysis-trend-table");
+    expect(screen.getByText("月度余额分析矩阵")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-movement-analysis-structure-chart")).toBeInTheDocument();
+    expect(screen.getAllByTestId("balance-movement-echarts-stub").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByTestId("balance-movement-analysis-structure-insight")).toHaveTextContent(
+      "AC占比",
+    );
     expect(within(trendTable).getByText("分类")).toBeInTheDocument();
     expect(within(trendTable).getByText("项目")).toBeInTheDocument();
     expect(within(trendTable).getAllByText("2026年2月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("比上月").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("比首月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("比年初").length).toBeGreaterThan(0);
     expect(within(trendTable).getByText("期末余额")).toBeInTheDocument();
     expect(within(trendTable).getByText("ZQTZ诊断差异")).toBeInTheDocument();
     expect(within(trendTable).getAllByText("+129.80").length).toBeGreaterThan(0);
@@ -108,5 +150,53 @@ describe("BalanceMovementAnalysisPage", () => {
 
     expect(await screen.findByTestId("balance-movement-analysis-trend-table")).toBeInTheDocument();
     expect(screen.queryByTestId("balance-movement-analysis-trend-conclusion")).not.toBeInTheDocument();
+  });
+
+  it("surfaces date loading failures before the empty detail section", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const failingDatesClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementDates() {
+        throw new Error("dates unavailable");
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: failingDatesClient,
+    });
+
+    expect(await screen.findByTestId("balance-movement-analysis-date-status")).toHaveTextContent(
+      "报告日期加载失败",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-date-status")).toHaveTextContent(
+      "请确认后端 7888 服务与余额变动读模型可用",
+    );
+  });
+
+  it("surfaces an empty materialized date set instead of only showing an empty table", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const emptyDatesClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementDates(currencyBasis = "CNX") {
+        return {
+          status: "success",
+          result: {
+            report_dates: [],
+            currency_basis: currencyBasis,
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: emptyDatesClient,
+    });
+
+    expect(await screen.findByTestId("balance-movement-analysis-date-status")).toHaveTextContent(
+      "暂无已物化报告日期",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-date-status")).toHaveTextContent(
+      "CNX",
+    );
   });
 });

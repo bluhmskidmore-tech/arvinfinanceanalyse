@@ -2845,11 +2845,16 @@ export type AdbAccountingBasisDailyAvgItem = {
 
 export type AdbAccountingBasisDailyAvg = {
   report_date: string;
+  report_month?: string;
   currency_basis: string;
   daily_avg_total: number;
   rows: AdbAccountingBasisDailyAvgItem[];
   accounting_controls: string[];
   excluded_controls: string[];
+};
+
+export type AdbAccountingBasisDailyAvgTrendItem = AdbAccountingBasisDailyAvg & {
+  report_month: string;
 };
 
 export type AdbComparisonResponse = {
@@ -2900,6 +2905,7 @@ export type AdbMonthlyResponse = {
   result_meta?: ResultMeta;
   year: number;
   months: AdbMonthlyDataItem[];
+  accounting_basis_daily_avg_trend?: AdbAccountingBasisDailyAvgTrendItem[];
   ytd_avg_assets: number;
   ytd_avg_liabilities: number;
   ytd_asset_yield: number | null;

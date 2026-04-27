@@ -2412,6 +2412,39 @@ function normalizeAdbMonthlyResponse(
   resultMeta?: ResultMeta,
 ): AdbMonthlyResponse {
   const months = Array.isArray(raw.months) ? raw.months : [];
+  const accountingBasisTrend = Array.isArray(raw.accounting_basis_daily_avg_trend)
+    ? raw.accounting_basis_daily_avg_trend
+    : [];
+  const normalizeAccountingBasisTrendItem = (item: unknown) => {
+    const basis = item as Record<string, unknown>;
+    const rows = Array.isArray(basis.rows) ? basis.rows : [];
+    return {
+      report_date: String(basis.report_date ?? ""),
+      report_month: String(basis.report_month ?? String(basis.report_date ?? "").slice(0, 7)),
+      currency_basis: String(basis.currency_basis ?? ""),
+      daily_avg_total: Number(basis.daily_avg_total ?? 0),
+      rows: rows.map((entry) => {
+        const row = entry as Record<string, unknown>;
+        return {
+          basis_bucket: String(row.basis_bucket ?? ""),
+          daily_avg_balance: Number(row.daily_avg_balance ?? 0),
+          daily_avg_pct:
+            row.daily_avg_pct === null || row.daily_avg_pct === undefined
+              ? null
+              : Number(row.daily_avg_pct),
+          source_account_patterns: Array.isArray(row.source_account_patterns)
+            ? row.source_account_patterns.map(String)
+            : [],
+        };
+      }),
+      accounting_controls: Array.isArray(basis.accounting_controls)
+        ? basis.accounting_controls.map(String)
+        : [],
+      excluded_controls: Array.isArray(basis.excluded_controls)
+        ? basis.excluded_controls.map(String)
+        : [],
+    };
+  };
   return {
     result_meta: resultMeta,
     year: Number(raw.year ?? 0),
@@ -2476,6 +2509,7 @@ function normalizeAdbMonthlyResponse(
         breakdown_liabilities: mapBreakdown(breakdownLiabilities),
       };
     }),
+    accounting_basis_daily_avg_trend: accountingBasisTrend.map(normalizeAccountingBasisTrendItem),
     ytd_avg_assets: Number(raw.ytd_avg_assets ?? 0),
     ytd_avg_liabilities: Number(raw.ytd_avg_liabilities ?? 0),
     ytd_asset_yield:

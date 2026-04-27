@@ -3,7 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
 import type { BalanceMovementRow, BalanceMovementTrendMonth } from "../../../api/contracts";
+import AccountingBasisStackedShareChart, {
+  type AccountingBasisStackedSharePoint,
+} from "../../../components/charts/AccountingBasisStackedShareChart";
 import { FilterBar } from "../../../components/FilterBar";
+import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
 import "./BalanceMovementAnalysisPage.css";
@@ -59,6 +63,11 @@ const bucketLabels: Record<string, string> = {
   AC: "AC",
   OCI: "OCI",
   TPL: "TPL",
+};
+const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
+  AC: "#10284a",
+  OCI: "#33689a",
+  TPL: "#d2a03f",
 };
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
@@ -184,6 +193,46 @@ function sumTrendRowValues(
   }, 0);
 }
 
+function formatTrendAxisMonth(reportMonth: string) {
+  const [year, month] = reportMonth.split("-");
+  const monthNumber = Number(month);
+  if (!year || !Number.isFinite(monthNumber)) {
+    return reportMonth;
+  }
+  return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
+}
+
+function toSharePoint(month: BalanceMovementTrendMonth): AccountingBasisStackedSharePoint {
+  const total = Number(month.current_balance_total);
+  const point: AccountingBasisStackedSharePoint = {
+    monthLabel: formatTrendAxisMonth(month.report_month),
+    AC: 0,
+    OCI: 0,
+    TPL: 0,
+    totalValueYi: Number.isFinite(total) ? total / 100000000 : undefined,
+  };
+  for (const bucket of balanceMovementBuckets) {
+    const row = trendBucket(month, bucket);
+    const value = Number(row?.current_balance);
+    const share = total > 0 && Number.isFinite(value) ? (value / total) * 100 : Number(row?.current_balance_pct);
+    point[bucket] = Number.isFinite(share) ? share : 0;
+    if (bucket === "AC") point.acValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
+    if (bucket === "OCI") point.ociValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
+    if (bucket === "TPL") point.tplValueYi = Number.isFinite(value) ? value / 100000000 : undefined;
+  }
+  return point;
+}
+
+function formatSignedPoint(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}pp`;
+}
+
+function numericValue(value: string | number | null | undefined) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
   const currentParts = currentReportDate.split("-").map(Number);
   const previousParts = previousReportDate.split("-").map(Number);
@@ -204,6 +253,109 @@ function statusTone(status: BalanceMovementRow["reconciliation_status"]) {
   return status === "matched" ? "#027a48" : "#b54708";
 }
 
+type BalanceMovementDriver = {
+  bucket: BalanceMovementRow["basis_bucket"];
+  balanceChange: number;
+  balanceChangeYi: number;
+  contributionPct: number;
+  currentBalancePct: number;
+  previousBalancePct: number;
+  shareDelta: number;
+};
+
+function toMovementDriver(row: BalanceMovementRow): BalanceMovementDriver {
+  const balanceChange = numericValue(row.balance_change);
+  const currentBalancePct = numericValue(row.current_balance_pct);
+  const previousBalancePct = numericValue(row.previous_balance_pct);
+  return {
+    bucket: row.basis_bucket,
+    balanceChange,
+    balanceChangeYi: balanceChange / 100000000,
+    contributionPct: numericValue(row.contribution_pct),
+    currentBalancePct,
+    previousBalancePct,
+    shareDelta: currentBalancePct - previousBalancePct,
+  };
+}
+
+function formatSignedYiNumber(value: number) {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toLocaleString("zh-CN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function movementDirection(value: string | number | null | undefined) {
+  const n = numericValue(value);
+  if (n > 0) return "增加";
+  if (n < 0) return "减少";
+  return "持平";
+}
+
+function dataIndexFromTooltip(params: unknown) {
+  const first = Array.isArray(params) ? params[0] : params;
+  if (!first || typeof first !== "object" || !("dataIndex" in first)) {
+    return 0;
+  }
+  const dataIndex = Number((first as { dataIndex?: unknown }).dataIndex);
+  return Number.isFinite(dataIndex) ? dataIndex : 0;
+}
+
+function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption {
+  return {
+    grid: { left: 44, right: 72, top: 20, bottom: 34 },
+    tooltip: {
+      trigger: "axis",
+      axisPointer: { type: "shadow" },
+      formatter: (params: unknown) => {
+        const driver = drivers[dataIndexFromTooltip(params)];
+        if (!driver) return "";
+        return [
+          driver.bucket,
+          `变动：${formatSignedYiNumber(driver.balanceChangeYi)} 亿`,
+          `贡献：${formatPct(driver.contributionPct)}`,
+          `占比变化：${formatSignedPoint(driver.shareDelta)}`,
+        ].join("<br/>");
+      },
+    },
+    xAxis: {
+      type: "value",
+      axisLabel: { formatter: (value: number) => `${value.toFixed(0)}亿` },
+      splitLine: { lineStyle: { color: "#edf1f6" } },
+    },
+    yAxis: {
+      type: "category",
+      data: drivers.map((driver) => driver.bucket),
+      axisTick: { show: false },
+      axisLabel: { color: "#26364a", fontWeight: 700 },
+    },
+    series: [
+      {
+        name: "余额变动",
+        type: "bar",
+        barWidth: 28,
+        data: drivers.map((driver) => driver.balanceChangeYi),
+        itemStyle: {
+          color: (params: { dataIndex: number }) =>
+            bucketColors[drivers[params.dataIndex]?.bucket ?? "AC"],
+          borderRadius: [0, 4, 4, 0],
+        },
+        label: {
+          show: true,
+          position: "right",
+          color: "#26364a",
+          fontWeight: 700,
+          formatter: (params: { dataIndex: number }) => {
+            const driver = drivers[params.dataIndex];
+            return driver ? `${formatSignedYiNumber(driver.balanceChangeYi)} 亿` : "";
+          },
+        },
+      },
+    ],
+  };
+}
+
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
   const [selectedDate, setSelectedDate] = useState("");
@@ -216,12 +368,29 @@ export default function BalanceMovementAnalysisPage() {
     queryFn: () => client.getBalanceMovementDates(currencyBasis),
     retry: false,
   });
+  const reportDates = useMemo(
+    () => datesQuery.data?.result.report_dates ?? [],
+    [datesQuery.data?.result.report_dates],
+  );
+  const dateStatus = datesQuery.isError
+    ? {
+        tone: "error" as const,
+        title: "报告日期加载失败",
+        detail: "请确认后端 7888 服务与余额变动读模型可用。",
+      }
+    : !datesQuery.isLoading && reportDates.length === 0
+      ? {
+          tone: "empty" as const,
+          title: "暂无已物化报告日期",
+          detail: `${currencyBasis} 口径下没有可选日期；请先物化余额变动读模型。`,
+        }
+      : null;
 
   useEffect(() => {
-    if (!selectedDate && datesQuery.data?.result.report_dates.length) {
-      setSelectedDate(datesQuery.data.result.report_dates[0] ?? "");
+    if (!selectedDate && reportDates.length) {
+      setSelectedDate(reportDates[0] ?? "");
     }
-  }, [datesQuery.data, selectedDate]);
+  }, [reportDates, selectedDate]);
 
   const detailQuery = useQuery({
     queryKey: ["balance-movement-analysis", "detail", client.mode, selectedDate, currencyBasis],
@@ -244,12 +413,53 @@ export default function BalanceMovementAnalysisPage() {
     [detailQuery.data?.result.trend_months],
   );
   const reportMatrixMonths = useMemo(() => [...trendMonths].reverse(), [trendMonths]);
+  const balanceStructureTrend = useMemo(
+    () => reportMatrixMonths.map(toSharePoint),
+    [reportMatrixMonths],
+  );
+  const balanceStructureInsight = useMemo(() => {
+    const first = balanceStructureTrend[0];
+    const latest = balanceStructureTrend[balanceStructureTrend.length - 1];
+    if (!first || !latest || first.monthLabel === latest.monthLabel) {
+      return null;
+    }
+    return `AC占比较首月 ${formatSignedPoint(latest.AC - first.AC)}，OCI ${formatSignedPoint(
+      latest.OCI - first.OCI,
+    )}，TPL ${formatSignedPoint(latest.TPL - first.TPL)}。`;
+  }, [balanceStructureTrend]);
   const currentTrendMonth = trendMonths[0];
   const previousTrendMonth = trendMonths[1];
   const rowByBucket = useMemo(
     () => new Map(rows.map((row) => [row.basis_bucket, row])),
     [rows],
   );
+  const movementDrivers = useMemo(
+    () =>
+      rows
+        .map(toMovementDriver)
+        .sort((left, right) => Math.abs(right.balanceChange) - Math.abs(left.balanceChange)),
+    [rows],
+  );
+  const movementDriverByBucket = useMemo(
+    () => new Map(movementDrivers.map((driver) => [driver.bucket, driver])),
+    [movementDrivers],
+  );
+  const topMovementDriver = movementDrivers[0];
+  const maxShareShiftDriver = useMemo(
+    () =>
+      [...movementDrivers].sort(
+        (left, right) => Math.abs(right.shareDelta) - Math.abs(left.shareDelta),
+      )[0],
+    [movementDrivers],
+  );
+  const driverChartOption = useMemo(
+    () => buildDriverChartOption(movementDrivers),
+    [movementDrivers],
+  );
+  const structureStatus =
+    maxShareShiftDriver && Math.abs(maxShareShiftDriver.shareDelta) <= 1
+      ? "结构整体稳定"
+      : "结构变化明显";
   const trendComparison = useMemo(() => {
     if (!currentTrendMonth || !previousTrendMonth) {
       return null;
@@ -338,7 +548,7 @@ export default function BalanceMovementAnalysisPage() {
             value={selectedDate}
             onChange={(event) => setSelectedDate(event.target.value)}
           >
-            {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
+            {reportDates.map((reportDate) => (
               <option key={reportDate} value={reportDate}>
                 {reportDate}
               </option>
@@ -371,6 +581,16 @@ export default function BalanceMovementAnalysisPage() {
           <span data-testid="balance-movement-analysis-refresh-message">{refreshMessage}</span>
         ) : null}
       </FilterBar>
+      {dateStatus ? (
+        <div
+          data-testid="balance-movement-analysis-date-status"
+          className={`balance-movement-date-status balance-movement-date-status--${dateStatus.tone}`}
+          role={dateStatus.tone === "error" ? "alert" : "status"}
+        >
+          <strong>{dateStatus.title}</strong>
+          <span>{dateStatus.detail}</span>
+        </div>
+      ) : null}
 
       {summary ? (
         <section
@@ -442,8 +662,123 @@ export default function BalanceMovementAnalysisPage() {
         </div>
       ) : null}
 
+      {summary && topMovementDriver && maxShareShiftDriver ? (
+        <section
+          data-testid="balance-movement-analysis-business-summary"
+          className="balance-movement-business-summary"
+        >
+          <div className="balance-movement-business-summary__headline">
+            <span>分析结论</span>
+            <strong>
+              本月余额{movementDirection(summary.balance_change_total)}{" "}
+              {formatYiFixed(Math.abs(numericValue(summary.balance_change_total)))} 亿，最大驱动是{" "}
+              {topMovementDriver.bucket}
+            </strong>
+            <p>
+              {structureStatus}，最大占比变化为 {maxShareShiftDriver.bucket}{" "}
+              {formatSignedPoint(maxShareShiftDriver.shareDelta)}
+            </p>
+          </div>
+
+          <div className="balance-movement-business-summary__facts">
+            <div>
+              <span>最大驱动</span>
+              <p>
+                {topMovementDriver.bucket} 增量最大：
+                {formatSignedYiNumber(topMovementDriver.balanceChangeYi)} 亿，贡献{" "}
+                {formatPct(topMovementDriver.contributionPct)}
+              </p>
+            </div>
+            <div>
+              <span>压舱石</span>
+              <p>
+                AC 压舱石占比{" "}
+                {formatPct(rowByBucket.get("AC")?.current_balance_pct)}，较期初{" "}
+                {formatSignedPoint(movementDriverByBucket.get("AC")?.shareDelta ?? 0)}
+              </p>
+            </div>
+            <div>
+              <span>配置变化</span>
+              <p>
+                OCI 配置占比{" "}
+                {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}，较期初{" "}
+                {formatSignedPoint(movementDriverByBucket.get("OCI")?.shareDelta ?? 0)}
+              </p>
+            </div>
+          </div>
+
+          <div className="balance-movement-business-summary__body">
+            <div
+              data-testid="balance-movement-analysis-driver-chart"
+              className="balance-movement-driver-chart"
+            >
+              <h2>余额变动驱动</h2>
+              <ReactECharts
+                option={driverChartOption}
+                style={{ height: 240, width: "100%" }}
+                notMerge
+                lazyUpdate
+              />
+            </div>
+
+            <div
+              data-testid="balance-movement-analysis-driver-ranking"
+              className="balance-movement-driver-ranking"
+            >
+              <h2>贡献排序</h2>
+              {movementDrivers.map((driver, index) => (
+                <div key={driver.bucket} className="balance-movement-driver-ranking__row">
+                  <span>{index + 1}</span>
+                  <strong>
+                    {driver.bucket} {formatSignedYiNumber(driver.balanceChangeYi)} 亿{" "}
+                    {formatPct(driver.contributionPct)}
+                  </strong>
+                </div>
+              ))}
+            </div>
+
+            <div
+              data-testid="balance-movement-analysis-structure-shift"
+              className="balance-movement-structure-shift"
+            >
+              <h2>期初到期末结构变化</h2>
+              {balanceMovementBuckets.map((bucket) => {
+                const driver = movementDrivers.find((item) => item.bucket === bucket);
+                if (!driver) return null;
+                return (
+                  <div key={bucket} className="balance-movement-structure-shift__row">
+                    <div>
+                      <strong>{bucket}</strong>
+                      <span>
+                        期初 {formatPct(driver.previousBalancePct)} 期末{" "}
+                        {formatPct(driver.currentBalancePct)}
+                      </span>
+                    </div>
+                    <div className="balance-movement-structure-shift__track">
+                      <span
+                        className="balance-movement-structure-shift__previous"
+                        style={{
+                          width: `${Math.min(Math.max(driver.previousBalancePct, 1), 100)}%`,
+                        }}
+                      />
+                      <span
+                        className="balance-movement-structure-shift__current"
+                        style={{
+                          width: `${Math.min(Math.max(driver.currentBalancePct, 1), 100)}%`,
+                        }}
+                      />
+                    </div>
+                    <em>{formatSignedPoint(driver.shareDelta)}</em>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <AsyncSection
-        title="AC / OCI / TPL 余额变动"
+        title="明细 / 对账：AC / OCI / TPL 余额变动"
         isLoading={detailQuery.isLoading}
         isError={detailQuery.isError}
         isEmpty={!detailQuery.isLoading && !detailQuery.isError && rows.length === 0}
@@ -504,7 +839,7 @@ export default function BalanceMovementAnalysisPage() {
 
       {trendMonths.length > 0 ? (
         <AsyncSection
-          title="最近6个可用月度趋势"
+          title="月度余额分析矩阵"
           isLoading={detailQuery.isLoading}
           isError={detailQuery.isError}
           isEmpty={trendMonths.length === 0}
@@ -522,7 +857,7 @@ export default function BalanceMovementAnalysisPage() {
                     <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
                   ))}
                   <th>比上月</th>
-                  <th>比首月</th>
+                  <th>比年初</th>
                 </tr>
               </thead>
               <tbody>
@@ -560,7 +895,7 @@ export default function BalanceMovementAnalysisPage() {
                     </th>
                   ))}
                   <th>比上月</th>
-                  <th>比首月</th>
+                  <th>比年初</th>
                 </tr>
                 {[
                   {
@@ -595,6 +930,23 @@ export default function BalanceMovementAnalysisPage() {
                 })}
               </tbody>
             </table>
+          </div>
+          <div
+            className="balance-movement-structure-chart"
+            data-testid="balance-movement-analysis-structure-chart"
+          >
+            <AccountingBasisStackedShareChart
+              rows={balanceStructureTrend}
+              title="金融投资账户结构演变：余额口径"
+            />
+            {balanceStructureInsight ? (
+              <div
+                className="balance-movement-structure-chart__insight"
+                data-testid="balance-movement-analysis-structure-insight"
+              >
+                {balanceStructureInsight}
+              </div>
+            ) : null}
           </div>
         </AsyncSection>
       ) : null}

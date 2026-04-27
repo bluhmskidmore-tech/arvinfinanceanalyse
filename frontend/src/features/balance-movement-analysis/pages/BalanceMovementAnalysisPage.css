@@ -52,6 +52,211 @@
   font-size: 13px;
 }
 
+.balance-movement-date-status {
+  display: grid;
+  gap: 4px;
+  margin: -4px 0 18px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.balance-movement-date-status strong {
+  font-size: 14px;
+}
+
+.balance-movement-date-status span {
+  color: #5c6b82;
+}
+
+.balance-movement-date-status--error {
+  border: 1px solid #f1b8b2;
+  background: #fff6f5;
+  color: #b42318;
+}
+
+.balance-movement-date-status--empty {
+  border: 1px solid #d7dfea;
+  background: #f8fafc;
+  color: #26364a;
+}
+
+.balance-movement-business-summary {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px solid #cfd9e6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.balance-movement-business-summary__headline {
+  display: grid;
+  gap: 6px;
+}
+
+.balance-movement-business-summary__headline span {
+  color: #5c6b82;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balance-movement-business-summary__headline strong {
+  color: #10284a;
+  font-size: 24px;
+  line-height: 1.25;
+}
+
+.balance-movement-business-summary__headline p {
+  margin: 0;
+  color: #26364a;
+  font-size: 14px;
+}
+
+.balance-movement-business-summary__facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.balance-movement-business-summary__facts div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.balance-movement-business-summary__facts span {
+  color: #5c6b82;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balance-movement-business-summary__facts p {
+  margin: 0;
+  color: #26364a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.balance-movement-business-summary__body {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.25fr) minmax(220px, 0.75fr);
+  gap: 14px;
+}
+
+.balance-movement-driver-chart,
+.balance-movement-driver-ranking,
+.balance-movement-structure-shift {
+  min-width: 0;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.balance-movement-driver-chart {
+  padding: 14px 14px 4px;
+}
+
+.balance-movement-driver-chart h2,
+.balance-movement-driver-ranking h2,
+.balance-movement-structure-shift h2 {
+  margin: 0 0 10px;
+  color: #26364a;
+  font-size: 15px;
+}
+
+.balance-movement-driver-ranking {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 14px;
+}
+
+.balance-movement-driver-ranking__row {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 36px;
+}
+
+.balance-movement-driver-ranking__row span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e6edf5;
+  color: #26364a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balance-movement-driver-ranking__row strong {
+  color: #26364a;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.balance-movement-structure-shift {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.balance-movement-structure-shift__row {
+  display: grid;
+  grid-template-columns: 220px 1fr 72px;
+  gap: 12px;
+  align-items: center;
+}
+
+.balance-movement-structure-shift__row > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.balance-movement-structure-shift__row strong {
+  color: #10284a;
+  font-size: 13px;
+}
+
+.balance-movement-structure-shift__row span {
+  color: #5c6b82;
+  font-size: 12px;
+}
+
+.balance-movement-structure-shift__row em {
+  color: #26364a;
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
+}
+
+.balance-movement-structure-shift__track {
+  display: grid;
+  gap: 4px;
+}
+
+.balance-movement-structure-shift__track span {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.balance-movement-structure-shift__previous {
+  background: #cfd9e6;
+}
+
+.balance-movement-structure-shift__current {
+  background: #33689a;
+}
+
 .balance-movement-table-scroll,
 .balance-movement-matrix-scroll {
   overflow-x: auto;
@@ -61,6 +266,28 @@
   border: 1px solid #d7dfea;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.balance-movement-structure-chart {
+  position: relative;
+  margin-bottom: 18px;
+  padding: 18px 18px 8px;
+  border: 1px solid #d7dfea;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.balance-movement-structure-chart__insight {
+  position: absolute;
+  right: 24px;
+  top: 58px;
+  max-width: 260px;
+  padding-left: 18px;
+  border-left: 3px solid #10284a;
+  color: #10284a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
 }
 
 .balance-movement-trend-table {
@@ -158,6 +385,23 @@
     text-align: left;
   }
 
+  .balance-movement-business-summary__headline strong {
+    font-size: 20px;
+  }
+
+  .balance-movement-business-summary__facts,
+  .balance-movement-business-summary__body {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-movement-structure-shift__row {
+    grid-template-columns: 1fr;
+  }
+
+  .balance-movement-structure-shift__row em {
+    text-align: left;
+  }
+
   .balance-movement-report-matrix {
     min-width: 920px;
     font-size: 12px;
@@ -171,5 +415,10 @@
   .balance-movement-report-matrix td:first-child {
     width: 150px;
     min-width: 150px;
+  }
+
+  .balance-movement-structure-chart__insight {
+    position: static;
+    margin: 8px 0 0;
   }
 }

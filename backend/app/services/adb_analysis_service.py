@@ -324,6 +324,116 @@ def _load_accounting_basis_daily_average(
     return payload, source_versions, rule_versions, evidence_rows
 
 
+def _empty_accounting_basis_daily_average_payload(
+    report_date: date,
+    currency_basis: str = ACCOUNTING_BASIS_CURRENCY,
+) -> dict[str, Any]:
+    return {
+        "report_date": report_date.strftime("%Y-%m-%d"),
+        "report_month": report_date.strftime("%Y-%m"),
+        "currency_basis": currency_basis,
+        "daily_avg_total": 0.0,
+        "rows": [
+            {
+                "basis_bucket": bucket,
+                "daily_avg_balance": 0.0,
+                "daily_avg_pct": None,
+                "source_account_patterns": list(patterns),
+            }
+            for bucket, patterns in ACCOUNTING_BASIS_BUCKETS
+        ],
+        "accounting_controls": [
+            pattern for _bucket, patterns in ACCOUNTING_BASIS_BUCKETS for pattern in patterns
+        ],
+        "excluded_controls": list(ACCOUNTING_BASIS_EXCLUDED_CONTROLS),
+    }
+
+
+def _load_accounting_basis_daily_average_trend(
+    duckdb_path: str,
+    year: int,
+    currency_basis: str = ACCOUNTING_BASIS_CURRENCY,
+) -> tuple[list[dict[str, Any]], list[str], list[str], int]:
+    if not Path(duckdb_path).exists():
+        return [], [], [], 0
+
+    conn = _conn_ro(duckdb_path)
+    try:
+        if not _table_exists(conn, "product_category_pnl_canonical_fact"):
+            return [], [], [], 0
+        cursor = conn.execute(
+            """
+            select
+              report_date,
+              account_code,
+              daily_avg_balance,
+              source_version,
+              rule_version
+            from product_category_pnl_canonical_fact
+            where report_date >= ?
+              and report_date <= ?
+              and currency = ?
+              and (
+                account_code like '141%'
+                or account_code like '142%'
+                or account_code like '143%'
+                or account_code like '1440101%'
+                or account_code like '144020%'
+              )
+            order by report_date, account_code
+            """,
+            [f"{year}-01-01", f"{year}-12-31", currency_basis],
+        )
+        rows = [_dict_from_row(list(cursor.description or []), row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    grouped: dict[date, dict[str, Decimal]] = {}
+    source_versions: list[str] = []
+    rule_versions: list[str] = []
+    evidence_rows = 0
+    for row in rows:
+        bucket = _accounting_basis_bucket(row.get("account_code"))
+        if bucket is None:
+            continue
+        raw_report_date = str(row.get("report_date") or "").strip()
+        try:
+            parsed_report_date = _parse_date(raw_report_date)
+        except ValueError:
+            continue
+        bucket_totals = grouped.setdefault(
+            parsed_report_date,
+            {bucket_name: Decimal("0") for bucket_name, _patterns in ACCOUNTING_BASIS_BUCKETS},
+        )
+        bucket_totals[bucket] += _decimal_or_zero(row.get("daily_avg_balance"))
+        source_versions.append(str(row.get("source_version") or ""))
+        rule_versions.append(str(row.get("rule_version") or ""))
+        evidence_rows += 1
+
+    trend: list[dict[str, Any]] = []
+    for report_date, totals in sorted(grouped.items()):
+        daily_avg_total = sum(totals.values(), Decimal("0"))
+        payload = {
+            **_empty_accounting_basis_daily_average_payload(report_date, currency_basis),
+            "daily_avg_total": float(daily_avg_total),
+            "rows": [
+                {
+                    "basis_bucket": bucket,
+                    "daily_avg_balance": float(totals[bucket]),
+                    "daily_avg_pct": (
+                        float(totals[bucket] / daily_avg_total * Decimal("100"))
+                        if daily_avg_total != Decimal("0")
+                        else None
+                    ),
+                    "source_account_patterns": list(patterns),
+                }
+                for bucket, patterns in ACCOUNTING_BASIS_BUCKETS
+            ],
+        }
+        trend.append(payload)
+    return trend, source_versions, rule_versions, evidence_rows
+
+
 def _load_adb_raw_data(
     duckdb_path: str,
     start_date: date,
@@ -332,29 +442,113 @@ def _load_adb_raw_data(
     if not Path(duckdb_path).exists():
         return pd.DataFrame(), pd.DataFrame(), [], []
 
-    zqtz_asset_rows: list[dict[str, object]] = []
-    zqtz_liability_rows: list[dict[str, object]] = []
-    tyw_asset_rows: list[dict[str, object]] = []
-    tyw_liability_rows: list[dict[str, object]] = []
+    zqtz_df = pd.DataFrame()
+    tyw_df = pd.DataFrame()
 
     conn = _conn_ro(duckdb_path)
     try:
         if _table_exists(conn, "fact_formal_zqtz_balance_daily"):
-            raw = [_dict_from_row(d, r) for d, r in _fetch_formal_zqtz_rows(conn, start_date, end_date)]
-            zqtz_asset_rows, zqtz_liability_rows = _classify_zqtz_rows(raw)
+            zqtz_df = conn.execute(
+                """
+                select
+                  report_date,
+                  position_scope,
+                  market_value_amount,
+                  ytm_value,
+                  coupon_rate,
+                  asset_class,
+                  bond_type,
+                  is_issuance_like,
+                  source_version,
+                  rule_version
+                from fact_formal_zqtz_balance_daily
+                where cast(report_date as date) between ? and ?
+                  and currency_basis = 'CNY'
+                """,
+                [start_date, end_date],
+            ).fetchdf()
 
         if _table_exists(conn, "fact_formal_tyw_balance_daily"):
-            raw = [_dict_from_row(d, r) for d, r in _fetch_formal_tyw_rows(conn, start_date, end_date)]
-            tyw_asset_rows, tyw_liability_rows = _classify_tyw_rows(raw)
+            tyw_df = conn.execute(
+                """
+                select
+                  report_date,
+                  position_scope,
+                  position_side,
+                  principal_amount,
+                  funding_cost_rate,
+                  product_type,
+                  source_version,
+                  rule_version
+                from fact_formal_tyw_balance_daily
+                where cast(report_date as date) between ? and ?
+                  and currency_basis = 'CNY'
+                """,
+                [start_date, end_date],
+            ).fetchdf()
     finally:
         conn.close()
 
-    all_row_lists = (zqtz_asset_rows, zqtz_liability_rows, tyw_asset_rows, tyw_liability_rows)
-    source_versions = _collect_version_strings(*all_row_lists, field="source_version")
-    rule_versions = _collect_version_strings(*all_row_lists, field="rule_version")
+    source_versions: list[str] = []
+    rule_versions: list[str] = []
+    for frame in (zqtz_df, tyw_df):
+        if frame.empty:
+            continue
+        if "source_version" in frame.columns:
+            source_versions.extend(frame["source_version"].dropna().astype(str).unique().tolist())
+        if "rule_version" in frame.columns:
+            rule_versions.extend(frame["rule_version"].dropna().astype(str).unique().tolist())
 
-    bonds_df = _build_bonds_df(zqtz_asset_rows, zqtz_liability_rows)
-    ib_df = _build_ib_df(tyw_asset_rows, tyw_liability_rows)
+    if zqtz_df.empty:
+        bonds_df = pd.DataFrame()
+    else:
+        scope = zqtz_df["position_scope"].fillna("").astype(str)
+        concrete = scope.isin({"asset", "liability"})
+        scoped = zqtz_df.loc[concrete].copy() if concrete.any() else zqtz_df.copy()
+        scoped_scope = scoped["position_scope"].fillna("").astype(str)
+        issuance = scoped["is_issuance_like"].fillna(False).astype(bool)
+        liability_mask = scoped_scope.eq("liability") | issuance
+        bonds_df = pd.DataFrame(
+            {
+                "report_date": scoped["report_date"],
+                "market_value": scoped["market_value_amount"],
+                "yield_to_maturity": scoped["ytm_value"],
+                "coupon_rate": scoped["coupon_rate"],
+                "interest_rate": 0.0,
+                "asset_class": scoped["asset_class"].fillna(""),
+                "sub_type": scoped["bond_type"].fillna(""),
+                "is_issuance_like": liability_mask.to_numpy(),
+            }
+        )
+        bonds_df = _normalize_adb_frame(
+            bonds_df,
+            date_columns=("report_date",),
+            numeric_columns=("market_value", "yield_to_maturity", "coupon_rate", "interest_rate"),
+        )
+
+    if tyw_df.empty:
+        ib_df = pd.DataFrame()
+    else:
+        scope = tyw_df["position_scope"].fillna("").astype(str).str.lower()
+        concrete = scope.isin({"asset", "liability"})
+        scoped = tyw_df.loc[concrete].copy() if concrete.any() else tyw_df.copy()
+        scoped_scope = scoped["position_scope"].fillna("").astype(str).str.lower()
+        side = scoped["position_side"].fillna("").astype(str).str.lower()
+        is_asset = scoped_scope.eq("asset") | (~scoped_scope.isin({"asset", "liability"}) & side.str.contains("asset"))
+        ib_df = pd.DataFrame(
+            {
+                "report_date": scoped["report_date"],
+                "amount": scoped["principal_amount"],
+                "interest_rate": scoped["funding_cost_rate"],
+                "product_type": scoped["product_type"],
+                "direction": is_asset.map({True: "ASSET", False: "LIABILITY"}).to_numpy(),
+            }
+        )
+        ib_df = _normalize_adb_frame(
+            ib_df,
+            date_columns=("report_date",),
+            numeric_columns=("amount", "interest_rate"),
+        )
 
     return bonds_df, ib_df, source_versions, rule_versions
 
@@ -368,13 +562,10 @@ def _decimal_or_zero(value: object) -> Decimal:
 
 
 def _frame_unique_dates(frame: pd.DataFrame) -> set[date]:
-    if frame.empty:
+    if frame.empty or "report_date" not in frame.columns:
         return set()
-    return {
-        row.report_date.date()
-        for row in frame.itertuples(index=False)
-        if getattr(row, "report_date", None) is not None
-    }
+    report_dates = pd.to_datetime(frame["report_date"], errors="coerce").dropna()
+    return {value.date() for value in report_dates.unique()}
 
 
 def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Decimal]:
@@ -391,25 +582,22 @@ def _frame_sum_by_date(frame: pd.DataFrame, amount_attr: str) -> dict[date, Deci
 
 
 def _frame_total_amounts(frame: pd.DataFrame, amount_attr: str) -> tuple[float, float]:
-    total_amount = 0.0
-    total_weighted = 0.0
     if frame.empty:
-        return total_amount, total_weighted
-    for row in frame.itertuples(index=False):
-        total_amount += float(getattr(row, amount_attr) or 0)
-        total_weighted += float(getattr(row, "weighted", 0) or 0)
-    return total_amount, total_weighted
+        return 0.0, 0.0
+    total_amount = pd.to_numeric(frame[amount_attr], errors="coerce").fillna(0).sum()
+    total_weighted = pd.to_numeric(frame["weighted"], errors="coerce").fillna(0).sum() if "weighted" in frame else 0.0
+    return float(total_amount), float(total_weighted)
 
 
 def _frame_spot_total_for_date(frame: pd.DataFrame, amount_attr: str, target_date: date) -> float:
-    if frame.empty:
+    if frame.empty or "report_date" not in frame.columns:
         return 0.0
-    total = 0.0
-    for row in frame.itertuples(index=False):
-        report_date = getattr(row, "report_date", None)
-        if report_date is not None and report_date.date() == target_date:
-            total += float(getattr(row, amount_attr) or 0)
-    return total
+    report_dates = pd.to_datetime(frame["report_date"], errors="coerce").dt.normalize()
+    mask = report_dates.eq(pd.Timestamp(target_date))
+    if not mask.any():
+        return 0.0
+    total = pd.to_numeric(frame.loc[mask, amount_attr], errors="coerce").fillna(0).sum()
+    return float(total)
 
 
 def _frame_breakdown_rows(
@@ -422,19 +610,28 @@ def _frame_breakdown_rows(
 ) -> list[dict[str, Any]]:
     if frame.empty or num_days <= 0:
         return []
-    totals: dict[str, tuple[float, float]] = {}
-    for row in frame.itertuples(index=False):
-        category = f"{prefix}{_clean_cat(getattr(row, category_attr, None))}"
-        amount = float(getattr(row, amount_attr) or 0)
-        weighted = float(getattr(row, "weighted", 0) or 0)
-        current_amount, current_weighted = totals.get(category, (0.0, 0.0))
-        totals[category] = (current_amount + amount, current_weighted + weighted)
-
+    categories = frame[category_attr].map(_clean_cat)
+    if prefix:
+        categories = prefix + categories
+    grouped_source = pd.DataFrame(
+        {
+            "category": categories,
+            "amount": pd.to_numeric(frame[amount_attr], errors="coerce").fillna(0),
+            "weighted": (
+                pd.to_numeric(frame["weighted"], errors="coerce").fillna(0)
+                if "weighted" in frame
+                else 0.0
+            ),
+        }
+    )
+    grouped = grouped_source.groupby("category", sort=False, as_index=False).sum(numeric_only=True)
     rows: list[dict[str, Any]] = []
-    for category, (total_amount, total_weighted) in totals.items():
+    for row in grouped.itertuples(index=False):
+        total_amount = float(row.amount or 0)
+        total_weighted = float(row.weighted or 0)
         rows.append(
             {
-                "category": category,
+                "category": row.category,
                 "avg_balance": total_amount / num_days if num_days > 0 else 0.0,
                 "weighted_rate": (total_weighted / total_amount * 100) if total_amount > 0 else None,
             }
@@ -490,6 +687,21 @@ def _filter_frame_between_dates(frame: pd.DataFrame, start_date: date, end_date:
         and start_date <= row.report_date.date() <= end_date
     ]
     return pd.DataFrame(rows, columns=frame.columns)
+
+
+def _group_frame_by_year_month(frame: pd.DataFrame) -> dict[tuple[int, int], pd.DataFrame]:
+    """Split one frame by calendar (year, month) in a single vectorized groupby (avoids N× full-table Python scans)."""
+    if frame.empty or "report_date" not in frame.columns:
+        return {}
+    s = frame["report_date"]
+    if s.isna().all():
+        return {}
+    sub = frame.loc[s.notna()]
+    if sub.empty:
+        return {}
+    gy = sub["report_date"].dt.year
+    gm = sub["report_date"].dt.month
+    return {(int(y), int(m)): grp for (y, m), grp in sub.groupby([gy, gm], sort=True)}
 
 
 def _fetch_formal_zqtz_rows(
@@ -908,22 +1120,20 @@ def _build_month_breakdowns(
 def _process_single_month(
     month_year: int,
     month_number: int,
-    bonds_assets_df: pd.DataFrame,
-    bonds_liab_df: pd.DataFrame,
-    ib_assets_df: pd.DataFrame,
-    ib_liab_df: pd.DataFrame,
+    month_bonds_assets: pd.DataFrame,
+    month_bonds_liab: pd.DataFrame,
+    month_ib_assets: pd.DataFrame,
+    month_ib_liab: pd.DataFrame,
     prev_avg_assets: float | None,
     prev_avg_liabilities: float | None,
 ) -> dict[str, Any] | None:
-    """Process a single month's ADB data; return None if no data for that month."""
-    month_start, month_end = month_date_range(month_year, month_number)
+    """Process a single month's ADB data; return None if no data for that month.
+
+    All four DataFrames are already restricted to the same calendar month (no full-year re-scan).
+    """
+    month_start, _ = month_date_range(month_year, month_number)
     if month_start > date.today():
         return None
-
-    month_bonds_assets = _filter_frame_between_dates(bonds_assets_df, month_start, month_end)
-    month_bonds_liab = _filter_frame_between_dates(bonds_liab_df, month_start, month_end)
-    month_ib_assets = _filter_frame_between_dates(ib_assets_df, month_start, month_end)
-    month_ib_liab = _filter_frame_between_dates(ib_liab_df, month_start, month_end)
 
     all_month_dates: set[date] = set()
     for frame in (month_bonds_assets, month_bonds_liab, month_ib_assets, month_ib_liab):
@@ -1025,6 +1235,15 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
 
     available_months = sorted({(current_day.year, current_day.month) for current_day in all_dates})
 
+    ba_by_m = _group_frame_by_year_month(bonds_assets_df)
+    bl_by_m = _group_frame_by_year_month(bonds_liab_df)
+    iba_by_m = _group_frame_by_year_month(ib_assets_df)
+    ibl_by_m = _group_frame_by_year_month(ib_liab_df)
+    empty_ba = bonds_assets_df.head(0).copy() if not bonds_assets_df.empty else pd.DataFrame()
+    empty_bl = bonds_liab_df.head(0).copy() if not bonds_liab_df.empty else pd.DataFrame()
+    empty_iba = ib_assets_df.head(0).copy() if not ib_assets_df.empty else pd.DataFrame()
+    empty_ibl = ib_liab_df.head(0).copy() if not ib_liab_df.empty else pd.DataFrame()
+
     months_data: list[dict[str, Any]] = []
     prev_avg_assets: float | None = None
     prev_avg_liabilities: float | None = None
@@ -1035,13 +1254,14 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     ytd_days = 0
 
     for month_year, month_number in available_months:
+        mkey = (month_year, month_number)
         month_result = _process_single_month(
             month_year,
             month_number,
-            bonds_assets_df,
-            bonds_liab_df,
-            ib_assets_df,
-            ib_liab_df,
+            ba_by_m.get(mkey, empty_ba),
+            bl_by_m.get(mkey, empty_bl),
+            iba_by_m.get(mkey, empty_iba),
+            ibl_by_m.get(mkey, empty_ibl),
             prev_avg_assets,
             prev_avg_liabilities,
         )
@@ -1133,11 +1353,20 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         str(settings.duckdb_path),
         year,
     )
+    accounting_basis_trend, basis_source_versions, basis_rule_versions, basis_evidence_rows = (
+        _load_accounting_basis_daily_average_trend(str(settings.duckdb_path), year)
+    )
+    payload["accounting_basis_daily_avg_trend"] = accounting_basis_trend
     return _build_analytical_envelope(
         result_kind="adb.monthly",
         result_payload=payload,
-        source_versions=source_versions,
-        rule_versions=rule_versions,
-        filters_applied={"year": year},
-        tables_used=["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+        source_versions=source_versions + basis_source_versions,
+        rule_versions=rule_versions + basis_rule_versions,
+        filters_applied={"year": year, "accounting_basis_currency": ACCOUNTING_BASIS_CURRENCY},
+        tables_used=[
+            "fact_formal_zqtz_balance_daily",
+            "fact_formal_tyw_balance_daily",
+            "product_category_pnl_canonical_fact",
+        ],
+        evidence_rows=basis_evidence_rows or None,
     )

@@ -321,9 +321,20 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
 
     monthly = client.get("/api/analysis/adb/monthly", params={"year": 2025})
     assert monthly.status_code == 200, monthly.text
-    monthly_payload = monthly.json()
-    assert monthly_payload["result_meta"]["basis"] == "analytical"
-    monthly_payload = monthly_payload["result"]
+    monthly_json = monthly.json()
+    assert monthly_json["result_meta"]["basis"] == "analytical"
+    assert monthly_json["result_meta"]["result_kind"] == "adb.monthly"
+    assert "filters_applied" in monthly_json["result_meta"]
+    assert monthly_json["result_meta"]["filters_applied"].get("year") == 2025
+    assert "tables_used" in monthly_json["result_meta"] and set(monthly_json["result_meta"]["tables_used"]) == {
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+        "product_category_pnl_canonical_fact",
+    }
+    monthly_payload = monthly_json["result"]
+    assert "accounting_basis_daily_avg_trend" in monthly_payload
+    assert len(monthly_payload["months"]) == 1
+    assert len(monthly_payload["accounting_basis_daily_avg_trend"]) == 1
     assert monthly_payload["year"] == 2025
     assert "months" in monthly_payload and "ytd_avg_assets" in monthly_payload
     assert "ytd_nim" in monthly_payload
@@ -334,6 +345,14 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
     assert "assets_mom_change" not in monthly_payload["months"][0]
     assert "liabilities_mom_change" not in monthly_payload["months"][0]
+    assert monthly_payload["accounting_basis_daily_avg_trend"][0]["report_month"] == "2025-06"
+    monthly_basis_rows = {
+        row["basis_bucket"]: row
+        for row in monthly_payload["accounting_basis_daily_avg_trend"][0]["rows"]
+    }
+    assert monthly_basis_rows["AC"]["daily_avg_balance"] == 220000000
+    assert monthly_basis_rows["OCI"]["daily_avg_balance"] == 150000000
+    assert monthly_basis_rows["TPL"]["daily_avg_balance"] == 130000000
 
 
 def test_adb_comparison_returns_500_on_service_error(monkeypatch) -> None:
