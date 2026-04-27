@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
+import AgentWorkbenchPage, { AgentPanel } from "../features/agent/AgentWorkbenchPage";
 
 const AGENT_PLACEHOLDER =
   "例如：组合概览、损益汇总、久期风险、信用集中度、GitNexus 仓库图谱...";
@@ -42,6 +42,14 @@ describe("AgentWorkbenchPage", () => {
         AGENT_PLACEHOLDER,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("keeps the page shell while exposing AgentPanel as the reusable copilot body", () => {
+    render(<AgentPanel />);
+
+    expect(screen.queryByRole("heading", { name: "智能体工作台" })).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toBeInTheDocument();
+    expect(screen.getByLabelText("repo-path-input")).toBeInTheDocument();
   });
 
   it("renders explicit repo_path input and GitNexus quick examples", () => {

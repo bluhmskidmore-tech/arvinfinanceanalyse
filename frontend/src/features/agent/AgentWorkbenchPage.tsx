@@ -55,6 +55,10 @@ type AgentWorkbenchPageProps = {
   pageContext?: AgentPageContext;
 };
 
+type AgentPanelProps = AgentWorkbenchPageProps & {
+  showHeader?: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -334,7 +338,7 @@ function movePinnedRepoPathValue(
   return nextPaths;
 }
 
-export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPageProps = {}) {
+export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps = {}) {
   const [recentRepoPaths, setRecentRepoPaths] = useState<string[]>(() => loadRecentRepoPaths());
   const [pinnedRepoPaths, setPinnedRepoPaths] = useState<string[]>(() => loadPinnedRepoPaths());
   const [query, setQuery] = useState("");
@@ -653,29 +657,33 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
 
   return (
     <section style={{ minWidth: 0 }}>
-      <h1
-        style={{
-          margin: 0,
-          fontSize: 32,
-          fontWeight: 600,
-          letterSpacing: "-0.03em",
-          color: t.colorTextPrimary,
-        }}
-      >
-        智能体工作台
-      </h1>
-      <p
-        style={{
-          marginTop: 10,
-          marginBottom: 0,
-          maxWidth: 860,
-          color: t.colorTextSecondary,
-          fontSize: 15,
-          lineHeight: 1.75,
-        }}
-      >
-        输入自然语言问题，智能体路由到已有分析服务返回结构化结果。
-      </p>
+      {showHeader ? (
+        <>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 32,
+              fontWeight: 600,
+              letterSpacing: "-0.03em",
+              color: t.colorTextPrimary,
+            }}
+          >
+            智能体工作台
+          </h1>
+          <p
+            style={{
+              marginTop: 10,
+              marginBottom: 0,
+              maxWidth: 860,
+              color: t.colorTextSecondary,
+              fontSize: 15,
+              lineHeight: 1.75,
+            }}
+          >
+            输入自然语言问题，智能体路由到已有分析服务返回结构化结果。
+          </p>
+        </>
+      ) : null}
 
       {pageContext ? (
         <div
@@ -860,4 +868,8 @@ export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPagePr
       ) : null}
     </section>
   );
+}
+
+export default function AgentWorkbenchPage({ pageContext }: AgentWorkbenchPageProps = {}) {
+  return <AgentPanel pageContext={pageContext} showHeader />;
 }
