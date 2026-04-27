@@ -60,6 +60,53 @@ class AccountingAssetMovementRepository:
         report_date: str,
         currency_basis: str = "CNX",
     ) -> list[dict[str, object]]:
+        return self._fetch_rows_for_dates(
+            report_dates=[report_date],
+            currency_basis=currency_basis,
+        )
+
+    def fetch_recent_rows(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNX",
+        month_count: int = 6,
+    ) -> list[dict[str, object]]:
+        try:
+            conn = duckdb.connect(self.path, read_only=True)
+            date_rows = conn.execute(
+                """
+                select distinct cast(report_date as varchar)
+                from fact_accounting_asset_movement_monthly
+                where currency_basis = ?
+                  and cast(report_date as varchar) <= ?
+                order by cast(report_date as varchar) desc
+                limit ?
+                """,
+                [currency_basis, report_date, month_count],
+            ).fetchall()
+        except duckdb.Error:
+            return []
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+        report_dates = [str(row[0]) for row in date_rows]
+        if not report_dates:
+            return []
+        return self._fetch_rows_for_dates(
+            report_dates=report_dates,
+            currency_basis=currency_basis,
+        )
+
+    def _fetch_rows_for_dates(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str,
+    ) -> list[dict[str, object]]:
+        if not report_dates:
+            return []
         try:
             conn = duckdb.connect(self.path, read_only=True)
             rows = conn.execute(
@@ -82,11 +129,11 @@ class AccountingAssetMovementRepository:
                   source_version,
                   rule_version
                 from fact_accounting_asset_movement_monthly
-                where report_date = ?
+                where report_date in (select unnest(?))
                   and currency_basis = ?
-                order by sort_order
+                order by report_date desc, sort_order
                 """,
-                [report_date, currency_basis],
+                [report_dates, currency_basis],
             ).fetchall()
         except duckdb.Error:
             return []

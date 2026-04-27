@@ -42,8 +42,34 @@ def test_balance_movement_analysis_service_exposes_gl_control_rows():
     assert Decimal(by_bucket["OCI"]["current_balance"]) == Decimal("80.00000000")
     assert Decimal(by_bucket["TPL"]["current_balance"]) == Decimal("110.00000000")
     assert result["summary"]["matched_bucket_count"] == 3
+    assert [month["report_date"] for month in result["trend_months"]] == [
+        "2026-02-28",
+        "2026-01-31",
+    ]
+    assert Decimal(result["trend_months"][0]["current_balance_total"]) == Decimal(
+        "415.00000000"
+    )
+    trend_ac = next(
+        row for row in result["trend_months"][0]["rows"] if row["basis_bucket"] == "AC"
+    )
+    assert Decimal(trend_ac["current_balance_pct"]).quantize(
+        Decimal("0.000001")
+    ) == Decimal("54.216867")
     assert envelope["result_meta"]["quality_flag"] == "ok"
     assert envelope["result_meta"]["result_kind"] == "balance-analysis.movement.detail"
+    assert set(envelope["result_meta"]["source_version"].split("__")) == {
+        "sv-gl",
+        "sv-gl-prior",
+        "sv-zqtz",
+        "sv-zqtz-prior",
+    }
+    assert set(envelope["result_meta"]["rule_version"].split("__")) == {
+        "rv-balance",
+        "rv-balance-prior",
+        "rv-gl",
+        "rv-gl-prior",
+    }
+    assert envelope["result_meta"]["evidence_rows"] == 6
 
 
 def test_balance_movement_analysis_service_keeps_zqtz_gap_out_of_formal_quality():
@@ -115,6 +141,9 @@ def _seed_source_tables_and_materialize(
         conn.executemany(
             "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?)",
             [
+                ("2026-01-31", "FVTPL", "asset", "CNY", "100", "100", "sv-zqtz-prior", "rv-balance-prior"),
+                ("2026-01-31", "AC", "asset", "CNY", "205", "205", "sv-zqtz-prior", "rv-balance-prior"),
+                ("2026-01-31", "FVOCI", "asset", "CNY", "70", "70", "sv-zqtz-prior", "rv-balance-prior"),
                 (
                     "2026-02-28",
                     "FVTPL",
@@ -132,6 +161,12 @@ def _seed_source_tables_and_materialize(
         conn.executemany(
             "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
+                ("2026-01-31", "14101010001", "CNX", "TPL", "90", "100", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14201010001", "CNX", "AC bond", "190", "200", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14301010001", "CNX", "Voucher bond", "4", "4", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14301010002", "CNX", "Voucher accrued", "1", "1", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14401010001", "CNX", "OCI debt", "65", "70", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
+                ("2026-01-31", "14402010001", "CNX", "OCI equity", "90", "99", "0", "0", "0", 31, "sv-gl-prior", "rv-gl-prior"),
                 ("2026-02-28", "14101010001", "CNX", "TPL", "100", "110", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14201010001", "CNX", "AC bond", "200", "220", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14301010001", "CNX", "Voucher bond", "4", "4", "0", "0", "0", 28, "sv-gl", "rv-gl"),
@@ -139,6 +174,11 @@ def _seed_source_tables_and_materialize(
                 ("2026-02-28", "14401010001", "CNX", "OCI debt", "70", "80", "0", "0", "0", 28, "sv-gl", "rv-gl"),
                 ("2026-02-28", "14402010001", "CNX", "OCI equity", "90", "99", "0", "0", "0", 28, "sv-gl", "rv-gl"),
             ],
+        )
+        materialize_accounting_asset_movement_on_connection(
+            conn,
+            report_date="2026-01-31",
+            currency_basis="CNX",
         )
         return materialize_accounting_asset_movement_on_connection(
             conn,

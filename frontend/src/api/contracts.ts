@@ -1180,11 +1180,20 @@ export type BalanceMovementSummary = {
   bucket_count: number;
 };
 
+export type BalanceMovementTrendMonth = {
+  report_date: string;
+  report_month: string;
+  current_balance_total: DecimalLike;
+  balance_change_total: DecimalLike;
+  rows: BalanceMovementRow[];
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
   rows: BalanceMovementRow[];
   summary: BalanceMovementSummary;
+  trend_months: BalanceMovementTrendMonth[];
   accounting_controls: string[];
   excluded_controls: string[];
 };

@@ -41,6 +41,16 @@ class AccountingAssetMovementSummaryPayload(BaseModel):
     bucket_count: int
 
 
+class AccountingAssetMovementTrendMonthPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    report_month: str
+    current_balance_total: Decimal
+    balance_change_total: Decimal
+    rows: list[AccountingAssetMovementRowPayload]
+
+
 class AccountingAssetMovementPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,6 +58,7 @@ class AccountingAssetMovementPayload(BaseModel):
     currency_basis: str
     rows: list[AccountingAssetMovementRowPayload]
     summary: AccountingAssetMovementSummaryPayload
+    trend_months: list[AccountingAssetMovementTrendMonthPayload]
     accounting_controls: list[str]
     excluded_controls: list[str]
 

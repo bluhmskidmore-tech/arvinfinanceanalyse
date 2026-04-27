@@ -13,6 +13,7 @@ from backend.app.schemas.accounting_asset_movement import (
     AccountingAssetMovementRefreshPayload,
     AccountingAssetMovementRowPayload,
     AccountingAssetMovementSummaryPayload,
+    AccountingAssetMovementTrendMonthPayload,
 )
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
@@ -76,25 +77,34 @@ def accounting_asset_movement_envelope(
             f"No balance movement rows for report_date={report_date}, currency_basis={currency_basis}."
         )
     rows = _with_balance_percentages(rows_without_pct)
+    trend_months = _build_trend_months(
+        repo.fetch_recent_rows(
+            report_date=report_date,
+            currency_basis=currency_basis,
+            month_count=6,
+        )
+    )
+    evidence_rows = [row for month in trend_months for row in month.rows] or rows
 
     payload = AccountingAssetMovementPayload(
         report_date=report_date,
         currency_basis=currency_basis,
         rows=rows,
         summary=_build_summary(rows),
+        trend_months=trend_months,
         accounting_controls=CONTROL_ACCOUNTS,
         excluded_controls=EXCLUDED_CONTROLS,
     )
     meta = build_formal_result_meta(
         trace_id=f"tr_balance_movement_{report_date}_{currency_basis}",
         result_kind="balance-analysis.movement.detail",
-        source_version=_joined_latest(row.source_version for row in rows),
-        rule_version=_joined_latest(row.rule_version for row in rows) or RULE_VERSION,
+        source_version=_joined_latest(row.source_version for row in evidence_rows),
+        rule_version=_joined_latest(row.rule_version for row in evidence_rows) or RULE_VERSION,
         cache_version=CACHE_VERSION,
         quality_flag="ok",
         filters_applied={"report_date": report_date, "currency_basis": currency_basis},
         tables_used=["fact_accounting_asset_movement_monthly"],
-        evidence_rows=len(rows),
+        evidence_rows=len(evidence_rows),
         next_drill=[
             "product_category_pnl_canonical_fact: CNX 141/142/143/1440101 control accounts",
             "fact_formal_zqtz_balance_daily: CNY auxiliary diagnostic comparison; not a formal-control gate",
@@ -157,6 +167,37 @@ def _pct(numerator: Decimal, denominator: Decimal) -> Decimal | None:
     if denominator == Decimal("0"):
         return None
     return numerator / denominator * Decimal("100")
+
+
+def _build_trend_months(
+    raw_rows: list[dict[str, object]],
+) -> list[AccountingAssetMovementTrendMonthPayload]:
+    grouped: dict[str, list[AccountingAssetMovementRowPayload]] = {}
+    for raw_row in raw_rows:
+        row = AccountingAssetMovementRowPayload.model_validate(raw_row)
+        grouped.setdefault(row.report_date, []).append(row)
+
+    trend_months: list[AccountingAssetMovementTrendMonthPayload] = []
+    for report_date in sorted(grouped.keys(), reverse=True):
+        rows = _with_balance_percentages(
+            sorted(grouped[report_date], key=lambda row: row.sort_order)
+        )
+        trend_months.append(
+            AccountingAssetMovementTrendMonthPayload(
+                report_date=report_date,
+                report_month=rows[0].report_month,
+                current_balance_total=sum(
+                    (row.current_balance for row in rows),
+                    Decimal("0"),
+                ),
+                balance_change_total=sum(
+                    (row.balance_change for row in rows),
+                    Decimal("0"),
+                ),
+                rows=rows,
+            )
+        )
+    return trend_months
 
 
 def _joined_latest(values: Iterable[object]) -> str:

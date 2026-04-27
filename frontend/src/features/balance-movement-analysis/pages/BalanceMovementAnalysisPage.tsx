@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
-import type { BalanceMovementRow } from "../../../api/contracts";
+import type { BalanceMovementRow, BalanceMovementTrendMonth } from "../../../api/contracts";
 import { FilterBar } from "../../../components/FilterBar";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import { formatBalanceAmountToYiFromYuan } from "../../balance-analysis/pages/balanceAnalysisPageModel";
+import "./BalanceMovementAnalysisPage.css";
 
 const pageHeaderStyle = {
   display: "flex",
@@ -48,16 +49,6 @@ const cardStyle = {
   background: "#ffffff",
 } as const;
 
-const conclusionStyle = {
-  display: "grid",
-  gap: 12,
-  padding: 16,
-  borderRadius: 8,
-  border: "1px solid #b7d8c5",
-  background: "#f6fbf7",
-  marginBottom: 18,
-} as const;
-
 const tableCellStyle = {
   padding: "12px 8px",
   borderBottom: "1px solid #edf1f6",
@@ -69,6 +60,7 @@ const bucketLabels: Record<string, string> = {
   OCI: "OCI",
   TPL: "TPL",
 };
+const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
 
 function formatPct(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
@@ -93,6 +85,56 @@ function formatYiFixed(value: string | number | null | undefined, digits = 6) {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
+}
+
+function formatSignedYi(value: string | number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || value === "") {
+    return "-";
+  }
+  const n = Number(value) / 100000000;
+  if (!Number.isFinite(n)) {
+    return String(value);
+  }
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toLocaleString("zh-CN", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })} 亿`;
+}
+
+function trendBucket(
+  month: BalanceMovementTrendMonth | undefined,
+  bucket: BalanceMovementRow["basis_bucket"],
+) {
+  return month?.rows.find((row) => row.basis_bucket === bucket);
+}
+
+function trendDelta(
+  current: string | number | null | undefined,
+  previous: string | number | null | undefined,
+) {
+  const currentValue = Number(current);
+  const previousValue = Number(previous);
+  if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
+    return null;
+  }
+  return currentValue - previousValue;
+}
+
+function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
+  const currentParts = currentReportDate.split("-").map(Number);
+  const previousParts = previousReportDate.split("-").map(Number);
+  const [currentYear, currentMonth] = currentParts;
+  const [previousYear, previousMonth] = previousParts;
+  if (
+    !Number.isInteger(currentYear) ||
+    !Number.isInteger(currentMonth) ||
+    !Number.isInteger(previousYear) ||
+    !Number.isInteger(previousMonth)
+  ) {
+    return false;
+  }
+  return previousYear * 12 + previousMonth === currentYear * 12 + currentMonth - 1;
 }
 
 function statusTone(status: BalanceMovementRow["reconciliation_status"]) {
@@ -134,10 +176,50 @@ export default function BalanceMovementAnalysisPage() {
     [detailQuery.data?.result.rows],
   );
   const summary = detailQuery.data?.result.summary;
+  const trendMonths = detailQuery.data?.result.trend_months ?? [];
+  const currentTrendMonth = trendMonths[0];
+  const previousTrendMonth = trendMonths[1];
   const rowByBucket = useMemo(
     () => new Map(rows.map((row) => [row.basis_bucket, row])),
     [rows],
   );
+  const trendComparison = useMemo(() => {
+    if (!currentTrendMonth || !previousTrendMonth) {
+      return null;
+    }
+    if (
+      !isPreviousCalendarMonth(
+        currentTrendMonth.report_date,
+        previousTrendMonth.report_date,
+      )
+    ) {
+      return null;
+    }
+    const totalDelta = trendDelta(
+      currentTrendMonth.current_balance_total,
+      previousTrendMonth.current_balance_total,
+    );
+    if (totalDelta === null) {
+      return null;
+    }
+    const drivers = balanceMovementBuckets
+      .map((bucket) => {
+        const delta = trendDelta(
+          trendBucket(currentTrendMonth, bucket)?.current_balance,
+          trendBucket(previousTrendMonth, bucket)?.current_balance,
+        );
+        return delta === null ? null : { bucket, delta };
+      })
+      .filter((driver): driver is { bucket: BalanceMovementRow["basis_bucket"]; delta: number } =>
+        driver !== null,
+      )
+      .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
+    return {
+      drivers,
+      previousReportDate: previousTrendMonth.report_date,
+      totalDelta,
+    };
+  }, [currentTrendMonth, previousTrendMonth]);
 
   async function handleRefresh() {
     if (!selectedDate) {
@@ -224,29 +306,44 @@ export default function BalanceMovementAnalysisPage() {
       </FilterBar>
 
       {summary ? (
-        <section data-testid="balance-movement-analysis-conclusion" style={conclusionStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <section
+          data-testid="balance-movement-analysis-conclusion"
+          className="balance-movement-conclusion"
+        >
+          <div className="balance-movement-conclusion__top">
             <div>
-              <div style={{ color: "#027a48", fontSize: 12, fontWeight: 700 }}>
+              <div className="balance-movement-conclusion__status">
                 总账控制核对通过
               </div>
-              <strong style={{ display: "block", marginTop: 4, fontSize: 24 }}>
+              <strong className="balance-movement-conclusion__headline">
                 {selectedDate || detailQuery.data?.result.report_date} 合计{" "}
                 {formatYiFixed(summary.current_balance_total)} 亿
               </strong>
             </div>
-            <div style={{ color: "#5c6b82", fontSize: 13, textAlign: "right" }}>
+            <div className="balance-movement-conclusion__controls">
               控制科目 141 / 142 / 143 / 1440101；排除 144020 股权 OCI
             </div>
           </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", color: "#26364a", fontSize: 13 }}>
+          <div className="balance-movement-conclusion__shares">
             <span>AC {formatPct(rowByBucket.get("AC")?.current_balance_pct)}</span>
             <span>OCI {formatPct(rowByBucket.get("OCI")?.current_balance_pct)}</span>
             <span>TPL {formatPct(rowByBucket.get("TPL")?.current_balance_pct)}</span>
           </div>
-          <div style={{ color: "#5c6b82", fontSize: 12 }}>
+          <div className="balance-movement-conclusion__note">
             本页以总账控制数为正式口径；ZQTZ 诊断差异仅用于提示明细扫描差异，不影响本页核对结论。
           </div>
+          {trendComparison ? (
+            <div
+              data-testid="balance-movement-analysis-trend-conclusion"
+              className="balance-movement-conclusion__trend"
+            >
+              较 {trendComparison.previousReportDate} {formatSignedYi(trendComparison.totalDelta)}
+              ，主要来自{" "}
+              {trendComparison.drivers
+                .map((driver) => `${driver.bucket} ${formatSignedYi(driver.delta)}`)
+                .join("、")}。
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -330,6 +427,55 @@ export default function BalanceMovementAnalysisPage() {
           </table>
         </div>
       </AsyncSection>
+
+      {trendMonths.length > 0 ? (
+        <AsyncSection
+          title="最近6个可用月度趋势"
+          isLoading={detailQuery.isLoading}
+          isError={detailQuery.isError}
+          isEmpty={trendMonths.length === 0}
+          onRetry={() => void detailQuery.refetch()}
+        >
+          <div className="balance-movement-table-scroll">
+            <table
+              data-testid="balance-movement-analysis-trend-table"
+              className="balance-movement-trend-table"
+            >
+              <thead>
+                <tr>
+                  <th>月份</th>
+                  <th>总余额变动</th>
+                  <th>AC余额</th>
+                  <th>AC占比</th>
+                  <th>OCI余额</th>
+                  <th>OCI占比</th>
+                  <th>TPL余额</th>
+                  <th>TPL占比</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trendMonths.map((month) => {
+                  const ac = trendBucket(month, "AC");
+                  const oci = trendBucket(month, "OCI");
+                  const tpl = trendBucket(month, "TPL");
+                  return (
+                    <tr key={month.report_date}>
+                      <td>{month.report_month}</td>
+                      <td>{formatSignedYi(month.balance_change_total)}</td>
+                      <td>{formatBalanceAmountToYiFromYuan(ac?.current_balance)}</td>
+                      <td>{formatPct(ac?.current_balance_pct)}</td>
+                      <td>{formatBalanceAmountToYiFromYuan(oci?.current_balance)}</td>
+                      <td>{formatPct(oci?.current_balance_pct)}</td>
+                      <td>{formatBalanceAmountToYiFromYuan(tpl?.current_balance)}</td>
+                      <td>{formatPct(tpl?.current_balance_pct)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </AsyncSection>
+      ) : null}
 
       {detailQuery.data?.result.accounting_controls ? (
         <div

@@ -1,0 +1,90 @@
+.balance-movement-conclusion {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #b7d8c5;
+  border-radius: 8px;
+  background: #f6fbf7;
+  margin-bottom: 18px;
+}
+
+.balance-movement-conclusion__top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.balance-movement-conclusion__status {
+  color: #027a48;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balance-movement-conclusion__headline {
+  display: block;
+  margin-top: 4px;
+  font-size: 24px;
+}
+
+.balance-movement-conclusion__controls {
+  color: #5c6b82;
+  font-size: 13px;
+  text-align: right;
+}
+
+.balance-movement-conclusion__shares {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: #26364a;
+  font-size: 13px;
+}
+
+.balance-movement-conclusion__note,
+.balance-movement-conclusion__trend {
+  color: #5c6b82;
+  font-size: 12px;
+}
+
+.balance-movement-conclusion__trend {
+  color: #26364a;
+  font-size: 13px;
+}
+
+.balance-movement-table-scroll {
+  overflow-x: auto;
+}
+
+.balance-movement-trend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.balance-movement-trend-table thead tr {
+  border-bottom: 1px solid #d7dfea;
+  text-align: left;
+}
+
+.balance-movement-trend-table th,
+.balance-movement-trend-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: right;
+}
+
+.balance-movement-trend-table th:first-child,
+.balance-movement-trend-table td:first-child {
+  text-align: left;
+}
+
+.balance-movement-trend-table td:first-child {
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .balance-movement-conclusion__controls {
+    text-align: left;
+  }
+}

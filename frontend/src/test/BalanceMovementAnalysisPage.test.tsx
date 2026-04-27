@@ -24,6 +24,12 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(conclusion).toHaveTextContent("TPL 26.07%");
     expect(conclusion).toHaveTextContent("排除 144020 股权 OCI");
     expect(conclusion).toHaveTextContent("ZQTZ 诊断差异仅用于提示明细扫描差异");
+    expect(await screen.findByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
+      "较 2026-01-31 +129.80 亿",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-trend-conclusion")).toHaveTextContent(
+      "TPL +51.63 亿、OCI +44.87 亿、AC +33.29 亿",
+    );
 
     const table = screen.getByTestId("balance-movement-analysis-table");
     expect(within(table).getByText("AC")).toBeInTheDocument();
@@ -36,6 +42,10 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-controls")).toHaveTextContent(
       "144020%",
     );
+    const trendTable = screen.getByTestId("balance-movement-analysis-trend-table");
+    expect(within(trendTable).getByText("2026-02")).toBeInTheDocument();
+    expect(within(trendTable).getByText("+129.80 亿")).toBeInTheDocument();
+    expect(within(trendTable).getByText("2026-01")).toBeInTheDocument();
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {
@@ -50,5 +60,38 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(await screen.findByTestId("balance-movement-analysis-refresh-message")).toHaveTextContent(
       "completed: 3 行",
     );
+  });
+
+  it("suppresses the month-over-month conclusion when available snapshots are not adjacent", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const sparseClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            trend_months: envelope.result.trend_months.map((month, index) =>
+              index === 1
+                ? {
+                    ...month,
+                    report_date: "2025-12-31",
+                    report_month: "2025-12",
+                  }
+                : month,
+            ),
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: sparseClient,
+    });
+
+    expect(await screen.findByTestId("balance-movement-analysis-trend-table")).toBeInTheDocument();
+    expect(screen.queryByTestId("balance-movement-analysis-trend-conclusion")).not.toBeInTheDocument();
   });
 });
