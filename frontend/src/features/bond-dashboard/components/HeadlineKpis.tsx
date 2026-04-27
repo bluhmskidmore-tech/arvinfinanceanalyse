@@ -2,6 +2,7 @@ import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { Card, Col, Row, Spin } from "antd";
 
 import type { BondDashboardHeadlinePayload, Numeric } from "../../../api/contracts";
+import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import {
   formatDv01Wan,
   formatMomRatio,
@@ -34,6 +35,9 @@ const KPI_DEFS: {
   { key: "total_dv01", label: "DV01合计", unit: "万元", format: formatDv01Wan },
 ];
 
+const dt = designTokens;
+const c = dt.color;
+
 export function HeadlineKpis({
   data,
   loading,
@@ -53,7 +57,7 @@ export function HeadlineKpis({
   const { kpis, prev_kpis } = data;
 
   return (
-    <Row gutter={[16, 16]} data-testid="bond-dashboard-headline-kpis">
+    <Row gutter={[dt.space[3], dt.space[3]]} data-testid="bond-dashboard-headline-kpis">
       {KPI_DEFS.map((def) => {
         const raw = kpis[def.key];
         const prevRaw = prev_kpis?.[def.key];
@@ -61,7 +65,8 @@ export function HeadlineKpis({
         const mom = formatMomRatio(raw, prevRaw);
         const up = mom !== null && mom.startsWith("+");
         const down = mom !== null && mom.startsWith("-");
-        const changeColor = up ? "#cf1322" : down ? "#389e0d" : "rgba(0,0,0,0.45)";
+        const changeColor = up ? c.danger[500] : down ? c.success[600] : c.neutral[500];
+        const muted = c.neutral[600];
 
         return (
           <Col
@@ -69,36 +74,53 @@ export function HeadlineKpis({
             sm={12}
             md={8}
             lg={6}
-            style={{ flex: "1 1 140px", minWidth: 140 }}
+            xl={3}
             key={def.key}
             data-testid={`bond-dashboard-kpi-${def.key}`}
           >
             <Card
               size="small"
-              styles={{ body: { padding: "16px 12px" } }}
+              styles={{ body: { padding: `${dt.space[3]}px ${dt.space[3] - 2}px` } }}
               style={{
-                borderRadius: 8,
-                boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                borderRadius: dt.radius.md,
+                boxShadow: dt.shadow.card,
                 height: "100%",
+                borderColor: c.neutral[200],
               }}
             >
-              <div style={{ fontSize: 13, color: "rgba(0,0,0,0.55)", marginBottom: 8 }}>
-                {def.label}
-              </div>
-              <div style={{ fontSize: 28, fontWeight: 700, lineHeight: 1.15, color: "#1677ff" }}>
+              <div style={{ fontSize: dt.fontSize[13], color: muted, marginBottom: dt.space[2] }}>{def.label}</div>
+              <div
+                style={{
+                  fontSize: dt.fontSize[24],
+                  fontWeight: 700,
+                  lineHeight: 1.15,
+                  color: c.primary[600],
+                  ...tabularNumsStyle,
+                }}
+              >
                 {display}
-                <span style={{ fontSize: 13, fontWeight: 500, marginLeft: 4, color: "rgba(0,0,0,0.45)" }}>
+                <span style={{ fontSize: dt.fontSize[13], fontWeight: 500, marginLeft: 4, color: c.neutral[500] }}>
                   {def.unit}
                 </span>
               </div>
-              <div style={{ fontSize: 12, marginTop: 8, color: changeColor, display: "flex", alignItems: "center", gap: 4 }}>
+              <div
+                style={{
+                  fontSize: dt.fontSize[12],
+                  marginTop: dt.space[2],
+                  color: mom ? changeColor : c.neutral[400],
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  ...tabularNumsStyle,
+                }}
+              >
                 {mom ? (
                   <>
                     {up ? <ArrowUpOutlined /> : down ? <ArrowDownOutlined /> : null}
                     <span>环比 {mom}</span>
                   </>
                 ) : (
-                  <span style={{ color: "rgba(0,0,0,0.35)" }}>环比 —</span>
+                  <span>环比 —</span>
                 )}
               </div>
             </Card>

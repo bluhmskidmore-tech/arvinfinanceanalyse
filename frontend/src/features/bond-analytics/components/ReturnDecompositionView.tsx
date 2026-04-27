@@ -1,5 +1,4 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import ReactECharts from "../../../lib/echarts";
 import { Card, Statistic, Row, Col, Table, Alert, Spin, Collapse } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { ResultMeta } from "../../../api/contracts";
@@ -10,36 +9,15 @@ import type {
   PeriodType,
   ReturnDecompositionResponse,
 } from "../types";
-import {
-  bondNumericRaw,
-  returnDecompositionWaterfallDisplayStrings,
-  returnDecompositionWaterfallRawSteps,
-} from "../adapters/bondAnalyticsAdapter";
+import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { formatWan, formatYi } from "../utils/formatters";
+import { buildReturnDecompositionWaterfallOption } from "../lib/returnDecompositionWaterfallOption";
 import { SectionLead } from "./SectionLead";
+import { ReturnDecompositionWaterfallChart } from "./ReturnDecompositionWaterfallChart";
 
 const CN_MARKET_UP = designTokens.color.danger[500];
 const CN_MARKET_DOWN = designTokens.color.success[600];
-const CHART_ACCENT = designTokens.color.info[500];
-const CHART_AXIS = { color: designTokens.color.neutral[700], fontSize: designTokens.fontSize[11] };
-
-const WATERFALL_CATEGORIES = [
-  "票息",
-  "骑乘",
-  "利率效应",
-  "利差效应",
-  "外汇效应",
-  "凸性",
-  "交易",
-  "合计",
-] as const;
-
-const TRANSPARENT_BAR = {
-  borderColor: "transparent",
-  color: "rgba(0,0,0,0)",
-  borderWidth: 0,
-} as const;
 
 function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
   if (value === "ok") return "正常";
@@ -69,85 +47,6 @@ function describeMetaIssues(meta: ResultMeta | null): string[] {
   if (meta.vendor_status !== "ok") issues.push(`供应商状态=${metaVendorLabel(meta.vendor_status)}`);
   if (meta.fallback_mode !== "none") issues.push(`降级模式=${metaFallbackLabel(meta.fallback_mode)}`);
   return issues;
-}
-
-function buildWaterfallOption(d: ReturnDecompositionResponse) {
-  const rawSteps = returnDecompositionWaterfallRawSteps(d);
-  const stepValues = rawSteps.slice(0, -1);
-  const explained = rawSteps[rawSteps.length - 1] ?? 0;
-
-  const helperRaw: number[] = [];
-  const valueRaw: number[] = [];
-  const barColors: string[] = [];
-
-  let running = 0;
-  for (const v of stepValues) {
-    if (v >= 0) {
-      helperRaw.push(running);
-      valueRaw.push(v);
-      barColors.push(CN_MARKET_UP);
-      running += v;
-    } else {
-      helperRaw.push(running + v);
-      valueRaw.push(-v);
-      barColors.push(CN_MARKET_DOWN);
-      running += v;
-    }
-  }
-
-  helperRaw.push(0);
-  valueRaw.push(Number.isFinite(explained) ? explained : 0);
-  barColors.push(CHART_ACCENT);
-
-  const displayStrings = returnDecompositionWaterfallDisplayStrings(d);
-
-  return {
-    backgroundColor: "transparent",
-    textStyle: { color: designTokens.color.neutral[700] },
-    tooltip: {
-      trigger: "axis",
-      axisPointer: { type: "shadow" },
-      formatter: (items: unknown) => {
-        const list = Array.isArray(items) ? items : [items];
-        const bar = list.find((x: { seriesName?: string }) => x.seriesName === "效应");
-        const idx = (bar as { dataIndex?: number })?.dataIndex ?? 0;
-        const label = WATERFALL_CATEGORIES[idx];
-        return `${label}<br/>${displayStrings[idx] ?? "-"}`;
-      },
-    },
-    grid: { left: 48, right: 24, top: 24, bottom: 32, containLabel: true },
-    xAxis: {
-      type: "category",
-      data: [...WATERFALL_CATEGORIES],
-      axisLabel: { interval: 0, rotate: 0, ...CHART_AXIS },
-      axisLine: { lineStyle: { color: designTokens.color.neutral[200] } },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: CHART_AXIS,
-      splitLine: { lineStyle: { color: designTokens.color.neutral[200], type: "dashed" } },
-    },
-    series: [
-      {
-        name: "辅助",
-        type: "bar",
-        stack: "waterfall",
-        silent: true,
-        itemStyle: TRANSPARENT_BAR,
-        emphasis: { itemStyle: TRANSPARENT_BAR },
-        data: helperRaw,
-      },
-      {
-        name: "效应",
-        type: "bar",
-        stack: "waterfall",
-        data: valueRaw.map((val, i) => ({
-          value: val,
-          itemStyle: { color: barColors[i] },
-        })),
-      },
-    ],
-  };
 }
 
 interface Props {
@@ -263,7 +162,7 @@ export function ReturnDecompositionView({
   }, [accountingClass, assetClass, client, periodType, reportDate]);
 
   const waterfallOption = useMemo(
-    () => (data ? buildWaterfallOption(data) : null),
+    () => (data ? buildReturnDecompositionWaterfallOption(data) : null),
     [data],
   );
 
@@ -367,15 +266,11 @@ export function ReturnDecompositionView({
             );
           })}
         </div>
-        {waterfallOption && (
+        {waterfallOption ? (
           <div style={{ marginTop: designTokens.space[4] }}>
-            <ReactECharts
-              option={waterfallOption}
-              style={{ height: 380, width: "100%" }}
-              opts={{ renderer: "canvas" }}
-            />
+            <ReturnDecompositionWaterfallChart option={waterfallOption} height={380} />
           </div>
-        )}
+        ) : null}
       </Card>
 
       {data.by_asset_class && data.by_asset_class.length > 0 && (

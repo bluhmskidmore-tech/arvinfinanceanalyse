@@ -26,6 +26,7 @@ import type {
   BondAnalyticsRefreshPayload,
   BondPortfolioHeadlinesPayload,
   BondTopHoldingsPayload,
+  YieldCurveTermStructurePayload,
   BenchmarkExcessPayload,
   BalanceAnalysisSummaryExportPayload,
   BalanceAnalysisSummaryTablePayload,
@@ -164,6 +165,7 @@ import {
 import { formatRawAsNumeric } from "../utils/format";
 import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
+import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import type { ExecutiveClientMethods } from "./executiveClient";
 import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
 import type { MarketDataClientMethods } from "./marketDataClient";
@@ -4248,6 +4250,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         { basis: "formal", formal_use_allowed: true },
       );
     },
+    async getBondAnalyticsYieldCurveTermStructure(
+      reportDate: string,
+      _options?: { curveTypes?: string },
+    ) {
+      await delay();
+      void _options;
+      return mockBondAnalyticsYieldCurveTermStructure(reportDate);
+    },
     async getCreditSpreadAnalysisDetail(reportDate: string) {
       await delay();
       return buildMockApiEnvelope(
@@ -5256,6 +5266,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/api/bond-analytics/top-holdings?${params.toString()}`,
+      );
+    },
+    getBondAnalyticsYieldCurveTermStructure: (
+      reportDate: string,
+      options?: { curveTypes?: string },
+    ) => {
+      const params = new URLSearchParams({ report_date: reportDate });
+      if (options?.curveTypes?.trim()) {
+        params.set("curve_types", options.curveTypes.trim());
+      }
+      return requestJson<YieldCurveTermStructurePayload>(
+        fetchImpl,
+        baseUrl,
+        `/api/bond-analytics/yield-curve-term-structure?${params.toString()}`,
       );
     },
     getCreditSpreadAnalysisDetail: (reportDate: string) =>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>债券分析首屏 — 现状信息架构（与代码一致）</title>
+  <style>
+    :root {
+      --bg: #f1f3f2;
+      --card: #fff;
+      --border: #e4ebe8;
+      --accent: #2c5a79;
+      --muted: #586575;
+      --warn: #b56f22;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "PingFang SC", "Microsoft YaHei UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: #1c2833;
+      line-height: 1.45;
+      padding: 24px;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 8px;
+      color: var(--accent);
+    }
+    .meta {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+      max-width: 720px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      font-size: 12px;
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .legend code { background: #eff4f8; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .block {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      overflow: hidden;
+    }
+    .block-h {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      padding: 8px 12px;
+      background: #eff4f8;
+      border-bottom: 1px solid var(--border);
+    }
+    .block-b { padding: 12px; font-size: 13px; }
+    .row {
+      display: grid;
+      gap: 8px;
+    }
+    .row-16-8 { grid-template-columns: 2fr 1fr; }
+    .row-14-10 { grid-template-columns: 1.17fr 0.83fr; }
+    .row-3 { grid-template-columns: repeat(3, 1fr); }
+    @media (max-width: 900px) {
+      .row-16-8, .row-14-10, .row-3 { grid-template-columns: 1fr; }
+    }
+    .cell {
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      min-height: 56px;
+      font-size: 12px;
+    }
+    .cell strong { display: block; margin-bottom: 4px; color: var(--accent); }
+    .cell .tid { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+    .note {
+      margin-top: 24px;
+      padding: 14px 16px;
+      background: #faf3e7;
+      border: 1px solid #e9cfa5;
+      border-radius: 8px;
+      font-size: 13px;
+      color: #5e3912;
+    }
+  </style>
+</head>
+<body>
+  <h1>债券分析 <code style="font-size:14px">/bond-analysis</code> 首屏 — As-built</h1>
+  <p class="meta">
+    依据 <code>frontend/src/features/bond-analytics/components/BondAnalyticsOverviewPanels.tsx</code>
+    与 <code>BondAnalyticsInstitutionalCockpit.tsx</code> 的 DOM 顺序绘制。
+    外层另有 <code>BondAnalyticsViewContent</code> 底部挂载 <code>BondAnalyticsDetailSection</code>（Tab 明细，不在本首屏竖条内展开）。
+  </p>
+  <div class="legend">
+    <span><code>data-testid</code> 见灰字</span>
+    <span>竖向 gap：Overview 内 <code>space[3]</code> (12px)；View 最外层 <code>space[4]</code> (16px)</span>
+  </div>
+
+  <div class="page">
+    <div class="block">
+      <div class="block-h">① MarketContextStrip</div>
+      <div class="block-b">
+        标题区「债券分析」、报告日/周期、truth strip 等
+        <div class="tid">bond-analysis-market-context-strip</div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-h">② FilterActionStrip</div>
+      <div class="block-b">
+        报表日期、期间、资产/会计分类、场景、点差、刷新
+        <div class="tid">bond-analysis-filter-action-strip</div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-h">③ InstitutionalCockpit（bond-analysis-phase3-cockpit）</div>
+      <div class="block-b">
+        <div class="row" style="margin-bottom:12px">
+          <div class="cell" style="border-style:solid">
+            <strong>Card：资产变动与首屏 KPI</strong>
+            HeadlineKpis（首屏 headline 指标带）<br />
+            <span class="tid">bond-analysis-asset-momentum → bond-analysis-kpi-ribbon</span>
+          </div>
+        </div>
+
+        <div class="row row-16-8">
+          <div class="cell" style="border-style:solid; min-height:120px">
+            <strong>本日/市场结论面（大字号一句话 + 四格 Signal）</strong>
+            利率 / 曲线 / 信用 / 资金
+            <div class="tid">bond-analysis-cockpit-conclusion</div>
+          </div>
+          <div class="cell" style="border-style:solid">
+            <strong>今日关注</strong>
+            <div class="tid">bond-analysis-today-focus</div>
+          </div>
+        </div>
+
+        <div class="row row-14-10" style="margin-top:8px">
+          <div class="cell" style="border-style:solid">
+            <strong>组合摘要</strong>（ narrative + 标签 久期/信用/利差 ）
+            <div class="tid">bond-analysis-summary-card</div>
+          </div>
+          <div class="cell" style="border-style:solid">
+            <strong>债券资产结构</strong>（按资产类进度条）
+            <div class="tid">bond-analysis-asset-structure</div>
+          </div>
+        </div>
+
+        <div class="row row-3" style="margin-top:8px">
+          <div class="cell">收益率与久期分布 <span class="tid">(lg:8)</span></div>
+          <div class="cell">利差分析（中位数，bp）<span class="tid">(lg:8)</span></div>
+          <div class="cell">持仓明细（前10）<span class="tid">(lg:8) · open top-holdings</span></div>
+        </div>
+
+        <div class="row row-3" style="margin-top:8px">
+          <div class="cell">信用等级分布 <span class="tid">(lg:8)</span></div>
+          <div class="cell">组合收益归因（本期）<span class="tid">(lg:8)</span></div>
+          <div class="cell">决策事项 + 下钻链接 <span class="tid">(lg:8)</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="block">
+      <div class="block-h">④ PerformanceComparison</div>
+      <div class="block-b">业绩对比区（组件内自洽）</div>
+    </div>
+
+    <div class="block">
+      <div class="block-h">⑤ 两列 auto-fit minmax(320px,1fr)</div>
+      <div class="block-b row" style="grid-template-columns:1fr 1fr">
+        <div class="cell">RiskTrendChart</div>
+        <div class="cell">BondEventCalendar <span class="tid">(最多 4 条)</span></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">
+    <strong>与参考完稿/ DESIGN.md 的差异（版式 PR 要动的点）：</strong><br />
+    当前实现将「<strong>资产变动 + KPI 带</strong>」放在「<strong>大结论文案 + 四格</strong>」<em>之前</em>；
+    你提供的参考图是「宏观条 → 本日判断大段 → 再 KPI 横带」。首屏版式调整时需显式决定：是否仅调整顺序、是否拆出独立「宏观七指标无框条」等。
+  </p>
+</body>
+</html>

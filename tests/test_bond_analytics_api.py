@@ -63,6 +63,10 @@ _BOND_ANALYTICS_CASES: list[tuple[str, dict[str, str]]] = [
         "/api/bond-analytics/top-holdings",
         {"report_date": REPORT_DATE, "top_n": "20"},
     ),
+    (
+        "/api/bond-analytics/yield-curve-term-structure",
+        {"report_date": REPORT_DATE, "curve_types": "treasury"},
+    ),
 ]
 
 
@@ -104,7 +108,7 @@ def test_bond_analytics_endpoints_envelope_and_result_shape() -> None:
 def test_bond_analytics_each_path_distinct_contract() -> None:
     """Sanity: each configured path is exercised once."""
     paths = [p for p, _ in _BOND_ANALYTICS_CASES]
-    assert len(paths) == len(set(paths)) == 9
+    assert len(paths) == len(set(paths)) == 10
 
 
 def test_bond_analytics_dates_returns_available_report_dates(tmp_path, monkeypatch):

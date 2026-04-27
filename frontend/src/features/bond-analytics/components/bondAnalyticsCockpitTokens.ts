@@ -65,32 +65,32 @@ export function toneColor(tone: BondAnalyticsTruthTone) {
   if (tone === "success") {
     return {
       background: color.success[50],
-      color: "#25724d",
-      borderColor: "#cfe7d8",
-      accent: "#5e9b76",
+      color: color.success[800],
+      borderColor: color.success[200],
+      accent: color.success[500],
     };
   }
   if (tone === "warning") {
     return {
-      background: "#fff5e8",
-      color: "#9f5b0b",
-      borderColor: "#f0d7b1",
-      accent: "#d08e3d",
+      background: color.warning[50],
+      color: color.warning[800],
+      borderColor: color.warning[200],
+      accent: color.warning[500],
     };
   }
   if (tone === "danger") {
     return {
-      background: "#fdeeee",
-      color: "#a9342f",
-      borderColor: "#efc7c6",
-      accent: "#d06763",
+      background: color.danger[50],
+      color: color.danger[800],
+      borderColor: color.danger[200],
+      accent: color.danger[500],
     };
   }
   return {
-    background: "#eff4f9",
-    color: "#48627d",
-    borderColor: "#d8e2ed",
-    accent: "#88a0b8",
+    background: color.primary[50],
+    color: color.neutral[700],
+    borderColor: color.neutral[200],
+    accent: color.neutral[500],
   };
 }
 
@@ -104,33 +104,33 @@ export function readinessTagColor(statusLabel: string) {
 export function readinessSurface(statusLabel: string) {
   if (statusLabel === "eligible") {
     return {
-      background: "#eff8f2",
-      borderColor: "#d0e8d8",
-      accent: "#2f8f63",
-      text: "#275e45",
+      background: color.success[50],
+      borderColor: color.success[200],
+      accent: color.success[500],
+      text: color.success[800],
     };
   }
   if (statusLabel === "request-error") {
     return {
-      background: "#fff0f0",
-      borderColor: "#efcccc",
-      accent: "#b42318",
-      text: "#7a251f",
+      background: color.danger[50],
+      borderColor: color.danger[200],
+      accent: color.danger[600],
+      text: color.danger[800],
     };
   }
   if (statusLabel === "placeholder-blocked" || statusLabel === "warning") {
     return {
-      background: "#fff7eb",
-      borderColor: "#f0debb",
-      accent: "#b86a16",
-      text: "#815014",
+      background: color.warning[50],
+      borderColor: color.warning[200],
+      accent: color.warning[600],
+      text: color.warning[800],
     };
   }
   return {
-    background: "#f7f9fc",
-    borderColor: "#dde6f0",
-    accent: "#5d7691",
-    text: "#415467",
+    background: color.neutral[50],
+    borderColor: color.neutral[200],
+    accent: color.neutral[600],
+    text: color.neutral[800],
   };
 }
 

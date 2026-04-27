@@ -17,7 +17,11 @@ import { useSearchParams } from "react-router-dom";
 import { designTokens } from "../../../theme/designSystem";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 
-const BondAnalyticsOverviewPanels = lazy(() => import("./BondAnalyticsOverviewPanels"));
+const BondAnalyticsOverviewPanels = lazy(() =>
+  import("./BondAnalyticsOverviewPanels").then((module) => ({
+    default: module.BondAnalyticsOverviewPanels,
+  })),
+);
 
 const BondAnalyticsDetailSection = lazy(() =>
   import("./BondAnalyticsDetailSection").then((module) => ({

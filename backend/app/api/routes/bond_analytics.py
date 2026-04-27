@@ -21,6 +21,10 @@ from backend.app.services.bond_analytics_service import (
     get_return_decomposition,
     get_top_holdings,
 )
+from backend.app.services.yield_curve_term_structure_service import (
+    get_yield_curve_term_structure,
+    parse_curve_types_param,
+)
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
 
@@ -63,6 +67,18 @@ def credit_spread_migration(
     spread_scenarios: str = Query("10,25,50", description="Comma-separated bp values"),
 ):
     return get_credit_spread_migration(report_date, spread_scenarios)
+
+
+@router.get("/yield-curve-term-structure")
+def yield_curve_term_structure(
+    report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
+    curve_types: str = Query("treasury,cdb", description="Comma-separated: treasury, cdb, aaa_credit"),
+):
+    try:
+        types_tuple = parse_curve_types_param(curve_types)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return get_yield_curve_term_structure(report_date=report_date, curve_types=types_tuple)
 
 
 @router.get("/portfolio-headlines")

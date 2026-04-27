@@ -447,28 +447,6 @@ export function BondAnalyticsInstitutionalCockpit({
     <section data-testid="bond-analysis-phase3-cockpit" style={{ display: "grid", gap: dt.space[3] }}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
-      <Card
-        size="small"
-        data-testid="bond-analysis-asset-momentum"
-        title="资产变动与首屏 KPI"
-        style={dashboardCardStyle}
-        styles={{ header: { minHeight: 44 }, body: { paddingBlock: 12 } }}
-      >
-        <div data-testid="bond-analysis-kpi-ribbon">
-          <HeadlineKpis data={headline} loading={headlineQ.isPending} />
-        </div>
-        {isDashboardDateFallback ? (
-          <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
-            仪表盘快照使用 {dashboardReportDate}
-          </div>
-        ) : null}
-        <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
-          指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
-{formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
-{isFiniteNumber(spreadDeltaBp) ? `${spreadDeltaBp.toFixed(1)}bp` : "—"}）均按 raw 数值计算。切换上方「报表日期」可更新全页对比基准。
-        </div>
-      </Card>
-
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} xl={16}>
           <Card
@@ -570,6 +548,28 @@ export function BondAnalyticsInstitutionalCockpit({
           </Card>
         </Col>
       </Row>
+
+      <Card
+        size="small"
+        data-testid="bond-analysis-asset-momentum"
+        title="资产变动与首屏 KPI"
+        style={dashboardCardStyle}
+        styles={{ header: { minHeight: 44 }, body: { paddingBlock: 12 } }}
+      >
+        <div data-testid="bond-analysis-kpi-ribbon">
+          <HeadlineKpis data={headline} loading={headlineQ.isPending} />
+        </div>
+        {isDashboardDateFallback ? (
+          <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
+            仪表盘快照使用 {dashboardReportDate}
+          </div>
+        ) : null}
+        <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
+          指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
+{formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
+{isFiniteNumber(spreadDeltaBp) ? `${spreadDeltaBp.toFixed(1)}bp` : "—"}）均按 raw 数值计算。切换上方「报表日期」可更新全页对比基准。
+        </div>
+      </Card>
 
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={14}>

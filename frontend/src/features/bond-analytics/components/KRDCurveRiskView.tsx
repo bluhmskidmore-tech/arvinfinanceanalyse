@@ -5,6 +5,7 @@ import { useApiClient } from "../../../api/client";
 import type { KRDScenarioResult, Numeric } from "../../../api/contracts";
 import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { AssetClassRiskSummary, BondAnalyticsScenarioSetFilter, KRDCurveRiskResponse } from "../types";
+import { designTokens } from "../../../theme/designSystem";
 import { formatWan, formatYi } from "../utils/formatters";
 import { SectionLead } from "./SectionLead";
 
@@ -159,12 +160,12 @@ const assetClassColumns = [
 ];
 
 const ASSET_CLASS_SLICE_COLORS: Record<string, string> = {
-  rate: "#1f5eff",
-  credit: "#ff7a45",
-  other: "#8c8c8c",
+  rate: designTokens.color.primary[600],
+  credit: designTokens.color.warning[500],
+  other: designTokens.color.neutral[500],
 };
 
-const DEFAULT_SLICE_COLOR = "#bfbfbf";
+const DEFAULT_SLICE_COLOR = designTokens.color.neutral[400];
 
 function sliceColorForAssetClass(assetClass: string): string {
   const key = assetClass.trim().toLowerCase();
@@ -200,7 +201,7 @@ function buildAssetStructurePieOption(rows: AssetClassRiskSummary[]) {
           style: {
             text: "资产结构",
             textAlign: "center" as const,
-            fill: "#262626",
+            fill: designTokens.color.neutral[900],
             fontSize: 14,
             fontWeight: 500,
           },
@@ -279,13 +280,13 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
       xAxis: {
         type: "category",
         data: buckets.map((b) => b.tenor),
-        axisLabel: { color: "#5c6b82", fontSize: 11 },
+        axisLabel: { color: designTokens.color.neutral[600], fontSize: 11 },
         axisTick: { alignWithLabel: true },
       },
       yAxis: {
         type: "value",
         axisLabel: {
-          color: "#5c6b82",
+          color: designTokens.color.neutral[600],
           fontSize: 11,
           formatter: (v: number) => v.toFixed(3),
         },
@@ -297,7 +298,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
           barMaxWidth: 48,
           data: buckets.map((b) => {
             const krd = bondNumericRaw(b.krd);
-            const color = krd >= 0 ? "#1f5eff" : "#ff4d4f";
+            const color = krd >= 0 ? designTokens.color.primary[600] : designTokens.color.semantic.loss;
             return {
               value: krd,
               itemStyle: { color },
@@ -305,7 +306,7 @@ export function KRDCurveRiskView({ reportDate, scenarioSet = "standard" }: Props
                 show: true,
                 position: krd >= 0 ? "top" : "bottom",
                 formatter: Number.isFinite(krd) ? krd.toFixed(3) : b.krd.display,
-                color: "#333",
+                color: designTokens.color.neutral[800],
                 fontSize: 11,
                 fontVariantNumeric: "tabular-nums",
               },

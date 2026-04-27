@@ -55,10 +55,12 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsFilterActionStrip", 
   ),
 }));
 
-vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
-  default: function MockPerformanceComparison() {
-    return <div data-testid="mock-performance-comparison" />;
-  },
+vi.mock("../features/bond-analytics/components/BondAnalyticsMacroMarketBar", () => ({
+  BondAnalyticsMacroMarketBar: () => <div data-testid="mock-bond-macro-bar" />,
+}));
+
+vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewMidCharts", () => ({
+  BondAnalyticsOverviewMidCharts: () => <div data-testid="mock-bond-mid-charts" />,
 }));
 
 vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
@@ -184,7 +186,8 @@ describe("BondAnalyticsOverviewPanels", () => {
       "data-action-count",
       "4",
     );
-    expect(screen.getByTestId("mock-performance-comparison")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-macro-bar")).toBeInTheDocument();
+    expect(screen.getByTestId("mock-bond-mid-charts")).toBeInTheDocument();
     expect(screen.getByTestId("mock-risk-trend-chart")).toBeInTheDocument();
     expect(screen.getByTestId("mock-bond-event-calendar")).toBeInTheDocument();
 

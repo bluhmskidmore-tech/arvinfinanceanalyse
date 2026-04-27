@@ -444,6 +444,30 @@ export type CreditSpreadAnalysisPayload = {
   computed_at: string;
 };
 
+export type YieldCurveTermPointPayload = {
+  tenor: string;
+  yield_pct: Numeric | null;
+  delta_bp_prev: Numeric | null;
+};
+
+export type YieldCurveTermStructureCurvePayload = {
+  curve_type: string;
+  trade_date_requested: string;
+  trade_date_resolved: string | null;
+  points: YieldCurveTermPointPayload[];
+  source_version: string;
+  rule_version: string;
+  vendor_name: string;
+  vendor_version: string;
+};
+
+export type YieldCurveTermStructurePayload = {
+  report_date: string;
+  curves: YieldCurveTermStructureCurvePayload[];
+  warnings: string[];
+  computed_at: string;
+};
+
 export type ActionTypeSummary = {
   action_type: string;
   action_type_name: string;

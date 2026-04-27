@@ -20,7 +20,7 @@ vi.mock("../app/jobs/polling", () => ({
 }));
 
 vi.mock("../features/bond-analytics/components/BondAnalyticsOverviewPanels", () => ({
-  default: function MockBondAnalyticsOverviewPanels(props: Record<string, unknown>) {
+  BondAnalyticsOverviewPanels: function MockBondAnalyticsOverviewPanels(props: Record<string, unknown>) {
       latestOverviewProps = props;
       return (
         <div data-testid="mock-bond-analytics-overview-panels">
@@ -83,12 +83,6 @@ vi.mock("../features/bond-analytics/components/BondAnalyticsDetailSection", () =
     },
   };
 });
-
-vi.mock("../features/bond-analytics/components/PerformanceComparison", () => ({
-  default: function MockPerformanceComparison() {
-    return <div data-testid="mock-performance-comparison" />;
-  },
-}));
 
 vi.mock("../features/bond-analytics/components/RiskTrendChart", () => ({
   default: function MockRiskTrendChart() {

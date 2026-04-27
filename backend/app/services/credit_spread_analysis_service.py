@@ -16,7 +16,7 @@ from backend.app.repositories.bond_analytics_repo import BondAnalyticsRepository
 from backend.app.repositories.yield_curve_repo import (
     YIELD_CURVE_LATEST_FALLBACK_PREFIX,
     YieldCurveRepository,
-    format_yield_curve_latest_fallback_warning,
+    resolve_curve_snapshot,
 )
 from backend.app.schemas.credit_spread_analysis import CreditSpreadAnalysisResponse
 from backend.app.services.formal_result_runtime import (
@@ -40,8 +40,8 @@ def get_credit_spread_analysis(report_date: date) -> dict:
         report_date=report_date.isoformat(),
         asset_class="credit",
     )
-    curve_snapshot, curve_warning = _resolve_curve_snapshot(
-        repo=curve_repo,
+    curve_snapshot, curve_warning = resolve_curve_snapshot(
+        curve_repo,
         requested_trade_date=report_date.isoformat(),
         curve_type="treasury",
     )
@@ -142,39 +142,6 @@ def _build_historical_spreads(
             continue
         historical.append((point_date, _weighted_avg_spread(spread_rows)))
     return sorted(historical, key=lambda item: item[0])
-
-
-def _resolve_curve_snapshot(
-    *,
-    repo: YieldCurveRepository,
-    requested_trade_date: str,
-    curve_type: str,
-) -> tuple[dict[str, object] | None, str | None]:
-    exact_snapshot = repo.fetch_curve_snapshot(requested_trade_date, curve_type)
-    if exact_snapshot is not None:
-        return exact_snapshot, None
-    if repo.fetch_curve(requested_trade_date, curve_type):
-        raise RuntimeError(
-            f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={requested_trade_date}."
-        )
-    latest_trade_date = repo.fetch_latest_trade_date_on_or_before(curve_type, requested_trade_date)
-    if latest_trade_date is None:
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
-    latest_snapshot = repo.fetch_curve_snapshot(latest_trade_date, curve_type)
-    if latest_snapshot is None:
-        if repo.fetch_curve(latest_trade_date, curve_type):
-            raise RuntimeError(
-                f"Corrupt or inconsistent {curve_type} curve snapshot lineage for trade_date={latest_trade_date}."
-            )
-        return None, f"No {curve_type} curve available for requested trade_date={requested_trade_date}."
-    return (
-        latest_snapshot,
-        format_yield_curve_latest_fallback_warning(
-            curve_type=curve_type,
-            resolved_trade_date=latest_trade_date,
-            requested_trade_date=requested_trade_date,
-        ),
-    )
 
 
 def _weighted_avg_spread(rows: list[BondSpreadRow]) -> Decimal:

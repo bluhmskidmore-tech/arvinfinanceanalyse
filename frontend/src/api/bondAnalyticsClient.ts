@@ -13,6 +13,7 @@ import type {
   BondDashboardHeadlinePayload,
   CreditSpreadAnalysisPayload,
   CreditSpreadMigrationPayload,
+  YieldCurveTermStructurePayload,
   ActionAttributionPayload,
   AccountingClassAuditPayload,
   CashflowProjectionPayload,
@@ -91,5 +92,9 @@ export type BondAnalyticsClientMethods = {
   getCreditSpreadAnalysisDetail: (
     reportDate: string,
   ) => Promise<ApiEnvelope<CreditSpreadAnalysisPayload>>;
+  getBondAnalyticsYieldCurveTermStructure: (
+    reportDate: string,
+    options?: { curveTypes?: string },
+  ) => Promise<ApiEnvelope<YieldCurveTermStructurePayload>>;
   getCashflowProjection: (reportDate: string) => Promise<ApiEnvelope<CashflowProjectionPayload>>;
 };

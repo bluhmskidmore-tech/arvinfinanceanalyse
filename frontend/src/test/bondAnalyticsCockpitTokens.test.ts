@@ -10,6 +10,7 @@ import {
   readinessTagColor,
   toneColor,
 } from "../features/bond-analytics/components/bondAnalyticsCockpitTokens";
+import { designTokens } from "../theme/designSystem";
 
 describe("bondAnalyticsCockpitTokens", () => {
   it("orders PERIOD_OPTIONS as MoM, YTD, TTM", () => {
@@ -26,10 +27,10 @@ describe("bondAnalyticsCockpitTokens", () => {
   });
 
   it("toneColor covers success, warning, danger, and default neutral", () => {
-    expect(toneColor("success").color).toBe("#25724d");
-    expect(toneColor("warning").color).toBe("#9f5b0b");
-    expect(toneColor("danger").color).toBe("#a9342f");
-    expect(toneColor("neutral").color).toBe("#48627d");
+    expect(toneColor("success").color).toBe(designTokens.color.success[800]);
+    expect(toneColor("warning").color).toBe(designTokens.color.warning[800]);
+    expect(toneColor("danger").color).toBe(designTokens.color.danger[800]);
+    expect(toneColor("neutral").color).toBe(designTokens.color.neutral[700]);
   });
 
   it("readinessTagColor maps status labels to ant tag colors", () => {
@@ -41,11 +42,11 @@ describe("bondAnalyticsCockpitTokens", () => {
   });
 
   it("readinessSurface maps status labels to surface tokens", () => {
-    expect(readinessSurface("eligible").accent).toBe("#2f8f63");
-    expect(readinessSurface("request-error").accent).toBe("#b42318");
-    expect(readinessSurface("placeholder-blocked").accent).toBe("#b86a16");
-    expect(readinessSurface("warning").text).toBe("#815014");
-    expect(readinessSurface("default").borderColor).toBe("#dde6f0");
+    expect(readinessSurface("eligible").accent).toBe(designTokens.color.success[500]);
+    expect(readinessSurface("request-error").accent).toBe(designTokens.color.danger[600]);
+    expect(readinessSurface("placeholder-blocked").accent).toBe(designTokens.color.warning[600]);
+    expect(readinessSurface("warning").text).toBe(designTokens.color.warning[800]);
+    expect(readinessSurface("default").borderColor).toBe(designTokens.color.neutral[200]);
   });
 
   it("promotionLabel maps destinations to stable Chinese labels", () => {
