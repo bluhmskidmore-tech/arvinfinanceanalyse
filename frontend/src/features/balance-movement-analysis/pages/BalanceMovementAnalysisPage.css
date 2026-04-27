@@ -263,9 +263,20 @@
 }
 
 .balance-movement-matrix-scroll {
-  border: 1px solid #0a72c8;
-  border-radius: 0;
-  background: #000000;
+  margin-top: 4px;
+  border: 1px solid #e2e6ec;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(22, 35, 46, 0.05);
+}
+
+.balance-movement-matrix-unit-hint {
+  max-width: min(420px, 46vw);
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: right;
 }
 
 .balance-movement-structure-chart {
@@ -320,128 +331,141 @@
 .balance-movement-report-matrix {
   width: 100%;
   min-width: 1120px;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
   background: #ffffff;
-  color: #26364a;
+  color: #1f2937;
   font-size: 13px;
 }
 
-.balance-movement-report-matrix th {
-  height: 36px;
-  padding: 0 8px;
-  border-right: 1px solid #d7dfea;
-  border-bottom: 1px solid #d7dfea;
-  background: #f6f9fc;
-  color: #26364a;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.15;
+.balance-movement-report-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 40px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #d1d5db;
+  background: linear-gradient(180deg, #e8f1fb 0%, #dceaf7 100%);
+  color: #1850a1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
   text-align: center;
   white-space: nowrap;
 }
 
-.balance-movement-report-matrix th:first-child,
-.balance-movement-report-matrix td:first-child {
+.balance-movement-report-matrix thead th:first-child {
+  text-align: left;
+  border-right: 1px solid #c7d9ed;
+}
+
+.balance-movement-report-matrix tbody th[scope="row"] {
   width: 220px;
   min-width: 220px;
-  text-align: center;
+  padding: 10px 12px;
+  border-right: 1px solid #e2e6ec;
+  border-bottom: 1px solid #eceff3;
+  background: #f9fafb;
+  color: #374151;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: left;
+  vertical-align: middle;
+  white-space: normal;
+}
+
+.balance-movement-report-matrix tbody tr[data-side="asset"] th[scope="row"] {
+  border-left: 3px solid #60a5fa;
+}
+
+.balance-movement-report-matrix tbody tr[data-side="liability"] th[scope="row"] {
+  border-left: 3px solid #f59e0b;
+}
+
+.balance-movement-report-matrix tbody tr[data-side="total"] th[scope="row"] {
+  border-left: 3px solid #1850a1;
+  background: #f0f7fd;
+  font-weight: 700;
 }
 
 .balance-movement-report-matrix td {
-  height: 40px;
-  padding: 0 8px;
-  border-right: 1px solid #edf1f6;
-  border-bottom: 1px solid #edf1f6;
-  color: #26364a;
+  height: auto;
+  min-height: 38px;
+  padding: 10px 12px;
+  border-right: 1px solid #eceff3;
+  border-bottom: 1px solid #eceff3;
+  color: #1f2937;
+  font-family: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
   font-variant-numeric: tabular-nums;
   text-align: right;
+  vertical-align: middle;
   white-space: nowrap;
 }
 
-.balance-movement-report-matrix td:first-child {
-  border-right: 1px solid #d7dfea;
-  font-weight: 700;
-  text-align: center;
-}
-
-.balance-movement-report-matrix tr:nth-child(4n) td {
-  border-bottom-color: #d7dfea;
-}
-
 .balance-movement-report-matrix__gap td {
-  height: 16px;
-  border-bottom: 1px solid #d7dfea;
+  height: 12px;
+  border-bottom: 1px solid #d1d5db;
+  background: #eceff3;
   color: transparent;
 }
 
-.balance-movement-report-matrix__section th {
-  border-top: 1px solid #d7dfea;
-  background: #f8fafc;
-}
-
-.balance-movement-report-matrix--workbook {
-  min-width: 1560px;
-  background: #000000;
-  color: #ffffff;
-  font-size: 18px;
-}
-
-.balance-movement-report-matrix--workbook th {
-  height: 36px;
-  padding: 0 8px;
-  border-right: 2px solid #5f6368;
-  border-bottom: 1px solid #0f0f0f;
-  background: #0872c9;
-  color: #ffffff;
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 1;
-}
-
-.balance-movement-report-matrix--workbook th:first-child,
-.balance-movement-report-matrix--workbook td:first-child {
-  width: 380px;
-  min-width: 380px;
-}
-
-.balance-movement-report-matrix--workbook td {
-  height: 39px;
-  padding: 0 10px;
-  border-right: 2px solid #b8b8b8;
-  border-bottom: 1px solid #8f8f8f;
-  background: #000000;
-  color: #ffffff;
-  font-size: 17px;
-  text-align: right;
-}
-
-.balance-movement-report-matrix--workbook td:first-child {
-  border-right: 2px solid #b8b8b8;
-  background: #000000;
-  color: #ffffff;
-  font-size: 18px;
-  font-weight: 500;
+.balance-movement-report-matrix__section-cap td {
+  padding: 8px 14px;
+  border-bottom: 1px solid #d1d5db;
+  background: #f3f4f6;
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
   text-align: left;
 }
 
-.balance-movement-report-matrix--workbook tr:nth-child(4n) td {
-  border-bottom-color: #d8d8d8;
+.balance-movement-report-matrix__subhead th {
+  height: 36px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #c7d9ed;
+  background: #eef5fc;
+  color: #144287;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
 }
 
-.balance-movement-report-matrix--workbook .balance-movement-report-matrix__gap td {
-  height: 76px;
-  border-right: 2px solid #b8b8b8;
-  border-bottom: 1px solid #8f8f8f;
-  background: #000000;
+.balance-movement-report-matrix__subhead th:first-child {
+  text-align: left;
 }
 
-.balance-movement-report-matrix--workbook .balance-movement-report-matrix__section th {
-  border-top: 2px solid #b8b8b8;
-  border-right: 2px solid #5f6368;
-  border-bottom: 1px solid #0f0f0f;
-  background: #0872c9;
-  color: #ffffff;
+.balance-movement-matrix__delta--up {
+  color: #2d8a5e;
+  font-weight: 600;
+}
+
+.balance-movement-matrix__delta--down {
+  color: #dc2626;
+  font-weight: 600;
+}
+
+.balance-movement-matrix__delta--neutral {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* 与「总览」浅色机构台一致的月度矩阵，取代历史黑底报表簿风格 */
+.balance-movement-report-matrix--monthly {
+  min-width: 1280px;
+  font-size: 13px;
+}
+
+/* 明细表数值列：与 tableCellStyle 一致，用 class 避免增加全仓 TSX style 计数 */
+.balance-movement-detail-table__num {
+  padding: 12px 8px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: right;
 }
 
 @media (max-width: 720px) {
@@ -471,29 +495,19 @@
     font-size: 12px;
   }
 
-  .balance-movement-report-matrix--workbook {
-    min-width: 1220px;
-    font-size: 14px;
-  }
-
-  .balance-movement-report-matrix th {
+  .balance-movement-report-matrix--monthly {
+    min-width: 1000px;
     font-size: 12px;
   }
 
-  .balance-movement-report-matrix--workbook th {
-    font-size: 18px;
+  .balance-movement-report-matrix thead th {
+    font-size: 11px;
   }
 
-  .balance-movement-report-matrix th:first-child,
-  .balance-movement-report-matrix td:first-child {
-    width: 150px;
-    min-width: 150px;
-  }
-
-  .balance-movement-report-matrix--workbook th:first-child,
-  .balance-movement-report-matrix--workbook td:first-child {
-    width: 240px;
-    min-width: 240px;
+  .balance-movement-report-matrix tbody th[scope="row"] {
+    width: 160px;
+    min-width: 160px;
+    font-size: 12px;
   }
 
   .balance-movement-structure-chart__insight {

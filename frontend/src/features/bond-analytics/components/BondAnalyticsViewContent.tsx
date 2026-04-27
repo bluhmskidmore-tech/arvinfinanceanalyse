@@ -15,6 +15,7 @@ import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useSearchParams } from "react-router-dom";
 import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
 
 const BondAnalyticsOverviewPanels = lazy(() =>
@@ -169,7 +170,7 @@ export function BondAnalyticsViewContent() {
         style={{
           padding: designTokens.space[6],
           borderRadius: designTokens.radius.lg,
-          background: designTokens.color.primary[50],
+          background: displayTokens.surface.section,
           border: `1px solid ${designTokens.color.neutral[200]}`,
           boxShadow: designTokens.shadow.card,
           display: "grid",
@@ -207,7 +208,7 @@ export function BondAnalyticsViewContent() {
         style={{
           padding: designTokens.space[6],
           borderRadius: designTokens.radius.lg,
-          background: designTokens.color.primary[50],
+          background: displayTokens.surface.section,
           border: `1px solid ${designTokens.color.neutral[200]}`,
           boxShadow: designTokens.shadow.card,
           display: "grid",

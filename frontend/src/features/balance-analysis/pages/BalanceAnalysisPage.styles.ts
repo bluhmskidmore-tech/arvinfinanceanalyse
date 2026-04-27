@@ -1,5 +1,6 @@
 import { pageInsetCardStyle } from "../../../components/page/PagePrimitiveStyles";
 import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import { shellTokens } from "../../../theme/tokens";
 
 const r = designTokens.radius;
@@ -26,7 +27,7 @@ export const formalHeroStyle = {
   padding: `${s[5]}px ${s[5]}px`,
   borderRadius: r.xl + s[1],
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: c.primary[50],
+  background: c.neutral[50],
   boxShadow: designTokens.shadow.card,
 } as const;
 
@@ -46,7 +47,7 @@ export const heroDetailCardStyle = {
   padding: `${s[3] + s[1]}px ${s[4]}px`,
   borderRadius: r.lg,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: `${c.primary[50]}b8`,
+  background: displayTokens.surface.section,
   display: "grid",
   gap: s[1],
 } as const;
@@ -67,7 +68,7 @@ export const priorityCardStyle = {
   padding: `${s[3] + s[1]}px ${s[4]}px`,
   borderRadius: r.lg,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: c.primary[50],
+  background: displayTokens.surface.section,
 } as const;
 
 export const stagedScenarioShellStyle = {

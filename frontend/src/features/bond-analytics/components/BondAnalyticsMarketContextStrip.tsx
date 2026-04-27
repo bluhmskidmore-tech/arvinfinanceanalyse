@@ -1,11 +1,12 @@
 import { Card } from "antd";
 
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import type { BondAnalyticsTruthStrip } from "../lib/bondAnalyticsOverviewModel";
 import { EYEBROW, FIELD, PERIOD_OPTIONS, panelStyle, toneColor } from "./bondAnalyticsCockpitTokens";
 
 const dt = designTokens;
-const stripPanelBg = `linear-gradient(180deg, ${dt.color.primary[50]} 0%, ${dt.color.primary[100]} 100%)`;
+const stripPanelStyle = panelStyle(displayTokens.surface.section);
 
 export interface BondAnalyticsMarketContextStripProps {
   reportDate: string;
@@ -28,7 +29,7 @@ export function BondAnalyticsMarketContextStrip({
     <Card
       size="small"
       data-testid="bond-analysis-market-context-strip"
-      style={panelStyle(stripPanelBg)}
+      style={stripPanelStyle}
       styles={{ body: { padding: dt.space[4] } }}
     >
       <div style={{ display: "grid", gap: dt.space[3] }}>
@@ -74,9 +75,9 @@ export function BondAnalyticsMarketContextStrip({
           <div style={{ display: "flex", gap: dt.space[2], flexWrap: "wrap", justifyContent: "flex-end" }}>
             <div
               style={{
-                border: `1px solid ${dt.color.primary[200]}`,
+                border: `1px solid ${dt.color.neutral[200]}`,
                 borderRadius: dt.radius.md,
-                background: dt.color.neutral[50],
+                background: displayTokens.surface.section,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
                 minWidth: 112,
               }}
@@ -86,9 +87,9 @@ export function BondAnalyticsMarketContextStrip({
             </div>
             <div
               style={{
-                border: `1px solid ${dt.color.primary[200]}`,
+                border: `1px solid ${dt.color.neutral[200]}`,
                 borderRadius: dt.radius.md,
-                background: dt.color.neutral[50],
+                background: displayTokens.surface.section,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
                 minWidth: 92,
               }}
@@ -98,9 +99,9 @@ export function BondAnalyticsMarketContextStrip({
             </div>
             <div
               style={{
-                border: `1px solid ${dt.color.primary[200]}`,
+                border: `1px solid ${dt.color.neutral[200]}`,
                 borderRadius: dt.radius.md,
-                background: dt.color.neutral[50],
+                background: displayTokens.surface.section,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
                 minWidth: 128,
               }}

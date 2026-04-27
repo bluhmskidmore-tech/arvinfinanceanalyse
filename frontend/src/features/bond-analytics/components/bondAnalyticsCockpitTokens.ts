@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import { designTokens } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import type {
   BondAnalyticsPromotionDestination,
   BondAnalyticsTruthTone,
@@ -87,7 +88,7 @@ export function toneColor(tone: BondAnalyticsTruthTone) {
     };
   }
   return {
-    background: color.primary[50],
+    background: displayTokens.surface.section,
     color: color.neutral[700],
     borderColor: color.neutral[200],
     accent: color.neutral[500],

@@ -1,13 +1,14 @@
 import { Button, Card } from "antd";
 
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import type { BondAnalyticsHeadlineTile, BondAnalyticsReadinessItem } from "../lib/bondAnalyticsOverviewModel";
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import { EYEBROW, panelStyle } from "./bondAnalyticsCockpitTokens";
 
 const dt = designTokens;
-const headlinePanelBg = `linear-gradient(180deg, ${dt.color.primary[50]} 0%, ${dt.color.primary[100]} 100%)`;
-const headlineTileGrad = `linear-gradient(135deg, ${dt.color.info[50]} 0%, ${dt.color.neutral[50]} 48%, ${dt.color.primary[100]} 100%)`;
+const headlinePanelStyle = panelStyle(displayTokens.surface.section);
+const headlineTileSurface = `linear-gradient(180deg, ${dt.color.neutral[50]} 0%, ${displayTokens.surface.section} 100%)`;
 
 export interface BondAnalyticsHeadlineZoneProps {
   headlineTile: BondAnalyticsHeadlineTile | null;
@@ -28,7 +29,7 @@ export function BondAnalyticsHeadlineZone({
     <Card
       size="small"
       data-testid="bond-analysis-headline-zone"
-      style={panelStyle(headlinePanelBg)}
+      style={headlinePanelStyle}
     >
       <div
         style={{
@@ -76,8 +77,8 @@ export function BondAnalyticsHeadlineZone({
               type="button"
               onClick={() => onOpenModuleDetail(headlineTile.key)}
               style={{
-                border: `1px solid ${dt.color.primary[200]}`,
-                background: headlineTileGrad,
+                border: `1px solid ${dt.color.neutral[200]}`,
+                background: headlineTileSurface,
                 borderRadius: dt.radius.xl,
                 padding: dt.space[5],
                 textAlign: "left",
@@ -106,7 +107,7 @@ export function BondAnalyticsHeadlineZone({
           ) : (
             <div
               style={{
-                border: `1px dashed ${dt.color.primary[200]}`,
+                border: `1px dashed ${dt.color.neutral[300]}`,
                 borderRadius: dt.radius.xl,
                 padding: dt.space[4],
                 background: `${dt.color.neutral[50]}D9`,
@@ -128,8 +129,8 @@ export function BondAnalyticsHeadlineZone({
         <div
           style={{
             borderRadius: dt.radius.xl,
-            border: `1px solid ${dt.color.primary[200]}`,
-            background: `${dt.color.primary[50]}EB`,
+            border: `1px solid ${dt.color.neutral[200]}`,
+            background: dt.color.neutral[50],
             padding: dt.space[4],
             display: "grid",
             gap: dt.space[3],
@@ -142,8 +143,8 @@ export function BondAnalyticsHeadlineZone({
               style={{
                 borderRadius: dt.radius.lg,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
-                background: dt.color.primary[50],
-                border: `1px solid ${dt.color.primary[200]}`,
+                background: displayTokens.surface.section,
+                border: `1px solid ${dt.color.neutral[200]}`,
               }}
             >
               <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>当前主位</div>
@@ -157,9 +158,9 @@ export function BondAnalyticsHeadlineZone({
               style={{
                 borderRadius: dt.radius.lg,
                 padding: `${dt.space[2]}px ${dt.space[3]}px`,
-                background: warningItems.length > 0 ? dt.color.warning[50] : dt.color.primary[50],
+                background: warningItems.length > 0 ? dt.color.warning[50] : displayTokens.surface.section,
                 border:
-                  warningItems.length > 0 ? `1px solid ${dt.color.warning[200]}` : `1px solid ${dt.color.primary[200]}`,
+                  warningItems.length > 0 ? `1px solid ${dt.color.warning[200]}` : `1px solid ${dt.color.neutral[200]}`,
               }}
             >
               <div style={{ color: dt.color.primary[900], fontSize: dt.fontSize[13], fontWeight: 700 }}>观察风险</div>
@@ -173,7 +174,7 @@ export function BondAnalyticsHeadlineZone({
 
           <div
             style={{
-              borderTop: `1px solid ${dt.color.primary[200]}`,
+              borderTop: `1px solid ${dt.color.neutral[200]}`,
               paddingTop: dt.space[3],
               color: dt.color.neutral[600],
               fontSize: dt.fontSize[12],

@@ -11,6 +11,7 @@ import {
   toneColor,
 } from "../features/bond-analytics/components/bondAnalyticsCockpitTokens";
 import { designTokens } from "../theme/designSystem";
+import { displayTokens } from "../theme/displayTokens";
 
 describe("bondAnalyticsCockpitTokens", () => {
   it("orders PERIOD_OPTIONS as MoM, YTD, TTM", () => {
@@ -31,6 +32,7 @@ describe("bondAnalyticsCockpitTokens", () => {
     expect(toneColor("warning").color).toBe(designTokens.color.warning[800]);
     expect(toneColor("danger").color).toBe(designTokens.color.danger[800]);
     expect(toneColor("neutral").color).toBe(designTokens.color.neutral[700]);
+    expect(toneColor("neutral").background).toBe(displayTokens.surface.section);
   });
 
   it("readinessTagColor maps status labels to ant tag colors", () => {

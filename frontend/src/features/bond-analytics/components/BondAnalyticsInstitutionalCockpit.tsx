@@ -14,6 +14,7 @@ import {
 import type { BondAnalyticsModuleKey } from "../lib/bondAnalyticsModuleRegistry";
 import type { ActionAttributionResponse } from "../types";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
+import { displayTokens } from "../../../theme/displayTokens";
 import { formatBp, formatPct, formatWan, formatYi, toneColor } from "../utils/formatters";
 import { FIELD, panelStyle } from "./bondAnalyticsCockpitTokens";
 
@@ -25,12 +26,12 @@ const ink = dt.color.primary[800];
 const muted = dt.color.neutral[700];
 const sub = dt.color.neutral[600];
 const borderHair = dt.color.neutral[200];
-const trackBg = dt.color.primary[100];
+const trackBg = dt.color.neutral[100];
 const cnUp = dt.color.danger[500];
 const cnDown = dt.color.success[600];
 const infoAccent = dt.color.info[500];
 const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
-const cockpitHeroBg = `linear-gradient(135deg, ${dt.color.primary[50]} 0%, ${dt.color.info[50]} 55%, ${dt.color.primary[100]} 100%)`;
+const cockpitHeroCardStyle = panelStyle(displayTokens.surface.section);
 
 const statusGridStyle = {
   display: "grid",
@@ -49,7 +50,7 @@ const moduleNoteStyle = {
   lineHeight: dt.lineHeight.normal,
 } as const;
 
-const dashboardCardStyle = panelStyle(dt.color.primary[50]);
+const dashboardCardStyle = panelStyle(displayTokens.surface.section);
 
 const PORTFOLIO_HEADLINES_HOME_NOTE = "组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。";
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
@@ -154,7 +155,7 @@ function DashboardMetric({
       style={{
         borderRadius: dt.radius.lg,
         border: `1px solid ${dt.color.neutral[200]}`,
-        background: dt.color.primary[50],
+        background: displayTokens.surface.section,
         padding: `${dt.space[3]}px ${dt.space[3] + 2}px`,
         display: "grid",
         gap: dt.space[1] + 1,
@@ -197,7 +198,7 @@ function SignalCell({
       style={{
         borderRadius: dt.radius.lg,
         border: `1px solid ${dt.color.neutral[200]}`,
-        background: dt.color.primary[50],
+        background: displayTokens.surface.section,
         padding: `${dt.space[3] + 2}px ${dt.space[3] + 2}px ${dt.space[3]}px`,
         display: "grid",
         gap: dt.space[2],
@@ -452,7 +453,7 @@ export function BondAnalyticsInstitutionalCockpit({
           <Card
             size="small"
             data-testid="bond-analysis-cockpit-conclusion"
-            style={panelStyle(cockpitHeroBg)}
+            style={cockpitHeroCardStyle}
             styles={{ body: { padding: dt.space[4] } }}
           >
             <div style={{ display: "grid", gap: dt.space[3] + 2 }}>

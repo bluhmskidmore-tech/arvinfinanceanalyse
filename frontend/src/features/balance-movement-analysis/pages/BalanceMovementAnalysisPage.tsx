@@ -167,12 +167,16 @@ type BalanceMovementMatrixValueKind = "amount" | "percent";
 function formatMatrixValue(
   value: string | number | null | undefined,
   valueKind: BalanceMovementMatrixValueKind,
+  omitUnit = false,
 ) {
   if (valueKind === "percent") {
     return formatPct(value);
   }
   const formatted = formatYiCell(value);
-  return formatted === "-" ? formatted : `${formatted} 亿`;
+  if (formatted === "-") {
+    return formatted;
+  }
+  return omitUnit ? formatted : `${formatted} 亿`;
 }
 
 function formatSignedPercentPoint(value: string | number | null | undefined) {
@@ -193,12 +197,16 @@ function formatSignedPercentPoint(value: string | number | null | undefined) {
 function formatSignedMatrixValue(
   value: string | number | null | undefined,
   valueKind: BalanceMovementMatrixValueKind,
+  omitUnit = false,
 ) {
   if (valueKind === "percent") {
     return formatSignedPercentPoint(value);
   }
   const formatted = formatSignedYiCell(value);
-  return formatted === "-" ? formatted : `${formatted} 亿`;
+  if (formatted === "-") {
+    return formatted;
+  }
+  return omitUnit ? formatted : `${formatted} 亿`;
 }
 
 type BusinessMovementMatrixRow = {
@@ -227,6 +235,7 @@ function compareBusinessMatrixCell(
   return formatSignedMatrixValue(
     trendDelta(row.getValue(currentMonth), row.getValue(baselineMonth)),
     row.valueKind,
+    true,
   );
 }
 
@@ -242,7 +251,22 @@ function compareBusinessMatrixCellToFirst(
   return formatSignedMatrixValue(
     trendDelta(row.getValue(currentMonth), row.getValue(firstMonth)),
     row.valueKind,
+    true,
   );
+}
+
+function matrixDeltaTone(formatted: string): string {
+  const t = formatted.trim();
+  if (t === "" || t === "-") {
+    return "balance-movement-matrix__delta balance-movement-matrix__delta--neutral";
+  }
+  if (t.startsWith("+") || t.startsWith("＋")) {
+    return "balance-movement-matrix__delta balance-movement-matrix__delta--up";
+  }
+  if (t.startsWith("-") || t.startsWith("−")) {
+    return "balance-movement-matrix__delta balance-movement-matrix__delta--down";
+  }
+  return "balance-movement-matrix__delta balance-movement-matrix__delta--neutral";
 }
 
 function buildBusinessCategoryMatrixRows(
@@ -353,6 +377,10 @@ function formatSignedPoint(value: number) {
 function numericValue(value: string | number | null | undefined) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function shareDeltaPp(row: BalanceMovementRow): number {
+  return numericValue(row.current_balance_pct) - numericValue(row.previous_balance_pct);
 }
 
 function isPreviousCalendarMonth(currentReportDate: string, previousReportDate: string) {
@@ -934,6 +962,11 @@ export default function BalanceMovementAnalysisPage() {
       {businessTrendMonths.length > 0 ? (
         <AsyncSection
           title="月度余额分析矩阵"
+          extra={
+            <span className="balance-movement-matrix-unit-hint">
+              各月末为账面余额；「较上月」「较年初」为变动额。单位：亿元
+            </span>
+          }
           isLoading={detailQuery.isLoading}
           isError={detailQuery.isError}
           isEmpty={businessTrendMonths.length === 0}
@@ -942,55 +975,70 @@ export default function BalanceMovementAnalysisPage() {
           <div className="balance-movement-matrix-scroll">
             <table
               data-testid="balance-movement-analysis-trend-table"
-              className="balance-movement-report-matrix balance-movement-report-matrix--workbook"
+              className="balance-movement-report-matrix balance-movement-report-matrix--monthly"
             >
               <thead>
                 <tr>
-                  <th>分类</th>
+                  <th scope="col">分类</th>
                   {businessMatrixMonths.map((month) => (
-                    <th key={month.report_date}>{formatTrendMonthLabel(month.report_month)}</th>
-                  ))}
-                  <th>比上月</th>
-                  <th>比年初</th>
-                </tr>
-              </thead>
-              <tbody>
-                {businessMatrixRows.map((row) => (
-                  <tr key={row.key}>
-                    <td title={row.sourceNote}>{row.label}</td>
-                    {businessMatrixMonths.map((month) => (
-                      <td key={`${row.key}-${month.report_date}`}>
-                        {formatMatrixValue(row.getValue(month), row.valueKind)}
-                      </td>
-                    ))}
-                    <td>{compareBusinessMatrixCell(businessMatrixMonths, row, 1)}</td>
-                    <td>{compareBusinessMatrixCellToFirst(businessMatrixMonths, row)}</td>
-                  </tr>
-                ))}
-                <tr className="balance-movement-report-matrix__gap">
-                  <td colSpan={businessMatrixMonths.length + 3} />
-                </tr>
-                <tr className="balance-movement-report-matrix__section">
-                  <th>项目</th>
-                  {businessMatrixMonths.map((month) => (
-                    <th key={`project-${month.report_date}`}>
+                    <th key={month.report_date} scope="col">
                       {formatTrendMonthLabel(month.report_month)}
                     </th>
                   ))}
-                  <th>比上月</th>
-                  <th>比年初</th>
+                  <th scope="col">较上月</th>
+                  <th scope="col">较年初</th>
                 </tr>
-                {businessProjectMatrixRows.map((row) => {
+              </thead>
+              <tbody>
+                {businessMatrixRows.map((row) => {
+                  const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
+                  const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
                   return (
-                    <tr key={row.key}>
-                      <td title={row.sourceNote}>{row.label}</td>
+                    <tr key={row.key} data-side={row.side}>
+                      <th scope="row" title={row.sourceNote}>
+                        {row.label}
+                      </th>
                       {businessMatrixMonths.map((month) => (
                         <td key={`${row.key}-${month.report_date}`}>
-                          {formatMatrixValue(row.getValue(month), row.valueKind)}
+                          {formatMatrixValue(row.getValue(month), row.valueKind, true)}
                         </td>
                       ))}
-                      <td>{compareBusinessMatrixCell(businessMatrixMonths, row, 1)}</td>
-                      <td>{compareBusinessMatrixCellToFirst(businessMatrixMonths, row)}</td>
+                      <td className={matrixDeltaTone(mom)}>{mom}</td>
+                      <td className={matrixDeltaTone(ytd)}>{ytd}</td>
+                    </tr>
+                  );
+                })}
+                <tr className="balance-movement-report-matrix__gap" aria-hidden>
+                  <td colSpan={businessMatrixMonths.length + 3} />
+                </tr>
+                <tr className="balance-movement-report-matrix__section-cap">
+                  <td colSpan={businessMatrixMonths.length + 3}>合计与净额</td>
+                </tr>
+                <tr className="balance-movement-report-matrix__subhead">
+                  <th scope="col">项目</th>
+                  {businessMatrixMonths.map((month) => (
+                    <th key={`project-${month.report_date}`} scope="col">
+                      {formatTrendMonthLabel(month.report_month)}
+                    </th>
+                  ))}
+                  <th scope="col">较上月</th>
+                  <th scope="col">较年初</th>
+                </tr>
+                {businessProjectMatrixRows.map((row) => {
+                  const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
+                  const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
+                  return (
+                    <tr key={row.key} data-side={row.side}>
+                      <th scope="row" title={row.sourceNote}>
+                        {row.label}
+                      </th>
+                      {businessMatrixMonths.map((month) => (
+                        <td key={`${row.key}-${month.report_date}`}>
+                          {formatMatrixValue(row.getValue(month), row.valueKind, true)}
+                        </td>
+                      ))}
+                      <td className={matrixDeltaTone(mom)}>{mom}</td>
+                      <td className={matrixDeltaTone(ytd)}>{ytd}</td>
                     </tr>
                   );
                 })}
@@ -1036,6 +1084,7 @@ export default function BalanceMovementAnalysisPage() {
                 <th style={tableCellStyle}>期初占比</th>
                 <th style={tableCellStyle}>期末余额(亿)</th>
                 <th style={tableCellStyle}>期末占比</th>
+                <th className="balance-movement-detail-table__num">占比变动</th>
                 <th style={tableCellStyle}>变动(亿)</th>
                 <th style={tableCellStyle}>变动率</th>
                 <th style={tableCellStyle}>变动贡献</th>
@@ -1058,6 +1107,9 @@ export default function BalanceMovementAnalysisPage() {
                     {formatBalanceAmountToYiFromYuan(row.current_balance)}
                   </td>
                   <td style={tableCellStyle}>{formatPct(row.current_balance_pct)}</td>
+                  <td className="balance-movement-detail-table__num">
+                    {formatSignedPoint(shareDeltaPp(row))}
+                  </td>
                   <td style={tableCellStyle}>
                     {formatBalanceAmountToYiFromYuan(row.balance_change)}
                   </td>

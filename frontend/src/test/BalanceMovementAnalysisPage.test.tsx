@@ -84,6 +84,10 @@ describe("BalanceMovementAnalysisPage", () => {
     ).toBeTruthy();
 
     const table = screen.getByTestId("balance-movement-analysis-table");
+    expect(within(table).getByText("占比变动")).toBeInTheDocument();
+    expect(within(table).getByText("-0.67pp")).toBeInTheDocument();
+    expect(within(table).getByText("+0.12pp")).toBeInTheDocument();
+    expect(within(table).getByText("+0.55pp")).toBeInTheDocument();
     expect(within(table).getByText("AC")).toBeInTheDocument();
     expect(within(table).getByText("42.44%")).toBeInTheDocument();
     expect(within(table).getByText("OCI")).toBeInTheDocument();
@@ -105,8 +109,8 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getByText("项目")).toBeInTheDocument();
     expect(within(trendTable).getAllByText("2026年2月").length).toBeGreaterThan(0);
     expect(within(trendTable).getAllByText("2026年1月").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("比上月").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("比年初").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("较上月").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("较年初").length).toBeGreaterThan(0);
     expect(within(trendTable).getByText("资产端-拆放同业")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-买入返售")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-同业存放-活期")).toBeInTheDocument();
@@ -120,8 +124,8 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getByText("资产端合计")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端合计")).toBeInTheDocument();
     expect(within(trendTable).getByText("同业净额")).toBeInTheDocument();
-    expect(within(trendTable).getAllByText("+71.00 亿").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("-83.00 亿").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("+71.00").length).toBeGreaterThan(0);
+    expect(within(trendTable).getAllByText("-83.00").length).toBeGreaterThan(0);
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {
