@@ -58,17 +58,38 @@ function isAttentionMeta(meta: ResultMeta | null | undefined) {
   );
 }
 
+function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function metaVendorLabel(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
+function metaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
+}
+
 function describeAttention(meta: ResultMeta | null | undefined, title: string) {
   if (!meta || !isAttentionMeta(meta)) {
     return null;
   }
 
-  const parts = [title, meta.quality_flag];
+  const parts = [title, metaQualityLabel(meta.quality_flag)];
   if (meta.fallback_mode !== "none") {
-    parts.push(`降级=${meta.fallback_mode}`);
+    parts.push(`降级=${metaFallbackLabel(meta.fallback_mode)}`);
   }
   if (meta.vendor_status !== "ok") {
-    parts.push(`供应商=${meta.vendor_status}`);
+    parts.push(`供应商=${metaVendorLabel(meta.vendor_status)}`);
   }
   return parts.join(" / ");
 }
@@ -95,8 +116,10 @@ function formatSnapshotMode(
   mode: string | undefined,
   isLoading: boolean,
 ): string {
-  if (isLoading) return "loading";
-  if (!mode) return "pending";
+  if (isLoading) return "载入中";
+  if (!mode) return "待定";
+  if (mode === "partial") return "部分可用";
+  if (mode === "complete") return "完整";
   return mode;
 }
 
@@ -257,7 +280,7 @@ export default function DashboardPage() {
   const governancePills = useMemo<GovernancePill[]>(() => {
     const dateValue = effectiveReportDate || "最新可用";
     const dateHint = snapshotResult?.report_date
-      ? `as_of_date ${snapshotResult.report_date}`
+      ? `归属日期 ${snapshotResult.report_date}`
       : "用户选择 / 默认日期";
 
     const snapshotMode = formatSnapshotMode(

@@ -32,6 +32,13 @@ const FACT_OPTIONS = [
 ] as const;
 
 const AGG_OPTIONS = ["sum", "avg", "count", "min", "max"] as const;
+const AGG_LABELS: Record<(typeof AGG_OPTIONS)[number], string> = {
+  sum: "求和",
+  avg: "平均",
+  count: "计数",
+  min: "最小",
+  max: "最大",
+};
 
 type MeasureRow = { key: string; agg: string; field: string };
 type FilterRow = { key: string; dimension: string; values: string[] };
@@ -61,6 +68,18 @@ function formatCellValue(value: unknown): string {
     }
   }
   return String(value);
+}
+
+function aggLabel(value: string): string {
+  return AGG_LABELS[value as (typeof AGG_OPTIONS)[number]] ?? value;
+}
+
+function resultMetaQualityLabel(value: string | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value ?? "待定";
 }
 
 function buildFiltersMap(rows: FilterRow[]): Record<string, string[]> {
@@ -221,7 +240,7 @@ export default function CubeQueryPage() {
       ];
       if (keys.length === 0 && measureRows.length) {
         return measureRows.map((m) => ({
-          title: m.agg === "count" ? "count" : `${m.agg}(${m.field})`,
+          title: m.agg === "count" ? "计数" : `${aggLabel(m.agg)}(${m.field})`,
           dataIndex: m.agg === "count" ? "count" : m.field,
           key: `${m.agg}-${m.field}`,
           align: "right" as const,
@@ -229,7 +248,7 @@ export default function CubeQueryPage() {
         }));
       }
       return keys.map((k) => ({
-        title: k,
+        title: String(k) === "count" ? "计数" : k,
         dataIndex: k,
         key: k,
         align:
@@ -241,7 +260,7 @@ export default function CubeQueryPage() {
     }
     const sample = lastResult.rows[0]!;
     return Object.keys(sample).map((key) => ({
-      title: key,
+      title: key === "count" ? "计数" : key,
       dataIndex: key,
       key,
       align: typeof sample[key] === "number" ? ("right" as const) : ("left" as const),
@@ -394,7 +413,7 @@ export default function CubeQueryPage() {
                   <Select
                     style={{ width: 120 }}
                     value={row.agg}
-                    options={AGG_OPTIONS.map((a) => ({ value: a, label: a }))}
+                    options={AGG_OPTIONS.map((a) => ({ value: a, label: AGG_LABELS[a] }))}
                     onChange={(agg) =>
                       setMeasureRows((rows) =>
                         rows.map((x) => (x.key === row.key ? { ...x, agg } : x)),
@@ -583,7 +602,7 @@ export default function CubeQueryPage() {
           data-testid="cube-result-meta"
         >
           追踪编号={lastResult.result_meta.trace_id} · 来源版本=
-          {lastResult.result_meta.source_version} · 质量标记={lastResult.result_meta.quality_flag}
+          {lastResult.result_meta.source_version} · 质量标记={resultMetaQualityLabel(lastResult.result_meta.quality_flag)}
         </Text>
       ) : null}
     </div>

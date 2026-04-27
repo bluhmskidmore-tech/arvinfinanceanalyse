@@ -367,7 +367,7 @@ describe("RiskOverviewPage", () => {
 
     renderRiskOverview(client);
 
-    expect(await screen.findByText(/Bond Analytics 下钻与补充/)).toBeInTheDocument();
+    expect(await screen.findByText(/债券分析下钻与补充/)).toBeInTheDocument();
     expect(await screen.findByText("利率曲线与 KRD 风险（物化下钻）")).toBeInTheDocument();
     expect(await screen.findByText("信用利差迁移（物化下钻）")).toBeInTheDocument();
     await waitFor(() => {

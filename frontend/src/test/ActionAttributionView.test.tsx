@@ -221,6 +221,6 @@ describe("ActionAttributionView", () => {
     expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
       "降级模式=latest_snapshot",
     );
-    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("vendor_stale");
+    expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商陈旧");
   });
 });

@@ -161,7 +161,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接 governed bond analytics cockpit，页面内按模块 readiness 展示已落地与待晋升能力。",
+    readinessNote: "已接治理后的债券分析驾驶舱，页面内按模块就绪度展示已落地与待晋升能力。",
   },
   {
     key: "cross-asset",
@@ -172,7 +172,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接 macro-bond-linkage 分析读链路；完整序列见市场数据页。",
+    readinessNote: "已接宏观-债市联动分析读链路；完整序列见市场数据页。",
   },
   {
     key: "team-performance",
@@ -183,7 +183,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接统一 ApiClient 读链路。",
+    readinessNote: "已接统一接口客户端读链路。",
   },
   {
     key: "decision-items",
@@ -206,7 +206,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "债券与同业正式资产负债分析入口",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接 formal fact 读链路，是当前阶段主数据页之一。",
+    readinessNote: "已接正式事实读链路，是当前阶段主数据页之一。",
   },
   {
     key: "balance-movement-analysis",
@@ -215,8 +215,8 @@ export const workbenchNavigation: WorkbenchSection[] = [
     icon: "analysis",
     description: "AC / OCI / TPL 月末余额变动与总账控制数对账",
     readiness: "live",
-    readinessLabel: "Live",
-    readinessNote: "已接 accounting asset movement 正式读模型，CNX 141/142/143/1440101 为控制科目。",
+    readinessLabel: "已开放",
+    readinessNote: "已接会计资产变动正式读模型，CNX 141/142/143/1440101 为控制科目。",
   },
   {
     key: "liability-analytics",
@@ -238,7 +238,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接宏观、FX analytical 与 formal FX 状态读链路。",
+    readinessNote: "已接宏观、外汇分析与正式外汇状态读链路。",
   },
   {
     key: "platform-config",
@@ -285,25 +285,25 @@ export const workbenchNavigation: WorkbenchSection[] = [
   },
   {
     key: "average-balance",
-    label: "ADB Analytical",
+    label: "日均分析",
     path: "/average-balance",
     icon: "analysis",
-    description: "同业与债券口径的 ADB analytical 视图；正式余额真源见「资产负债分析」。",
+    description: "同业与债券口径的日均分析视图；正式余额真源见「资产负债分析」。",
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "可直接打开本路由；正式 governed 余额仍以资产负债分析页为准。",
+    readinessNote: "可直接打开本路由；正式治理余额仍以资产负债分析页为准。",
   },
   {
     key: "ledger-pnl",
-    label: "Ledger PnL",
+    label: "总账损益",
     path: "/ledger-pnl",
     icon: "analysis",
     description: "科目口径损益总览、账户聚合与明细透视。",
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "直接消费后端 ledger-pnl read model，不在前端补算科目口径汇总。",
+    readinessNote: "直接消费后端总账损益读模型，不在前端补算科目口径汇总。",
   },
   {
     key: "risk-overview",
@@ -324,7 +324,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "正式组合风险张量",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接正式 risk tensor 读链路，并按后端 dates 接口选择可用报告日。",
+    readinessNote: "已接正式风险张量读链路，并按后端日期接口选择可用报告日。",
   },
   {
     key: "concentration-monitor",
@@ -335,7 +335,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接 bond analytics credit-spread-migration 集中度载荷与展示限额对照。",
+    readinessNote: "已接债券分析信用利差迁移集中度载荷与展示限额对照。",
   },
   {
     key: "cashflow-projection",
@@ -368,7 +368,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readiness: "live",
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
-    readinessNote: "已接真实 Choice news 只读链路。",
+    readinessNote: "已接真实 Choice 新闻只读链路。",
   },
   {
     key: "product-category-pnl",
@@ -389,7 +389,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "正式损益明细入口",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接 formal pnl 事实表读链路，报告日由后端 dates 接口驱动。",
+    readinessNote: "已接正式损益事实表读链路，报告日由后端日期接口驱动。",
   },
   {
     key: "pnl-bridge",
@@ -399,7 +399,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "正式口径损益桥接分解",
     readiness: "live",
     readinessLabel: "已开放",
-    readinessNote: "已接 formal pnl bridge 读链路，展示正式桥接分解与汇总图表。",
+    readinessNote: "已接正式损益桥接读链路，展示正式桥接分解与汇总图表。",
   },
   {
     key: "pnl-attribution",
@@ -419,7 +419,7 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "对事实表进行自由维度聚合、筛选、钻取",
     readiness: "placeholder",
     readinessLabel: "暂缓",
-    readinessNote: "入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升。",
+    readinessNote: "入口保留；自由聚合查询尚未作为二期主消费面晋升。",
   },
   {
     key: "agent",

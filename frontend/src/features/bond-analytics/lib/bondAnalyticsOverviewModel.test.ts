@@ -155,7 +155,7 @@ describe("buildBondAnalyticsOverviewModel", () => {
     );
     expect(model.topAnomalies).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/latest snapshot/),
+        expect.stringMatching(/最新快照降级/),
       ]),
     );
   });

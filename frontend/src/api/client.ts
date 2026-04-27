@@ -1146,7 +1146,7 @@ const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
     },
   ],
   warnings: [
-    "Analytical signal only. Do not treat estimated impact as formal attribution.",
+    "仅为分析信号，不要把估算影响当作正式归因。",
   ],
   computed_at: "2026-04-13T00:00:00Z",
 };
@@ -1164,7 +1164,7 @@ const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
       quote_currency: "CNY",
       pair_label: "USD/CNY",
       series_id: "FX.USD.CNY",
-      series_name: "USD/CNY middle rate",
+      series_name: "USD/CNY 中间价",
       vendor_series_code: "USD/CNY",
       trade_date: "2026-04-10",
       observed_trade_date: "2026-04-09",
@@ -1182,7 +1182,7 @@ const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
       quote_currency: "CNY",
       pair_label: "EUR/CNY",
       series_id: "FX.EUR.CNY",
-      series_name: "EUR/CNY middle rate",
+      series_name: "EUR/CNY 中间价",
       vendor_series_code: "EUR/CNY",
       trade_date: "2026-04-10",
       observed_trade_date: "2026-04-10",
@@ -1221,14 +1221,14 @@ const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
   groups: [
     {
       group_key: "middle_rate",
-      title: "Analytical FX: middle-rates",
+      title: "外汇分析：中间价",
       description:
-        "Catalog-observed middle-rate series remain analytical views and do not redefine the formal seam.",
+        "目录观察到的中间价序列仍是分析视图，不重定义正式口径。",
       series: [
         {
           group_key: "middle_rate",
           series_id: "FX.USD.CNY.OBS",
-          series_name: "USD/CNY middle-rate observation",
+          series_name: "USD/CNY 中间价观察",
           trade_date: "2026-04-10",
           value_numeric: 7.2,
           frequency: "daily",
@@ -1238,7 +1238,7 @@ const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
           refresh_tier: "stable",
           fetch_mode: "date_slice",
           fetch_granularity: "batch",
-          policy_note: "analytical middle-rate observation only",
+          policy_note: "仅分析口径中间价观察",
           quality_flag: "ok",
           latest_change: 0.02,
           recent_points: [
@@ -1262,14 +1262,14 @@ const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
     },
     {
       group_key: "fx_index",
-      title: "Analytical FX: indices",
+      title: "外汇分析：指数",
       description:
-        "RMB index / estimate index series stay analytical-only and never flow into formal FX.",
+        "人民币指数和估算指数序列仅用于分析口径，不流入正式外汇。",
       series: [
         {
           group_key: "fx_index",
           series_id: "FX.CFETS.RMB",
-          series_name: "CFETS RMB basket index",
+          series_name: "CFETS 人民币篮子指数",
           trade_date: "2026-04-10",
           value_numeric: 101.3,
           frequency: "daily",
@@ -1279,7 +1279,7 @@ const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
           refresh_tier: "fallback",
           fetch_mode: "latest",
           fetch_granularity: "single",
-          policy_note: "analytical index observation only",
+          policy_note: "仅分析口径指数观察",
           quality_flag: "warning",
           latest_change: null,
           recent_points: [],
@@ -1288,14 +1288,14 @@ const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
     },
     {
       group_key: "fx_swap_curve",
-      title: "Analytical FX: swap curves",
+      title: "外汇分析：掉期曲线",
       description:
-        "FX swap / C-Swap series stay analytical-only and never write into formal FX.",
+        "外汇掉期与 C-Swap 序列仅用于分析口径，不写入正式外汇。",
       series: [
         {
           group_key: "fx_swap_curve",
           series_id: "FX.SWAP.1Y",
-          series_name: "USD/CNY 1Y FX swap",
+          series_name: "USD/CNY 1年外汇掉期",
           trade_date: "2026-04-10",
           value_numeric: 125.0,
           frequency: "daily",
@@ -3599,8 +3599,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
           missing_inputs: ["phase3_yield_curves_aligned_to_instruments"],
           blocked_components: ["roll_down", "rate_effect"],
           warnings: [
-            "bond_analytics.phase3: roll_down / rate_effect require Phase 3 curve and trade data",
-            "balance-analysis.advanced_attribution_bundle: status=not_ready; no attribution figures are returned",
+            "债券分析三期：骑乘与利率效应需要三期曲线和交易数据",
+            "资产负债高级归因包：状态未就绪；未返回归因数值",
           ],
         },
         {

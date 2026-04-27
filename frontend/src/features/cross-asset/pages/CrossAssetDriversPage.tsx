@@ -98,6 +98,14 @@ function formatSignedNumber(value: number | string | null | undefined, suffix = 
   return `${sign}${numericValue.toFixed(2)}${suffix}`;
 }
 
+function resultMetaQualityLabel(value: string | null | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value ?? "待定";
+}
+
 function MiniKpiCard({ kpi }: { kpi: ResolvedCrossAssetKpi }) {
   const stroke = sparkStroke[kpi.changeTone];
   return (
@@ -770,7 +778,7 @@ export default function CrossAssetDriversPage() {
               ))
             )}
             <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
-              宏观最新质量 {latestMeta?.quality_flag ?? "待定"} · 联动质量 {linkageMeta?.quality_flag ?? "待定"}
+              宏观最新质量 {resultMetaQualityLabel(latestMeta?.quality_flag)} · 联动质量 {resultMetaQualityLabel(linkageMeta?.quality_flag)}
             </div>
             <div style={{ color: t.color.neutral[600], fontSize: t.fontSize[12], lineHeight: t.lineHeight.relaxed }}>
               宏观最新生成时间 {latestMeta?.generated_at ?? "待定"}

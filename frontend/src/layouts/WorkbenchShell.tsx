@@ -313,7 +313,7 @@ const portfolioFlow = [
 const portfolioStages: PortfolioStage[] = [
   {
     title: "状态判断",
-    description: "先确定规模、久期和正式结果，不把 analytical 估算混成首结论。",
+    description: "先确定规模、久期和正式结果，不把分析估算混成首结论。",
     sectionKeys: ["balance-analysis", "bond-dashboard", "ledger-pnl"],
   },
   {

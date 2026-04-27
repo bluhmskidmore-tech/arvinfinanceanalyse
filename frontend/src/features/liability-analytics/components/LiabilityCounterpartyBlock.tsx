@@ -43,7 +43,7 @@ function bankNonBankFromByType(rows: LiabilityTypeRow[]): { name: string; value:
 }
 
 export function LiabilityCounterpartyBlock({
-  title = "资金来源依赖度（Top 10 对手方）",
+  title = "资金来源依赖度（前十对手方）",
   subtitle = "口径：TYWL 负债端（对手方名称 × 余额；剔除“青岛银行股份有限公司”）。",
   totalValue,
   counterpartyRows,

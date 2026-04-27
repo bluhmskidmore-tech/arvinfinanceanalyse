@@ -228,9 +228,25 @@ function resolveRequestedDate(meta: ResultMeta): string | undefined {
 
 function describeMetaDetails(meta: ResultMeta): string {
   const parts: string[] = [];
-  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`质量=${meta.quality_flag}`);
-  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`供应商=${meta.vendor_status}`);
-  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`降级=${meta.fallback_mode}`);
+  const quality =
+    meta.quality_flag === "warning"
+      ? "预警"
+      : meta.quality_flag === "error"
+        ? "错误"
+        : meta.quality_flag === "stale"
+          ? "陈旧"
+          : meta.quality_flag;
+  const vendor =
+    meta.vendor_status === "vendor_stale"
+      ? "供应商陈旧"
+      : meta.vendor_status === "vendor_unavailable"
+        ? "供应商不可用"
+        : meta.vendor_status;
+  const fallback =
+    meta.fallback_mode === "latest_snapshot" ? "最新快照降级" : meta.fallback_mode;
+  if (meta.quality_flag && meta.quality_flag !== "ok") parts.push(`质量=${quality}`);
+  if (meta.vendor_status && meta.vendor_status !== "ok") parts.push(`供应商=${vendor}`);
+  if (meta.fallback_mode && meta.fallback_mode !== "none") parts.push(`降级=${fallback}`);
   if (meta.generated_at) parts.push(`生成时间=${meta.generated_at}`);
   return parts.join(" · ");
 }

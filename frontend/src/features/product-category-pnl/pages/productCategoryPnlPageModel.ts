@@ -176,12 +176,41 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
 
 /** Page-visible copy: standalone `as_of_date` is a known outward contract gap (see truth contract §10). */
 export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
-  "as_of_date：无独立外显字段（显式合同缺口；勿用本页 report_date 或 generated_at 代替）。 ";
+  "归属日期：无独立外显字段（显式合同缺口；勿用本页报告日或生成时间代替）。 ";
 
 export type ProductCategoryGovernanceNotice = {
   id: "fallback_mode" | "vendor_status" | "quality_flag";
   text: string;
 };
+
+function resultMetaBasisLabel(value: ResultMeta["basis"]): string {
+  if (value === "formal") return "正式口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "mock") return "演示口径";
+  return value;
+}
+
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function resultMetaVendorLabel(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
+function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
+}
 
 /**
  * Notices for degraded governance signals from a single `result_meta` (typ. formal baseline on first screen).
@@ -197,19 +226,19 @@ export function collectProductCategoryGovernanceNotices(
   if (meta.fallback_mode !== "none") {
     out.push({
       id: "fallback_mode",
-      text: `读链路回退中：降级模式=${meta.fallback_mode}（仅元数据展示，非前端补算）。`,
+      text: `读链路回退中：降级模式=${resultMetaFallbackLabel(meta.fallback_mode)}（仅元数据展示，非前端补算）。`,
     });
   }
   if (meta.vendor_status === "vendor_stale" || meta.vendor_status === "vendor_unavailable") {
     out.push({
       id: "vendor_status",
-      text: `供应侧状态需关注：供应商状态=${meta.vendor_status}。`,
+      text: `供应侧状态需关注：供应商状态=${resultMetaVendorLabel(meta.vendor_status)}。`,
     });
   }
   if (meta.quality_flag !== "ok") {
     out.push({
       id: "quality_flag",
-      text: `质量标记需关注：质量标记=${meta.quality_flag}。`,
+      text: `质量标记需关注：质量标记=${resultMetaQualityLabel(meta.quality_flag)}。`,
     });
   }
   return out;
@@ -222,5 +251,5 @@ export function formatProductCategoryDualMetaDistinctLine(
   formalMeta: ResultMeta,
   scenarioMeta: ResultMeta,
 ): string {
-  return `正式与情景分开展示：正式口径=${formalMeta.basis} 追踪编号=${formalMeta.trace_id}；情景口径=${scenarioMeta.basis} 追踪编号=${scenarioMeta.trace_id}（两路结果元信息分卡展示，不混用）。`;
+  return `正式与情景分开展示：正式口径=${resultMetaBasisLabel(formalMeta.basis)} 追踪编号=${formalMeta.trace_id}；情景口径=${resultMetaBasisLabel(scenarioMeta.basis)} 追踪编号=${scenarioMeta.trace_id}（两路结果元信息分卡展示，不混用）。`;
 }

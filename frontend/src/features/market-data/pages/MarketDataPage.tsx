@@ -468,8 +468,8 @@ function renderSeriesCards(
               }}
             >
               <span>{`层级 ${refreshTierLabel(marketSeriesRefreshTier(point))}`}</span>
-              <span>路</span>
-              <span>{point.quality_flag ?? "warning"}</span>
+              <span>·</span>
+              <span>质量 {resultMetaQualityLabel(point.quality_flag)}</span>
             </div>
           </div>
 
@@ -532,6 +532,33 @@ function renderSeriesCards(
   );
 }
 
+function resultMetaBasisLabel(value: ResultMeta["basis"] | undefined): string {
+  if (value === "formal") return "正式口径";
+  if (value === "analytical") return "分析口径";
+  return value ?? "待定";
+}
+
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"] | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value ?? "待定";
+}
+
+function resultMetaVendorLabel(value: ResultMeta["vendor_status"] | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value ?? "待定";
+}
+
+function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"] | undefined): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value ?? "待定";
+}
+
 function MetadataPanel({
   title,
   meta,
@@ -557,15 +584,15 @@ function MetadataPanel({
       </h2>
       <div style={{ display: "grid", gap: s[2], color: c.neutral[600], fontSize: fs[14] }}>
         <div>追踪编号：{meta?.trace_id ?? "待定"}</div>
-        <div>口径：{meta?.basis ?? "待定"}</div>
+        <div>口径：{resultMetaBasisLabel(meta?.basis)}</div>
         <div>正式可用：{meta ? (meta.formal_use_allowed ? "是" : "否") : "待定"}</div>
         <div>结果类型：{meta?.result_kind ?? "待定"}</div>
         <div>来源版本：{meta?.source_version ?? "待定"}</div>
         <div>供应商版本：{meta?.vendor_version ?? "待定"}</div>
         <div>规则版本：{meta?.rule_version ?? "待定"}</div>
-        <div>质量标记：{meta?.quality_flag ?? "待定"}</div>
-        <div>供应商状态：{meta?.vendor_status ?? "待定"}</div>
-        <div>降级模式：{meta?.fallback_mode ?? "待定"}</div>
+        <div>质量标记：{resultMetaQualityLabel(meta?.quality_flag)}</div>
+        <div>供应商状态：{resultMetaVendorLabel(meta?.vendor_status)}</div>
+        <div>降级模式：{resultMetaFallbackLabel(meta?.fallback_mode)}</div>
         <div>缓存版本：{meta?.cache_version ?? "待定"}</div>
         <div>情景标记：{meta ? (meta.scenario_flag ? "是" : "否") : "待定"}</div>
         <div>生成时间：{meta?.generated_at ?? "待定"}</div>
@@ -1561,7 +1588,7 @@ export default function MarketDataPage() {
 
             <section data-testid="market-data-linkage-top-correlations" style={detailPanelStyle}>
               <h2 style={{ marginTop: 0, marginBottom: s[2], fontSize: fs[18], fontWeight: 600 }}>
-                相关性 Top 10
+                相关性前十
               </h2>
               {(nonSpreadTopCorrelations.length > 0 ||
                 spreadSlots.some((slot) => slot.point !== null)) ? (

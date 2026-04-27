@@ -120,6 +120,26 @@ const metaValueStyle = {
   lineHeight: designTokens.lineHeight.normal,
 } as const;
 
+function metaQualityLabel(value: ResultMeta["quality_flag"]) {
+  const labels: Record<ResultMeta["quality_flag"], string> = {
+    ok: "正常",
+    warning: "预警",
+    error: "错误",
+    stale: "陈旧",
+  };
+  return labels[value] ?? value;
+}
+
+function fallbackModeLabel(value: ResultMeta["fallback_mode"]) {
+  if (value === "none") {
+    return "未降级";
+  }
+  if (value === "latest_snapshot") {
+    return "最新快照降级";
+  }
+  return value;
+}
+
 function tabStyle(active: boolean, variant: "default" | "advanced" = "default") {
   const base = {
     padding: `${designTokens.space[3]}px ${designTokens.space[4]}px`,
@@ -566,7 +586,7 @@ export function PnlAttributionView({ reportDate }: Props) {
       <SectionLead
         eyebrow="分析"
         title="当前归因视图"
-        description="下方内容随 tab 切换，保留现有 volume-rate、TPL market、composition、advanced + Campisi 数据边界。"
+        description="下方内容随页签切换，保留现有规模利率、TPL 市场、构成、高级归因与 Campisi 数据边界。"
         testId="pnl-attribution-current-view-lead"
       />
 
@@ -577,16 +597,16 @@ export function PnlAttributionView({ reportDate }: Props) {
             <span style={metaValueStyle}>{currentViewDate.value}</span>
           </div>
           <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>generated_at</span>
+            <span style={metaLabelStyle}>生成时间</span>
             <span style={metaValueStyle}>{currentViewMeta.generated_at}</span>
           </div>
           <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>quality_flag</span>
-            <span style={metaValueStyle}>{currentViewMeta.quality_flag}</span>
+            <span style={metaLabelStyle}>质量标记</span>
+            <span style={metaValueStyle}>{metaQualityLabel(currentViewMeta.quality_flag)}</span>
           </div>
           <div style={metaCellStyle}>
-            <span style={metaLabelStyle}>fallback_mode</span>
-            <span style={metaValueStyle}>{currentViewMeta.fallback_mode}</span>
+            <span style={metaLabelStyle}>降级模式</span>
+            <span style={metaValueStyle}>{fallbackModeLabel(currentViewMeta.fallback_mode)}</span>
           </div>
         </div>
       ) : null}
@@ -598,7 +618,7 @@ export function PnlAttributionView({ reportDate }: Props) {
               <span style={metaLabelStyle}>{title}</span>
               <span style={metaValueStyle}>
                 {meta
-                  ? `${meta.quality_flag} · ${meta.fallback_mode} · ${meta.generated_at}`
+                  ? `${metaQualityLabel(meta.quality_flag)} · ${fallbackModeLabel(meta.fallback_mode)} · ${meta.generated_at}`
                   : loading
                     ? "加载中…"
                     : "—"}

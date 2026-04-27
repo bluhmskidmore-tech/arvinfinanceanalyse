@@ -42,6 +42,26 @@ function formatCurrencyBasisLabel(basis: string | undefined): string {
   return "未设定";
 }
 
+function formatMetaBasisLabel(basis: string | undefined): string {
+  if (basis === "formal") return "正式口径";
+  if (basis === "analytical") return "分析口径";
+  return "—";
+}
+
+function formatMetaQualityLabel(quality: string | undefined): string {
+  if (quality === "ok") return "正常";
+  if (quality === "warning") return "预警";
+  if (quality === "error") return "错误";
+  if (quality === "stale") return "陈旧";
+  return "—";
+}
+
+function formatFallbackModeLabel(mode: string | undefined): string {
+  if (mode === "none") return "未降级";
+  if (mode === "latest_snapshot") return "最新快照降级";
+  return mode ?? "—";
+}
+
 export function BalanceAnalysisCardsSection({
   overview,
   overviewMeta,
@@ -148,7 +168,7 @@ export function BalanceAnalysisCardsSection({
             {(
               [
                 {
-                  label: `口径 ${overviewMeta?.basis ?? "—"}`,
+                  label: `口径 ${formatMetaBasisLabel(overviewMeta?.basis)}`,
                   tone: overviewMeta?.basis === "formal" ? "positive" : "neutral",
                 },
                 {
@@ -156,11 +176,11 @@ export function BalanceAnalysisCardsSection({
                   tone: overviewMeta?.formal_use_allowed ? "positive" : "warning",
                 },
                 {
-                  label: `quality ${overviewMeta?.quality_flag ?? "—"}`,
+                  label: `质量 ${formatMetaQualityLabel(overviewMeta?.quality_flag)}`,
                   tone: overviewMeta?.quality_flag === "ok" ? "positive" : "warning",
                 },
                 {
-                  label: `fallback ${overviewMeta?.fallback_mode ?? "—"}`,
+                  label: `降级 ${formatFallbackModeLabel(overviewMeta?.fallback_mode)}`,
                   tone:
                     overviewMeta?.fallback_mode && overviewMeta.fallback_mode !== "none"
                       ? "warning"

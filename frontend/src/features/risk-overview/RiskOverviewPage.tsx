@@ -288,7 +288,7 @@ export default function RiskOverviewPage() {
         >
           主指标来自正式风险张量接口{" "}
           <code style={{ fontSize: 13 }}>/api/risk/tensor</code>
-          （与「风险张量」页同一主链）。下方 Bond Analytics 物化结果为下钻与补充视图，不在浏览器端做金融重算。
+          （与「风险张量」页同一主链）。下方债券分析物化结果为下钻与补充视图，不在浏览器端做金融重算。
         </p>
       </div>
 
@@ -319,13 +319,13 @@ export default function RiskOverviewPage() {
             <>
               <br />
               <span data-testid="risk-overview-blocked-dates">
-                Backend blocked stale dates: {blockedReportDates.length}. Highlighted blocked:{" "}
+                后端拦截陈旧日期：{blockedReportDates.length} 个。当前提示日期：{" "}
                 <strong>{highlightedBlockedReportDate.report_date}</strong>
                 {highlightedBlockedReportDate.reason
                   ? ` (${highlightedBlockedReportDate.reason})`
                   : null}
                 {selectedBlockedReportDate
-                  ? " Selected report_date is blocked by freshness validation."
+                  ? " 当前选择的报告日已被新鲜度校验拦截。"
                   : null}
               </span>
             </>
@@ -491,10 +491,19 @@ export default function RiskOverviewPage() {
                 }}
               >
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  质量标记：{tensorResult.quality_flag}
+                  质量标记：
+                  {tensorResult.quality_flag === "ok"
+                    ? "正常"
+                    : tensorResult.quality_flag === "warning"
+                      ? "预警"
+                      : tensorResult.quality_flag === "error"
+                        ? "错误"
+                        : tensorResult.quality_flag === "stale"
+                          ? "陈旧"
+                          : tensorResult.quality_flag}
                 </div>
                 {tensorResult.warnings.length === 0 ? (
-                  <div style={{ color: "#5c6b82" }}>无 warnings。</div>
+                  <div style={{ color: "#5c6b82" }}>无预警。</div>
                 ) : (
                   <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
                     {tensorResult.warnings.map((w, i) => (
@@ -509,7 +518,7 @@ export default function RiskOverviewPage() {
       </div>
 
       <div style={drillDownIntroStyle}>
-        <strong style={{ color: "#162033" }}>Bond Analytics 下钻与补充</strong>
+        <strong style={{ color: "#162033" }}>债券分析下钻与补充</strong>
         ：以下接口来自{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/krd-curve-risk</code> 与{" "}
         <code style={{ fontSize: 12 }}>/api/bond-analytics/credit-spread-migration</code>
@@ -531,7 +540,7 @@ export default function RiskOverviewPage() {
             <KpiCard
               title="组合久期"
               value={cellText(krd?.portfolio_duration)}
-              detail="portfolio_duration，Bond Analytics 物化口径。"
+              detail="portfolio_duration，债券分析物化口径。"
               tone={toneFromSignedDisplayString(cellText(krd?.portfolio_duration))}
             />
             <KpiCard
@@ -576,7 +585,7 @@ export default function RiskOverviewPage() {
             <div data-testid="risk-overview-tenor-drill" style={drillCardStyle}>
               <div style={{ color: "#162033", fontSize: 15, fontWeight: 600 }}>期限桶下钻</div>
               <div style={{ color: "#5c6b82", fontSize: 13, marginTop: 6 }}>
-                使用 Bond Analytics 的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
+                使用债券分析的 `krd_buckets` 读面，先聚焦当前最敏感的期限桶。
               </div>
               <div style={drillChipRowStyle}>
                 {tenorRows.map((row) => (

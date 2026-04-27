@@ -927,7 +927,7 @@ export default function LiabilityAnalyticsPage() {
               />
               <LiabilityNimStressMonthlyPanel adbMonth={selectedAdbMonthData} />
               <LiabilityCounterpartyBlock
-                title="资金来源依赖度（Top 10 对手方）"
+                title="资金来源依赖度（前十对手方）"
                 subtitle="口径：月度日均（TYWL 负债端）。"
                 totalValue={selectedMonthData.avg_total_liabilities ?? null}
                 counterpartyRows={monthlyCpRowsAll}

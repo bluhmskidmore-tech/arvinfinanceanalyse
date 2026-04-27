@@ -216,13 +216,13 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
-    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("供应商状态：ok");
-    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("降级模式：none");
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("供应商状态：正常");
+    expect(screen.getByTestId("market-data-result-meta")).toHaveTextContent("降级模式：未降级");
     expect(screen.getByTestId("market-data-macro-readiness")).toHaveTextContent("已返回数据");
     expect(screen.getByTestId("market-data-overview-live-meta")).toHaveTextContent(
       "vv_choice_macro_20260410",
     );
-    expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("供应商状态=ok");
+    expect(screen.getByTestId("market-data-curve-live-meta")).toHaveTextContent("供应商状态=正常");
     expect(screen.getByTestId("market-data-macro-section-meta")).toHaveTextContent(
       "tr_choice_macro_latest_test",
     );
@@ -501,7 +501,7 @@ describe("MarketDataPage", () => {
       "tr_fx_analytical_test",
     );
     expect(screen.getByTestId("market-data-fx-section-meta")).toHaveTextContent(
-      "降级模式=latest_snapshot",
+      "降级模式=最新快照降级",
     );
 
     await waitFor(() => {
@@ -519,7 +519,7 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("非正式口径");
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析估算");
     expect(screen.getByTestId("market-data-linkage-warning-list")).toHaveTextContent(
-      "Analytical signal only",
+      "仅为分析信号",
     );
     expect(screen.getByTestId("market-data-linkage-composite-score")).toHaveTextContent("-0.11");
     expect(screen.getByTestId("market-data-linkage-rate-direction")).toHaveTextContent("falling");
@@ -757,6 +757,6 @@ describe("MarketDataPage", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("1.405")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("tr_ncd_proxy_test");
-    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("供应商状态=ok");
+    expect(screen.getByTestId("market-data-ncd-live-meta")).toHaveTextContent("供应商状态=正常");
   });
 });

@@ -114,6 +114,27 @@ function formatBasis(meta: ResultMeta | null | undefined): string {
   return "其他口径";
 }
 
+function formatQuality(value: ResultMeta["quality_flag"] | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return "未知";
+}
+
+function formatFallback(value: ResultMeta["fallback_mode"] | undefined): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return "未知";
+}
+
+function formatVendorStatus(value: ResultMeta["vendor_status"] | undefined): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return "未知";
+}
+
 function formatIsoMoment(value: string | null | undefined): string {
   if (!value) {
     return "未知";
@@ -191,7 +212,7 @@ function buildTruthStrip(
         key: "quality",
         label: "质量",
         value: meta
-          ? `${meta.quality_flag}${meta.fallback_mode !== "none" ? " / 降级" : ""}`
+          ? `${formatQuality(meta.quality_flag)}${meta.fallback_mode !== "none" ? " / 降级" : ""}`
           : "未知",
         tone: qualityTone,
       },
@@ -254,17 +275,17 @@ function buildTopAnomalies(
 
   if (meta?.fallback_mode && meta.fallback_mode !== "none") {
     anomalies.add(
-      `总览结果正在使用 ${meta.fallback_mode.replace("_", " ")} 降级模式。`,
+      `总览结果正在使用${formatFallback(meta.fallback_mode)}。`,
     );
   }
 
   if (meta?.quality_flag && meta.quality_flag !== "ok") {
-    anomalies.add(`总览结果质量标记为 ${meta.quality_flag}。`);
+    anomalies.add(`总览结果质量标记为${formatQuality(meta.quality_flag)}。`);
   }
 
   if (meta?.vendor_status && meta.vendor_status !== "ok") {
     anomalies.add(
-      `供应商状态为 ${meta.vendor_status.replace("_", " ")}。`,
+      `供应商状态为${formatVendorStatus(meta.vendor_status)}。`,
     );
   }
 

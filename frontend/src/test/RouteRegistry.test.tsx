@@ -365,7 +365,7 @@ describe("RouteRegistry", () => {
     expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
     const banner = screen.getByTestId("workbench-readiness-banner");
     expect(
-      within(banner).getByText(/入口保留；自由聚合查询尚未作为 Phase 2 主消费面晋升/),
+      within(banner).getByText(/入口保留；自由聚合查询尚未作为二期主消费面晋升/),
     ).toBeInTheDocument();
   });
 });

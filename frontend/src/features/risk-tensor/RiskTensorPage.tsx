@@ -352,13 +352,13 @@ export default function RiskTensorPage() {
             <>
               <br />
               <span data-testid="risk-tensor-blocked-dates">
-                Backend blocked stale dates: {blockedReportDates.length}. Highlighted blocked:{" "}
+                后端拦截陈旧日期：{blockedReportDates.length} 个。当前提示日期：{" "}
                 <strong>{highlightedBlockedReportDate.report_date}</strong>
                 {highlightedBlockedReportDate.reason
                   ? ` (${highlightedBlockedReportDate.reason})`
                   : null}
                 {selectedBlockedReportDate
-                  ? " Selected report_date is blocked by freshness validation."
+                  ? " 当前选择的报告日已被新鲜度校验拦截。"
                   : null}
               </span>
             </>
@@ -554,10 +554,19 @@ export default function RiskTensorPage() {
               }}
             >
               <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                质量标记：{result.quality_flag}
+                质量标记：
+                {result.quality_flag === "ok"
+                  ? "正常"
+                  : result.quality_flag === "warning"
+                    ? "预警"
+                    : result.quality_flag === "error"
+                      ? "错误"
+                      : result.quality_flag === "stale"
+                        ? "陈旧"
+                        : result.quality_flag}
               </div>
               {result.warnings.length === 0 ? (
-                <div style={{ color: "#5c6b82" }}>无 warnings。</div>
+                <div style={{ color: "#5c6b82" }}>无预警。</div>
               ) : (
                 <ul style={{ margin: 0, paddingLeft: 20, color: "#5c6b82" }}>
                   {result.warnings.map((warning, index) => (

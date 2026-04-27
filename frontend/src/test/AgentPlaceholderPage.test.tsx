@@ -119,7 +119,7 @@ describe("/agent route", () => {
     expect(screen.getByText(/质量：ok/)).toBeInTheDocument();
     expect(screen.getByText("结果元信息")).toBeInTheDocument();
     expect(screen.getByText(/追踪编号: tr_agent_query_001/)).toBeInTheDocument();
-    expect(screen.getByText(/口径: formal/)).toBeInTheDocument();
+    expect(screen.getByText(/口径: 正式口径/)).toBeInTheDocument();
     expect(screen.getByText(/生成时间: 2026-04-12T09:00:00Z/)).toBeInTheDocument();
     expect(screen.getByText("按组合下钻")).toBeInTheDocument();
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();

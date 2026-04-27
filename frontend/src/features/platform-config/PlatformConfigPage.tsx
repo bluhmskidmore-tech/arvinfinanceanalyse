@@ -305,13 +305,13 @@ export default function PlatformConfigPage() {
           <KpiCard title="系统环境" value={envLabel} detail="部署/运行环境标识" valueVariant="text" />
         </div>
         <div data-testid="platform-config-source-count">
-          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前 source foundation 摘要中的来源数" valueVariant="text" />
+          <KpiCard title="数据源数量" value={String(sourceCount)} detail="当前源基础摘要中的来源数" valueVariant="text" />
         </div>
         <div data-testid="platform-config-abnormal-sources">
           <KpiCard title="异常来源" value={String(abnormalSourceCount)} detail="行数为 0 或仍有人工复核的来源" valueVariant="text" />
         </div>
         <div data-testid="platform-config-manual-review-rows">
-          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的 manual_review_count 汇总" valueVariant="text" />
+          <KpiCard title="人工复核行" value={String(manualReviewRows)} detail="来源摘要中的人工复核计数汇总" valueVariant="text" />
         </div>
       </div>
 
@@ -319,7 +319,7 @@ export default function PlatformConfigPage() {
         <SectionLead
           eyebrow="健康"
           title="系统健康状态"
-          description="分项来自 GET /health/ready 的 checks（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
+          description="分项来自 GET /health/ready 的检查项（含 DuckDB / Redis / PostgreSQL / 对象存储等），与上方「系统状态」同源；存活探测与简易状态已在平台概览由 /health/live、GET /health 并列展示。"
         />
         <AsyncSection
           title="系统健康状态"

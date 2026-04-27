@@ -1886,7 +1886,16 @@ export default function BalanceAnalysisPage() {
                 fontWeight: 700,
               }}
             >
-              quality {overviewMeta?.quality_flag ?? "—"}
+              质量{" "}
+              {overviewMeta?.quality_flag === "ok"
+                ? "正常"
+                : overviewMeta?.quality_flag === "warning"
+                  ? "预警"
+                  : overviewMeta?.quality_flag === "error"
+                    ? "错误"
+                    : overviewMeta?.quality_flag === "stale"
+                      ? "陈旧"
+                      : "—"}
             </span>
             <span
               style={{
@@ -1903,7 +1912,12 @@ export default function BalanceAnalysisPage() {
                 fontWeight: 700,
               }}
             >
-              fallback {overviewMeta?.fallback_mode ?? "—"}
+              降级{" "}
+              {overviewMeta?.fallback_mode === "none"
+                ? "未降级"
+                : overviewMeta?.fallback_mode === "latest_snapshot"
+                  ? "最新快照降级"
+                  : overviewMeta?.fallback_mode ?? "—"}
             </span>
           </div>
 
@@ -2212,8 +2226,13 @@ export default function BalanceAnalysisPage() {
             {advancedAttributionQuery.data?.result ? (
               <div style={{ display: "grid", gap: 10, fontSize: 13, color: designTokens.color.neutral[800] }}>
                 <div>
-                  <strong>状态</strong>：{advancedAttributionQuery.data.result.status} ·{" "}
-                  {advancedAttributionQuery.data.result.mode}
+                  <strong>状态</strong>：
+                  {advancedAttributionQuery.data.result.status === "not_ready"
+                    ? "未就绪"
+                    : advancedAttributionQuery.data.result.status} ·{" "}
+                  {advancedAttributionQuery.data.result.mode === "analytical"
+                    ? "分析口径"
+                    : advancedAttributionQuery.data.result.mode}
                 </div>
                 <div>
                   <strong>缺失输入</strong>（节选）：

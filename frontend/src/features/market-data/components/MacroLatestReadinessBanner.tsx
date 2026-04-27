@@ -12,12 +12,20 @@ type MacroLatestReadinessBannerProps = {
 
 function vendorStaleLabel(status: ResultMeta["vendor_status"]) {
   if (status === "vendor_stale") {
-    return "供应商数据可能陈旧（vendor_stale）";
+    return "供应商数据可能陈旧。";
   }
   if (status === "vendor_unavailable") {
-    return "供应商不可用（vendor_unavailable）";
+    return "供应商不可用。";
   }
   return null;
+}
+
+function qualityLabel(value: ResultMeta["quality_flag"]) {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
 }
 
 function alertType(
@@ -70,11 +78,11 @@ export function MacroLatestReadinessBanner({
     }
     if (meta?.fallback_mode === "latest_snapshot") {
       tone = tone === "ok" ? "warn" : tone;
-      parts.push("结果含快照降级（降级模式=latest_snapshot）。");
+      parts.push("结果含最新快照降级。");
     }
     if (meta?.quality_flag && meta.quality_flag !== "ok") {
       tone = tone === "ok" ? "warn" : tone;
-      parts.push(`质量标记=${meta.quality_flag}。`);
+      parts.push(`质量标记=${qualityLabel(meta.quality_flag)}。`);
     }
   }
 

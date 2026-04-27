@@ -81,21 +81,50 @@ function hasPromotionSafeProvenance(meta: ResultMeta | null | undefined): boolea
   );
 }
 
+function formatBasis(value: ResultMeta["basis"]): string {
+  if (value === "formal") return "正式口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "mock") return "演示口径";
+  return value;
+}
+
+function formatQuality(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function formatFallback(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
+}
+
+function formatVendorStatus(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
 function buildDegradedProvenanceReason(meta: ResultMeta | null | undefined): string {
   if (!meta) {
     return "尚未加载总览结果的证据信封。";
   }
 
   if (meta.fallback_mode !== "none") {
-    return `总览结果正在使用 ${meta.fallback_mode.replace("_", " ")} 降级模式。`;
+    return `总览结果正在使用${formatFallback(meta.fallback_mode)}。`;
   }
 
   if (meta.quality_flag !== "ok") {
-    return `总览结果质量标记为 ${meta.quality_flag}。`;
+    return `总览结果质量标记为${formatQuality(meta.quality_flag)}。`;
   }
 
   if (meta.vendor_status !== "ok") {
-    return `供应商状态为 ${meta.vendor_status.replace("_", " ")}。`;
+    return `供应商状态为${formatVendorStatus(meta.vendor_status)}。`;
   }
 
   if (meta.formal_use_allowed !== true) {
@@ -107,7 +136,7 @@ function buildDegradedProvenanceReason(meta: ResultMeta | null | undefined): str
   }
 
   if (meta.basis !== "formal") {
-    return `总览结果口径为 ${meta.basis}，因此仍阻止头条提升。`;
+    return `总览结果口径为${formatBasis(meta.basis)}，因此仍阻止头条提升。`;
   }
 
   return "总览结果证据链强度不足，不能提升到头条。";

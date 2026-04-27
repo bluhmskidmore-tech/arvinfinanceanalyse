@@ -197,7 +197,7 @@ describe("workbench navigation mocks", () => {
     const adb = workbenchNavigation.find((s) => s.key === "average-balance");
     expect(adb?.path).toBe("/average-balance");
     expect(adb?.readiness).toBe("live");
-    expect(adb?.label).toContain("ADB");
+    expect(adb?.label).toBe("日均分析");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "average-balance")).toBe(false);
   });

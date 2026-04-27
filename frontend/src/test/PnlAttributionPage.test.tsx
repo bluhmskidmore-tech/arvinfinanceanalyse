@@ -32,8 +32,8 @@ describe("PnlAttributionPage", () => {
     expect(await screen.findByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("当前期间");
     expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-03");
     expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("2026-04-09T10:30:00Z");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("ok");
-    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("none");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("正常");
+    expect(screen.getByTestId("pnl-attribution-current-view-meta")).toHaveTextContent("未降级");
 
     await user.click(screen.getByRole("button", { name: /TPL/i }));
     expect(screen.getByRole("button", { name: /TPL/i })).toBeInTheDocument();

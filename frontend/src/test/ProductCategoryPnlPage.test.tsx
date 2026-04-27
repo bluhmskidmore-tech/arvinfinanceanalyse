@@ -36,13 +36,13 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.85");
     expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");
     const metaPanel = screen.getByTestId("product-category-result-meta-baseline");
-    expect(metaPanel).toHaveTextContent("formal");
+    expect(metaPanel).toHaveTextContent("正式口径");
     expect(metaPanel).toHaveTextContent("product_category_pnl.detail");
     expect(metaPanel).toHaveTextContent("降级模式");
-    expect(metaPanel).toHaveTextContent("none");
+    expect(metaPanel).toHaveTextContent("未降级");
     expect(metaPanel).toHaveTextContent("mock_product_category_pnl.detail");
     expect(screen.getByTestId("product-category-governance-strip")).toBeInTheDocument();
-    expect(screen.getByTestId("product-category-as-of-date-gap")).toHaveTextContent("as_of_date");
+    expect(screen.getByTestId("product-category-as-of-date-gap")).toHaveTextContent("归属日期");
     expect(
       screen.queryByTestId("product-category-governance-notice-fallback_mode"),
     ).not.toBeInTheDocument();
@@ -312,8 +312,8 @@ describe("ProductCategoryPnlPage", () => {
         "是",
       );
       const distinct = screen.getByTestId("product-category-formal-scenario-meta-distinct");
-      expect(distinct).toHaveTextContent("正式口径=formal");
-      expect(distinct).toHaveTextContent("情景口径=scenario");
+      expect(distinct).toHaveTextContent("正式口径=正式口径");
+      expect(distinct).toHaveTextContent("情景口径=情景口径");
       expect(distinct).toHaveTextContent("追踪编号=mock_product_category_pnl.detail");
     });
   });
@@ -338,13 +338,13 @@ describe("ProductCategoryPnlPage", () => {
 
     await screen.findByTestId("product-category-table");
     expect(screen.getByTestId("product-category-governance-notice-fallback_mode")).toHaveTextContent(
-      "latest_snapshot",
+      "最新快照降级",
     );
     expect(screen.getByTestId("product-category-governance-notice-vendor_status")).toHaveTextContent(
-      "vendor_stale",
+      "供应商数据陈旧",
     );
     expect(screen.getByTestId("product-category-governance-notice-quality_flag")).toHaveTextContent(
-      "warning",
+      "预警",
     );
   });
 

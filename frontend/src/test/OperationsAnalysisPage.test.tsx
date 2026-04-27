@@ -330,7 +330,7 @@ describe("OperationsAnalysisPage", () => {
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
     expect(heroProvenance).toHaveTextContent("物化/候选对账");
     expect(heroProvenance).toHaveTextContent("静态示例");
-    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("口径 formal");
+    expect(await screen.findByTestId("operations-contribution-table-provenance")).toHaveTextContent("口径 正式口径");
   });
 
   it("does not claim evidence is sufficient when critical read surfaces are empty", async () => {

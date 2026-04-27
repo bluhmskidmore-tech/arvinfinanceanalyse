@@ -319,6 +319,6 @@ describe("AverageBalanceView", () => {
     const meta = await screen.findByTestId("adb-daily-result-meta");
     expect(meta).toHaveTextContent("adb.comparison");
     expect(meta).toHaveTextContent("来源=sv_live_adb");
-    expect(meta).toHaveTextContent("降级=latest_snapshot");
+    expect(meta).toHaveTextContent("降级=最新快照降级");
   });
 });

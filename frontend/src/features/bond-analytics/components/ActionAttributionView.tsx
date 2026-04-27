@@ -25,12 +25,33 @@ const ACTION_COLORS: Record<string, string> = {
   HEDGE: "#8c8c8c",
 };
 
+function metaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function metaVendorLabel(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
+function metaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
+}
+
 function describeMetaIssues(meta: ResultMeta | null): string[] {
   if (!meta) return [];
   const issues: string[] = [];
-  if (meta.quality_flag !== "ok") issues.push(`质量标记=${meta.quality_flag}`);
-  if (meta.vendor_status !== "ok") issues.push(`供应商状态=${meta.vendor_status}`);
-  if (meta.fallback_mode !== "none") issues.push(`降级模式=${meta.fallback_mode}`);
+  if (meta.quality_flag !== "ok") issues.push(`质量标记=${metaQualityLabel(meta.quality_flag)}`);
+  if (meta.vendor_status !== "ok") issues.push(`供应商状态=${metaVendorLabel(meta.vendor_status)}`);
+  if (meta.fallback_mode !== "none") issues.push(`降级模式=${metaFallbackLabel(meta.fallback_mode)}`);
   return issues;
 }
 

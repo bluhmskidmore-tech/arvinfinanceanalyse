@@ -397,8 +397,31 @@ function formatResultMetaProvenance(meta: ResultMeta | undefined): string {
   if (!meta) {
     return "无结果元信息";
   }
-  const fb = meta.fallback_mode !== "none" ? ` · 回退 ${meta.fallback_mode}` : "";
-  return `口径 ${meta.basis} · 质量 ${meta.quality_flag} · 供应 ${meta.vendor_status}${fb}`;
+  const basis = meta.basis === "formal" ? "正式口径" : meta.basis === "analytical" ? "分析口径" : meta.basis;
+  const quality =
+    meta.quality_flag === "ok"
+      ? "正常"
+      : meta.quality_flag === "warning"
+        ? "预警"
+        : meta.quality_flag === "error"
+          ? "错误"
+          : meta.quality_flag === "stale"
+            ? "陈旧"
+            : meta.quality_flag;
+  const vendor =
+    meta.vendor_status === "ok"
+      ? "正常"
+      : meta.vendor_status === "vendor_stale"
+        ? "供应商陈旧"
+        : meta.vendor_status === "vendor_unavailable"
+          ? "供应商不可用"
+          : meta.vendor_status;
+  const fallback =
+    meta.fallback_mode === "latest_snapshot"
+      ? "最新快照降级"
+      : meta.fallback_mode;
+  const fb = meta.fallback_mode !== "none" ? ` · 回退 ${fallback}` : "";
+  return `口径 ${basis} · 质量 ${quality} · 供应 ${vendor}${fb}`;
 }
 
 export default function OperationsAnalysisPage() {

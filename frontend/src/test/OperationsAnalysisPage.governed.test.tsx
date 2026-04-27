@@ -453,7 +453,7 @@ describe("OperationsAnalysisPage governed values", () => {
     expect(heroProvenance).toHaveTextContent("总账对账 + 日均");
     expect(heroProvenance).toHaveTextContent("静态示例");
     const tableProv = await screen.findByTestId("operations-contribution-table-provenance");
-    expect(tableProv).toHaveTextContent("口径 formal");
+    expect(tableProv).toHaveTextContent("口径 正式口径");
   });
 
   it("labels product-category contribution rows with the resolved payload report date", async () => {

@@ -122,7 +122,7 @@ export function PortfolioHeadlinesView({ reportDate }: Props) {
         </Col>
         <Col xs={24} sm={12} md={8}>
           <Card size="small">
-            <Statistic title="发行人 Top5 权重" value={formatPct(data.issuer_top5_weight)} />
+            <Statistic title="发行人前五权重" value={formatPct(data.issuer_top5_weight)} />
           </Card>
         </Col>
         <Col xs={24} sm={12} md={8}>

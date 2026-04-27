@@ -21,6 +21,35 @@ const metaKeyLabels: Record<string, string> = {
   scenario_flag: "情景标记",
 };
 
+function formatMetaValue(key: string, value: unknown, fallback: (value: unknown) => string) {
+  if (key === "basis") {
+    if (value === "formal") return "正式口径";
+    if (value === "analytical") return "分析口径";
+  }
+  if (key === "quality_flag") {
+    const labels: Record<string, string> = {
+      ok: "正常",
+      warning: "预警",
+      error: "错误",
+      stale: "陈旧",
+    };
+    if (typeof value === "string" && labels[value]) return labels[value];
+  }
+  if (key === "vendor_status") {
+    const labels: Record<string, string> = {
+      ok: "正常",
+      vendor_stale: "供应商陈旧",
+      vendor_unavailable: "供应商不可用",
+    };
+    if (typeof value === "string" && labels[value]) return labels[value];
+  }
+  if (key === "fallback_mode") {
+    if (value === "none") return "未降级";
+    if (value === "latest_snapshot") return "最新快照降级";
+  }
+  return fallback(value);
+}
+
 export function AgentResultMetaPanel({ entries, formatValue }: AgentResultMetaPanelProps) {
   return (
     <div
@@ -49,7 +78,7 @@ export function AgentResultMetaPanel({ entries, formatValue }: AgentResultMetaPa
       >
         {entries.map(([key, value]) => (
           <div key={key}>
-            {metaKeyLabels[key] ?? key}: {formatValue(value)}
+            {metaKeyLabels[key] ?? key}: {formatMetaValue(key, value, formatValue)}
           </div>
         ))}
       </div>

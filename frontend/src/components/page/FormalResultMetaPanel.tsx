@@ -90,6 +90,35 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
+function formatMetaField(key: string, value: unknown): string {
+  if (key === "basis") {
+    if (value === "formal") return "正式口径";
+    if (value === "analytical") return "分析口径";
+  }
+  if (key === "quality_flag") {
+    const labels: Record<string, string> = {
+      ok: "正常",
+      warning: "预警",
+      error: "错误",
+      stale: "陈旧",
+    };
+    if (typeof value === "string" && labels[value]) return labels[value];
+  }
+  if (key === "vendor_status") {
+    const labels: Record<string, string> = {
+      ok: "正常",
+      vendor_stale: "供应商陈旧",
+      vendor_unavailable: "供应商不可用",
+    };
+    if (typeof value === "string" && labels[value]) return labels[value];
+  }
+  if (key === "fallback_mode") {
+    if (value === "none") return "未降级";
+    if (value === "latest_snapshot") return "最新快照降级";
+  }
+  return formatValue(value);
+}
+
 const metaLabelMap: Record<string, string> = {
   basis: "口径",
   result_kind: "结果类型",
@@ -150,7 +179,7 @@ export function FormalResultMetaPanel({
                 <div style={headingStyle}>{section.title}</div>
                 <dl style={listStyle}>
                   <dt>{metaLabelMap.basis}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.basis)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("basis", meta.basis)}</dd>
                   <dt>{metaLabelMap.result_kind}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.result_kind)}</dd>
                   <dt>{metaLabelMap.formal_use_allowed}</dt>
@@ -158,11 +187,11 @@ export function FormalResultMetaPanel({
                   <dt>{metaLabelMap.scenario_flag}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.scenario_flag)}</dd>
                   <dt>{metaLabelMap.quality_flag}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.quality_flag)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("quality_flag", meta.quality_flag)}</dd>
                   <dt>{metaLabelMap.vendor_status}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.vendor_status)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("vendor_status", meta.vendor_status)}</dd>
                   <dt>{metaLabelMap.fallback_mode}</dt>
-                  <dd style={{ margin: 0 }}>{formatValue(meta.fallback_mode)}</dd>
+                  <dd style={{ margin: 0 }}>{formatMetaField("fallback_mode", meta.fallback_mode)}</dd>
                   <dt>{metaLabelMap.trace_id}</dt>
                   <dd style={{ margin: 0 }}>{formatValue(meta.trace_id)}</dd>
                   <dt>{metaLabelMap.source_version}</dt>

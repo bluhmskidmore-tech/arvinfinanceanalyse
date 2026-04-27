@@ -101,11 +101,40 @@ function formatMetaLine(meta: ResultMeta | undefined) {
   ].join(" · ");
 }
 
+function resultMetaBasisLabel(value: ResultMeta["basis"]): string {
+  if (value === "formal") return "正式口径";
+  if (value === "scenario") return "情景口径";
+  if (value === "analytical") return "分析口径";
+  if (value === "mock") return "演示口径";
+  return value;
+}
+
+function resultMetaQualityLabel(value: ResultMeta["quality_flag"]): string {
+  if (value === "ok") return "正常";
+  if (value === "warning") return "预警";
+  if (value === "error") return "错误";
+  if (value === "stale") return "陈旧";
+  return value;
+}
+
+function resultMetaVendorLabel(value: ResultMeta["vendor_status"]): string {
+  if (value === "ok") return "正常";
+  if (value === "vendor_stale") return "供应商数据陈旧";
+  if (value === "vendor_unavailable") return "供应商不可用";
+  return value;
+}
+
+function resultMetaFallbackLabel(value: ResultMeta["fallback_mode"]): string {
+  if (value === "none") return "未降级";
+  if (value === "latest_snapshot") return "最新快照降级";
+  return value;
+}
+
 function resultMetaSubline(meta: ResultMeta | undefined) {
   if (!meta) {
     return null;
   }
-  return `口径=${meta.basis} · 质量=${meta.quality_flag} · 供应商=${meta.vendor_status} · 降级=${meta.fallback_mode}`;
+  return `口径=${resultMetaBasisLabel(meta.basis)} · 质量=${resultMetaQualityLabel(meta.quality_flag)} · 供应商=${resultMetaVendorLabel(meta.vendor_status)} · 降级=${resultMetaFallbackLabel(meta.fallback_mode)}`;
 }
 
 export default function DecisionItemsPage() {

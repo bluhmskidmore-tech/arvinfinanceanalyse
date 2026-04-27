@@ -923,7 +923,7 @@ describe("BalanceAnalysisPage", () => {
       expect(screen.getByText("第 2 / 2 页")).toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("balance-analysis-result-meta-overview")).toHaveTextContent("formal");
+    expect(screen.getByTestId("balance-analysis-result-meta-overview")).toHaveTextContent("正式口径");
     expect(screen.getByTestId("balance-analysis-result-meta-overview")).toHaveTextContent(
       "balance-analysis.overview",
     );

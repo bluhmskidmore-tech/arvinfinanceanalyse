@@ -181,6 +181,22 @@ function ResultMetaNotice(props: {
   if (!props.meta) return null;
   const hasQualityIssue =
     props.meta.quality_flag !== "ok" || props.meta.fallback_mode !== "none";
+  const qualityLabel =
+    props.meta.quality_flag === "ok"
+      ? "正常"
+      : props.meta.quality_flag === "warning"
+        ? "预警"
+        : props.meta.quality_flag === "error"
+          ? "错误"
+          : props.meta.quality_flag === "stale"
+            ? "陈旧"
+            : props.meta.quality_flag;
+  const fallbackLabel =
+    props.meta.fallback_mode === "none"
+      ? "未降级"
+      : props.meta.fallback_mode === "latest_snapshot"
+        ? "最新快照降级"
+        : props.meta.fallback_mode;
   return (
     <Alert
       data-testid={props.testId}
@@ -191,8 +207,8 @@ function ResultMetaNotice(props: {
         props.meta.basis,
         `来源=${props.meta.source_version}`,
         `规则=${props.meta.rule_version}`,
-        `质量=${props.meta.quality_flag}`,
-        `降级=${props.meta.fallback_mode}`,
+        `质量=${qualityLabel}`,
+        `降级=${fallbackLabel}`,
       ].join(" · ")}
     />
   );
