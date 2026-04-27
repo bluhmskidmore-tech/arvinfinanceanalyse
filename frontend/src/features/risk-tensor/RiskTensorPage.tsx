@@ -480,7 +480,7 @@ export default function RiskTensorPage() {
                     当前桶：<strong>{selectedTenorRow.tenor}</strong>
                   </div>
                   <div style={{ marginTop: 8, color: t.colorTextSecondary, fontSize: 13 }}>
-                    KRD：{selectedTenorRow.value}
+                    KRD：{displayStr(selectedTenorRow.value)}
                   </div>
                 </div>
               ) : null}

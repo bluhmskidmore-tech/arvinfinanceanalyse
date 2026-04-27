@@ -135,6 +135,13 @@ describe("RiskTensorPage", () => {
           precision: 2,
           sign_aware: false,
         },
+        krd_5y: {
+          raw: 3,
+          unit: "ratio" as const,
+          display: "3 governed",
+          precision: 0,
+          sign_aware: true,
+        },
       },
     }));
 
@@ -147,6 +154,7 @@ describe("RiskTensorPage", () => {
     const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
     expect(kpi).toHaveTextContent("1,235 governed");
     expect(screen.getByText("42.0%")).toBeInTheDocument();
+    expect(screen.getByTestId("risk-tensor-tenor-drill")).toHaveTextContent("3 governed");
   });
 
   it("surfaces backend-blocked stale dates without using them as the default", async () => {
