@@ -5,7 +5,11 @@ import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../api/client";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
-import { bondChartMagnitude, bondNumericDisplay } from "../bond-analytics/adapters/bondAnalyticsAdapter";
+import {
+  bondChartMagnitude,
+  bondNumericDisplay,
+  bondNumericRaw,
+} from "../bond-analytics/adapters/bondAnalyticsAdapter";
 import type {
   CreditSpreadMigrationResponse,
   KRDCurveRiskResponse,
@@ -116,13 +120,6 @@ function cellText(value: unknown) {
     return bondNumericDisplay(value as Parameters<typeof bondNumericDisplay>[0]);
   }
   return String(value);
-}
-
-function displayStr(value: string | undefined) {
-  if (value === undefined || value === "") {
-    return "—";
-  }
-  return value;
 }
 
 /** 仅用于 ECharts 轴值解析，不做组合层面的金融重算。 */
@@ -354,27 +351,27 @@ export default function RiskOverviewPage() {
               <div data-testid="risk-overview-kpi-grid" style={summaryGridStyle}>
                 <KpiCard
                   title="组合 DV01"
-                  value={displayStr(tensorResult.portfolio_dv01)}
+                  value={bondNumericDisplay(tensorResult.portfolio_dv01)}
                   detail="portfolio_dv01，后端字符串口径。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_dv01))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.portfolio_dv01))}
                 />
                 <KpiCard
                   title="修正久期"
-                  value={displayStr(tensorResult.portfolio_modified_duration)}
+                  value={bondNumericDisplay(tensorResult.portfolio_modified_duration)}
                   detail="portfolio_modified_duration。"
                   unit="年"
                 />
                 <KpiCard
                   title="CS01"
-                  value={displayStr(tensorResult.cs01)}
+                  value={bondNumericDisplay(tensorResult.cs01)}
                   detail="cs01（信用 spread 敏感度聚合）。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.cs01))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.cs01))}
                 />
                 <KpiCard
                   title="组合凸性"
-                  value={displayStr(tensorResult.portfolio_convexity)}
+                  value={bondNumericDisplay(tensorResult.portfolio_convexity)}
                   detail="portfolio_convexity。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.portfolio_convexity))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.portfolio_convexity))}
                 />
                 <KpiCard
                   title="债券只数"
@@ -384,10 +381,10 @@ export default function RiskOverviewPage() {
                 />
                 <KpiCard
                   title="总市值"
-                  value={displayStr(tensorResult.total_market_value)}
+                  value={bondNumericDisplay(tensorResult.total_market_value)}
                   detail="total_market_value。"
                   unit="亿"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.total_market_value))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.total_market_value))}
                 />
               </div>
 
@@ -418,18 +415,21 @@ export default function RiskOverviewPage() {
               <div style={summaryGridStyle}>
                 <KpiCard
                   title="发行人 HHI"
-                  value={displayStr(tensorResult.issuer_concentration_hhi)}
+                  value={bondNumericDisplay(tensorResult.issuer_concentration_hhi)}
                   detail="issuer_concentration_hhi。"
                   tone={
                     (() => {
-                      const n = parseDisplayNumber(displayStr(tensorResult.issuer_concentration_hhi));
+                      const n = parseDisplayNumber(bondNumericDisplay(tensorResult.issuer_concentration_hhi));
                       return n != null && n > 0.15 ? "warning" : "default";
                     })()
                   }
                 />
                 <KpiCard
                   title="前五大权重"
-                  value={formatRatioAsPercent(tensorResult.issuer_top5_weight, displayStr(tensorResult.issuer_top5_weight))}
+                  value={formatRatioAsPercent(
+                    String(bondNumericRaw(tensorResult.issuer_top5_weight)),
+                    bondNumericDisplay(tensorResult.issuer_top5_weight),
+                  )}
                   detail="issuer_top5_weight。"
                 />
               </div>
@@ -447,25 +447,25 @@ export default function RiskOverviewPage() {
               <div style={summaryGridStyle}>
                 <KpiCard
                   title="30 日内到期市值"
-                  value={displayStr(tensorResult.liquidity_gap_30d)}
+                  value={bondNumericDisplay(tensorResult.liquidity_gap_30d)}
                   detail="liquidity_gap_30d。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_30d))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.liquidity_gap_30d))}
                 />
                 <KpiCard
                   title="90 日内到期市值"
-                  value={displayStr(tensorResult.liquidity_gap_90d)}
+                  value={bondNumericDisplay(tensorResult.liquidity_gap_90d)}
                   detail="liquidity_gap_90d。"
-                  tone={toneFromSignedDisplayString(displayStr(tensorResult.liquidity_gap_90d))}
+                  tone={toneFromSignedDisplayString(bondNumericDisplay(tensorResult.liquidity_gap_90d))}
                 />
                 <KpiCard
                   title="30 日流动性缺口占比"
                   value={formatRatioAsPercent(
-                    tensorResult.liquidity_gap_30d_ratio,
-                    displayStr(tensorResult.liquidity_gap_30d_ratio),
+                    String(bondNumericRaw(tensorResult.liquidity_gap_30d_ratio)),
+                    bondNumericDisplay(tensorResult.liquidity_gap_30d_ratio),
                   )}
                   detail="liquidity_gap_30d_ratio。"
                   tone={(() => {
-                    const n = parseDisplayNumber(displayStr(tensorResult.liquidity_gap_30d_ratio));
+                    const n = parseDisplayNumber(bondNumericDisplay(tensorResult.liquidity_gap_30d_ratio));
                     if (n == null) {
                       return "default";
                     }

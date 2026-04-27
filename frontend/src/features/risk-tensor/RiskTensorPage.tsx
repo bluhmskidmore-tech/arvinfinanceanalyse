@@ -14,6 +14,11 @@ import {
   parseDisplayNumber,
   toneFromSignedDisplayString,
 } from "../workbench/components/kpiFormat";
+import {
+  bondChartMagnitude,
+  bondNumericDisplay,
+  bondNumericRaw,
+} from "../bond-analytics/adapters/bondAnalyticsAdapter";
 
 /** 雷达轴顺序与后端字段一一对应；max 仅用于可视化比例，不做前端金融重算。 */
 const RADAR_META = [
@@ -91,16 +96,12 @@ function chipButtonStyle(active: boolean) {
   } as const;
 }
 
-function displayStr(value: string | undefined) {
-  if (value === undefined || value === "") {
-    return "-";
-  }
-  return value;
+function displayStr(value: Parameters<typeof bondNumericDisplay>[0]) {
+  return bondNumericDisplay(value);
 }
 
-function chartMagnitude(value: string) {
-  const n = Number.parseFloat(value);
-  return Number.isFinite(n) ? n : 0;
+function chartMagnitude(value: Parameters<typeof bondChartMagnitude>[0]) {
+  return bondChartMagnitude(value);
 }
 
 function dynamicAxisMax(raw: number, fallback: number) {
@@ -510,7 +511,10 @@ export default function RiskTensorPage() {
               />
               <KpiCard
                 title="前五大权重"
-                value={formatRatioAsPercent(result.issuer_top5_weight, displayStr(result.issuer_top5_weight))}
+                value={formatRatioAsPercent(
+                  String(bondNumericRaw(result.issuer_top5_weight)),
+                  displayStr(result.issuer_top5_weight),
+                )}
                 detail="issuer_top5_weight。"
               />
             </div>

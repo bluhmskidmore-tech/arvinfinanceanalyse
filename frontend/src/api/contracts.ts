@@ -586,27 +586,29 @@ export type AlertsPayload = {
 };
 
 /**
- * `/api/risk/tensor?report_date=` — `result` 内为风险张量载荷（小数字段为后端量化后的字符串）。
+ * `/api/risk/tensor?report_date=` — 数值字段为 governed `Numeric` JSON 或（mock/历史）纯字符串；展示层用 `bondNumericDisplay` 等归一化。
  * 「风险总览」与「风险张量」页面均通过 `getRiskTensor` 消费同一载荷；不在前端补算指标。
  */
+export type RiskTensorScalar = string | Numeric;
+
 export type RiskTensorPayload = {
   report_date: string;
-  portfolio_dv01: string;
-  krd_1y: string;
-  krd_3y: string;
-  krd_5y: string;
-  krd_7y: string;
-  krd_10y: string;
-  krd_30y: string;
-  cs01: string;
-  portfolio_convexity: string;
-  portfolio_modified_duration: string;
-  issuer_concentration_hhi: string;
-  issuer_top5_weight: string;
-  liquidity_gap_30d: string;
-  liquidity_gap_90d: string;
-  liquidity_gap_30d_ratio: string;
-  total_market_value: string;
+  portfolio_dv01: RiskTensorScalar;
+  krd_1y: RiskTensorScalar;
+  krd_3y: RiskTensorScalar;
+  krd_5y: RiskTensorScalar;
+  krd_7y: RiskTensorScalar;
+  krd_10y: RiskTensorScalar;
+  krd_30y: RiskTensorScalar;
+  cs01: RiskTensorScalar;
+  portfolio_convexity: RiskTensorScalar;
+  portfolio_modified_duration: RiskTensorScalar;
+  issuer_concentration_hhi: RiskTensorScalar;
+  issuer_top5_weight: RiskTensorScalar;
+  liquidity_gap_30d: RiskTensorScalar;
+  liquidity_gap_90d: RiskTensorScalar;
+  liquidity_gap_30d_ratio: RiskTensorScalar;
+  total_market_value: RiskTensorScalar;
   bond_count: number;
   quality_flag: string;
   warnings: string[];

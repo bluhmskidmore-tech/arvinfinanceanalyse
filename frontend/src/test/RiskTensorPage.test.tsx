@@ -111,6 +111,44 @@ describe("RiskTensorPage", () => {
     });
   });
 
+  it("renders governed Numeric tensor values using backend display and raw ratio", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getRiskTensorDates = vi.fn(async () => ({
+      result_meta: buildMeta("risk.tensor.dates", "tr_tensor_numeric_dates"),
+      result: { report_dates: ["2026-02-28"] },
+    }));
+    const getRiskTensor = vi.fn(async (reportDate: string) => ({
+      result_meta: buildMeta("risk.tensor", `tr_tensor_numeric_${reportDate}`),
+      result: {
+        ...tensorResult(reportDate),
+        portfolio_dv01: {
+          raw: 1234.56,
+          unit: "dv01" as const,
+          display: "1,235 governed",
+          precision: 0,
+          sign_aware: false,
+        },
+        issuer_top5_weight: {
+          raw: 0.42,
+          unit: "ratio" as const,
+          display: "0.42",
+          precision: 2,
+          sign_aware: false,
+        },
+      },
+    }));
+
+    renderRiskTensorRoute("/risk-tensor", {
+      ...base,
+      getRiskTensorDates,
+      getRiskTensor,
+    });
+
+    const kpi = await screen.findByTestId("risk-tensor-kpi-grid");
+    expect(kpi).toHaveTextContent("1,235 governed");
+    expect(screen.getByText("42.0%")).toBeInTheDocument();
+  });
+
   it("surfaces backend-blocked stale dates without using them as the default", async () => {
     const base = createApiClient({ mode: "mock" });
     const getRiskTensorDates = vi.fn(async () => ({
