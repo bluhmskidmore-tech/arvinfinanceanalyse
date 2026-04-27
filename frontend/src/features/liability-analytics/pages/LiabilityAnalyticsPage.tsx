@@ -539,7 +539,7 @@ export default function LiabilityAnalyticsPage() {
             </div>
             {explicitReportDate ? (
               <Text type="secondary" style={{ alignSelf: "flex-end" }}>
-                已由 URL <code>?report_date=</code> 固定
+                已由地址栏报告日参数固定
               </Text>
             ) : null}
           </Space>

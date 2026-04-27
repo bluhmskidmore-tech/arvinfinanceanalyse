@@ -176,11 +176,7 @@ export function BondAnalyticsViewContent() {
           债券分析日期载入失败。
         </div>
         <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
-          无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过 URL 显式传入
-          <code style={{ fontSize: designTokens.fontSize[12], marginLeft: designTokens.space[1] }}>
-            ?report_date=YYYY-MM-DD
-          </code>
-          。
+          无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过地址栏报告日参数显式传入。
         </div>
         <button
           type="button"

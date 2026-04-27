@@ -344,7 +344,7 @@ export default function RiskTensorPage() {
             <>
               报告日：<strong>{reportDate}</strong>
               <span style={{ marginLeft: 8, color: "#8090a8", fontSize: 13 }}>
-                （可用 <code style={{ fontSize: 12 }}>?report_date=YYYY-MM-DD</code> 覆盖）
+                （可通过地址栏报告日参数覆盖）
               </span>
             </>
           )}

@@ -383,7 +383,7 @@ export default function PositionsView() {
         </div>
         {explicitReportDate ? (
           <Typography.Text type="secondary" style={{ alignSelf: "flex-end" }}>
-            已由 URL <code>?report_date=</code> 固定
+            已由地址栏报告日参数固定
           </Typography.Text>
         ) : null}
       </FilterBar>

@@ -263,10 +263,10 @@ describe("ReturnDecompositionView", () => {
       expect(client.getBondAnalyticsReturnDecomposition).toHaveBeenCalledWith("2026-03-31", "MoM"),
     );
     expect(await screen.findByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
-      "供应商状态=vendor_stale",
+      "供应商状态=供应商数据陈旧",
     );
     expect(screen.getByTestId("return-decomposition-result-meta-alert")).toHaveTextContent(
-      "降级模式=latest_snapshot",
+      "降级模式=最新快照降级",
     );
     expect(screen.getByTestId("return-decomposition-result-meta")).toHaveTextContent("供应商陈旧");
   });

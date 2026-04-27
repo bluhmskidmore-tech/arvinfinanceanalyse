@@ -216,10 +216,10 @@ describe("ActionAttributionView", () => {
     );
 
     expect(await screen.findByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "供应商状态=vendor_stale",
+      "供应商状态=供应商数据陈旧",
     );
     expect(screen.getByTestId("action-attribution-result-meta-alert")).toHaveTextContent(
-      "降级模式=latest_snapshot",
+      "降级模式=最新快照降级",
     );
     expect(screen.getByTestId("action-attribution-result-meta")).toHaveTextContent("供应商陈旧");
   });

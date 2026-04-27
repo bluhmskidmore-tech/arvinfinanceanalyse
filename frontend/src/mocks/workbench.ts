@@ -242,11 +242,11 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   pnl: {
     title: "损益明细",
     summary: "损益明细依赖的正式损益事实表尚未物化，当前页面不再发失败请求。",
-    highlights: ["fact_formal_pnl_fi 未落地", "fact_nonstd_pnl_bridge 未落地", "完成物化后恢复真实工作台"],
+    highlights: ["正式固收损益事实表未落地", "非标损益桥接事实表未落地", "完成物化后恢复真实工作台"],
   },
   "pnl-bridge": {
     title: "损益桥接",
-    summary: "PnL bridge 仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
+    summary: "损益桥接仍处于预留阶段，当前只保留模块说明，避免把未完成页面当成可用功能。",
     highlights: ["桥接结果未稳定", "不暴露失败接口", "后续以正式读模型为准切回"],
   },
   "platform-config": {
