@@ -183,6 +183,12 @@ describe("balanceAnalysisPageModel", () => {
           total_market_value_amount: "0",
           total_amortized_cost_amount: "0",
           total_accrued_interest_amount: "0",
+          asset_total_market_value_amount: "0",
+          liability_total_market_value_amount: "0",
+          asset_total_amortized_cost_amount: "0",
+          liability_total_amortized_cost_amount: "0",
+          asset_total_accrued_interest_amount: "0",
+          liability_total_accrued_interest_amount: "0",
         },
         workbook: {
           report_date: "2025-12-31",
@@ -369,6 +375,12 @@ describe("balanceAnalysisPageModel", () => {
           total_market_value_amount: "14000000000",
           total_amortized_cost_amount: "14000000000",
           total_accrued_interest_amount: "0",
+          asset_total_market_value_amount: "10000000000",
+          liability_total_market_value_amount: "4000000000",
+          asset_total_amortized_cost_amount: "10000000000",
+          liability_total_amortized_cost_amount: "4000000000",
+          asset_total_accrued_interest_amount: "0",
+          liability_total_accrued_interest_amount: "0",
         },
         summaryRows: [
           {

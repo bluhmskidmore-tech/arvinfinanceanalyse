@@ -231,6 +231,12 @@ def balance_analysis_overview_envelope(
             "total_market_value_amount": _as_decimal(overview["total_market_value_amount"]),
             "total_amortized_cost_amount": _as_decimal(overview["total_amortized_cost_amount"]),
             "total_accrued_interest_amount": _as_decimal(overview["total_accrued_interest_amount"]),
+            "asset_total_market_value_amount": _as_decimal(overview["asset_total_market_value_amount"]),
+            "liability_total_market_value_amount": _as_decimal(overview["liability_total_market_value_amount"]),
+            "asset_total_amortized_cost_amount": _as_decimal(overview["asset_total_amortized_cost_amount"]),
+            "liability_total_amortized_cost_amount": _as_decimal(overview["liability_total_amortized_cost_amount"]),
+            "asset_total_accrued_interest_amount": _as_decimal(overview["asset_total_accrued_interest_amount"]),
+            "liability_total_accrued_interest_amount": _as_decimal(overview["liability_total_accrued_interest_amount"]),
         },
     )
 

@@ -129,6 +129,7 @@ export function KpiCard({
       }
       style={{
         minHeight: isMetric ? 152 : 132,
+        minWidth: 0,
         padding: "18px 18px 16px",
         borderRadius: 12,
         background: displayTokens.kpi.cardBg,
@@ -137,6 +138,7 @@ export function KpiCard({
         display: "flex",
         flexDirection: "column",
         cursor: onClick ? "pointer" : undefined,
+        overflow: "visible",
       }}
     >
       <div
@@ -181,7 +183,16 @@ export function KpiCard({
             gap: 8,
           }}
         >
-          <span>{heading}</span>
+          <span
+            style={{
+              flex: "1 1 auto",
+              minWidth: 0,
+              overflowWrap: "break-word",
+              wordBreak: "break-word",
+            }}
+          >
+            {heading}
+          </span>
           {sparklineData && sparklineData.length > 0 ? (
             <MiniSparkline data={sparklineData} />
           ) : null}
@@ -246,6 +257,8 @@ export function KpiCard({
               lineHeight: 1.45,
               textAlign: isMetric ? "center" : "left",
               width: "100%",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
             }}
           >
             {changeLabel ? `${changeLabel} ` : null}
@@ -264,6 +277,8 @@ export function KpiCard({
               lineHeight: 1.45,
               textAlign: isMetric ? "center" : "left",
               width: "100%",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
             }}
           >
             {detail}

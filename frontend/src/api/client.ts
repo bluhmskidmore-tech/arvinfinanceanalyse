@@ -1674,6 +1674,8 @@ function buildBalanceAnalysisOverviewPayload(
   currencyBasis: BalanceCurrencyBasis,
 ): BalanceAnalysisOverviewPayload {
   const rows = buildBalanceAnalysisTableRows(reportDate, positionScope, currencyBasis);
+  const assetRows = rows.filter((row) => row.position_scope === "asset");
+  const liabilityRows = rows.filter((row) => row.position_scope === "liability");
   return {
     report_date: reportDate,
     position_scope: positionScope,
@@ -1688,6 +1690,24 @@ function buildBalanceAnalysisOverviewPayload(
     ),
     total_accrued_interest_amount: formatBalanceAmountDecimal(
       sumBalanceAmount(rows, "accrued_interest_amount"),
+    ),
+    asset_total_market_value_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(assetRows, "market_value_amount"),
+    ),
+    liability_total_market_value_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(liabilityRows, "market_value_amount"),
+    ),
+    asset_total_amortized_cost_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(assetRows, "amortized_cost_amount"),
+    ),
+    liability_total_amortized_cost_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(liabilityRows, "amortized_cost_amount"),
+    ),
+    asset_total_accrued_interest_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(assetRows, "accrued_interest_amount"),
+    ),
+    liability_total_accrued_interest_amount: formatBalanceAmountDecimal(
+      sumBalanceAmount(liabilityRows, "accrued_interest_amount"),
     ),
   };
 }

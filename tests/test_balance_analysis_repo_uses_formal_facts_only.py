@@ -22,6 +22,27 @@ def test_balance_analysis_outward_repo_queries_read_governed_formal_facts_only()
         if "select report_date, position_id" in normalized:
             return []
         if "cross join tyw" in normalized:
+            if "asset_total_market_value_amount" in normalized:
+                return [
+                    (
+                        "2025-12-31",
+                        "all",
+                        "CNY",
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        "",
+                        "",
+                    )
+                ]
             return [("2025-12-31", "all", "CNY", 0, 0, 0, 0, 0, "", "")]
         if "as basis_rows" in normalized:
             return []

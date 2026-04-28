@@ -573,6 +573,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "0.00",
         total_amortized_cost_amount: "0.00",
         total_accrued_interest_amount: "0.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     });
     workbookDeferred.resolve(buildWorkbookResponse());
@@ -612,6 +618,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "99999000000.00",
         total_amortized_cost_amount: "88888000000.00",
         total_accrued_interest_amount: "7777000000.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => {
@@ -978,6 +990,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "1000000000.00",
         total_amortized_cost_amount: "1000000000.00",
         total_accrued_interest_amount: "100000000.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async (): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -1033,6 +1051,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "1000000000.00",
         total_amortized_cost_amount: "1000000000.00",
         total_accrued_interest_amount: "100000000.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async ({ reportDate, positionScope, currencyBasis }): Promise<ApiEnvelope<BalanceAnalysisPayload>> => ({
@@ -1649,6 +1673,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "0.00",
         total_amortized_cost_amount: "0.00",
         total_accrued_interest_amount: "0.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async () => ({
@@ -1722,6 +1752,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "NOT_A_NUMERIC_KPI",
         total_amortized_cost_amount: "0.00",
         total_accrued_interest_amount: "0.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async () => ({
@@ -1808,6 +1844,12 @@ describe("BalanceAnalysisPage", () => {
         total_market_value_amount: "0.00",
         total_amortized_cost_amount: "0.00",
         total_accrued_interest_amount: "0.00",
+        asset_total_market_value_amount: "0.00",
+        liability_total_market_value_amount: "0.00",
+        asset_total_amortized_cost_amount: "0.00",
+        liability_total_amortized_cost_amount: "0.00",
+        asset_total_accrued_interest_amount: "0.00",
+        liability_total_accrued_interest_amount: "0.00",
       },
     }));
     const getDetailSpy = vi.fn(async () => ({

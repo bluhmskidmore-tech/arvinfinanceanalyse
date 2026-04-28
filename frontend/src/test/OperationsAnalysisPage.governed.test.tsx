@@ -344,6 +344,12 @@ describe("OperationsAnalysisPage governed values", () => {
           total_market_value_amount: "90125000000",
           total_amortized_cost_amount: "88050000000",
           total_accrued_interest_amount: "1275000000",
+          asset_total_market_value_amount: "64200000000",
+          liability_total_market_value_amount: "25925000000",
+          asset_total_amortized_cost_amount: "62000000000",
+          liability_total_amortized_cost_amount: "26050000000",
+          asset_total_accrued_interest_amount: "875000000",
+          liability_total_accrued_interest_amount: "400000000",
         },
       })),
       getBalanceAnalysisSummary: vi.fn(async () => ({
@@ -431,6 +437,12 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(cockpit).not.toHaveTextContent("总市值");
       expect(cockpit).not.toHaveTextContent("摊余成本");
       expect(cockpit).not.toHaveTextContent("3,525.0");
+    });
+
+    await screen.findByTestId("operations-entry-balance-section");
+    await waitFor(() => {
+      expect(screen.getByTestId("operations-entry-balance-asset-market-value")).toHaveTextContent("642");
+      expect(screen.getByTestId("operations-entry-balance-liability-market-value")).toHaveTextContent("259.25");
     });
 
     const conclusionGrid = await screen.findByTestId("operations-conclusion-grid");

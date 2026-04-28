@@ -728,6 +728,52 @@ export default function OperationsAnalysisPage() {
 
   const primaryHeadlineCards = operationsHeadlineCards.slice(0, 3);
   const supportHeadlineCards = operationsHeadlineCards.slice(3);
+  const balanceOverviewAmountCards = balanceOverview
+    ? [
+        {
+          testId: "operations-entry-balance-asset-market-value",
+          label: "资产端市值",
+          value: formatOverviewNumber(balanceOverview.asset_total_market_value_amount),
+          detail: "正式读面资产端市值",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-market-value",
+          label: "负债端市值",
+          value: formatOverviewNumber(balanceOverview.liability_total_market_value_amount),
+          detail: "正式读面负债端市值",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-asset-amortized",
+          label: "资产端摊余成本",
+          value: formatOverviewNumber(balanceOverview.asset_total_amortized_cost_amount),
+          detail: "正式读面资产端摊余成本",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-amortized",
+          label: "负债端摊余成本",
+          value: formatOverviewNumber(balanceOverview.liability_total_amortized_cost_amount),
+          detail: "正式读面负债端摊余成本",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-asset-accrued",
+          label: "资产端应计利息",
+          value: formatOverviewNumber(balanceOverview.asset_total_accrued_interest_amount),
+          detail: "正式读面资产端应计利息",
+          unit: "亿元",
+        },
+        {
+          testId: "operations-entry-balance-liability-accrued",
+          label: "负债端应计利息",
+          value: formatOverviewNumber(balanceOverview.liability_total_accrued_interest_amount),
+          detail: "正式读面负债端应计利息",
+          unit: "亿元",
+        },
+      ]
+    : [];
 
   return (
     <section
@@ -972,6 +1018,7 @@ export default function OperationsAnalysisPage() {
                     value: String(balanceOverview!.summary_row_count),
                     detail: "正式读面汇总行数",
                   },
+                  ...balanceOverviewAmountCards,
                   {
                     testId: "operations-entry-balance-market-value",
                     label: "总市值合计",
@@ -997,6 +1044,12 @@ export default function OperationsAnalysisPage() {
                       value={item.value}
                       detail={item.detail}
                       unit={
+                        item.testId === "operations-entry-balance-asset-market-value" ||
+                        item.testId === "operations-entry-balance-liability-market-value" ||
+                        item.testId === "operations-entry-balance-asset-amortized" ||
+                        item.testId === "operations-entry-balance-liability-amortized" ||
+                        item.testId === "operations-entry-balance-asset-accrued" ||
+                        item.testId === "operations-entry-balance-liability-accrued" ||
                         item.testId === "operations-entry-balance-market-value" ||
                         item.testId === "operations-entry-balance-amortized" ||
                         item.testId === "operations-entry-balance-accrued"

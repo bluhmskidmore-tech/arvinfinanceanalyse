@@ -1377,9 +1377,17 @@ export type BalanceAnalysisOverviewPayload = {
   currency_basis: BalanceCurrencyBasis;
   detail_row_count: number;
   summary_row_count: number;
+  /** 当前 filters 下 ZQTZ+TYW 合计；`position_scope === "all"` 时为资产+负债加总。 */
   total_market_value_amount: DecimalLike;
   total_amortized_cost_amount: DecimalLike;
   total_accrued_interest_amount: DecimalLike;
+  /** 正式事实表 `position_scope = asset` 侧加总（元）。`position_scope` 为单端时非零的一端为有效值。 */
+  asset_total_market_value_amount: DecimalLike;
+  liability_total_market_value_amount: DecimalLike;
+  asset_total_amortized_cost_amount: DecimalLike;
+  liability_total_amortized_cost_amount: DecimalLike;
+  asset_total_accrued_interest_amount: DecimalLike;
+  liability_total_accrued_interest_amount: DecimalLike;
 };
 
 export type BalanceAnalysisTableRow = {
