@@ -2485,7 +2485,7 @@ export type CampisiAttributionPayload = {
 export type LedgerMoneyValue = {
   yuan: string;
   yi: string;
-  wan: string;
+  wan?: string;
 };
 
 export type LedgerPnlDatesPayload = {

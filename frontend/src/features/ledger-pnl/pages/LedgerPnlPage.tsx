@@ -59,7 +59,11 @@ const tableWrapStyle = {
 } as const;
 
 function formatMoney(value: LedgerMoneyValue | null | undefined) {
-  return value?.yuan ?? "0.00";
+  if (value?.yi) {
+    return `${value.yi} 亿元`;
+  }
+  const yuan = Number(value?.yuan);
+  return `${Number.isFinite(yuan) ? (yuan / 100_000_000).toFixed(2) : "0.00"} 亿元`;
 }
 
 export default function LedgerPnlPage() {
