@@ -1238,6 +1238,74 @@ export type BalanceBusinessMovementTrendMonth = {
   rows: BalanceBusinessMovementRow[];
 };
 
+export type BalanceZqtzCalibrationItem = {
+  row_key: string;
+  row_label: string;
+  system_amount: DecimalLike;
+  reference_amount: DecimalLike;
+  diff_amount: DecimalLike;
+  status: "matched" | "watch";
+  note: string;
+};
+
+export type BalanceZqtzCalibrationAnalysis = {
+  source_file: string;
+  conclusion: string;
+  root_cause: string;
+  remediation: string;
+  items: BalanceZqtzCalibrationItem[];
+  residual_risks: string[];
+};
+
+export type BalanceStructureMigrationBucket = {
+  basis_bucket: BalanceMovementBucket;
+  previous_balance: DecimalLike;
+  current_balance: DecimalLike;
+  balance_delta: DecimalLike;
+  previous_share_pct: DecimalLike | null;
+  current_share_pct: DecimalLike | null;
+  share_delta_pp: DecimalLike | null;
+};
+
+export type BalanceStructureMigrationPair = {
+  previous_report_date: string;
+  current_report_date: string;
+  previous_report_month: string;
+  current_report_month: string;
+  total_balance_delta: DecimalLike;
+  dominant_share_increase_bucket: BalanceMovementBucket | null;
+  fvtpl_volatility_signal: string;
+  oci_valuation_signal: string;
+  buckets: BalanceStructureMigrationBucket[];
+};
+
+export type BalanceStructureMigrationAnalysis = {
+  summary: string;
+  caveat: string;
+  pairs: BalanceStructureMigrationPair[];
+};
+
+export type BalanceDifferenceAttributionComponent = {
+  component_key: string;
+  component_label: string;
+  amount: DecimalLike;
+  source_kind: "ledger" | "zqtz" | "derived" | "residual";
+  evidence_note: string;
+  is_residual: boolean;
+  is_supported: boolean;
+};
+
+export type BalanceDifferenceAttributionWaterfall = {
+  reference_label: string;
+  reference_total: DecimalLike;
+  target_label: string;
+  target_total: DecimalLike;
+  net_difference: DecimalLike;
+  components: BalanceDifferenceAttributionComponent[];
+  closing_check: DecimalLike;
+  caveat: string;
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
@@ -1245,6 +1313,9 @@ export type BalanceMovementPayload = {
   summary: BalanceMovementSummary;
   trend_months: BalanceMovementTrendMonth[];
   business_trend_months: BalanceBusinessMovementTrendMonth[];
+  zqtz_calibration_analysis: BalanceZqtzCalibrationAnalysis | null;
+  structure_migration_analysis: BalanceStructureMigrationAnalysis | null;
+  difference_attribution_waterfall: BalanceDifferenceAttributionWaterfall | null;
   accounting_controls: string[];
   excluded_controls: string[];
 };
@@ -1262,6 +1333,9 @@ export type BalanceMovementRefreshPayload = {
   row_count: number;
   source_version: string;
   rule_version: string;
+  product_category_refreshed_dates?: string[];
+  formal_balance_refreshed_dates?: string[];
+  movement_refreshed_dates?: string[];
 };
 
 export type BalanceAnalysisDatesPayload = {

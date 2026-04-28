@@ -5,6 +5,7 @@ from decimal import Decimal
 import duckdb
 
 from backend.app.tasks.accounting_asset_movement import (
+    AccountingAssetMovementSourceMissingError,
     materialize_accounting_asset_movement_on_connection,
 )
 
@@ -101,3 +102,58 @@ def test_accounting_asset_movement_materialize_writes_monthly_reconciliation_row
     assert by_bucket["TPL"]["reconciliation_status"] == "matched"
     assert by_bucket["OCI"]["current_balance"] == Decimal("80.00000000")
     assert by_bucket["OCI"]["reconciliation_status"] == "matched"
+
+
+def test_accounting_asset_movement_materialize_refuses_missing_control_source():
+    conn = duckdb.connect(":memory:")
+    try:
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar
+            )
+            """
+        )
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              report_month varchar,
+              currency_basis varchar,
+              sort_order integer,
+              basis_bucket varchar,
+              previous_balance decimal(24, 8),
+              current_balance decimal(24, 8),
+              balance_change decimal(24, 8),
+              change_pct decimal(24, 8),
+              contribution_pct decimal(24, 8),
+              zqtz_amount decimal(24, 8),
+              gl_amount decimal(24, 8),
+              reconciliation_diff decimal(24, 8),
+              reconciliation_status varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+
+        try:
+            materialize_accounting_asset_movement_on_connection(
+                conn,
+                report_date="2026-02-28",
+                currency_basis="CNX",
+            )
+        except AccountingAssetMovementSourceMissingError:
+            pass
+        else:
+            raise AssertionError("expected missing source rows to fail closed")
+
+        row_count = conn.execute(
+            "select count(*) from fact_accounting_asset_movement_monthly"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert row_count == 0

@@ -24,6 +24,10 @@ describe("BalanceMovementAnalysisPage", () => {
     );
     const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
     expect(conclusion).toHaveTextContent("总账控制核对通过");
+    expect(screen.getByTestId("balance-movement-analysis-recon-summary")).toHaveTextContent(
+      "ZQTZ 分桶对账",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-recon-summary")).toHaveTextContent("一致");
     expect(conclusion).toHaveTextContent("3,358.73 亿");
     expect(conclusion).toHaveTextContent("AC 42.44%");
     expect(conclusion).toHaveTextContent("OCI 31.49%");
@@ -76,6 +80,75 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(screen.getByTestId("balance-movement-analysis-structure-shift")).toHaveTextContent(
       "期初 43.11% 期末 42.44%",
     );
+    expect(screen.getByTestId("balance-movement-analysis-structure-driver-hint")).toHaveTextContent(
+      "变动额",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
+      "业务线较上月变动",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
+      "资产端-拆放同业",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-slice-note")).toHaveTextContent(
+      "总账 AC/OCI/TPL",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-series-context")).toHaveTextContent(
+      "两个月度",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-governance")).toHaveTextContent(
+      "rule_version",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-governance")).toHaveTextContent(
+      "rv_accounting_asset_movement_v2",
+    );
+    const zqtzCalibration = screen.getByTestId("balance-movement-analysis-zqtz-calibration");
+    expect(zqtzCalibration).toHaveTextContent("ZQTZ228");
+    expect(zqtzCalibration).toHaveTextContent("canonical grain");
+    expect(zqtzCalibration).toHaveTextContent("652.28");
+    expect(zqtzCalibration).toHaveTextContent("58.12");
+    expect(zqtzCalibration).toHaveTextContent("2026-03");
+    const zqtzDetail = screen.getByTestId("balance-movement-analysis-zqtz-detail");
+    expect(zqtzDetail).toHaveTextContent("单独页");
+    expect(zqtzDetail).toHaveTextContent("金融投资资产明细变动");
+    expect(zqtzDetail).toHaveTextContent("政策性金融债");
+    expect(zqtzDetail).toHaveTextContent("地方政府债");
+    expect(zqtzDetail).toHaveTextContent("外国债券");
+    expect(zqtzDetail).toHaveTextContent("长期股权投资（亿元）");
+    expect(zqtzDetail).toHaveTextContent("较上月");
+    expect(zqtzDetail).toHaveTextContent("+8.00");
+    expect(
+      within(zqtzDetail).getByRole("row", {
+        name: "汇总 120.75 163.00 +42.25 +42.25",
+      }),
+    ).toBeInTheDocument();
+    const structureMigration = screen.getByTestId("balance-movement-analysis-structure-migration");
+    expect(structureMigration).toHaveTextContent("结构迁移信号");
+    expect(structureMigration).toHaveTextContent("占比正向抬升最明显的是 TPL");
+    expect(structureMigration).toHaveTextContent("这是汇总会计分类桶的结构信号");
+    expect(structureMigration).toHaveTextContent("损益波动暴露");
+
+    const differenceWaterfall = screen.getByTestId("balance-movement-analysis-difference-waterfall");
+    expect(differenceWaterfall).toHaveTextContent("差异归因瀑布");
+    expect(differenceWaterfall).toHaveTextContent("ZQTZ 明细汇总");
+    expect(differenceWaterfall).toHaveTextContent("AC/OCI/FVTPL 合计");
+    expect(differenceWaterfall).toHaveTextContent("长期股权投资");
+    expect(differenceWaterfall).toHaveTextContent("凭证式国债 / 1430101 成本");
+    expect(differenceWaterfall).toHaveTextContent("未分类 / 残差");
+    expect(differenceWaterfall).toHaveTextContent("闭合校验");
+    const valuationGap = within(differenceWaterfall)
+      .getByText("估值差")
+      .closest(".balance-movement-waterfall__component");
+    const fxGap = within(differenceWaterfall)
+      .getByText("外币折算差")
+      .closest(".balance-movement-waterfall__component");
+    const unsupportedGaps = [valuationGap, fxGap].filter(
+      (gap): gap is HTMLElement => gap instanceof HTMLElement,
+    );
+    expect(unsupportedGaps).toHaveLength(2);
+    for (const gap of unsupportedGaps) {
+      expect(gap).toHaveTextContent("待拆分");
+      expect(gap).not.toHaveTextContent("+0.00 亿");
+    }
 
     const matrixTitle = screen.getByText("月度余额分析矩阵");
     const detailTitle = screen.getByText("明细 / 对账：AC / OCI / TPL 余额变动");
@@ -125,22 +198,28 @@ describe("BalanceMovementAnalysisPage", () => {
     expect(within(trendTable).getByText("资产端-同业存放-活期")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-存放同业境内-定期")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端-存放同业境外-定期")).toBeInTheDocument();
-    expect(within(trendTable).getByText("资产端-同业存单")).toBeInTheDocument();
-    expect(within(trendTable).getAllByText("FVTPL").length).toBe(2);
-    expect(within(trendTable).getAllByText("AC/OCI/FVTPL 合计").length).toBe(2);
+    expect(within(trendTable).queryByText("央行票据")).not.toBeInTheDocument();
+    expect(within(trendTable).queryByText("地方政府债")).not.toBeInTheDocument();
+    expect(within(trendTable).queryByText("政策性金融债")).not.toBeInTheDocument();
+    expect(within(trendTable).queryByText("外国债券")).not.toBeInTheDocument();
+    expect(within(trendTable).queryByText("长期股权投资（亿元）")).not.toBeInTheDocument();
+    expect(within(trendTable).getByText("FVTPL")).toBeInTheDocument();
+    expect(within(trendTable).getByText("AC/OCI/FVTPL 合计")).toBeInTheDocument();
     const basisEmphasisRows = trendTable.querySelectorAll(
       ".balance-movement-report-matrix__row--emphasis",
     );
-    expect(basisEmphasisRows.length).toBe(8);
+    expect(basisEmphasisRows.length).toBe(4);
     expect(within(trendTable).getByText("负债端-同业存放")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-同业拆入")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-卖出回购")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端-同业存单")).toBeInTheDocument();
     expect(within(trendTable).getByText("资产端合计")).toBeInTheDocument();
     expect(within(trendTable).getByText("负债端合计")).toBeInTheDocument();
-    expect(within(trendTable).getByText("同业净额")).toBeInTheDocument();
-    expect(within(trendTable).getAllByText("+71.00").length).toBeGreaterThan(0);
-    expect(within(trendTable).getAllByText("-83.00").length).toBeGreaterThan(0);
+    expect(within(trendTable).getByText("资产负债净额")).toBeInTheDocument();
+    /* 两期 mock（首月+当前月）下「较年初」= 当前期末 − 数据序列首月，与「较上月」同值，故动额两列各出现一次。 */
+    expect(within(trendTable).getAllByText("+194.80").length).toBe(2);
+    expect(within(trendTable).getAllByText("-85.00").length).toBe(2);
+    expect(within(trendTable).getAllByText("+109.80").length).toBe(2);
   });
 
   it("refreshes the selected report date through the formal materialize endpoint", async () => {
@@ -188,6 +267,45 @@ describe("BalanceMovementAnalysisPage", () => {
 
     expect(await screen.findByTestId("balance-movement-analysis-trend-table")).toBeInTheDocument();
     expect(screen.queryByTestId("balance-movement-analysis-trend-conclusion")).not.toBeInTheDocument();
+    expect(screen.getByTestId("balance-movement-analysis-series-context")).toHaveTextContent(
+      "非连续",
+    );
+  });
+
+  it("surfaces ZQTZ recon issues when any bucket is not matched", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const mismatchClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        const [firstRow, ...restRows] = envelope.result.rows;
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            rows: [
+              {
+                ...firstRow,
+                reconciliation_status: "mismatch",
+                reconciliation_diff: "100000000",
+              },
+              ...restRows,
+            ],
+          },
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: mismatchClient,
+    });
+
+    const conclusion = await screen.findByTestId("balance-movement-analysis-conclusion");
+    expect(conclusion).toHaveTextContent("ZQTZ 分桶对账需关注");
+    const recon = screen.getByTestId("balance-movement-analysis-recon-summary");
+    expect(recon).toHaveTextContent("不一致");
+    expect(recon.querySelector("a")).toHaveAttribute("href", "#balance-movement-analysis-detail-anchor");
   });
 
   it("surfaces date loading failures before the empty detail section", async () => {

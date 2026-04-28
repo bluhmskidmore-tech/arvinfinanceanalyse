@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
+from uuid import uuid4
 
 
 from tests.helpers import load_module
@@ -97,6 +99,70 @@ def test_formal_balance_pipeline_runs_ingest_snapshot_and_balance_in_order(tmp_p
     assert payload["steps"]["balance"]["status"] == "completed"
     assert payload["steps"]["balance_runtime"]["run"]["status"] == "completed"
     assert payload["steps"]["balance_runtime"]["result"] == {"zqtz_rows": 2, "tyw_rows": 2}
+
+
+def test_formal_balance_pipeline_uses_latest_report_manifest_when_incremental_batch_is_empty_for_date(
+    monkeypatch,
+):
+    pipeline_mod = _load_pipeline_module()
+    base_dir = Path("test_output") / "formal_balance_pipeline" / uuid4().hex
+    governance_dir = base_dir / "governance"
+    governance_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = governance_dir / "source_manifest.jsonl"
+    manifest_rows = [
+        {
+            "source_name": "ZQTZSHOW",
+            "source_family": "zqtz",
+            "source_file": "ZQTZSHOW-20260131.xls",
+            "file_name": "ZQTZSHOW-20260131.xls",
+            "report_date": "2026-01-31",
+            "source_version": "sv-z-old",
+            "ingest_batch_id": "ib-old",
+            "archived_path": str(base_dir / "archive" / "ZQTZSHOW-20260131.xls"),
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+        {
+            "source_name": "TYWLSHOW",
+            "source_family": "tyw",
+            "source_file": "TYWLSHOW-20260131.xls",
+            "file_name": "TYWLSHOW-20260131.xls",
+            "report_date": "2026-01-31",
+            "source_version": "sv-t-old",
+            "ingest_batch_id": "ib-old",
+            "archived_path": str(base_dir / "archive" / "TYWLSHOW-20260131.xls"),
+            "created_at": "2026-04-12T00:00:00+00:00",
+            "status": "completed",
+        },
+    ]
+    manifest_path.write_text(
+        "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in manifest_rows),
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, object]] = []
+
+    def _fake_ingest(**_kwargs):
+        return {"status": "completed", "ingest_batch_id": "ib-current"}
+
+    def _fake_snapshot(**kwargs):
+        calls.append(("snapshot", kwargs.get("ingest_batch_id")))
+        return {"status": "completed", "zqtz_rows": 1, "tyw_rows": 1}
+
+    def _fake_balance(**kwargs):
+        calls.append(("balance", kwargs.get("ingest_batch_id")))
+        return {"status": "completed", "zqtz_rows": 2, "tyw_rows": 2}
+
+    monkeypatch.setattr(pipeline_mod.ingest_demo_manifest, "fn", _fake_ingest)
+    monkeypatch.setattr(pipeline_mod.materialize_standard_snapshots, "fn", _fake_snapshot)
+    monkeypatch.setattr(pipeline_mod.materialize_balance_analysis_facts, "fn", _fake_balance)
+
+    payload = pipeline_mod.run_formal_balance_pipeline.fn(
+        report_date="2026-01-31",
+        governance_dir=str(governance_dir),
+    )
+
+    assert calls == [("snapshot", None), ("balance", None)]
+    assert payload["steps"]["per_report_date"][0]["materialization_ingest_batch_id"] is None
 
 
 def test_formal_balance_pipeline_runs_when_incremental_ingest_has_no_batch_but_report_date_is_explicit(

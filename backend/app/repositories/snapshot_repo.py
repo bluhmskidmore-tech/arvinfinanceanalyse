@@ -221,9 +221,19 @@ def zqtz_grain_key(row: dict[str, Any]) -> tuple[object, ...]:
     return (
         row["report_date"],
         row["instrument_code"],
+        row["instrument_name"],
         row["portfolio_name"],
         row["cost_center"],
         row["currency_code"],
+        row["account_category"],
+        row["asset_class"],
+        row["bond_type"],
+        row.get("business_type_primary") or "",
+        row["maturity_date"],
+        row["next_call_date"],
+        row["is_issuance_like"],
+        row["source_version"],
+        row["ingest_batch_id"],
     )
 
 
@@ -288,6 +298,88 @@ def merge_tyw_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[st
         principal = Decimal(str(row.get("principal_native") or 0))
         if principal > 0:
             row["funding_cost_rate"] = weighted_rate_num[key] / principal if weighted_rate_num[key] != Decimal("0") else row.get("funding_cost_rate")
+
+    return list(merged.values())
+
+
+def merge_zqtz_rows_by_grain(rows_in_order: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[tuple[object, ...], dict[str, Any]] = {}
+    weighted_fields = ("coupon_rate", "ytm_value")
+    weighted_nums: dict[tuple[object, ...], dict[str, Decimal]] = {}
+
+    additive_fields = (
+        "face_value_native",
+        "market_value_native",
+        "amortized_cost_native",
+        "accrued_interest_native",
+    )
+    protected_fields = (
+        "instrument_name",
+        "portfolio_name",
+        "cost_center",
+        "account_category",
+        "asset_class",
+        "bond_type",
+        "business_type_primary",
+        "issuer_name",
+        "industry_name",
+        "rating",
+        "currency_code",
+        "maturity_date",
+        "next_call_date",
+        "overdue_days",
+        "is_issuance_like",
+        "interest_mode",
+        "source_version",
+        "rule_version",
+        "ingest_batch_id",
+        "value_date",
+        "customer_attribute",
+    )
+
+    for row in rows_in_order:
+        key = zqtz_grain_key(row)
+        face_value = Decimal(str(row.get("face_value_native") or 0))
+        if key not in merged:
+            merged[key] = dict(row)
+            weighted_nums[key] = {}
+            for field in weighted_fields:
+                value = row.get(field)
+                weighted_nums[key][field] = face_value * Decimal(str(value or 0)) if value not in (None, "") else Decimal("0")
+            continue
+
+        existing = merged[key]
+        for field in protected_fields:
+            if existing.get(field) != row.get(field):
+                raise ValueError(
+                    "Fail closed: conflicting ZQTZ snapshot rows share the same canonical grain "
+                    f"{key!r} but differ at field {field!r}: {existing.get(field)!r} != {row.get(field)!r}."
+                )
+
+        for field in additive_fields:
+            existing[field] = Decimal(str(existing.get(field) or 0)) + Decimal(str(row.get(field) or 0))
+
+        for field in weighted_fields:
+            value = row.get(field)
+            if value not in (None, ""):
+                weighted_nums[key][field] += face_value * Decimal(str(value))
+
+        trace_ids = sorted(
+            {
+                str(value).strip()
+                for value in (existing.get("trace_id"), row.get("trace_id"))
+                if str(value or "").strip()
+            }
+        )
+        existing["trace_id"] = "|".join(trace_ids) if trace_ids else ""
+
+    for key, row in merged.items():
+        face_value = Decimal(str(row.get("face_value_native") or 0))
+        if face_value <= 0:
+            continue
+        for field in weighted_fields:
+            if weighted_nums[key][field] != Decimal("0"):
+                row[field] = weighted_nums[key][field] / face_value
 
     return list(merged.values())
 

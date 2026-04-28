@@ -6,7 +6,11 @@ import pytest
 
 import duckdb
 
-from backend.app.repositories.snapshot_repo import merge_tyw_rows_by_grain, replace_tyw_snapshot_rows
+from backend.app.repositories.snapshot_repo import (
+    merge_tyw_rows_by_grain,
+    merge_zqtz_rows_by_grain,
+    replace_tyw_snapshot_rows,
+)
 
 
 def _tyw_row(*, position_id: str, principal: str, accrued: str = "0", rate: str = "0.015", counterparty: str = "银行A") -> dict[str, object]:
@@ -30,6 +34,75 @@ def _tyw_row(*, position_id: str, principal: str, accrued: str = "0", rate: str 
         "ingest_batch_id": "ib",
         "trace_id": f"trace-{position_id}-{principal}",
     }
+
+
+def _zqtz_row(
+    *,
+    instrument_code: str = "240215",
+    asset_class: str = "FVOCI",
+    face_value: str = "100",
+    market_value: str = "101",
+    amortized_cost: str = "100",
+) -> dict[str, object]:
+    return {
+        "report_date": "2026-02-28",
+        "instrument_code": instrument_code,
+        "instrument_name": "bond",
+        "portfolio_name": "FIOA",
+        "cost_center": "5010",
+        "account_category": "bank",
+        "asset_class": asset_class,
+        "bond_type": "policy",
+        "business_type_primary": "policy",
+        "issuer_name": "issuer",
+        "industry_name": "industry",
+        "rating": "AAA",
+        "currency_code": "CNY",
+        "face_value_native": Decimal(face_value),
+        "market_value_native": Decimal(market_value),
+        "amortized_cost_native": Decimal(amortized_cost),
+        "accrued_interest_native": Decimal("1"),
+        "coupon_rate": Decimal("0.020"),
+        "ytm_value": Decimal("0.025"),
+        "maturity_date": "2034-01-01",
+        "next_call_date": None,
+        "overdue_days": 0,
+        "is_issuance_like": False,
+        "interest_mode": "fixed",
+        "source_version": "sv",
+        "rule_version": "rv",
+        "ingest_batch_id": "ib",
+        "trace_id": f"trace-{instrument_code}-{asset_class}-{face_value}",
+        "value_date": None,
+        "customer_attribute": "",
+    }
+
+
+def test_merge_zqtz_rows_by_grain_sums_duplicate_lots_with_same_accounting_bucket() -> None:
+    rows = [
+        _zqtz_row(face_value="100", market_value="101", amortized_cost="100"),
+        _zqtz_row(face_value="200", market_value="203", amortized_cost="201"),
+    ]
+
+    merged = merge_zqtz_rows_by_grain(rows)
+
+    assert len(merged) == 1
+    assert merged[0]["face_value_native"] == Decimal("300")
+    assert merged[0]["market_value_native"] == Decimal("304")
+    assert merged[0]["amortized_cost_native"] == Decimal("301")
+    assert merged[0]["accrued_interest_native"] == Decimal("2")
+
+
+def test_merge_zqtz_rows_by_grain_keeps_distinct_accounting_buckets_separate() -> None:
+    rows = [
+        _zqtz_row(asset_class="HTM", face_value="100", market_value="101"),
+        _zqtz_row(asset_class="FVOCI", face_value="200", market_value="203"),
+    ]
+
+    merged = merge_zqtz_rows_by_grain(rows)
+
+    assert len(merged) == 2
+    assert {row["asset_class"] for row in merged} == {"HTM", "FVOCI"}
 
 
 def test_merge_tyw_rows_by_grain_sums_duplicate_position_rows() -> None:

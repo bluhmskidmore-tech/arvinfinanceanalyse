@@ -18,11 +18,10 @@ from backend.app.repositories.governance_repo import (
 from backend.app.repositories.object_store_repo import ObjectStoreRepository
 from backend.app.repositories.snapshot_repo import (
     ensure_snapshot_tables,
-    merge_rows_by_grain,
+    merge_zqtz_rows_by_grain,
     merge_tyw_rows_by_grain,
     replace_tyw_snapshot_rows,
     replace_zqtz_snapshot_rows,
-    zqtz_grain_key,
 )
 from backend.app.repositories.snapshot_row_parse import (
     parse_tyw_snapshot_rows_from_bytes,
@@ -188,7 +187,7 @@ def _materialize_standard_snapshots(
                             )
                         )
                         ordered_rows.extend(parsed)
-                    merged_z = merge_rows_by_grain(ordered_rows, zqtz_grain_key)
+                    merged_z = merge_zqtz_rows_by_grain(ordered_rows)
                     zqtz_total = replace_zqtz_snapshot_rows(
                         conn,
                         merged_z,

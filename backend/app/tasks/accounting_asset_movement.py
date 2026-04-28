@@ -21,6 +21,10 @@ RULE_VERSION = "rv_accounting_asset_movement_v2"
 CACHE_KEY = "accounting_asset_movement.monthly"
 
 
+class AccountingAssetMovementSourceMissingError(RuntimeError):
+    pass
+
+
 def _materialize_accounting_asset_movement(
     *,
     report_date: str,
@@ -40,6 +44,7 @@ def _materialize_accounting_asset_movement(
             currency_basis=currency_basis,
         )
         conn.execute("commit")
+        _checkpoint_if_possible(conn)
     except Exception:
         conn.execute("rollback")
         raise
@@ -75,6 +80,13 @@ def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     apply_pending_migrations_on_connection(conn)
 
 
+def _checkpoint_if_possible(conn: duckdb.DuckDBPyConnection) -> None:
+    try:
+        conn.execute("checkpoint")
+    except duckdb.Error:
+        pass
+
+
 def materialize_accounting_asset_movement_on_connection(
     conn: duckdb.DuckDBPyConnection,
     *,
@@ -83,6 +95,11 @@ def materialize_accounting_asset_movement_on_connection(
 ) -> list[AccountingAssetMovementRow]:
     parsed_report_date = date.fromisoformat(report_date)
     _ensure_tables(conn)
+    _validate_gl_control_source_rows(
+        conn,
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
     zqtz_rows = _load_zqtz_rows(
         conn,
         report_date=report_date,
@@ -108,6 +125,41 @@ def materialize_accounting_asset_movement_on_connection(
     )
     _insert_rows(conn, rows, currency_basis=currency_basis)
     return rows
+
+
+def _validate_gl_control_source_rows(
+    conn: duckdb.DuckDBPyConnection,
+    *,
+    report_date: str,
+    currency_basis: str,
+) -> None:
+    try:
+        row = conn.execute(
+            """
+            select count(*)
+            from product_category_pnl_canonical_fact
+            where cast(report_date as varchar) = ?
+              and currency = ?
+              and (
+                account_code like '141%'
+                or account_code like '142%'
+                or account_code like '143%'
+                or account_code like '1440101%'
+              )
+            """,
+            [report_date, currency_basis],
+        ).fetchone()
+    except duckdb.Error as exc:
+        raise AccountingAssetMovementSourceMissingError(
+            "product_category_pnl_canonical_fact is required before "
+            "materializing accounting asset movement."
+        ) from exc
+
+    if int(row[0] if row else 0) == 0:
+        raise AccountingAssetMovementSourceMissingError(
+            "No product-category control-account rows for "
+            f"report_date={report_date}, currency_basis={currency_basis}."
+        )
 
 
 def _load_zqtz_rows(

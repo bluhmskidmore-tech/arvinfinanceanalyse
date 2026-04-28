@@ -3,9 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useApiClient } from "../../../api/client";
 import type {
+  BalanceDifferenceAttributionWaterfall,
   BalanceBusinessMovementTrendMonth,
   BalanceMovementRow,
   BalanceMovementTrendMonth,
+  BalanceStructureMigrationAnalysis,
 } from "../../../api/contracts";
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
@@ -302,7 +304,7 @@ function businessTrendRow(month: BalanceBusinessMovementTrendMonth, rowKey: stri
 
 function compareBusinessMatrixCell(
   months: BalanceBusinessMovementTrendMonth[],
-  row: BusinessMovementMatrixRow,
+  row: Pick<BusinessMovementMatrixRow, "getValue" | "valueKind">,
   baselineOffset: number,
 ) {
   const currentMonth = months[months.length - 1];
@@ -319,7 +321,7 @@ function compareBusinessMatrixCell(
 
 function compareBusinessMatrixCellToFirst(
   months: BalanceBusinessMovementTrendMonth[],
-  row: BusinessMovementMatrixRow,
+  row: Pick<BusinessMovementMatrixRow, "getValue" | "valueKind">,
 ) {
   const currentMonth = months[months.length - 1];
   const firstMonth = months[0];
@@ -331,6 +333,119 @@ function compareBusinessMatrixCellToFirst(
     row.valueKind,
     true,
   );
+}
+
+const reconciliationStatusLabels: Record<BalanceMovementRow["reconciliation_status"], string> = {
+  matched: "一致",
+  mismatch: "不一致",
+  gl_only: "仅总账",
+  zqtz_only: "仅辅助",
+};
+
+function aggregateBucketReconciliation(rows: BalanceMovementRow[]) {
+  const counts: Record<BalanceMovementRow["reconciliation_status"], number> = {
+    matched: 0,
+    mismatch: 0,
+    gl_only: 0,
+    zqtz_only: 0,
+  };
+  for (const row of rows) {
+    counts[row.reconciliation_status] += 1;
+  }
+  const allMatched = rows.length === 0 || rows.every((row) => row.reconciliation_status === "matched");
+  return { counts, allMatched };
+}
+
+type BusinessMomMove = {
+  label: string;
+  deltaYuan: number;
+  side: "asset" | "liability";
+};
+
+type ZqtzAssetDetailRow = {
+  key: string;
+  label: string;
+  sourceNote: string;
+  isSubItem: boolean;
+  valueKind: BalanceMovementMatrixValueKind;
+  getValue: (month: BalanceBusinessMovementTrendMonth) => string | number | null | undefined;
+};
+
+function buildZqtzAssetDetailRows(
+  months: BalanceBusinessMovementTrendMonth[],
+): ZqtzAssetDetailRow[] {
+  const latestMonth = months[months.length - 1];
+  const sourceRows = latestMonth?.rows ?? months.flatMap((month) => month.rows);
+  return sourceRows
+    .filter(
+      (row) =>
+        row.side === "asset" &&
+        (row.source_kind === "zqtz" || row.row_key === "asset_long_term_equity_investment"),
+    )
+    .filter(
+      (row, index, allRows) =>
+        allRows.findIndex((candidate) => candidate.row_key === row.row_key) === index,
+    )
+    .sort((left, right) => left.sort_order - right.sort_order)
+    .map((row) => ({
+      key: row.row_key,
+      label: row.row_label,
+      sourceNote: row.source_note,
+      isSubItem: row.row_label.startsWith("其中：") || row.row_key.startsWith("asset_zqtz_detail_"),
+      valueKind: "amount",
+      getValue: (month) => businessTrendRow(month, row.row_key)?.current_balance ?? "0",
+    }));
+}
+
+function sumPrimaryZqtzAssetDetailRows(
+  month: BalanceBusinessMovementTrendMonth,
+  rows: ZqtzAssetDetailRow[],
+) {
+  return rows.reduce((total, row) => {
+    if (row.isSubItem) {
+      return total;
+    }
+    const value = Number(row.getValue(month));
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
+
+function topBusinessLineMovesByMomAbs(
+  months: BalanceBusinessMovementTrendMonth[],
+  matrixRows: ReturnType<typeof buildBusinessCategoryMatrixRows>,
+  limit: number,
+): BusinessMomMove[] {
+  if (months.length < 2) {
+    return [];
+  }
+  const currentMonth = months[months.length - 1];
+  const previousMonth = months[months.length - 2];
+  const scored = matrixRows
+    .filter((row) => row.side === "asset" || row.side === "liability")
+    .map((row) => {
+      const delta = trendDelta(row.getValue(currentMonth), row.getValue(previousMonth));
+      if (delta === null) {
+        return null;
+      }
+      return { label: row.label, deltaYuan: delta, side: row.side };
+    })
+    .filter((item): item is BusinessMomMove => item !== null);
+  scored.sort((left, right) => Math.abs(right.deltaYuan) - Math.abs(left.deltaYuan));
+  return scored.slice(0, limit);
+}
+
+function uniqueNonEmptyStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
 }
 
 function matrixDeltaTone(formatted: string): string {
@@ -390,32 +505,15 @@ function buildBusinessCategoryMatrixRows(
     }));
 }
 
-const businessProjectMatrixRows: BusinessMovementMatrixRow[] = [
-  {
-    key: "asset-total",
-    label: "资产端合计",
-    side: "total",
-    sourceNote: "资产端同业业务行合计，含 ZQTZSHOW 资产端同业存单",
-    valueKind: "amount",
-    getValue: (month) => month.asset_balance_total,
-  },
-  {
-    key: "liability-total",
-    label: "负债端合计",
-    side: "total",
-    sourceNote: "负债端同业业务行合计",
-    valueKind: "amount",
-    getValue: (month) => month.liability_balance_total,
-  },
-  {
-    key: "net-total",
-    label: "同业净额",
-    side: "total",
-    sourceNote: "资产端合计 + 负债端合计，保留总账余额符号",
-    valueKind: "amount",
-    getValue: (month) => month.net_balance_total,
-  },
-];
+function sumBusinessMatrixRowValues(
+  month: BalanceBusinessMovementTrendMonth,
+  rows: Pick<BusinessMovementMatrixRow, "getValue">[],
+) {
+  return rows.reduce((total, row) => {
+    const value = Number(row.getValue(month));
+    return Number.isFinite(value) ? total + value : total;
+  }, 0);
+}
 
 function formatTrendAxisMonth(reportMonth: string) {
   const [year, month] = reportMonth.split("-");
@@ -626,6 +724,110 @@ function buildDriverChartOption(drivers: BalanceMovementDriver[]): EChartsOption
   };
 }
 
+function StructureMigrationPanel({
+  analysis,
+}: {
+  analysis: BalanceStructureMigrationAnalysis;
+}) {
+  const latestPair = analysis.pairs[analysis.pairs.length - 1];
+  return (
+    <section
+      className="balance-movement-derived-panel"
+      data-testid="balance-movement-analysis-structure-migration"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>结构迁移信号</span>
+          <h2>AC / OCI / FVTPL 占比变化</h2>
+        </div>
+        {latestPair?.dominant_share_increase_bucket ? (
+          <strong>{latestPair.dominant_share_increase_bucket}</strong>
+        ) : null}
+      </div>
+      <p className="balance-movement-derived-panel__summary">{analysis.summary}</p>
+      <p className="balance-movement-derived-panel__caveat">{analysis.caveat}</p>
+      {latestPair ? (
+        <div className="balance-movement-derived-grid">
+          {latestPair.buckets.map((bucket) => (
+            <div key={bucket.basis_bucket} className="balance-movement-derived-card">
+              <span>{bucket.basis_bucket}</span>
+              <strong>{formatSignedYiCell(bucket.balance_delta)} 亿</strong>
+              <p>
+                占比 {formatPct(bucket.current_share_pct)}，
+                较上期 {formatSignedPercentPoint(bucket.share_delta_pp)}
+              </p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {latestPair ? (
+        <div className="balance-movement-derived-notes">
+          <p>{latestPair.fvtpl_volatility_signal}</p>
+          <p>{latestPair.oci_valuation_signal}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function DifferenceAttributionWaterfallPanel({
+  waterfall,
+}: {
+  waterfall: BalanceDifferenceAttributionWaterfall;
+}) {
+  return (
+    <section
+      className="balance-movement-derived-panel"
+      data-testid="balance-movement-analysis-difference-waterfall"
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>差异归因瀑布</span>
+          <h2>ZQTZ 明细汇总 vs AC/OCI/FVTPL</h2>
+        </div>
+        <strong>{formatSignedYiCell(waterfall.net_difference)} 亿</strong>
+      </div>
+      <p className="balance-movement-derived-panel__summary">{waterfall.caveat}</p>
+      <div className="balance-movement-waterfall">
+        <div className="balance-movement-waterfall__endpoint">
+          <span>{waterfall.reference_label}</span>
+          <strong>{formatYiCell(waterfall.reference_total)} 亿</strong>
+        </div>
+        {waterfall.components.map((component) => {
+          const isUnsupported = component.is_supported === false;
+          const className = [
+            "balance-movement-waterfall__component",
+            component.is_residual ? "balance-movement-waterfall__component--residual" : "",
+            isUnsupported ? "balance-movement-waterfall__component--unsupported" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          return (
+            <div key={component.component_key} className={className}>
+              <div>
+                <span>{component.component_label}</span>
+                <p>{component.evidence_note}</p>
+              </div>
+              {isUnsupported ? (
+                <strong>待拆分</strong>
+              ) : (
+                <strong>{formatSignedYiCell(component.amount)} 亿</strong>
+              )}
+            </div>
+          );
+        })}
+        <div className="balance-movement-waterfall__endpoint">
+          <span>{waterfall.target_label}</span>
+          <strong>{formatYiCell(waterfall.target_total)} 亿</strong>
+        </div>
+      </div>
+      <p className="balance-movement-derived-panel__caveat">
+        闭合校验：{formatSignedYiCell(waterfall.closing_check)} 亿
+      </p>
+    </section>
+  );
+}
+
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
   const [selectedDate, setSelectedDate] = useState("");
@@ -695,6 +897,11 @@ export default function BalanceMovementAnalysisPage() {
     () => buildBusinessCategoryMatrixRows(businessMatrixMonths),
     [businessMatrixMonths],
   );
+  const zqtzCalibrationAnalysis = detailQuery.data?.result.zqtz_calibration_analysis ?? null;
+  const structureMigrationAnalysis =
+    detailQuery.data?.result.structure_migration_analysis ?? null;
+  const differenceAttributionWaterfall =
+    detailQuery.data?.result.difference_attribution_waterfall ?? null;
   const accountingByReportDate = useMemo(() => {
     const map = new Map<string, BalanceMovementTrendMonth>();
     for (const month of accountingMatrixMonths) {
@@ -706,29 +913,58 @@ export default function BalanceMovementAnalysisPage() {
     () => buildAccountingBasisMatrixRows(accountingByReportDate),
     [accountingByReportDate],
   );
-  const accountingBasisProjectMatrixRows = useMemo(
-    () => buildAccountingBasisMatrixRows(accountingByReportDate, { keyPrefix: "project-basis" }),
-    [accountingByReportDate],
-  );
-  const businessProjectTableRows = useMemo((): BusinessMovementMatrixRow[] => {
-    const idx = businessProjectMatrixRows.findIndex((row) => row.key === "asset-total");
-    if (idx < 0) {
-      return [...businessProjectMatrixRows];
-    }
-    return [
-      ...businessProjectMatrixRows.slice(0, idx + 1),
-      ...accountingBasisProjectMatrixRows,
-      ...businessProjectMatrixRows.slice(idx + 1),
-    ];
-  }, [accountingBasisProjectMatrixRows]);
   const businessMatrixAssetRows = useMemo(
-    () => businessMatrixRows.filter((row) => row.side === "asset"),
+    () =>
+      businessMatrixRows.filter(
+        (row) =>
+          row.side === "asset" &&
+          !row.key.startsWith("asset_zqtz_") &&
+          row.key !== "asset_long_term_equity_investment",
+      ),
     [businessMatrixRows],
   );
   const businessMatrixLiabilityRows = useMemo(
     () => businessMatrixRows.filter((row) => row.side === "liability"),
     [businessMatrixRows],
   );
+  const businessProjectTableRows = useMemo((): BusinessMovementMatrixRow[] => {
+    return [
+      {
+        key: "asset-total",
+        label: "资产端合计",
+        side: "total",
+        sourceNote: "资产端合计 = AC + OCI + TPL + 同业资产；金融投资明细在上方单独页展示。",
+        valueKind: "amount",
+        getValue: (month) => {
+          const accountingTotal = basisThreeBucketSum(accountingByReportDate, month);
+          const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
+          return accountingTotal === undefined ? interbankAssetTotal : accountingTotal + interbankAssetTotal;
+        },
+      },
+      {
+        key: "liability-total",
+        label: "负债端合计",
+        side: "total",
+        sourceNote: "负债端同业业务行合计",
+        valueKind: "amount",
+        getValue: (month) => sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows),
+      },
+      {
+        key: "net-total",
+        label: "资产负债净额",
+        side: "total",
+        sourceNote: "资产端合计 + 负债端合计。",
+        valueKind: "amount",
+        getValue: (month) => {
+          const accountingTotal = basisThreeBucketSum(accountingByReportDate, month);
+          const interbankAssetTotal = sumBusinessMatrixRowValues(month, businessMatrixAssetRows);
+          const assetTotal =
+            accountingTotal === undefined ? interbankAssetTotal : accountingTotal + interbankAssetTotal;
+          return assetTotal + sumBusinessMatrixRowValues(month, businessMatrixLiabilityRows);
+        },
+      },
+    ];
+  }, [accountingByReportDate, businessMatrixAssetRows, businessMatrixLiabilityRows]);
   const monthlyMatrixCategoryRows = useMemo(
     () => [
       ...businessMatrixAssetRows,
@@ -835,6 +1071,64 @@ export default function BalanceMovementAnalysisPage() {
     };
   }, [currentTrendMonth, previousTrendMonth]);
 
+  const reconAggregate = useMemo(() => aggregateBucketReconciliation(rows), [rows]);
+  const businessTopMomMoves = useMemo(
+    () => topBusinessLineMovesByMomAbs(businessMatrixMonths, businessMatrixRows, 5),
+    [businessMatrixMonths, businessMatrixRows],
+  );
+  const zqtzAssetDetailRows = useMemo(
+    () => buildZqtzAssetDetailRows(businessMatrixMonths),
+    [businessMatrixMonths],
+  );
+  const zqtzAssetDetailSummaryRow = useMemo<ZqtzAssetDetailRow | null>(() => {
+    if (zqtzAssetDetailRows.length === 0) {
+      return null;
+    }
+    return {
+      key: "zqtz-detail-summary",
+      label: "汇总",
+      sourceNote: "按本表非“其中”明细加总，避免重复计算下级项目。",
+      isSubItem: false,
+      valueKind: "amount",
+      getValue: (month) => sumPrimaryZqtzAssetDetailRows(month, zqtzAssetDetailRows),
+    };
+  }, [zqtzAssetDetailRows]);
+  const trendMoMDriverBucket = trendComparison?.drivers[0]?.bucket;
+  const structureShareDriverBucket = maxShareShiftDriver?.bucket;
+  const structureDriverHint = useMemo(() => {
+    if (!trendMoMDriverBucket || !structureShareDriverBucket) {
+      return null;
+    }
+    if (trendMoMDriverBucket === structureShareDriverBucket) {
+      return null;
+    }
+    return `「变动额」环比主导为 ${trendMoMDriverBucket}，「占比变化（pp）」主导为 ${structureShareDriverBucket}；二者可同时成立。`;
+  }, [trendMoMDriverBucket, structureShareDriverBucket]);
+
+  const seriesContextSegments = useMemo(() => {
+    const segments: string[] = [];
+    if (businessMatrixMonths.length === 2) {
+      segments.push(
+        "「月度余额分析矩阵」当前仅含两个月度：「较年初」列 = 相对本序列首月变动，不一定等同于自然年 1 月末基期。",
+      );
+    }
+    if (
+      currentTrendMonth &&
+      previousTrendMonth &&
+      !isPreviousCalendarMonth(currentTrendMonth.report_date, previousTrendMonth.report_date)
+    ) {
+      segments.push("上方总账「较上月」结论文案已隐藏：相邻两期在日历上非连续月和月。");
+    }
+    return segments;
+  }, [businessMatrixMonths.length, currentTrendMonth, previousTrendMonth]);
+
+  const governanceMeta = useMemo(() => {
+    const reportDate = detailQuery.data?.result.report_date ?? "";
+    const ruleVersions = uniqueNonEmptyStrings(rows.map((row) => String(row.rule_version ?? "")));
+    const sourceVersions = uniqueNonEmptyStrings(rows.map((row) => String(row.source_version ?? "")));
+    return { reportDate, ruleVersions, sourceVersions };
+  }, [detailQuery.data?.result.report_date, rows]);
+
   async function handleRefresh() {
     if (!selectedDate) {
       return;
@@ -846,7 +1140,17 @@ export default function BalanceMovementAnalysisPage() {
         reportDate: selectedDate,
         currencyBasis,
       });
-      setRefreshMessage(`${payload.status}: ${payload.row_count} 行`);
+      const upstreamRefreshCount =
+        (payload.product_category_refreshed_dates?.length ?? 0) +
+        (payload.formal_balance_refreshed_dates?.length ?? 0);
+      const movementRefreshCount = payload.movement_refreshed_dates?.length ?? 0;
+      const refreshDetail =
+        upstreamRefreshCount > 0
+          ? `，补刷新上游 ${upstreamRefreshCount} 月 / 读模型 ${movementRefreshCount} 月`
+          : movementRefreshCount > 1
+            ? `，读模型 ${movementRefreshCount} 月`
+            : "";
+      setRefreshMessage(`${payload.status}: ${payload.row_count} 行${refreshDetail}`);
       await detailQuery.refetch();
       await datesQuery.refetch();
     } finally {
@@ -956,13 +1260,56 @@ export default function BalanceMovementAnalysisPage() {
         >
           <div className="balance-movement-conclusion__top">
             <div>
-              <div className="balance-movement-conclusion__status">
-                总账控制核对通过
+              <div
+                className={`balance-movement-conclusion__status${
+                  rows.length > 0 && !reconAggregate.allMatched
+                    ? " balance-movement-conclusion__status--warn"
+                    : ""
+                }`}
+              >
+                {rows.length > 0 && !reconAggregate.allMatched
+                  ? "ZQTZ 分桶对账需关注"
+                  : "总账控制核对通过"}
               </div>
               <strong className="balance-movement-conclusion__headline">
                 {selectedDate || detailQuery.data?.result.report_date} 合计{" "}
                 {formatYiFixed(summary.current_balance_total)} 亿
               </strong>
+              <div
+                data-testid="balance-movement-analysis-recon-summary"
+                className={`balance-movement-conclusion__recon-summary${
+                  rows.length > 0 && !reconAggregate.allMatched
+                    ? " balance-movement-conclusion__recon-summary--warn"
+                    : ""
+                }`}
+              >
+                {rows.length === 0 ? (
+                  <span>暂无 AC/OCI/TPL 分桶明细行；对账摘要待数据返回后展示。</span>
+                ) : reconAggregate.allMatched ? (
+                  <span>
+                    ZQTZ 分桶对账：三桶均为「{reconciliationStatusLabels.matched}」；明细见下方「明细 /
+                    对账」表。
+                  </span>
+                ) : (
+                  <span>
+                    分桶状态：
+                    {(
+                      Object.entries(reconAggregate.counts) as [
+                        BalanceMovementRow["reconciliation_status"],
+                        number,
+                      ][]
+                    )
+                      .filter(([, count]) => count > 0)
+                      .map(([status, count]) => `${reconciliationStatusLabels[status]} ${count} 条`)
+                      .join("；")}
+                    。请核对{" "}
+                    <a href="#balance-movement-analysis-detail-anchor" className="balance-movement-inline-anchor">
+                      明细 / 对账表
+                    </a>
+                    。
+                  </span>
+                )}
+              </div>
             </div>
             <div className="balance-movement-conclusion__controls">
               控制科目 141 / 142 / 143 / 1440101；排除 144020 股权 OCI
@@ -1019,6 +1366,77 @@ export default function BalanceMovementAnalysisPage() {
         </div>
       ) : null}
 
+      {structureMigrationAnalysis ? (
+        <StructureMigrationPanel analysis={structureMigrationAnalysis} />
+      ) : null}
+
+      {differenceAttributionWaterfall ? (
+        <DifferenceAttributionWaterfallPanel waterfall={differenceAttributionWaterfall} />
+      ) : null}
+
+      {zqtzCalibrationAnalysis ? (
+        <section
+          data-testid="balance-movement-analysis-zqtz-calibration"
+          className="balance-movement-zqtz-calibration"
+        >
+          <div className="balance-movement-zqtz-calibration__header">
+            <div>
+              <span>ZQTZ228 口径核对</span>
+              <strong>{zqtzCalibrationAnalysis.source_file}</strong>
+            </div>
+            <p>{zqtzCalibrationAnalysis.conclusion}</p>
+          </div>
+          <div className="balance-movement-zqtz-calibration__diagnosis">
+            <div>
+              <span>差异定位</span>
+              <p>{zqtzCalibrationAnalysis.root_cause}</p>
+            </div>
+            <div>
+              <span>系统处理</span>
+              <p>{zqtzCalibrationAnalysis.remediation}</p>
+            </div>
+          </div>
+          <div className="balance-movement-zqtz-calibration__table-wrap">
+            <table className="balance-movement-zqtz-calibration__table">
+              <thead>
+                <tr>
+                  <th>项目</th>
+                  <th>系统数（亿元）</th>
+                  <th>核对表（亿元）</th>
+                  <th>差异（亿元）</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody>
+                {zqtzCalibrationAnalysis.items.map((item) => (
+                  <tr key={item.row_key}>
+                    <td>
+                      <strong>{item.row_label}</strong>
+                      <span>{item.note}</span>
+                    </td>
+                    <td>{formatYiFixed(item.system_amount)}</td>
+                    <td>{formatYiFixed(item.reference_amount)}</td>
+                    <td>{formatSignedYiNumber(Number(item.diff_amount) / 100000000)}</td>
+                    <td>
+                      <span
+                        className={`balance-movement-zqtz-calibration__status balance-movement-zqtz-calibration__status--${item.status}`}
+                      >
+                        {item.status === "matched" ? "一致" : "观察"}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <ul className="balance-movement-zqtz-calibration__risks">
+            {zqtzCalibrationAnalysis.residual_risks.map((risk) => (
+              <li key={risk}>{risk}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {summary && topMovementDriver && maxShareShiftDriver ? (
         <section
           data-testid="balance-movement-analysis-business-summary"
@@ -1035,6 +1453,14 @@ export default function BalanceMovementAnalysisPage() {
               {structureStatus}，最大占比变化为 {maxShareShiftDriver.bucket}{" "}
               {formatSignedPoint(maxShareShiftDriver.shareDelta)}
             </p>
+            {structureDriverHint ? (
+              <p
+                data-testid="balance-movement-analysis-structure-driver-hint"
+                className="balance-movement-business-summary__driver-hint"
+              >
+                {structureDriverHint}
+              </p>
+            ) : null}
           </div>
 
           <div className="balance-movement-business-summary__facts">
@@ -1063,6 +1489,29 @@ export default function BalanceMovementAnalysisPage() {
               </p>
             </div>
           </div>
+
+          {businessTopMomMoves.length > 0 ? (
+            <div
+              data-testid="balance-movement-analysis-business-top-moves"
+              className="balance-movement-business-summary__top-moves"
+            >
+              <h2>业务线较上月变动（绝对额 Top 5）</h2>
+              <ol className="balance-movement-business-summary__top-moves-list">
+                {businessTopMomMoves.map((item, index) => (
+                  <li key={`${item.label}-${item.side}-${index}`}>
+                    <span className="balance-movement-business-summary__top-moves-rank">{index + 1}</span>
+                    <span className="balance-movement-business-summary__top-moves-label">{item.label}</span>
+                    <strong className="balance-movement-business-summary__top-moves-delta">
+                      {formatSignedYiNumber(item.deltaYuan / 100000000)} 亿
+                    </strong>
+                    <span className="balance-movement-business-summary__top-moves-side">
+                      {item.side === "asset" ? "资产" : "负债"}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          ) : null}
 
           <div className="balance-movement-business-summary__body">
             <div
@@ -1134,6 +1583,88 @@ export default function BalanceMovementAnalysisPage() {
         </section>
       ) : null}
 
+      {zqtzAssetDetailRows.length > 0 ? (
+        <section
+          data-testid="balance-movement-analysis-zqtz-detail"
+          className="balance-movement-zqtz-detail-page"
+        >
+          <div className="balance-movement-zqtz-detail-page__header">
+            <div>
+              <span>单独页</span>
+              <strong>金融投资资产明细变动</strong>
+            </div>
+            <p>
+              对应 ZQTZSHOW 资产项目和长期股权投资明细，按月份展开；“其中”项单独列示，不与上级分类重复加总。
+            </p>
+          </div>
+          <div className="balance-movement-zqtz-detail-page__table-wrap">
+            <table className="balance-movement-zqtz-detail-page__table">
+              <thead>
+                <tr>
+                  <th scope="col">明细项目</th>
+                  {businessMatrixMonths.map((month) => (
+                    <th key={month.report_date} scope="col">
+                      {formatTrendMonthLabel(month.report_month)}
+                    </th>
+                  ))}
+                  <th scope="col">较上月</th>
+                  <th scope="col">较年初</th>
+                </tr>
+              </thead>
+              <tbody>
+                {zqtzAssetDetailRows.map((row) => {
+                  const mom = compareBusinessMatrixCell(businessMatrixMonths, row, 1);
+                  const ytd = compareBusinessMatrixCellToFirst(businessMatrixMonths, row);
+                  return (
+                    <tr
+                      key={row.key}
+                      className={row.isSubItem ? "balance-movement-zqtz-detail-page__row--subitem" : undefined}
+                    >
+                      <th scope="row" title={row.sourceNote}>
+                        {row.label}
+                      </th>
+                      {businessMatrixMonths.map((month) => (
+                        <td key={`${row.key}-${month.report_date}`}>
+                          {formatMatrixValue(row.getValue(month), "amount", true)}
+                        </td>
+                      ))}
+                      <td className={matrixDeltaTone(mom)}>{mom}</td>
+                      <td className={matrixDeltaTone(ytd)}>{ytd}</td>
+                    </tr>
+                  );
+                })}
+                {zqtzAssetDetailSummaryRow
+                  ? (() => {
+                      const mom = compareBusinessMatrixCell(businessMatrixMonths, zqtzAssetDetailSummaryRow, 1);
+                      const ytd = compareBusinessMatrixCellToFirst(
+                        businessMatrixMonths,
+                        zqtzAssetDetailSummaryRow,
+                      );
+                      return (
+                        <tr
+                          key={zqtzAssetDetailSummaryRow.key}
+                          className="balance-movement-zqtz-detail-page__row--summary"
+                        >
+                          <th scope="row" title={zqtzAssetDetailSummaryRow.sourceNote}>
+                            {zqtzAssetDetailSummaryRow.label}
+                          </th>
+                          {businessMatrixMonths.map((month) => (
+                            <td key={`${zqtzAssetDetailSummaryRow.key}-${month.report_date}`}>
+                              {formatMatrixValue(zqtzAssetDetailSummaryRow.getValue(month), "amount", true)}
+                            </td>
+                          ))}
+                          <td className={matrixDeltaTone(mom)}>{mom}</td>
+                          <td className={matrixDeltaTone(ytd)}>{ytd}</td>
+                        </tr>
+                      );
+                    })()
+                  : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       {businessTrendMonths.length > 0 ? (
         <AsyncSection
           title="月度余额分析矩阵"
@@ -1147,6 +1678,28 @@ export default function BalanceMovementAnalysisPage() {
           isEmpty={businessTrendMonths.length === 0}
           onRetry={() => void detailQuery.refetch()}
         >
+          <div
+            className="balance-movement-pre-matrix-notes"
+            data-testid="balance-movement-analysis-pre-matrix-notes"
+          >
+            <p
+              data-testid="balance-movement-analysis-slice-note"
+              className="balance-movement-pre-matrix-notes__slice"
+            >
+              口径说明：上方总账 AC/OCI/TPL 来自控制科目切片；下方「月度余额分析矩阵」中业务行与同业合计为另一套分类，数值不应与三桶简单加减比对是否相等。
+            </p>
+            <div
+              data-testid="balance-movement-analysis-series-context"
+              className="balance-movement-pre-matrix-notes__series"
+            >
+              {seriesContextSegments.map((text, index) => (
+                <p key={index}>{text}</p>
+              ))}
+              <p className="balance-movement-pre-matrix-notes__footer">
+                自然年首月基期、业务矩阵同比、分桶 ZQTZ 差异历史走势等依赖更长期物化或专用接口；当前页仅展示既有读模型，不在浏览器端补算正式口径。
+              </p>
+            </div>
+          </div>
           <div className="balance-movement-matrix-scroll">
             <table
               data-testid="balance-movement-analysis-trend-table"
@@ -1367,18 +1920,19 @@ export default function BalanceMovementAnalysisPage() {
         </AsyncSection>
       ) : null}
 
-      <AsyncSection
-        title="明细 / 对账：AC / OCI / TPL 余额变动"
-        isLoading={detailQuery.isLoading}
-        isError={detailQuery.isError}
-        isEmpty={!detailQuery.isLoading && !detailQuery.isError && rows.length === 0}
-        onRetry={() => void detailQuery.refetch()}
-      >
-        <div style={{ overflowX: "auto" }}>
-          <table
-            data-testid="balance-movement-analysis-table"
-            style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-          >
+      <div id="balance-movement-analysis-detail-anchor">
+        <AsyncSection
+          title="明细 / 对账：AC / OCI / TPL 余额变动"
+          isLoading={detailQuery.isLoading}
+          isError={detailQuery.isError}
+          isEmpty={!detailQuery.isLoading && !detailQuery.isError && rows.length === 0}
+          onRetry={() => void detailQuery.refetch()}
+        >
+          <div style={{ overflowX: "auto" }}>
+            <table
+              data-testid="balance-movement-analysis-table"
+              style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
+            >
             <thead>
               <tr style={{ textAlign: "left", borderBottom: "1px solid #d7dfea" }}>
                 <th style={{ padding: "12px 8px" }}>分类</th>
@@ -1428,8 +1982,9 @@ export default function BalanceMovementAnalysisPage() {
               ))}
             </tbody>
           </table>
-        </div>
-      </AsyncSection>
+          </div>
+        </AsyncSection>
+      </div>
 
       {detailQuery.data?.result.accounting_controls ? (
         <div
@@ -1438,6 +1993,17 @@ export default function BalanceMovementAnalysisPage() {
         >
           控制科目：{detailQuery.data.result.accounting_controls.join(", ")}；排除：
           {detailQuery.data.result.excluded_controls.join(", ")}
+        </div>
+      ) : null}
+
+      {detailQuery.data?.result ? (
+        <div data-testid="balance-movement-analysis-governance" className="balance-movement-governance-line">
+          读模型报告日：{governanceMeta.reportDate || "—"}
+          {" · "}
+          rule_version：{governanceMeta.ruleVersions.length ? governanceMeta.ruleVersions.join("、") : "—"}
+          {" · "}
+          source_version：
+          {governanceMeta.sourceVersions.length ? governanceMeta.sourceVersions.join("、") : "—"}
         </div>
       ) : null}
     </section>

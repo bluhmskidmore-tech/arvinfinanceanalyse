@@ -298,6 +298,45 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
           rule_version: "rv_accounting_asset_movement_v2",
         },
       ];
+      currentBusinessRows.splice(
+        5,
+        1,
+        ...[
+          ["asset_zqtz_central_bank_bill", "央行票据", "0", 60],
+          ["asset_zqtz_treasury_bond", "国债（含凭证式国债）", "1200000000", 62],
+          ["asset_zqtz_local_government_bond", "地方政府债", "2200000000", 64],
+          ["asset_zqtz_policy_financial_bond", "政策性金融债", "3200000000", 66],
+          ["asset_zqtz_railway_bond", "铁道债", "0", 68],
+          ["asset_zqtz_commercial_financial_bond", "商业性金融债", "1600000000", 70],
+          ["asset_zqtz_interbank_cd", "同业存单", "1800000000", 72],
+          ["asset_zqtz_nonfinancial_enterprise_bond", "非金融企业债券", "2600000000", 74],
+          ["asset_zqtz_abs", "资产支持证券", "900000000", 76],
+          ["asset_zqtz_foreign_bond", "外国债券", "300000000", 78],
+          ["asset_zqtz_public_fund", "公募基金", "800000000", 80],
+          ["asset_zqtz_non_bottom_investment", "非底层投资资产", "700000000", 82],
+          ["asset_zqtz_detail_trust_plan", "信托计划", "0", 83],
+          ["asset_zqtz_detail_securities_asset_management_plan", "证券业资管计划", "400000000", 84],
+          ["asset_zqtz_detail_structured_finance_broker", "其中：结构化融资（券商）", "200000000", 85],
+          ["asset_zqtz_detail_foreign_currency_delegated", "其中：外币委外", "100000000", 86],
+          ["asset_zqtz_detail_local_currency_delegated_market_value", "其中：本币委外（市值法）", "400000000", 87],
+          ["asset_zqtz_detail_local_currency_special_account_cost", "其中：本币专户（成本法）", "200000000", 88],
+          ["asset_zqtz_other_debt_financing", "其他债权融资类产品", "400000000", 90],
+          ["asset_long_term_equity_investment", "长期股权投资（亿元）", "600000000", 94],
+        ].map(([rowKey, rowLabel, currentBalance, sortOrder]) => ({
+          report_date: reportDate,
+          report_month: reportMonth,
+          currency_basis: currencyBasis,
+          side: "asset" as const,
+          sort_order: Number(sortOrder),
+          row_key: String(rowKey),
+          row_label: String(rowLabel),
+          current_balance: String(currentBalance),
+          source_kind: rowKey === "asset_long_term_equity_investment" ? "ledger" as const : "zqtz" as const,
+          source_note: "ZQTZSHOW 资产产品分类",
+          source_version: rowKey === "asset_long_term_equity_investment" ? "sv_mock" : "sv_mock_zqtz",
+          rule_version: "rv_accounting_asset_movement_v2",
+        })),
+      );
       const previousBusinessRows = currentBusinessRows.map((row) => ({
         ...row,
         report_date: "2026-01-31",
@@ -321,7 +360,11 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
                           ? "-2500000000"
                           : row.row_key === "liability_repo"
                             ? "-7000000000"
-                            : "-2000000000",
+                            : row.row_key === "liability_interbank_cd"
+                              ? "-2000000000"
+                              : row.row_key.startsWith("asset_zqtz_detail_")
+                                ? "0"
+                                : String(Math.round(Number(row.current_balance) * 0.75)),
       }));
 
       return buildMockApiEnvelope(
@@ -360,20 +403,179 @@ export function createMockBalanceMovementClient(): BalanceMovementClientMethods 
             {
               report_date: reportDate,
               report_month: reportMonth,
-              asset_balance_total: "29300000000",
+              asset_balance_total: "43800000000",
               liability_balance_total: "-26000000000",
-              net_balance_total: "3300000000",
+              net_balance_total: "17800000000",
               rows: currentBusinessRows,
             },
             {
               report_date: "2026-01-31",
               report_month: "2026-01",
-              asset_balance_total: "22200000000",
+              asset_balance_total: "34425000000",
               liability_balance_total: "-17700000000",
-              net_balance_total: "4500000000",
+              net_balance_total: "16725000000",
               rows: previousBusinessRows,
             },
           ],
+          zqtz_calibration_analysis: {
+            source_file: "ZQTZSHOW-20260228.xls / ZQTZ228",
+            conclusion:
+              "政策性金融债的大额差异已定位并修复：不是外债折算，也不是政策债口径包含凭证式国债/地方债，而是 ZQTZ 标准化粒度覆盖了同券多笔持仓。",
+            root_cause:
+              "旧 canonical grain 只按日期、债券代码、组合、成本中心、币种聚合；同券多分类持仓被后到行覆盖，导致政策性金融债少约 58.12 亿元。",
+            remediation:
+              "现已把 ZQTZ grain 扩到会计分类、业务种类、到期日、来源批次等维度，并在同一会计桶内加总金额。",
+            items: [
+              {
+                row_key: "asset_zqtz_policy_financial_bond",
+                row_label: "政策性金融债",
+                system_amount: "65228031802.46",
+                reference_amount: "65228031802.46",
+                diff_amount: "0",
+                status: "matched",
+                note: "ZQTZ228 原表按会计分类保留多笔同券持仓后，与展示表一致。",
+              },
+              {
+                row_key: "asset_zqtz_local_government_bond",
+                row_label: "地方政府债",
+                system_amount: "42264356556.22",
+                reference_amount: "42264356556.22",
+                diff_amount: "0",
+                status: "matched",
+                note: "同一口径下，地方政府债与展示表一致。",
+              },
+              {
+                row_key: "asset_zqtz_foreign_bond",
+                row_label: "外国债券",
+                system_amount: "483804358.75",
+                reference_amount: "496000000",
+                diff_amount: "-12195641.25",
+                status: "matched",
+                note: "外国债券按 US* + HK0001155867 清单和 CNY formal 金额折算，保留小额观察。",
+              },
+            ],
+            residual_risks: [
+              "外国债券仍依赖披露外债清单；如后续 ZQTZ 提供明确 sub_type=外国债券，应替换清单规则。",
+              "2026-03 展示表需要 2026-03 ZQTZ/总账入库后才能做同样核对。",
+            ],
+          },
+          structure_migration_analysis: {
+            summary: "2026-02 较 2026-01：占比正向抬升最明显的是 TPL。",
+            caveat:
+              "这是汇总会计分类桶的结构信号，不等同于单只资产已经在 AC/OCI/FVTPL 之间完成会计分类迁移。",
+            pairs: [
+              {
+                previous_report_date: "2026-01-31",
+                current_report_date: reportDate,
+                previous_report_month: "2026-01",
+                current_report_month: reportMonth,
+                total_balance_delta: "12979841538.46",
+                dominant_share_increase_bucket: "TPL",
+                fvtpl_volatility_signal:
+                  "FVTPL 余额或占比上升，说明损益波动暴露在抬升；这不是已实现损益结论。",
+                oci_valuation_signal:
+                  "OCI 公允价值变动科目的变化解释不足一半 OCI 余额变动；估值不是本月对的主导代理信号。",
+                buckets: [
+                  {
+                    basis_bucket: "AC",
+                    previous_balance: "139214376198.90",
+                    current_balance: "142543803312.70",
+                    balance_delta: "3329427113.80",
+                    previous_share_pct: "43.114646",
+                    current_share_pct: "42.439753",
+                    share_delta_pp: "-0.674893",
+                  },
+                  {
+                    basis_bucket: "OCI",
+                    previous_balance: "101294750662.96",
+                    current_balance: "105781745231.25",
+                    balance_delta: "4486994568.29",
+                    previous_share_pct: "31.370951",
+                    current_share_pct: "31.494537",
+                    share_delta_pp: "0.123586",
+                  },
+                  {
+                    basis_bucket: "TPL",
+                    previous_balance: "82384340890.05",
+                    current_balance: "87547760746.55",
+                    balance_delta: "5163419856.50",
+                    previous_share_pct: "25.514403",
+                    current_share_pct: "26.065709",
+                    share_delta_pp: "0.551306",
+                  },
+                ],
+              },
+            ],
+          },
+          difference_attribution_waterfall: {
+            reference_label: "ZQTZ 明细汇总",
+            reference_total: "337854709540.00",
+            target_label: "AC/OCI/FVTPL 合计",
+            target_total: "335873309290.50",
+            net_difference: "-1981400249.50",
+            components: [
+              {
+                component_key: "long_term_equity_investment",
+                component_label: "长期股权投资",
+                amount: "-2008360000.00",
+                source_kind: "ledger",
+                evidence_note:
+                  "ZQTZ 明细页汇总包含总账长期股权投资行；AC/OCI/FVTPL 控制合计剔除 145*。",
+                is_residual: false,
+                is_supported: true,
+              },
+              {
+                component_key: "voucher_treasury_1430101_cost",
+                component_label: "凭证式国债 / 1430101 成本",
+                amount: "52205400.00",
+                source_kind: "derived",
+                evidence_note:
+                  "总账 14301010001 期末余额与 formal ZQTZ 凭证式国债摊余成本的差额。",
+                is_residual: false,
+                is_supported: true,
+              },
+              {
+                component_key: "voucher_treasury_1430101_accrued_interest",
+                component_label: "凭证式国债 / 1430101 应计利息",
+                amount: "0",
+                source_kind: "derived",
+                evidence_note:
+                  "总账 14301010002 期末余额与 formal ZQTZ 凭证式国债应计利息的差额。",
+                is_residual: false,
+                is_supported: true,
+              },
+              {
+                component_key: "valuation_gap",
+                component_label: "估值差",
+                amount: "0",
+                source_kind: "derived",
+                evidence_note: "当前 payload 没有可独立闭合的估值拆分；未支持金额保留在残差中。",
+                is_residual: false,
+                is_supported: false,
+              },
+              {
+                component_key: "fx_translation_gap",
+                component_label: "外币折算差",
+                amount: "0",
+                source_kind: "derived",
+                evidence_note: "当前 payload 没有可独立闭合的外币折算拆分；未支持金额保留在残差中。",
+                is_residual: false,
+                is_supported: false,
+              },
+              {
+                component_key: "residual_unclassified",
+                component_label: "未分类 / 残差",
+                amount: "-252594649.50",
+                source_kind: "residual",
+                evidence_note: "直接支持项拆分后，为闭合瀑布图所需的剩余差额。",
+                is_residual: true,
+                is_supported: true,
+              },
+            ],
+            closing_check: "0",
+            caveat:
+              "瀑布金额表示从 ZQTZ 明细汇总调整到 AC/OCI/FVTPL 合计的方向。估值差和外币折算差目前只展示可确认部分，不反推未闭合金额。",
+          },
           rows: currentRows,
         },
         { quality_flag: "ok" },
