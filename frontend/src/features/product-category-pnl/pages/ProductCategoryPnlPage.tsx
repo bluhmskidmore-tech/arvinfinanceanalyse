@@ -14,7 +14,7 @@ import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
-  buildProductCategoryDerivedAnalysisPlan,
+  buildProductCategoryDiagnosticsSurface,
   buildProductCategoryTrendSnapshot,
   buildLedgerPnlHrefForReportDate,
   collectProductCategoryGovernanceNotices,
@@ -31,7 +31,7 @@ import {
   selectProductCategoryInterestEarningIncomeScaleChart,
   selectProductCategoryInterestSpreadChart,
   selectProductCategoryTplScaleYieldChart,
-  selectProductCategoryTrendReportDates,
+  selectProductCategoryTrendReportPoints,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 import { designTokens } from "../../../theme/designSystem";
@@ -128,6 +128,16 @@ function SectionLead(props: {
   );
 }
 
+function diagnosticsToneClassName(tone: "neutral" | "positive" | "negative"): string {
+  if (tone === "positive") {
+    return "product-category-diagnostics__value--positive";
+  }
+  if (tone === "negative") {
+    return "product-category-diagnostics__value--negative";
+  }
+  return "";
+}
+
 type DerivedChartPanelProps = {
   testId: string;
   title: string;
@@ -153,11 +163,12 @@ function buildDualAxisChartOption(input: {
   return {
     tooltip: { trigger: "axis" },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
-    grid: { left: 56, right: 56, top: 20, bottom: 52 },
+    grid: { left: 56, right: 56, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
     xAxis: {
       type: "category",
       data: input.labels,
       axisTick: { show: false },
+      axisLabel: { interval: 0, rotate: input.labels.length > 6 ? 24 : 0 },
       axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
     },
     yAxis: [
@@ -201,11 +212,12 @@ function buildSingleAxisChartOption(input: {
   return {
     tooltip: { trigger: "axis" },
     legend: { bottom: 0, data: input.series.map((series) => series.name) },
-    grid: { left: 56, right: 24, top: 20, bottom: 52 },
+    grid: { left: 56, right: 24, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
     xAxis: {
       type: "category",
       data: input.labels,
       axisTick: { show: false },
+      axisLabel: { interval: 0, rotate: input.labels.length > 6 ? 24 : 0 },
       axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
     },
     yAxis: {
@@ -221,6 +233,68 @@ function buildSingleAxisChartOption(input: {
       itemStyle: { color: series.color },
       lineStyle: { color: series.color, width: series.type === "line" ? 3 : undefined },
       barMaxWidth: series.type === "bar" ? 26 : undefined,
+    })),
+  };
+}
+
+function buildInterestSpreadChartOption(input: {
+  labels: string[];
+  series: Array<{
+    name: string;
+    data: number[];
+    color: string;
+  }>;
+}): EChartsOption | null {
+  if (!input.labels.length || input.series.every((series) => series.data.length === 0)) {
+    return null;
+  }
+  const values = input.series.flatMap((series) => series.data).filter(Number.isFinite);
+  const minValue = values.length ? Math.min(...values) : 0;
+  const maxValue = values.length ? Math.max(...values) : 0;
+  const range = maxValue - minValue;
+  const padding = Math.max(range * 0.12, Math.abs(maxValue || minValue) * 0.08, 0.1);
+  const yAxisMin = Number((minValue - padding).toFixed(2));
+  const yAxisMax = Number((maxValue + padding).toFixed(2));
+  const lineWidths = [4, 3.4, 4];
+  const symbolSizes = [8, 7, 8];
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: input.series.map((series) => series.name) },
+    grid: { left: 56, right: 72, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLabel: { interval: 0, rotate: input.labels.length > 6 ? 24 : 0 },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: {
+      type: "value",
+      name: "%",
+      min: yAxisMin,
+      max: yAxisMax,
+      scale: true,
+      axisLabel: { formatter: "{value}%" },
+      splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
+    },
+    series: input.series.map((series, index) => ({
+      name: series.name,
+      type: "line",
+      data: series.data,
+      smooth: true,
+      showSymbol: true,
+      symbol: "circle",
+      symbolSize: symbolSizes[index] ?? 7,
+      itemStyle: { color: series.color, borderColor: "#fff", borderWidth: 2 },
+      lineStyle: { color: series.color, width: lineWidths[index] ?? 3.4 },
+      endLabel: {
+        show: true,
+        color: series.color,
+        formatter: "{c}%",
+        fontWeight: 700,
+      },
+      labelLayout: { moveOverlap: "shiftY" },
+      emphasis: { focus: "series" },
     })),
   };
 }
@@ -358,94 +432,68 @@ export default function ProductCategoryPnlPage() {
     () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
     [baseline?.rows, scenario?.rows],
   );
-  const trendReportDates = useMemo(
-    () => selectProductCategoryTrendReportDates(selectedDate, datesQuery.data?.result.report_dates),
-    [datesQuery.data?.result.report_dates, selectedDate],
+  const trendReportPoints = useMemo(
+    () => selectProductCategoryTrendReportPoints(selectedDate, datesQuery.data?.result.report_dates, selectedView),
+    [datesQuery.data?.result.report_dates, selectedDate, selectedView],
   );
-  const trendHistoryReportDates = useMemo(
-    () => trendReportDates.filter((reportDate) => reportDate !== selectedDate),
-    [selectedDate, trendReportDates],
+  const currentTrendPoint = useMemo(
+    () => trendReportPoints.find((point) => point.reportDate === selectedDate),
+    [selectedDate, trendReportPoints],
+  );
+  const trendHistoryPoints = useMemo(
+    () => trendReportPoints.filter((point) => point.reportDate !== selectedDate),
+    [selectedDate, trendReportPoints],
   );
   const trendHistoryQueries = useQueries({
-    queries: trendHistoryReportDates.map((reportDate) => ({
+    queries: trendHistoryPoints.map((point) => ({
       queryKey: [
         "product-category-pnl",
         "trend-history",
         client.mode,
-        reportDate,
-        selectedView,
+        point.reportDate,
+        point.view,
         appliedScenarioRate,
       ],
       queryFn: () =>
         client.getProductCategoryPnl({
-          reportDate,
-          view: selectedView,
+          reportDate: point.reportDate,
+          view: point.view,
           ...(appliedScenarioRate ? { scenarioRatePct: appliedScenarioRate } : {}),
         }),
-      enabled: Boolean(reportDate && selectedView),
+      enabled: Boolean(point.reportDate && point.view),
       retry: false,
     })),
   });
-  const contributionViewQueries = useQueries({
-    queries: (["monthly", "ytd"] as const).map((view) => ({
-      queryKey: [
-        "product-category-pnl",
-        "contribution-view",
-        client.mode,
-        selectedDate,
-        view,
-        appliedScenarioRate,
-      ],
-      queryFn: () =>
-        client.getProductCategoryPnl({
-          reportDate: selectedDate,
-          view,
-          ...(appliedScenarioRate ? { scenarioRatePct: appliedScenarioRate } : {}),
-        }),
-      enabled: Boolean(selectedDate),
-      retry: false,
-    })),
-  });
-  const monthlyContributionPayload =
-    contributionViewQueries[0]?.data?.result ??
-    (selectedView === "monthly" ? currentSelectedPayload : undefined);
-  const ytdContributionPayload =
-    contributionViewQueries[1]?.data?.result ??
-    (selectedView === "ytd" ? currentSelectedPayload : undefined);
   const trendSnapshots = useMemo(
     () => [
-      ...(currentSelectedPayload ? [buildProductCategoryTrendSnapshot(currentSelectedPayload)] : []),
-      ...trendHistoryQueries.flatMap((query) =>
-        query.data ? [buildProductCategoryTrendSnapshot(query.data.result)] : [],
+      ...(currentSelectedPayload
+        ? [buildProductCategoryTrendSnapshot(currentSelectedPayload, currentTrendPoint?.label)]
+        : []),
+      ...trendHistoryQueries.flatMap((query, index) =>
+        query.data ? [buildProductCategoryTrendSnapshot(query.data.result, trendHistoryPoints[index]?.label)] : [],
       ),
     ],
-    [currentSelectedPayload, trendHistoryQueries],
+    [currentSelectedPayload, currentTrendPoint?.label, trendHistoryPoints, trendHistoryQueries],
   );
-  const derivedAnalysisItems = buildProductCategoryDerivedAnalysisPlan({
-    rows: rowsToRender,
-    assetTotal: displayedAssetTotal,
-    liabilityTotal: displayedLiabilityTotal,
-    grandTotal: displayedGrandTotal,
-    currentRate: currentSceneRate,
-    baselineRate,
-    trendSnapshots,
-    contributionViews: {
-      monthly: monthlyContributionPayload
-        ? {
-            assetTotal: monthlyContributionPayload.asset_total,
-            liabilityTotal: monthlyContributionPayload.liability_total,
-            grandTotal: monthlyContributionPayload.grand_total,
-          }
-        : undefined,
-      ytd: ytdContributionPayload
-        ? {
-            assetTotal: ytdContributionPayload.asset_total,
-            liabilityTotal: ytdContributionPayload.liability_total,
-            grandTotal: ytdContributionPayload.grand_total,
-          }
-        : undefined,
-    },
-  });
+  const diagnosticsSurface = useMemo(
+    () =>
+      buildProductCategoryDiagnosticsSurface({
+        rows: rowsToRender,
+        assetTotal: displayedAssetTotal,
+        liabilityTotal: displayedLiabilityTotal,
+        grandTotal: displayedGrandTotal,
+        trendSnapshots,
+      }),
+    [displayedAssetTotal, displayedGrandTotal, displayedLiabilityTotal, rowsToRender, trendSnapshots],
+  );
+  const hasDiagnosticsSurface =
+    diagnosticsSurface.matrixRows.length > 0 ||
+    diagnosticsSurface.matrixEmptyCopy !== null ||
+    diagnosticsSurface.negativeWatchlistRows.length > 0 ||
+    diagnosticsSurface.negativeWatchlistEmptyCopy !== null ||
+    diagnosticsSurface.spreadAttribution.state === "ready" ||
+    (diagnosticsSurface.spreadAttribution.state === "incomplete" &&
+      diagnosticsSurface.spreadAttribution.reason.length > 0);
   const tplScaleYieldChart = useMemo(
     () => selectProductCategoryTplScaleYieldChart(trendSnapshots),
     [trendSnapshots],
@@ -550,25 +598,21 @@ export default function ProductCategoryPnlPage() {
   const interestSpreadOption = useMemo(
     () =>
       interestSpreadChart
-        ? buildSingleAxisChartOption({
+        ? buildInterestSpreadChartOption({
             labels: interestSpreadChart.labels,
-            axisName: "%",
             series: [
               {
                 name: "生息资产收益率（%）",
-                type: "line",
                 data: interestSpreadChart.assetYield,
                 color: designTokens.color.success[600],
               },
               {
                 name: "负债端加权收益率（%）",
-                type: "line",
                 data: interestSpreadChart.liabilityYield,
                 color: designTokens.color.neutral[500],
               },
               {
                 name: "生息资产利差（%）",
-                type: "line",
                 data: interestSpreadChart.spread,
                 color: designTokens.color.danger[500],
               },
@@ -1480,48 +1524,197 @@ export default function ProductCategoryPnlPage() {
         </div>
       ) : null}
 
-      {!baselineQuery.isError && derivedAnalysisItems.length > 0 ? (
+      {!baselineQuery.isError && hasDiagnosticsSurface ? (
         <>
           <SectionLead
-            eyebrow="衍生"
-            title="数据衍生分析方案"
-            description="基于当前产品分类损益表的总计行、产品行、FTP场景和日均规模，形成后续经营分析入口。"
-            testId="product-category-derived-analysis-lead"
+            eyebrow="诊断"
+            title="受治理诊断面板"
+            description="仅使用当前 payload 行与趋势快照，补充产品经营诊断矩阵、负贡献观察名单和利差变动归因，不改写后端总计。"
+            testId="product-category-diagnostics-lead"
           />
-          <div
-            className="product-category-derived-plan"
-            data-testid="product-category-derived-analysis-plan"
-          >
-            {derivedAnalysisItems.map((item) => (
-              <article
-                className="product-category-derived-plan__card"
-                data-testid={`product-category-derived-analysis-${item.id}`}
-                key={item.id}
-              >
-                <div className="product-category-derived-plan__title">{item.title}</div>
-                <div
-                  className={`product-category-derived-plan__metric product-category-derived-plan__metric--${item.tone}`}
-                >
-                  {item.metric}
+          <div className="product-category-diagnostics" data-testid="product-category-diagnostics-surface">
+            <article className="product-category-diagnostics__card" data-testid="product-category-diagnostics-matrix">
+              <div className="product-category-diagnostics__header">
+                <div className="product-category-diagnostics__intro">
+                  <h3 className="product-category-diagnostics__title">产品经营诊断矩阵</h3>
+                  <p className="product-category-diagnostics__description">
+                    逐行回看规模、营业净收入、收益率和双币净收入拆分，行身份仅取自
+                    `category_id/category_name/side`。
+                  </p>
                 </div>
-                <div className="product-category-derived-plan__detail">{item.detail}</div>
-                {item.points?.length ? (
-                  <div className="product-category-derived-plan__points">
-                    {item.points.map((point) => (
-                      <div className="product-category-derived-plan__point" key={`${item.id}-${point.label}`}>
-                        <span>{point.label}</span>
-                        <strong
-                          className={`product-category-derived-plan__point-value product-category-derived-plan__point-value--${point.tone ?? "neutral"}`}
-                        >
-                          {point.value}
-                        </strong>
-                        {point.detail ? <small>{point.detail}</small> : null}
-                      </div>
-                    ))}
-                  </div>
+                {diagnosticsSurface.headlineTotalLabel ? (
+                  <span
+                    className="product-category-diagnostics__summary"
+                    data-testid="product-category-diagnostics-summary"
+                  >
+                    当前总损益 {diagnosticsSurface.headlineTotalLabel}
+                  </span>
                 ) : null}
-              </article>
-            ))}
+              </div>
+              {diagnosticsSurface.matrixEmptyCopy ? (
+                <div
+                  data-testid="product-category-diagnostics-matrix-empty"
+                  className="product-category-diagnostics__empty"
+                >
+                  {diagnosticsSurface.matrixEmptyCopy}
+                </div>
+              ) : (
+                <div className="product-category-diagnostics__table-wrap">
+                  <table className="product-category-diagnostics__table">
+                    <thead>
+                      <tr>
+                        <th className="product-category-diagnostics__table-head">产品行</th>
+                        <th className="product-category-diagnostics__table-head">端别</th>
+                        <th className="product-category-diagnostics__table-head">规模</th>
+                        <th className="product-category-diagnostics__table-head">营业净收入</th>
+                        <th className="product-category-diagnostics__table-head">收益率</th>
+                        <th className="product-category-diagnostics__table-head">人民币净收入</th>
+                        <th className="product-category-diagnostics__table-head">外币净收入</th>
+                        <th className="product-category-diagnostics__table-head">驱动提示</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {diagnosticsSurface.matrixRows.map((item) => (
+                        <tr key={item.categoryId}>
+                          <td className="product-category-diagnostics__table-cell">{item.categoryLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.sideLabel}</td>
+                          <td className="product-category-diagnostics__table-cell">{item.scaleLabel}</td>
+                          <td
+                            className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.businessNetIncomeTone)}`}
+                          >
+                            {item.businessNetIncomeLabel}
+                          </td>
+                          <td className="product-category-diagnostics__table-cell">{item.yieldLabel}</td>
+                          <td
+                            className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.cnyNetTone)}`}
+                          >
+                            {item.cnyNetLabel}
+                          </td>
+                          <td
+                            className={`product-category-diagnostics__table-cell ${diagnosticsToneClassName(item.foreignNetTone)}`}
+                          >
+                            {item.foreignNetLabel}
+                          </td>
+                          <td className="product-category-diagnostics__table-cell">{item.driverHint}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </article>
+
+            <article className="product-category-diagnostics__card" data-testid="product-category-diagnostics-watchlist">
+              <div className="product-category-diagnostics__intro">
+                <h3 className="product-category-diagnostics__title">负贡献观察名单</h3>
+                <p className="product-category-diagnostics__description">
+                  仅列出 `business_net_income &lt; 0` 的行，并按亏损幅度排序；缺失规模或收益率会显式标注。
+                </p>
+              </div>
+              {diagnosticsSurface.negativeWatchlistEmptyCopy ? (
+                <div
+                  data-testid="product-category-diagnostics-watchlist-empty"
+                  className="product-category-diagnostics__empty"
+                >
+                  {diagnosticsSurface.negativeWatchlistEmptyCopy}
+                </div>
+              ) : (
+                <div className="product-category-diagnostics__watchlist">
+                  {diagnosticsSurface.negativeWatchlistRows.map((item) => (
+                    <div
+                      key={item.categoryId}
+                      className="product-category-diagnostics__watchlist-row"
+                      data-testid={`product-category-diagnostics-watchlist-row-${item.categoryId}`}
+                    >
+                      <div className="product-category-diagnostics__watchlist-primary">
+                        <div className="product-category-diagnostics__metric-value product-category-diagnostics__metric-value--primary">
+                          {item.categoryLabel}
+                        </div>
+                        <div className="product-category-diagnostics__metric-detail">{item.sideLabel}</div>
+                      </div>
+                      <div className="product-category-diagnostics__metric">
+                        <span className="product-category-diagnostics__metric-label">亏损</span>
+                        <span className="product-category-diagnostics__metric-value product-category-diagnostics__value--negative">
+                          {item.lossLabel}
+                        </span>
+                      </div>
+                      <div className="product-category-diagnostics__metric">
+                        <span className="product-category-diagnostics__metric-label">规模</span>
+                        <span className="product-category-diagnostics__metric-value">{item.scaleLabel}</span>
+                      </div>
+                      <div className="product-category-diagnostics__metric">
+                        <span className="product-category-diagnostics__metric-label">收益率</span>
+                        <span className="product-category-diagnostics__metric-value">{item.yieldLabel}</span>
+                      </div>
+                      <div className="product-category-diagnostics__metric">
+                        <span className="product-category-diagnostics__metric-label">缺口提示</span>
+                        <span className="product-category-diagnostics__metric-value">
+                          {[item.scaleMissing ? "规模缺失" : null, item.yieldMissing ? "收益率缺失" : null]
+                            .filter(Boolean)
+                            .join(" / ") || "字段齐全"}
+                        </span>
+                      </div>
+                      <div className="product-category-diagnostics__metric">
+                        <span className="product-category-diagnostics__metric-label">驱动提示</span>
+                        <span className="product-category-diagnostics__metric-detail">{item.driverHint}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
+
+            <article className="product-category-diagnostics__card" data-testid="product-category-diagnostics-spread">
+              <div className="product-category-diagnostics__intro">
+                <h3 className="product-category-diagnostics__title">利差变动归因</h3>
+                <p className="product-category-diagnostics__description">
+                  使用当前期与可比上期趋势快照，展示资产收益率、负债收益率、利差和变动方向。
+                </p>
+              </div>
+              <div className="product-category-diagnostics__spread-grid">
+                <div className="product-category-diagnostics__spread-card">
+                  <span className="product-category-diagnostics__spread-caption">
+                    {diagnosticsSurface.spreadAttribution.currentLabel}
+                  </span>
+                  <span className="product-category-diagnostics__spread-value">
+                    {diagnosticsSurface.spreadAttribution.currentSpreadLabel}
+                  </span>
+                  <span className="product-category-diagnostics__spread-detail">
+                    资产 {diagnosticsSurface.spreadAttribution.currentAssetYieldLabel} / 负债{" "}
+                    {diagnosticsSurface.spreadAttribution.currentLiabilityYieldLabel}
+                  </span>
+                </div>
+                <div className="product-category-diagnostics__spread-card">
+                  <span className="product-category-diagnostics__spread-caption">
+                    {diagnosticsSurface.spreadAttribution.priorLabel}
+                  </span>
+                  <span className="product-category-diagnostics__spread-value">
+                    {diagnosticsSurface.spreadAttribution.priorSpreadLabel}
+                  </span>
+                  <span className="product-category-diagnostics__spread-detail">
+                    资产变动 {diagnosticsSurface.spreadAttribution.assetYieldDeltaLabel} / 负债变动{" "}
+                    {diagnosticsSurface.spreadAttribution.liabilityYieldDeltaLabel}
+                  </span>
+                </div>
+                <div className="product-category-diagnostics__spread-card">
+                  <span className="product-category-diagnostics__spread-caption">归因结论</span>
+                  <span className="product-category-diagnostics__spread-value">
+                    {diagnosticsSurface.spreadAttribution.spreadDeltaLabel}
+                  </span>
+                  <span className="product-category-diagnostics__spread-detail">
+                    {diagnosticsSurface.spreadAttribution.driverHint}
+                  </span>
+                </div>
+              </div>
+              {diagnosticsSurface.spreadAttribution.state === "incomplete" ? (
+                <div
+                  data-testid="product-category-diagnostics-spread-incomplete"
+                  className="product-category-diagnostics__empty"
+                >
+                  {diagnosticsSurface.spreadAttribution.reason}
+                </div>
+              ) : null}
+            </article>
           </div>
           <div
             className="product-category-derived-charts"

@@ -5,6 +5,181 @@
   margin-top: 14px;
 }
 
+.product-category-diagnostics {
+  display: grid;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.product-category-diagnostics__card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid #dbe4ee;
+  background: #f8fafc;
+}
+
+.product-category-diagnostics__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.product-category-diagnostics__intro {
+  display: grid;
+  gap: 4px;
+}
+
+.product-category-diagnostics__title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.product-category-diagnostics__description {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.product-category-diagnostics__summary {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #e8f1fb;
+  color: #15407d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.product-category-diagnostics__empty {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #e5e7eb;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.product-category-diagnostics__table-wrap {
+  overflow-x: auto;
+}
+
+.product-category-diagnostics__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.product-category-diagnostics__table-head {
+  padding: 10px 8px;
+  text-align: left;
+  border-bottom: 1px solid #dbe4ee;
+  color: #64748b;
+  font-weight: 700;
+  background: #f1f5f9;
+}
+
+.product-category-diagnostics__table-cell {
+  padding: 10px 8px;
+  border-bottom: 1px solid #dbe4ee;
+  vertical-align: top;
+  color: #475569;
+}
+
+.product-category-diagnostics__watchlist {
+  display: grid;
+  gap: 10px;
+}
+
+.product-category-diagnostics__watchlist-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(4, minmax(0, 0.8fr)) minmax(0, 1.6fr);
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #dbe4ee;
+  background: #ffffff;
+}
+
+.product-category-diagnostics__watchlist-primary,
+.product-category-diagnostics__metric {
+  display: grid;
+  gap: 4px;
+}
+
+.product-category-diagnostics__metric-label {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.product-category-diagnostics__metric-value {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.product-category-diagnostics__metric-value--primary {
+  font-size: 14px;
+}
+
+.product-category-diagnostics__metric-detail {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.product-category-diagnostics__spread-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.product-category-diagnostics__spread-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid #dbe4ee;
+  background: #ffffff;
+}
+
+.product-category-diagnostics__spread-caption {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.product-category-diagnostics__spread-value {
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.product-category-diagnostics__spread-detail {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.product-category-diagnostics__value--positive {
+  color: #047857;
+}
+
+.product-category-diagnostics__value--negative {
+  color: #dc2626;
+}
+
 .product-category-derived-charts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -123,6 +298,11 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .product-category-diagnostics__watchlist-row,
+  .product-category-diagnostics__spread-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .product-category-derived-charts {
     grid-template-columns: 1fr;
   }
@@ -130,6 +310,11 @@
 
 @media (max-width: 720px) {
   .product-category-derived-plan {
+    grid-template-columns: 1fr;
+  }
+
+  .product-category-diagnostics__watchlist-row,
+  .product-category-diagnostics__spread-grid {
     grid-template-columns: 1fr;
   }
 }

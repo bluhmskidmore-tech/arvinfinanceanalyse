@@ -79,7 +79,49 @@ export function formatProductCategoryReportMonthLabel(reportDate: string): strin
   if (!match) {
     return reportDate;
   }
-  return `${match[1]}年${match[2]}月`;
+  return `${match[1]}\u5e74${match[2]}\u6708`;
+}
+
+function parseProductCategoryReportDate(
+  reportDate: string,
+): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(reportDate);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+function productCategoryReportMonthPrefix(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, "0")}-`;
+}
+
+function findProductCategoryReportDateForMonth(
+  reportDates: string[],
+  year: number,
+  month: number,
+  selectedDate: string,
+): string | null {
+  const prefix = productCategoryReportMonthPrefix(year, month);
+  if (selectedDate.startsWith(prefix)) {
+    return selectedDate;
+  }
+  return reportDates.find((reportDate) => reportDate.startsWith(prefix)) ?? null;
+}
+
+function pushUniqueProductCategoryTrendPoint(
+  points: ProductCategoryTrendReportPoint[],
+  point: ProductCategoryTrendReportPoint,
+): void {
+  if (points.some((existing) => existing.reportDate === point.reportDate && existing.view === point.view)) {
+    return;
+  }
+  points.push(point);
 }
 
 export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
@@ -90,44 +132,80 @@ export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
 
 const YUAN_PER_YI = 100_000_000;
 
-type ProductCategoryDerivedAnalysisTone = "neutral" | "positive" | "negative";
-
-export type ProductCategoryDerivedAnalysisItem = {
-  id:
-    | "contribution"
-    | "interestEarningTrend"
-    | "spreadLevel"
-    | "interbankLendingTrend"
-    | "tplAssetTrend"
-    | "driver"
-    | "ftp"
-    | "review";
-  title: string;
-  metric: string;
-  detail: string;
-  tone: ProductCategoryDerivedAnalysisTone;
-  points?: ProductCategoryDerivedAnalysisPoint[];
-};
-
-export type ProductCategoryDerivedAnalysisPoint = {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: ProductCategoryDerivedAnalysisTone;
-};
-
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
+  label?: string;
+  view?: string;
   rows: ProductCategoryPnlRow[];
   assetTotal?: ProductCategoryPnlRow | null;
   liabilityTotal?: ProductCategoryPnlRow | null;
   grandTotal?: ProductCategoryPnlRow | null;
 };
 
-export type ProductCategoryContributionViewTotals = {
-  assetTotal?: ProductCategoryPnlRow | null;
-  liabilityTotal?: ProductCategoryPnlRow | null;
-  grandTotal?: ProductCategoryPnlRow | null;
+export type ProductCategoryTrendReportPoint = {
+  reportDate: string;
+  view: string;
+  label: string;
+};
+
+export type ProductCategoryDiagnosticsMatrixRow = {
+  categoryId: string;
+  categoryLabel: string;
+  sideLabel: string;
+  scaleLabel: string;
+  scaleMissing: boolean;
+  businessNetIncomeLabel: string;
+  businessNetIncomeTone: "neutral" | "positive" | "negative";
+  yieldLabel: string;
+  yieldMissing: boolean;
+  cnyNetLabel: string;
+  cnyNetTone: "neutral" | "positive" | "negative";
+  foreignNetLabel: string;
+  foreignNetTone: "neutral" | "positive" | "negative";
+  driverHint: string;
+};
+
+export type ProductCategoryNegativeContributionRow = {
+  categoryId: string;
+  categoryLabel: string;
+  sideLabel: string;
+  lossLabel: string;
+  scaleLabel: string;
+  scaleMissing: boolean;
+  yieldLabel: string;
+  yieldMissing: boolean;
+  driverHint: string;
+};
+
+type ProductCategorySpreadMovementAttributionBase = {
+  currentLabel: string;
+  priorLabel: string;
+  currentAssetYieldLabel: string;
+  currentLiabilityYieldLabel: string;
+  currentSpreadLabel: string;
+  priorSpreadLabel: string;
+  assetYieldDeltaLabel: string;
+  liabilityYieldDeltaLabel: string;
+  spreadDeltaLabel: string;
+  driverHint: string;
+};
+
+export type ProductCategorySpreadMovementAttribution =
+  | ({
+      state: "ready";
+    } & ProductCategorySpreadMovementAttributionBase)
+  | ({
+      state: "incomplete";
+      reason: string;
+    } & ProductCategorySpreadMovementAttributionBase);
+
+export type ProductCategoryDiagnosticsSurface = {
+  headlineTotalLabel: string | null;
+  matrixRows: ProductCategoryDiagnosticsMatrixRow[];
+  matrixEmptyCopy: string | null;
+  negativeWatchlistRows: ProductCategoryNegativeContributionRow[];
+  negativeWatchlistEmptyCopy: string | null;
+  spreadAttribution: ProductCategorySpreadMovementAttribution;
 };
 
 export type ProductCategoryTplScaleYieldChart = {
@@ -243,33 +321,12 @@ function percentNumber(value: DecimalLike | null | undefined): number | null {
   return Number(parsed.toFixed(2));
 }
 
-function toneNameForValue(value: DecimalLike | null | undefined): ProductCategoryDerivedAnalysisTone {
+function toneNameForValue(value: DecimalLike | null | undefined): "neutral" | "positive" | "negative" {
   const parsed = decimalNumber(value);
   if (parsed === null || parsed === 0) {
     return "neutral";
   }
   return parsed > 0 ? "positive" : "negative";
-}
-
-function rateLabel(value: DecimalLike | null | undefined): string {
-  const parsed = decimalNumber(value);
-  if (parsed === null) {
-    return "-";
-  }
-  return `${parsed.toFixed(2).replace(/\.?0+$/, "")}%`;
-}
-
-function signedYiDeltaLabel(current: DecimalLike | null | undefined, previous: DecimalLike | null | undefined): string {
-  const currentNumber = decimalNumber(current);
-  const previousNumber = decimalNumber(previous);
-  if (currentNumber === null || previousNumber === null) {
-    return "-";
-  }
-  const deltaYi = (currentNumber - previousNumber) / YUAN_PER_YI;
-  if (deltaYi === 0) {
-    return "0.00 亿元";
-  }
-  return `${deltaYi > 0 ? "+" : "-"}${Math.abs(deltaYi).toFixed(2)} 亿元`;
 }
 
 function signedBpLabel(value: number | null): string {
@@ -307,23 +364,10 @@ function buildSnapshotChart<T>(
     if (point === null) {
       return;
     }
-    labels.push(formatProductCategoryReportMonthLabel(snapshot.reportDate));
+    labels.push(snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate));
     points.push(point);
   });
   return { labels, points };
-}
-
-function firstPriorRow(
-  snapshots: ProductCategoryTrendSnapshot[],
-  categoryId: string,
-): ProductCategoryPnlRow | undefined {
-  for (const snapshot of snapshots.slice(1)) {
-    const row = findProductCategoryRow(snapshot.rows, categoryId);
-    if (row) {
-      return row;
-    }
-  }
-  return undefined;
 }
 
 function spreadBp(snapshot: ProductCategoryTrendSnapshot): number | null {
@@ -342,267 +386,375 @@ function spreadDeltaBp(current: number | null, previous: number | null): number 
   return current - previous;
 }
 
-function buildRowTrendAnalysisItem(input: {
-  id: ProductCategoryDerivedAnalysisItem["id"];
-  title: string;
-  categoryId: string;
-  snapshots: ProductCategoryTrendSnapshot[];
-  metric: (row: ProductCategoryPnlRow) => string;
-  detail: (row: ProductCategoryPnlRow, previousRow: ProductCategoryPnlRow | undefined) => string;
-  point: (row: ProductCategoryPnlRow) => string;
-}): ProductCategoryDerivedAnalysisItem | null {
-  const currentSnapshot = input.snapshots[0];
-  if (!currentSnapshot) {
+function productCategorySideLabel(side: string): string {
+  if (side === "asset") {
+    return "\u8d44\u4ea7";
+  }
+  if (side === "liability") {
+    return "\u8d1f\u503a";
+  }
+  return side || "-";
+}
+
+function formatProductCategoryDiagnosticMoneyLabel(
+  row: Pick<ProductCategoryPnlRow, "side">,
+  value: DecimalLike | null | undefined,
+): string {
+  const display = formatProductCategoryRowDisplayValue(row, value);
+  return display === "-" ? "\u7f3a\u5931" : `${display} \u4ebf\u5143`;
+}
+
+function formatProductCategoryDiagnosticYieldLabel(
+  value: DecimalLike | null | undefined,
+): { label: string; missing: boolean } {
+  const display = formatProductCategoryYieldValue(value);
+  if (display === "-") {
+    return { label: "\u6536\u76ca\u7387\u7f3a\u5931", missing: true };
+  }
+  return { label: `${display}%`, missing: false };
+}
+
+function dominantNetHint(label: string, value: number | null): string | null {
+  if (value === null || value === 0) {
     return null;
   }
-  const currentRow = findProductCategoryRow(currentSnapshot.rows, input.categoryId);
-  if (!currentRow) {
-    return null;
+  return value > 0
+    ? `${label}\u51c0\u6536\u5165\u4e3b\u5bfc`
+    : `${label}\u51c0\u6536\u5165\u627f\u538b`;
+}
+
+function buildProductCategoryDriverHint(row: ProductCategoryPnlRow): string {
+  const hints: string[] = [];
+  const cnyNet = decimalNumber(row.cny_net);
+  const foreignNet = decimalNumber(row.foreign_net);
+  const cnyCash = decimalNumber(row.cny_cash);
+  const foreignCash = decimalNumber(row.foreign_cash);
+  const cnyFtp = decimalNumber(row.cny_ftp);
+  const foreignFtp = decimalNumber(row.foreign_ftp);
+
+  if (cnyNet === null && foreignNet === null) {
+    hints.push("\u51c0\u6536\u5165\u62c6\u5206\u7f3a\u5931");
+  } else {
+    const dominantCurrency =
+      Math.abs(cnyNet ?? 0) >= Math.abs(foreignNet ?? 0)
+        ? dominantNetHint("\u4eba\u6c11\u5e01", cnyNet)
+        : dominantNetHint("\u5916\u5e01", foreignNet);
+    if (dominantCurrency) {
+      hints.push(dominantCurrency);
+    }
   }
-  const previousRow = firstPriorRow(input.snapshots, input.categoryId);
+
+  const currencyPressureHints: string[] = [];
+  if (cnyNet !== null && cnyNet < 0) {
+    currencyPressureHints.push("\u4eba\u6c11\u5e01\u51c0\u6536\u5165\u4e3a\u8d1f");
+  } else if (
+    cnyCash !== null &&
+    cnyFtp !== null &&
+    Math.abs(cnyFtp) > Math.abs(cnyCash) &&
+    Math.abs(cnyFtp) > 0
+  ) {
+    currencyPressureHints.push("\u4eba\u6c11\u5e01FTP\u9ad8\u4e8e\u73b0\u91d1");
+  }
+
+  if (foreignNet !== null && foreignNet < 0) {
+    currencyPressureHints.push("\u5916\u5e01\u51c0\u6536\u5165\u4e3a\u8d1f");
+  } else if (
+    foreignCash !== null &&
+    foreignFtp !== null &&
+    Math.abs(foreignFtp) > Math.abs(foreignCash) &&
+    Math.abs(foreignFtp) > 0
+  ) {
+    currencyPressureHints.push("\u5916\u5e01FTP\u9ad8\u4e8e\u73b0\u91d1");
+  }
+
+  if (currencyPressureHints.length > 0) {
+    hints.push(currencyPressureHints.join("\uff0c"));
+  }
+
+  if (hints.length === 0) {
+    return "\u73b0\u91d1\u3001FTP\u3001\u51c0\u6536\u5165\u62c6\u5206\u5e73\u7a33";
+  }
+  return hints.slice(0, 2).join("\uff1b");
+}
+
+function buildProductCategoryDiagnosticsMatrixRow(
+  row: ProductCategoryPnlRow,
+): ProductCategoryDiagnosticsMatrixRow {
+  const scaleDisplay = formatProductCategoryRowDisplayValue(row, row.cnx_scale);
+  const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(row.weighted_yield);
   return {
-    id: input.id,
-    title: input.title,
-    metric: input.metric(currentRow),
-    detail: input.detail(currentRow, previousRow),
-    tone: toneNameForValue(currentRow.business_net_income),
-    points: input.snapshots
-      .flatMap((snapshot): ProductCategoryDerivedAnalysisPoint[] => {
-        const row = findProductCategoryRow(snapshot.rows, input.categoryId);
-        if (!row) {
-          return [];
-        }
-        return [
-          {
-            label: formatProductCategoryReportMonthLabel(snapshot.reportDate),
-            value: input.point(row),
-            tone: toneNameForValue(row.business_net_income),
-          },
-        ];
-      }),
+    categoryId: row.category_id,
+    categoryLabel: row.category_name,
+    sideLabel: productCategorySideLabel(row.side),
+    scaleLabel: scaleDisplay === "-" ? "\u89c4\u6a21\u7f3a\u5931" : `${scaleDisplay} \u4ebf\u5143`,
+    scaleMissing: scaleDisplay === "-",
+    businessNetIncomeLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.business_net_income),
+    businessNetIncomeTone: toneNameForValue(row.business_net_income),
+    yieldLabel: yieldDisplay.label,
+    yieldMissing: yieldDisplay.missing,
+    cnyNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.cny_net),
+    cnyNetTone: toneNameForValue(row.cny_net),
+    foreignNetLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.foreign_net),
+    foreignNetTone: toneNameForValue(row.foreign_net),
+    driverHint: buildProductCategoryDriverHint(row),
   };
 }
 
-function buildSpreadLevelAnalysisItem(
-  snapshots: ProductCategoryTrendSnapshot[],
-): ProductCategoryDerivedAnalysisItem | null {
-  const currentSnapshot = snapshots[0];
-  if (!currentSnapshot) {
-    return null;
+function buildSpreadMovementDriverHint(
+  assetYieldDelta: number | null,
+  liabilityYieldDelta: number | null,
+  spreadDelta: number | null,
+): string {
+  if (assetYieldDelta === null || liabilityYieldDelta === null || spreadDelta === null) {
+    return "\u7f3a\u5c11\u5b8c\u6574\u6536\u76ca\u7387\u5bf9\u6bd4";
   }
-  const currentSpread = spreadBp(currentSnapshot);
-  if (currentSpread === null) {
-    return null;
+  if (spreadDelta === 0) {
+    return "\u8d44\u4ea7\u4e0e\u8d1f\u503a\u6536\u76ca\u7387\u53d8\u52a8\u57fa\u672c\u5bf9\u51b2\uff0c\u5229\u5dee\u6301\u5e73";
   }
-  const priorSnapshot = snapshots.slice(1).find((snapshot) => spreadBp(snapshot) !== null);
+
+  const assetAbs = Math.abs(assetYieldDelta);
+  const liabilityAbs = Math.abs(liabilityYieldDelta);
+  if (spreadDelta > 0) {
+    if (assetAbs >= liabilityAbs) {
+      return assetYieldDelta >= 0
+        ? "\u8d44\u4ea7\u6536\u76ca\u7387\u4e0a\u884c\u4e3b\u5bfc\u5229\u5dee\u8d70\u9614"
+        : "\u8d44\u4ea7\u6536\u76ca\u7387\u56de\u843d\u8f83\u7f13\uff0c\u5229\u5dee\u4ecd\u8d70\u9614";
+    }
+    return liabilityYieldDelta <= 0
+      ? "\u8d1f\u503a\u6536\u76ca\u7387\u4e0b\u884c\u4e3b\u5bfc\u5229\u5dee\u8d70\u9614"
+      : "\u8d1f\u503a\u6536\u76ca\u7387\u4e0a\u884c\u8f83\u7f13\uff0c\u5229\u5dee\u4ecd\u8d70\u9614";
+  }
+
+  if (assetAbs >= liabilityAbs) {
+    return assetYieldDelta <= 0
+      ? "\u8d44\u4ea7\u6536\u76ca\u7387\u4e0b\u884c\u4e3b\u5bfc\u5229\u5dee\u6536\u7a84"
+      : "\u8d44\u4ea7\u6536\u76ca\u7387\u4e0a\u884c\u4e0d\u8db3\uff0c\u5229\u5dee\u6536\u7a84";
+  }
+  return liabilityYieldDelta >= 0
+    ? "\u8d1f\u503a\u6536\u76ca\u7387\u4e0a\u884c\u4e3b\u5bfc\u5229\u5dee\u6536\u7a84"
+    : "\u8d1f\u503a\u6536\u76ca\u7387\u4e0b\u884c\u4e0d\u8db3\uff0c\u5229\u5dee\u6536\u7a84";
+}
+
+function buildProductCategorySpreadMovementAttribution(input: {
+  trendSnapshots?: ProductCategoryTrendSnapshot[];
+  assetTotal?: ProductCategoryPnlRow | null;
+  liabilityTotal?: ProductCategoryPnlRow | null;
+}): ProductCategorySpreadMovementAttribution {
+  const currentSnapshot =
+    input.trendSnapshots?.[0] ??
+    (input.assetTotal || input.liabilityTotal
+      ? {
+          reportDate: input.assetTotal?.report_date ?? input.liabilityTotal?.report_date ?? "",
+          rows: [],
+          assetTotal: input.assetTotal,
+          liabilityTotal: input.liabilityTotal,
+        }
+      : null);
+  const priorSnapshot =
+    input.trendSnapshots?.slice(1).find((snapshot) => spreadBp(snapshot) !== null) ?? null;
+
+  const currentLabel = currentSnapshot?.label ?? formatProductCategoryReportMonthLabel(currentSnapshot?.reportDate ?? "");
+  const priorLabel = priorSnapshot?.label ?? formatProductCategoryReportMonthLabel(priorSnapshot?.reportDate ?? "");
+  const currentAssetYield = decimalNumber(currentSnapshot?.assetTotal?.weighted_yield);
+  const currentLiabilityYield = decimalNumber(currentSnapshot?.liabilityTotal?.weighted_yield);
+  const currentSpread = currentSnapshot ? spreadBp(currentSnapshot) : null;
+  const priorAssetYield = decimalNumber(priorSnapshot?.assetTotal?.weighted_yield);
+  const priorLiabilityYield = decimalNumber(priorSnapshot?.liabilityTotal?.weighted_yield);
   const priorSpread = priorSnapshot ? spreadBp(priorSnapshot) : null;
-  const delta = spreadDeltaBp(currentSpread, priorSpread);
-  const assetYield = rateLabel(currentSnapshot.assetTotal?.weighted_yield);
-  const liabilityYield = rateLabel(currentSnapshot.liabilityTotal?.weighted_yield);
+  const assetYieldDelta =
+    currentAssetYield === null || priorAssetYield === null ? null : (currentAssetYield - priorAssetYield) * 100;
+  const liabilityYieldDelta =
+    currentLiabilityYield === null || priorLiabilityYield === null
+      ? null
+      : (currentLiabilityYield - priorLiabilityYield) * 100;
+  const spreadDelta = spreadDeltaBp(currentSpread, priorSpread);
+
+  const base: ProductCategorySpreadMovementAttributionBase = {
+    currentLabel: currentLabel || "\u5f53\u524d\u671f",
+    priorLabel: priorLabel || "\u4e0a\u671f",
+    currentAssetYieldLabel: currentAssetYield === null ? "\u7f3a\u5931" : `${currentAssetYield.toFixed(2)}%`,
+    currentLiabilityYieldLabel:
+      currentLiabilityYield === null ? "\u7f3a\u5931" : `${currentLiabilityYield.toFixed(2)}%`,
+    currentSpreadLabel: bpLabel(currentSpread),
+    priorSpreadLabel: bpLabel(priorSpread),
+    assetYieldDeltaLabel: signedBpLabel(assetYieldDelta),
+    liabilityYieldDeltaLabel: signedBpLabel(liabilityYieldDelta),
+    spreadDeltaLabel: signedBpLabel(spreadDelta),
+    driverHint: buildSpreadMovementDriverHint(assetYieldDelta, liabilityYieldDelta, spreadDelta),
+  };
+
+  if (!currentSnapshot) {
+    return {
+      state: "incomplete",
+      reason: "\u5f53\u524d\u5feb\u7167\u7f3a\u5931\uff0c\u65e0\u6cd5\u6784\u5efa\u5229\u5dee\u5f52\u56e0\u3002",
+      ...base,
+    };
+  }
+  if (currentAssetYield === null || currentLiabilityYield === null || currentSpread === null) {
+    return {
+      state: "incomplete",
+      reason:
+        "\u5f53\u524d\u8d44\u4ea7\u7aef\u6216\u8d1f\u503a\u7aef\u6536\u76ca\u7387\u7f3a\u5931\uff0c\u65e0\u6cd5\u8ba1\u7b97\u5f53\u671f\u5229\u5dee\u3002",
+      ...base,
+    };
+  }
+  if (!priorSnapshot) {
+    return {
+      state: "incomplete",
+      reason:
+        "\u7f3a\u5c11\u53ef\u6bd4\u4e0a\u671f\u8d8b\u52bf\u5feb\u7167\uff0c\u65e0\u6cd5\u5b8c\u6210\u5229\u5dee\u53d8\u52a8\u5f52\u56e0\u3002",
+      ...base,
+    };
+  }
+
   return {
-    id: "spreadLevel",
-    title: "利差水平分析",
-    metric: `资产负债利差 ${bpLabel(currentSpread)}`,
-    detail: `资产端加权收益率 ${assetYield} / 负债端加权收益率 ${liabilityYield}，较${priorSnapshot ? formatProductCategoryReportMonthLabel(priorSnapshot.reportDate) : "上期"} ${signedBpLabel(delta)}。`,
-    tone: currentSpread > 0 ? "positive" : currentSpread < 0 ? "negative" : "neutral",
-    points: snapshots
-      .flatMap((snapshot): ProductCategoryDerivedAnalysisPoint[] => {
-        const value = spreadBp(snapshot);
-        if (value === null) {
-          return [];
-        }
-        return [
-          {
-            label: formatProductCategoryReportMonthLabel(snapshot.reportDate),
-            value: bpLabel(value),
-            detail: `资产 ${rateLabel(snapshot.assetTotal?.weighted_yield)} / 负债 ${rateLabel(snapshot.liabilityTotal?.weighted_yield)}`,
-            tone: value > 0 ? "positive" : value < 0 ? "negative" : "neutral",
-          },
-        ];
-      }),
+    state: "ready",
+    ...base,
   };
 }
 
-function maxByAbsoluteValue(
-  rows: ProductCategoryPnlRow[],
-  selector: (row: ProductCategoryPnlRow) => DecimalLike | null | undefined,
-): ProductCategoryPnlRow | null {
-  let selected: ProductCategoryPnlRow | null = null;
-  let selectedAbs = -1;
-  rows.forEach((row) => {
-    const parsed = decimalNumber(selector(row));
-    if (parsed === null) {
-      return;
-    }
-    const abs = Math.abs(parsed);
-    if (abs > selectedAbs) {
-      selected = row;
-      selectedAbs = abs;
-    }
-  });
-  return selected;
-}
-
-export function buildProductCategoryDerivedAnalysisPlan(input: {
+export function buildProductCategoryDiagnosticsSurface(input: {
   rows: ProductCategoryPnlRow[];
+  trendSnapshots?: ProductCategoryTrendSnapshot[];
   assetTotal?: ProductCategoryPnlRow | null;
   liabilityTotal?: ProductCategoryPnlRow | null;
   grandTotal?: ProductCategoryPnlRow | null;
-  currentRate?: DecimalLike | null;
-  baselineRate?: DecimalLike | null;
-  trendSnapshots?: ProductCategoryTrendSnapshot[];
-  contributionViews?: {
-    monthly?: ProductCategoryContributionViewTotals;
-    ytd?: ProductCategoryContributionViewTotals;
-  };
-}): ProductCategoryDerivedAnalysisItem[] {
+}): ProductCategoryDiagnosticsSurface {
   const productRows = input.rows.filter((row) => !row.is_total && row.category_id !== "grand_total");
-  const topIncomeRow = maxByAbsoluteValue(productRows, (row) => row.business_net_income);
-  const largestScaleRow = maxByAbsoluteValue(productRows, (row) => row.cnx_scale);
-  const negativeRows = productRows.filter((row) => {
-    const income = decimalNumber(row.business_net_income);
-    return income !== null && income < 0;
-  });
-  const trendSnapshots = input.trendSnapshots?.length
-    ? input.trendSnapshots
-    : [
-        {
-          reportDate: input.grandTotal?.report_date ?? input.assetTotal?.report_date ?? "",
-          rows: input.rows,
-          assetTotal: input.assetTotal,
-          liabilityTotal: input.liabilityTotal,
-          grandTotal: input.grandTotal,
-        },
-      ].filter((snapshot) => snapshot.reportDate);
-
-  const items: ProductCategoryDerivedAnalysisItem[] = [];
-  const monthlyContribution = input.contributionViews?.monthly;
-  const ytdContribution = input.contributionViews?.ytd;
-
-  if (input.grandTotal || input.assetTotal || input.liabilityTotal) {
-    const hasMonthlyOrYtdContribution =
-      monthlyContribution?.grandTotal || monthlyContribution?.assetTotal || ytdContribution?.grandTotal || ytdContribution?.assetTotal;
-    items.push({
-      id: "contribution",
-      title: "经营贡献拆解",
-      metric: hasMonthlyOrYtdContribution
-        ? `月度损益 ${formatProductCategoryValue(monthlyContribution?.grandTotal?.business_net_income)} 亿元 / 累计损益 ${formatProductCategoryValue(ytdContribution?.grandTotal?.business_net_income)} 亿元`
-        : `总收益 ${formatProductCategoryValue(input.grandTotal?.business_net_income)} 亿元`,
-      detail: hasMonthlyOrYtdContribution
-        ? `月度：资产端 ${formatProductCategoryValue(monthlyContribution?.assetTotal?.business_net_income)} 亿元 / 负债端 ${formatProductCategoryValue(monthlyContribution?.liabilityTotal?.business_net_income)} 亿元；累计：资产端 ${formatProductCategoryValue(ytdContribution?.assetTotal?.business_net_income)} 亿元 / 负债端 ${formatProductCategoryValue(ytdContribution?.liabilityTotal?.business_net_income)} 亿元。`
-        : `资产端 ${formatProductCategoryValue(input.assetTotal?.business_net_income)} 亿元 / 负债端 ${formatProductCategoryValue(input.liabilityTotal?.business_net_income)} 亿元，先用总计行确认收益来源。`,
-      tone: toneNameForValue(input.grandTotal?.business_net_income),
+  const matrixRows = productRows.map(buildProductCategoryDiagnosticsMatrixRow);
+  const negativeWatchlistRows = productRows
+    .filter((row) => {
+      const businessNetIncome = decimalNumber(row.business_net_income);
+      return businessNetIncome !== null && businessNetIncome < 0;
+    })
+    .sort((left, right) => Number(left.business_net_income) - Number(right.business_net_income))
+    .map((row) => {
+      const scaleDisplay = formatProductCategoryRowDisplayValue(row, row.cnx_scale);
+      const yieldDisplay = formatProductCategoryDiagnosticYieldLabel(row.weighted_yield);
+      return {
+        categoryId: row.category_id,
+        categoryLabel: row.category_name,
+        sideLabel: productCategorySideLabel(row.side),
+        lossLabel: formatProductCategoryDiagnosticMoneyLabel(row, row.business_net_income),
+        scaleLabel: scaleDisplay === "-" ? "\u89c4\u6a21\u7f3a\u5931" : `${scaleDisplay} \u4ebf\u5143`,
+        scaleMissing: scaleDisplay === "-",
+        yieldLabel: yieldDisplay.label,
+        yieldMissing: yieldDisplay.missing,
+        driverHint: buildProductCategoryDriverHint(row),
+      };
     });
-  }
 
-  const interestEarningTrend = buildRowTrendAnalysisItem({
-    id: "interestEarningTrend",
-    title: "生息资产走势分析",
-    categoryId: "interest_earning_assets",
-    snapshots: trendSnapshots,
-    metric: (row) =>
-      `日均 ${formatProductCategoryRowDisplayValue(row, row.cnx_scale)} 亿元 / 净收入 ${formatProductCategoryRowDisplayValue(row, row.business_net_income)} 亿元`,
-    detail: (row, previousRow) =>
-      `较${previousRow ? formatProductCategoryReportMonthLabel(previousRow.report_date) : "上期"}日均 ${signedYiDeltaLabel(row.cnx_scale, previousRow?.cnx_scale)}；加权收益率 ${formatProductCategoryYieldValue(row.weighted_yield)}%。`,
-    point: (row) =>
-      `${formatProductCategoryRowDisplayValue(row, row.cnx_scale)}亿 · 收益率 ${formatProductCategoryYieldValue(row.weighted_yield)}%`,
-  });
-  if (interestEarningTrend) {
-    items.push(interestEarningTrend);
-  }
-
-  const spreadLevel = buildSpreadLevelAnalysisItem(trendSnapshots);
-  if (spreadLevel) {
-    items.push(spreadLevel);
-  }
-
-  const interbankTrend = buildRowTrendAnalysisItem({
-    id: "interbankLendingTrend",
-    title: "拆放同业走势分析",
-    categoryId: "interbank_lending_assets",
-    snapshots: trendSnapshots,
-    metric: (row) =>
-      `日均 ${formatProductCategoryRowDisplayValue(row, row.cnx_scale)} 亿元 / 营业净收入 ${formatProductCategoryRowDisplayValue(row, row.business_net_income)} 亿元`,
-    detail: (row, previousRow) =>
-      `较${previousRow ? formatProductCategoryReportMonthLabel(previousRow.report_date) : "上期"}日均 ${signedYiDeltaLabel(row.cnx_scale, previousRow?.cnx_scale)}；人民币日均 ${formatProductCategoryRowDisplayValue(row, row.cny_scale)} 亿元，外币日均 ${formatProductCategoryRowDisplayValue(row, row.foreign_scale)} 亿元。`,
-    point: (row) =>
-      `${formatProductCategoryRowDisplayValue(row, row.cnx_scale)}亿 · 净收入 ${formatProductCategoryRowDisplayValue(row, row.business_net_income)}亿`,
-  });
-  if (interbankTrend) {
-    items.push(interbankTrend);
-  }
-
-  const tplTrend = buildRowTrendAnalysisItem({
-    id: "tplAssetTrend",
-    title: "TPL资产规模/收益率走势",
-    categoryId: "bond_tpl",
-    snapshots: trendSnapshots,
-    metric: (row) =>
-      `日均 ${formatProductCategoryRowDisplayValue(row, row.cnx_scale)} 亿元 / 收益率 ${formatProductCategoryYieldValue(row.weighted_yield)}%`,
-    detail: (row, previousRow) =>
-      `较${previousRow ? formatProductCategoryReportMonthLabel(previousRow.report_date) : "上期"}日均 ${signedYiDeltaLabel(row.cnx_scale, previousRow?.cnx_scale)}；经营净收入 ${formatProductCategoryRowDisplayValue(row, row.business_net_income)} 亿元。`,
-    point: (row) =>
-      `${formatProductCategoryRowDisplayValue(row, row.cnx_scale)}亿 · 收益率 ${formatProductCategoryYieldValue(row.weighted_yield)}%`,
-  });
-  if (tplTrend) {
-    items.push(tplTrend);
-  }
-
-  if (topIncomeRow) {
-    items.push({
-      id: "driver",
-      title: "主驱动产品行",
-      metric: `${topIncomeRow.category_name} ${formatProductCategoryRowDisplayValue(topIncomeRow, topIncomeRow.business_net_income)} 亿元`,
-      detail: "按经营净收入绝对值定位首要驱动，再展开人民币净收入、外币净收入和FTP拆分。",
-      tone: toneNameForValue(topIncomeRow.business_net_income),
-    });
-  }
-
-  items.push({
-    id: "ftp",
-    title: "FTP情景敏感性",
-    metric: `当前 ${rateLabel(input.currentRate)} / 基准 ${rateLabel(input.baselineRate)}`,
-    detail: "围绕 2.0%、1.75%、1.6%、1.5% 四档FTP复看总收益、营业净收入和加权收益率变化。",
-    tone: "neutral",
-  });
-
-  if (largestScaleRow || productRows.length > 0) {
-    const reviewNames = negativeRows.slice(0, 3).map((row) => row.category_name).join("、") || "暂无负收益产品行";
-    items.push({
-      id: "review",
-      title: "规模与异常复核",
-      metric: largestScaleRow
-        ? `${largestScaleRow.category_name} 日均 ${formatProductCategoryRowDisplayValue(largestScaleRow, largestScaleRow.cnx_scale)} 亿元`
-        : `负收益 ${negativeRows.length} 行`,
-      detail: `最大日均规模与负收益行联动复核；当前负收益 ${negativeRows.length} 行：${reviewNames}。`,
-      tone: negativeRows.length > 0 ? "negative" : "neutral",
-    });
-  }
-
-  return items;
+  return {
+    headlineTotalLabel: input.grandTotal
+      ? `${formatProductCategoryValue(input.grandTotal.business_net_income)} \u4ebf\u5143`
+      : null,
+    matrixRows,
+    matrixEmptyCopy:
+      matrixRows.length === 0 ? "\u5f53\u524d payload \u672a\u8fd4\u56de\u53ef\u8bca\u65ad\u7684\u4ea7\u54c1\u884c\u3002" : null,
+    negativeWatchlistRows,
+    negativeWatchlistEmptyCopy:
+      matrixRows.length === 0
+        ? "\u5f53\u524d payload \u672a\u8fd4\u56de\u53ef\u8bca\u65ad\u7684\u4ea7\u54c1\u884c\u3002"
+        : negativeWatchlistRows.length === 0
+          ? "\u5f53\u524d\u6240\u9009\u53e3\u5f84\u4e0b\u6682\u65e0 business_net_income \u4e3a\u8d1f\u7684\u4ea7\u54c1\u884c\u3002"
+          : null,
+    spreadAttribution: buildProductCategorySpreadMovementAttribution({
+      trendSnapshots: input.trendSnapshots,
+      assetTotal: input.assetTotal,
+      liabilityTotal: input.liabilityTotal,
+    }),
+  };
 }
 
 export function selectProductCategoryTrendReportDates(
   selectedDate: string,
   reportDates: string[] | undefined,
-  limit = 4,
+  limit = 8,
 ): string[] {
+  return selectProductCategoryTrendReportPoints(selectedDate, reportDates, "monthly", limit).map(
+    (point) => point.reportDate,
+  );
+}
+
+export function selectProductCategoryTrendReportPoints(
+  selectedDate: string,
+  reportDates: string[] | undefined,
+  monthlyView = "monthly",
+  limit = 8,
+): ProductCategoryTrendReportPoint[] {
   if (!selectedDate) {
     return [];
   }
-  const dates = reportDates?.length ? reportDates : [selectedDate];
-  const selectedIndex = dates.indexOf(selectedDate);
-  const ordered = selectedIndex >= 0
-    ? dates.slice(selectedIndex)
-    : [selectedDate, ...dates.filter((date) => date !== selectedDate)];
-  return Array.from(new Set(ordered)).slice(0, limit);
+  const dates = Array.from(new Set([selectedDate, ...(reportDates ?? [])].filter(Boolean)));
+  const selected = parseProductCategoryReportDate(selectedDate);
+  if (!selected) {
+    return dates
+      .slice(0, limit)
+      .map((reportDate) => ({
+        reportDate,
+        view: monthlyView,
+        label: formatProductCategoryReportMonthLabel(reportDate),
+      }));
+  }
+
+  const chronologicalPoints: ProductCategoryTrendReportPoint[] = [];
+  const previousYear = selected.year - 1;
+  ([1, 2, 3] as const).forEach((quarter) => {
+    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, quarter * 3, selectedDate);
+    if (!reportDate) {
+      return;
+    }
+    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
+      reportDate,
+      view: monthlyView,
+      label: `${previousYear}\u5e74Q${quarter}`,
+    });
+  });
+
+  ([11, 12] as const).forEach((month) => {
+    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, month, selectedDate);
+    if (!reportDate) {
+      return;
+    }
+    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
+      reportDate,
+      view: monthlyView,
+      label: formatProductCategoryReportMonthLabel(reportDate),
+    });
+  });
+
+  for (let month = 1; month <= selected.month; month += 1) {
+    const reportDate = findProductCategoryReportDateForMonth(dates, selected.year, month, selectedDate);
+    if (!reportDate) {
+      continue;
+    }
+    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
+      reportDate,
+      view: monthlyView,
+      label: formatProductCategoryReportMonthLabel(reportDate),
+    });
+  }
+
+  if (chronologicalPoints.length === 0) {
+    return dates
+      .slice(0, limit)
+      .map((reportDate) => ({
+        reportDate,
+        view: monthlyView,
+        label: formatProductCategoryReportMonthLabel(reportDate),
+      }));
+  }
+  return chronologicalPoints.slice(-limit).reverse();
 }
 
 export function buildProductCategoryTrendSnapshot(
   payload: ProductCategoryPnlPayload,
+  label?: string,
 ): ProductCategoryTrendSnapshot {
   return {
     reportDate: payload.report_date,
+    label,
+    view: payload.view,
     rows: selectProductCategoryDetailRows(payload.rows, undefined),
     assetTotal: payload.asset_total,
     liabilityTotal: payload.liability_total,
@@ -772,7 +924,7 @@ export function buildLedgerPnlHrefForReportDate(reportDate: string): string {
 
 /** Page-visible copy: standalone `as_of_date` is a known outward contract gap (see truth contract §10). */
 export const PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY =
-  "归属日期：无独立外显字段（显式合同缺口；勿用本页报告日或生成时间代替）。 ";
+  "归属日期：无独立外显字段（显式合同缺口；勿用本页报告日或生成时间代替）。";
 
 export type ProductCategoryGovernanceNotice = {
   id: "fallback_mode" | "vendor_status" | "quality_flag";
