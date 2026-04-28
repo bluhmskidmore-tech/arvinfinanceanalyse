@@ -351,16 +351,21 @@ export function WorkbenchShell() {
   const isBalanceAnalysisCompactChrome = currentSection.key === "balance-analysis";
   const isBalanceMovementAnalysisCompactChrome =
     currentSection.key === "balance-movement-analysis";
+  /** 负债结构分析页以页面正文为主，不显示组合导读 Hero / Suggested Flow 占位。 */
+  const isLiabilityAnalyticsCompactChrome = currentSection.key === "liability-analytics";
   /** 与 bond-analysis 类似：去掉 main 外圈大卡片感，让页面自行铺色。跨资产仍保留组内子导航（市场数据 / 跨资产 / 新闻）。 */
   const isCrossAssetImmersiveMain = currentSection.key === "cross-asset";
   const isPortfolioPageOwnedChrome =
-    isBalanceAnalysisCompactChrome || isBalanceMovementAnalysisCompactChrome;
+    isBalanceAnalysisCompactChrome ||
+    isBalanceMovementAnalysisCompactChrome ||
+    isLiabilityAnalyticsCompactChrome;
   const isMinimalMainChrome =
     isBondAnalysisMinimalShell || isCrossAssetImmersiveMain || isPortfolioPageOwnedChrome;
   const showWorkspaceHeroCard =
     !isBondAnalysisMinimalShell &&
     !isCrossAssetImmersiveMain &&
     !isBalanceMovementAnalysisCompactChrome &&
+    !isLiabilityAnalyticsCompactChrome &&
     (isPortfolioGroup || currentSection.key !== "dashboard");
   const currentGroupSectionCount = currentGroupSections.length;
   const explicitReportDate = searchParams.get("report_date")?.trim() ?? "";

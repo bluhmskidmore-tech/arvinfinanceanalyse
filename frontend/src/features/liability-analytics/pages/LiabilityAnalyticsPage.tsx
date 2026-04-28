@@ -136,12 +136,13 @@ export default function LiabilityAnalyticsPage() {
     return selectedReportDate || datesQuery.data?.result.report_dates[0] || "";
   }, [datesQuery.data?.result.report_dates, explicitReportDate, selectedReportDate]);
 
+  /** 与资产负债「资产端」一致：只含 ZQTZ/TYW 资产侧市值；发行类在事实表中为负债，不包含在本项。 */
   const balanceOverviewQuery = useQuery({
-    queryKey: ["liability", "balance-overview", client.mode, reportDate],
+    queryKey: ["liability", "balance-overview", "asset", client.mode, reportDate],
     queryFn: () =>
       client.getBalanceAnalysisOverview({
         reportDate: reportDate || "",
-        positionScope: "all",
+        positionScope: "asset",
         currencyBasis: "CNY",
       }),
     enabled: activeTab === "daily" && Boolean(reportDate),
@@ -403,13 +404,17 @@ export default function LiabilityAnalyticsPage() {
     yieldKpi,
     counterpartyRows: dailyCpRows,
   });
+  /** `total_market_value_amount` 与资产负债页一致，为「元」口径；KPI 展示「亿元」需 ÷1e8。 */
   const assetTotalYi = useMemo(() => {
     const raw = balanceOverviewQuery.data?.result.total_market_value_amount;
     if (raw === null || raw === undefined || raw === "") {
       return null;
     }
     const parsed = Number.parseFloat(String(raw).replace(/,/g, ""));
-    return Number.isFinite(parsed) ? parsed : null;
+    if (!Number.isFinite(parsed)) {
+      return null;
+    }
+    return parsed / 100_000_000;
   }, [balanceOverviewQuery.data?.result.total_market_value_amount]);
   const liabilityTotalYi = useMemo((): number => {
     const fromCp = numericToYiNumeric(cpQuery.data?.total_value ?? null)?.raw;
@@ -452,11 +457,20 @@ export default function LiabilityAnalyticsPage() {
   const calendarItems = [] as const;
   const liabilityHeadlineCards = useMemo(
     () => [
-      { label: "市场资产", value: assetTotalYi !== null ? assetTotalYi.toFixed(2) : "—", unit: "亿", detail: "balance overview" },
+      {
+        label: "市场资产",
+        value: assetTotalYi !== null ? assetTotalYi.toFixed(2) : "—",
+        unit: "亿",
+        detail: "正式总览·资产口径（不含发行类债券）",
+      },
       { label: "市场负债", value: liabilityTotalYi.toFixed(2), unit: "亿", detail: "funding total" },
       { label: "静态资产收益率", value: yieldKpi?.asset_yield?.display ?? "—", detail: "当前加权" },
       { label: "静态负债成本", value: yieldKpi?.liability_cost?.display ?? "—", detail: "当前加权" },
-      { label: "静态利差", value: staticSpreadBp !== null ? `${staticSpreadBp.toFixed(1)}bp` : "—", detail: "资产收益-负债成本" },
+      {
+        label: "静态利差",
+        value: staticSpreadBp !== null ? `${staticSpreadBp.toFixed(1)}bp` : "—",
+        detail: "NIM（资产收益率−金融市场负债成本）",
+      },
       { label: "1年内到期负债", value: firstYearPressureYi.toFixed(2), unit: "亿", detail: "短端承压" },
       { label: "净估值差额", value: floatingGapYi !== null ? `${floatingGapYi >= 0 ? "+" : ""}${floatingGapYi.toFixed(2)}` : "—", unit: "亿", detail: "资产-负债" },
       {
@@ -549,7 +563,7 @@ export default function LiabilityAnalyticsPage() {
               type="warning"
               showIcon
               style={{ marginBottom: designTokens.space[4] }}
-              message="市场资产（balance overview）加载失败"
+              message="市场资产（正式总览·资产口径）加载失败"
               description={(balanceOverviewQuery.error as Error)?.message ?? "请求失败"}
               action={
                 <Button size="small" onClick={() => void balanceOverviewQuery.refetch()}>

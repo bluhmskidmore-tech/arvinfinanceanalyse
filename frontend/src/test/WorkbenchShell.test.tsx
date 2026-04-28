@@ -45,6 +45,7 @@ function renderShellAt(path: string, client?: ApiClient) {
           { path: "operations-analysis", element: <div>operations body</div> },
           { path: "balance-analysis", element: <div>balance-analysis body</div> },
           { path: "balance-movement-analysis", element: <div>balance-movement body</div> },
+          { path: "liability-analytics", element: <div>liability-analytics body</div> },
           { path: "pnl", element: <div>pnl body</div> },
           { path: "platform-config", element: <div>platform body</div> },
           { path: "agent", element: <div>agent body</div> },
@@ -159,6 +160,21 @@ describe("WorkbenchShell", () => {
       .getAllByRole("link")
       .map((link) => link.getAttribute("href"));
     expect(hrefs).toContain("/balance-movement-analysis");
+  });
+
+  it("keeps portfolio page selection while hiding helper chrome on liability-analytics", async () => {
+    renderShellAt("/liability-analytics");
+
+    expect(await screen.findByText("liability-analytics body")).toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-light-hint")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-flow")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portfolio-workbench-board")).not.toBeInTheDocument();
+    const subnav = screen.getByTestId("workbench-section-subnav");
+    const hrefs = within(subnav)
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"));
+    expect(hrefs).toContain("/liability-analytics");
   });
 
   it("suppresses the portfolio decision shell chrome for bond-analysis", async () => {

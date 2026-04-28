@@ -445,8 +445,15 @@ describe("OperationsAnalysisPage governed values", () => {
       expect(contributionGrid).toHaveTextContent("债券投资");
       expect(contributionGrid).toHaveTextContent("同业存放");
       expect(contributionGrid).toHaveTextContent("2.60");
+      expect(contributionGrid).toHaveTextContent("总收益（合计）");
+      expect(contributionGrid).toHaveTextContent("全部市场科目 + 投资收益合计：2.90");
       expect(contributionGrid).not.toHaveTextContent("240001.IB");
     });
+
+    const totalSummary = await screen.findByTestId("operations-contribution-total-summary");
+    expect(totalSummary).toHaveTextContent("当前场景：1.75%");
+    expect(totalSummary).toHaveTextContent("基准场景：1.75%");
+    expect(totalSummary).toHaveTextContent("4.20 / -1.30");
 
     const heroProvenance = await screen.findByTestId("operations-hero-provenance");
     expect(heroProvenance).toHaveTextContent("物化/候选对账");

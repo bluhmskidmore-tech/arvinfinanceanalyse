@@ -4,8 +4,8 @@ const s = designTokens.space;
 const c = designTokens.color;
 
 export const marketDataPanelStyle = {
-  padding: s[6],
-  borderRadius: designTokens.radius.xl,
+  padding: s[4],
+  borderRadius: designTokens.radius.md,
   background: "#ffffff",
   border: `1px solid ${c.neutral[200]}`,
   boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",

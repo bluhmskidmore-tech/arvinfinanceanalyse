@@ -1,0 +1,149 @@
+.market-data-page {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.market-data-page > section {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.market-data-page > section > div {
+  min-width: 0;
+}
+
+.market-data-header-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.market-data-header-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.market-data-header-meta > span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+}
+
+.market-data-filter-tray {
+  padding: 12px;
+  border: 1px solid #e2e6ec;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.market-data-overview-strip {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  width: 100%;
+  min-width: 0;
+}
+
+.market-data-overview-card {
+  --market-overview-tone: var(--moss-color-link);
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 7px;
+  min-height: 116px;
+  padding: 14px 14px 12px;
+  border: 1px solid #e2e6ec;
+  border-radius: 12px;
+  background: #ffffff;
+  min-width: 0;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.market-data-overview-card--default {
+  --market-overview-tone: #1850a1;
+}
+
+.market-data-overview-card--positive {
+  --market-overview-tone: #2d8a5e;
+}
+
+.market-data-overview-card--negative,
+.market-data-overview-card--error {
+  --market-overview-tone: #ef4444;
+}
+
+.market-data-overview-card--warning {
+  --market-overview-tone: #d97706;
+}
+
+.market-data-overview-card:hover {
+  border-color: var(--moss-border-hover);
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  transform: translateY(-1px);
+}
+
+.market-data-overview-card__bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--market-overview-tone);
+  opacity: 0.85;
+}
+
+.market-data-overview-card__label {
+  color: var(--moss-color-text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.market-data-overview-card__value {
+  color: var(--market-overview-tone);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.market-data-overview-card--text .market-data-overview-card__value {
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.market-data-overview-card__detail {
+  margin: 0;
+  color: var(--moss-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.market-data-meta-strip {
+  display: grid;
+  gap: 8px;
+}
+
+.market-data-command-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(360px, 0.95fr);
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1180px) {
+  .market-data-command-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 900px) {
+  .market-data-overview-strip {
+    grid-template-columns: 1fr;
+  }
+}

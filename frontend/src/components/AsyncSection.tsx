@@ -8,6 +8,7 @@ type AsyncSectionProps = {
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
+  fillHeight?: boolean;
   onRetry: () => void;
   children: ReactNode;
 };
@@ -18,6 +19,7 @@ export function AsyncSection({
   isLoading,
   isError,
   isEmpty,
+  fillHeight = true,
   onRetry,
   children,
 }: AsyncSectionProps) {
@@ -91,7 +93,7 @@ export function AsyncSection({
   return (
     <section
       style={{
-        height: "100%",
+        height: fillHeight ? "100%" : "auto",
         padding: 24,
         borderRadius: displayTokens.radius.section,
         background: displayTokens.surface.section,

@@ -323,6 +323,8 @@ describe("OperationsAnalysisPage", () => {
     await waitFor(() => {
       expect(within(contributionGrid).getByText("债券投资")).toBeInTheDocument();
       expect(contributionGrid).toHaveTextContent("/ui/pnl/product-category");
+      expect(contributionGrid).toHaveTextContent("总收益（合计）");
+      expect(contributionGrid).toHaveTextContent("全部市场科目 + 投资收益合计");
       expect(contributionGrid).not.toHaveTextContent("240001.IB");
     });
     expect(await screen.findByTestId("operations-structure-grid")).toBeInTheDocument();

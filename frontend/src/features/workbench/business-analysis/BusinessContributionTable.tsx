@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { ProductCategoryPnlRow } from "../../../api/contracts";
 import { SectionCard } from "../../../components/SectionCard";
 import {
+  formatProductCategoryValue,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryYieldValue,
   toneForProductCategoryValue,
@@ -18,10 +19,24 @@ function formatSide(side: string): string {
   return side;
 }
 
+function formatRatePct(value: ProductCategoryPnlRow["baseline_ftp_rate_pct"] | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return `${value}%`;
+  }
+  return `${parsed.toFixed(2).replace(/\.?0+$/, "")}%`;
+}
+
 export type BusinessContributionTableProps = {
   reportDate: string | null;
   view: string;
   rows: ProductCategoryPnlRow[];
+  assetTotal?: ProductCategoryPnlRow | null;
+  liabilityTotal?: ProductCategoryPnlRow | null;
+  grandTotal?: ProductCategoryPnlRow | null;
   loading: boolean;
   error: boolean;
   onRetry?: () => void;
@@ -33,11 +48,18 @@ export function BusinessContributionTable({
   reportDate,
   view,
   rows,
+  assetTotal,
+  liabilityTotal,
+  grandTotal,
   loading,
   error,
   onRetry,
   readProvenanceLine,
 }: BusinessContributionTableProps) {
+  const currentRate = grandTotal?.scenario_rate_pct ?? grandTotal?.baseline_ftp_rate_pct;
+  const baselineRate = grandTotal?.baseline_ftp_rate_pct;
+  const totalIncomeTone = toneForProductCategoryValue(grandTotal?.business_net_income);
+
   return (
     <SectionCard
       title="经营贡献（产品分类损益读面）"
@@ -68,10 +90,58 @@ export function BusinessContributionTable({
       ) : (
         <p style={{ margin: "0 0 12px", fontSize: 13, color: "#5c6b82" }}>暂无可用报告日。</p>
       )}
+
+      <div
+        data-testid="operations-contribution-total-summary"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(180px, 1.4fr) repeat(3, minmax(120px, 1fr))",
+          gap: 12,
+          margin: "0 0 12px",
+          padding: "12px 14px",
+          border: "1px solid #dbe4f0",
+          borderRadius: 8,
+          background: "#f8fbff",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>总收益（合计）</div>
+          <div
+            style={{
+              marginTop: 2,
+              color: totalIncomeTone,
+              fontSize: 22,
+              fontWeight: 800,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {formatProductCategoryValue(grandTotal?.business_net_income)}
+            <span style={{ marginLeft: 4, color: "#64748b", fontSize: 12, fontWeight: 600 }}>亿元</span>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+          当前场景：<span style={{ color: "#111827" }}>{formatRatePct(currentRate)}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+          基准场景：<span style={{ color: "#111827" }}>{formatRatePct(baselineRate)}</span>
+        </div>
+        <div style={{ fontSize: 12, color: "#475569", fontWeight: 700, textAlign: "right" }}>
+          资产 / 负债：
+          <span style={{ color: toneForProductCategoryValue(assetTotal?.business_net_income) }}>
+            {formatProductCategoryValue(assetTotal?.business_net_income)}
+          </span>
+          {" / "}
+          <span style={{ color: toneForProductCategoryValue(liabilityTotal?.business_net_income) }}>
+            {formatProductCategoryValue(liabilityTotal?.business_net_income)}
+          </span>
+        </div>
+      </div>
+
       <div
         style={{
           overflowX: "auto",
-          borderRadius: 12,
+          borderRadius: 8,
           border: "1px solid #e4ebf5",
         }}
       >
@@ -160,6 +230,20 @@ export function BusinessContributionTable({
             )}
           </tbody>
         </table>
+        <div
+          data-testid="operations-contribution-footer-total"
+          style={{
+            padding: "12px 16px",
+            background: "#111827",
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 800,
+            textAlign: "center",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          全部市场科目 + 投资收益合计：{formatProductCategoryValue(grandTotal?.business_net_income)}
+        </div>
       </div>
     </SectionCard>
   );

@@ -878,6 +878,9 @@ export default function OperationsAnalysisPage() {
             reportDate={productCategoryPnl?.report_date ?? latestProductCategoryReportDate}
             view={productCategoryPnl?.view ?? OPERATIONS_PRODUCT_CATEGORY_VIEW}
             rows={productCategoryRows}
+            assetTotal={productCategoryPnl?.asset_total}
+            liabilityTotal={productCategoryPnl?.liability_total}
+            grandTotal={productCategoryPnl?.grand_total}
             loading={productCategoryDatesQuery.isLoading || productCategoryPnlQuery.isLoading}
             error={productCategoryDatesQuery.isError || productCategoryPnlQuery.isError}
             onRetry={() => {
