@@ -15,6 +15,7 @@ import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
   buildProductCategoryDiagnosticsSurface,
+  buildProductCategoryLiabilitySideTrendSurface,
   buildProductCategoryTrendSnapshot,
   buildLedgerPnlHrefForReportDate,
   collectProductCategoryGovernanceNotices,
@@ -299,6 +300,64 @@ function buildInterestSpreadChartOption(input: {
   };
 }
 
+function buildLiabilitySideTrendChartOption(input: {
+  labels: string[];
+  averageDaily: Array<number | null>;
+  rate: Array<number | null>;
+}): EChartsOption | null {
+  if (!input.labels.length) {
+    return null;
+  }
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: ["负债端日均额（亿元）", "负债端利率（%）"] },
+    grid: { left: 56, right: 64, top: 20, bottom: input.labels.length > 6 ? 64 : 52 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLabel: { interval: 0, rotate: input.labels.length > 6 ? 24 : 0 },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: [
+      {
+        type: "value",
+        name: "亿元",
+        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
+      },
+      {
+        type: "value",
+        name: "%",
+        scale: true,
+        splitLine: { show: false },
+      },
+    ],
+    series: [
+      {
+        name: "负债端日均额（亿元）",
+        type: "bar",
+        yAxisIndex: 0,
+        data: input.averageDaily,
+        itemStyle: { color: designTokens.color.primary[600] },
+        barMaxWidth: 28,
+      },
+      {
+        name: "负债端利率（%）",
+        type: "line",
+        yAxisIndex: 1,
+        data: input.rate,
+        smooth: true,
+        showSymbol: true,
+        symbol: "circle",
+        symbolSize: 7,
+        itemStyle: { color: designTokens.color.warning[600], borderColor: "#fff", borderWidth: 2 },
+        lineStyle: { color: designTokens.color.warning[600], width: 3.4 },
+        emphasis: { focus: "series" },
+      },
+    ],
+  };
+}
+
 function DerivedChartPanel(props: DerivedChartPanelProps) {
   if (!props.option) {
     return null;
@@ -494,6 +553,10 @@ export default function ProductCategoryPnlPage() {
     diagnosticsSurface.spreadAttribution.state === "ready" ||
     (diagnosticsSurface.spreadAttribution.state === "incomplete" &&
       diagnosticsSurface.spreadAttribution.reason.length > 0);
+  const liabilitySideTrendSurface = useMemo(
+    () => buildProductCategoryLiabilitySideTrendSurface(trendSnapshots),
+    [trendSnapshots],
+  );
   const tplScaleYieldChart = useMemo(
     () => selectProductCategoryTplScaleYieldChart(trendSnapshots),
     [trendSnapshots],
@@ -620,6 +683,17 @@ export default function ProductCategoryPnlPage() {
           })
         : null,
     [interestSpreadChart],
+  );
+  const liabilitySideTrendOption = useMemo(
+    () =>
+      liabilitySideTrendSurface.chart
+        ? buildLiabilitySideTrendChartOption({
+            labels: liabilitySideTrendSurface.chart.labels,
+            averageDaily: liabilitySideTrendSurface.chart.totalAverageDaily,
+            rate: liabilitySideTrendSurface.chart.totalRate,
+          })
+        : null,
+    [liabilitySideTrendSurface.chart],
   );
 
   async function runRefreshWorkflow() {
@@ -1716,6 +1790,79 @@ export default function ProductCategoryPnlPage() {
               ) : null}
             </article>
           </div>
+          <article
+            className="product-category-diagnostics__card product-category-liability-side-trend"
+            data-testid="product-category-liability-side-trend"
+          >
+            <div className="product-category-diagnostics__header">
+              <div className="product-category-diagnostics__intro">
+                <h3 className="product-category-diagnostics__title">负债端趋势分析</h3>
+                <p className="product-category-diagnostics__description">
+                  负债侧产品类别口径：使用当前产品分类 payload 的负债明细行和后端
+                  liability_total，展示日均额与利率走势。
+                </p>
+              </div>
+              <span className="product-category-diagnostics__summary">负债侧产品类别口径</span>
+            </div>
+            {liabilitySideTrendOption ? (
+              <ReactECharts
+                option={liabilitySideTrendOption}
+                className="product-category-derived-chart__canvas"
+                data-testid="product-category-liability-side-trend-chart"
+                notMerge
+                lazyUpdate
+              />
+            ) : (
+              <div
+                className="product-category-diagnostics__empty"
+                data-testid="product-category-liability-side-trend-empty"
+              >
+                {liabilitySideTrendSurface.emptyCopy ?? "负债端趋势数据不完整，无法绘制完整走势。"}
+              </div>
+            )}
+            {liabilitySideTrendSurface.incompleteReasons.length > 0 ? (
+              <div
+                className="product-category-diagnostics__empty"
+                data-testid="product-category-liability-side-trend-incomplete"
+              >
+                {liabilitySideTrendSurface.incompleteReasons.join("；")}
+              </div>
+            ) : null}
+            {liabilitySideTrendSurface.detailRows.length > 0 ? (
+              <div className="product-category-diagnostics__table-wrap">
+                <table
+                  className="product-category-diagnostics__table"
+                  data-testid="product-category-liability-side-detail-table"
+                >
+                  <thead>
+                    <tr>
+                      <th className="product-category-diagnostics__table-head">负债明细</th>
+                      <th className="product-category-diagnostics__table-head">最新日均额</th>
+                      <th className="product-category-diagnostics__table-head">日均额变动</th>
+                      <th className="product-category-diagnostics__table-head">最新利率</th>
+                      <th className="product-category-diagnostics__table-head">利率变动</th>
+                      <th className="product-category-diagnostics__table-head">对比期</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {liabilitySideTrendSurface.detailRows.map((item) => (
+                      <tr
+                        key={item.categoryId}
+                        data-testid={`product-category-liability-side-detail-${item.categoryId}`}
+                      >
+                        <td className="product-category-diagnostics__table-cell">{item.categoryLabel}</td>
+                        <td className="product-category-diagnostics__table-cell">{item.latestAmountLabel}</td>
+                        <td className="product-category-diagnostics__table-cell">{item.amountDeltaLabel}</td>
+                        <td className="product-category-diagnostics__table-cell">{item.latestRateLabel}</td>
+                        <td className="product-category-diagnostics__table-cell">{item.rateDeltaLabel}</td>
+                        <td className="product-category-diagnostics__table-cell">{item.comparisonLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+          </article>
           <div
             className="product-category-derived-charts"
             data-testid="product-category-derived-chart-grid"

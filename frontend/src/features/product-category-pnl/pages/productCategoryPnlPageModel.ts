@@ -234,6 +234,30 @@ export type ProductCategoryInterestSpreadChart = {
   spread: number[];
 };
 
+export type ProductCategoryLiabilitySideTrendChart = {
+  labels: string[];
+  totalAverageDaily: Array<number | null>;
+  totalRate: Array<number | null>;
+  incompleteReasons: string[];
+};
+
+export type ProductCategoryLiabilityDetailTrendRow = {
+  categoryId: string;
+  categoryLabel: string;
+  latestAmountLabel: string;
+  amountDeltaLabel: string;
+  latestRateLabel: string;
+  rateDeltaLabel: string;
+  comparisonLabel: string;
+};
+
+export type ProductCategoryLiabilitySideTrendSurface = {
+  chart: ProductCategoryLiabilitySideTrendChart | null;
+  detailRows: ProductCategoryLiabilityDetailTrendRow[];
+  emptyCopy: string | null;
+  incompleteReasons: string[];
+};
+
 export function formatProductCategoryValue(
   value: DecimalLike | null | undefined,
   digits = 2,
@@ -346,6 +370,16 @@ function bpLabel(value: number | null): string {
   return `${value.toFixed(1).replace(/\.0$/, "")}bp`;
 }
 
+function signedYiDeltaLabel(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+  if (value === 0) {
+    return "0.00";
+  }
+  return `${value > 0 ? "+" : "-"}${Math.abs(value).toFixed(2)}`;
+}
+
 function findProductCategoryRow(
   rows: ProductCategoryPnlRow[],
   categoryId: string,
@@ -371,6 +405,22 @@ function buildSnapshotChart<T>(
       points.push(point);
     });
   return { labels, points };
+}
+
+function chronologicalProductCategorySnapshots(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryTrendSnapshot[] {
+  return snapshots.slice().sort((left, right) => left.reportDate.localeCompare(right.reportDate));
+}
+
+function liabilityDetailRowsFromSnapshot(snapshot: ProductCategoryTrendSnapshot): ProductCategoryPnlRow[] {
+  return snapshot.rows
+    .filter((row) => row.side === "liability" && !row.is_total && row.category_id !== "liability_total")
+    .sort((left, right) => {
+      const leftIndex = DISPLAY_ORDER_INDEX.get(left.category_id) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = DISPLAY_ORDER_INDEX.get(right.category_id) ?? Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex;
+    });
 }
 
 function spreadBp(snapshot: ProductCategoryTrendSnapshot): number | null {
@@ -870,6 +920,157 @@ export function selectProductCategoryInterestSpreadChart(
     assetYield: chart.points.map((point) => point.assetYield),
     liabilityYield: chart.points.map((point) => point.liabilityYield),
     spread: chart.points.map((point) => point.spread),
+  };
+}
+
+export function selectProductCategoryLiabilitySideTrendChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryLiabilitySideTrendChart | null {
+  const ordered = chronologicalProductCategorySnapshots(snapshots);
+  if (ordered.length === 0) {
+    return null;
+  }
+  const labels: string[] = [];
+  const totalAverageDaily: Array<number | null> = [];
+  const totalRate: Array<number | null> = [];
+  const incompleteReasons: string[] = [];
+
+  ordered.forEach((snapshot) => {
+    const label = snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate);
+    const averageDaily = yiNumber(snapshot.liabilityTotal?.cnx_scale);
+    const rate = percentNumber(snapshot.liabilityTotal?.weighted_yield);
+    labels.push(label);
+    totalAverageDaily.push(averageDaily);
+    totalRate.push(rate);
+    if (averageDaily === null) {
+      incompleteReasons.push(`${label}负债端日均额缺失`);
+    }
+    if (rate === null) {
+      incompleteReasons.push(`${label}负债端利率缺失`);
+    }
+  });
+
+  return { labels, totalAverageDaily, totalRate, incompleteReasons };
+}
+
+function latestComparableLiabilityValue(input: {
+  snapshots: ProductCategoryTrendSnapshot[];
+  categoryId: string;
+  metric: "cnx_scale" | "weighted_yield";
+  beforeIndex?: number;
+}): { value: number; label: string; index: number } | null {
+  const upperBound = input.beforeIndex ?? input.snapshots.length;
+  for (let index = upperBound - 1; index >= 0; index -= 1) {
+    const snapshot = input.snapshots[index];
+    if (!snapshot) {
+      continue;
+    }
+    const row = liabilityDetailRowsFromSnapshot(snapshot).find((item) => item.category_id === input.categoryId);
+    const value =
+      input.metric === "cnx_scale" ? yiNumber(row?.cnx_scale) : percentNumber(row?.weighted_yield);
+    if (value !== null) {
+      return {
+        value,
+        label: snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate),
+        index,
+      };
+    }
+  }
+  return null;
+}
+
+function liabilityComparisonLabel(input: {
+  amountLatestLabel: string | null;
+  amountPriorLabel: string | null;
+  rateLatestLabel: string | null;
+  ratePriorLabel: string | null;
+}): string {
+  const amountLabel =
+    input.amountLatestLabel && input.amountPriorLabel
+      ? `${input.amountPriorLabel} → ${input.amountLatestLabel}`
+      : null;
+  const rateLabel =
+    input.rateLatestLabel && input.ratePriorLabel
+      ? `${input.ratePriorLabel} → ${input.rateLatestLabel}`
+      : null;
+  if (amountLabel && rateLabel && amountLabel !== rateLabel) {
+    return `日均额：${amountLabel}；利率：${rateLabel}`;
+  }
+  if (!input.amountLatestLabel && !input.rateLatestLabel) {
+    return "当前指标缺失";
+  }
+  return amountLabel ?? rateLabel ?? "缺少可比上期";
+}
+
+export function selectProductCategoryLiabilityDetailTrendRows(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryLiabilityDetailTrendRow[] {
+  const ordered = chronologicalProductCategorySnapshots(snapshots);
+  const latestSnapshot = ordered[ordered.length - 1];
+  if (!latestSnapshot) {
+    return [];
+  }
+  const latestLabel = latestSnapshot.label ?? formatProductCategoryReportMonthLabel(latestSnapshot.reportDate);
+  const latestIndex = ordered.length - 1;
+  return liabilityDetailRowsFromSnapshot(latestSnapshot).map((row) => {
+    const latestAmount = yiNumber(row.cnx_scale);
+    const priorAmount = latestAmount !== null
+      ? latestComparableLiabilityValue({
+          snapshots: ordered,
+          categoryId: row.category_id,
+          metric: "cnx_scale",
+          beforeIndex: latestIndex,
+        })
+      : null;
+    const latestRate = percentNumber(row.weighted_yield);
+    const priorRate = latestRate !== null
+      ? latestComparableLiabilityValue({
+          snapshots: ordered,
+          categoryId: row.category_id,
+          metric: "weighted_yield",
+          beforeIndex: latestIndex,
+        })
+      : null;
+    const amountDelta =
+      latestAmount !== null && priorAmount ? Number((latestAmount - priorAmount.value).toFixed(2)) : null;
+    const rateDelta =
+      latestRate !== null && priorRate ? Number(((latestRate - priorRate.value) * 100).toFixed(1)) : null;
+    return {
+      categoryId: row.category_id,
+      categoryLabel: row.category_name || row.category_id,
+      latestAmountLabel: latestAmount !== null ? latestAmount.toFixed(2) : "-",
+      amountDeltaLabel: signedYiDeltaLabel(amountDelta),
+      latestRateLabel: latestRate !== null ? latestRate.toFixed(2) : "-",
+      rateDeltaLabel: signedBpLabel(rateDelta),
+      comparisonLabel: liabilityComparisonLabel({
+        amountLatestLabel: latestAmount !== null ? latestLabel : null,
+        amountPriorLabel: priorAmount?.label ?? null,
+        rateLatestLabel: latestRate !== null ? latestLabel : null,
+        ratePriorLabel: priorRate?.label ?? null,
+      }),
+    };
+  });
+}
+
+export function buildProductCategoryLiabilitySideTrendSurface(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryLiabilitySideTrendSurface {
+  const chart = selectProductCategoryLiabilitySideTrendChart(snapshots);
+  const detailRows = selectProductCategoryLiabilityDetailTrendRows(snapshots);
+  const incompleteReasons = chart?.incompleteReasons ?? [];
+  if (!chart && detailRows.length === 0) {
+    return {
+      chart: null,
+      detailRows,
+      emptyCopy: "当前 payload 未返回可展示的负债端趋势数据。",
+      incompleteReasons,
+    };
+  }
+  return {
+    chart,
+    detailRows,
+    emptyCopy: chart ? null : "负债端趋势数据不完整，无法绘制完整走势。",
+    incompleteReasons,
   };
 }
 

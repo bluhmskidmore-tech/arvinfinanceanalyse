@@ -8,6 +8,7 @@ import {
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
   PRODUCT_CATEGORY_VALUE_TONE_COLORS,
   buildProductCategoryDiagnosticsSurface,
+  buildProductCategoryLiabilitySideTrendSurface,
   PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS,
   PRODUCT_CATEGORY_MAIN_PAGE_VIEWS,
   availableViewsSupportMainPageSelector,
@@ -458,6 +459,283 @@ describe("productCategoryPnlPageModel", () => {
       "2025年11月",
       "2026年03月",
     ]);
+  });
+
+  it("builds liability-side trend surface with governed detail rows and comparable deltas", () => {
+    const yi = (value: number) => String(value * 100_000_000);
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2025-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2025-03-31",
+            cnx_scale: yi(75),
+            weighted_yield: "1.10",
+          }),
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "收益凭证",
+            side: "liability",
+            report_date: "2025-03-31",
+            cnx_scale: yi(18),
+            weighted_yield: "3.00",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1500),
+          weighted_yield: "1.60",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2025年Q1"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2025-11-30",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2025-11-30",
+            cnx_scale: "not_available",
+            weighted_yield: "1.20",
+          }),
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "收益凭证",
+            side: "liability",
+            report_date: "2025-11-30",
+            cnx_scale: yi(20),
+            weighted_yield: "3.10",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1600),
+          weighted_yield: null,
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2025年11月"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: yi(82),
+            weighted_yield: "1.30",
+          }),
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "收益凭证",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: yi(25),
+            weighted_yield: "3.25",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1700),
+          weighted_yield: "1.75",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年03月"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+
+    expect(surface.chart?.labels).toEqual(["2025年Q1", "2025年11月", "2026年03月"]);
+    expect(surface.chart?.totalAverageDaily).toEqual([1500, 1600, 1700]);
+    expect(surface.chart?.totalRate).toEqual([1.6, null, 1.75]);
+    expect(surface.incompleteReasons).toContain("2025年11月负债端利率缺失");
+    expect(surface.detailRows.map((item) => item.categoryId)).toContain("credit_linked_notes");
+    expect(surface.detailRows.find((item) => item.categoryId === "interbank_deposits")).toMatchObject({
+      latestAmountLabel: "82.00",
+      amountDeltaLabel: "+7.00",
+      latestRateLabel: "1.30",
+      rateDeltaLabel: "+10bp",
+      comparisonLabel: "日均额：2025年Q1 → 2026年03月；利率：2025年11月 → 2026年03月",
+    });
+  });
+
+  it("does not backfill missing latest liability detail metrics from historical snapshots", () => {
+    const yi = (value: number) => String(value * 100_000_000);
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-02-28",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2026-02-28",
+            cnx_scale: yi(75),
+            weighted_yield: "1.20",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1500),
+          weighted_yield: "1.60",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年02月"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "interbank_deposits",
+            category_name: "同业存放",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: "not_available",
+            weighted_yield: null,
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: "not_available",
+          weighted_yield: null,
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年03月"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+    expect(surface.chart?.labels).toEqual(["2026年02月", "2026年03月"]);
+    expect(surface.chart?.totalAverageDaily).toEqual([1500, null]);
+    expect(surface.chart?.totalRate).toEqual([1.6, null]);
+    expect(surface.detailRows.find((item) => item.categoryId === "interbank_deposits")).toMatchObject({
+      latestAmountLabel: "-",
+      amountDeltaLabel: "-",
+      latestRateLabel: "-",
+      rateDeltaLabel: "-",
+      comparisonLabel: "当前指标缺失",
+    });
+  });
+
+  it("preserves liability-side chart labels when all aggregate points are missing", () => {
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-02-28",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: "not_available",
+          weighted_yield: null,
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年02月"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: "not_available",
+          weighted_yield: null,
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年03月"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+    expect(surface.chart?.labels).toEqual(["2026年02月", "2026年03月"]);
+    expect(surface.chart?.totalAverageDaily).toEqual([null, null]);
+    expect(surface.chart?.totalRate).toEqual([null, null]);
+    expect(surface.emptyCopy).toBeNull();
+    expect(surface.incompleteReasons).toEqual([
+      "2026年02月负债端日均额缺失",
+      "2026年02月负债端利率缺失",
+      "2026年03月负债端日均额缺失",
+      "2026年03月负债端利率缺失",
+    ]);
+  });
+
+  it("marks latest liability detail rows without a prior comparable snapshot", () => {
+    const yi = (value: number) => String(value * 100_000_000);
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "credit_linked_notes",
+            category_name: "收益凭证",
+            side: "liability",
+            report_date: "2026-03-31",
+            cnx_scale: yi(25),
+            weighted_yield: "3.25",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({
+          category_id: "liability_total",
+          side: "liability",
+          is_total: true,
+          cnx_scale: yi(1700),
+          weighted_yield: "1.75",
+        }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年03月"),
+    ];
+
+    const surface = buildProductCategoryLiabilitySideTrendSurface(snapshots);
+    expect(surface.detailRows.find((item) => item.categoryId === "credit_linked_notes")).toMatchObject({
+      latestAmountLabel: "25.00",
+      amountDeltaLabel: "-",
+      latestRateLabel: "3.25",
+      rateDeltaLabel: "-",
+      comparisonLabel: "缺少可比上期",
+    });
   });
 
   it("formats yuan money values as yi yuan, with liability-side absolute display", () => {

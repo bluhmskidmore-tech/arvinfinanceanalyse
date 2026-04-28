@@ -69,6 +69,9 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-matrix")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-watchlist")).toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-spread")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债端趋势分析");
+    expect(screen.getByTestId("product-category-liability-side-trend")).toHaveTextContent("负债侧产品类别口径");
+    expect(screen.queryByText("同业负债")).not.toBeInTheDocument();
     expect(screen.getByTestId("product-category-diagnostics-summary")).toHaveTextContent("2.85");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("1.75");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("合计：");
@@ -266,12 +269,18 @@ describe("ProductCategoryPnlPage", () => {
       getProductCategoryPnl: vi.fn(async (options) => {
         const envelope = buildMockProductCategoryPnlEnvelope(options);
         const assetTotal = { ...envelope.result.asset_total, weighted_yield: null };
+        const liabilityTotal = {
+          ...envelope.result.liability_total,
+          cnx_scale: "not_available",
+          weighted_yield: null,
+        };
         return {
           ...envelope,
           result: {
             ...envelope.result,
-            rows: [assetTotal, envelope.result.liability_total, envelope.result.grand_total],
+            rows: [assetTotal, liabilityTotal, envelope.result.grand_total],
             asset_total: assetTotal,
+            liability_total: liabilityTotal,
           },
         };
       }),
@@ -287,6 +296,50 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-diagnostics-spread-incomplete")).toHaveTextContent(
       "当前资产端或负债端收益率缺失，无法计算当期利差。",
     );
+    const liabilityOption = readChartOption("product-category-liability-side-trend");
+    expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
+    expect(liabilityOption.series?.[0]?.data).toEqual([null]);
+    expect(liabilityOption.series?.[1]?.data).toEqual([null]);
+    expect(screen.getByTestId("product-category-liability-side-trend-incomplete")).toHaveTextContent(
+      "2026年02月负债端日均额缺失",
+    );
+  });
+
+  it("keeps liability-side trend panel visible when aggregate chart inputs are incomplete", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            liability_total: {
+              ...envelope.result.liability_total,
+              cnx_scale: "not_available",
+              weighted_yield: null,
+            },
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-liability-side-detail-credit_linked_notes");
+    const liabilityOption = readChartOption("product-category-liability-side-trend");
+    expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年02月"] });
+    expect(liabilityOption.series?.[0]?.data).toEqual([null]);
+    expect(liabilityOption.series?.[1]?.data).toEqual([null]);
+    expect(screen.queryByTestId("product-category-liability-side-trend-empty")).not.toBeInTheDocument();
+    expect(screen.getByTestId("product-category-liability-side-trend-incomplete")).toHaveTextContent(
+      "2026年02月负债端日均额缺失",
+    );
+    expect(screen.getByTestId("product-category-liability-side-detail-credit_linked_notes")).toBeInTheDocument();
   });
 
   it("renders the four requested derived chart panels with chart stubs", async () => {
@@ -299,7 +352,7 @@ describe("ProductCategoryPnlPage", () => {
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(4);
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(5);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -425,6 +478,14 @@ describe("ProductCategoryPnlPage", () => {
     expect(spreadOption.series?.[0]?.data).toEqual([2.35, 2.4]);
     expect(spreadOption.series?.[1]?.data).toEqual([1.58, 1.63]);
     expect(spreadOption.series?.[2]?.data).toEqual([0.77, 0.77]);
+
+    const liabilityOption = readChartOption("product-category-liability-side-trend");
+    expect(liabilityOption.legend?.data).toEqual([
+      "负债端日均额（亿元）",
+      "负债端利率（%）",
+    ]);
+    expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年01月", "2026年02月"] });
+    expect(screen.getByTestId("product-category-liability-side-detail-credit_linked_notes")).toBeInTheDocument();
   });
 
   it("makes the interest spread trend visually prominent without clipping out-of-band values", async () => {

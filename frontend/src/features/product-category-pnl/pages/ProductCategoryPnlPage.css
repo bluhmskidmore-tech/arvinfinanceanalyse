@@ -180,6 +180,10 @@
   color: #dc2626;
 }
 
+.product-category-liability-side-trend {
+  background: #ffffff;
+}
+
 .product-category-derived-charts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
