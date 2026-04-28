@@ -359,14 +359,17 @@ function buildSnapshotChart<T>(
 ): { labels: string[]; points: T[] } {
   const labels: string[] = [];
   const points: T[] = [];
-  snapshots.slice().reverse().forEach((snapshot) => {
-    const point = project(snapshot);
-    if (point === null) {
-      return;
-    }
-    labels.push(snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate));
-    points.push(point);
-  });
+  snapshots
+    .slice()
+    .sort((left, right) => left.reportDate.localeCompare(right.reportDate))
+    .forEach((snapshot) => {
+      const point = project(snapshot);
+      if (point === null) {
+        return;
+      }
+      labels.push(snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate));
+      points.push(point);
+    });
   return { labels, points };
 }
 

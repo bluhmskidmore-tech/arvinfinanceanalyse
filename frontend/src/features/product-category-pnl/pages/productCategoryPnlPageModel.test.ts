@@ -22,6 +22,7 @@ import {
   mainPageViewsAreGovernedDetailSubset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryTplScaleYieldChart,
   selectProductCategoryTrendReportDates,
   selectProductCategoryTrendReportPoints,
   toneForProductCategoryValue,
@@ -392,6 +393,71 @@ describe("productCategoryPnlPageModel", () => {
     expect(selectProductCategoryTrendReportDates("2026-03-31", points.map((point) => point.reportDate))).toEqual(
       points.map((point) => point.reportDate),
     );
+  });
+
+  it("sorts trend chart snapshots by report date instead of async query arrival order", () => {
+    const snapshots = [
+      buildProductCategoryTrendSnapshot({
+        report_date: "2026-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "bond_tpl",
+            report_date: "2026-03-31",
+            cny_scale: "300000000",
+            foreign_scale: "30000000",
+            weighted_yield: "3",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({ category_id: "liability_total", side: "liability", is_total: true }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2026年03月"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2025-03-31",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "bond_tpl",
+            report_date: "2025-03-31",
+            cny_scale: "100000000",
+            foreign_scale: "10000000",
+            weighted_yield: "1",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({ category_id: "liability_total", side: "liability", is_total: true }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2025年Q1"),
+      buildProductCategoryTrendSnapshot({
+        report_date: "2025-11-30",
+        view: "monthly",
+        available_views: ["monthly"],
+        scenario_rate_pct: null,
+        rows: [
+          row({
+            category_id: "bond_tpl",
+            report_date: "2025-11-30",
+            cny_scale: "200000000",
+            foreign_scale: "20000000",
+            weighted_yield: "2",
+          }),
+        ],
+        asset_total: row({ category_id: "asset_total", is_total: true }),
+        liability_total: row({ category_id: "liability_total", side: "liability", is_total: true }),
+        grand_total: row({ category_id: "grand_total", is_total: true }),
+      }, "2025年11月"),
+    ];
+
+    expect(selectProductCategoryTplScaleYieldChart(snapshots)?.labels).toEqual([
+      "2025年Q1",
+      "2025年11月",
+      "2026年03月",
+    ]);
   });
 
   it("formats yuan money values as yi yuan, with liability-side absolute display", () => {
