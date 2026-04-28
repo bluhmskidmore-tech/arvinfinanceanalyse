@@ -6,6 +6,9 @@ from decimal import Decimal
 from backend.app.core_finance.bond_analytics.common import resolve_period
 from backend.app.core_finance.calibers.enums import Basis, View
 from backend.app.core_finance.calibers.rules.formal_scenario_gate import assert_basis_view_allowed
+from backend.app.core_finance.config.product_category_mapping import (
+    resolve_product_category_ftp_rate_pct,
+)
 from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
 from backend.app.schemas.analysis_service import (
     AnalysisQuery,
@@ -67,6 +70,14 @@ class ProductCategoryPnlAnalysisAdapter:
                 f"No product-category read model rows for report_date={query.report_date} view={view}"
             )
 
+        from backend.app.core_finance.product_category_pnl import apply_baseline_ftp_rate_to_rows
+
+        persisted_baseline_rate = Decimal(str(rows[0]["baseline_ftp_rate_pct"]))
+        expected_baseline_rate = resolve_product_category_ftp_rate_pct(
+            date.fromisoformat(query.report_date),
+            persisted_baseline_rate,
+        )
+        rows = apply_baseline_ftp_rate_to_rows(rows, expected_baseline_rate)
         typed_rows = [_to_product_category_row(row) for row in rows]
         if query.basis == Basis.SCENARIO.value and query.scenario_rate_pct is not None:
             from backend.app.core_finance.product_category_pnl import apply_scenario_to_rows

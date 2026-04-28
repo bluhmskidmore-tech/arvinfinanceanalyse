@@ -74,7 +74,7 @@ Any edit that changes page meaning must trace through that full chain.
 - Allowed scenario path: explicit `scenario_rate_pct`
 - Analytical overlay is not the default interpretation of this page
 - Mock data must not masquerade as governed truth
-- `ytd` and `year_to_report_month_end` are natural-year views: they use available facts from January through the requested report month, retain ending-balance cash semantics, use source `annual_avg_balance` for FTP scale, and return `quality_flag=warning` when months in that interval are missing.
+- `ytd` and `year_to_report_month_end` are natural-year views: PnL fields must sum monthly `monthly_pnl` from January through the requested report month. They must not add prior-month `ending_balance` values or switch to ending-balance cash. Scale-sensitive calculations use each included month’s monthly scale basis weighted by calendar days, and return `quality_flag=warning` when prior months in the year are unavailable for coverage evidence.
 
 ## 7. Row Authority
 

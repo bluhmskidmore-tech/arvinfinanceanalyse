@@ -8,7 +8,7 @@ from pathlib import Path
 import duckdb
 
 from backend.app.repositories.duckdb_migrations import apply_pending_migrations_on_connection
-from backend.app.config.product_category_mapping import build_default_product_category_config
+from backend.app.config.product_category_mapping import build_product_category_config_for_report_date
 from backend.app.core_finance.product_category_pnl import (
     ManualAdjustment,
     apply_manual_adjustments,
@@ -49,7 +49,6 @@ def _materialize_product_category_pnl(
     duckdb_file.parent.mkdir(parents=True, exist_ok=True)
     governance_path = Path(governance_dir or settings.governance_path)
     pairs = discover_source_pairs(Path(source_dir or settings.product_category_source_dir))
-    config = build_default_product_category_config(settings.ftp_rate_pct)
     repo = GovernanceRepository(base_dir=governance_path)
     run = BuildRunRecord(job_name="product_category_pnl", status="running")
     run_id = run_id or f"{run.job_name}:{run.created_at}"
@@ -74,6 +73,13 @@ def _materialize_product_category_pnl(
         try:
             conn.execute("begin transaction")
             _ensure_tables(conn)
+
+            if not pairs:
+                source_path = Path(source_dir or settings.product_category_source_dir)
+                raise ValueError(
+                    f"No product-category source pairs found in {source_path}; "
+                    "existing read model was left untouched."
+                )
 
             conn.execute("delete from product_category_pnl_canonical_fact")
             conn.execute("delete from product_category_pnl_formal_read_model")
@@ -108,6 +114,10 @@ def _materialize_product_category_pnl(
                     )
 
             for pair in pairs:
+                config = build_product_category_config_for_report_date(
+                    pair.report_date,
+                    settings.ftp_rate_pct,
+                )
                 for view in ("monthly", "qtd", "ytd", "year_to_report_month_end"):
                     payload = calculate_read_model(facts_by_date, pair.report_date, view, config)
                     _insert_rows(
@@ -120,6 +130,7 @@ def _materialize_product_category_pnl(
                     )
 
             conn.execute("commit")
+            _checkpoint_if_possible(conn)
         except Exception as exc:
             conn.execute("rollback")
             failed_run = CacheBuildRunRecord(
@@ -186,6 +197,13 @@ materialize_product_category_pnl = register_actor_once(
 def _ensure_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
+
+
+def _checkpoint_if_possible(conn: duckdb.DuckDBPyConnection) -> None:
+    try:
+        conn.execute("checkpoint")
+    except duckdb.Error:
+        pass
 
 
 def _insert_rows(

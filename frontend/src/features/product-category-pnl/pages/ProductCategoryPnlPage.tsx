@@ -1,25 +1,37 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
 import type { ProductCategoryManualAdjustmentRequest } from "../../../api/contracts";
+import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
 import MonthlyOperatingAnalysisBranch from "./MonthlyOperatingAnalysisBranch";
+import "./ProductCategoryPnlPage.css";
 import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip";
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
+  buildProductCategoryDerivedAnalysisPlan,
+  buildProductCategoryTrendSnapshot,
   buildLedgerPnlHrefForReportDate,
   collectProductCategoryGovernanceNotices,
+  defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryDualMetaDistinctLine,
+  formatProductCategoryReportMonthLabel,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
   nextDefaultReportDateIfUnset,
+  selectProductCategoryCurrencyNetIncomeChart,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryInterestEarningIncomeScaleChart,
+  selectProductCategoryInterestSpreadChart,
+  selectProductCategoryTplScaleYieldChart,
+  selectProductCategoryTrendReportDates,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 import { designTokens } from "../../../theme/designSystem";
@@ -116,6 +128,123 @@ function SectionLead(props: {
   );
 }
 
+type DerivedChartPanelProps = {
+  testId: string;
+  title: string;
+  description: string;
+  option: EChartsOption | null;
+};
+
+function buildDualAxisChartOption(input: {
+  labels: string[];
+  leftAxisName: string;
+  rightAxisName: string;
+  series: Array<{
+    name: string;
+    type: "bar" | "line";
+    data: number[];
+    yAxisIndex: 0 | 1;
+    color: string;
+  }>;
+}): EChartsOption | null {
+  if (!input.labels.length || input.series.every((series) => series.data.length === 0)) {
+    return null;
+  }
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: input.series.map((series) => series.name) },
+    grid: { left: 56, right: 56, top: 20, bottom: 52 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: [
+      {
+        type: "value",
+        name: input.leftAxisName,
+        splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
+      },
+      {
+        type: "value",
+        name: input.rightAxisName,
+        splitLine: { show: false },
+      },
+    ],
+    series: input.series.map((series) => ({
+      name: series.name,
+      type: series.type,
+      yAxisIndex: series.yAxisIndex,
+      data: series.data,
+      smooth: series.type === "line",
+      itemStyle: { color: series.color },
+      lineStyle: { color: series.color, width: series.type === "line" ? 3 : undefined },
+      barMaxWidth: series.type === "bar" ? 26 : undefined,
+    })),
+  };
+}
+
+function buildSingleAxisChartOption(input: {
+  labels: string[];
+  axisName: string;
+  series: Array<{
+    name: string;
+    type: "bar" | "line";
+    data: number[];
+    color: string;
+  }>;
+}): EChartsOption | null {
+  if (!input.labels.length || input.series.every((series) => series.data.length === 0)) {
+    return null;
+  }
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: input.series.map((series) => series.name) },
+    grid: { left: 56, right: 24, top: 20, bottom: 52 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: {
+      type: "value",
+      name: input.axisName,
+      splitLine: { lineStyle: { type: "dashed", color: designTokens.color.neutral[200] } },
+    },
+    series: input.series.map((series) => ({
+      name: series.name,
+      type: series.type,
+      data: series.data,
+      smooth: series.type === "line",
+      itemStyle: { color: series.color },
+      lineStyle: { color: series.color, width: series.type === "line" ? 3 : undefined },
+      barMaxWidth: series.type === "bar" ? 26 : undefined,
+    })),
+  };
+}
+
+function DerivedChartPanel(props: DerivedChartPanelProps) {
+  if (!props.option) {
+    return null;
+  }
+  return (
+    <article className="product-category-derived-chart" data-testid={props.testId}>
+      <div className="product-category-derived-chart__header">
+        <h3 className="product-category-derived-chart__title">{props.title}</h3>
+        <p className="product-category-derived-chart__description">{props.description}</p>
+      </div>
+      <ReactECharts
+        option={props.option}
+        className="product-category-derived-chart__canvas"
+        notMerge
+        lazyUpdate
+      />
+    </article>
+  );
+}
+
 export default function ProductCategoryPnlPage() {
   const client = useApiClient();
   const [selectedBranch, setSelectedBranch] = useState<"product_category_pnl" | "monthly_operating_analysis">("product_category_pnl");
@@ -123,6 +252,7 @@ export default function ProductCategoryPnlPage() {
   const [selectedView, setSelectedView] = useState("monthly");
   const [scenarioRate, setScenarioRate] = useState("1.75");
   const [appliedScenarioRate, setAppliedScenarioRate] = useState("");
+  const [scenarioRateTouched, setScenarioRateTouched] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshPollSnapshot, setRefreshPollSnapshot] = useState<{ status: string; run_id?: string } | null>(
     null,
@@ -157,6 +287,23 @@ export default function ProductCategoryPnlPage() {
       report_date: selectedDate,
     }));
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (!selectedDate || scenarioRateTouched) {
+      return;
+    }
+    const defaultRate = defaultProductCategoryScenarioRateForReportDate(selectedDate);
+    setScenarioRate(defaultRate);
+    setAppliedScenarioRate((current) => (current ? defaultRate : current));
+  }, [scenarioRateTouched, selectedDate]);
+
+  const handleReportDateChange = (nextDate: string) => {
+    const defaultRate = defaultProductCategoryScenarioRateForReportDate(nextDate);
+    setSelectedDate(nextDate);
+    setScenarioRate(defaultRate);
+    setScenarioRateTouched(false);
+    setAppliedScenarioRate((current) => (current ? defaultRate : current));
+  };
 
   const baselineQuery = useQuery({
     queryKey: ["product-category-pnl", "baseline", client.mode, selectedDate, selectedView],
@@ -203,10 +350,232 @@ export default function ProductCategoryPnlPage() {
   );
   const baselineRate = baseline?.asset_total.baseline_ftp_rate_pct ?? "1.75";
   const currentSceneRate = scenario?.scenario_rate_pct ?? baselineRate;
+  const displayedAssetTotal = scenario?.asset_total ?? baseline?.asset_total;
+  const displayedLiabilityTotal = scenario?.liability_total ?? baseline?.liability_total;
+  const currentSelectedPayload = scenario ?? baseline;
 
   const rowsToRender = useMemo(
     () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
     [baseline?.rows, scenario?.rows],
+  );
+  const trendReportDates = useMemo(
+    () => selectProductCategoryTrendReportDates(selectedDate, datesQuery.data?.result.report_dates),
+    [datesQuery.data?.result.report_dates, selectedDate],
+  );
+  const trendHistoryReportDates = useMemo(
+    () => trendReportDates.filter((reportDate) => reportDate !== selectedDate),
+    [selectedDate, trendReportDates],
+  );
+  const trendHistoryQueries = useQueries({
+    queries: trendHistoryReportDates.map((reportDate) => ({
+      queryKey: [
+        "product-category-pnl",
+        "trend-history",
+        client.mode,
+        reportDate,
+        selectedView,
+        appliedScenarioRate,
+      ],
+      queryFn: () =>
+        client.getProductCategoryPnl({
+          reportDate,
+          view: selectedView,
+          ...(appliedScenarioRate ? { scenarioRatePct: appliedScenarioRate } : {}),
+        }),
+      enabled: Boolean(reportDate && selectedView),
+      retry: false,
+    })),
+  });
+  const contributionViewQueries = useQueries({
+    queries: (["monthly", "ytd"] as const).map((view) => ({
+      queryKey: [
+        "product-category-pnl",
+        "contribution-view",
+        client.mode,
+        selectedDate,
+        view,
+        appliedScenarioRate,
+      ],
+      queryFn: () =>
+        client.getProductCategoryPnl({
+          reportDate: selectedDate,
+          view,
+          ...(appliedScenarioRate ? { scenarioRatePct: appliedScenarioRate } : {}),
+        }),
+      enabled: Boolean(selectedDate),
+      retry: false,
+    })),
+  });
+  const monthlyContributionPayload =
+    contributionViewQueries[0]?.data?.result ??
+    (selectedView === "monthly" ? currentSelectedPayload : undefined);
+  const ytdContributionPayload =
+    contributionViewQueries[1]?.data?.result ??
+    (selectedView === "ytd" ? currentSelectedPayload : undefined);
+  const trendSnapshots = useMemo(
+    () => [
+      ...(currentSelectedPayload ? [buildProductCategoryTrendSnapshot(currentSelectedPayload)] : []),
+      ...trendHistoryQueries.flatMap((query) =>
+        query.data ? [buildProductCategoryTrendSnapshot(query.data.result)] : [],
+      ),
+    ],
+    [currentSelectedPayload, trendHistoryQueries],
+  );
+  const derivedAnalysisItems = buildProductCategoryDerivedAnalysisPlan({
+    rows: rowsToRender,
+    assetTotal: displayedAssetTotal,
+    liabilityTotal: displayedLiabilityTotal,
+    grandTotal: displayedGrandTotal,
+    currentRate: currentSceneRate,
+    baselineRate,
+    trendSnapshots,
+    contributionViews: {
+      monthly: monthlyContributionPayload
+        ? {
+            assetTotal: monthlyContributionPayload.asset_total,
+            liabilityTotal: monthlyContributionPayload.liability_total,
+            grandTotal: monthlyContributionPayload.grand_total,
+          }
+        : undefined,
+      ytd: ytdContributionPayload
+        ? {
+            assetTotal: ytdContributionPayload.asset_total,
+            liabilityTotal: ytdContributionPayload.liability_total,
+            grandTotal: ytdContributionPayload.grand_total,
+          }
+        : undefined,
+    },
+  });
+  const tplScaleYieldChart = useMemo(
+    () => selectProductCategoryTplScaleYieldChart(trendSnapshots),
+    [trendSnapshots],
+  );
+  const currencyNetIncomeChart = useMemo(
+    () => selectProductCategoryCurrencyNetIncomeChart(trendSnapshots),
+    [trendSnapshots],
+  );
+  const interestEarningIncomeScaleChart = useMemo(
+    () => selectProductCategoryInterestEarningIncomeScaleChart(trendSnapshots),
+    [trendSnapshots],
+  );
+  const interestSpreadChart = useMemo(
+    () => selectProductCategoryInterestSpreadChart(trendSnapshots),
+    [trendSnapshots],
+  );
+  const tplScaleYieldOption = useMemo(
+    () =>
+      tplScaleYieldChart
+        ? buildDualAxisChartOption({
+            labels: tplScaleYieldChart.labels,
+            leftAxisName: "亿元",
+            rightAxisName: "%",
+            series: [
+              {
+                name: "人民币规模（亿元）",
+                type: "bar",
+                data: tplScaleYieldChart.cnyScale,
+                yAxisIndex: 0,
+                color: designTokens.color.primary[500],
+              },
+              {
+                name: "外币规模（亿元）",
+                type: "bar",
+                data: tplScaleYieldChart.foreignScale,
+                yAxisIndex: 0,
+                color: designTokens.color.warning[500],
+              },
+              {
+                name: "收益率（%）",
+                type: "line",
+                data: tplScaleYieldChart.weightedYield,
+                yAxisIndex: 1,
+                color: designTokens.color.success[600],
+              },
+            ],
+          })
+        : null,
+    [tplScaleYieldChart],
+  );
+  const currencyNetIncomeOption = useMemo(
+    () =>
+      currencyNetIncomeChart
+        ? buildSingleAxisChartOption({
+            labels: currencyNetIncomeChart.labels,
+            axisName: "亿元",
+            series: [
+              {
+                name: "人民币净收入（亿元）",
+                type: "bar",
+                data: currencyNetIncomeChart.cnyNet,
+                color: designTokens.color.primary[500],
+              },
+              {
+                name: "外币净收入（亿元）",
+                type: "bar",
+                data: currencyNetIncomeChart.foreignNet,
+                color: designTokens.color.warning[500],
+              },
+            ],
+          })
+        : null,
+    [currencyNetIncomeChart],
+  );
+  const interestEarningIncomeScaleOption = useMemo(
+    () =>
+      interestEarningIncomeScaleChart
+        ? buildDualAxisChartOption({
+            labels: interestEarningIncomeScaleChart.labels,
+            leftAxisName: "亿元",
+            rightAxisName: "亿元",
+            series: [
+              {
+                name: "生息资产规模（亿元）",
+                type: "bar",
+                data: interestEarningIncomeScaleChart.scale,
+                yAxisIndex: 0,
+                color: designTokens.color.info[500],
+              },
+              {
+                name: "生息资产收入（亿元）",
+                type: "line",
+                data: interestEarningIncomeScaleChart.income,
+                yAxisIndex: 1,
+                color: designTokens.color.success[600],
+              },
+            ],
+          })
+        : null,
+    [interestEarningIncomeScaleChart],
+  );
+  const interestSpreadOption = useMemo(
+    () =>
+      interestSpreadChart
+        ? buildSingleAxisChartOption({
+            labels: interestSpreadChart.labels,
+            axisName: "%",
+            series: [
+              {
+                name: "生息资产收益率（%）",
+                type: "line",
+                data: interestSpreadChart.assetYield,
+                color: designTokens.color.success[600],
+              },
+              {
+                name: "负债端加权收益率（%）",
+                type: "line",
+                data: interestSpreadChart.liabilityYield,
+                color: designTokens.color.neutral[500],
+              },
+              {
+                name: "生息资产利差（%）",
+                type: "line",
+                data: interestSpreadChart.spread,
+                color: designTokens.color.danger[500],
+              },
+            ],
+          })
+        : null,
+    [interestSpreadChart],
   );
 
   async function runRefreshWorkflow() {
@@ -737,6 +1106,7 @@ export default function ProductCategoryPnlPage() {
           !adjustmentsQuery.isError &&
           (adjustmentsQuery.data?.adjustments.length ?? 0) === 0
         }
+        fillHeight={false}
         onRetry={() => void adjustmentsQuery.refetch()}
       >
         <div
@@ -861,12 +1231,12 @@ export default function ProductCategoryPnlPage() {
           <select
             aria-label="选择报表月份"
             value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
+            onChange={(event) => handleReportDateChange(event.target.value)}
             style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
           >
             {(datesQuery.data?.result.report_dates ?? []).map((reportDate) => (
               <option key={reportDate} value={reportDate}>
-                {reportDate}
+                {formatProductCategoryReportMonthLabel(reportDate)}
               </option>
             ))}
           </select>
@@ -931,12 +1301,15 @@ export default function ProductCategoryPnlPage() {
           <select
             aria-label="FTP 场景"
             value={scenarioRate}
-            onChange={(event) => setScenarioRate(event.target.value)}
+            onChange={(event) => {
+              setScenarioRateTouched(true);
+              setScenarioRate(event.target.value);
+            }}
             style={{ padding: "10px 12px", borderRadius: 12, border: `1px solid ${designTokens.color.neutral[200]}` }}
           >
-            {["1.75", "2.00", "2.50", "3.00"].map((value) => (
-              <option key={value} value={value}>
-                {value}%
+            {PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -973,6 +1346,7 @@ export default function ProductCategoryPnlPage() {
         isLoading={baselineQuery.isLoading}
         isError={baselineQuery.isError}
         isEmpty={!baselineQuery.isLoading && !baselineQuery.isError && rowsToRender.length === 0}
+        fillHeight={false}
         onRetry={() => void baselineQuery.refetch()}
         extra={reportExtra}
       >
@@ -1104,6 +1478,81 @@ export default function ProductCategoryPnlPage() {
         >
           全部市场科目 + 投资收益合计：{formatProductCategoryValue(displayedGrandTotal.business_net_income)}
         </div>
+      ) : null}
+
+      {!baselineQuery.isError && derivedAnalysisItems.length > 0 ? (
+        <>
+          <SectionLead
+            eyebrow="衍生"
+            title="数据衍生分析方案"
+            description="基于当前产品分类损益表的总计行、产品行、FTP场景和日均规模，形成后续经营分析入口。"
+            testId="product-category-derived-analysis-lead"
+          />
+          <div
+            className="product-category-derived-plan"
+            data-testid="product-category-derived-analysis-plan"
+          >
+            {derivedAnalysisItems.map((item) => (
+              <article
+                className="product-category-derived-plan__card"
+                data-testid={`product-category-derived-analysis-${item.id}`}
+                key={item.id}
+              >
+                <div className="product-category-derived-plan__title">{item.title}</div>
+                <div
+                  className={`product-category-derived-plan__metric product-category-derived-plan__metric--${item.tone}`}
+                >
+                  {item.metric}
+                </div>
+                <div className="product-category-derived-plan__detail">{item.detail}</div>
+                {item.points?.length ? (
+                  <div className="product-category-derived-plan__points">
+                    {item.points.map((point) => (
+                      <div className="product-category-derived-plan__point" key={`${item.id}-${point.label}`}>
+                        <span>{point.label}</span>
+                        <strong
+                          className={`product-category-derived-plan__point-value product-category-derived-plan__point-value--${point.tone ?? "neutral"}`}
+                        >
+                          {point.value}
+                        </strong>
+                        {point.detail ? <small>{point.detail}</small> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            ))}
+          </div>
+          <div
+            className="product-category-derived-charts"
+            data-testid="product-category-derived-chart-grid"
+          >
+            <DerivedChartPanel
+              testId="product-category-derived-chart-tpl-scale-yield"
+              title="TPL资产规模收益率走势图"
+              description="跟踪TPL资产人民币规模、外币规模与综合收益率变化。"
+              option={tplScaleYieldOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-currency-net-income"
+              title="人民币/外币净收入走势分析图"
+              description="按全市场净收入拆分人民币与外币贡献，观察币种结构变化。"
+              option={currencyNetIncomeOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-earning-income-scale"
+              title="生息资产收入规模趋势图"
+              description="联动展示生息资产规模与营业净收入趋势。"
+              option={interestEarningIncomeScaleOption}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-spread"
+              title="生息资产利差分析图"
+              description="按生息资产收益率减负债端付息率展示利差变化。"
+              option={interestSpreadOption}
+            />
+          </div>
+        </>
       ) : null}
     </section>
   );

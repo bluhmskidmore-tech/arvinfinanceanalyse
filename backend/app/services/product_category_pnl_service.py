@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from backend.app.core_finance.reconciliation_checks import completeness_check
@@ -10,7 +11,10 @@ from backend.app.repositories.governance_repo import (
     CACHE_BUILD_RUN_STREAM,
     GovernanceRepository,
 )
-from backend.app.repositories.product_category_pnl_repo import ProductCategoryPnlRepository
+from backend.app.repositories.product_category_pnl_repo import (
+    ProductCategoryPnlRepository,
+    ProductCategoryPnlStorageError,
+)
 from backend.app.schemas.analysis_service import AnalysisQuery
 from backend.app.schemas.materialize import CacheBuildRunRecord
 from backend.app.schemas.product_category_pnl import (
@@ -33,6 +37,7 @@ from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
     build_formal_result_meta,
 )
+from backend.app.services.product_category_source_service import discover_source_pairs
 from backend.app.tasks.product_category_pnl import (
     PRODUCT_CATEGORY_ADJUSTMENT_STREAM,
     PRODUCT_CATEGORY_PNL_LOCK,
@@ -62,7 +67,12 @@ class ProductCategoryReadModelNotFoundError(LookupError):
     pass
 
 
+class ProductCategoryReadModelUnavailableError(RuntimeError):
+    pass
+
+
 def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
+    source_dir = _resolve_product_category_refresh_source_dir(settings)
     try:
         with acquire_lock(
             _refresh_trigger_lock(),
@@ -97,7 +107,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
             try:
                 materialize_product_category_pnl.send(
                     duckdb_path=str(settings.duckdb_path),
-                    source_dir=str(settings.product_category_source_dir),
+                    source_dir=str(source_dir),
                     governance_dir=str(settings.governance_path),
                     run_id=run_id,
                 )
@@ -105,7 +115,7 @@ def queue_product_category_pnl_refresh(settings: Settings) -> dict[str, object]:
                 try:
                     payload = materialize_product_category_pnl.fn(
                         duckdb_path=str(settings.duckdb_path),
-                        source_dir=str(settings.product_category_source_dir),
+                        source_dir=str(source_dir),
                         governance_dir=str(settings.governance_path),
                         run_id=run_id,
                     )
@@ -393,9 +403,10 @@ def refresh_product_category_pnl(settings: Settings) -> dict[str, object]:
 
 
 def run_product_category_refresh_sync(settings: Settings, run_id: str | None = None) -> dict[str, object]:
+    source_dir = _resolve_product_category_refresh_source_dir(settings)
     payload = materialize_product_category_pnl.fn(
         duckdb_path=str(settings.duckdb_path),
-        source_dir=str(settings.product_category_source_dir),
+        source_dir=str(source_dir),
         governance_dir=str(settings.governance_path),
         run_id=run_id,
     )
@@ -406,15 +417,41 @@ def run_product_category_refresh_sync(settings: Settings, run_id: str | None = N
     }
 
 
+def _resolve_product_category_refresh_source_dir(
+    settings: Settings,
+    *,
+    repo_root: Path | None = None,
+) -> Path:
+    configured_dir = Path(settings.product_category_source_dir)
+    if discover_source_pairs(configured_dir):
+        return configured_dir
+
+    root = repo_root or Path(__file__).resolve().parents[3]
+    repo_source_dir = root / "data_input" / configured_dir.name
+    if (
+        str(settings.environment).lower() == "development"
+        and repo_source_dir != configured_dir
+        and discover_source_pairs(repo_source_dir)
+    ):
+        return repo_source_dir.resolve()
+    return configured_dir
+
+
 def product_category_dates_envelope(duckdb_path: str) -> dict[str, object]:
     repo = ProductCategoryPnlRepository(duckdb_path)
-    payload = ProductCategoryDatesPayload(
-        report_dates=repo.list_report_dates(),
-    )
+    try:
+        report_dates = repo.list_report_dates()
+        source_version = repo.latest_source_version()
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
+
+    payload = ProductCategoryDatesPayload(report_dates=report_dates)
     meta = build_formal_result_meta(
         trace_id="tr_product_category_pnl_dates",
         result_kind="product_category_pnl.dates",
-        source_version=repo.latest_source_version(),
+        source_version=source_version,
         rule_version=RULE_VERSION,
         cache_version=CACHE_VERSION,
     )
@@ -441,6 +478,10 @@ def product_category_pnl_envelope(
                 scenario_rate_pct=scenario_rate_pct,
             )
         )
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
     except ValueError as exc:
         detail = str(exc)
         if detail.startswith("No product-category read model rows"):
@@ -459,11 +500,16 @@ def product_category_pnl_envelope(
         liability_total=liability_total,
         grand_total=grand_total,
     )
-    partial_ytd = _is_partial_ytd_view(
-        report_dates=ProductCategoryPnlRepository(duckdb_path).list_report_dates(),
-        report_date=report_date,
-        view=view,
-    )
+    try:
+        partial_ytd = _is_partial_ytd_view(
+            report_dates=ProductCategoryPnlRepository(duckdb_path).list_report_dates(),
+            report_date=report_date,
+            view=view,
+        )
+    except ProductCategoryPnlStorageError as exc:
+        raise ProductCategoryReadModelUnavailableError(
+            "Product-category read model is temporarily unavailable; refresh may be running."
+        ) from exc
     payload = ProductCategoryPnlPayload(
         report_date=report_date,
         view=view,

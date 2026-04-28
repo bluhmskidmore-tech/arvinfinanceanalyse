@@ -7,6 +7,7 @@ module to keep older imports working without maintaining a second mapping.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from backend.app.core_finance.config.classification_rules import (
@@ -14,6 +15,10 @@ from backend.app.core_finance.config.classification_rules import (
 )
 
 DEFAULT_FTP_RATE_PCT = Decimal("1.75")
+FTP_RATE_PCT_BY_REPORT_YEAR = {
+    2025: Decimal("1.75"),
+    2026: Decimal("1.60"),
+}
 
 DERIVATIVE_PNL_ACCOUNTS = [
     "51603010005",
@@ -241,6 +246,22 @@ def build_default_product_category_config(
             "children": [],
         },
     ]
+
+
+def resolve_product_category_ftp_rate_pct(
+    report_date: date,
+    fallback_rate_pct: Decimal = DEFAULT_FTP_RATE_PCT,
+) -> Decimal:
+    return FTP_RATE_PCT_BY_REPORT_YEAR.get(report_date.year, fallback_rate_pct)
+
+
+def build_product_category_config_for_report_date(
+    report_date: date,
+    fallback_rate_pct: Decimal = DEFAULT_FTP_RATE_PCT,
+) -> list[dict[str, object]]:
+    return build_default_product_category_config(
+        resolve_product_category_ftp_rate_pct(report_date, fallback_rate_pct)
+    )
 
 
 def format_account_list(accounts: list[str] | tuple[str, ...] | None) -> str:

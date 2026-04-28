@@ -149,8 +149,9 @@ def calculate_read_model(
             cny_ftp = sum((Decimal(str(item["cny_ftp"])) for item in child_rows), ZERO)
             foreign_ftp = sum((Decimal(str(item["foreign_ftp"])) for item in child_rows), ZERO)
         else:
-            cash_field = "monthly_pnl" if view == "monthly" else "ending_balance"
-            sign = Decimal("1") if view == "monthly" else Decimal("-1")
+            period_pnl_view = view in {"monthly", "ytd", "year_to_report_month_end"}
+            cash_field = "monthly_pnl" if period_pnl_view else "ending_balance"
+            sign = Decimal("1") if period_pnl_view else Decimal("-1")
             cnx_cash = sign * _calculate_sum(report_rows, category["pnl_accounts"], cash_field, "CNX", exact=False)
             cny_cash = sign * _calculate_sum(report_rows, category["pnl_accounts"], cash_field, "CNY", exact=False)
             foreign_cash = cnx_cash - cny_cash
@@ -206,6 +207,14 @@ def calculate_read_model(
         days_for_view,
     )
     baseline_rate = Decimal(str(asset_total["baseline_ftp_rate_pct"])) if asset_rows else ZERO
+    grand_cnx_cash = Decimal(str(asset_total["cnx_cash"])) + Decimal(str(liability_total["cnx_cash"]))
+    grand_cny_cash = Decimal(str(asset_total["cny_cash"])) + Decimal(str(liability_total["cny_cash"]))
+    grand_foreign_cash = Decimal(str(asset_total["foreign_cash"])) + Decimal(str(liability_total["foreign_cash"]))
+    grand_cny_ftp = Decimal(str(asset_total["cny_ftp"])) + Decimal(str(liability_total["cny_ftp"]))
+    grand_foreign_ftp = Decimal(str(asset_total["foreign_ftp"])) + Decimal(str(liability_total["foreign_ftp"]))
+    grand_cny_net = Decimal(str(asset_total["cny_net"])) + Decimal(str(liability_total["cny_net"]))
+    grand_foreign_net = Decimal(str(asset_total["foreign_net"])) + Decimal(str(liability_total["foreign_net"]))
+    grand_business_net_income = grand_cny_net + grand_foreign_net
     grand_total = {
         "category_id": "grand_total",
         "category_name": "grand_total",
@@ -217,14 +226,14 @@ def calculate_read_model(
         "cnx_scale": ZERO,
         "cny_scale": ZERO,
         "foreign_scale": ZERO,
-        "cnx_cash": ZERO,
-        "cny_cash": ZERO,
-        "foreign_cash": ZERO,
-        "cny_ftp": ZERO,
-        "foreign_ftp": ZERO,
-        "cny_net": ZERO,
-        "foreign_net": ZERO,
-        "business_net_income": Decimal(str(asset_total["business_net_income"])) + Decimal(str(liability_total["business_net_income"])),
+        "cnx_cash": grand_cnx_cash,
+        "cny_cash": grand_cny_cash,
+        "foreign_cash": grand_foreign_cash,
+        "cny_ftp": grand_cny_ftp,
+        "foreign_ftp": grand_foreign_ftp,
+        "cny_net": grand_cny_net,
+        "foreign_net": grand_foreign_net,
+        "business_net_income": grand_business_net_income,
         "weighted_yield": None,
         "is_total": True,
         "children": [],
@@ -264,6 +273,33 @@ def apply_scenario_to_rows(rows: list[dict[str, object]], scenario_rate_pct: Dec
         cloned["cny_net"] = cny_net
         cloned["foreign_net"] = foreign_net
         cloned["business_net_income"] = business_net_income
+        adjusted.append(cloned)
+    return adjusted
+
+
+def apply_baseline_ftp_rate_to_rows(
+    rows: list[dict[str, object]],
+    baseline_rate_pct: Decimal,
+) -> list[dict[str, object]]:
+    adjusted: list[dict[str, object]] = []
+    for row in rows:
+        current_rate = Decimal(str(row["baseline_ftp_rate_pct"]))
+        ratio = ZERO if current_rate == ZERO else baseline_rate_pct / current_rate
+
+        cny_ftp_new = Decimal(str(row["cny_ftp"])) * ratio
+        foreign_ftp_new = Decimal(str(row["foreign_ftp"])) * ratio
+        cny_cash = Decimal(str(row["cny_cash"]))
+        foreign_cash = Decimal(str(row["foreign_cash"]))
+        cny_net = cny_cash - cny_ftp_new
+        foreign_net = foreign_cash - foreign_ftp_new
+
+        cloned = dict(row)
+        cloned["baseline_ftp_rate_pct"] = baseline_rate_pct
+        cloned["cny_ftp"] = cny_ftp_new
+        cloned["foreign_ftp"] = foreign_ftp_new
+        cloned["cny_net"] = cny_net
+        cloned["foreign_net"] = foreign_net
+        cloned["business_net_income"] = cny_net + foreign_net
         adjusted.append(cloned)
     return adjusted
 
@@ -349,7 +385,8 @@ def _build_ytd_report_rows(
 
     combined: dict[tuple[str, str], dict[str, Decimal | str | int | date]] = {}
     for item_date in year_months:
-        days = Decimal(monthrange(item_date.year, item_date.month)[1])
+        days = Decimal(_days_for_view(item_date, "monthly"))
+        scale_field = _scale_field(item_date, "monthly")
         for row in facts_by_report_date[item_date]:
             key = (row.account_code, row.currency)
             current = combined.setdefault(
@@ -360,7 +397,7 @@ def _build_ytd_report_rows(
                     "currency": row.currency,
                     "account_name": row.account_name,
                     "beginning_balance": row.beginning_balance,
-                    "ending_balance": ZERO,
+                    "ending_balance": row.ending_balance,
                     "monthly_pnl": ZERO,
                     "daily_avg_balance": ZERO,
                     "annual_avg_balance": row.annual_avg_balance,
@@ -369,9 +406,11 @@ def _build_ytd_report_rows(
                 },
             )
             current["account_name"] = row.account_name
-            current["ending_balance"] = Decimal(str(current["ending_balance"])) + row.ending_balance
+            current["ending_balance"] = row.ending_balance
             current["monthly_pnl"] = Decimal(str(current["monthly_pnl"])) + row.monthly_pnl
-            current["daily_avg_balance"] = Decimal(str(current["daily_avg_balance"])) + (row.daily_avg_balance * days)
+            current["daily_avg_balance"] = Decimal(str(current["daily_avg_balance"])) + (
+                getattr(row, scale_field) * days
+            )
             current["annual_avg_balance"] = row.annual_avg_balance
             current["weight"] = Decimal(str(current["weight"])) + days
 
@@ -398,7 +437,7 @@ def _build_ytd_report_rows(
 def _scale_field(report_date: date, view: str) -> str:
     if view == "monthly":
         return "annual_avg_balance" if report_date.month == 1 else "daily_avg_balance"
-    if view == "qtd":
+    if view in {"qtd", "ytd", "year_to_report_month_end"}:
         return "daily_avg_balance"
     return "annual_avg_balance"
 

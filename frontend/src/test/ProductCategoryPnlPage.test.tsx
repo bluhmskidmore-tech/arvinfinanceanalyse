@@ -8,8 +8,29 @@ import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
+vi.mock("../lib/echarts", () => ({
+  default: ({ option }: { option?: unknown }) => (
+    <div data-testid="product-category-echarts-stub">{JSON.stringify(option ?? null)}</div>
+  ),
+}));
+
 function renderWorkbenchAppWithClient(client: ReturnType<typeof createApiClient>) {
   return renderWorkbenchApp(["/product-category-pnl"], { client });
+}
+
+function yuan(yi: number): string {
+  return String(yi * 100_000_000);
+}
+
+function readChartOption(panelTestId: string) {
+  const panel = screen.getByTestId(panelTestId);
+  return JSON.parse(
+    within(panel).getByTestId("product-category-echarts-stub").textContent ?? "null",
+  ) as {
+    legend?: { data?: string[] };
+    xAxis?: { data?: string[] } | Array<{ data?: string[] }>;
+    series?: Array<{ name?: string; type?: string; data?: unknown[]; yAxisIndex?: number }>;
+  };
 }
 
 describe("ProductCategoryPnlPage", () => {
@@ -32,6 +53,19 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-formal-table-lead")).toHaveTextContent(
       "正式产品类别损益表",
     );
+    expect(screen.getByTestId("product-category-derived-analysis-lead")).toHaveTextContent(
+      "数据衍生分析方案",
+    );
+    const derivedPlan = screen.getByTestId("product-category-derived-analysis-plan");
+    expect(derivedPlan).toHaveTextContent("经营贡献拆解");
+    expect(derivedPlan).toHaveTextContent("月度损益");
+    expect(derivedPlan).toHaveTextContent("累计损益");
+    expect(derivedPlan).toHaveTextContent("生息资产走势分析");
+    expect(derivedPlan).toHaveTextContent("利差水平分析");
+    expect(derivedPlan).toHaveTextContent("拆放同业走势分析");
+    expect(derivedPlan).toHaveTextContent("TPL资产规模/收益率走势");
+    expect(derivedPlan).toHaveTextContent("FTP情景敏感性");
+    expect(derivedPlan).toHaveTextContent("2.0%、1.75%、1.6%、1.5%");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("1.75");
     expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.85");
     expect(screen.getByTestId("product-category-footer-total")).toHaveTextContent("2.85");
@@ -85,7 +119,10 @@ describe("ProductCategoryPnlPage", () => {
       expect(pnlSpy).toHaveBeenCalled();
       expect(adjSpy).toHaveBeenCalled();
     });
-    expect(pnlSpy.mock.calls.every((call) => call[0]!.reportDate === firstDate)).toBe(true);
+    expect(pnlSpy.mock.calls.some((call) => call[0]!.reportDate === firstDate)).toBe(true);
+    expect(pnlSpy.mock.calls.map((call) => call[0]!.reportDate)).toEqual(
+      expect.arrayContaining([firstDate, "2026-02-28", "2026-01-31"]),
+    );
     expect(pnlSpy.mock.calls[0]![0]).toMatchObject({ view: "monthly" });
     expect(adjSpy.mock.calls.every((call) => call[0] === firstDate)).toBe(true);
     expect(screen.getByTestId("product-category-ledger-link")).toHaveAttribute(
@@ -122,6 +159,262 @@ describe("ProductCategoryPnlPage", () => {
     expect(gap.textContent).not.toContain("2026-05-01");
     const monthSelect = screen.getByRole("combobox", { name: "选择报表月份" }) as HTMLSelectElement;
     expect(monthSelect.options).toHaveLength(0);
+  });
+
+  it("shows report date choices as months while keeping month-end values for the API", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const monthSelect = screen.getByRole("combobox", { name: "选择报表月份" }) as HTMLSelectElement;
+    expect(monthSelect.value).toBe("2026-02-28");
+    expect(Array.from(monthSelect.options).slice(0, 2).map((option) => [option.value, option.textContent])).toEqual([
+      ["2026-02-28", "2026年02月"],
+      ["2026-01-31", "2026年01月"],
+    ]);
+  });
+
+  it("shows monthly and corrected cumulative PnL together in the contribution card", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const envelope = buildMockProductCategoryPnlEnvelope(options);
+        if (options.view !== "ytd") {
+          return envelope;
+        }
+
+        const assetTotal = { ...envelope.result.asset_total, business_net_income: "573000000" };
+        const liabilityTotal = { ...envelope.result.liability_total, business_net_income: "33000000" };
+        const grandTotal = { ...envelope.result.grand_total, business_net_income: "606000000" };
+        const totalsById = {
+          asset_total: assetTotal,
+          liability_total: liabilityTotal,
+          grand_total: grandTotal,
+        };
+
+        return {
+          ...envelope,
+          result: {
+            ...envelope.result,
+            asset_total: assetTotal,
+            liability_total: liabilityTotal,
+            grand_total: grandTotal,
+            rows: envelope.result.rows.map((row) => totalsById[row.category_id as keyof typeof totalsById] ?? row),
+          },
+        };
+      }),
+    });
+
+    const contribution = await screen.findByTestId("product-category-derived-analysis-contribution");
+    await waitFor(() => {
+      expect(contribution).toHaveTextContent("月度损益 2.85 亿元");
+      expect(contribution).toHaveTextContent("累计损益 6.06 亿元");
+    });
+    expect(contribution).toHaveTextContent("月度：资产端 2.70 亿元");
+    expect(contribution).toHaveTextContent("累计：资产端 5.73 亿元");
+  });
+
+  it("builds trend analysis from current and prior product-category payloads", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        if (options.reportDate !== "2026-01-31") {
+          return env;
+        }
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            asset_total: {
+              ...env.result.asset_total,
+              weighted_yield: "2.55",
+            },
+            liability_total: {
+              ...env.result.liability_total,
+              weighted_yield: "1.60",
+            },
+            rows: env.result.rows.map((row) => {
+              if (row.category_id === "interest_earning_assets") {
+                return {
+                  ...row,
+                  cnx_scale: yuan(2800),
+                  business_net_income: yuan(1.2),
+                  weighted_yield: "2.35",
+                };
+              }
+              if (row.category_id === "interbank_lending_assets") {
+                return {
+                  ...row,
+                  cnx_scale: yuan(160),
+                  cny_scale: yuan(150),
+                  foreign_scale: yuan(10),
+                  business_net_income: yuan(0.08),
+                  weighted_yield: "2.45",
+                };
+              }
+              if (row.category_id === "bond_tpl") {
+                return {
+                  ...row,
+                  cnx_scale: yuan(820),
+                  business_net_income: yuan(0.3),
+                  weighted_yield: "2.20",
+                };
+              }
+              return row;
+            }),
+          },
+        };
+      }),
+    });
+
+    const interestTrend = await screen.findByTestId(
+      "product-category-derived-analysis-interestEarningTrend",
+    );
+    await waitFor(() => {
+      expect(interestTrend).toHaveTextContent("+98.50 亿元");
+    });
+    expect(interestTrend).toHaveTextContent("生息资产走势分析");
+    expect(interestTrend).toHaveTextContent("日均 2898.50 亿元");
+    expect(screen.getByTestId("product-category-derived-analysis-spreadLevel")).toHaveTextContent(
+      "资产负债利差 105bp",
+    );
+    expect(screen.getByTestId("product-category-derived-analysis-spreadLevel")).toHaveTextContent(
+      "+10bp",
+    );
+    expect(
+      screen.getByTestId("product-category-derived-analysis-interbankLendingTrend"),
+    ).toHaveTextContent("拆放同业走势分析");
+    expect(
+      screen.getByTestId("product-category-derived-analysis-interbankLendingTrend"),
+    ).toHaveTextContent("人民币日均 156.91 亿元");
+    expect(screen.getByTestId("product-category-derived-analysis-tplAssetTrend")).toHaveTextContent(
+      "TPL资产规模/收益率走势",
+    );
+    expect(screen.getByTestId("product-category-derived-analysis-tplAssetTrend")).toHaveTextContent(
+      "收益率 2.31%",
+    );
+  });
+
+  it("renders the four requested derived chart panels with chart stubs", async () => {
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    expect(screen.getByTestId("product-category-derived-chart-tpl-scale-yield")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-currency-net-income")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(4);
+  });
+
+  it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const withGrandTotal = {
+          ...env,
+          result: {
+            ...env.result,
+            grand_total: {
+              ...env.result.grand_total,
+              cny_net: yuan(options.reportDate === "2026-01-31" ? 2.12 : 2.71),
+              foreign_net: yuan(options.reportDate === "2026-01-31" ? 0.18 : 0.14),
+            },
+          },
+        };
+        if (options.reportDate !== "2026-01-31") {
+          return withGrandTotal;
+        }
+        return {
+          ...withGrandTotal,
+          result: {
+            ...withGrandTotal.result,
+            liability_total: {
+              ...env.result.liability_total,
+              weighted_yield: "1.58",
+            },
+            rows: env.result.rows.map((row) => {
+              if (row.category_id === "bond_tpl") {
+                return {
+                  ...row,
+                  cny_scale: yuan(810),
+                  foreign_scale: yuan(12),
+                  cny_net: yuan(0.22),
+                  foreign_net: yuan(0.04),
+                  weighted_yield: "2.18",
+                };
+              }
+              if (row.category_id === "interest_earning_assets") {
+                return {
+                  ...row,
+                  cnx_scale: yuan(2800),
+                  business_net_income: yuan(1.2),
+                  weighted_yield: "2.35",
+                };
+              }
+              return row;
+            }),
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-derived-chart-tpl-scale-yield");
+
+    const tplOption = readChartOption("product-category-derived-chart-tpl-scale-yield");
+    expect(tplOption.legend?.data).toEqual([
+      "人民币规模（亿元）",
+      "外币规模（亿元）",
+      "收益率（%）",
+    ]);
+    expect(tplOption.xAxis).toMatchObject({ data: ["2026年01月", "2026年02月"] });
+    expect(tplOption.series?.map((series) => series.type)).toEqual(["bar", "bar", "line"]);
+    expect(tplOption.series?.[0]?.data).toEqual([810, 865.79]);
+    expect(tplOption.series?.[1]?.data).toEqual([12, -0.8]);
+    expect(tplOption.series?.[2]?.data).toEqual([2.18, 2.31]);
+
+    const netIncomeOption = readChartOption("product-category-derived-chart-currency-net-income");
+    expect(netIncomeOption.series?.map((series) => series.name)).toEqual([
+      "人民币净收入（亿元）",
+      "外币净收入（亿元）",
+    ]);
+    expect(netIncomeOption.series?.[0]?.data).toEqual([2.12, 2.71]);
+    expect(netIncomeOption.series?.[1]?.data).toEqual([0.18, 0.14]);
+
+    const interestOption = readChartOption(
+      "product-category-derived-chart-interest-earning-income-scale",
+    );
+    expect(interestOption.series?.map((series) => series.name)).toEqual([
+      "生息资产规模（亿元）",
+      "生息资产收入（亿元）",
+    ]);
+    expect(interestOption.series?.[0]?.data).toEqual([2800, 2898.5]);
+    expect(interestOption.series?.[1]?.data).toEqual([1.2, 1.45]);
+
+    const spreadOption = readChartOption("product-category-derived-chart-interest-spread");
+    expect(spreadOption.series?.map((series) => series.name)).toEqual([
+      "生息资产收益率（%）",
+      "负债端加权收益率（%）",
+      "生息资产利差（%）",
+    ]);
+    expect(spreadOption.series?.[0]?.data).toEqual([2.35, 2.4]);
+    expect(spreadOption.series?.[1]?.data).toEqual([1.58, 1.63]);
+    expect(spreadOption.series?.[2]?.data).toEqual([0.77, 0.77]);
   });
 
   it("Unit 2: formal detail table renders frozen backend fields in column order without metric_id invention", async () => {
@@ -293,17 +586,91 @@ describe("ProductCategoryPnlPage", () => {
     expect(pnlSpy.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("pins the requested FTP scenarios and defaults 2026 reports to 1.6 before explicit apply", async () => {
+    const user = userEvent.setup();
+    renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
+
+    await screen.findByTestId("product-category-table");
+    const ftpSelect = screen.getByRole("combobox", { name: "FTP 场景" }) as HTMLSelectElement;
+    expect(Array.from(ftpSelect.options).map((option) => [option.value, option.textContent])).toEqual([
+      ["2.00", "2.0%"],
+      ["1.75", "1.75%"],
+      ["1.60", "1.6%"],
+      ["1.50", "1.5%"],
+    ]);
+    await waitFor(() => {
+      expect(ftpSelect.value).toBe("1.60");
+    });
+    expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.75%");
+
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("当前场景：1.60%");
+      expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
+        "scenario",
+      );
+    });
+  });
+
+  it("resets the FTP scenario to the selected report year default when switching months", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const pnlSpy = vi.fn((options: Parameters<typeof baseClient.getProductCategoryPnl>[0]) =>
+      baseClient.getProductCategoryPnl(options),
+    );
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2025-12-31"],
+        }),
+      ),
+      getProductCategoryPnl: pnlSpy,
+    });
+
+    await screen.findByTestId("product-category-table");
+    const [monthSelect, ftpSelect] = screen.getAllByRole("combobox") as HTMLSelectElement[];
+    await waitFor(() => {
+      expect(ftpSelect.value).toBe("1.60");
+    });
+
+    await user.selectOptions(ftpSelect, "2.00");
+    await user.click(screen.getByTestId("product-category-apply-scenario-button"));
+    await waitFor(() => {
+      expect(pnlSpy).toHaveBeenCalledWith(expect.objectContaining({ scenarioRatePct: "2.00" }));
+    });
+    const callsBeforeSwitch = pnlSpy.mock.calls.length;
+
+    await user.selectOptions(monthSelect, "2025-12-31");
+    await waitFor(() => {
+      expect(ftpSelect.value).toBe("1.75");
+      expect(pnlSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reportDate: "2025-12-31",
+          scenarioRatePct: "1.75",
+        }),
+      );
+    });
+    expect(
+      pnlSpy.mock.calls
+        .slice(callsBeforeSwitch)
+        .some(
+          ([options]) =>
+            options?.reportDate === "2025-12-31" && options.scenarioRatePct === "2.00",
+        ),
+    ).toBe(false);
+  });
+
   it("applies a scenario rate only after the apply action", async () => {
     const user = userEvent.setup();
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("product-category-table");
-    const selects = screen.getAllByRole("combobox");
-    await user.selectOptions(selects[1]!, "2.50");
+    await user.selectOptions(screen.getByRole("combobox", { name: "FTP 场景" }), "2.00");
     await user.click(screen.getByTestId("product-category-apply-scenario-button"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.50");
+      expect(screen.getByTestId("product-category-summary")).toHaveTextContent("2.00");
       expect(screen.getByTestId("product-category-summary")).toHaveTextContent("0.52");
       expect(screen.getByTestId("product-category-result-meta-scenario")).toHaveTextContent(
         "scenario",

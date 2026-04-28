@@ -12,6 +12,7 @@ from backend.app.schemas.product_category_pnl import (
 from backend.app.services.product_category_pnl_service import (
     AVAILABLE_VIEWS,
     ProductCategoryReadModelNotFoundError,
+    ProductCategoryReadModelUnavailableError,
     ProductCategoryRefreshConflictError,
     ProductCategoryRefreshServiceError,
     create_product_category_manual_adjustment,
@@ -32,7 +33,10 @@ router = APIRouter(prefix="/ui/pnl/product-category")
 
 @router.get("/dates")
 def dates() -> dict[str, object]:
-    return product_category_dates_envelope(get_settings().duckdb_path)
+    try:
+        return product_category_dates_envelope(get_settings().duckdb_path)
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("")
@@ -55,6 +59,8 @@ def detail(
         )
     except ProductCategoryReadModelNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/refresh")

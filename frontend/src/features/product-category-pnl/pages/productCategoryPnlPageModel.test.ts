@@ -5,18 +5,24 @@ import { designTokens } from "../../../theme/designSystem";
 
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
+  PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
   PRODUCT_CATEGORY_VALUE_TONE_COLORS,
   PRODUCT_CATEGORY_GOVERNED_DETAIL_VIEWS,
   PRODUCT_CATEGORY_MAIN_PAGE_VIEWS,
   availableViewsSupportMainPageSelector,
+  buildProductCategoryDerivedAnalysisPlan,
+  buildProductCategoryTrendSnapshot,
   collectProductCategoryGovernanceNotices,
+  defaultProductCategoryScenarioRateForReportDate,
   formatProductCategoryDualMetaDistinctLine,
+  formatProductCategoryReportMonthLabel,
   formatProductCategoryRowDisplayValue,
   formatProductCategoryValue,
   formatProductCategoryYieldValue,
   mainPageViewsAreGovernedDetailSubset,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryTrendReportDates,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
 
@@ -84,6 +90,24 @@ describe("productCategoryPnlPageModel", () => {
     expect(availableViewsSupportMainPageSelector(["monthly"])).toBe(false);
   });
 
+  it("pins the four FTP scenario choices and year defaults used by the main page", () => {
+    expect(PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS).toEqual([
+      { value: "2.00", label: "2.0%" },
+      { value: "1.75", label: "1.75%" },
+      { value: "1.60", label: "1.6%" },
+      { value: "1.50", label: "1.5%" },
+    ]);
+    expect(defaultProductCategoryScenarioRateForReportDate("2025-12-31")).toBe("1.75");
+    expect(defaultProductCategoryScenarioRateForReportDate("2026-02-28")).toBe("1.60");
+    expect(defaultProductCategoryScenarioRateForReportDate("2024-12-31")).toBe("1.75");
+  });
+
+  it("formats report date choices as month labels while preserving invalid input", () => {
+    expect(formatProductCategoryReportMonthLabel("2026-02-28")).toBe("2026年02月");
+    expect(formatProductCategoryReportMonthLabel("2025-12-31")).toBe("2025年12月");
+    expect(formatProductCategoryReportMonthLabel("not-a-date")).toBe("not-a-date");
+  });
+
   it("uses baseline rows as-is when no scenario rows are passed (no re-aggregation)", () => {
     const baseline = [
       row({ category_id: "bond_investment", business_net_income: "1.5" }),
@@ -129,6 +153,204 @@ describe("productCategoryPnlPageModel", () => {
     const s = row({ category_id: "grand_total", business_net_income: "2" });
     expect(selectDisplayedProductCategoryGrandTotal(undefined, b)?.business_net_income).toBe("1");
     expect(selectDisplayedProductCategoryGrandTotal(s, b)?.business_net_income).toBe("2");
+  });
+
+  it("builds a data-derived analysis plan from totals and product rows", () => {
+    const interestCurrent = row({
+      category_id: "interest_earning_assets",
+      category_name: "生息资产",
+      cnx_scale: "289850000000",
+      business_net_income: "145000000",
+      weighted_yield: "2.40",
+    });
+    const interestPrevious = row({
+      category_id: "interest_earning_assets",
+      category_name: "生息资产",
+      report_date: "2026-01-31",
+      cnx_scale: "280000000000",
+      business_net_income: "120000000",
+      weighted_yield: "2.35",
+    });
+    const interbankCurrent = row({
+      category_id: "interbank_lending_assets",
+      category_name: "拆放同业",
+      cnx_scale: "17160000000",
+      cny_scale: "15691000000",
+      foreign_scale: "1469000000",
+      business_net_income: "10000000",
+      weighted_yield: "2.50",
+    });
+    const interbankPrevious = row({
+      category_id: "interbank_lending_assets",
+      category_name: "拆放同业",
+      report_date: "2026-01-31",
+      cnx_scale: "16000000000",
+      cny_scale: "15000000000",
+      foreign_scale: "1000000000",
+      business_net_income: "8000000",
+      weighted_yield: "2.45",
+    });
+    const tplCurrent = row({
+      category_id: "bond_tpl",
+      category_name: "TPL",
+      cnx_scale: "86498000000",
+      business_net_income: "37000000",
+      weighted_yield: "2.31",
+    });
+    const tplPrevious = row({
+      category_id: "bond_tpl",
+      category_name: "TPL",
+      report_date: "2026-01-31",
+      cnx_scale: "82000000000",
+      business_net_income: "30000000",
+      weighted_yield: "2.20",
+    });
+    const assetCurrent = row({
+      category_id: "asset_total",
+      business_net_income: "270000000",
+      weighted_yield: "2.68",
+      is_total: true,
+    });
+    const assetPrevious = row({
+      category_id: "asset_total",
+      report_date: "2026-01-31",
+      business_net_income: "250000000",
+      weighted_yield: "2.55",
+      is_total: true,
+    });
+    const liabilityCurrent = row({
+      category_id: "liability_total",
+      side: "liability",
+      business_net_income: "16000000",
+      weighted_yield: "1.63",
+      is_total: true,
+    });
+    const liabilityPrevious = row({
+      category_id: "liability_total",
+      side: "liability",
+      report_date: "2026-01-31",
+      business_net_income: "15000000",
+      weighted_yield: "1.60",
+      is_total: true,
+    });
+    const plan = buildProductCategoryDerivedAnalysisPlan({
+      rows: [
+        interbankCurrent,
+        row({
+          category_id: "bond_investment",
+          category_name: "债券投资",
+          cnx_scale: "336178000000",
+          business_net_income: "227000000",
+          weighted_yield: "2.63",
+        }),
+        tplCurrent,
+        row({
+          category_id: "repo_assets",
+          category_name: "买入返售",
+          cnx_scale: "23011000000",
+          business_net_income: "-5000000",
+        }),
+        interestCurrent,
+        row({
+          category_id: "asset_total",
+          category_name: "资产端合计",
+          business_net_income: "270000000",
+          is_total: true,
+        }),
+      ],
+      assetTotal: assetCurrent,
+      liabilityTotal: liabilityCurrent,
+      grandTotal: row({ category_id: "grand_total", business_net_income: "286000000", is_total: true }),
+      currentRate: "1.60",
+      baselineRate: "1.75",
+      contributionViews: {
+        monthly: {
+          assetTotal: assetCurrent,
+          liabilityTotal: liabilityCurrent,
+          grandTotal: row({ category_id: "grand_total", business_net_income: "286000000", is_total: true }),
+        },
+        ytd: {
+          assetTotal: row({ category_id: "asset_total", business_net_income: "810000000", is_total: true }),
+          liabilityTotal: row({
+            category_id: "liability_total",
+            side: "liability",
+            business_net_income: "48000000",
+            is_total: true,
+          }),
+          grandTotal: row({ category_id: "grand_total", business_net_income: "858000000", is_total: true }),
+        },
+      },
+      trendSnapshots: [
+        {
+          reportDate: "2026-02-28",
+          rows: [interbankCurrent, tplCurrent, interestCurrent],
+          assetTotal: assetCurrent,
+          liabilityTotal: liabilityCurrent,
+        },
+        {
+          reportDate: "2026-01-31",
+          rows: [interbankPrevious, tplPrevious, interestPrevious],
+          assetTotal: assetPrevious,
+          liabilityTotal: liabilityPrevious,
+        },
+      ],
+    });
+    const planById = new Map(plan.map((item) => [item.id, item]));
+
+    expect(plan.map((item) => item.id)).toEqual([
+      "contribution",
+      "interestEarningTrend",
+      "spreadLevel",
+      "interbankLendingTrend",
+      "tplAssetTrend",
+      "driver",
+      "ftp",
+      "review",
+    ]);
+    expect(planById.get("contribution")).toMatchObject({
+      title: "经营贡献拆解",
+      metric: "月度损益 2.86 亿元 / 累计损益 8.58 亿元",
+      tone: "positive",
+    });
+    expect(planById.get("contribution")?.detail).toContain("累计：资产端 8.10 亿元");
+    expect(planById.get("interestEarningTrend")?.detail).toContain("+98.50 亿元");
+    expect(planById.get("spreadLevel")?.metric).toBe("资产负债利差 105bp");
+    expect(planById.get("spreadLevel")?.detail).toContain("+10bp");
+    expect(planById.get("interbankLendingTrend")?.detail).toContain("人民币日均 156.91 亿元");
+    expect(planById.get("tplAssetTrend")?.metric).toBe("日均 864.98 亿元 / 收益率 2.31%");
+    expect(planById.get("driver")?.metric).toBe("债券投资 2.27 亿元");
+    expect(planById.get("ftp")?.metric).toBe("当前 1.6% / 基准 1.75%");
+    expect(planById.get("review")?.detail).toContain("买入返售");
+  });
+
+  it("selects trend dates from the selected report month onward and snapshots payload rows without rollup", () => {
+    expect(
+      selectProductCategoryTrendReportDates("2026-02-28", [
+        "2026-03-31",
+        "2026-02-28",
+        "2026-01-31",
+        "2025-12-31",
+        "2025-11-30",
+      ]),
+    ).toEqual(["2026-02-28", "2026-01-31", "2025-12-31", "2025-11-30"]);
+    expect(selectProductCategoryTrendReportDates("", ["2026-02-28"])).toEqual([]);
+
+    const payload = {
+      report_date: "2026-02-28",
+      view: "monthly",
+      available_views: ["monthly"],
+      scenario_rate_pct: null,
+      rows: [
+        row({ category_id: "grand_total", is_total: true }),
+        row({ category_id: "interest_earning_assets", cnx_scale: "100000000" }),
+      ],
+      asset_total: row({ category_id: "asset_total", is_total: true }),
+      liability_total: row({ category_id: "liability_total", side: "liability", is_total: true }),
+      grand_total: row({ category_id: "grand_total", is_total: true }),
+    };
+    const snapshot = buildProductCategoryTrendSnapshot(payload);
+    expect(snapshot.reportDate).toBe("2026-02-28");
+    expect(snapshot.rows.map((r) => r.category_id)).toEqual(["interest_earning_assets"]);
   });
 
   it("formats yuan money values as yi yuan, with liability-side absolute display", () => {
