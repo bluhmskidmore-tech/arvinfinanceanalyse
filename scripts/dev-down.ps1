@@ -53,7 +53,8 @@ function Stop-NativeProcesses {
     ($_.Name -eq "powershell.exe" -and (
       $_.CommandLine -like "*scripts\dev-api.ps1*" -or
       $_.CommandLine -like "*scripts\dev-worker.ps1*" -or
-      $_.CommandLine -like "*scripts\dev-frontend.ps1*"
+      $_.CommandLine -like "*scripts\dev-frontend.ps1*" -or
+      $_.CommandLine -like "*scripts\dev-keepalive.ps1*"
     )) -or
     ($_.Name -eq "python.exe" -and (
       $_.CommandLine -like "*backend.app.main:app*" -or
@@ -103,6 +104,9 @@ Wait-ProcessStopped -Description "frontend" -Predicate {
   $_.Name -eq "node.exe" -and
   $_.CommandLine -like ("*" + (Join-Path $root "frontend") + "*") -and
   $_.CommandLine -like "*vite*"
+}
+Wait-ProcessStopped -Description "keepalive" -Predicate {
+  $_.Name -eq "powershell.exe" -and $_.CommandLine -like "*scripts\dev-keepalive.ps1*"
 }
 Wait-PortsClosed -Ports @(7888, 5888) -OwningProcessIds $stopped.TargetIds
 

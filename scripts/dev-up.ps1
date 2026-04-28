@@ -357,6 +357,7 @@ $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
   -Description "risk tensor dates concurrent smoke"
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
 $frontendRoot = Wait-HttpEndpoint -Url "http://127.0.0.1:5888" -Description "frontend root"
+$keepaliveLaunch = Start-DevScriptDetached -ScriptName "dev-keepalive.ps1"
 $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -Description "worker heartbeat"
 
 $apiProcess = Assert-NativeProcessRunning -Description "API" -Predicate {
@@ -394,4 +395,5 @@ Write-Host "Lineage audit: clean" -ForegroundColor DarkGray
 Write-Host "API logs:      $($apiLaunch.StdoutPath) / $($apiLaunch.StderrPath)" -ForegroundColor DarkGray
 Write-Host "Worker logs:   $($workerLaunch.StdoutPath) / $($workerLaunch.StderrPath)" -ForegroundColor DarkGray
 Write-Host "Frontend logs: $($frontendLaunch.StdoutPath) / $($frontendLaunch.StderrPath)" -ForegroundColor DarkGray
+Write-Host "Keepalive:     $($keepaliveLaunch.ProcessId) (log: $logRoot\dev-keepalive.log)" -ForegroundColor DarkGray
 exit 0

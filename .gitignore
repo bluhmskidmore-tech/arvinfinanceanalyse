@@ -55,8 +55,17 @@ __pycache__/
 # Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
 .pytest_cache/
 .pytest-tmp*/
+.pytest-basetemp/
+.tmp/
+.tmp-dev-logs/
+.tmp-pytest/
 .tmp_pytest/
+codex_pytest_tmp/
+pytesttmp-parent/
 py_temp_pytest/
+test_output/
+tmp-pytest/
+tmp-test-runs/
 tmp_pytest_*/
 tmpzh*/
 
@@ -66,6 +75,7 @@ tmpzh*/
 # Local verification scratch (locks, catalogs)
 py_verify/
 .tmp-lock-case/
+tests/CURSOR_TEST_PROMPT.md
 
 # Ephemeral working directories
 /tmp*/
