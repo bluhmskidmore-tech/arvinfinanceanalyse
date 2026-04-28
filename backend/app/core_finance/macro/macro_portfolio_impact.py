@@ -10,6 +10,8 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from app.core_finance.macro.helpers import to_decimal_safe as _d
+
 
 _M15_SCENARIOS: tuple[dict[str, Any], ...] = (
     {
@@ -45,14 +47,6 @@ _M15_SCENARIOS: tuple[dict[str, Any], ...] = (
         "credit_spread_shift_bp": 0,
     },
 )
-
-
-def _d(v: Any) -> Decimal:
-    if v is None:
-        return Decimal("0")
-    if isinstance(v, Decimal):
-        return v
-    return Decimal(str(v))
 
 
 def _estimate_duration_simple(

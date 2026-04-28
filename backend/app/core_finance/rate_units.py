@@ -6,41 +6,45 @@
 from __future__ import annotations
 
 import math
+from decimal import Decimal
 from typing import Any
+
+_HUNDRED = Decimal("100")
+_TEN_THOUSAND = Decimal("10000")
 
 
 # ---------------------------------------------------------------------------
 # 显式单位转换（无歧义，调用方明确知道输入单位）
 # ---------------------------------------------------------------------------
 
-def pct_to_decimal(value: float) -> float:
+def pct_to_decimal(value: Decimal | float | str) -> Decimal:
     """百分数 → 小数。2.55 → 0.0255"""
-    return value / 100.0
+    return Decimal(str(value)) / _HUNDRED
 
 
-def decimal_to_pct(value: float) -> float:
+def decimal_to_pct(value: Decimal | float | str) -> Decimal:
     """小数 → 百分数。0.0255 → 2.55"""
-    return value * 100.0
+    return Decimal(str(value)) * _HUNDRED
 
 
-def bp_to_decimal(value: float) -> float:
+def bp_to_decimal(value: Decimal | float | str) -> Decimal:
     """基点(BP) → 小数。50 → 0.005"""
-    return value / 10000.0
+    return Decimal(str(value)) / _TEN_THOUSAND
 
 
-def decimal_to_bp(value: float) -> float:
+def decimal_to_bp(value: Decimal | float | str) -> Decimal:
     """小数 → 基点(BP)。0.005 → 50"""
-    return value * 10000.0
+    return Decimal(str(value)) * _TEN_THOUSAND
 
 
-def pct_to_bp(value: float) -> float:
+def pct_to_bp(value: Decimal | float | str) -> Decimal:
     """百分数 → 基点(BP)。2.55 → 255"""
-    return value * 100.0
+    return Decimal(str(value)) * _HUNDRED
 
 
-def bp_to_pct(value: float) -> float:
+def bp_to_pct(value: Decimal | float | str) -> Decimal:
     """基点(BP) → 百分数。255 → 2.55"""
-    return value / 100.0
+    return Decimal(str(value)) / _HUNDRED
 
 
 # ---------------------------------------------------------------------------

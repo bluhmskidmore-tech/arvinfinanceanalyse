@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping, MutableMapping
 
 from app.core_finance.safe_decimal import safe_decimal
@@ -160,3 +161,48 @@ def enrich_wide_with_curve_market_fields(
             target["us_treasury_10y"] = float(us10)
         if y10 is not None and us10 is not None:
             target["china_us_spread_10y"] = float((y10 - us10) * Decimal("100"))
+
+
+# ---------------------------------------------------------------------------
+# 通用小工具（消除各模块散落的 _d / _f / _pearson 重复）
+# ---------------------------------------------------------------------------
+
+def to_decimal_safe(v: Any) -> Decimal:
+    if v is None:
+        return Decimal("0")
+    if isinstance(v, Decimal):
+        return v
+    try:
+        return Decimal(str(v))
+    except Exception:
+        return Decimal("0")
+
+
+def to_rounded_float(d: Decimal) -> float:
+    return float(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def to_float_safe(v: Any) -> float | None:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def pearson_corr(x: list[float], y: list[float], min_samples: int = 5) -> float | None:
+    if len(x) != len(y) or len(x) < min_samples:
+        return None
+    n = len(x)
+    sum_x = sum(x)
+    sum_y = sum(y)
+    sum_xy = sum(xi * yi for xi, yi in zip(x, y))
+    sum_xx = sum(xi * xi for xi in x)
+    sum_yy = sum(yi * yi for yi in y)
+    num = n * sum_xy - sum_x * sum_y
+    den = (n * sum_xx - sum_x * sum_x) * (n * sum_yy - sum_y * sum_y)
+    if den <= 0:
+        return None
+    r = num / math.sqrt(den)
+    return max(-1.0, min(1.0, r))

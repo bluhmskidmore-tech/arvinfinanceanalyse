@@ -8,6 +8,8 @@ from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
 
+from app.core_finance.macro.helpers import to_decimal_safe as _d, to_rounded_float as _f
+
 # 与 V1 config.M10_* 对齐
 _M10_WEIGHTS = {
     "pmi": Decimal("0.20"),
@@ -24,21 +26,6 @@ _M10_LEI_THRESHOLDS = {
     "neutral_low": 45,
     "moderate_contraction": 30,
 }
-
-
-def _d(v: Any) -> Decimal:
-    if v is None:
-        return Decimal("0")
-    if isinstance(v, Decimal):
-        return v
-    try:
-        return Decimal(str(v))
-    except Exception:
-        return Decimal("0")
-
-
-def _f(d: Decimal) -> float:
-    return float(d.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
 
 def _monthly_series(wide_rows_desc: list[dict[str, Any]]) -> dict[str, list[Decimal]]:

@@ -256,7 +256,7 @@ def _calculate_roll_down(
     if modified_duration == ZERO or market_value == ZERO:
         return ZERO
     rate_delta = (current_curve_rate - rolled_curve_rate) / HUNDRED
-    return rate_delta * modified_duration * market_value
+    return -(rate_delta * modified_duration * market_value)
 
 
 def _calculate_curve_shift(

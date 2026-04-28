@@ -2,6 +2,7 @@
 Unit tests for rate_units.py — explicit unit conversions and normalization.
 """
 import pytest
+from decimal import Decimal
 
 from backend.app.core_finance.rate_units import (
     pct_to_decimal,
@@ -19,23 +20,26 @@ class TestPctToDecimal:
 
     def test_standard_conversion(self):
         """2.55% → 0.0255"""
-        assert pct_to_decimal(2.55) == 0.0255
+        assert pct_to_decimal(2.55) == Decimal("0.0255")
 
     def test_zero(self):
         """0.0% → 0.0"""
-        assert pct_to_decimal(0.0) == 0.0
+        assert pct_to_decimal(0.0) == Decimal("0")
 
     def test_hundred_percent(self):
         """100.0% → 1.0"""
-        assert pct_to_decimal(100.0) == 1.0
+        assert pct_to_decimal(100.0) == Decimal("1")
 
     def test_small_percentage(self):
         """0.01% → 0.0001"""
-        assert abs(pct_to_decimal(0.01) - 0.0001) < 1e-10
+        assert pct_to_decimal(Decimal("0.01")) == Decimal("0.0001")
 
     def test_large_percentage(self):
         """250.0% → 2.5"""
-        assert pct_to_decimal(250.0) == 2.5
+        assert pct_to_decimal(250.0) == Decimal("2.5")
+
+    def test_returns_decimal(self):
+        assert isinstance(pct_to_decimal(2.55), Decimal)
 
 
 class TestDecimalToPct:
@@ -43,19 +47,19 @@ class TestDecimalToPct:
 
     def test_standard_conversion(self):
         """0.0255 → 2.55%"""
-        assert decimal_to_pct(0.0255) == 2.55
+        assert decimal_to_pct(Decimal("0.0255")) == Decimal("2.55")
 
     def test_zero(self):
         """0.0 → 0.0%"""
-        assert decimal_to_pct(0.0) == 0.0
+        assert decimal_to_pct(0.0) == Decimal("0")
 
     def test_one(self):
         """1.0 → 100.0%"""
-        assert decimal_to_pct(1.0) == 100.0
+        assert decimal_to_pct(1.0) == Decimal("100")
 
     def test_small_decimal(self):
         """0.0001 → 0.01%"""
-        assert abs(decimal_to_pct(0.0001) - 0.01) < 1e-10
+        assert decimal_to_pct(Decimal("0.0001")) == Decimal("0.01")
 
 
 class TestBpToDecimal:
@@ -63,23 +67,23 @@ class TestBpToDecimal:
 
     def test_standard_conversion(self):
         """50 BP → 0.005"""
-        assert bp_to_decimal(50) == 0.005
+        assert bp_to_decimal(50) == Decimal("0.005")
 
     def test_zero(self):
         """0 BP → 0.0"""
-        assert bp_to_decimal(0) == 0.0
+        assert bp_to_decimal(0) == Decimal("0")
 
     def test_ten_thousand_bp(self):
         """10000 BP → 1.0"""
-        assert bp_to_decimal(10000) == 1.0
+        assert bp_to_decimal(10000) == Decimal("1")
 
     def test_one_bp(self):
         """1 BP → 0.0001"""
-        assert bp_to_decimal(1) == 0.0001
+        assert bp_to_decimal(1) == Decimal("0.0001")
 
     def test_large_bp(self):
         """25000 BP → 2.5"""
-        assert bp_to_decimal(25000) == 2.5
+        assert bp_to_decimal(25000) == Decimal("2.5")
 
 
 class TestDecimalToBp:
@@ -87,19 +91,19 @@ class TestDecimalToBp:
 
     def test_standard_conversion(self):
         """0.005 → 50 BP"""
-        assert decimal_to_bp(0.005) == 50.0
+        assert decimal_to_bp(Decimal("0.005")) == Decimal("50")
 
     def test_zero(self):
         """0.0 → 0 BP"""
-        assert decimal_to_bp(0.0) == 0.0
+        assert decimal_to_bp(0.0) == Decimal("0")
 
     def test_one(self):
         """1.0 → 10000 BP"""
-        assert decimal_to_bp(1.0) == 10000.0
+        assert decimal_to_bp(1.0) == Decimal("10000")
 
     def test_small_decimal(self):
         """0.0001 → 1 BP"""
-        assert decimal_to_bp(0.0001) == 1.0
+        assert decimal_to_bp(Decimal("0.0001")) == Decimal("1")
 
 
 class TestPctToBp:
@@ -107,19 +111,19 @@ class TestPctToBp:
 
     def test_standard_conversion(self):
         """2.55% → 255 BP"""
-        assert pct_to_bp(2.55) == pytest.approx(255.0)
+        assert pct_to_bp(Decimal("2.55")) == Decimal("255.00")
 
     def test_zero(self):
         """0.0% → 0 BP"""
-        assert pct_to_bp(0.0) == 0.0
+        assert pct_to_bp(0.0) == Decimal("0")
 
     def test_one_percent(self):
         """1.0% → 100 BP"""
-        assert pct_to_bp(1.0) == 100.0
+        assert pct_to_bp(1.0) == Decimal("100")
 
     def test_hundred_percent(self):
         """100.0% → 10000 BP"""
-        assert pct_to_bp(100.0) == 10000.0
+        assert pct_to_bp(100.0) == Decimal("10000")
 
 
 class TestBpToPct:
@@ -127,19 +131,19 @@ class TestBpToPct:
 
     def test_standard_conversion(self):
         """255 BP → 2.55%"""
-        assert bp_to_pct(255) == 2.55
+        assert bp_to_pct(255) == Decimal("2.55")
 
     def test_zero(self):
         """0 BP → 0.0%"""
-        assert bp_to_pct(0) == 0.0
+        assert bp_to_pct(0) == Decimal("0")
 
     def test_hundred_bp(self):
         """100 BP → 1.0%"""
-        assert bp_to_pct(100) == 1.0
+        assert bp_to_pct(100) == Decimal("1")
 
     def test_ten_thousand_bp(self):
         """10000 BP → 100.0%"""
-        assert bp_to_pct(10000) == 100.0
+        assert bp_to_pct(10000) == Decimal("100")
 
 
 class TestNormalizeAnnualRateToDecimal:
@@ -240,18 +244,18 @@ class TestRoundTripConversions:
 
     def test_pct_decimal_roundtrip(self):
         """Percentage → Decimal → Percentage"""
-        original = 2.55
+        original = Decimal("2.55")
         result = decimal_to_pct(pct_to_decimal(original))
-        assert abs(result - original) < 1e-10
+        assert result == original
 
     def test_bp_decimal_roundtrip(self):
         """BP → Decimal → BP"""
-        original = 50.0
+        original = Decimal("50")
         result = decimal_to_bp(bp_to_decimal(original))
-        assert abs(result - original) < 1e-10
+        assert result == original
 
     def test_pct_bp_roundtrip(self):
         """Percentage → BP → Percentage"""
-        original = 2.55
+        original = Decimal("2.55")
         result = bp_to_pct(pct_to_bp(original))
-        assert abs(result - original) < 1e-10
+        assert result == original

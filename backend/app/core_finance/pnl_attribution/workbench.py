@@ -436,7 +436,7 @@ def build_carry_roll_down(
         carry_pct = coupon_pct - funding
         carry_dec = carry_pct / 100.0
         carry_pnl = mv * carry_dec / 12.0
-        rolldown_pct = (slope / 100.0) * dur * -1.0
+        rolldown_pct = (slope / 100.0) * dur
         rolldown_pnl = mv * (rolldown_pct / 100.0) / 12.0
         static_pct = carry_pct + rolldown_pct
         static_pnl = carry_pnl + rolldown_pnl
@@ -749,9 +749,9 @@ def build_campisi_attribution(
         )
         income = mv * coupon_dec * (days / 365.0)
         tre = -mv * d * dy
-        spread = -mv * d * (0.0)
+        spread = 0.0  # STUB: requires credit curve data, not yet implemented
         total_ret = income + tre + spread
-        sel = 0.0
+        sel = 0.0  # STUB: depends on spread, not yet implemented
         tot_inc += income
         tot_t += tre
         tot_s += spread

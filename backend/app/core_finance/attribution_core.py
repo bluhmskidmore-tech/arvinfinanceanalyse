@@ -238,8 +238,11 @@ def estimate_modified_duration(
     return max(MIN_DURATION, min(MAX_DURATION, modified_duration))
 
 
-def estimate_convexity(duration: Decimal) -> Decimal:
-    return duration * duration * Decimal("0.01")
+def estimate_convexity(duration: Decimal, ytm: Decimal | None = None) -> Decimal:
+    if ytm is not None and ytm > Decimal("0"):
+        one_plus_y = Decimal("1") + ytm
+        return (duration * duration + duration) / (one_plus_y * one_plus_y)
+    return duration * (duration + Decimal("1"))
 
 
 def interpolate_yield_curve(

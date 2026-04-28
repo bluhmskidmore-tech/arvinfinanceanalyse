@@ -150,36 +150,40 @@ class CampisiResult:
 
 
 def _aggregate_by_class(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    buckets: dict[str, dict[str, float]] = {}
+    buckets: dict[str, dict[str, Any]] = {}
+    _ZERO = Decimal("0")
+    _HUNDRED = Decimal("100")
     for r in rows:
         ac = str(r.get("asset_class") or "未分类")
         b = buckets.setdefault(
             ac,
             {
                 "asset_class": ac,
-                "market_value_start": 0.0,
-                "income_return": 0.0,
-                "treasury_effect": 0.0,
-                "spread_effect": 0.0,
-                "selection_effect": 0.0,
-                "total_return": 0.0,
+                "market_value_start": _ZERO,
+                "income_return": _ZERO,
+                "treasury_effect": _ZERO,
+                "spread_effect": _ZERO,
+                "selection_effect": _ZERO,
+                "total_return": _ZERO,
             },
         )
-        b["market_value_start"] += float(r.get("market_value_start") or 0)
+        b["market_value_start"] += Decimal(str(r.get("market_value_start") or 0))
         for k in ("income_return", "treasury_effect", "spread_effect", "selection_effect", "total_return"):
-            b[k] += float(r.get(k) or 0)
+            b[k] += Decimal(str(r.get(k) or 0))
     out = list(buckets.values())
-    total_mv = sum(b["market_value_start"] for b in out) or 1.0
+    total_mv = sum(b["market_value_start"] for b in out) or _ZERO
     for b in out:
-        mv = b["market_value_start"] or 1.0
-        b["weight_pct"] = b["market_value_start"] / total_mv * 100.0
+        mv = b["market_value_start"]
+        b["weight_pct"] = (b["market_value_start"] / total_mv * _HUNDRED) if total_mv > _ZERO else _ZERO
         for k in ("total_return", "income_return", "treasury_effect", "spread_effect", "selection_effect"):
-            b[f"{k}_pct"] = (b[k] / mv * 100.0) if mv else 0.0
+            b[f"{k}_pct"] = (b[k] / mv * _HUNDRED) if mv and mv > _ZERO else _ZERO
     return sorted(out, key=lambda x: -abs(x["total_return"]))
 
 
 def _aggregate_by_class_six(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    buckets: dict[str, dict[str, float]] = {}
+    buckets: dict[str, dict[str, Any]] = {}
+    _ZERO = Decimal("0")
+    _HUNDRED = Decimal("100")
     keys = (
         "income_return",
         "treasury_effect",
@@ -196,22 +200,22 @@ def _aggregate_by_class_six(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             ac,
             {
                 "asset_class": ac,
-                "market_value_start": 0.0,
-                **{k: 0.0 for k in keys},
+                "market_value_start": _ZERO,
+                **{k: _ZERO for k in keys},
             },
         )
-        b["market_value_start"] += float(r.get("market_value_start") or 0)
+        b["market_value_start"] += Decimal(str(r.get("market_value_start") or 0))
         for k in keys:
-            b[k] += float(r.get(k) or 0)
+            b[k] += Decimal(str(r.get(k) or 0))
     out = list(buckets.values())
-    total_mv = sum(b["market_value_start"] for b in out) or 1.0
+    total_mv = sum(b["market_value_start"] for b in out) or _ZERO
     for b in out:
-        mv = b["market_value_start"] or 1.0
-        b["weight_pct"] = b["market_value_start"] / total_mv * 100.0
+        mv = b["market_value_start"]
+        b["weight_pct"] = (b["market_value_start"] / total_mv * _HUNDRED) if total_mv > _ZERO else _ZERO
         for k in keys:
             if k == "total_return":
                 continue
-            b[f"{k}_pct"] = (b[k] / mv * 100.0) if mv else 0.0
+            b[f"{k}_pct"] = (b[k] / mv * _HUNDRED) if mv and mv > _ZERO else _ZERO
     return sorted(out, key=lambda x: -abs(x["total_return"]))
 
 
