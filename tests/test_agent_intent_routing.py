@@ -122,6 +122,62 @@ def test_market_value_phrase_routes_to_portfolio_overview_not_market_data(tmp_pa
     assert any(card.title == "Total Market Value" for card in envelope.cards)
 
 
+def test_agent_answers_use_business_analysis_sections(tmp_path):
+    tool_module = load_module(
+        "backend.app.agent.tools.analysis_view_tool",
+        "backend/app/agent/tools/analysis_view_tool.py",
+    )
+    request_module = load_module(
+        "backend.app.agent.schemas.agent_request",
+        "backend/app/agent/schemas/agent_request.py",
+    )
+
+    tool = tool_module.AnalysisViewTool(
+        "test.duckdb",
+        str(tmp_path),
+        intent_handlers={
+            "portfolio_overview": lambda request: {
+                "answer": "2026-03-31 的组合概览已返回，当前口径共 3 条明细，总资产规模 1000。",
+                "basis": "formal",
+                "result_kind": "agent.portfolio_overview",
+                "formal_use_allowed": True,
+                "source_version": "sv_balance_1",
+                "rule_version": "rv_balance_1",
+                "cache_version": "cv_agent_portfolio_overview_v1",
+                "quality_flag": "ok",
+                "row_count": 3,
+                "tables_used": ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+                "filters_applied": {
+                    "report_date": "2026-03-31",
+                    "currency_basis": "CNY",
+                    "position_scope": "asset",
+                },
+                "cards": [
+                    {"type": "metric", "title": "Total Market Value", "value": "1000"},
+                    {"type": "metric", "title": "Detail Rows", "value": "3"},
+                ],
+                "next_drill": [{"dimension": "portfolio", "label": "按组合查看"}],
+            }
+        },
+    )
+
+    envelope = tool.execute(
+        request_module.AgentQueryRequest(
+            question="组合概览",
+            position_scope="asset",
+            currency_basis="CNY",
+        )
+    )
+
+    assert envelope.answer.startswith("结论：")
+    for section in ("关键数字：", "证据：", "口径边界：", "下一步："):
+        assert section in envelope.answer
+    assert "fact_formal_zqtz_balance_daily、fact_formal_tyw_balance_daily" in envelope.answer
+    assert "formal" in envelope.answer
+    assert "CNY" in envelope.answer
+    assert "按组合查看" in envelope.answer
+
+
 def test_next_drill_suggested_actions_include_page_context_payload(tmp_path):
     tool_module = load_module(
         "backend.app.agent.tools.analysis_view_tool",

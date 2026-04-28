@@ -191,7 +191,13 @@ class AnalysisViewTool:
         )
         return AgentEnvelope(
             **self._finalize_envelope(
-                answer=str(payload.get("answer") or ""),
+                answer=self._business_answer(
+                    conclusion=str(payload.get("answer") or ""),
+                    cards=cards,
+                    evidence=evidence,
+                    result_meta=result_meta,
+                    next_drill=next_drill,
+                ),
                 cards=cards,
                 evidence=evidence,
                 result_meta=result_meta,
@@ -366,6 +372,60 @@ class AnalysisViewTool:
         if not row_summary:
             return label
         return f"{label} for {row_summary}"
+
+    def _business_answer(
+        self,
+        *,
+        conclusion: str,
+        cards: list[AgentCard],
+        evidence,
+        result_meta,
+        next_drill: list[AgentDrill],
+    ) -> str:
+        if conclusion.startswith("结论："):
+            return conclusion
+
+        key_numbers = self._key_numbers(cards)
+        evidence_text = self._evidence_text(evidence)
+        boundary_text = self._boundary_text(result_meta)
+        next_step_text = self._next_step_text(next_drill)
+        return "\n".join(
+            [
+                f"结论：{conclusion or '本次查询未形成明确结论。'}",
+                f"关键数字：{key_numbers}",
+                f"证据：{evidence_text}",
+                f"口径边界：{boundary_text}",
+                f"下一步：{next_step_text}",
+            ]
+        )
+
+    def _key_numbers(self, cards: list[AgentCard]) -> str:
+        metric_parts = [
+            f"{card.title}={card.value}"
+            for card in cards
+            if card.value not in (None, "")
+        ]
+        return "；".join(metric_parts[:6]) if metric_parts else "本次未返回可直接展示的关键数字。"
+
+    def _evidence_text(self, evidence) -> str:
+        tables = "、".join(evidence.tables_used) if evidence.tables_used else "未返回来源表"
+        return f"{tables}；证据行数={evidence.evidence_rows}；质量标识={evidence.quality_flag}。"
+
+    def _boundary_text(self, result_meta) -> str:
+        filters = getattr(result_meta, "filters_applied", {}) or {}
+        filter_parts = [
+            f"{key}={value}"
+            for key, value in filters.items()
+            if value not in (None, "", [])
+        ]
+        filter_text = "；".join(filter_parts) if filter_parts else "未返回筛选条件"
+        formal_text = "可正式使用" if result_meta.formal_use_allowed else "非正式使用"
+        return f"basis={result_meta.basis}；{formal_text}；result_kind={result_meta.result_kind}；{filter_text}。"
+
+    def _next_step_text(self, next_drill: list[AgentDrill]) -> str:
+        if not next_drill:
+            return "暂无系统建议下钻；可继续追问证据、口径或异常项。"
+        return "；".join(drill.label for drill in next_drill)
 
     def _trace_id(self, result_kind: str) -> str:
         suffix = result_kind.replace(".", "_")

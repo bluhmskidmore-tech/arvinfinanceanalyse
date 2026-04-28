@@ -1069,10 +1069,13 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue(
       "请基于当前 evidence 继续下钻：继续下钻期限桶",
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("动作载荷 / 血缘信息")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "查看血缘" }));
     expect(screen.getByText("动作载荷 / 血缘信息")).toBeInTheDocument();
     expect(screen.getAllByText(/fact_risk_tensor/).length).toBeGreaterThanOrEqual(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
 
     expect(screen.getByText("结果元信息")).toBeInTheDocument();
     expect(screen.getByText(/追踪编号: tr_1/)).toBeInTheDocument();
