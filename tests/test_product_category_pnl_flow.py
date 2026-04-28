@@ -338,7 +338,7 @@ def test_product_category_materialize_and_api_flow(tmp_path, monkeypatch):
     feb_asset_total = feb_monthly_payload["result"]["asset_total"]
     feb_liability_total = feb_monthly_payload["result"]["liability_total"]
     feb_grand_total = feb_monthly_payload["result"]["grand_total"]
-    assert feb_asset_total["baseline_ftp_rate_pct"] == "1.600000"
+    assert Decimal(str(feb_asset_total["baseline_ftp_rate_pct"])) == Decimal("1.60")
     assert abs(
         Decimal(str(feb_grand_total["cny_net"]))
         - (
