@@ -1306,6 +1306,116 @@ export type BalanceDifferenceAttributionWaterfall = {
   caveat: string;
 };
 
+export type BalanceMovementDrilldownStatus =
+  | "supported"
+  | "unsupported_missing_columns"
+  | "unsupported_low_coverage"
+  | "no_data";
+
+export type BalanceMovementDrilldownMeta = {
+  source_tables: string[];
+  source_scope: string;
+  report_date: string;
+  prior_report_date: string | null;
+  currency_basis: string;
+  zqtz_currency_basis?: string | null;
+  unit: "yuan";
+  eligible_total: DecimalLike;
+  covered_total: DecimalLike | null;
+  unknown_total: DecimalLike | null;
+  coverage_pct: DecimalLike | null;
+  status: BalanceMovementDrilldownStatus;
+  caveat: string;
+};
+
+export type BalanceBasisMovementComponent = {
+  component_key: string;
+  component_label: string;
+  account_code_pattern: string;
+  previous_balance: DecimalLike;
+  current_balance: DecimalLike;
+  balance_change: DecimalLike;
+  contribution_pct: DecimalLike | null;
+  source_note: string;
+  is_supported: boolean;
+};
+
+export type BalanceBasisMovementBucket = {
+  basis_bucket: BalanceMovementBucket;
+  previous_balance: DecimalLike;
+  current_balance: DecimalLike;
+  balance_change: DecimalLike;
+  rows: BalanceBasisMovementComponent[];
+  residual_amount: DecimalLike;
+  closing_check: DecimalLike;
+};
+
+export type BalanceBasisMovementDecomposition = {
+  meta: BalanceMovementDrilldownMeta;
+  buckets: BalanceBasisMovementBucket[];
+};
+
+export type BalanceZqtzMaturityBucketKey =
+  | "overdue_or_matured"
+  | "<=30d"
+  | "31-90d"
+  | "91d-1y"
+  | "1-3y"
+  | "3-5y"
+  | ">5y"
+  | "unknown";
+
+export type BalanceZqtzMaturityBucket = {
+  maturity_bucket: BalanceZqtzMaturityBucketKey;
+  bucket_label: string;
+  current_amount: DecimalLike;
+  prior_amount: DecimalLike;
+  delta_amount: DecimalLike;
+  item_count: number;
+  share_pct: DecimalLike | null;
+};
+
+export type BalanceZqtzMaturityStructure = {
+  meta: BalanceMovementDrilldownMeta;
+  buckets: BalanceZqtzMaturityBucket[];
+};
+
+export type BalanceZqtzConcentrationDimensionKey =
+  | "issuer_name"
+  | "rating"
+  | "industry_name";
+
+export type BalanceZqtzConcentrationItem = {
+  rank: number;
+  dimension_value: string;
+  current_amount: DecimalLike;
+  prior_amount: DecimalLike | null;
+  delta_amount: DecimalLike | null;
+  share_pct: DecimalLike | null;
+  item_count: number;
+  item_kind: "top" | "other" | "unknown";
+};
+
+export type BalanceZqtzConcentrationDimension = {
+  dimension: BalanceZqtzConcentrationDimensionKey;
+  status: BalanceMovementDrilldownStatus;
+  eligible_total: DecimalLike;
+  covered_total: DecimalLike;
+  unknown_total: DecimalLike;
+  coverage_pct: DecimalLike | null;
+  prior_coverage_pct: DecimalLike | null;
+  top_n: number;
+  hhi: DecimalLike | null;
+  top5_share_pct: DecimalLike | null;
+  items: BalanceZqtzConcentrationItem[];
+  caveat: string;
+};
+
+export type BalanceZqtzConcentrationAnalysis = {
+  meta: BalanceMovementDrilldownMeta;
+  dimensions: BalanceZqtzConcentrationDimension[];
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
@@ -1316,6 +1426,9 @@ export type BalanceMovementPayload = {
   zqtz_calibration_analysis: BalanceZqtzCalibrationAnalysis | null;
   structure_migration_analysis: BalanceStructureMigrationAnalysis | null;
   difference_attribution_waterfall: BalanceDifferenceAttributionWaterfall | null;
+  basis_movement_decomposition?: BalanceBasisMovementDecomposition | null;
+  zqtz_maturity_structure?: BalanceZqtzMaturityStructure | null;
+  zqtz_concentration_analysis?: BalanceZqtzConcentrationAnalysis | null;
   accounting_controls: string[];
   excluded_controls: string[];
 };

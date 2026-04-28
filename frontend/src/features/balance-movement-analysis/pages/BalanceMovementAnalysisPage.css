@@ -875,11 +875,106 @@
   line-height: 1.45;
 }
 
+.balance-movement-derived-list {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 0;
+  padding: 10px 0 0;
+  border-top: 1px solid #edf1f6;
+  list-style: none;
+}
+
+.balance-movement-derived-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  color: #475569;
+  font-size: 12px;
+}
+
+.balance-movement-derived-list strong {
+  margin: 0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .balance-movement-derived-notes {
   display: grid;
   gap: 6px;
   padding-top: 10px;
   border-top: 1px solid #edf1f6;
+}
+
+.balance-movement-derived-table-wrap {
+  overflow-x: auto;
+}
+
+.balance-movement-derived-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #26364a;
+  font-size: 12px;
+}
+
+.balance-movement-derived-table th,
+.balance-movement-derived-table td {
+  padding: 9px 8px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.balance-movement-derived-table th:first-child,
+.balance-movement-derived-table td:first-child {
+  text-align: left;
+}
+
+.balance-movement-derived-table thead th {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.balance-movement-concentration-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.balance-movement-concentration-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.balance-movement-concentration-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.balance-movement-concentration-card__header h3 {
+  margin: 0;
+  color: #10284a;
+  font-size: 14px;
+}
+
+.balance-movement-concentration-card__header span {
+  color: #14532d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.balance-movement-concentration-card > p {
+  margin: 0 0 10px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .balance-movement-waterfall {
@@ -1049,6 +1144,7 @@
   }
 
   .balance-movement-derived-grid,
+  .balance-movement-concentration-grid,
   .balance-movement-waterfall__endpoint,
   .balance-movement-waterfall__component {
     grid-template-columns: 1fr;

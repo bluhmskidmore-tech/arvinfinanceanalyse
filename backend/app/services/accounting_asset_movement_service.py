@@ -1,31 +1,40 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
 import duckdb
-
 from backend.app.governance.settings import Settings
 from backend.app.repositories.accounting_asset_movement_repo import (
     AccountingAssetMovementRepository,
 )
 from backend.app.schemas.accounting_asset_movement import (
-    AccountingBusinessMovementRowPayload,
-    AccountingBusinessMovementTrendMonthPayload,
-    AccountingDifferenceAttributionComponentPayload,
-    AccountingDifferenceAttributionWaterfallPayload,
     AccountingAssetMovementDatesPayload,
     AccountingAssetMovementPayload,
     AccountingAssetMovementRefreshPayload,
     AccountingAssetMovementRowPayload,
     AccountingAssetMovementSummaryPayload,
+    AccountingAssetMovementTrendMonthPayload,
+    AccountingBasisMovementBucketPayload,
+    AccountingBasisMovementComponentPayload,
+    AccountingBasisMovementDecompositionPayload,
+    AccountingBusinessMovementRowPayload,
+    AccountingBusinessMovementTrendMonthPayload,
+    AccountingDifferenceAttributionComponentPayload,
+    AccountingDifferenceAttributionWaterfallPayload,
+    AccountingDrilldownMetaPayload,
     AccountingStructureMigrationAnalysisPayload,
     AccountingStructureMigrationBucketPayload,
     AccountingStructureMigrationPairPayload,
-    AccountingAssetMovementTrendMonthPayload,
     AccountingZqtzCalibrationAnalysisPayload,
     AccountingZqtzCalibrationItemPayload,
+    AccountingZqtzConcentrationAnalysisPayload,
+    AccountingZqtzConcentrationDimensionPayload,
+    AccountingZqtzConcentrationItemPayload,
+    AccountingZqtzMaturityBucketPayload,
+    AccountingZqtzMaturityStructurePayload,
 )
 from backend.app.services.formal_result_runtime import (
     build_formal_result_envelope,
@@ -43,6 +52,19 @@ CACHE_VERSION = "cv_accounting_asset_movement_v1"
 CONTROL_ACCOUNTS = ["141%", "142%", "143%", "1440101%"]
 EXCLUDED_CONTROLS = ["144020%"]
 REFRESH_MONTH_COUNT = 6
+CONCENTRATION_DIMENSIONS = ("issuer_name", "rating", "industry_name")
+CONCENTRATION_TOP_N = 10
+CONCENTRATION_COVERAGE_THRESHOLD = Decimal("80")
+MATURITY_BUCKETS = (
+    ("overdue_or_matured", "已到期/逾期"),
+    ("<=30d", "30天内"),
+    ("31-90d", "31-90天"),
+    ("91d-1y", "91天-1年"),
+    ("1-3y", "1-3年"),
+    ("3-5y", "3-5年"),
+    (">5y", "5年以上"),
+    ("unknown", "未映射"),
+)
 ZQTZ228_REFERENCE_AMOUNTS = {
     "asset_zqtz_policy_financial_bond": Decimal("65228031802.46"),
     "asset_zqtz_local_government_bond": Decimal("42264356556.22"),
@@ -121,6 +143,15 @@ def accounting_asset_movement_envelope(
         report_date=report_date,
         currency_basis=currency_basis,
     )
+    prior_report_date = trend_months[1].report_date if len(trend_months) > 1 else None
+    basis_components = repo.fetch_basis_movement_components(
+        report_date=report_date,
+        currency_basis=currency_basis,
+    )
+    zqtz_drilldown_rows = repo.fetch_zqtz_asset_drilldown_rows(
+        report_dates=[date_value for date_value in (report_date, prior_report_date) if date_value],
+        currency_basis=currency_basis,
+    )
 
     summary = _build_summary(rows)
     payload = AccountingAssetMovementPayload(
@@ -143,6 +174,25 @@ def accounting_asset_movement_envelope(
             summary=summary,
             business_trend_months=business_trend_months,
             attribution_inputs=difference_attribution_inputs,
+        ),
+        basis_movement_decomposition=_build_basis_movement_decomposition(
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            rows=rows,
+            component_result=basis_components,
+        ),
+        zqtz_maturity_structure=_build_zqtz_maturity_structure(
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            drilldown_result=zqtz_drilldown_rows,
+        ),
+        zqtz_concentration_analysis=_build_zqtz_concentration_analysis(
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            drilldown_result=zqtz_drilldown_rows,
         ),
         accounting_controls=CONTROL_ACCOUNTS,
         excluded_controls=EXCLUDED_CONTROLS,
@@ -706,7 +756,8 @@ def _build_difference_attribution_waterfall(
             amount=voucher_cost_gap,
             source_kind="derived",
             evidence_note=(
-                "总账 14301010001 期末余额与 formal ZQTZ 凭证式国债摊余成本的差额。"
+                "总账 14301010001 期末余额与 formal ZQTZ 凭证式国债成本口径"
+                "（摊余/市值缺省时按面值）的差额。"
             ),
         ),
         AccountingDifferenceAttributionComponentPayload(
@@ -769,6 +820,462 @@ def _build_difference_attribution_waterfall(
             "瀑布金额表示从 ZQTZ 明细汇总调整到 AC/OCI/FVTPL 合计的方向。"
             "估值差和外币折算差目前只展示可确认部分，不反推未闭合金额。"
         ),
+    )
+
+
+def _build_basis_movement_decomposition(
+    *,
+    report_date: str,
+    prior_report_date: str | None,
+    currency_basis: str,
+    rows: list[AccountingAssetMovementRowPayload],
+    component_result: dict[str, object],
+) -> AccountingBasisMovementDecompositionPayload:
+    status = _drilldown_status(str(component_result.get("status") or "no_data"))
+    raw_components = [
+        item
+        for item in component_result.get("components", [])
+        if isinstance(item, dict)
+    ]
+    rows_by_bucket = {row.basis_bucket: row for row in rows}
+    component_payloads: dict[str, list[AccountingBasisMovementComponentPayload]] = {
+        "AC": [],
+        "OCI": [],
+        "TPL": [],
+    }
+
+    for item in raw_components:
+        bucket = str(item.get("basis_bucket") or "")
+        if bucket not in component_payloads:
+            continue
+        previous_balance = _decimal_from_object(item.get("previous_balance"))
+        current_balance = _decimal_from_object(item.get("current_balance"))
+        account_code = str(item.get("account_code") or "")
+        account_name = str(item.get("account_name") or "")
+        component_payloads[bucket].append(
+            AccountingBasisMovementComponentPayload(
+                component_key=account_code,
+                component_label=f"{account_name} {account_code}".strip(),
+                account_code_pattern=account_code,
+                previous_balance=previous_balance,
+                current_balance=current_balance,
+                balance_change=current_balance - previous_balance,
+                source_note="product_category_pnl_canonical_fact beginning_balance/ending_balance",
+                is_supported=status == "supported",
+            )
+        )
+
+    buckets: list[AccountingBasisMovementBucketPayload] = []
+    for bucket in ("AC", "OCI", "TPL"):
+        row = rows_by_bucket.get(bucket)
+        previous_balance = row.previous_balance if row is not None else Decimal("0")
+        current_balance = row.current_balance if row is not None else Decimal("0")
+        balance_change = current_balance - previous_balance
+        components = sorted(
+            component_payloads[bucket],
+            key=lambda item: (-abs(item.balance_change), item.component_key),
+        )
+        denominator = sum((abs(item.balance_change) for item in components), Decimal("0"))
+        if denominator != Decimal("0"):
+            components = [
+                item.model_copy(
+                    update={
+                        "contribution_pct": abs(item.balance_change)
+                        / denominator
+                        * Decimal("100")
+                    }
+                )
+                for item in components
+            ]
+        component_change = sum(
+            (item.balance_change for item in components),
+            Decimal("0"),
+        )
+        residual_amount = balance_change - component_change
+        buckets.append(
+            AccountingBasisMovementBucketPayload(
+                basis_bucket=bucket,
+                previous_balance=previous_balance,
+                current_balance=current_balance,
+                balance_change=balance_change,
+                rows=components,
+                residual_amount=residual_amount,
+                closing_check=residual_amount,
+            )
+        )
+
+    eligible_total = sum((bucket.current_balance for bucket in buckets), Decimal("0"))
+    missing_columns = component_result.get("missing_columns", [])
+    caveat = (
+        "product_category_pnl_canonical_fact columns missing: "
+        + ", ".join(str(item) for item in missing_columns)
+        if status == "unsupported_missing_columns"
+        else "Uses product_category_pnl_canonical_fact beginning_balance and ending_balance only."
+    )
+    return AccountingBasisMovementDecompositionPayload(
+        meta=AccountingDrilldownMetaPayload(
+            source_tables=["product_category_pnl_canonical_fact"],
+            source_scope="CNX GL control accounts 141/142/143/1440101, excluding 144020",
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            eligible_total=eligible_total,
+            covered_total=eligible_total if status == "supported" else None,
+            unknown_total=Decimal("0") if status == "supported" else None,
+            coverage_pct=Decimal("100") if status == "supported" and eligible_total != Decimal("0") else None,
+            status=status,
+            caveat=caveat,
+        ),
+        buckets=buckets,
+    )
+
+
+def _build_zqtz_maturity_structure(
+    *,
+    report_date: str,
+    prior_report_date: str | None,
+    currency_basis: str,
+    drilldown_result: dict[str, object],
+) -> AccountingZqtzMaturityStructurePayload:
+    rows = _drilldown_rows(drilldown_result)
+    current_rows = [row for row in rows if str(row.get("report_date")) == report_date]
+    prior_rows = [
+        row
+        for row in rows
+        if prior_report_date is not None and str(row.get("report_date")) == prior_report_date
+    ]
+    missing_columns = _missing_columns(drilldown_result)
+    missing_maturity = "maturity_date" in missing_columns or bool(
+        missing_columns and "fact_formal_zqtz_balance_daily" in missing_columns
+    )
+    current_totals = _maturity_totals(
+        current_rows,
+        report_date=report_date,
+        force_unknown=missing_maturity,
+    )
+    prior_totals = _maturity_totals(
+        prior_rows,
+        report_date=prior_report_date or report_date,
+        force_unknown=missing_maturity or prior_report_date is None,
+    )
+    eligible_total = sum((amount for amount, _count in current_totals.values()), Decimal("0"))
+    unknown_total = current_totals["unknown"][0]
+    covered_total = eligible_total - unknown_total
+    if eligible_total == Decimal("0"):
+        status = "no_data"
+    elif missing_maturity:
+        status = "unsupported_missing_columns"
+    else:
+        status = "supported"
+
+    buckets = []
+    for bucket_key, label in MATURITY_BUCKETS:
+        current_amount, item_count = current_totals[bucket_key]
+        prior_amount = prior_totals[bucket_key][0]
+        buckets.append(
+            AccountingZqtzMaturityBucketPayload(
+                maturity_bucket=bucket_key,
+                bucket_label=label,
+                current_amount=current_amount,
+                prior_amount=prior_amount,
+                delta_amount=current_amount - prior_amount,
+                item_count=item_count,
+                share_pct=_pct(current_amount, eligible_total),
+            )
+        )
+
+    return AccountingZqtzMaturityStructurePayload(
+        meta=AccountingDrilldownMetaPayload(
+            source_tables=["fact_formal_zqtz_balance_daily"],
+            source_scope="formal ZQTZ primary asset rows using existing page predicates",
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            zqtz_currency_basis=str(drilldown_result.get("zqtz_currency_basis") or ""),
+            eligible_total=eligible_total,
+            covered_total=covered_total,
+            unknown_total=unknown_total,
+            coverage_pct=_pct(covered_total, eligible_total),
+            status=status,
+            caveat=(
+                "maturity_date source column is absent; all maturity buckets are unsupported."
+                if status == "unsupported_missing_columns"
+                else "Uses maturity_date only; invalid or blank dates are reported as unknown."
+            ),
+        ),
+        buckets=buckets,
+    )
+
+
+def _build_zqtz_concentration_analysis(
+    *,
+    report_date: str,
+    prior_report_date: str | None,
+    currency_basis: str,
+    drilldown_result: dict[str, object],
+) -> AccountingZqtzConcentrationAnalysisPayload:
+    rows = _drilldown_rows(drilldown_result)
+    current_rows = [row for row in rows if str(row.get("report_date")) == report_date]
+    prior_rows = [
+        row
+        for row in rows
+        if prior_report_date is not None and str(row.get("report_date")) == prior_report_date
+    ]
+    eligible_total = _sum_row_amounts(current_rows)
+    missing_columns = _missing_columns(drilldown_result)
+    dimensions = [
+        _build_concentration_dimension(
+            dimension=dimension,
+            current_rows=current_rows,
+            prior_rows=prior_rows,
+            eligible_total=eligible_total,
+            missing_columns=missing_columns,
+        )
+        for dimension in CONCENTRATION_DIMENSIONS
+    ]
+    supported_dimensions = [
+        dimension
+        for dimension in dimensions
+        if dimension.status == "supported"
+    ]
+    if eligible_total == Decimal("0"):
+        meta_status = "no_data"
+    elif any(dimension.status == "unsupported_low_coverage" for dimension in dimensions):
+        meta_status = "unsupported_low_coverage"
+    elif any(dimension.status == "unsupported_missing_columns" for dimension in dimensions):
+        meta_status = "unsupported_missing_columns"
+    elif supported_dimensions and len(supported_dimensions) == len(dimensions):
+        meta_status = "supported"
+    else:
+        meta_status = "no_data"
+
+    weakest_supported_dimension = min(
+        supported_dimensions,
+        key=lambda dimension: dimension.coverage_pct or Decimal("-1"),
+        default=None,
+    )
+    covered_total = (
+        weakest_supported_dimension.covered_total
+        if meta_status == "supported" and weakest_supported_dimension is not None
+        else None
+    )
+    unknown_total = (
+        weakest_supported_dimension.unknown_total
+        if meta_status == "supported" and weakest_supported_dimension is not None
+        else None
+    )
+    coverage_pct = (
+        weakest_supported_dimension.coverage_pct
+        if meta_status == "supported" and weakest_supported_dimension is not None
+        else None
+    )
+    meta_caveat = (
+        "Issuer, rating, and industry concentration are all supported; headline coverage is the weakest dimension."
+        if meta_status == "supported"
+        else "Issuer, rating, and industry concentration may differ in coverage; inspect each dimension status."
+    )
+    return AccountingZqtzConcentrationAnalysisPayload(
+        meta=AccountingDrilldownMetaPayload(
+            source_tables=["fact_formal_zqtz_balance_daily"],
+            source_scope="formal ZQTZ primary asset rows using existing page predicates",
+            report_date=report_date,
+            prior_report_date=prior_report_date,
+            currency_basis=currency_basis,
+            zqtz_currency_basis=str(drilldown_result.get("zqtz_currency_basis") or ""),
+            eligible_total=eligible_total,
+            covered_total=covered_total,
+            unknown_total=unknown_total,
+            coverage_pct=coverage_pct,
+            status=meta_status,
+            caveat=meta_caveat,
+        ),
+        dimensions=dimensions,
+    )
+
+
+def _build_concentration_dimension(
+    *,
+    dimension: str,
+    current_rows: list[dict[str, object]],
+    prior_rows: list[dict[str, object]],
+    eligible_total: Decimal,
+    missing_columns: list[str],
+) -> AccountingZqtzConcentrationDimensionPayload:
+    if dimension in missing_columns or "fact_formal_zqtz_balance_daily" in missing_columns:
+        return AccountingZqtzConcentrationDimensionPayload(
+            dimension=dimension,
+            status="unsupported_missing_columns",
+            eligible_total=eligible_total,
+            covered_total=Decimal("0"),
+            unknown_total=eligible_total,
+            coverage_pct=None,
+            prior_coverage_pct=None,
+            top_n=CONCENTRATION_TOP_N,
+            hhi=None,
+            top5_share_pct=None,
+            items=[],
+            caveat=f"Source column {dimension} is absent.",
+        )
+    if eligible_total == Decimal("0"):
+        return AccountingZqtzConcentrationDimensionPayload(
+            dimension=dimension,
+            status="no_data",
+            eligible_total=Decimal("0"),
+            covered_total=Decimal("0"),
+            unknown_total=Decimal("0"),
+            coverage_pct=None,
+            prior_coverage_pct=None,
+            top_n=CONCENTRATION_TOP_N,
+            hhi=None,
+            top5_share_pct=None,
+            items=[],
+            caveat="No eligible ZQTZ asset population.",
+        )
+
+    current = _dimension_amounts(current_rows, dimension)
+    prior = _dimension_amounts(prior_rows, dimension)
+    covered_total = sum(current["known"].values(), Decimal("0"))
+    unknown_total = current["unknown_amount"]
+    coverage_pct = _pct(covered_total, eligible_total)
+    prior_eligible_total = prior["known_total"] + prior["unknown_amount"]
+    prior_covered_total = prior["known_total"]
+    prior_unknown_total = prior["unknown_amount"]
+    prior_coverage_pct = _pct(prior_covered_total, prior_eligible_total)
+
+    if coverage_pct is None or coverage_pct < CONCENTRATION_COVERAGE_THRESHOLD:
+        return AccountingZqtzConcentrationDimensionPayload(
+            dimension=dimension,
+            status="unsupported_low_coverage",
+            eligible_total=eligible_total,
+            covered_total=covered_total,
+            unknown_total=unknown_total,
+            coverage_pct=coverage_pct,
+            prior_coverage_pct=prior_coverage_pct,
+            top_n=CONCENTRATION_TOP_N,
+            hhi=None,
+            top5_share_pct=None,
+            items=[],
+            caveat=f"{dimension} coverage is below 80%; rankings are not rendered.",
+        )
+
+    prior_supported = (
+        prior_coverage_pct is not None
+        and prior_coverage_pct >= CONCENTRATION_COVERAGE_THRESHOLD
+    )
+    sorted_known = sorted(
+        current["known"].items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    top_values = [value for value, _amount in sorted_known[:CONCENTRATION_TOP_N]]
+    top_set = set(top_values)
+    items: list[AccountingZqtzConcentrationItemPayload] = []
+
+    def item_payload(
+        *,
+        rank: int,
+        value: str,
+        current_amount: Decimal,
+        prior_amount: Decimal | None,
+        item_count: int,
+        item_kind: str,
+    ) -> AccountingZqtzConcentrationItemPayload:
+        return AccountingZqtzConcentrationItemPayload(
+            rank=rank,
+            dimension_value=value,
+            current_amount=current_amount,
+            prior_amount=prior_amount,
+            delta_amount=(
+                current_amount - prior_amount
+                if prior_amount is not None
+                else None
+            ),
+            share_pct=_pct(current_amount, eligible_total),
+            item_count=item_count,
+            item_kind=item_kind,
+        )
+
+    rank = 1
+    for value in top_values:
+        prior_amount = prior["known"].get(value, Decimal("0")) if prior_supported else None
+        items.append(
+            item_payload(
+                rank=rank,
+                value=value,
+                current_amount=current["known"][value],
+                prior_amount=prior_amount,
+                item_count=current["counts"].get(value, 0),
+                item_kind="top",
+            )
+        )
+        rank += 1
+
+    other_current = sum(
+        (amount for value, amount in current["known"].items() if value not in top_set),
+        Decimal("0"),
+    )
+    other_prior = (
+        sum(
+            (amount for value, amount in prior["known"].items() if value not in top_set),
+            Decimal("0"),
+        )
+        if prior_supported
+        else None
+    )
+    if other_current != Decimal("0") or (
+        other_prior is not None and other_prior != Decimal("0")
+    ):
+        items.append(
+            item_payload(
+                rank=rank,
+                value="其他",
+                current_amount=other_current,
+                prior_amount=other_prior,
+                item_count=sum(
+                    count
+                    for value, count in current["counts"].items()
+                    if value not in top_set
+                ),
+                item_kind="other",
+            )
+        )
+        rank += 1
+
+    unknown_prior = prior_unknown_total if prior_supported else None
+    if unknown_total != Decimal("0") or (
+        unknown_prior is not None and unknown_prior != Decimal("0")
+    ):
+        items.append(
+            item_payload(
+                rank=rank,
+                value="未映射",
+                current_amount=unknown_total,
+                prior_amount=unknown_prior,
+                item_count=current["unknown_count"],
+                item_kind="unknown",
+            )
+        )
+
+    caveat = (
+        "Prior coverage is below 80%; MoM prior and delta values are disabled."
+        if prior_rows and not prior_supported
+        else "Top values are anchored on the current period; other and unknown stay separate."
+    )
+    return AccountingZqtzConcentrationDimensionPayload(
+        dimension=dimension,
+        status="supported",
+        eligible_total=eligible_total,
+        covered_total=covered_total,
+        unknown_total=unknown_total,
+        coverage_pct=coverage_pct,
+        prior_coverage_pct=prior_coverage_pct,
+        top_n=CONCENTRATION_TOP_N,
+        hhi=_hhi(current["known"], covered_total),
+        top5_share_pct=_pct(
+            sum((amount for _value, amount in sorted_known[:5]), Decimal("0")),
+            covered_total,
+        ),
+        items=items,
+        caveat=caveat,
     )
 
 
@@ -939,6 +1446,135 @@ def _pct(numerator: Decimal, denominator: Decimal) -> Decimal | None:
     if denominator == Decimal("0"):
         return None
     return numerator / denominator * Decimal("100")
+
+
+def _drilldown_status(value: str) -> str:
+    if value in {
+        "supported",
+        "unsupported_missing_columns",
+        "unsupported_low_coverage",
+        "no_data",
+    }:
+        return value
+    return "no_data"
+
+
+def _drilldown_rows(result: dict[str, object]) -> list[dict[str, object]]:
+    rows = result.get("rows", [])
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def _missing_columns(result: dict[str, object]) -> list[str]:
+    columns = result.get("missing_columns", [])
+    if not isinstance(columns, list):
+        return []
+    return [str(column) for column in columns]
+
+
+def _decimal_from_object(value: object) -> Decimal:
+    if isinstance(value, Decimal):
+        return value
+    if value in (None, ""):
+        return Decimal("0")
+    return Decimal(str(value))
+
+
+def _sum_row_amounts(rows: list[dict[str, object]]) -> Decimal:
+    return sum((_decimal_from_object(row.get("amount")) for row in rows), Decimal("0"))
+
+
+def _maturity_totals(
+    rows: list[dict[str, object]],
+    *,
+    report_date: str,
+    force_unknown: bool,
+) -> dict[str, tuple[Decimal, int]]:
+    totals = {
+        bucket_key: (Decimal("0"), 0)
+        for bucket_key, _label in MATURITY_BUCKETS
+    }
+    report_date_value = _parse_iso_date(report_date)
+    for row in rows:
+        amount = _decimal_from_object(row.get("amount"))
+        bucket_key = "unknown"
+        if not force_unknown and report_date_value is not None:
+            maturity_date = _parse_iso_date(row.get("maturity_date"))
+            bucket_key = _maturity_bucket(maturity_date, report_date_value)
+        bucket_amount, bucket_count = totals[bucket_key]
+        totals[bucket_key] = (bucket_amount + amount, bucket_count + 1)
+    return totals
+
+
+def _maturity_bucket(maturity_date: date | None, report_date: date) -> str:
+    if maturity_date is None:
+        return "unknown"
+    days_to_maturity = (maturity_date - report_date).days
+    if days_to_maturity < 0:
+        return "overdue_or_matured"
+    if days_to_maturity <= 30:
+        return "<=30d"
+    if days_to_maturity <= 90:
+        return "31-90d"
+    if days_to_maturity <= 365:
+        return "91d-1y"
+    if days_to_maturity <= 1095:
+        return "1-3y"
+    if days_to_maturity <= 1825:
+        return "3-5y"
+    return ">5y"
+
+
+def _parse_iso_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _dimension_amounts(
+    rows: list[dict[str, object]],
+    dimension: str,
+) -> dict[str, object]:
+    known: dict[str, Decimal] = {}
+    counts: dict[str, int] = {}
+    unknown_amount = Decimal("0")
+    unknown_count = 0
+    for row in rows:
+        amount = _decimal_from_object(row.get("amount"))
+        raw_value = row.get(dimension)
+        value = str(raw_value).strip() if raw_value not in (None, "") else ""
+        if not value:
+            unknown_amount += amount
+            unknown_count += 1
+            continue
+        known[value] = known.get(value, Decimal("0")) + amount
+        counts[value] = counts.get(value, 0) + 1
+    known_total = sum(known.values(), Decimal("0"))
+    return {
+        "known": known,
+        "counts": counts,
+        "known_total": known_total,
+        "unknown_amount": unknown_amount,
+        "unknown_count": unknown_count,
+    }
+
+
+def _hhi(values: dict[str, Decimal], denominator: Decimal) -> Decimal | None:
+    if denominator == Decimal("0"):
+        return None
+    return sum(
+        ((amount / denominator) ** 2 for amount in values.values()),
+        Decimal("0"),
+    ) * Decimal("10000")
 
 
 def _build_trend_months(

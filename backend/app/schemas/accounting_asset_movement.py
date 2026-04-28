@@ -161,6 +161,132 @@ class AccountingDifferenceAttributionWaterfallPayload(BaseModel):
     caveat: str
 
 
+class AccountingDrilldownMetaPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_tables: list[str]
+    source_scope: str
+    report_date: str
+    prior_report_date: str | None = None
+    currency_basis: str
+    zqtz_currency_basis: str | None = None
+    unit: Literal["yuan"] = "yuan"
+    eligible_total: Decimal
+    covered_total: Decimal | None = None
+    unknown_total: Decimal | None = None
+    coverage_pct: Decimal | None = None
+    status: Literal[
+        "supported",
+        "unsupported_missing_columns",
+        "unsupported_low_coverage",
+        "no_data",
+    ]
+    caveat: str
+
+
+class AccountingBasisMovementComponentPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    component_key: str
+    component_label: str
+    account_code_pattern: str
+    previous_balance: Decimal
+    current_balance: Decimal
+    balance_change: Decimal
+    contribution_pct: Decimal | None = None
+    source_note: str
+    is_supported: bool
+
+
+class AccountingBasisMovementBucketPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    basis_bucket: Literal["AC", "OCI", "TPL"]
+    previous_balance: Decimal
+    current_balance: Decimal
+    balance_change: Decimal
+    rows: list[AccountingBasisMovementComponentPayload]
+    residual_amount: Decimal
+    closing_check: Decimal
+
+
+class AccountingBasisMovementDecompositionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    meta: AccountingDrilldownMetaPayload
+    buckets: list[AccountingBasisMovementBucketPayload]
+
+
+class AccountingZqtzMaturityBucketPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    maturity_bucket: Literal[
+        "overdue_or_matured",
+        "<=30d",
+        "31-90d",
+        "91d-1y",
+        "1-3y",
+        "3-5y",
+        ">5y",
+        "unknown",
+    ]
+    bucket_label: str
+    current_amount: Decimal
+    prior_amount: Decimal
+    delta_amount: Decimal
+    item_count: int
+    share_pct: Decimal | None = None
+
+
+class AccountingZqtzMaturityStructurePayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    meta: AccountingDrilldownMetaPayload
+    buckets: list[AccountingZqtzMaturityBucketPayload]
+
+
+class AccountingZqtzConcentrationItemPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    rank: int
+    dimension_value: str
+    current_amount: Decimal
+    prior_amount: Decimal | None = None
+    delta_amount: Decimal | None = None
+    share_pct: Decimal | None = None
+    item_count: int
+    item_kind: Literal["top", "other", "unknown"]
+
+
+class AccountingZqtzConcentrationDimensionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dimension: Literal["issuer_name", "rating", "industry_name"]
+    status: Literal[
+        "supported",
+        "unsupported_missing_columns",
+        "unsupported_low_coverage",
+        "no_data",
+    ]
+    eligible_total: Decimal
+    covered_total: Decimal
+    unknown_total: Decimal
+    coverage_pct: Decimal | None = None
+    prior_coverage_pct: Decimal | None = None
+    top_n: int
+    hhi: Decimal | None = None
+    top5_share_pct: Decimal | None = None
+    items: list[AccountingZqtzConcentrationItemPayload]
+    caveat: str
+
+
+class AccountingZqtzConcentrationAnalysisPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    meta: AccountingDrilldownMetaPayload
+    dimensions: list[AccountingZqtzConcentrationDimensionPayload]
+
+
 class AccountingAssetMovementPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -173,6 +299,9 @@ class AccountingAssetMovementPayload(BaseModel):
     zqtz_calibration_analysis: AccountingZqtzCalibrationAnalysisPayload | None = None
     structure_migration_analysis: AccountingStructureMigrationAnalysisPayload | None = None
     difference_attribution_waterfall: AccountingDifferenceAttributionWaterfallPayload | None = None
+    basis_movement_decomposition: AccountingBasisMovementDecompositionPayload | None = None
+    zqtz_maturity_structure: AccountingZqtzMaturityStructurePayload | None = None
+    zqtz_concentration_analysis: AccountingZqtzConcentrationAnalysisPayload | None = None
     accounting_controls: list[str]
     excluded_controls: list[str]
 

@@ -405,6 +405,203 @@ class AccountingAssetMovementRepository:
             reverse=True,
         )
 
+    def fetch_basis_movement_components(
+        self,
+        *,
+        report_date: str,
+        currency_basis: str = "CNX",
+    ) -> dict[str, object]:
+        table = "product_category_pnl_canonical_fact"
+        try:
+            conn = self._connect()
+            if not self._table_exists(conn, table):
+                return {
+                    "status": "unsupported_missing_columns",
+                    "missing_columns": [table],
+                    "components": [],
+                }
+            required_columns = [
+                "report_date",
+                "currency",
+                "account_code",
+                "account_name",
+                "beginning_balance",
+                "ending_balance",
+            ]
+            missing_columns = [
+                column
+                for column in required_columns
+                if not self._column_exists(conn, table, column)
+            ]
+            if missing_columns:
+                return {
+                    "status": "unsupported_missing_columns",
+                    "missing_columns": missing_columns,
+                    "components": [],
+                }
+            source_version_expr = (
+                "coalesce(string_agg(distinct nullif(source_version, ''), '__' order by nullif(source_version, '')), '')"
+                if self._column_exists(conn, table, "source_version")
+                else "''"
+            )
+            rule_version_expr = (
+                "coalesce(string_agg(distinct nullif(rule_version, ''), '__' order by nullif(rule_version, '')), '')"
+                if self._column_exists(conn, table, "rule_version")
+                else "''"
+            )
+            rows = conn.execute(
+                f"""
+                select
+                  case
+                    when account_code like '141%' then 'TPL'
+                    when account_code like '142%' or account_code like '143%' then 'AC'
+                    when account_code like '1440101%' then 'OCI'
+                  end as basis_bucket,
+                  account_code,
+                  coalesce(account_name, '') as account_name,
+                  coalesce(sum(beginning_balance), 0) as previous_balance,
+                  coalesce(sum(ending_balance), 0) as current_balance,
+                  {source_version_expr} as source_version,
+                  {rule_version_expr} as rule_version
+                from {table}
+                where cast(report_date as varchar) = ?
+                  and currency = ?
+                  and account_code not like '144020%'
+                  and (
+                    account_code like '141%'
+                    or account_code like '142%'
+                    or account_code like '143%'
+                    or account_code like '1440101%'
+                  )
+                group by 1, account_code, account_name
+                order by 1, account_code
+                """,
+                [report_date, currency_basis],
+            ).fetchall()
+        except duckdb.Error as exc:
+            return {
+                "status": "unsupported_missing_columns",
+                "missing_columns": [str(exc)],
+                "components": [],
+            }
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+        components = [
+            {
+                "basis_bucket": str(row[0]),
+                "account_code": str(row[1]),
+                "account_name": str(row[2] or ""),
+                "previous_balance": Decimal(str(row[3] or "0")),
+                "current_balance": Decimal(str(row[4] or "0")),
+                "source_version": str(row[5] or ""),
+                "rule_version": str(row[6] or ""),
+            }
+            for row in rows
+            if row[0] is not None
+        ]
+        return {
+            "status": "supported" if components else "no_data",
+            "missing_columns": [],
+            "components": components,
+        }
+
+    def fetch_zqtz_asset_drilldown_rows(
+        self,
+        *,
+        report_dates: list[str],
+        currency_basis: str = "CNX",
+    ) -> dict[str, object]:
+        table = "fact_formal_zqtz_balance_daily"
+        zqtz_currency_basis = "CNY" if currency_basis.upper() == "CNX" else currency_basis
+        if not report_dates:
+            return {
+                "status": "no_data",
+                "missing_columns": [],
+                "zqtz_currency_basis": zqtz_currency_basis,
+                "rows": [],
+            }
+        try:
+            conn = self._connect()
+            if not self._table_exists(conn, table):
+                return {
+                    "status": "unsupported_missing_columns",
+                    "missing_columns": [table],
+                    "zqtz_currency_basis": zqtz_currency_basis,
+                    "rows": [],
+                }
+            filter_sql, filter_params = self._zqtz_primary_asset_predicate(conn)
+            if filter_sql == "false":
+                return {
+                    "status": "no_data",
+                    "missing_columns": [],
+                    "zqtz_currency_basis": zqtz_currency_basis,
+                    "rows": [],
+                }
+            missing_columns = [
+                column
+                for column in ("maturity_date", "issuer_name", "rating", "industry_name")
+                if not self._column_exists(conn, table, column)
+            ]
+            select_exprs = {
+                column: (
+                    f"cast({column} as varchar) as {column}"
+                    if column not in missing_columns
+                    else f"cast(null as varchar) as {column}"
+                )
+                for column in ("maturity_date", "issuer_name", "rating", "industry_name")
+            }
+            amount_expr = self._zqtz_amount_expression(conn)
+            rows = conn.execute(
+                f"""
+                select
+                  cast(report_date as varchar) as report_date,
+                  {amount_expr} as amount,
+                  {select_exprs["maturity_date"]},
+                  {select_exprs["issuer_name"]},
+                  {select_exprs["rating"]},
+                  {select_exprs["industry_name"]}
+                from {table}
+                where cast(report_date as varchar) in (select unnest(?))
+                  and currency_basis = ?
+                  and position_scope = 'asset'
+                  and ({filter_sql})
+                """,
+                [report_dates, zqtz_currency_basis, *filter_params],
+            ).fetchall()
+        except duckdb.Error as exc:
+            return {
+                "status": "unsupported_missing_columns",
+                "missing_columns": [str(exc)],
+                "zqtz_currency_basis": zqtz_currency_basis,
+                "rows": [],
+            }
+        finally:
+            if "conn" in locals():
+                conn.close()
+
+        keys = [
+            "report_date",
+            "amount",
+            "maturity_date",
+            "issuer_name",
+            "rating",
+            "industry_name",
+        ]
+        return {
+            "status": "supported",
+            "missing_columns": missing_columns,
+            "zqtz_currency_basis": zqtz_currency_basis,
+            "rows": [
+                {
+                    key: Decimal(str(value or "0")) if key == "amount" else value
+                    for key, value in zip(keys, row, strict=True)
+                }
+                for row in rows
+            ],
+        }
+
     def _fetch_rows_for_dates(
         self,
         *,
@@ -818,6 +1015,24 @@ class AccountingAssetMovementRepository:
             return "false", []
         return " and ".join(parts), params
 
+    def _zqtz_primary_asset_predicate(
+        self,
+        conn: duckdb.DuckDBPyConnection,
+    ) -> tuple[str, list[str]]:
+        clauses: list[str] = []
+        params: list[str] = []
+        for row_def in _ZQTZ_ASSET_ROWS:
+            if str(row_def.get("row_key", "")).startswith("asset_zqtz_detail_"):
+                continue
+            clause, clause_params = self._zqtz_asset_predicate(conn, row_def)
+            if clause == "false":
+                continue
+            clauses.append(f"({clause})")
+            params.extend(clause_params)
+        if not clauses:
+            return "false", []
+        return " or ".join(clauses), params
+
     def _zqtz_keyword_predicate(
         self,
         conn: duckdb.DuckDBPyConnection,
@@ -889,23 +1104,53 @@ class AccountingAssetMovementRepository:
 
     def _zqtz_amount_expression(self, conn: duckdb.DuckDBPyConnection) -> str:
         table = "fact_formal_zqtz_balance_daily"
+        market_amount_expr = (
+            "coalesce(market_value_amount, 0)"
+            if self._column_exists(conn, table, "market_value_amount")
+            else "0"
+        )
+        face_amount_expr = (
+            "coalesce(face_value_amount, 0)"
+            if self._column_exists(conn, table, "face_value_amount")
+            else "0"
+        )
         interest_addend = (
             " + coalesce(accrued_interest_amount, 0)"
             if self._column_exists(conn, table, "accrued_interest_amount")
             else ""
         )
+        voucher_terms = []
+        if self._column_exists(conn, table, "business_type_primary"):
+            voucher_terms.append("business_type_primary = '凭证式国债'")
+        if self._column_exists(conn, table, "bond_type"):
+            voucher_terms.append("bond_type = '凭证式国债'")
+        if self._column_exists(conn, table, "instrument_name"):
+            voucher_terms.append("instrument_name like '%凭证式%'")
         if self._column_exists(conn, table, "amortized_cost_amount") and self._column_exists(
             conn,
             table,
             "accounting_basis",
         ):
-            return (
+            standard_amount_expr = (
                 "case when accounting_basis = 'AC' "
-                "then coalesce(amortized_cost_amount, market_value_amount) "
-                "else market_value_amount end"
+                f"then coalesce(amortized_cost_amount, {market_amount_expr}) "
+                f"else {market_amount_expr} end"
+            )
+        else:
+            standard_amount_expr = market_amount_expr
+        voucher_amount_expr = (
+            f"case when {standard_amount_expr} = 0 "
+            f"then coalesce(nullif({market_amount_expr}, 0), {face_amount_expr}, 0) "
+            f"else {standard_amount_expr} end"
+        )
+        if voucher_terms:
+            return (
+                "case when ("
+                + " or ".join(voucher_terms)
+                + f") then {voucher_amount_expr} else {standard_amount_expr} end"
                 f"{interest_addend}"
             )
-        return f"market_value_amount{interest_addend}"
+        return f"{standard_amount_expr}{interest_addend}"
 
     def _ledger_business_predicate(self, row_def: dict[str, object]) -> tuple[str, list[str]]:
         parts: list[str] = []
@@ -1026,7 +1271,7 @@ class AccountingAssetMovementRepository:
                 if self._column_exists(conn, "fact_formal_zqtz_balance_daily", "instrument_name"):
                     voucher_predicates.append("instrument_name like ?")
                     voucher_params.append("%凭证式%")
-                amortized_expr = (
+                amortized_amount_expr = (
                     "coalesce(amortized_cost_amount, 0)"
                     if self._column_exists(
                         conn,
@@ -1034,6 +1279,28 @@ class AccountingAssetMovementRepository:
                         "amortized_cost_amount",
                     )
                     else "0"
+                )
+                market_amount_expr = (
+                    "coalesce(market_value_amount, 0)"
+                    if self._column_exists(
+                        conn,
+                        "fact_formal_zqtz_balance_daily",
+                        "market_value_amount",
+                    )
+                    else "0"
+                )
+                face_amount_expr = (
+                    "coalesce(face_value_amount, 0)"
+                    if self._column_exists(
+                        conn,
+                        "fact_formal_zqtz_balance_daily",
+                        "face_value_amount",
+                    )
+                    else "0"
+                )
+                voucher_cost_basis_expr = (
+                    f"coalesce(nullif({amortized_amount_expr}, 0), "
+                    f"nullif({market_amount_expr}, 0), {face_amount_expr}, 0)"
                 )
                 accrued_expr = (
                     "coalesce(accrued_interest_amount, 0)"
@@ -1049,7 +1316,7 @@ class AccountingAssetMovementRepository:
                 formal = conn.execute(
                     f"""
                     select
-                      coalesce(sum({amortized_expr}), 0),
+                      coalesce(sum({voucher_cost_basis_expr}), 0),
                       coalesce(sum({accrued_expr}), 0)
                     from fact_formal_zqtz_balance_daily
                     where cast(report_date as varchar) = ?

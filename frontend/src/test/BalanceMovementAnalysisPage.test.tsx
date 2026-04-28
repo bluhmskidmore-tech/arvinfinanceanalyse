@@ -84,11 +84,24 @@ describe("BalanceMovementAnalysisPage", () => {
       "变动额",
     );
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
-      "业务线较上月变动",
+      "业务行Top变动",
     );
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent(
       "资产端-拆放同业",
     );
+    const topMovesMom = screen.getByTestId("balance-movement-analysis-business-top-moves-mom");
+    expect(topMovesMom).toBeInTheDocument();
+    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("MoM Top 5");
+    expect(within(topMovesMom).queryAllByRole("listitem").length).toBeGreaterThan(0);
+    const interbankLendingTopMove = within(topMovesMom)
+      .getByText("资产端-拆放同业")
+      .closest("li");
+    expect(interbankLendingTopMove).toHaveTextContent("ledger · 总账对账科目余额");
+    const topMovesSix = screen.getByTestId("balance-movement-analysis-business-top-moves-sixmonth");
+    expect(topMovesSix).toBeInTheDocument();
+    expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("Top 5");
+    const topMoveSources = screen.getAllByTestId("balance-movement-analysis-business-top-moves-source");
+    expect(topMoveSources.length).toBeGreaterThan(0);
     expect(screen.getByTestId("balance-movement-analysis-slice-note")).toHaveTextContent(
       "总账 AC/OCI/TPL",
     );
@@ -149,6 +162,26 @@ describe("BalanceMovementAnalysisPage", () => {
       expect(gap).toHaveTextContent("待拆分");
       expect(gap).not.toHaveTextContent("+0.00 亿");
     }
+
+    const basisDecomposition = screen.getByTestId("balance-movement-analysis-basis-decomposition");
+    expect(basisDecomposition).toHaveTextContent("AC / OCI / TPL 驱动拆解");
+    expect(basisDecomposition).toHaveTextContent("142 摊余成本债权投资");
+    expect(basisDecomposition).toHaveTextContent("144020 股权 OCI");
+    expect(basisDecomposition).toHaveTextContent("交易性金融资产");
+
+    const maturityStructure = screen.getByTestId("balance-movement-analysis-zqtz-maturity");
+    expect(maturityStructure).toHaveTextContent("期限 / 到期结构");
+    expect(maturityStructure).toHaveTextContent("30天内");
+    expect(maturityStructure).toHaveTextContent("1-3年");
+    expect(maturityStructure).toHaveTextContent("未映射");
+
+    const concentrationAnalysis = screen.getByTestId("balance-movement-analysis-zqtz-concentration");
+    expect(concentrationAnalysis).toHaveTextContent("主体 / 评级 / 行业集中度");
+    expect(concentrationAnalysis).toHaveTextContent("国家开发银行");
+    expect(concentrationAnalysis).toHaveTextContent("AAA");
+    expect(concentrationAnalysis).toHaveTextContent("金融业");
+    expect(concentrationAnalysis).toHaveTextContent("Unknown");
+    expect(concentrationAnalysis).toHaveTextContent("HHI 1,620.35");
 
     const matrixTitle = screen.getByText("月度余额分析矩阵");
     const detailTitle = screen.getByText("明细 / 对账：AC / OCI / TPL 余额变动");

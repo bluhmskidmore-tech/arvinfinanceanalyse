@@ -637,6 +637,7 @@ def test_balance_movement_analysis_service_includes_accrued_interest_when_availa
               instrument_code varchar,
               instrument_name varchar,
               currency_code varchar,
+              face_value_amount decimal(24, 8),
               market_value_amount decimal(24, 8),
               amortized_cost_amount decimal(24, 8),
               accrued_interest_amount decimal(24, 8),
@@ -646,10 +647,11 @@ def test_balance_movement_analysis_service_includes_accrued_interest_when_availa
             """
         )
         conn.executemany(
-            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "insert into fact_formal_zqtz_balance_daily values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                ("2026-02-28", "AC", "asset", "CNY", "国债", "T1", "国债A", "CNY", "10", "9", "0.5", "sv-zqtz", "rv-zqtz"),
-                ("2026-02-28", "FVOCI", "asset", "CNY", "资产支持证券", "A1", "ABS A", "CNY", "7", "6", "0.25", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "国债", "T1", "国债A", "CNY", "10", "10", "9", "0.5", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "AC", "asset", "CNY", "凭证式国债", "V1", "凭证式国债A", "CNY", "5", "0", "0", "2", "sv-zqtz", "rv-zqtz"),
+                ("2026-02-28", "FVOCI", "asset", "CNY", "资产支持证券", "A1", "ABS A", "CNY", "7", "7", "6", "0.25", "sv-zqtz", "rv-zqtz"),
             ],
         )
     finally:
@@ -665,7 +667,7 @@ def test_balance_movement_analysis_service_includes_accrued_interest_when_availa
         for row in envelope["result"]["business_trend_months"][0]["rows"]
     }
 
-    assert Decimal(business_rows["asset_zqtz_treasury_bond"]["current_balance"]) == Decimal("9.50000000")
+    assert Decimal(business_rows["asset_zqtz_treasury_bond"]["current_balance"]) == Decimal("16.50000000")
     assert Decimal(business_rows["asset_zqtz_abs"]["current_balance"]) == Decimal("7.25000000")
 
 
@@ -802,6 +804,245 @@ def test_balance_movement_analysis_service_builds_derived_diagnostics():
     assert Decimal(waterfall["closing_check"]) == Decimal("0E-8")
 
 
+def test_balance_movement_analysis_service_builds_drilldown_payloads():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table fact_accounting_asset_movement_monthly (
+              report_date varchar,
+              report_month varchar,
+              currency_basis varchar,
+              sort_order integer,
+              basis_bucket varchar,
+              previous_balance decimal(24, 8),
+              current_balance decimal(24, 8),
+              balance_change decimal(24, 8),
+              change_pct decimal(24, 8),
+              contribution_pct decimal(24, 8),
+              zqtz_amount decimal(24, 8),
+              gl_amount decimal(24, 8),
+              reconciliation_diff decimal(24, 8),
+              reconciliation_status varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_accounting_asset_movement_monthly values (
+              ?, ?, 'CNX', ?, ?, ?, ?, ?, 0, ?, ?, ?, 0, 'matched', 'sv-read', 'rv-read'
+            )
+            """,
+            [
+                ("2026-01-31", "2026-01", 1, "AC", "90", "100", "10", "40", "100", "100"),
+                ("2026-01-31", "2026-01", 2, "OCI", "45", "50", "5", "20", "50", "50"),
+                ("2026-01-31", "2026-01", 3, "TPL", "20", "25", "5", "20", "25", "25"),
+                ("2026-02-28", "2026-02", 1, "AC", "100", "130", "30", "54.545454", "130", "130"),
+                ("2026-02-28", "2026-02", 2, "OCI", "50", "60", "10", "18.181818", "60", "60"),
+                ("2026-02-28", "2026-02", 3, "TPL", "25", "40", "15", "27.272727", "40", "40"),
+            ],
+        )
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar,
+              account_name varchar,
+              beginning_balance decimal(24, 8),
+              ending_balance decimal(24, 8),
+              monthly_pnl decimal(24, 8),
+              daily_avg_balance decimal(24, 8),
+              annual_avg_balance decimal(24, 8),
+              days_in_period integer,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, 'CNX', ?, ?, ?, 0, 0, 0, 28, 'sv-gl', 'rv-gl')",
+            [
+                ("2026-02-28", "14201000001", "AC amortized", "70", "90"),
+                ("2026-02-28", "14301000001", "AC debt", "30", "40"),
+                ("2026-02-28", "14401010001", "OCI debt", "50", "60"),
+                ("2026-02-28", "14402010001", "OCI equity excluded", "999", "999"),
+                ("2026-02-28", "14101000001", "TPL trading", "25", "40"),
+            ],
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              accounting_basis varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              bond_type varchar,
+              business_type_primary varchar,
+              instrument_code varchar,
+              instrument_name varchar,
+              currency_code varchar,
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8),
+              maturity_date varchar,
+              issuer_name varchar,
+              rating varchar,
+              industry_name varchar,
+              source_version varchar,
+              rule_version varchar
+            )
+            """
+        )
+        conn.executemany(
+            """
+            insert into fact_formal_zqtz_balance_daily values (
+              ?, ?, 'asset', 'CNY', '其他债券', '同业存单', ?, ?, 'CNY', ?, ?, 0, ?, ?, ?, ?, 'sv-zqtz', 'rv-zqtz'
+            )
+            """,
+            [
+                ("2026-01-31", "AC", "NCD001", "同业存单A", "30", "30", "2026-03-15", "主体A", "AAA", "金融业"),
+                ("2026-01-31", "FVTPL", "NCD002", "同业存单B", "30", "30", "2026-05-15", "主体B", "AA+", "公共管理"),
+                ("2026-01-31", "FVOCI", "NCD003", "同业存单C", "10", "10", None, None, "AA+", None),
+                ("2026-02-28", "AC", "NCD001", "同业存单A", "40", "40", "2026-03-15", "主体A", "AAA", "金融业"),
+                ("2026-02-28", "FVTPL", "NCD002", "同业存单B", "35", "35", "2026-05-15", "主体B", "AA+", "公共管理"),
+                ("2026-02-28", "FVOCI", "NCD003", "同业存单C", "15", "15", None, None, "AA+", None),
+            ],
+        )
+    finally:
+        conn.close()
+
+    envelope = accounting_asset_movement_envelope(
+        str(duckdb_path),
+        report_date="2026-02-28",
+        currency_basis="CNX",
+    )
+    payload = envelope["result"]
+
+    basis = payload["basis_movement_decomposition"]
+    assert basis["meta"]["status"] == "supported"
+    bucket_by_name = {bucket["basis_bucket"]: bucket for bucket in basis["buckets"]}
+    assert Decimal(bucket_by_name["AC"]["balance_change"]) == Decimal("30.00000000")
+    assert Decimal(bucket_by_name["AC"]["residual_amount"]) == Decimal("0E-8")
+    assert {
+        component["account_code_pattern"]
+        for component in bucket_by_name["AC"]["rows"]
+    } == {"14201000001", "14301000001"}
+    all_component_codes = {
+        component["account_code_pattern"]
+        for bucket in basis["buckets"]
+        for component in bucket["rows"]
+    }
+    assert "14402010001" not in all_component_codes
+
+    maturity = payload["zqtz_maturity_structure"]
+    assert maturity["meta"]["status"] == "supported"
+    assert maturity["meta"]["prior_report_date"] == "2026-01-31"
+    maturity_by_bucket = {
+        bucket["maturity_bucket"]: bucket
+        for bucket in maturity["buckets"]
+    }
+    assert Decimal(maturity_by_bucket["<=30d"]["current_amount"]) == Decimal("40.00000000")
+    assert Decimal(maturity_by_bucket["31-90d"]["current_amount"]) == Decimal("35.00000000")
+    assert Decimal(maturity_by_bucket["unknown"]["current_amount"]) == Decimal("15.00000000")
+    assert maturity_by_bucket["unknown"]["item_count"] == 1
+
+    concentration = payload["zqtz_concentration_analysis"]
+    assert concentration["meta"]["status"] == "supported"
+    dimensions = {
+        dimension["dimension"]: dimension
+        for dimension in concentration["dimensions"]
+    }
+    issuer = dimensions["issuer_name"]
+    assert issuer["status"] == "supported"
+    issuer_items = {item["dimension_value"]: item for item in issuer["items"]}
+    assert Decimal(issuer_items["主体A"]["current_amount"]) == Decimal("40.00000000")
+    assert Decimal(issuer_items["主体A"]["delta_amount"]) == Decimal("10.00000000")
+    assert Decimal(issuer_items["未映射"]["current_amount"]) == Decimal("15.00000000")
+    assert issuer_items["未映射"]["item_kind"] == "unknown"
+    assert Decimal(issuer["hhi"]).quantize(Decimal("0.01")) == Decimal("5022.22")
+    assert dimensions["rating"]["status"] == "supported"
+    assert Decimal(dimensions["rating"]["coverage_pct"]) == Decimal("100.000000")
+    assert Decimal(dimensions["rating"]["hhi"]).quantize(Decimal("0.01")) == Decimal("5061.73")
+    assert dimensions["industry_name"]["status"] == "supported"
+
+
+def test_zqtz_concentration_meta_is_conservative_for_unsupported_dimensions():
+    missing_column_payload = movement_service._build_zqtz_concentration_analysis(
+        report_date="2026-02-28",
+        prior_report_date=None,
+        currency_basis="CNX",
+        drilldown_result={
+            "zqtz_currency_basis": "CNY",
+            "missing_columns": ["issuer_name"],
+            "rows": [
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("80"),
+                    "rating": "AAA",
+                    "industry_name": "金融业",
+                },
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("20"),
+                    "rating": "AA+",
+                    "industry_name": "公共管理",
+                },
+            ],
+        },
+    ).model_dump(mode="json")
+    missing_dimensions = {
+        dimension["dimension"]: dimension
+        for dimension in missing_column_payload["dimensions"]
+    }
+    assert missing_column_payload["meta"]["status"] == "unsupported_missing_columns"
+    assert missing_column_payload["meta"]["coverage_pct"] is None
+    assert missing_dimensions["issuer_name"]["status"] == "unsupported_missing_columns"
+    assert missing_dimensions["rating"]["status"] == "supported"
+
+    low_coverage_payload = movement_service._build_zqtz_concentration_analysis(
+        report_date="2026-02-28",
+        prior_report_date=None,
+        currency_basis="CNX",
+        drilldown_result={
+            "zqtz_currency_basis": "CNY",
+            "missing_columns": [],
+            "rows": [
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("10"),
+                    "issuer_name": "主体A",
+                    "rating": "AAA",
+                    "industry_name": "金融业",
+                },
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("90"),
+                    "issuer_name": None,
+                    "rating": "AA+",
+                    "industry_name": "公共管理",
+                },
+            ],
+        },
+    ).model_dump(mode="json")
+    low_coverage_dimensions = {
+        dimension["dimension"]: dimension
+        for dimension in low_coverage_payload["dimensions"]
+    }
+    assert low_coverage_payload["meta"]["status"] == "unsupported_low_coverage"
+    assert low_coverage_payload["meta"]["coverage_pct"] is None
+    assert low_coverage_dimensions["issuer_name"]["status"] == "unsupported_low_coverage"
+    assert low_coverage_dimensions["rating"]["status"] == "supported"
+
+
 def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
     duckdb_path = (
         Path("test_output")
@@ -866,6 +1107,80 @@ def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
     assert inputs["ledger_voucher_accrued_interest"] == Decimal("7.00000000")
     assert inputs["formal_voucher_amortized_cost"] == Decimal("95.00000000")
     assert inputs["formal_voucher_accrued_interest"] == Decimal("0")
+
+
+def test_difference_attribution_inputs_use_face_value_for_voucher_treasury_cost_basis():
+    duckdb_path = (
+        Path("test_output")
+        / "accounting_asset_movement"
+        / f"{uuid4().hex}.duckdb"
+    )
+    duckdb_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = duckdb.connect(str(duckdb_path), read_only=False)
+    try:
+        conn.execute(
+            """
+            create table product_category_pnl_canonical_fact (
+              report_date varchar,
+              account_code varchar,
+              currency varchar,
+              ending_balance decimal(24, 8)
+            )
+            """
+        )
+        conn.executemany(
+            "insert into product_category_pnl_canonical_fact values (?, ?, ?, ?)",
+            [
+                ("2026-03-31", "14301010001", "CNX", "100"),
+                ("2026-03-31", "14301010002", "CNX", "3"),
+            ],
+        )
+        conn.execute(
+            """
+            create table fact_formal_zqtz_balance_daily (
+              report_date varchar,
+              position_scope varchar,
+              currency_basis varchar,
+              bond_type varchar,
+              business_type_primary varchar,
+              instrument_name varchar,
+              face_value_amount decimal(24, 8),
+              market_value_amount decimal(24, 8),
+              amortized_cost_amount decimal(24, 8),
+              accrued_interest_amount decimal(24, 8)
+            )
+            """
+        )
+        conn.execute(
+            """
+            insert into fact_formal_zqtz_balance_daily values (
+              '2026-03-31',
+              'asset',
+              'CNY',
+              '凭证式国债',
+              '凭证式国债',
+              '凭证式国债测试持仓',
+              100,
+              0,
+              0,
+              3
+            )
+            """
+        )
+    finally:
+        conn.close()
+
+    inputs = AccountingAssetMovementRepository(
+        str(duckdb_path)
+    ).fetch_difference_attribution_inputs(
+        report_date="2026-03-31",
+        currency_basis="CNX",
+    )
+
+    assert inputs["ledger_voucher_cost"] == Decimal("100.00000000")
+    assert inputs["formal_voucher_amortized_cost"] == Decimal("100.00000000")
+    assert inputs["ledger_voucher_accrued_interest"] == Decimal("3.00000000")
+    assert inputs["formal_voucher_accrued_interest"] == Decimal("3.00000000")
 
 
 def test_balance_movement_dates_only_advertise_materialized_read_model_dates():
