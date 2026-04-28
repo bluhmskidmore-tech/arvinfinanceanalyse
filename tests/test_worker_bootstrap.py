@@ -41,6 +41,7 @@ def test_worker_bootstrap_declares_canonical_dramatiq_task_modules():
         "backend.app.tasks.fx_mid_materialize",
         "backend.app.tasks.choice_macro",
         "backend.app.tasks.choice_news",
+        "backend.app.tasks.research_calendar_upstream_fetch",
     )
 
 

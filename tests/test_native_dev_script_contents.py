@@ -1,7 +1,37 @@
+import os
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _extract_powershell_function(script: str, name: str) -> str:
+    start = script.index(f"function {name} ")
+    brace_start = script.index("{", start)
+    depth = 0
+    for index in range(brace_start, len(script)):
+        char = script[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return script[start : index + 1]
+    raise AssertionError(f"Could not extract PowerShell function {name}")
+
+
+def _single_quote_powershell(value: Path) -> str:
+    return "'" + str(value).replace("'", "''") + "'"
+
+
+def _run_powershell_harness(harness_path: Path, output_path: Path) -> int:
+    command = f'powershell -NoProfile -ExecutionPolicy Bypass -File "{harness_path}" > "{output_path}" 2>&1'
+    previous_cwd = Path.cwd()
+    try:
+        os.chdir(ROOT)
+        return os.system(command)
+    finally:
+        os.chdir(previous_cwd)
 
 
 def test_dev_api_script_bootstraps_native_environment():
@@ -23,7 +53,18 @@ def test_dev_worker_script_bootstraps_native_environment():
     assert "MOSS_SKIP_STARTUP_STORAGE_MIGRATIONS" in script
     assert "dev-python.ps1" in script
     assert "Resolve-DevPython" in script
-    assert "dramatiq backend.app.tasks.worker_bootstrap" in script
+    assert "MOSS_DEV_WORKER_PROCESSES" in script
+    assert "MOSS_DEV_WORKER_THREADS" in script
+    assert "--processes" in script
+    assert "--threads" in script
+    assert "backend.app.tasks.worker_bootstrap" in script
+
+
+def test_dev_python_prefers_repo_virtualenv_before_system_python():
+    script = (ROOT / "scripts" / "dev-python.ps1").read_text(encoding="utf-8")
+    assert ".venv\\Scripts\\python.exe" in script
+    assert "Get-Command python -ErrorAction SilentlyContinue" in script
+    assert script.index("$candidates += $venvPython") < script.index("$candidates += $systemPythonCommand.Source")
 
 
 def test_dev_env_script_sets_repo_relative_data_paths():
@@ -67,6 +108,9 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert ".out.log" in script
     assert ".err.log" in script
     assert "stdout=$stdoutPath stderr=$stderrPath" in script
+    assert "Add-LogContext" in script
+    assert "Wait-HttpEndpointWithLogs" in script
+    assert "Wait-JsonStatusOkEndpointWithLogs" in script
     assert "Wait-HttpEndpoint" in script
     assert "Wait-TcpPort" in script
     assert "Wait-FileReady" in script
@@ -78,13 +122,99 @@ def test_dev_up_script_bootstraps_local_postgres_and_starts_native_processes():
     assert "write_dev_worker_heartbeat" in script
     assert "55432" in script
     assert "/health" in script
+    assert "/health/ready" in script
     assert "/api/bond-analytics/dates" in script
     assert "/api/risk/tensor/dates" in script
     assert "/api/risk/tensor?report_date=$riskReportDate" in script
     assert "risk tensor detail concurrent smoke" in script
+    assert "/src/api/client.ts" in script
+    assert "frontend Vite API client module" in script
     assert "audit_governance_lineage.py" in script
     assert "Governance lineage audit failed" in script
     assert "exit 0" in script
+
+
+def test_dev_keepalive_checks_vite_source_module_not_only_frontend_root():
+    script = (ROOT / "scripts" / "dev-keepalive.ps1").read_text(encoding="utf-8")
+    assert "Test-FrontendReady" in script
+    assert "/src/api/client.ts" in script
+    assert "http://127.0.0.1:5888" in script
+
+
+def test_dev_up_http_failure_wrapper_includes_recent_logs(tmp_path):
+    script = (ROOT / "scripts" / "dev-up.ps1").read_text(encoding="utf-8")
+    log_path = tmp_path / "service.err.log"
+    log_path.write_text("old line\nrecent failure line\n", encoding="utf-8")
+    harness = "\n\n".join(
+        [
+            _extract_powershell_function(script, "Get-RecentLogLines"),
+            _extract_powershell_function(script, "Format-RecentLogSnippet"),
+            _extract_powershell_function(script, "Add-LogContext"),
+            _extract_powershell_function(script, "Wait-HttpEndpointWithLogs"),
+            """
+function Wait-HttpEndpoint {
+  throw "probe failed"
+}
+
+try {
+  Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:1" -Description "test endpoint" -LogPaths @(__LOG_PATH__) | Out-Null
+  throw "expected Wait-HttpEndpointWithLogs to fail"
+} catch {
+  $message = $_.Exception.Message
+  if ($message -notlike "*probe failed*") { throw "missing probe error: $message" }
+  if ($message -notlike "*Recent logs:*") { throw "missing log header: $message" }
+  if ($message -notlike "*service.err.log*") { throw "missing log path: $message" }
+  if ($message -notlike "*recent failure line*") { throw "missing log body: $message" }
+}
+""".replace("__LOG_PATH__", _single_quote_powershell(log_path)),
+        ]
+    )
+    harness_path = tmp_path / "dev-up-log-wrapper-test.ps1"
+    harness_path.write_text(harness, encoding="utf-8")
+
+    output_path = tmp_path / "dev-up-log-wrapper-test.out"
+    exit_code = _run_powershell_harness(harness_path, output_path)
+
+    assert exit_code == 0, output_path.read_text(encoding="utf-8", errors="replace")
+
+
+def test_dev_up_json_ready_failure_wrapper_includes_recent_logs(tmp_path):
+    script = (ROOT / "scripts" / "dev-up.ps1").read_text(encoding="utf-8")
+    log_path = tmp_path / "api.err.log"
+    log_path.write_text("startup migration failed\n", encoding="utf-8")
+    harness = "\n\n".join(
+        [
+            _extract_powershell_function(script, "Get-RecentLogLines"),
+            _extract_powershell_function(script, "Format-RecentLogSnippet"),
+            _extract_powershell_function(script, "Add-LogContext"),
+            _extract_powershell_function(script, "Wait-JsonStatusOkEndpointWithLogs"),
+            """
+function Invoke-WebRequest {
+  return [pscustomobject]@{
+    StatusCode = 200
+    Content = '{"status":"degraded","checks":{"postgresql":{"ok":false}}}'
+  }
+}
+
+try {
+  Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -TimeoutSeconds 0 -Description "API readiness" -LogPaths @(__LOG_PATH__) | Out-Null
+  throw "expected Wait-JsonStatusOkEndpointWithLogs to fail"
+} catch {
+  $message = $_.Exception.Message
+  if ($message -notlike "*status=degraded*") { throw "missing degraded status: $message" }
+  if ($message -notlike "*Recent logs:*") { throw "missing log header: $message" }
+  if ($message -notlike "*startup migration failed*") { throw "missing log body: $message" }
+}
+""".replace("__LOG_PATH__", _single_quote_powershell(log_path)),
+        ]
+    )
+    harness_path = tmp_path / "dev-up-ready-wrapper-test.ps1"
+    harness_path.write_text(harness, encoding="utf-8")
+
+    output_path = tmp_path / "dev-up-ready-wrapper-test.out"
+    exit_code = _run_powershell_harness(harness_path, output_path)
+
+    assert exit_code == 0, output_path.read_text(encoding="utf-8", errors="replace")
 
 
 def test_dev_postgres_up_script_fails_when_cluster_is_not_running():

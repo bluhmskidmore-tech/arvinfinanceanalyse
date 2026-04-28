@@ -3,6 +3,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 . "$root\scripts\dev-env.ps1"
+. "$root\scripts\dev-python.ps1"
 
 $powershellExe = (Get-Command powershell -ErrorAction Stop).Source
 $logRoot = Join-Path $root "tmp-governance\runtime-clean\logs"
@@ -192,6 +193,92 @@ function Get-RecentLogLines {
   return @(Get-Content -Path $Path -Tail $Tail -ErrorAction SilentlyContinue)
 }
 
+function Format-RecentLogSnippet {
+  param(
+    [string[]]$LogPaths = @(),
+    [int]$Tail = 40
+  )
+
+  $blocks = @()
+  foreach ($path in ($LogPaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)) {
+    $lines = Get-RecentLogLines -Path $path -Tail $Tail
+    if ($lines.Count -gt 0) {
+      $blocks += "---- $path ----`n$($lines -join "`n")"
+    }
+  }
+
+  return ($blocks -join "`n")
+}
+
+function Add-LogContext {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Message,
+    [string[]]$LogPaths = @()
+  )
+
+  $snippet = Format-RecentLogSnippet -LogPaths $LogPaths
+  if ([string]::IsNullOrWhiteSpace($snippet)) {
+    return $Message
+  }
+
+  return "$Message`nRecent logs:`n$snippet"
+}
+
+function Wait-HttpEndpointWithLogs {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Url,
+    [int]$TimeoutSeconds = 60,
+    [string]$Description = "endpoint",
+    [string[]]$LogPaths = @()
+  )
+
+  try {
+    return Wait-HttpEndpoint -Url $Url -TimeoutSeconds $TimeoutSeconds -Description $Description
+  } catch {
+    throw (Add-LogContext -Message ($_.Exception.Message) -LogPaths $LogPaths)
+  }
+}
+
+function Wait-JsonStatusOkEndpointWithLogs {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Url,
+    [int]$TimeoutSeconds = 60,
+    [string]$Description = "JSON readiness endpoint",
+    [string[]]$LogPaths = @()
+  )
+
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  $lastError = ""
+  do {
+    try {
+      $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 5
+      if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+        try {
+          $payload = $response.Content | ConvertFrom-Json
+          if ($payload.status -eq "ok") {
+            return $response
+          }
+          $lastError = "status=$($payload.status), content=$($response.Content)"
+        } catch {
+          $lastError = "failed to parse JSON response: $($_.Exception.Message)"
+        }
+      }
+    } catch {
+      $lastError = $_.Exception.Message
+    }
+    Start-Sleep -Milliseconds 500
+  } while ((Get-Date) -lt $deadline)
+
+  $message = "Timed out waiting for $Description at $Url"
+  if (-not [string]::IsNullOrWhiteSpace($lastError)) {
+    $message = "$message; last error: $lastError"
+  }
+  throw (Add-LogContext -Message $message -LogPaths $LogPaths)
+}
+
 function Invoke-ConcurrentHttpSmoke {
   param(
     [Parameter(Mandatory = $true)]
@@ -265,6 +352,9 @@ function Start-DevScriptDetached {
     throw "Missing script: $scriptPath"
   }
 
+  $logName = [System.IO.Path]::GetFileNameWithoutExtension($ScriptName)
+  $stdoutPath = Join-Path $logRoot "$logName.out.log"
+  $stderrPath = Join-Path $logRoot "$logName.err.log"
   $alreadyRunning = Get-NativeScriptProcess -ScriptName $ScriptName
 
   if ($alreadyRunning) {
@@ -272,14 +362,11 @@ function Start-DevScriptDetached {
     return [pscustomobject]@{
       Started = $false
       ProcessId = [int]$alreadyRunning.ProcessId
-      StdoutPath = $null
-      StderrPath = $null
+      StdoutPath = $stdoutPath
+      StderrPath = $stderrPath
     }
   }
 
-  $logName = [System.IO.Path]::GetFileNameWithoutExtension($ScriptName)
-  $stdoutPath = Join-Path $logRoot "$logName.out.log"
-  $stderrPath = Join-Path $logRoot "$logName.err.log"
   Remove-Item -Path $stdoutPath,$stderrPath -Force -ErrorAction SilentlyContinue
 
   $scriptCommand = (
@@ -329,19 +416,22 @@ $postgresPort = Wait-TcpPort -ListenHost "127.0.0.1" -Port 55432 -Description "l
 Assert-PortAvailableForScriptStart -Port 7888 -ScriptName "dev-api.ps1" -Description "API"
 $apiLaunch = Start-DevScriptDetached -ScriptName "dev-api.ps1"
 $workerLaunch = Start-DevScriptDetached -ScriptName "dev-worker.ps1"
+$apiLogPaths = @($apiLaunch.StderrPath, $apiLaunch.StdoutPath, (Join-Path $logRoot "dev-api.err.log"), (Join-Path $logRoot "dev-api.out.log"))
+$workerLogPaths = @($workerLaunch.StderrPath, $workerLaunch.StdoutPath, (Join-Path $logRoot "dev-worker.err.log"), (Join-Path $logRoot "dev-worker.out.log"))
 
 $workerHeartbeatPath = Join-Path $root "tmp-governance\runtime-clean\governance\dev-worker-heartbeat.json"
 $workerHeartbeatToken = [guid]::NewGuid().ToString("N")
 Remove-Item -Path $workerHeartbeatPath -Force -ErrorAction SilentlyContinue
-$pythonExe = (Get-Command python -ErrorAction Stop).Source
+$pythonExe = Resolve-DevPython
 & $pythonExe -c "from backend.app.tasks.dev_health import write_dev_worker_heartbeat; write_dev_worker_heartbeat.send(heartbeat_path=r'$workerHeartbeatPath', token=r'$workerHeartbeatToken')"
 if ($LASTEXITCODE -ne 0) {
-  throw "Failed to enqueue dev worker heartbeat smoke task."
+  throw (Add-LogContext -Message "Failed to enqueue dev worker heartbeat smoke task." -LogPaths $workerLogPaths)
 }
 
-$apiHealth = Wait-HttpEndpoint -Url "http://127.0.0.1:7888/health" -Description "API health"
-$bondDates = Wait-HttpEndpoint -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates"
-$riskDates = Wait-HttpEndpoint -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates"
+$apiHealth = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/health" -Description "API health" -LogPaths $apiLogPaths
+$apiReady = Wait-JsonStatusOkEndpointWithLogs -Url "http://127.0.0.1:7888/health/ready" -Description "API readiness" -LogPaths $apiLogPaths
+$bondDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/bond-analytics/dates" -Description "bond analytics dates" -LogPaths $apiLogPaths
+$riskDates = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:7888/api/risk/tensor/dates" -Description "risk tensor dates" -LogPaths $apiLogPaths
 $riskDatesPayload = $riskDates.Content | ConvertFrom-Json
 $riskReportDate = @($riskDatesPayload.result.report_dates) | Select-Object -First 1
 if ([string]::IsNullOrWhiteSpace($riskReportDate)) {
@@ -356,9 +446,15 @@ $riskDatesSmoke = Invoke-ConcurrentHttpSmoke `
   -RequestCount 4 `
   -Description "risk tensor dates concurrent smoke"
 $frontendLaunch = Start-DevScriptDetached -ScriptName "dev-frontend.ps1"
-$frontendRoot = Wait-HttpEndpoint -Url "http://127.0.0.1:5888" -Description "frontend root"
+$frontendLogPaths = @($frontendLaunch.StderrPath, $frontendLaunch.StdoutPath, (Join-Path $logRoot "dev-frontend.err.log"), (Join-Path $logRoot "dev-frontend.out.log"))
+$frontendRoot = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888" -Description "frontend root" -LogPaths $frontendLogPaths
+$frontendApiClient = Wait-HttpEndpointWithLogs -Url "http://127.0.0.1:5888/src/api/client.ts" -Description "frontend Vite API client module" -LogPaths $frontendLogPaths
 $keepaliveLaunch = Start-DevScriptDetached -ScriptName "dev-keepalive.ps1"
-$workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -Description "worker heartbeat"
+try {
+  $workerHeartbeat = Wait-FileReady -Path $workerHeartbeatPath -ExpectedToken $workerHeartbeatToken -Description "worker heartbeat"
+} catch {
+  throw (Add-LogContext -Message ($_.Exception.Message) -LogPaths $workerLogPaths)
+}
 
 $apiProcess = Assert-NativeProcessRunning -Description "API" -Predicate {
   $_.Name -eq "python.exe" -and $_.CommandLine -like "*backend.app.main:app*"
@@ -387,9 +483,10 @@ Write-Host "Worker PID:   $($workerProcess.ProcessId)" -ForegroundColor DarkGray
 Write-Host "Frontend PID: $($frontendProcess.ProcessId)" -ForegroundColor DarkGray
 Write-Host "Postgres PID: $($postgresPort.OwningProcess)" -ForegroundColor DarkGray
 Write-Host "API health:   $($apiHealth.StatusCode)" -ForegroundColor DarkGray
+Write-Host "API ready:    $($apiReady.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Bond dates:   $($bondDates.StatusCode)" -ForegroundColor DarkGray
 Write-Host "Risk tensor:  $($riskTensorSmoke.Count) detail + $($riskDatesSmoke.Count) dates concurrent checks, report_date=$riskReportDate" -ForegroundColor DarkGray
-Write-Host "Frontend:     $($frontendRoot.StatusCode)" -ForegroundColor DarkGray
+Write-Host "Frontend:     $($frontendRoot.StatusCode) root + $($frontendApiClient.StatusCode) API client module" -ForegroundColor DarkGray
 Write-Host "Worker smoke: $($workerHeartbeat.token)" -ForegroundColor DarkGray
 Write-Host "Lineage audit: clean" -ForegroundColor DarkGray
 Write-Host "API logs:      $($apiLaunch.StdoutPath) / $($apiLaunch.StderrPath)" -ForegroundColor DarkGray

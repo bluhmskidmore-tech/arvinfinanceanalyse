@@ -48,6 +48,13 @@ function Test-HttpEndpoint {
   }
 }
 
+function Test-FrontendReady {
+  return (
+    (Test-HttpEndpoint -Url "http://127.0.0.1:5888") -and
+    (Test-HttpEndpoint -Url "http://127.0.0.1:5888/src/api/client.ts")
+  )
+}
+
 function Wait-HttpEndpoint {
   param(
     [Parameter(Mandatory = $true)]
@@ -329,11 +336,11 @@ function Invoke-KeepaliveCycle {
 
   Ensure-WorkerRunning
 
-  if (-not (Test-HttpEndpoint -Url "http://127.0.0.1:5888")) {
+  if (-not (Test-FrontendReady)) {
     Restart-HttpService `
       -ServiceName "frontend" `
       -ScriptName "dev-frontend.ps1" `
-      -Url "http://127.0.0.1:5888" `
+      -Url "http://127.0.0.1:5888/src/api/client.ts" `
       -Port 5888
   }
 }
@@ -346,7 +353,7 @@ function Write-HeartbeatIfDue {
 
   $script:lastHeartbeatAt = $now
   $apiOk = Test-HttpEndpoint -Url "http://127.0.0.1:7888/health"
-  $frontendOk = Test-HttpEndpoint -Url "http://127.0.0.1:5888"
+  $frontendOk = Test-FrontendReady
   Write-KeepaliveLog "heartbeat api=$apiOk frontend=$frontendOk processInspection=$script:ProcessInspectionAvailable"
 }
 
