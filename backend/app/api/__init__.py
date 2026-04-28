@@ -14,6 +14,7 @@ from backend.app.api.routes.executive import router as executive_router
 from backend.app.api.routes.external_data import router as external_data_router
 from backend.app.api.routes.health import router as health_router
 from backend.app.api.routes.kpi import router as kpi_router
+from backend.app.api.routes.ledger import router as ledger_router
 from backend.app.api.routes.ledger_pnl import router as ledger_pnl_router
 from backend.app.api.routes.liability_analytics import router as liability_analytics_router
 from backend.app.api.routes.macro_bond_linkage import router as macro_bond_linkage_router
@@ -56,6 +57,7 @@ router.include_router(qdb_gl_monthly_analysis_router, tags=["qdb-gl-monthly-anal
 router.include_router(research_calendar_router, tags=["calendar"])
 router.include_router(campisi_attribution_router, tags=["campisi-attribution"])
 router.include_router(kpi_router, tags=["kpi"])
+router.include_router(ledger_router, tags=["ledger"])
 router.include_router(ledger_pnl_router, tags=["ledger-pnl"])
 router.include_router(risk_tensor_router, tags=["risk"])
 router.include_router(source_preview_router, tags=["preview"])

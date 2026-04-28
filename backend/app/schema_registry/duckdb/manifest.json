@@ -91,6 +91,11 @@
       "path": "18_accounting_asset_movement.sql",
       "ensure_module": "backend.app.tasks.accounting_asset_movement",
       "ensure_symbol": "_ensure_tables"
+    },
+    {
+      "path": "19_ledger_import.sql",
+      "ensure_module": "backend.app.repositories.ledger_import_repo",
+      "ensure_symbol": "ensure_ledger_import_tables"
     }
   ]
 }
