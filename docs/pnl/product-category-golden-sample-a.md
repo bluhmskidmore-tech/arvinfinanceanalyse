@@ -47,6 +47,7 @@ The sample must be captured against this chain:
 - `result_meta.scenario_flag == false`
 - `result.report_date == "2026-02-28"`
 - `result.view == "monthly"`
+- `result.asset_total.baseline_ftp_rate_pct == "1.60"` for the 2026 report-year FTP policy
 - `set(result.available_views) == {"monthly", "qtd", "ytd", "year_to_report_month_end"}`
 
 ### Totals

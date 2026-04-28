@@ -18,6 +18,7 @@
 - `result_meta.fallback_mode == "none"`.
 - `result.report_date == "2026-02-28"`.
 - `result.view == "monthly"`.
+- `result.asset_total.baseline_ftp_rate_pct == "1.60"` for the 2026 report-year FTP policy.
 - `available_views` exactly match `monthly/qtd/ytd/year_to_report_month_end`.
 - `bond_investment` row remains the parent of:
   - `bond_tpl`

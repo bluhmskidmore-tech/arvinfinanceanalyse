@@ -72,6 +72,7 @@ Any edit that changes page meaning must trace through that full chain.
 - `qtd` and `year_to_report_month_end` are governed API/detail sample surfaces, not current first-screen UI requirements.
 - Do not add `qtd` or `year_to_report_month_end` to the main page selector without updating this contract, the closure checklist, and page-level tests.
 - Allowed scenario path: explicit `scenario_rate_pct`
+- Baseline FTP policy is report-year based: 2025 uses `1.75%`; 2026 uses `1.60%`.
 - Analytical overlay is not the default interpretation of this page
 - Mock data must not masquerade as governed truth
 - `ytd` and `year_to_report_month_end` are natural-year views: PnL fields must sum monthly `monthly_pnl` from January through the requested report month. They must not add prior-month `ending_balance` values or switch to ending-balance cash. Scale-sensitive calculations use each included month’s monthly scale basis weighted by calendar days, and return `quality_flag=warning` when prior months in the year are unavailable for coverage evidence.
