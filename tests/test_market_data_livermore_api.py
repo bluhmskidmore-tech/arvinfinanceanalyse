@@ -7,6 +7,7 @@ import duckdb
 from fastapi.testclient import TestClient
 
 from backend.app.governance.settings import get_settings
+from backend.app.repositories.choice_client import ChoiceClient
 from tests.helpers import load_module
 
 
@@ -62,9 +63,11 @@ def _seed_choice_macro_history(
         conn.close()
 
 
-def _build_client(tmp_path, monkeypatch) -> TestClient:
+def _build_client(tmp_path, monkeypatch, *, choice_stock_catalog_file=None) -> TestClient:
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
+    catalog_path = choice_stock_catalog_file or tmp_path / "missing-choice-stock-catalog.json"
+    monkeypatch.setenv("MOSS_CHOICE_STOCK_CATALOG_FILE", str(catalog_path))
     get_settings.cache_clear()
     for mod in ("backend.app.main", "backend.app.api"):
         sys.modules.pop(mod, None)
@@ -97,13 +100,18 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert result["market_gate"]["state"] == "WARM"
     assert result["supported_outputs"] == ["market_gate"]
     assert "stock_candidates" not in result
+    unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
+    assert "Choice stock catalog is missing" in unsupported_by_key["sector_rank"]["reason"]
+    assert "Choice stock catalog is missing" in unsupported_by_key["stock_candidates"]["reason"]
     unsupported_keys = {row["key"] for row in result["unsupported_outputs"]}
     assert unsupported_keys == {"sector_rank", "stock_candidates", "risk_exit"}
     gap_by_family = {row["input_family"]: row for row in result["data_gaps"]}
     assert gap_by_family["breadth"]["status"] == "missing"
     assert gap_by_family["limit_up_quality"]["status"] == "missing"
     assert gap_by_family["sector_strength"]["status"] == "missing"
+    assert "Choice stock catalog is missing" in gap_by_family["sector_strength"]["evidence"]
     assert gap_by_family["stock_universe"]["status"] == "missing"
+    assert "Choice stock catalog is missing" in gap_by_family["stock_universe"]["evidence"]
     assert gap_by_family["position_risk"]["status"] == "missing"
     readiness_by_key = {row["key"]: row for row in result["rule_readiness"]}
     assert readiness_by_key["market_gate"]["status"] == "partial"
@@ -116,6 +124,50 @@ def test_livermore_api_returns_analytical_envelope_and_missing_input_diagnostics
     assert "LIVERMORE_SECTOR_INPUTS_MISSING" in diag_codes
     assert "LIVERMORE_STOCK_INPUTS_MISSING" in diag_codes
     assert "LIVERMORE_RISK_INPUTS_MISSING" in diag_codes
+    diag_by_code = {row["code"]: row for row in result["diagnostics"]}
+    assert "Choice stock catalog is missing" in diag_by_code["LIVERMORE_STOCK_INPUTS_MISSING"]["message"]
+    get_settings.cache_clear()
+
+
+def test_livermore_api_missing_stock_catalog_does_not_call_choice_stock_api(tmp_path, monkeypatch) -> None:
+    def fail_choice_call(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("Choice stock API should not be called while catalog is missing.")
+
+    monkeypatch.setattr(ChoiceClient, "css", fail_choice_call)
+    monkeypatch.setattr(ChoiceClient, "csd", fail_choice_call)
+    client = _build_client(tmp_path, monkeypatch)
+
+    response = client.get("/ui/market-data/livermore")
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert "stock_candidates" not in result
+    assert any("Choice stock catalog is missing" in row["reason"] for row in result["unsupported_outputs"])
+    get_settings.cache_clear()
+
+
+def test_livermore_api_incomplete_stock_catalog_stays_fail_closed(tmp_path, monkeypatch) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    catalog_path.write_text(
+        '{"catalog_version":"test_empty","vendor_name":"choice","generated_from":"unit_test","fields":[]}',
+        encoding="utf-8",
+    )
+    duckdb_path = tmp_path / "moss.duckdb"
+    _seed_choice_macro_history(
+        str(duckdb_path),
+        start=date(2026, 2, 1),
+        closes=[3200.0 + day * 5 for day in range(65)],
+    )
+    client = _build_client(tmp_path, monkeypatch, choice_stock_catalog_file=catalog_path)
+
+    response = client.get("/ui/market-data/livermore")
+
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["supported_outputs"] == ["market_gate"]
+    assert "stock_candidates" not in result
+    unsupported_by_key = {row["key"]: row for row in result["unsupported_outputs"]}
+    assert "Choice stock catalog is incomplete" in unsupported_by_key["stock_candidates"]["reason"]
     get_settings.cache_clear()
 
 

@@ -3,11 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import duckdb
-
 from backend.app.core_finance.livermore_strategy import BroadIndexObservation, evaluate_market_gate
-from backend.app.services.formal_result_runtime import build_result_envelope
+from backend.app.repositories.choice_stock_adapter import ChoiceStockReadiness, choice_stock_readiness_missing
+from backend.app.services.formal_result_runtime import FallbackMode, QualityFlag, VendorStatus, build_result_envelope
 
 RULE_VERSION = "rv_livermore_strategy_v1"
 CACHE_VERSION = "cv_livermore_strategy_v1"
@@ -19,9 +20,18 @@ BROAD_INDEX_SERIES_ID = "CA.CSI300"
 HISTORY_LIMIT = 260
 
 
-def livermore_strategy_envelope(*, duckdb_path: str, as_of_date: str | None = None) -> dict[str, object]:
+def livermore_strategy_envelope(
+    *,
+    duckdb_path: str,
+    as_of_date: str | None = None,
+    stock_readiness: ChoiceStockReadiness | None = None,
+) -> dict[str, object]:
     requested_date = _parse_optional_date(as_of_date)
-    payload, meta = load_livermore_strategy_payload(duckdb_path=duckdb_path, as_of_date=requested_date)
+    payload, meta = load_livermore_strategy_payload(
+        duckdb_path=duckdb_path,
+        as_of_date=requested_date,
+        stock_readiness=stock_readiness,
+    )
     filters_applied = {
         "requested_as_of_date": None if requested_date is None else requested_date.isoformat(),
         "as_of_date": payload["as_of_date"],
@@ -31,15 +41,15 @@ def livermore_strategy_envelope(*, duckdb_path: str, as_of_date: str | None = No
         trace_id=f"tr_livermore_{uuid.uuid4().hex[:12]}",
         result_kind=RESULT_KIND,
         cache_version=CACHE_VERSION,
-        source_version=meta["source_version"],
+        source_version=cast(str, meta["source_version"]),
         rule_version=RULE_VERSION,
-        quality_flag=meta["quality_flag"],
-        vendor_version=meta["vendor_version"],
-        vendor_status=meta["vendor_status"],
-        fallback_mode=meta["fallback_mode"],
+        quality_flag=cast(QualityFlag, meta["quality_flag"]),
+        vendor_version=cast(str, meta["vendor_version"]),
+        vendor_status=cast(VendorStatus, meta["vendor_status"]),
+        fallback_mode=cast(FallbackMode, meta["fallback_mode"]),
         filters_applied=filters_applied,
-        tables_used=meta["tables_used"],
-        evidence_rows=meta["evidence_rows"],
+        tables_used=cast(list[str], meta["tables_used"]),
+        evidence_rows=cast(int, meta["evidence_rows"]),
         result_payload=payload,
     )
 
@@ -48,12 +58,14 @@ def load_livermore_strategy_payload(
     *,
     duckdb_path: str,
     as_of_date: date | None,
+    stock_readiness: ChoiceStockReadiness | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
+    resolved_stock_readiness = stock_readiness or choice_stock_readiness_missing("")
     history_rows, tables_used = _load_broad_index_history(
         duckdb_path=duckdb_path,
         as_of_date=as_of_date,
     )
-    market_gate = evaluate_market_gate(history_rows)
+    market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows))
     requested_text = None if as_of_date is None else as_of_date.isoformat()
     resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
     diagnostics = _build_diagnostics(
@@ -61,19 +73,25 @@ def load_livermore_strategy_payload(
         resolved_as_of_date=resolved_as_of_date,
         market_gate=market_gate,
         history_count=len(history_rows),
+        stock_readiness=resolved_stock_readiness,
     )
     data_gaps = _build_data_gaps(
         market_gate=market_gate,
         history_count=len(history_rows),
         resolved_as_of_date=resolved_as_of_date,
+        stock_readiness=resolved_stock_readiness,
     )
     rule_readiness = _build_rule_readiness(
         market_gate=market_gate,
         history_count=len(history_rows),
+        stock_readiness=resolved_stock_readiness,
     )
-    supported_outputs, unsupported_outputs = _build_supported_outputs(market_gate["state"])
-    quality_flag = _quality_flag_for_market_gate(market_gate["state"])
-    payload = {
+    supported_outputs, unsupported_outputs = _build_supported_outputs(
+        str(market_gate["state"]),
+        stock_readiness=resolved_stock_readiness,
+    )
+    quality_flag = _quality_flag_for_market_gate(str(market_gate["state"]))
+    payload: dict[str, object] = {
         "as_of_date": resolved_as_of_date,
         "requested_as_of_date": requested_text,
         "strategy_name": STRATEGY_NAME,
@@ -85,7 +103,7 @@ def load_livermore_strategy_payload(
         "supported_outputs": supported_outputs,
         "unsupported_outputs": unsupported_outputs,
     }
-    meta = {
+    meta: dict[str, object] = {
         "quality_flag": quality_flag,
         "vendor_status": _vendor_status_for_state(str(market_gate["state"])),
         "fallback_mode": "latest_snapshot" if quality_flag == "stale" else "none",
@@ -229,15 +247,51 @@ class _LoadedObservation(BroadIndexObservation):
     pass
 
 
-def _build_supported_outputs(state: str) -> tuple[list[str], list[dict[str, str]]]:
+def _choice_stock_dependency_summary(
+    *,
+    stock_readiness: ChoiceStockReadiness,
+    families: list[str],
+    ready_summary: str,
+) -> str:
+    if stock_readiness.ready:
+        return ready_summary
+
+    relevant = [family for family in families if family in stock_readiness.missing_input_families]
+    if not relevant:
+        relevant = list(stock_readiness.missing_input_families)
+    formatted = ", ".join(relevant) if relevant else "stock input families"
+    status_text = "missing" if stock_readiness.status == "missing_catalog" else "incomplete"
+    return f"Choice stock catalog is {status_text}; missing or unconfirmed required input families: {formatted}."
+
+
+def _choice_stock_missing_inputs(*, stock_readiness: ChoiceStockReadiness, families: list[str]) -> list[str]:
+    relevant = [family for family in families if family in stock_readiness.missing_input_families]
+    return [str(family) for family in relevant] or list(families)
+
+
+def _build_supported_outputs(
+    state: str,
+    *,
+    stock_readiness: ChoiceStockReadiness,
+) -> tuple[list[str], list[dict[str, str]]]:
+    sector_reason = _choice_stock_dependency_summary(
+        stock_readiness=stock_readiness,
+        families=["sector_membership", "sector_strength"],
+        ready_summary="Choice stock catalog is confirmed, but sector ranking inputs are not materialized yet.",
+    )
+    stock_reason = _choice_stock_dependency_summary(
+        stock_readiness=stock_readiness,
+        families=["stock_universe", "stock_ohlcv", "stock_status", "limit_up_quality"],
+        ready_summary="Choice stock catalog is confirmed, but stock candidate inputs are not materialized yet.",
+    )
     unsupported = [
         {
             "key": "sector_rank",
-            "reason": "Sector membership and sector-strength inputs are not landed yet.",
+            "reason": sector_reason,
         },
         {
             "key": "stock_candidates",
-            "reason": "Stock-level OHLCV, status, and candidate filters are not landed yet.",
+            "reason": stock_reason,
         },
         {
             "key": "risk_exit",
@@ -255,7 +309,12 @@ def _build_supported_outputs(state: str) -> tuple[list[str], list[dict[str, str]
     return ["market_gate"], unsupported
 
 
-def _build_rule_readiness(*, market_gate: dict[str, object], history_count: int) -> list[dict[str, object]]:
+def _build_rule_readiness(
+    *,
+    market_gate: dict[str, object],
+    history_count: int,
+    stock_readiness: ChoiceStockReadiness,
+) -> list[dict[str, object]]:
     gate_state = str(market_gate["state"])
     if gate_state == "NO_DATA":
         gate_status = "missing"
@@ -272,6 +331,16 @@ def _build_rule_readiness(*, market_gate: dict[str, object], history_count: int)
         else:
             gate_summary = "Trend-only market gate is available; breadth and limit-up quality remain missing."
         gate_missing_inputs = ["breadth", "limit_up_quality"]
+    sector_missing_inputs = _choice_stock_missing_inputs(
+        stock_readiness=stock_readiness,
+        families=["sector_membership", "sector_strength"],
+    )
+    stock_missing_inputs = _choice_stock_missing_inputs(
+        stock_readiness=stock_readiness,
+        families=["stock_universe", "stock_ohlcv", "stock_status", "limit_up_quality"],
+    )
+    if "sector_rank" not in stock_missing_inputs:
+        stock_missing_inputs.append("sector_rank")
     return [
         {
             "key": "market_gate",
@@ -289,17 +358,25 @@ def _build_rule_readiness(*, market_gate: dict[str, object], history_count: int)
             "key": "sector_rank",
             "title": "Sector ranking",
             "status": "missing",
-            "summary": "Sector membership and sector-strength inputs are not landed yet.",
+            "summary": _choice_stock_dependency_summary(
+                stock_readiness=stock_readiness,
+                families=["sector_membership", "sector_strength"],
+                ready_summary="Choice stock catalog is confirmed, but sector ranking inputs are not materialized yet.",
+            ),
             "required_inputs": ["sector_membership", "sector_strength"],
-            "missing_inputs": ["sector_membership", "sector_strength"],
+            "missing_inputs": sector_missing_inputs,
         },
         {
             "key": "stock_pivot",
             "title": "Stock pivot filters",
             "status": "blocked",
-            "summary": "Stock pivot output is blocked until sector rank and stock-universe inputs land.",
-            "required_inputs": ["stock_ohlcv", "stock_status", "sector_rank"],
-            "missing_inputs": ["stock_ohlcv", "stock_status", "sector_rank"],
+            "summary": _choice_stock_dependency_summary(
+                stock_readiness=stock_readiness,
+                families=["stock_universe", "stock_ohlcv", "stock_status", "limit_up_quality"],
+                ready_summary="Choice stock catalog is confirmed, but stock pivot inputs are not materialized yet.",
+            ),
+            "required_inputs": ["stock_universe", "stock_ohlcv", "stock_status", "limit_up_quality", "sector_rank"],
+            "missing_inputs": stock_missing_inputs,
         },
         {
             "key": "risk_exit",
@@ -317,6 +394,7 @@ def _build_data_gaps(
     market_gate: dict[str, object],
     history_count: int,
     resolved_as_of_date: str | None,
+    stock_readiness: ChoiceStockReadiness,
 ) -> list[dict[str, str]]:
     gaps = [
         {
@@ -327,17 +405,29 @@ def _build_data_gaps(
         {
             "input_family": "limit_up_quality",
             "status": "missing",
-            "evidence": "Limit-up seal/break quality input family is not landed in DuckDB for this slice.",
+            "evidence": _choice_stock_dependency_summary(
+                stock_readiness=stock_readiness,
+                families=["limit_up_quality"],
+                ready_summary="Choice limit-up quality catalog is confirmed, but DuckDB materialization is not landed.",
+            ),
         },
         {
             "input_family": "sector_strength",
             "status": "missing",
-            "evidence": "Sector membership and ranking inputs are not landed in DuckDB for this slice.",
+            "evidence": _choice_stock_dependency_summary(
+                stock_readiness=stock_readiness,
+                families=["sector_membership", "sector_strength"],
+                ready_summary="Choice sector catalog is confirmed, but DuckDB materialization is not landed.",
+            ),
         },
         {
             "input_family": "stock_universe",
             "status": "missing",
-            "evidence": "Stock OHLCV, status, and candidate-filter inputs are not landed in DuckDB for this slice.",
+            "evidence": _choice_stock_dependency_summary(
+                stock_readiness=stock_readiness,
+                families=["stock_universe", "stock_ohlcv", "stock_status"],
+                ready_summary="Choice stock catalog is confirmed, but DuckDB materialization is not landed.",
+            ),
         },
         {
             "input_family": "position_risk",
@@ -382,6 +472,7 @@ def _build_diagnostics(
     resolved_as_of_date: str | None,
     market_gate: dict[str, object],
     history_count: int,
+    stock_readiness: ChoiceStockReadiness,
 ) -> list[dict[str, str | None]]:
     diagnostics: list[dict[str, str | None]] = []
     state = str(market_gate["state"])
@@ -435,19 +526,34 @@ def _build_diagnostics(
             {
                 "severity": "warning",
                 "code": "LIVERMORE_LIMIT_UP_QUALITY_MISSING",
-                "message": "Limit-up quality inputs are unavailable; the market gate is capped at the trend-only slice.",
+                "message": _choice_stock_dependency_summary(
+                    stock_readiness=stock_readiness,
+                    families=["limit_up_quality"],
+                    ready_summary=(
+                        "Choice limit-up quality catalog is confirmed, but landed inputs are unavailable; "
+                        "the market gate is capped at the trend-only slice."
+                    ),
+                ),
                 "input_family": "limit_up_quality",
             },
             {
                 "severity": "warning",
                 "code": "LIVERMORE_SECTOR_INPUTS_MISSING",
-                "message": "Sector membership and sector-strength inputs are unavailable.",
+                "message": _choice_stock_dependency_summary(
+                    stock_readiness=stock_readiness,
+                    families=["sector_membership", "sector_strength"],
+                    ready_summary="Choice sector catalog is confirmed, but landed sector inputs are unavailable.",
+                ),
                 "input_family": "sector_strength",
             },
             {
                 "severity": "warning",
                 "code": "LIVERMORE_STOCK_INPUTS_MISSING",
-                "message": "Stock-universe inputs are unavailable, so no candidates are produced.",
+                "message": _choice_stock_dependency_summary(
+                    stock_readiness=stock_readiness,
+                    families=["stock_universe", "stock_ohlcv", "stock_status"],
+                    ready_summary="Choice stock catalog is confirmed, but landed stock inputs are unavailable.",
+                ),
                 "input_family": "stock_universe",
             },
             {

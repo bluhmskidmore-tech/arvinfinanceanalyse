@@ -1,0 +1,7 @@
+{
+  "catalog_version": "choice_stock_unconfirmed_v1",
+  "vendor_name": "choice",
+  "generated_from": "manual_placeholder",
+  "policy_note": "No Choice stock field codes are committed until confirmed in the Choice terminal/API entitlement.",
+  "fields": []
+}

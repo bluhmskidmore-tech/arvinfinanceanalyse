@@ -56,6 +56,7 @@ def test_settings_core_storage_paths_resolve_relative_to_repo_root():
     s = Settings()
 
     assert s.duckdb_path == str((repo_root / "data" / "moss.duckdb").resolve())
+    assert s.choice_stock_catalog_file == str((repo_root / "config" / "choice_stock_catalog.json").resolve())
     assert s.governance_path == (repo_root / "data" / "governance").resolve()
     assert s.data_input_root == (repo_root / "data_input").resolve()
     assert s.local_archive_path == (repo_root / "data" / "archive").resolve()

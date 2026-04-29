@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     choice_request_options: str = ""
     choice_macro_series_json: str = "[]"
     choice_macro_catalog_file: str = "config/choice_macro_catalog.json"
+    choice_stock_catalog_file: str = "config/choice_stock_catalog.json"
     choice_macro_commands_file: str = ""
     choice_news_topics_file: str = "config/choice_news_topics.json"
     choice_timeout_seconds: float = 10.0
@@ -158,6 +159,10 @@ class Settings(BaseSettings):
             self.product_category_source_dir = _pc_from_field
         self.choice_macro_catalog_file = resolve_repo_relative_path(
             self.choice_macro_catalog_file,
+            repo_root=_REPO_ROOT,
+        )
+        self.choice_stock_catalog_file = resolve_repo_relative_path(
+            self.choice_stock_catalog_file,
             repo_root=_REPO_ROOT,
         )
         self.choice_macro_commands_file = resolve_repo_relative_path(
