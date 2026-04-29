@@ -1,0 +1,146 @@
+:root {
+  --moss-surface: #ffffff;
+  --moss-surface-soft: #f8fafc;
+  --moss-border-soft: #edf1f6;
+  --moss-text-soft: #6b7280;
+  --moss-text-muted: #8b95a1;
+  --moss-blue: #1850a1;
+  --moss-radius: 12px;
+  --moss-shadow-card: 0 10px 24px rgba(22, 35, 46, 0.06);
+  --moss-font-number: "IBM Plex Mono", ui-monospace, "Noto Sans Mono", Menlo, Monaco, Consolas, monospace;
+}
+
+.moss-card,
+.moss-trace-meta {
+  background: var(--moss-surface);
+  border: 1px solid var(--moss-border-soft);
+  border-radius: var(--moss-radius);
+  box-shadow: var(--moss-shadow-card);
+}
+
+.moss-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.moss-card--span-1 { grid-column: span 1; }
+.moss-card--span-2 { grid-column: span 2; }
+.moss-card--span-3 { grid-column: span 3; }
+.moss-card--span-4 { grid-column: span 4; }
+.moss-card--span-5 { grid-column: span 5; }
+.moss-card--span-6 { grid-column: span 6; }
+.moss-card--span-7 { grid-column: span 7; }
+.moss-card--span-8 { grid-column: span 8; }
+.moss-card--span-9 { grid-column: span 9; }
+.moss-card--span-10 { grid-column: span 10; }
+.moss-card--span-11 { grid-column: span 11; }
+.moss-card--span-12 { grid-column: span 12; }
+
+.moss-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  padding: 14px 16px 8px;
+}
+
+.moss-card__eyebrow {
+  margin-bottom: 4px;
+  color: var(--moss-text-muted);
+  font-size: 11px;
+  font-weight: 760;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.moss-card__title {
+  margin: 0;
+  color: #0f172a;
+  font-size: 16px;
+  line-height: 1.25;
+  font-weight: 760;
+}
+
+.moss-card__subtitle {
+  margin-top: 4px;
+  color: var(--moss-text-soft);
+  font-size: 12px;
+}
+
+.moss-card__tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.moss-card__body {
+  min-height: 0;
+  flex: 1;
+  padding: 8px 16px 16px;
+}
+
+.moss-card__footer {
+  border-top: 1px solid var(--moss-border-soft);
+  padding: 10px 16px;
+  color: var(--moss-text-soft);
+  font-size: 12px;
+}
+
+.moss-card--dense .moss-card__header { padding: 12px 14px 6px; }
+.moss-card--dense .moss-card__body { padding: 6px 14px 14px; }
+
+.moss-card--stale,
+.moss-card--fallback {
+  border-color: #f3d7a4;
+}
+
+.moss-trace-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  box-shadow: none;
+}
+
+.moss-trace-meta--compact {
+  background: transparent;
+  border-color: transparent;
+  padding: 0 2px;
+}
+
+.moss-trace-meta__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--moss-text-soft);
+  font-size: 12px;
+}
+
+.moss-trace-meta__value {
+  color: #344054;
+  font-family: var(--moss-font-number);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .moss-card,
+  .moss-card--span-1,
+  .moss-card--span-2,
+  .moss-card--span-3,
+  .moss-card--span-4,
+  .moss-card--span-5,
+  .moss-card--span-6,
+  .moss-card--span-7,
+  .moss-card--span-8,
+  .moss-card--span-9,
+  .moss-card--span-10,
+  .moss-card--span-11,
+  .moss-card--span-12 {
+    grid-column: 1 / -1;
+  }
+}

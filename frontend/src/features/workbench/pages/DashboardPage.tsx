@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
 import { useApiClient } from "../../../api/client";
 import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
+import { TraceMetaBar } from "../../../components/workbench";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { adaptDashboard } from "../../executive-dashboard/adapters/executiveDashboardAdapter";
@@ -559,6 +560,7 @@ export default function DashboardPage() {
       >
         <div style={{ display: "grid", gap: designTokens.space[3] }}>
           <GovernancePills pills={governancePills} />
+          <TraceMetaBar meta={snapshotQuery.data?.result_meta} compact />
           <DashboardOverviewHeroStrip metrics={heroMetrics} />
         </div>
       </PageHeader>

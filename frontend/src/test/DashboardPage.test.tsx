@@ -164,6 +164,8 @@ describe("DashboardPage", () => {
     expect(within(pills).getByTestId("governance-pill-snapshot")).toBeInTheDocument();
     expect(within(pills).getByTestId("governance-pill-attention")).toBeInTheDocument();
     expect(within(pills).getByTestId("governance-pill-source")).toBeInTheDocument();
+    expect(await screen.findByText("sv_mock_dashboard_v2")).toBeInTheDocument();
+    expect(screen.getByText("rv_dashboard_mock_v2")).toBeInTheDocument();
     expect(screen.queryByTestId("dashboard-data-status-strip")).not.toBeInTheDocument();
     const judgment = await screen.findByTestId("dashboard-global-judgment");
     expect(judgment).toBeInTheDocument();

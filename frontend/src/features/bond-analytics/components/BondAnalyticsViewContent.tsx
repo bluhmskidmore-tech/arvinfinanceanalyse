@@ -15,8 +15,8 @@ import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useSearchParams } from "react-router-dom";
 import { designTokens } from "../../../theme/designSystem";
-import { displayTokens } from "../../../theme/displayTokens";
 import { mapResearchCalendarEventToCalendarItem } from "../../../lib/researchCalendarToCalendarItem";
+import { WorkbenchCard } from "../../../components/workbench";
 
 const BondAnalyticsOverviewPanels = lazy(() =>
   import("./BondAnalyticsOverviewPanels").then((module) => ({
@@ -166,77 +166,41 @@ export function BondAnalyticsViewContent() {
 
   if (showDatesErrorState) {
     return (
-      <section
-        style={{
-          padding: designTokens.space[6],
-          borderRadius: designTokens.radius.lg,
-          background: displayTokens.surface.section,
-          border: `1px solid ${designTokens.color.neutral[200]}`,
-          boxShadow: designTokens.shadow.card,
-          display: "grid",
-          gap: designTokens.space[3],
-        }}
+      <WorkbenchCard
+        title="债券分析日期载入失败。"
+        state="error"
+        stateMessage="无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过地址栏报告日参数显式传入。"
+        actions={[
+          {
+            key: "retry-dates",
+            label: "重试日期载入",
+            onClick: () => void datesQuery.refetch(),
+          },
+        ]}
+        span={12}
       >
-        <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 700, color: designTokens.color.neutral[900] }}>
-          债券分析日期载入失败。
-        </div>
-        <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
-          无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过地址栏报告日参数显式传入。
-        </div>
-        <button
-          type="button"
-          onClick={() => void datesQuery.refetch()}
-          style={{
-            width: "fit-content",
-            border: `1px solid ${designTokens.color.neutral[300]}`,
-            background: designTokens.color.neutral[50],
-            borderRadius: designTokens.radius.md,
-            padding: `${designTokens.space[2] + 2}px ${designTokens.space[4]}px`,
-            color: designTokens.color.neutral[900],
-            cursor: "pointer",
-          }}
-        >
-          重试日期载入
-        </button>
-      </section>
+        <div />
+      </WorkbenchCard>
     );
   }
 
   if (datesEmpty && !effectiveReportDate) {
     return (
-      <section
-        style={{
-          padding: designTokens.space[6],
-          borderRadius: designTokens.radius.lg,
-          background: displayTokens.surface.section,
-          border: `1px solid ${designTokens.color.neutral[200]}`,
-          boxShadow: designTokens.shadow.card,
-          display: "grid",
-          gap: designTokens.space[3],
-        }}
+      <WorkbenchCard
+        title="债券分析暂无可用报告日。"
+        state="empty"
+        stateMessage="后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。"
+        actions={[
+          {
+            key: "retry-dates",
+            label: "重试日期载入",
+            onClick: () => void datesQuery.refetch(),
+          },
+        ]}
+        span={12}
       >
-        <div style={{ fontSize: designTokens.fontSize[18], fontWeight: 700, color: designTokens.color.neutral[900] }}>
-          债券分析暂无可用报告日。
-        </div>
-        <div style={{ color: designTokens.color.neutral[700], lineHeight: designTokens.lineHeight.relaxed }}>
-          后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。
-        </div>
-        <button
-          type="button"
-          onClick={() => void datesQuery.refetch()}
-          style={{
-            width: "fit-content",
-            border: `1px solid ${designTokens.color.neutral[300]}`,
-            background: designTokens.color.neutral[50],
-            borderRadius: designTokens.radius.md,
-            padding: `${designTokens.space[2] + 2}px ${designTokens.space[4]}px`,
-            color: designTokens.color.neutral[900],
-            cursor: "pointer",
-          }}
-        >
-          重试日期载入
-        </button>
-      </section>
+        <div />
+      </WorkbenchCard>
     );
   }
 

@@ -227,6 +227,43 @@ describe("BondAnalyticsViewContent", () => {
     expect(client.getBondAnalyticsActionAttribution).toHaveBeenCalled();
   });
 
+  it("renders a shared WorkbenchCard when report dates fail to load", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => {
+        throw new Error("dates unavailable");
+      }),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+    renderViewContent(client);
+
+    expect(await screen.findByText("债券分析日期载入失败。")).toBeInTheDocument();
+    expect(
+      screen.getByText("无法确定可用报告日，当前不启动债券分析默认首屏查询。请重试或通过地址栏报告日参数显式传入。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(client.getBondAnalyticsActionAttribution).not.toHaveBeenCalled();
+  });
+
+  it("renders a shared WorkbenchCard when no report dates are available", async () => {
+    const client = {
+      ...createApiClient({ mode: "mock" }),
+      getBondAnalyticsDates: vi.fn(async () => ({
+        result_meta: createResultMeta({ result_kind: "bond_analytics.dates" }),
+        result: { report_dates: [] },
+      })),
+      getBondAnalyticsActionAttribution: vi.fn(async () => createActionAttributionEnvelope()),
+    };
+    renderViewContent(client);
+
+    expect(await screen.findByText("债券分析暂无可用报告日。")).toBeInTheDocument();
+    expect(
+      screen.getByText("后端尚未返回可消费的债券分析报告日，因此默认首屏保持等待状态，不在前端自行推导日期。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重试日期载入" })).toBeInTheDocument();
+    expect(client.getBondAnalyticsActionAttribution).not.toHaveBeenCalled();
+  });
+
   it("loads research calendar events for the effective report date and passes them to the overview panels", async () => {
     const getResearchCalendarEvents = vi.fn(async () => [
       {

@@ -1,4 +1,5 @@
 import "../styles/global.css";
+import "../components/workbench/workbench.css";
 
 import { RouteRegistry } from "../router/RouteRegistry";
 
