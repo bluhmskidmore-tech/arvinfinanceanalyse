@@ -4,6 +4,8 @@ MOSS V3 是一个以固定收益分析、经营分析和治理追踪为核心的
 
 这份 README 基于当前目录树、入口文件和各层 `AGENTS.md` 整理，目的是给新进入仓库的人一个可落地的起点，而不是替代已有的专项业务规范。
 
+**首次进入仓库**：先按 [docs/ONBOARD_CHECKLIST.md](docs/ONBOARD_CHECKLIST.md) 走一遍（约 5～30 分钟，含启动与健康检查）。
+
 ## 建议阅读顺序
 
 1. [AGENTS.md](AGENTS.md)
@@ -103,11 +105,10 @@ python scripts/backend_release_suite.py
 
 ## 文档索引
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): 目录树、分层边界、AGENTS 作用域。
+- [docs/architecture.md](docs/architecture.md): 目录树、分层边界、AGENTS 作用域；现有架构边界说明。
 - [docs/GETTING-STARTED.md](docs/GETTING-STARTED.md): 本地启动与首次检查。
 - [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): 开发约束、目录落点和改动路径。
 - [docs/TESTING.md](docs/TESTING.md): 测试结构和验证命令。
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): 环境变量、端口和配置来源。
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): repo 中可验证的运行/部署面。
-- [docs/architecture.md](docs/architecture.md): 现有架构边界说明。
 - [docs/DOCUMENT_AUTHORITY.md](docs/DOCUMENT_AUTHORITY.md): 文档权威顺序。

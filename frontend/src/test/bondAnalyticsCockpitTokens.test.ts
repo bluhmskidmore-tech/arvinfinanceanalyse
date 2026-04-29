@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BORDER,
   PERIOD_OPTIONS,
   SHADOW,
   panelStyle,
@@ -18,11 +17,11 @@ describe("bondAnalyticsCockpitTokens", () => {
     expect(PERIOD_OPTIONS.map((o) => o.value)).toEqual(["MoM", "YTD", "TTM"]);
   });
 
-  it("panelStyle passes background and fixed border, radius, shadow", () => {
+  it("panelStyle passes background, no border stroke, radius, shadow", () => {
     const bg = "#fafafa";
     const style = panelStyle(bg);
     expect(style.borderRadius).toBe(24);
-    expect(style.borderColor).toBe(BORDER);
+    expect(style.border).toBe("none");
     expect(style.boxShadow).toBe(SHADOW);
     expect(style.background).toBe(bg);
   });

@@ -164,7 +164,7 @@ const filterControlStyle = {
   height: 30,
   padding: `0 ${s[3]}px`,
   borderRadius: designTokens.radius.sm,
-  border: `1px solid ${c.neutral[300]}`,
+  border: `1px solid ${shellTokens.colorBorder}`,
   background: "#ffffff",
   fontSize: fs[12],
   color: c.neutral[900],
@@ -195,7 +195,7 @@ function headerButtonStyle(disabled: boolean) {
     padding: "0 12px",
     borderRadius: designTokens.radius.sm,
     border: disabled
-      ? `1px solid ${c.neutral[300]}`
+      ? `1px solid ${shellTokens.colorBorder}`
       : `1px solid ${shellTokens.colorAccent}`,
     background: disabled ? c.neutral[100] : shellTokens.colorAccentSoft,
     color: disabled ? c.neutral[500] : shellTokens.colorAccent,

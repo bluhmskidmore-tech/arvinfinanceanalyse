@@ -12,9 +12,10 @@ export const shellTokens = {
   colorBgSuccessSoft: designTokens.color.success[50],
   colorBgWarningSoft: designTokens.color.warning[50],
   colorBgDangerSoft: designTokens.color.danger[50],
-  colorBorder: designTokens.color.neutral[300],
-  colorBorderSoft: designTokens.color.neutral[200],
-  colorBorderStrong: designTokens.color.neutral[400],
+  /** 默认描边：与 DESIGN「细边框」一致，避免 #d1d5db 主内容区显脏 */
+  colorBorder: designTokens.color.neutral[200],
+  colorBorderSoft: designTokens.color.neutral[100],
+  colorBorderStrong: designTokens.color.neutral[300],
   colorBorderWarning: designTokens.color.warning[200],
   colorTextPrimary: designTokens.color.neutral[900],
   colorTextSecondary: designTokens.color.neutral[600],

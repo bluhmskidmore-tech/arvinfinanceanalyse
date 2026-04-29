@@ -19,7 +19,7 @@ export const displayTokens = {
   surface: {
     /** 主内容卡片 / 区块底 */
     section: "#ffffff",
-    sectionBorder: `1px solid ${color.neutral[200]}`,
+    sectionBorder: `1px solid ${color.neutral[100]}`,
     sectionShadow: shadow.card,
     /** 轻微抬升的浅底（骨架屏轨道等） */
     track: color.neutral[200],
@@ -54,7 +54,8 @@ export const displayTokens = {
     valueWarning: color.warning[600],
     sparklineStroke: color.neutral[400],
     cardBg: "#ffffff",
-    cardBorder: `1px solid ${color.neutral[200]}`,
+    /** 仅用浅阴影抬升层次，去掉硬框线（与 DESIGN 白卡片观感一致） */
+    cardBorder: "none",
     iconBg: color.neutral[100],
     iconFg: color.neutral[600],
     cardShadow:

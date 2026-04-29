@@ -26,7 +26,7 @@ const inkStrong = dt.color.primary[900];
 const ink = dt.color.primary[800];
 const muted = dt.color.neutral[700];
 const sub = dt.color.neutral[600];
-const borderHair = dt.color.neutral[200];
+const borderHair = dt.color.neutral[100];
 const trackBg = dt.color.neutral[100];
 const cnUp = dt.color.danger[500];
 const cnDown = dt.color.success[600];
@@ -622,6 +622,7 @@ export function BondAnalyticsInstitutionalCockpit({
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} xl={16}>
           <Card
+            variant="borderless"
             size="small"
             data-testid="bond-analysis-cockpit-conclusion"
             style={cockpitHeroCardStyle}
@@ -716,6 +717,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
         <Col xs={24} xl={8}>
           <Card
+            variant="borderless"
             size="small"
             title={<SectionCardTitle eyebrow="执行提示" title="今日关注" />}
             data-testid="bond-analysis-today-focus"
@@ -735,6 +737,7 @@ export function BondAnalyticsInstitutionalCockpit({
       </Row>
 
       <Card
+        variant="borderless"
         size="small"
         data-testid="bond-analysis-asset-momentum"
         title={<SectionCardTitle eyebrow="KPI Ribbon" title="资产变动与首屏 KPI" />}
@@ -761,6 +764,7 @@ export function BondAnalyticsInstitutionalCockpit({
       <Row gutter={[dt.space[3], dt.space[3]]}>
         <Col xs={24} lg={14}>
           <Card
+            variant="borderless"
             size="small"
             title={<SectionCardTitle eyebrow="结论展开" title="组合摘要" />}
             data-testid="bond-analysis-summary-card"
@@ -787,6 +791,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
         <Col xs={24} lg={10}>
           <Card
+            variant="borderless"
             size="small"
             title={<SectionCardTitle eyebrow="配置证据" title="债券资产结构" />}
             extra={
@@ -845,6 +850,7 @@ export function BondAnalyticsInstitutionalCockpit({
         <Row gutter={[dt.space[3], dt.space[3]]}>
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="久期证据" title="收益率与久期分布" />}
               style={dashboardCardStyle}
@@ -866,6 +872,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="信用证据" title="利差分析（中位数，bp）" />}
               style={dashboardCardStyle}
@@ -903,6 +910,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="持仓证据" title="持仓明细（前10）" />}
               extra={
@@ -969,6 +977,7 @@ export function BondAnalyticsInstitutionalCockpit({
         <Row gutter={[dt.space[3], dt.space[3]]}>
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="治理证据" title="信用等级分布" />}
               style={dashboardCardStyle}
@@ -1020,6 +1029,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="动作证据" title="组合收益归因（本期）" />}
               style={dashboardCardStyle}
@@ -1062,6 +1072,7 @@ export function BondAnalyticsInstitutionalCockpit({
 
           <Col xs={24} lg={8}>
             <Card
+              variant="borderless"
               size="small"
               title={<SectionCardTitle eyebrow="下钻入口" title="决策事项" />}
               style={dashboardCardStyle}

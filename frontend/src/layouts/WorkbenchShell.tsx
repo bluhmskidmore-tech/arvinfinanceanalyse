@@ -34,6 +34,9 @@ import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
 
+/** 左侧主导航整块统一底色（无渐变、不在侧栏内再铺明显第二色层） */
+const WORKBENCH_RAIL_SOLID_BACKGROUND = "#121d2a";
+
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
   analysis: <BarChartOutlined />,
@@ -90,11 +93,11 @@ function groupButtonStyle(active: boolean) {
     alignItems: "center",
     gap: 10,
     padding: "10px 12px",
-    borderRadius: 14,
-    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)",
-    color: active ? "#f4f7fb" : "rgba(220,228,236,0.84)",
-    border: active ? "1px solid rgba(142, 177, 255, 0.28)" : "1px solid rgba(255,255,255,0.05)",
-    boxShadow: active ? `inset 2px 0 0 ${designTokens.color.primary[400]}` : "none",
+    borderRadius: 12,
+    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+    color: active ? "#f4f7fb" : "rgba(220,228,236,0.88)",
+    border: "none",
+    boxShadow: active ? `inset 4px 0 0 ${designTokens.color.primary[400]}` : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
@@ -127,9 +130,9 @@ function supportLinkStyle(active: boolean) {
     gap: 8,
     padding: "7px 10px",
     borderRadius: 10,
-    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.02)",
-    color: active ? "#f4f7fb" : "rgba(184,197,210,0.78)",
-    border: active ? "1px solid rgba(142, 177, 255, 0.24)" : "1px solid rgba(255,255,255,0.05)",
+    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+    color: active ? "#f4f7fb" : "rgba(184,197,210,0.82)",
+    border: "none",
     fontSize: 11,
     fontWeight: 600,
     transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
@@ -418,6 +421,7 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
+  /** 深色主导航轨分割线（与参照图侧栏一致） */
   const railDividerColor = "rgba(255,255,255,0.08)";
   const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
 
@@ -439,9 +443,9 @@ export function WorkbenchShell() {
           gap: 12,
           padding: isMinimalMainChrome ? "12px" : "14px",
           border: `1px solid ${railDividerColor}`,
-          borderRadius: 26,
-          boxShadow: "0 22px 48px rgba(10, 21, 33, 0.18)",
-          background: "linear-gradient(180deg, #11202d 0%, #0d1822 100%)",
+          borderRadius: 20,
+          boxShadow: "0 22px 48px rgba(10, 21, 33, 0.16)",
+          background: WORKBENCH_RAIL_SOLID_BACKGROUND,
         }}
       >
         <div
@@ -466,10 +470,10 @@ export function WorkbenchShell() {
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                background: "linear-gradient(180deg, rgba(245,248,251,0.98) 0%, rgba(207,218,228,0.94) 100%)",
-                color: "#10202d",
+                background: "rgba(255,255,255,0.1)",
+                color: "#f5f7fa",
                 fontWeight: 700,
-                boxShadow: "0 10px 22px rgba(3, 8, 14, 0.22)",
+                boxShadow: "none",
               }}
             >
               M
@@ -692,12 +696,10 @@ export function WorkbenchShell() {
                       width: 18,
                       height: 18,
                       borderRadius: 999,
-                      border: active
-                        ? `1px solid ${designTokens.color.primary[300]}`
-                        : "1px solid rgba(255,255,255,0.14)",
+                      border: active ? `1px solid rgba(255,255,255,0.22)` : "none",
                       color: active ? "#ffffff" : "rgba(184,197,210,0.76)",
                       fontSize: 10,
-                      background: active ? "rgba(86, 140, 255, 0.28)" : "rgba(255,255,255,0.02)",
+                      background: active ? "rgba(255,255,255,0.1)" : "transparent",
                     }}
                   >
                     {iconMap[group.icon]}
@@ -755,8 +757,8 @@ export function WorkbenchShell() {
                       height: "auto",
                       padding: "8px 10px",
                       borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.06)",
-                      background: "rgba(255,255,255,0.04)",
+                      border: `1px solid ${railDividerColor}`,
+                      background: "transparent",
                       color: "#f4f7fb",
                     }}
                   >
@@ -791,11 +793,9 @@ export function WorkbenchShell() {
                     gap: 2,
                     padding: "8px 10px",
                     borderRadius: 12,
-                    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.02)",
-                    color: active ? "#f4f7fb" : "rgba(205,215,224,0.8)",
-                    border: active
-                      ? "1px solid rgba(142, 177, 255, 0.24)"
-                      : "1px solid rgba(255,255,255,0.04)",
+                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                    color: active ? "#f4f7fb" : "rgba(205,215,224,0.88)",
+                    border: "none",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -922,11 +922,11 @@ export function WorkbenchShell() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
-                  padding: "5px 9px",
+                  padding: "5px 10px",
                   borderRadius: 999,
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "rgba(221, 233, 241, 0.62)",
-                  color: shellTokens.colorAccent,
+                  background: "rgba(241, 245, 249, 0.92)",
+                  color: shellTokens.colorTextSecondary,
                   fontSize: 11,
                   fontWeight: 700,
                 }}
@@ -945,9 +945,9 @@ export function WorkbenchShell() {
                       alignItems: "center",
                       gap: 6,
                       padding: "4px 2px",
-                      color: shellTokens.colorTextPrimary,
+                      color: shellTokens.colorTextSecondary,
                       fontSize: 12,
-                      fontWeight: 700,
+                      fontWeight: 600,
                       borderBottom: `1px solid transparent`,
                     }}
                   >

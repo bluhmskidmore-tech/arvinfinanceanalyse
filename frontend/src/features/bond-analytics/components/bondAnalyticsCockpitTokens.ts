@@ -38,7 +38,7 @@ export const BOND_ANALYTICS_SPREAD_SCENARIO_PRESETS = [
   { value: "25,50,100", label: "25 / 50 / 100 bp" },
 ] as const;
 
-export const BORDER = color.neutral[200];
+export const BORDER = color.neutral[100];
 export const SHADOW = shadow.card;
 
 export const EYEBROW: CSSProperties = {
@@ -59,7 +59,7 @@ export const FIELD: CSSProperties = {
 };
 
 export function panelStyle(background?: string): CSSProperties {
-  return { borderRadius: 24, borderColor: BORDER, boxShadow: SHADOW, background };
+  return { borderRadius: 24, border: "none", boxShadow: SHADOW, background };
 }
 
 export function toneColor(tone: BondAnalyticsTruthTone) {
