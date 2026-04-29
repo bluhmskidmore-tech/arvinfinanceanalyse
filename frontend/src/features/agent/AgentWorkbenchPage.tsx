@@ -22,8 +22,13 @@ type AgentResultCard = {
 type AgentEvidence = {
   tables_used: string[];
   filters_applied: Record<string, unknown>;
+  sql_executed: string[];
   evidence_rows: number;
   quality_flag: string;
+};
+
+type AgentEvidencePayload = Omit<AgentEvidence, "sql_executed"> & {
+  sql_executed?: string[];
 };
 
 type AgentNextDrill = {
@@ -38,6 +43,11 @@ type AgentQueryResult = {
   result_meta: Record<string, unknown>;
   next_drill: AgentNextDrill[];
   suggested_actions: AgentSuggestedAction[];
+};
+
+type AgentQueryPayload = Omit<AgentQueryResult, "evidence" | "suggested_actions"> & {
+  evidence: AgentEvidencePayload;
+  suggested_actions?: AgentSuggestedAction[];
 };
 
 type AgentQueryError =
@@ -63,22 +73,42 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isAgentQueryResult(value: unknown): value is AgentQueryResult {
+function isAgentQueryPayload(value: unknown): value is AgentQueryPayload {
   if (!isRecord(value)) {
     return false;
   }
 
-  return (
-    typeof value.answer === "string" &&
-    Array.isArray(value.cards) &&
-    value.cards.every(isAgentResultCard) &&
-    isAgentEvidence(value.evidence) &&
-    Array.isArray(value.next_drill) &&
-    value.next_drill.every(isAgentNextDrill) &&
-    (value.suggested_actions === undefined ||
-      (Array.isArray(value.suggested_actions) && value.suggested_actions.every(isAgentSuggestedAction))) &&
-    isRecord(value.result_meta)
-  );
+  if (
+    typeof value.answer !== "string" ||
+    !Array.isArray(value.cards) ||
+    !value.cards.every(isAgentResultCard) ||
+    !isAgentEvidencePayload(value.evidence) ||
+    !Array.isArray(value.next_drill) ||
+    !value.next_drill.every(isAgentNextDrill) ||
+    !isRecord(value.result_meta)
+  ) {
+    return false;
+  }
+
+  if (
+    value.suggested_actions !== undefined &&
+    (!Array.isArray(value.suggested_actions) || !value.suggested_actions.every(isAgentSuggestedAction))
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizeAgentQueryResult(payload: AgentQueryPayload): AgentQueryResult {
+  return {
+    ...payload,
+    evidence: {
+      ...payload.evidence,
+      sql_executed: payload.evidence.sql_executed ?? [],
+    },
+    suggested_actions: payload.suggested_actions ?? [],
+  };
 }
 
 function isAgentResultCard(value: unknown): value is AgentResultCard {
@@ -94,12 +124,14 @@ function isAgentResultCard(value: unknown): value is AgentResultCard {
   );
 }
 
-function isAgentEvidence(value: unknown): value is AgentEvidence {
+function isAgentEvidencePayload(value: unknown): value is AgentEvidencePayload {
   return (
     isRecord(value) &&
     Array.isArray(value.tables_used) &&
     value.tables_used.every((item) => typeof item === "string") &&
     isRecord(value.filters_applied) &&
+    (value.sql_executed === undefined ||
+      (Array.isArray(value.sql_executed) && value.sql_executed.every((item) => typeof item === "string"))) &&
     typeof value.evidence_rows === "number" &&
     typeof value.quality_flag === "string"
   );
@@ -477,12 +509,12 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         throw new Error(`智能体查询失败（${response.status}）`);
       }
 
-      if (!isAgentQueryResult(payload)) {
+      if (!isAgentQueryPayload(payload)) {
         throw new Error("智能体返回结果格式无效。");
       }
-      payload.suggested_actions = payload.suggested_actions ?? [];
+      const normalizedPayload = normalizeAgentQueryResult(payload);
 
-      const nextProcesses = extractProcessNames(payload.cards);
+      const nextProcesses = extractProcessNames(normalizedPayload.cards);
       if (nextProcesses.length > 0 && canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setAvailableProcesses(nextProcesses);
         setSelectedProcess((current) => (current && nextProcesses.includes(current) ? current : nextProcesses[0] ?? ""));
@@ -495,10 +527,10 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
         rememberRepoPath(normalizedRepoPath);
       }
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
-        setResult(payload);
+        setResult(normalizedPayload);
         setActiveSuggestedActionPayload(null);
       }
-      return payload;
+      return normalizedPayload;
     } catch (requestError) {
       if (canCommitProcessState(requestVersion, normalizedRepoPath)) {
         setError({
@@ -566,22 +598,21 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
       });
 
       const payload = (await response.json()) as unknown;
-      if (!response.ok || !isAgentQueryResult(payload)) {
-        throw new Error(
-          !response.ok
-            ? `智能体查询失败（${response.status}）`
-            : "智能体返回结果格式无效。",
-        );
+      if (!response.ok || !isAgentQueryPayload(payload)) {
+        if (!response.ok) {
+          throw new Error(`智能体查询失败（${response.status}）`);
+        }
+        throw new Error("智能体返回结果格式无效。");
       }
-      payload.suggested_actions = payload.suggested_actions ?? [];
+      const normalizedPayload = normalizeAgentQueryResult(payload);
 
-      const nextProcesses = extractProcessNames(payload.cards);
+      const nextProcesses = extractProcessNames(normalizedPayload.cards);
       if (canCommitProcessState(activeRequestVersion, normalizedRepoPath)) {
         setAvailableProcesses(nextProcesses);
         setProcessSearch("");
         setSelectedProcess(nextProcesses[0] ?? "");
         rememberRepoPath(normalizedRepoPath);
-        setResult(payload);
+        setResult(normalizedPayload);
         setActiveSuggestedActionPayload(null);
       }
     } catch (requestError) {

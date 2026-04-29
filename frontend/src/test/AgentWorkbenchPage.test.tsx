@@ -982,6 +982,37 @@ describe("AgentWorkbenchPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("accepts SQL evidence when suggested actions are omitted", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(
+      buildJsonResponse({
+        answer: "SQL evidence ready.",
+        cards: [{ title: "SQL Evidence", value: "1 query", type: "lineage" }],
+        evidence: {
+          tables_used: ["fact_agent"],
+          filters_applied: {},
+          sql_executed: ["select 1"],
+          evidence_rows: 1,
+          quality_flag: "ok",
+        },
+        result_meta: {
+          trace_id: "tr_sql",
+          sql_executed: ["select 1"],
+        },
+        next_drill: [],
+      }),
+    );
+
+    render(<AgentWorkbenchPage />);
+
+    await user.type(screen.getByLabelText("agent-question-input"), "show sql evidence");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("SQL evidence ready.")).toBeInTheDocument();
+    expect(screen.getByText("SQL Evidence")).toBeInTheDocument();
+    expect(screen.getByText(/sql_executed.*select 1/)).toBeInTheDocument();
+  });
+
   it("renders answer, cards, evidence, next_drill, and result_meta on success", async () => {
     const user = userEvent.setup();
     fetchMock.mockResolvedValueOnce(
