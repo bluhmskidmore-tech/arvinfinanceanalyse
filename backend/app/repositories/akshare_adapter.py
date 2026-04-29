@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date
 import hashlib
-from io import StringIO
 import json
 import os
+from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
+from io import StringIO
 
 import pandas as pd
 import requests
-
 from backend.app.repositories.choice_client import ChoiceClient
 from backend.app.schemas.vendor import (
     VendorAdapter as VendorAdapterBase,
+)
+from backend.app.schemas.vendor import (
     VendorPreflightResult,
     VendorSnapshot,
 )
 from backend.app.schemas.yield_curve import YieldCurvePoint, YieldCurveSnapshot
-
 
 # AkShare `bond_china_yield` curve names. For `aaa_credit`, only this enterprise-AAA family is allowed
 # (no cross-family AAA substitution — matches must equal this string exactly).
@@ -81,7 +81,32 @@ CHOICE_CURVE_CODES = {
         "6Y": "EMM00168470",
         "10Y": "EMM00166661",
     },
+    "aa_plus_credit": {
+        "6M": "EMM00166666",
+        "1Y": "EMM00166667",
+        "2Y": "EMM00166668",
+        "3Y": "EMM00166669",
+        "4Y": "EMM00166670",
+        "5Y": "EMM00166671",
+        "6Y": "EMM00168472",
+        "7Y": "EMM00166672",
+        "8Y": "EMM00168473",
+        "10Y": "EMM00166673",
+    },
+    "aa_credit": {
+        "6M": "EMM00166678",
+        "1Y": "EMM00166679",
+        "2Y": "EMM00166680",
+        "3Y": "EMM00166681",
+        "4Y": "EMM00166682",
+        "5Y": "EMM00166683",
+        "6Y": "EMM00168474",
+        "7Y": "EMM00166684",
+        "8Y": "EMM00168475",
+        "10Y": "EMM00166685",
+    },
 }
+CHOICE_ONLY_CREDIT_CURVE_TYPES = frozenset({"aa_plus_credit", "aa_credit"})
 
 CHINABOND_GKH_URL = "https://yield.chinabond.com.cn/gkh/yield"
 CHINABOND_GKH_CURVE_NAME = "中债国开债收益率曲线（到期）"
@@ -97,12 +122,16 @@ MIN_OBSERVED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
     "cdb": frozenset({"1Y", "3Y", "5Y", "10Y"}),
     "aaa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "aa_plus_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
+    "aa_credit": frozenset({"1Y", "3Y", "5Y", "10Y"}),
 }
 
 MIN_REQUIRED_TENORS_BY_TYPE = {
     "treasury": frozenset({"6M", "1Y", "3Y", "5Y", "10Y", "30Y"}),
     "cdb": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "10Y", "20Y", "30Y"}),
     "aaa_credit": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y"}),
+    "aa_plus_credit": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y"}),
+    "aa_credit": frozenset({"6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y"}),
 }
 
 
@@ -184,6 +213,8 @@ class VendorAdapter(VendorAdapterBase):
 
         if normalized_curve_type == "aaa_credit":
             return self._fetch_aaa_credit_curve(normalized_trade_date)
+        if normalized_curve_type in CHOICE_ONLY_CREDIT_CURVE_TYPES:
+            return self._fetch_choice_only_curve(normalized_curve_type, normalized_trade_date)
 
         primary_error: Exception | None = None
         try:
@@ -231,6 +262,18 @@ class VendorAdapter(VendorAdapterBase):
             else:
                 errors.append("ChinaBond gkh returned no matching curve snapshot.")
         raise RuntimeError(" ".join(errors))
+
+    def _fetch_choice_only_curve(self, curve_type: str, trade_date: str) -> YieldCurveSnapshot:
+        try:
+            snapshot = self._fetch_choice_curve(
+                curve_type=curve_type,
+                trade_date=trade_date,
+            )
+            if snapshot is not None:
+                return snapshot
+        except Exception as exc:
+            raise RuntimeError(f"Choice failed: {exc}") from exc
+        raise RuntimeError(f"Choice returned no matching curve snapshot for {curve_type} on {trade_date}.")
 
     def fetch_fx_mid_snapshot(
         self,
@@ -537,7 +580,7 @@ class VendorAdapter(VendorAdapterBase):
 
 def _normalize_curve_type(curve_type: str) -> str:
     normalized = str(curve_type or "").strip().lower()
-    if normalized not in {"treasury", "cdb", "aaa_credit"}:
+    if normalized not in {"treasury", "cdb", "aaa_credit", "aa_plus_credit", "aa_credit"}:
         raise ValueError(f"Unsupported curve_type={curve_type!r}")
     return normalized
 

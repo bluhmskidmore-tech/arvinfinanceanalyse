@@ -3,15 +3,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
-
 from backend.app.governance.settings import get_settings
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
     BondAnalyticsRefreshServiceError,
     bond_analytics_dates_envelope,
     bond_analytics_refresh_status,
-    refresh_bond_analytics,
     get_accounting_class_audit,
     get_action_attribution,
     get_benchmark_excess,
@@ -20,11 +17,13 @@ from backend.app.services.bond_analytics_service import (
     get_portfolio_headlines,
     get_return_decomposition,
     get_top_holdings,
+    refresh_bond_analytics,
 )
 from backend.app.services.yield_curve_term_structure_service import (
     get_yield_curve_term_structure,
     parse_curve_types_param,
 )
+from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/api/bond-analytics", tags=["bond-analytics"])
 
@@ -72,7 +71,10 @@ def credit_spread_migration(
 @router.get("/yield-curve-term-structure")
 def yield_curve_term_structure(
     report_date: date = Query(..., description="Report date (YYYY-MM-DD)"),
-    curve_types: str = Query("treasury,cdb", description="Comma-separated: treasury, cdb, aaa_credit"),
+    curve_types: str = Query(
+        "treasury,cdb",
+        description="Comma-separated: treasury, cdb, aaa_credit, aa_plus_credit, aa_credit",
+    ),
 ):
     try:
         types_tuple = parse_curve_types_param(curve_types)

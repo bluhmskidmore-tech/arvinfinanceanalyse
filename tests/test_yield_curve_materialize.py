@@ -254,10 +254,6 @@ def test_materialize_aaa_credit_live_choice_before_akshare(tmp_path, monkeypatch
 
 def test_materialize_yield_curve_dual_failure_writes_no_rows(tmp_path, monkeypatch):
     task_mod = _load_yield_curve_task_module()
-    schema_mod = load_module(
-        "backend.app.schemas.yield_curve",
-        "backend/app/schemas/yield_curve.py",
-    )
 
     duckdb_path = tmp_path / "moss.duckdb"
     governance_dir = tmp_path / "governance"
@@ -356,6 +352,59 @@ def test_materialize_yield_curve_persists_supported_curves(tmp_path, monkeypatch
     assert rows == [
         ("cdb", 7, "choice", "sv_cdb"),
         ("treasury", 7, "akshare", "sv_treasury"),
+    ]
+
+
+def test_materialize_yield_curve_supports_choice_credit_requests(tmp_path, monkeypatch):
+    task_mod = _load_yield_curve_task_module()
+    schema_mod = load_module(
+        "backend.app.schemas.yield_curve",
+        "backend/app/schemas/yield_curve.py",
+    )
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+
+    def fetch_curve(self, *, curve_type: str, trade_date: str):
+        assert curve_type in {"aa_plus_credit", "aa_credit"}
+        assert trade_date == "2026-04-10"
+        return _curve_snapshot(
+            schema_mod,
+            curve_type=curve_type,
+            vendor_name="choice",
+            source_version=f"sv_{curve_type}",
+            vendor_version=f"vv_{curve_type}",
+        )
+
+    monkeypatch.setattr(task_mod.VendorAdapter, "fetch_yield_curve", fetch_curve)
+
+    payload = task_mod.materialize_yield_curve.fn(
+        trade_date="2026-04-10",
+        curve_types=["aa_plus_credit", "aa_credit"],
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+    )
+
+    assert payload["status"] == "completed"
+    assert payload["curve_types"] == ["aa_plus_credit", "aa_credit"]
+    assert payload["point_count"] == 14
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        rows = conn.execute(
+            """
+            select curve_type, count(*), min(vendor_name), max(source_version)
+            from fact_formal_yield_curve_daily
+            group by curve_type
+            order by curve_type
+            """
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert rows == [
+        ("aa_credit", 7, "choice", "sv_aa_credit"),
+        ("aa_plus_credit", 7, "choice", "sv_aa_plus_credit"),
     ]
 
 

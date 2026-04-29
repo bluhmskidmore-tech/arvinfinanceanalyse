@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 from backend.app.governance.settings import get_settings
@@ -32,7 +32,13 @@ YIELD_CURVE_TERM_STRUCTURE_TENORS: tuple[str, ...] = (
 )
 
 # Aligns with `backend.app.tasks.yield_curve_materialize.SUPPORTED_CURVE_TYPES` (no task import to avoid side effects).
-SUPPORTED_YIELD_CURVE_TYPES_FOR_TERM_STRUCTURE: tuple[str, ...] = ("treasury", "cdb", "aaa_credit")
+SUPPORTED_YIELD_CURVE_TYPES_FOR_TERM_STRUCTURE: tuple[str, ...] = (
+    "treasury",
+    "cdb",
+    "aaa_credit",
+    "aa_plus_credit",
+    "aa_credit",
+)
 
 CACHE_VERSION = "cv_yield_curve_term_structure_formal_v1"
 RULE_VERSION_STABLE = "rv_yield_curve_term_structure_read_v1"
@@ -165,7 +171,7 @@ def get_yield_curve_term_structure(*, report_date: date, curve_types: tuple[str,
         report_date=report_date,
         curves=curves_out,
         warnings=warnings,
-        computed_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        computed_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
     return build_formal_result_envelope(
         result_meta=meta,

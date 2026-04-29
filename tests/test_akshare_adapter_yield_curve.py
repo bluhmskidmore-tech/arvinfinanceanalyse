@@ -79,6 +79,30 @@ class _AaaCreditChoiceResult:
     }
 
 
+class _CreditChoiceResult:
+    Dates = ["2026-04-10"]
+
+    def __init__(self, code_map):
+        tenor_values = {
+            "6M": Decimal("1.00"),
+            "1Y": Decimal("1.10"),
+            "2Y": Decimal("1.20"),
+            "3Y": Decimal("1.30"),
+            "4Y": Decimal("1.40"),
+            "5Y": Decimal("1.50"),
+            "6Y": Decimal("1.60"),
+            "7Y": Decimal("1.70"),
+            "8Y": Decimal("1.80"),
+            "10Y": Decimal("2.00"),
+        }
+        self.Codes = list(code_map.values())
+        self.Data = {
+            vendor_code: [[tenor_values[tenor]]]
+            for tenor, vendor_code in code_map.items()
+            if tenor in tenor_values
+        }
+
+
 def test_treasury_choice_fallback_returns_normalized_snapshot(monkeypatch):
     module = load_module(
         "backend.app.repositories.akshare_adapter",
@@ -323,6 +347,54 @@ def test_aaa_credit_prefers_choice_primary(monkeypatch):
     assert snapshot.vendor_name == "choice"
     assert tenor_map["2Y"] == Decimal("1.40")
     assert tenor_map["7Y"] > tenor_map["6Y"]
+
+
+@pytest.mark.parametrize("curve_type", ["aa_plus_credit", "aa_credit"])
+def test_choice_only_credit_prefers_choice_primary(monkeypatch, curve_type):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+    monkeypatch.setattr(
+        module.ChoiceClient,
+        "edb",
+        lambda *args, **kwargs: _CreditChoiceResult(module.CHOICE_CURVE_CODES[curve_type]),
+    )
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("akshare should not be called for Choice-only credit curves")),
+    )
+
+    snapshot = module.VendorAdapter().fetch_yield_curve(curve_type, "2026-04-10")
+
+    tenor_map = {point.tenor: point.rate_pct for point in snapshot.points}
+    assert snapshot.vendor_name == "choice"
+    assert snapshot.curve_type == curve_type
+    assert tenor_map["3Y"] == Decimal("1.30")
+    assert tenor_map["7Y"] == Decimal("1.70")
+
+
+@pytest.mark.parametrize("curve_type", ["aa_plus_credit", "aa_credit"])
+def test_choice_only_credit_fails_closed_without_akshare_substitution(monkeypatch, curve_type):
+    module = load_module(
+        "backend.app.repositories.akshare_adapter",
+        "backend/app/repositories/akshare_adapter.py",
+    )
+
+    class _ChoiceFailure:
+        def edb(self, *args, **kwargs):
+            raise RuntimeError("choice unavailable")
+
+    monkeypatch.setattr(module, "ChoiceClient", lambda: _ChoiceFailure())
+    monkeypatch.setattr(
+        module.VendorAdapter,
+        "_fetch_akshare_curve",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("akshare should not be called for Choice-only credit curves")),
+    )
+
+    with pytest.raises(RuntimeError, match="Choice failed: choice unavailable"):
+        module.VendorAdapter().fetch_yield_curve(curve_type, "2026-04-10")
 
 
 def test_aaa_credit_fails_closed_when_choice_unavailable_and_akshare_has_no_exact_family(monkeypatch):
