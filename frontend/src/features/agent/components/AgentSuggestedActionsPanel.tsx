@@ -7,12 +7,24 @@ type AgentSuggestedAction = {
   requires_confirmation: boolean;
 };
 
+type AgentSuggestedActionPresentation = AgentSuggestedAction & {
+  detailsLabel: string;
+  detailsExpanded: boolean;
+};
+
 type AgentSuggestedActionsPanelProps = {
-  actions: AgentSuggestedAction[];
+  actions: AgentSuggestedActionPresentation[];
   formatValue: (value: unknown) => string;
   activePayload: Record<string, unknown> | null;
   onActionClick: (action: AgentSuggestedAction) => void;
 };
+
+function resolveActionButtonLabel(action: AgentSuggestedAction) {
+  if (action.type === "inspect_drill" || action.type === "refine_query") {
+    return action.label;
+  }
+  return `${action.label} · 查看详情`;
+}
 
 export function AgentSuggestedActionsPanel({
   actions,
@@ -71,23 +83,25 @@ export function AgentSuggestedActionsPanel({
               <button
                 type="button"
                 onClick={() => onActionClick(action)}
+                aria-expanded={action.detailsExpanded}
                 style={{
                   padding: "7px 11px",
                   borderRadius: 999,
                   border: `1px solid ${t.colorBorder}`,
-                  background: t.colorBgSurface,
+                  background: action.detailsExpanded ? t.colorAccentSoft : t.colorBgSurface,
                   color: t.colorTextPrimary,
                   fontSize: 12,
                   fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
-                {action.label}
+                {resolveActionButtonLabel(action)}
               </button>
               <span style={{ color: t.colorTextSecondary, fontSize: 12 }}>{action.type}</span>
               {action.requires_confirmation ? (
                 <span style={{ color: t.colorTextWarning, fontSize: 12 }}>需确认后执行</span>
               ) : null}
+              <span style={{ color: t.colorTextMuted, fontSize: 12 }}>{action.detailsLabel}</span>
             </div>
             <pre
               style={{

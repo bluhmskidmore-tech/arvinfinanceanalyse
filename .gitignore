@@ -45,12 +45,14 @@ frontend/*.tsbuildinfo
 
 ## Python
 .venv/
+.venv-ci*/
 __pycache__/
 **/__pycache__/
 *.pyc
 *.pyo
 *.py[cod]
 .tmp-pnl-refresh.json
+governance-lineage-audit-*.json
 
 # Python / pytest (local caches; also reduces Windows permission noise on stray basetemp dirs)
 .pytest_cache/

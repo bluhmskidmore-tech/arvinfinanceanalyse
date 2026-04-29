@@ -33,6 +33,8 @@ def test_backend_release_suite_declares_bounded_phase2_gate():
         "tests/test_governance_doc_contract.py",
         "tests/test_golden_samples_capture_ready.py",
     ]
+    assert module._pytest_args() == ["-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
+    assert not any(arg in {"tests", "tests/"} for arg in module._pytest_args())
 
 
 def test_backend_release_suite_dry_run_emits_expected_plan(capsys):
@@ -131,7 +133,8 @@ def test_backend_release_suite_runs_fixed_pytest_matrix_when_governance_is_clean
 
     assert exit_code == 0
     assert len(calls) == 1
-    assert calls[0]["args"] == ["python", "-m", "pytest", "-q", *module.RELEASE_SUITE_TESTS]
+    assert calls[0]["args"][0] == module.sys.executable
+    assert calls[0]["args"][1:] == module._pytest_args()
     assert calls[0]["cwd"] == str(ROOT)
     for key, value in module._release_suite_env().items():
         assert calls[0]["env"][key] == value

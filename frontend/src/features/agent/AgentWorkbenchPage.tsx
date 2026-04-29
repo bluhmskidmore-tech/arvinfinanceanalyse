@@ -197,6 +197,17 @@ function formatMetaValue(value: unknown) {
   return JSON.stringify(value);
 }
 
+function isPayloadEqual(left: Record<string, unknown> | null, right: Record<string, unknown>) {
+  if (!left) {
+    return false;
+  }
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isActionPayloadDetailsType(actionType: string) {
+  return actionType !== "inspect_drill" && actionType !== "refine_query";
+}
+
 const GITNEXUS_QUICK_EXAMPLES = [
   "解释当前页面的主要结论和风险点",
   "组合概览：规模、损益、久期和信用风险有什么变化？",
@@ -645,9 +656,12 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
     if (action.type === "inspect_drill" || action.type === "refine_query") {
       setQuery(`请基于当前 evidence 继续下钻：${action.label}`);
       setError(null);
+      setActiveSuggestedActionPayload(null);
       return;
     }
-    setActiveSuggestedActionPayload(action.payload);
+    setActiveSuggestedActionPayload((currentPayload) =>
+      isPayloadEqual(currentPayload, action.payload) ? null : action.payload,
+    );
   }
 
   function formatPageContextSummary(context: AgentPageContext) {
@@ -843,7 +857,18 @@ export function AgentPanel({ pageContext, showHeader = false }: AgentPanelProps 
               ) : null}
 
               <AgentSuggestedActionsPanel
-                actions={result.suggested_actions}
+                actions={result.suggested_actions.map((action) => ({
+                  ...action,
+                  detailsLabel: isActionPayloadDetailsType(action.type)
+                    ? activeSuggestedActionPayload && isPayloadEqual(activeSuggestedActionPayload, action.payload)
+                      ? "已展开动作载荷，再次点击可收起"
+                      : "点击后展开动作载荷，不会自动执行"
+                    : "点击后仅预填问题，不会自动发送"
+                  ,
+                  detailsExpanded:
+                    isActionPayloadDetailsType(action.type) &&
+                    isPayloadEqual(activeSuggestedActionPayload, action.payload),
+                }))}
                 formatValue={formatMetaValue}
                 activePayload={activeSuggestedActionPayload}
                 onActionClick={handleSuggestedAction}

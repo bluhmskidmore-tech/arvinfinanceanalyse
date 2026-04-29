@@ -1060,10 +1060,12 @@ describe("AgentWorkbenchPage", () => {
     expect(screen.getByText("按期限桶下钻")).toBeInTheDocument();
     expect(screen.getByText("建议动作")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "继续下钻期限桶" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "查看血缘" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看血缘 · 查看详情" })).toBeInTheDocument();
     expect(screen.getAllByText("需确认后执行")).toHaveLength(2);
     expect(screen.getByText(/inspect_drill/)).toBeInTheDocument();
     expect(screen.getByText(/inspect_lineage/)).toBeInTheDocument();
+    expect(screen.getByText("点击后仅预填问题，不会自动发送")).toBeInTheDocument();
+    expect(screen.getByText("点击后展开动作载荷，不会自动执行")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "继续下钻期限桶" }));
     expect(screen.getByPlaceholderText(AGENT_PLACEHOLDER)).toHaveValue(
@@ -1072,9 +1074,14 @@ describe("AgentWorkbenchPage", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("动作载荷 / 血缘信息")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "查看血缘" }));
+    await user.click(screen.getByRole("button", { name: "查看血缘 · 查看详情" }));
     expect(screen.getByText("动作载荷 / 血缘信息")).toBeInTheDocument();
+    expect(screen.getByText("已展开动作载荷，再次点击可收起")).toBeInTheDocument();
     expect(screen.getAllByText(/fact_risk_tensor/).length).toBeGreaterThanOrEqual(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole("button", { name: "查看血缘 · 查看详情" }));
+    expect(screen.queryByText("动作载荷 / 血缘信息")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     expect(screen.getByText("结果元信息")).toBeInTheDocument();

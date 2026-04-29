@@ -28,6 +28,15 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
   };
 }
 
+function moneyFromYi(yi: string) {
+  const amount = Number(yi);
+  return {
+    yuan: (amount * 100_000_000).toFixed(2),
+    yi,
+    wan: (amount * 10_000).toFixed(2),
+  };
+}
+
 function buildLedgerClient(): ApiClient {
   const base = createApiClient({ mode: "real" });
   return {
@@ -55,8 +64,8 @@ function buildLedgerClient(): ApiClient {
           ledger_total_assets: { yuan: reportDate === "2025-11-30" ? "900.00" : "1200.00", yi: "0.00", wan: "0.12" },
           ledger_total_liabilities: { yuan: reportDate === "2025-11-30" ? "700.00" : "800.00", yi: "0.00", wan: "0.08" },
           ledger_net_assets: { yuan: reportDate === "2025-11-30" ? "200.00" : "400.00", yi: "0.00", wan: "0.04" },
-          ledger_monthly_pnl_core: { yuan: value, yi: "0.00", wan: "0.00" },
-          ledger_monthly_pnl_all: { yuan: value, yi: "0.00", wan: "0.01" },
+          ledger_monthly_pnl_core: moneyFromYi(value),
+          ledger_monthly_pnl_all: moneyFromYi(value),
           by_currency: [
             { currency: "CNX", total_pnl: { yuan: reportDate === "2025-11-30" ? "15.00" : "35.00", yi: "0.00", wan: "0.00" } },
             { currency: "CNY", total_pnl: { yuan: reportDate === "2025-11-30" ? "3.00" : "5.00", yi: "0.00", wan: "0.00" } },
