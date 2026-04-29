@@ -55,6 +55,28 @@ REFRESH_MONTH_COUNT = 6
 CONCENTRATION_DIMENSIONS = ("issuer_name", "rating", "industry_name")
 CONCENTRATION_TOP_N = 10
 CONCENTRATION_COVERAGE_THRESHOLD = Decimal("80")
+INTEREST_RATE_BOND_DEFAULT_RATING = "AAA"
+INTEREST_RATE_BOND_KEYWORDS = (
+    "央行票据",
+    "央票",
+    "记账式国债",
+    "凭证式国债",
+    "国债",
+    "地方政府债",
+    "地方债",
+    "地方政府债券",
+    "政策性金融债",
+    "政策性银行债",
+    "政金债",
+)
+INTEREST_RATE_BOND_EXCLUDE_KEYWORDS = ("外国债", "外债")
+INTEREST_RATE_BOND_DESCRIPTOR_FIELDS = (
+    "bond_type",
+    "business_type_primary",
+    "business_type_final",
+    "sub_type",
+    "instrument_name",
+)
 MATURITY_BUCKETS = (
     ("overdue_or_matured", "已到期/逾期"),
     ("<=30d", "30天内"),
@@ -1550,8 +1572,7 @@ def _dimension_amounts(
     unknown_count = 0
     for row in rows:
         amount = _decimal_from_object(row.get("amount"))
-        raw_value = row.get(dimension)
-        value = str(raw_value).strip() if raw_value not in (None, "") else ""
+        value = _concentration_dimension_value(row, dimension)
         if not value:
             unknown_amount += amount
             unknown_count += 1
@@ -1566,6 +1587,25 @@ def _dimension_amounts(
         "unknown_amount": unknown_amount,
         "unknown_count": unknown_count,
     }
+
+
+def _concentration_dimension_value(row: dict[str, object], dimension: str) -> str:
+    raw_value = row.get(dimension)
+    value = str(raw_value).strip() if raw_value not in (None, "") else ""
+    if value or dimension != "rating":
+        return value
+    return INTEREST_RATE_BOND_DEFAULT_RATING if _is_interest_rate_bond(row) else ""
+
+
+def _is_interest_rate_bond(row: dict[str, object]) -> bool:
+    descriptors = [
+        str(row.get(field) or "").strip()
+        for field in INTEREST_RATE_BOND_DESCRIPTOR_FIELDS
+    ]
+    descriptor_text = " ".join(value for value in descriptors if value)
+    if any(keyword in descriptor_text for keyword in INTEREST_RATE_BOND_EXCLUDE_KEYWORDS):
+        return False
+    return any(keyword in descriptor_text for keyword in INTEREST_RATE_BOND_KEYWORDS)
 
 
 def _hhi(values: dict[str, Decimal], denominator: Decimal) -> Decimal | None:

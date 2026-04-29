@@ -1,0 +1,87 @@
+.phaseSection {
+  display: grid;
+  gap: 12px;
+}
+
+.evidenceSection {
+  display: grid;
+  gap: 8px;
+}
+
+.stackCompact {
+  display: grid;
+  gap: 12px;
+}
+
+.heroBody {
+  display: grid;
+  gap: 14px;
+}
+
+.heroTopGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(220px, 0.85fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.heroTitleStack {
+  display: grid;
+  gap: 8px;
+}
+
+.kpiBlock {
+  display: grid;
+  gap: 8px;
+}
+
+.summaryBody {
+  display: grid;
+  gap: 10px;
+}
+
+.summaryNarrative {
+  color: #10356a;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.evidenceMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.progressRow {
+  display: grid;
+  gap: 6px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.statRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.statRowDivider {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e2e6ec;
+}
+
+@media (max-width: 720px) {
+  .heroTopGrid,
+  .evidenceMetricGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

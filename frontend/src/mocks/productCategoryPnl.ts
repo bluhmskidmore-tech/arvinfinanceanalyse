@@ -1,4 +1,10 @@
-import type { ApiEnvelope, ProductCategoryPnlPayload, ProductCategoryPnlRow } from "../api/contracts";
+import type {
+  ApiEnvelope,
+  ProductCategoryAttributionPayload,
+  ProductCategoryAttributionRow,
+  ProductCategoryPnlPayload,
+  ProductCategoryPnlRow,
+} from "../api/contracts";
 import { buildMockApiEnvelope } from "./mockApiEnvelope";
 
 const YUAN_PER_YI = 100_000_000;
@@ -542,4 +548,114 @@ export function buildMockProductCategoryPnlEnvelope(
       scenario_flag: Boolean(scenarioRate),
     },
   );
+}
+
+export type ProductCategoryAttributionMockOptions = {
+  reportDate: string;
+  compare?: "mom" | "yoy";
+};
+
+function productCategoryAttributionPriorReportDate(reportDate: string, compare: "mom" | "yoy"): string {
+  const [yearRaw, monthRaw] = reportDate.split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return compare === "yoy" ? "2025-02-28" : "2026-01-31";
+  }
+  const priorYear = compare === "yoy" || month === 1 ? year - 1 : year;
+  const priorMonth = compare === "yoy" ? month : month === 1 ? 12 : month - 1;
+  const priorDay = new Date(Date.UTC(priorYear, priorMonth, 0)).getUTCDate();
+  return `${priorYear}-${String(priorMonth).padStart(2, "0")}-${String(priorDay).padStart(2, "0")}`;
+}
+
+export function buildMockProductCategoryAttributionEnvelope(
+  options: ProductCategoryAttributionMockOptions,
+): ApiEnvelope<ProductCategoryAttributionPayload> {
+  const compare = options.compare ?? "mom";
+  const priorReportDate = productCategoryAttributionPriorReportDate(options.reportDate, compare);
+  const currentPoint = {
+    report_date: options.reportDate,
+    days: 28,
+    scale: toYuan("171.60"),
+    yield_pct: "2.50",
+    cash: toYuan("0.33"),
+    ftp: toYuan("0.23"),
+    business_net_income: toYuan("0.10"),
+  };
+  const priorPoint = {
+    report_date: priorReportDate,
+    days: 31,
+    scale: toYuan("160.00"),
+    yield_pct: "2.35",
+    cash: toYuan("0.28"),
+    ftp: toYuan("0.20"),
+    business_net_income: toYuan("0.08"),
+  };
+  const effects = {
+    day_effect: toYuan("-0.01"),
+    scale_effect: toYuan("0.02"),
+    rate_effect: toYuan("0.01"),
+    ftp_effect: toYuan("0.00"),
+    direct_effect: toYuan("0.00"),
+    unexplained_effect: toYuan("0.00"),
+    explained_effect: toYuan("0.02"),
+    delta_business_net_income: toYuan("0.02"),
+    closure_error: toYuan("0.00"),
+  };
+  const row: ProductCategoryAttributionRow = {
+    category_id: "interbank_lending_assets",
+    category_name: "拆放同业",
+    side: "asset",
+    level: 0,
+    state: "complete",
+    current: currentPoint,
+    prior: priorPoint,
+    effects,
+  };
+  const assetTotal: ProductCategoryAttributionRow = {
+    ...row,
+    category_id: "asset_total",
+    category_name: "资产端合计",
+  };
+  const liabilityTotal: ProductCategoryAttributionRow = {
+    ...row,
+    category_id: "liability_total",
+    category_name: "负债端合计",
+    side: "liability",
+    effects: {
+      ...effects,
+      scale_effect: toYuan("0.01"),
+      rate_effect: toYuan("0.00"),
+      explained_effect: toYuan("0.01"),
+      delta_business_net_income: toYuan("0.01"),
+    },
+  };
+  const grandTotal: ProductCategoryAttributionRow = {
+    ...row,
+    category_id: "grand_total",
+    category_name: "grand_total",
+    side: "all",
+    effects: {
+      ...effects,
+      scale_effect: toYuan("0.03"),
+      rate_effect: toYuan("0.01"),
+      explained_effect: toYuan("0.03"),
+      delta_business_net_income: toYuan("0.03"),
+    },
+  };
+
+  return buildMockApiEnvelope("product_category_pnl.attribution", {
+    report_date: options.reportDate,
+    compare,
+    current_report_date: options.reportDate,
+    prior_report_date: priorReportDate,
+    state: "complete",
+    reason: null,
+    rows: [row],
+    totals: {
+      asset_total: assetTotal,
+      liability_total: liabilityTotal,
+      grand_total: grandTotal,
+    },
+  });
 }

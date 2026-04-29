@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.repositories.source_preview_repo import (
     RULE_VERSION,
+    SUPPORTED_PREVIEW_SOURCE_FAMILIES,
     load_preview_rows,
     load_rule_traces,
     load_source_preview_history_payload,
@@ -14,7 +15,7 @@ from backend.app.schemas.source_preview import SourcePreviewPayload
 from backend.app.services.formal_result_runtime import build_result_envelope
 
 CACHE_VERSION = "cv_phase1_source_preview_v1"
-SOURCE_FOUNDATION_FAMILIES = frozenset({"zqtz", "tyw"})
+SOURCE_FOUNDATION_FAMILIES = SUPPORTED_PREVIEW_SOURCE_FAMILIES
 
 
 def source_preview_envelope(duckdb_path: str) -> dict[str, object]:

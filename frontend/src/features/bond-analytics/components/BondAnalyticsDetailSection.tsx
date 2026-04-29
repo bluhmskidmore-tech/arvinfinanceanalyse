@@ -10,6 +10,7 @@ import {
   getBondAnalyticsModuleDefinition,
   type BondAnalyticsModuleKey,
 } from "../lib/bondAnalyticsModuleRegistry";
+import styles from "./BondAnalyticsDetailSection.module.css";
 
 const ReturnDecompositionView = lazy(() =>
   import("./ReturnDecompositionView").then((module) => ({
@@ -145,19 +146,22 @@ export function BondAnalyticsDetailSection({
 
   return (
     <section
-      style={{ display: "flex", flexDirection: "column", gap: 12 }}
+      className={styles.detailSection}
       data-testid="bond-analysis-detail-section"
       data-module-key={activeTab}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        <h3 style={{ margin: 0, fontSize: 16 }}>分析明细</h3>
-        <div style={{ color: "#8090a8", fontSize: 13 }}>
+      <div className={styles.header} data-testid="bond-analysis-detail-header">
+        <div className={styles.headingStack}>
+          <h3 className={styles.title}>分析明细</h3>
+          <p className={styles.description}>{activeModule.description}</p>
+        </div>
+        <div className={styles.activeModule}>
           当前查看：{activeModule.label}
         </div>
-        <div style={{ color: "#5c6b82", fontSize: 13 }}>{activeModule.description}</div>
       </div>
 
       <Tabs
+        className={styles.tabRail}
         activeKey={activeTab}
         onChange={(key) => onActiveTabChange(key as BondAnalyticsModuleKey)}
         items={TAB_ITEMS.map((item) => ({
@@ -170,14 +174,14 @@ export function BondAnalyticsDetailSection({
       <Suspense
         fallback={
           <div
-            style={{ color: "#8090a8", fontSize: 13 }}
+            className={styles.loadingState}
             data-testid="bond-analysis-detail-loading"
           >
             正在加载面板...
           </div>
         }
       >
-        <div>
+        <div className={styles.contentFrame} data-testid="bond-analysis-detail-content">
           {renderActiveModule(
             activeTab,
             reportDate,

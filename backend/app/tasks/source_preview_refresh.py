@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from backend.app.governance.locks import acquire_lock
@@ -25,10 +25,16 @@ from backend.app.tasks.broker import register_actor_once
 from backend.app.tasks.ingest import resolve_data_input_root
 from backend.app.tasks.materialize import resolve_materialize_lock
 
-
 SOURCE_PREVIEW_REFRESH_JOB_NAME = "source_preview_refresh"
 SOURCE_PREVIEW_REFRESH_CACHE_KEY = "source_preview.foundation"
-SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES = ("zqtz", "tyw")
+SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES = (
+    "zqtz",
+    "tyw",
+    "pnl",
+    "pnl_514",
+    "pnl_516",
+    "pnl_517",
+)
 
 
 def build_source_preview_refresh_lock_key(duckdb_path: str | Path) -> str:
@@ -55,7 +61,7 @@ def _refresh_source_preview_cache(
         governance_backend_mode=governance_backend_mode,
     )
     materialize_lock = resolve_materialize_lock(duckdb_file)
-    started_at = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(UTC).isoformat()
     run_id = run_id or f"{SOURCE_PREVIEW_REFRESH_JOB_NAME}:{started_at}"
 
     governance_repo.append(
@@ -131,7 +137,7 @@ def _refresh_source_preview_cache(
                 "preview_sources": list(SOURCE_PREVIEW_REFRESH_SOURCE_FAMILIES),
                 "ingest_batch_id": ingest_batch_id or None,
                 "error_message": str(exc),
-                "finished_at": datetime.now(timezone.utc).isoformat(),
+                "finished_at": datetime.now(UTC).isoformat(),
             },
         )
         _record_job_state_transition(
@@ -141,7 +147,7 @@ def _refresh_source_preview_cache(
             source_version="sv_preview_failed",
             vendor_version="vv_none",
             error_message=str(exc),
-            finished_at=datetime.now(timezone.utc).isoformat(),
+            finished_at=datetime.now(UTC).isoformat(),
         )
         raise
 
@@ -154,7 +160,7 @@ def _refresh_source_preview_cache(
         }
     )
     source_version = _join_source_versions(summary["source_version"] for summary in preview_summaries)
-    finished_at = datetime.now(timezone.utc).isoformat()
+    finished_at = datetime.now(UTC).isoformat()
 
     governance_repo.append_many_atomic(
         [

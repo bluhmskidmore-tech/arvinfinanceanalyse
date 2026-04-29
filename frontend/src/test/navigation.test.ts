@@ -63,6 +63,7 @@ describe("workbench navigation mocks", () => {
       "positions",
       "average-balance",
       "ledger-pnl",
+      "bank-ledger-dashboard",
       "concentration-monitor",
       "cashflow-projection",
       "kpi-performance",
@@ -208,6 +209,14 @@ describe("workbench navigation mocks", () => {
     expect(ledger?.readiness).toBe("live");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "ledger-pnl")).toBe(true);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "ledger-pnl")).toBe(false);
+  });
+
+  it("promotes bank-ledger-dashboard into the live primary navigation", () => {
+    const ledger = workbenchNavigation.find((s) => s.key === "bank-ledger-dashboard");
+    expect(ledger?.path).toBe("/bank-ledger-dashboard");
+    expect(ledger?.readiness).toBe("live");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "bank-ledger-dashboard")).toBe(false);
   });
 
   it("tracks reserved modules outside the live primary navigation", () => {

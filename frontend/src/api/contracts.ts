@@ -949,6 +949,92 @@ export type NcdFundingProxyPayload = {
   warnings: string[];
 };
 
+export type LivermoreMarketGateState =
+  | "OFF"
+  | "WARM"
+  | "HOT"
+  | "OVERHEAT"
+  | "PENDING_DATA"
+  | "NO_DATA"
+  | "STALE";
+
+export type LivermoreConditionStatus = "pass" | "fail" | "missing" | "stale";
+export type LivermoreRuleReadinessKey =
+  | "market_gate"
+  | "sector_rank"
+  | "stock_pivot"
+  | "risk_exit";
+export type LivermoreRuleReadinessStatus =
+  | "ready"
+  | "partial"
+  | "missing"
+  | "blocked"
+  | "stale";
+export type LivermoreDiagnosticSeverity = "info" | "warning" | "error";
+export type LivermoreDataGapStatus = "missing" | "partial" | "stale";
+export type LivermoreOutputKey =
+  | "market_gate"
+  | "sector_rank"
+  | "stock_candidates"
+  | "risk_exit";
+
+export type LivermoreMarketCondition = {
+  key: string;
+  label: string;
+  status: LivermoreConditionStatus;
+  evidence: string;
+  source_series_id?: string | null;
+};
+
+export type LivermoreMarketGate = {
+  state: LivermoreMarketGateState;
+  exposure: number;
+  passed_conditions: number;
+  available_conditions: number;
+  required_conditions: number;
+  conditions: LivermoreMarketCondition[];
+};
+
+export type LivermoreRuleReadiness = {
+  key: LivermoreRuleReadinessKey;
+  title: string;
+  status: LivermoreRuleReadinessStatus;
+  summary: string;
+  required_inputs: string[];
+  missing_inputs: string[];
+};
+
+export type LivermoreDiagnostic = {
+  severity: LivermoreDiagnosticSeverity;
+  code: string;
+  message: string;
+  input_family?: string | null;
+};
+
+export type LivermoreDataGap = {
+  input_family: string;
+  status: LivermoreDataGapStatus;
+  evidence: string;
+};
+
+export type LivermoreUnsupportedOutput = {
+  key: LivermoreOutputKey;
+  reason: string;
+};
+
+export type LivermoreStrategyPayload = {
+  as_of_date: string | null;
+  requested_as_of_date: string | null;
+  strategy_name: string;
+  basis: "analytical";
+  market_gate: LivermoreMarketGate;
+  rule_readiness: LivermoreRuleReadiness[];
+  diagnostics: LivermoreDiagnostic[];
+  data_gaps: LivermoreDataGap[];
+  supported_outputs: LivermoreOutputKey[];
+  unsupported_outputs: LivermoreUnsupportedOutput[];
+};
+
 export type ResearchCalendarEventKind = "macro" | "supply" | "auction" | "internal";
 
 export type ResearchCalendarEvent = {
@@ -1152,6 +1238,54 @@ export type ProductCategoryPnlPayload = {
   asset_total: ProductCategoryPnlRow;
   liability_total: ProductCategoryPnlRow;
   grand_total: ProductCategoryPnlRow;
+};
+
+export type ProductCategoryAttributionPoint = {
+  report_date: string;
+  days: number;
+  scale: DecimalLike;
+  yield_pct: DecimalLike | null;
+  cash: DecimalLike;
+  ftp: DecimalLike;
+  business_net_income: DecimalLike;
+};
+
+export type ProductCategoryAttributionEffects = {
+  day_effect: DecimalLike;
+  scale_effect: DecimalLike;
+  rate_effect: DecimalLike;
+  ftp_effect: DecimalLike;
+  direct_effect: DecimalLike;
+  unexplained_effect: DecimalLike;
+  explained_effect: DecimalLike;
+  delta_business_net_income: DecimalLike;
+  closure_error: DecimalLike;
+};
+
+export type ProductCategoryAttributionRow = {
+  category_id: string;
+  category_name: string;
+  side: string;
+  level: number;
+  state: "complete" | "partial";
+  current: ProductCategoryAttributionPoint | null;
+  prior: ProductCategoryAttributionPoint | null;
+  effects: ProductCategoryAttributionEffects;
+};
+
+export type ProductCategoryAttributionPayload = {
+  report_date: string;
+  compare: "mom" | "yoy";
+  current_report_date: string;
+  prior_report_date: string;
+  state: "complete" | "incomplete";
+  reason: string | null;
+  rows: ProductCategoryAttributionRow[];
+  totals: {
+    asset_total: ProductCategoryAttributionRow;
+    liability_total: ProductCategoryAttributionRow;
+    grand_total: ProductCategoryAttributionRow;
+  } | null;
 };
 
 export type ProductCategoryRefreshPayload = {

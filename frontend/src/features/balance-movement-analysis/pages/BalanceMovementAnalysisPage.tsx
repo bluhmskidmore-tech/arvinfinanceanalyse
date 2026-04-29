@@ -772,6 +772,27 @@ function formatSignedYiNumber(value: number) {
   })}`;
 }
 
+function sourceKindLabel(sourceKind: BusinessMomMove["sourceKind"]) {
+  return sourceKind === "zqtz" ? "ZQTZ" : "Ledger";
+}
+
+function moveDeltaToneClass(value: number) {
+  if (value > 0) {
+    return "balance-movement-top-moves-table__delta balance-movement-top-moves-table__delta--up";
+  }
+  if (value < 0) {
+    return "balance-movement-top-moves-table__delta balance-movement-top-moves-table__delta--down";
+  }
+  return "balance-movement-top-moves-table__delta";
+}
+
+function sourceNotePreview(sourceNote: string | undefined) {
+  if (!sourceNote) {
+    return "来源已记录";
+  }
+  return sourceNote.replace(/\s+/g, " ").trim();
+}
+
 function movementDirection(value: string | number | null | undefined) {
   const n = numericValue(value);
   if (n > 0) return "增加";
@@ -991,6 +1012,37 @@ function BasisMovementDecompositionPanel({
             </ul>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function DrilldownUnavailablePanel({
+  testId,
+  eyebrow,
+  title,
+  fieldName,
+}: {
+  testId: string;
+  eyebrow: string;
+  title: string;
+  fieldName: string;
+}) {
+  return (
+    <section
+      className="balance-movement-derived-panel balance-movement-derived-panel--unavailable"
+      data-testid={testId}
+    >
+      <div className="balance-movement-derived-panel__header">
+        <div>
+          <span>{eyebrow}</span>
+          <h2>{title}</h2>
+        </div>
+        <strong>未返回</strong>
+      </div>
+      <div className="balance-movement-derived-empty">
+        <span>数据状态</span>
+        <p>当前接口未返回 {fieldName}，本分析模块已预留位置但暂无可展示明细。</p>
       </div>
     </section>
   );
@@ -1688,14 +1740,35 @@ export default function BalanceMovementAnalysisPage() {
 
       {basisMovementDecomposition ? (
         <BasisMovementDecompositionPanel decomposition={basisMovementDecomposition} />
+      ) : detailQuery.data ? (
+        <DrilldownUnavailablePanel
+          testId="balance-movement-analysis-basis-decomposition"
+          eyebrow="会计分类驱动拆解"
+          title="AC / OCI / TPL 驱动拆解"
+          fieldName="basis_movement_decomposition"
+        />
       ) : null}
 
       {zqtzMaturityStructure ? (
         <ZqtzMaturityStructurePanel structure={zqtzMaturityStructure} />
+      ) : detailQuery.data ? (
+        <DrilldownUnavailablePanel
+          testId="balance-movement-analysis-zqtz-maturity"
+          eyebrow="ZQTZ 到期视图"
+          title="期限 / 到期结构"
+          fieldName="zqtz_maturity_structure"
+        />
       ) : null}
 
       {zqtzConcentrationAnalysis ? (
         <ZqtzConcentrationAnalysisPanel analysis={zqtzConcentrationAnalysis} />
+      ) : detailQuery.data ? (
+        <DrilldownUnavailablePanel
+          testId="balance-movement-analysis-zqtz-concentration"
+          eyebrow="ZQTZ 集中度视图"
+          title="主体 / 评级 / 行业集中度"
+          fieldName="zqtz_concentration_analysis"
+        />
       ) : null}
 
       {zqtzCalibrationAnalysis ? (
@@ -1819,59 +1892,107 @@ export default function BalanceMovementAnalysisPage() {
               data-testid="balance-movement-analysis-business-top-moves"
               className="balance-movement-business-summary__top-moves"
             >
-              <h2>业务行Top变动（Top 5）</h2>
-              <div>
-                <h3>MoM Top 5</h3>
-                <ol
-                  data-testid="balance-movement-analysis-business-top-moves-mom"
-                  className="balance-movement-business-summary__top-moves-list"
-                >
-                  {businessTopMomMoves.map((item, index) => (
-                    <li key={`${item.rowKey}-${item.side}-${index}`}>
-                      <span className="balance-movement-business-summary__top-moves-rank">{index + 1}</span>
-                      <span className="balance-movement-business-summary__top-moves-label">{item.label}</span>
-                      <strong className="balance-movement-business-summary__top-moves-delta">
-                        {formatSignedYiNumber(item.deltaYuan / 100000000)} 亿
-                      </strong>
-                      <span className="balance-movement-business-summary__top-moves-side">
-                        {item.side === "asset" ? "资产" : "负债"}
-                      </span>
-                      <span
-                        data-testid="balance-movement-analysis-business-top-moves-source"
-                        className="balance-movement-business-summary__top-moves-source"
-                        title={item.sourceNote ?? `${item.sourceKind ?? "ledger"} source`}
-                      >
-                        {item.sourceKind ?? "ledger"} · {item.sourceNote ? item.sourceNote : "来源已记录"}
-                      </span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-              {businessTopSixMonthMoves.length > 0 ? (
+              <div className="balance-movement-business-summary__top-moves-header">
                 <div>
-                  <h3>近{businessMatrixMonths.length}月 Top 5</h3>
-                  <ol
-                    data-testid="balance-movement-analysis-business-top-moves-sixmonth"
-                    className="balance-movement-business-summary__top-moves-list"
+                  <span>Business Line Movers</span>
+                  <h2>业务行Top变动（Top 5）</h2>
+                </div>
+                <strong>{businessMatrixMonths.length}M WINDOW</strong>
+              </div>
+              <div className="balance-movement-top-moves-grid">
+                <div className="balance-movement-top-moves-panel">
+                  <div className="balance-movement-top-moves-panel__title">
+                    <h3>MoM Top 5</h3>
+                    <span>Current vs prior month</span>
+                  </div>
+                  <table
+                    data-testid="balance-movement-analysis-business-top-moves-mom"
+                    className="balance-movement-top-moves-table"
                   >
-                    {businessTopSixMonthMoves.map((item, index) => (
-                      <li key={`${item.rowKey}-${item.side}-6m-${index}`}>
-                        <span className="balance-movement-business-summary__top-moves-rank">{index + 1}</span>
-                        <span className="balance-movement-business-summary__top-moves-label">{item.label}</span>
-                        <strong className="balance-movement-business-summary__top-moves-delta">
-                          {formatSignedYiNumber(item.deltaYuan / 100000000)} 亿
-                        </strong>
-                        <span className="balance-movement-business-summary__top-moves-side">
-                          {item.side === "asset" ? "资产" : "负债"}
-                        </span>
-                        <span className="balance-movement-business-summary__top-moves-source">
-                          首期 {formatSignedYiNumber(item.previousYuan / 100000000)} 亿 · 末期 {formatSignedYiNumber(item.currentYuan / 100000000)}
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>业务线</th>
+                        <th>来源</th>
+                        <th>前期</th>
+                        <th>本期</th>
+                        <th>变动</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {businessTopMomMoves.map((item, index) => (
+                        <tr key={`${item.rowKey}-${item.side}-${index}`}>
+                          <td>{index + 1}</td>
+                          <th scope="row">
+                            <span>{item.label}</span>
+                            <em>{item.side === "asset" ? "资产" : "负债"}</em>
+                          </th>
+                          <td>
+                            <span
+                              data-testid="balance-movement-analysis-business-top-moves-source"
+                              className="balance-movement-top-moves-table__source"
+                              title={sourceNotePreview(item.sourceNote)}
+                            >
+                              <strong>{sourceKindLabel(item.sourceKind)}</strong>
+                              <span>{sourceNotePreview(item.sourceNote)}</span>
+                            </span>
+                          </td>
+                          <td>{formatSignedYiNumber(item.previousYuan / 100000000)}</td>
+                          <td>{formatSignedYiNumber(item.currentYuan / 100000000)}</td>
+                          <td>
+                            <strong className={moveDeltaToneClass(item.deltaYuan)}>
+                              {formatSignedYiNumber(item.deltaYuan / 100000000)}
+                            </strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              {businessTopSixMonthMoves.length > 0 ? (
+                <div className="balance-movement-top-moves-panel">
+                  <div className="balance-movement-top-moves-panel__title">
+                    <h3>近{businessMatrixMonths.length}月 Top 5</h3>
+                    <span>First period vs current</span>
+                  </div>
+                  <table
+                    data-testid="balance-movement-analysis-business-top-moves-sixmonth"
+                    className="balance-movement-top-moves-table"
+                  >
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th>业务线</th>
+                        <th>归属</th>
+                        <th>首期</th>
+                        <th>本期</th>
+                        <th>变动</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {businessTopSixMonthMoves.map((item, index) => (
+                        <tr key={`${item.rowKey}-${item.side}-6m-${index}`}>
+                          <td>{index + 1}</td>
+                          <th scope="row">{item.label}</th>
+                          <td>
+                            <span className="balance-movement-top-moves-table__side">
+                              {item.side === "asset" ? "资产" : "负债"}
+                            </span>
+                          </td>
+                          <td>{formatSignedYiNumber(item.previousYuan / 100000000)}</td>
+                          <td>{formatSignedYiNumber(item.currentYuan / 100000000)}</td>
+                          <td>
+                            <strong className={moveDeltaToneClass(item.deltaYuan)}>
+                              {formatSignedYiNumber(item.deltaYuan / 100000000)}
+                            </strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : null}
+              </div>
             </div>
           ) : null}
 

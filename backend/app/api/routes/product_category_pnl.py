@@ -18,6 +18,7 @@ from backend.app.services.product_category_pnl_service import (
     create_product_category_manual_adjustment,
     export_product_category_manual_adjustments_csv,
     list_product_category_manual_adjustments,
+    product_category_attribution_envelope,
     product_category_dates_envelope,
     product_category_pnl_envelope,
     refresh_product_category_pnl,
@@ -56,6 +57,28 @@ def detail(
             report_date=report_date,
             view=view,
             scenario_rate_pct=scenario_rate_pct,
+        )
+    except ProductCategoryReadModelNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProductCategoryReadModelUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/attribution")
+def attribution(
+    report_date: str = Query(...),
+    compare: str = Query("mom"),
+) -> dict[str, object]:
+    if compare not in {"mom", "yoy"}:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported product-category attribution compare={compare!r}; expected 'mom' or 'yoy'",
+        )
+    try:
+        return product_category_attribution_envelope(
+            get_settings().duckdb_path,
+            report_date=report_date,
+            compare=compare,
         )
     except ProductCategoryReadModelNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

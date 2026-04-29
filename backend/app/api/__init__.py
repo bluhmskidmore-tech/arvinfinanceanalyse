@@ -19,6 +19,7 @@ from backend.app.api.routes.ledger_pnl import router as ledger_pnl_router
 from backend.app.api.routes.liability_analytics import router as liability_analytics_router
 from backend.app.api.routes.macro_bond_linkage import router as macro_bond_linkage_router
 from backend.app.api.routes.macro_vendor import router as macro_vendor_router
+from backend.app.api.routes.market_data_livermore import router as market_data_livermore_router
 from backend.app.api.routes.market_data_ncd_proxy import router as market_data_ncd_proxy_router
 from backend.app.api.routes.pnl import router as pnl_router
 from backend.app.api.routes.pnl_attribution import router as pnl_attribution_router
@@ -46,6 +47,7 @@ router.include_router(health_router, tags=["health"])
 router.include_router(liability_analytics_router, tags=["liability-analytics"])
 router.include_router(macro_vendor_router, tags=["macro-preview"])
 router.include_router(macro_bond_linkage_router, tags=["macro-analysis"])
+router.include_router(market_data_livermore_router, tags=["market-data"])
 router.include_router(market_data_ncd_proxy_router, tags=["market-data"])
 router.include_router(executive_router, tags=["executive"])
 router.include_router(external_data_router)

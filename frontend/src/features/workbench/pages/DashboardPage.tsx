@@ -1,4 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import type { ResultMeta, VerdictPayload } from "../../../api/contracts";
@@ -523,6 +524,18 @@ export default function DashboardPage() {
                 margin: "0 4px",
               }}
             />
+            <Link
+              data-testid="dashboard-bank-ledger-header-link"
+              to="/bank-ledger-dashboard"
+              style={{
+                ...headerButtonStyle("secondary"),
+                display: "inline-flex",
+                alignItems: "center",
+                textDecoration: "none",
+              }}
+            >
+              银行台账
+            </Link>
             <button
               type="button"
               onClick={() => void snapshotQuery.refetch()}

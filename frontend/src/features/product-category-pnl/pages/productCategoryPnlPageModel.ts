@@ -101,6 +101,10 @@ function productCategoryReportMonthPrefix(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}-`;
 }
 
+function formatProductCategoryShortMonthLabel(month: number): string {
+  return `${month}\u6708`;
+}
+
 function findProductCategoryReportDateForMonth(
   reportDates: string[],
   year: number,
@@ -131,6 +135,7 @@ export const PRODUCT_CATEGORY_VALUE_TONE_COLORS = {
 } as const;
 
 const YUAN_PER_YI = 100_000_000;
+const DAYS_IN_YEAR = 365;
 
 export type ProductCategoryTrendSnapshot = {
   reportDate: string;
@@ -234,6 +239,84 @@ export type ProductCategoryInterestSpreadChart = {
   spread: number[];
 };
 
+export type ProductCategoryInterestSpreadYearComparisonChart = {
+  labels: string[];
+  monthKeys: number[];
+  series: Array<{
+    year: string;
+    spread: Array<number | null>;
+  }>;
+};
+
+export type ProductCategoryIntermediateBusinessIncomeYearComparisonChart = {
+  labels: string[];
+  series: Array<{
+    year: string;
+    income: Array<number | null>;
+  }>;
+};
+
+export type ProductCategoryInterestSpreadBasis = "weighted" | "cny";
+
+export type ProductCategoryInterestSpreadAttributionSelection = {
+  basis: ProductCategoryInterestSpreadBasis;
+  month: number;
+};
+
+export type ProductCategoryInterestSpreadAttributionSummary = {
+  assetYieldCurrent: number | null;
+  assetYieldPrior: number | null;
+  liabilityYieldCurrent: number | null;
+  liabilityYieldPrior: number | null;
+  spreadCurrent: number | null;
+  spreadPrior: number | null;
+  assetContributionBp: number | null;
+  liabilityContributionBp: number | null;
+  spreadDeltaBp: number | null;
+};
+
+export type ProductCategoryInterestSpreadAttributionRow = {
+  key: "asset_yield" | "liability_cost" | "spread";
+  label: string;
+  priorValue: number | null;
+  currentValue: number | null;
+  deltaBp: number | null;
+  priorLabel: string;
+  currentLabel: string;
+  contributionLabel: string;
+  explanation: string;
+};
+
+export type ProductCategoryInterestSpreadAttributionDetailPoint = {
+  reportLabel: string;
+  amountLabel: string;
+  cashLabel: string;
+  yieldLabel: string;
+};
+
+export type ProductCategoryInterestSpreadAttributionDetail = {
+  key: "interest_earning_assets" | "liability_total";
+  label: string;
+  prior: ProductCategoryInterestSpreadAttributionDetailPoint;
+  current: ProductCategoryInterestSpreadAttributionDetailPoint;
+};
+
+export type ProductCategoryInterestSpreadAttributionSurface = {
+  selected: {
+    basis: ProductCategoryInterestSpreadBasis;
+    month: number;
+    currentYear: number;
+    priorYear: number;
+    currentReportDate: string | null;
+    priorReportDate: string | null;
+  };
+  complete: boolean;
+  incompleteReasons: string[];
+  summary: ProductCategoryInterestSpreadAttributionSummary;
+  rows: ProductCategoryInterestSpreadAttributionRow[];
+  details: ProductCategoryInterestSpreadAttributionDetail[];
+};
+
 export type ProductCategoryLiabilitySideTrendChart = {
   labels: string[];
   totalAverageDaily: Array<number | null>;
@@ -251,9 +334,68 @@ export type ProductCategoryLiabilityDetailTrendRow = {
   comparisonLabel: string;
 };
 
+export type ProductCategoryLiabilityDetailMatrixPeriod = {
+  key: string;
+  label: string;
+  reportDate: string;
+};
+
+export type ProductCategoryLiabilityDetailMatrixCell = {
+  periodKey: string;
+  amountLabel: string;
+  rateLabel: string;
+};
+
+export type ProductCategoryLiabilityDetailMovement = {
+  amountLabel: string;
+  rateLabel: string;
+};
+
+export type ProductCategoryLiabilityCurrencyKey = "cny" | "foreign";
+
+export type ProductCategoryLiabilityCurrencyMatrixCell = {
+  periodKey: string;
+  amountLabel: string;
+  rateLabel: string;
+};
+
+export type ProductCategoryLiabilityCurrencyMatrixRow = {
+  categoryId: string;
+  categoryLabel: string;
+  isSummary?: boolean;
+  cells: ProductCategoryLiabilityCurrencyMatrixCell[];
+  movement: {
+    amountLabel: string;
+    rateLabel: string;
+  };
+};
+
+export type ProductCategoryLiabilityCurrencyMatrix = {
+  currencyKey: ProductCategoryLiabilityCurrencyKey;
+  currencyLabel: string;
+  movementGroupLabel: string;
+  rows: ProductCategoryLiabilityCurrencyMatrixRow[];
+};
+
+export type ProductCategoryLiabilityDetailMatrixRow = {
+  categoryId: string;
+  categoryLabel: string;
+  isSummary?: boolean;
+  cells: ProductCategoryLiabilityDetailMatrixCell[];
+  movement: ProductCategoryLiabilityDetailMovement;
+};
+
+export type ProductCategoryLiabilityDetailMatrix = {
+  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
+  movementGroupLabel: string;
+  rows: ProductCategoryLiabilityDetailMatrixRow[];
+  currencyMatrices: ProductCategoryLiabilityCurrencyMatrix[];
+};
+
 export type ProductCategoryLiabilitySideTrendSurface = {
   chart: ProductCategoryLiabilitySideTrendChart | null;
   detailRows: ProductCategoryLiabilityDetailTrendRow[];
+  detailMatrix: ProductCategoryLiabilityDetailMatrix;
   emptyCopy: string | null;
   incompleteReasons: string[];
 };
@@ -270,6 +412,13 @@ export function formatProductCategoryValue(
     return String(value);
   }
   return (parsed / YUAN_PER_YI).toFixed(digits);
+}
+
+export function formatProductCategoryAttributionEffect(
+  value: DecimalLike | null | undefined,
+  digits = 2,
+): string {
+  return formatProductCategoryValue(value, digits);
 }
 
 export function formatProductCategoryRowDisplayValue(
@@ -800,6 +949,52 @@ export function selectProductCategoryTrendReportPoints(
   return chronologicalPoints.slice(-limit).reverse();
 }
 
+export function selectProductCategoryTwoYearInterestSpreadReportPoints(
+  selectedDate: string,
+  reportDates: string[] | undefined,
+  monthlyView = "monthly",
+): ProductCategoryTrendReportPoint[] {
+  if (!selectedDate) {
+    return [];
+  }
+  const dates = Array.from(new Set([selectedDate, ...(reportDates ?? [])].filter(Boolean)));
+  const selected = parseProductCategoryReportDate(selectedDate);
+  if (!selected) {
+    return dates.slice(0, 6).map((reportDate) => ({
+      reportDate,
+      view: monthlyView,
+      label: formatProductCategoryReportMonthLabel(reportDate),
+    }));
+  }
+
+  const chronologicalPoints: ProductCategoryTrendReportPoint[] = [];
+  const previousYear = selected.year - 1;
+  for (let month = 1; month <= 12; month += 1) {
+    const reportDate = findProductCategoryReportDateForMonth(dates, previousYear, month, selectedDate);
+    if (!reportDate) {
+      continue;
+    }
+    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
+      reportDate,
+      view: monthlyView,
+      label: formatProductCategoryReportMonthLabel(reportDate),
+    });
+  }
+
+  for (let month = 1; month <= selected.month; month += 1) {
+    const reportDate = findProductCategoryReportDateForMonth(dates, selected.year, month, selectedDate);
+    if (!reportDate) {
+      continue;
+    }
+    pushUniqueProductCategoryTrendPoint(chronologicalPoints, {
+      reportDate,
+      view: monthlyView,
+      label: formatProductCategoryReportMonthLabel(reportDate),
+    });
+  }
+  return chronologicalPoints.reverse();
+}
+
 export function buildProductCategoryTrendSnapshot(
   payload: ProductCategoryPnlPayload,
   label?: string,
@@ -923,6 +1118,337 @@ export function selectProductCategoryInterestSpreadChart(
   };
 }
 
+export function selectProductCategoryInterestSpreadYearComparisonChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+  basis: ProductCategoryInterestSpreadBasis = "weighted",
+): ProductCategoryInterestSpreadYearComparisonChart | null {
+  const yearMonthSpread = new Map<number, Map<number, number | null>>();
+  const months = new Set<number>();
+  chronologicalProductCategorySnapshots(snapshots).forEach((snapshot) => {
+    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
+    const assetRow = findProductCategoryRow(snapshot.rows, "interest_earning_assets");
+    const liabilityRow = snapshot.liabilityTotal;
+    if (!parsed || !assetRow || !liabilityRow) {
+      return;
+    }
+    const spread = productCategoryInterestSpreadForBasis(snapshot, assetRow, liabilityRow, basis);
+    if (spread === null && basis === "weighted") {
+      return;
+    }
+    const existing = yearMonthSpread.get(parsed.year) ?? new Map<number, number | null>();
+    existing.set(parsed.month, spread);
+    yearMonthSpread.set(parsed.year, existing);
+    months.add(parsed.month);
+  });
+  if (yearMonthSpread.size === 0 || months.size === 0) {
+    return null;
+  }
+
+  const sortedMonths = Array.from(months).sort((left, right) => left - right);
+  const sortedYears = Array.from(yearMonthSpread.keys()).sort((left, right) => left - right);
+  return {
+    labels: sortedMonths.map((month) => formatProductCategoryShortMonthLabel(month)),
+    monthKeys: sortedMonths,
+    series: sortedYears.map((year) => ({
+      year: `${year}\u5e74`,
+      spread: sortedMonths.map((month) => yearMonthSpread.get(year)?.get(month) ?? null),
+    })),
+  };
+}
+
+export function selectProductCategoryIntermediateBusinessIncomeYearComparisonChart(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryIntermediateBusinessIncomeYearComparisonChart | null {
+  const yearMonthIncome = new Map<number, Map<number, number | null>>();
+  const months = new Set<number>();
+  let hasIncomeValue = false;
+
+  chronologicalProductCategorySnapshots(snapshots).forEach((snapshot) => {
+    const parsed = parseProductCategoryReportDate(snapshot.reportDate);
+    if (!parsed) {
+      return;
+    }
+    const row = findProductCategoryRow(snapshot.rows, "intermediate_business_income");
+    const income = row ? yiNumber(row.business_net_income) : null;
+    if (income !== null) {
+      hasIncomeValue = true;
+    }
+    const existing = yearMonthIncome.get(parsed.year) ?? new Map<number, number | null>();
+    existing.set(parsed.month, income);
+    yearMonthIncome.set(parsed.year, existing);
+    months.add(parsed.month);
+  });
+
+  if (!hasIncomeValue || yearMonthIncome.size === 0 || months.size === 0) {
+    return null;
+  }
+
+  const sortedMonths = Array.from(months).sort((left, right) => left - right);
+  const sortedYears = Array.from(yearMonthIncome.keys()).sort((left, right) => left - right);
+  return {
+    labels: sortedMonths.map((month) => formatProductCategoryShortMonthLabel(month)),
+    series: sortedYears.map((year) => ({
+      year: `${year}\u5e74`,
+      income: sortedMonths.map((month) => yearMonthIncome.get(year)?.get(month) ?? null),
+    })),
+  };
+}
+
+export function selectProductCategoryInterestSpreadAttributionSurface(
+  snapshots: ProductCategoryTrendSnapshot[],
+  options: ProductCategoryInterestSpreadAttributionSelection,
+  currentYear: number,
+): ProductCategoryInterestSpreadAttributionSurface {
+  const current = findInterestSpreadAttributionSnapshot(snapshots, currentYear, options.month);
+  const prior = findInterestSpreadAttributionSnapshot(snapshots, currentYear - 1, options.month);
+  const currentMetrics = interestSpreadAttributionMetrics(current, options.basis);
+  const priorMetrics = interestSpreadAttributionMetrics(prior, options.basis);
+  const assetContributionBp = basisPointDelta(currentMetrics.assetYield, priorMetrics.assetYield);
+  const liabilityContributionBp = basisPointDelta(priorMetrics.liabilityYield, currentMetrics.liabilityYield);
+  const spreadDelta =
+    assetContributionBp === null || liabilityContributionBp === null
+      ? null
+      : Number((assetContributionBp + liabilityContributionBp).toFixed(1));
+  const incompleteReasons = interestSpreadAttributionIncompleteReasons({
+    current,
+    prior,
+    currentMetrics,
+    priorMetrics,
+    basis: options.basis,
+  });
+
+  return {
+    selected: {
+      basis: options.basis,
+      month: options.month,
+      currentYear,
+      priorYear: currentYear - 1,
+      currentReportDate: current?.reportDate ?? null,
+      priorReportDate: prior?.reportDate ?? null,
+    },
+    complete: incompleteReasons.length === 0,
+    incompleteReasons,
+    summary: {
+      assetYieldCurrent: currentMetrics.assetYield,
+      assetYieldPrior: priorMetrics.assetYield,
+      liabilityYieldCurrent: currentMetrics.liabilityYield,
+      liabilityYieldPrior: priorMetrics.liabilityYield,
+      spreadCurrent: currentMetrics.spread,
+      spreadPrior: priorMetrics.spread,
+      assetContributionBp,
+      liabilityContributionBp,
+      spreadDeltaBp: spreadDelta,
+    },
+    rows: [
+      {
+        key: "asset_yield",
+        label: "\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387",
+        priorValue: priorMetrics.assetYield,
+        currentValue: currentMetrics.assetYield,
+        deltaBp: assetContributionBp,
+        priorLabel: interestSpreadPercentLabel(priorMetrics.assetYield),
+        currentLabel: interestSpreadPercentLabel(currentMetrics.assetYield),
+        contributionLabel: signedBpLabelWithOneDecimal(assetContributionBp),
+        explanation: "\u8d44\u4ea7\u6536\u76ca\u7387\u4e0a\u884c\u6269\u5927\u5229\u5dee\uff0c\u4e0b\u884c\u538b\u7f29\u5229\u5dee",
+      },
+      {
+        key: "liability_cost",
+        label: "\u8d1f\u503a\u7aef\u6210\u672c",
+        priorValue: priorMetrics.liabilityYield,
+        currentValue: currentMetrics.liabilityYield,
+        deltaBp: liabilityContributionBp,
+        priorLabel: interestSpreadPercentLabel(priorMetrics.liabilityYield),
+        currentLabel: interestSpreadPercentLabel(currentMetrics.liabilityYield),
+        contributionLabel: signedBpLabelWithOneDecimal(liabilityContributionBp),
+        explanation: "\u8d1f\u503a\u6210\u672c\u4e0a\u884c\u538b\u7f29\u5229\u5dee\uff0c\u4e0b\u884c\u6269\u5927\u5229\u5dee",
+      },
+      {
+        key: "spread",
+        label: "\u751f\u606f\u8d44\u4ea7\u5229\u5dee",
+        priorValue: priorMetrics.spread,
+        currentValue: currentMetrics.spread,
+        deltaBp: spreadDelta,
+        priorLabel: interestSpreadPercentLabel(priorMetrics.spread),
+        currentLabel: interestSpreadPercentLabel(currentMetrics.spread),
+        contributionLabel: signedBpLabelWithOneDecimal(spreadDelta),
+        explanation: "\u5229\u5dee\u53d8\u5316=\u8d44\u4ea7\u6536\u76ca\u7387\u8d21\u732e+\u8d1f\u503a\u6210\u672c\u8d21\u732e",
+      },
+    ],
+    details: [
+      {
+        key: "interest_earning_assets",
+        label: "\u751f\u606f\u8d44\u4ea7",
+        prior: interestSpreadAttributionDetailPoint(prior, priorMetrics.assetRow, priorMetrics.assetYield, options.basis),
+        current: interestSpreadAttributionDetailPoint(
+          current,
+          currentMetrics.assetRow,
+          currentMetrics.assetYield,
+          options.basis,
+        ),
+      },
+      {
+        key: "liability_total",
+        label: "\u8d1f\u503a\u7aef\u5408\u8ba1",
+        prior: interestSpreadAttributionDetailPoint(
+          prior,
+          priorMetrics.liabilityRow,
+          priorMetrics.liabilityYield,
+          options.basis,
+        ),
+        current: interestSpreadAttributionDetailPoint(
+          current,
+          currentMetrics.liabilityRow,
+          currentMetrics.liabilityYield,
+          options.basis,
+        ),
+      },
+    ],
+  };
+}
+
+function findInterestSpreadAttributionSnapshot(
+  snapshots: ProductCategoryTrendSnapshot[],
+  year: number,
+  month: number,
+): ProductCategoryTrendSnapshot | null {
+  return (
+    snapshots.find((snapshot) => {
+      const parsed = parseProductCategoryReportDate(snapshot.reportDate);
+      return parsed?.year === year && parsed.month === month;
+    }) ?? null
+  );
+}
+
+function interestSpreadAttributionMetrics(
+  snapshot: ProductCategoryTrendSnapshot | null,
+  basis: ProductCategoryInterestSpreadBasis,
+): {
+  assetYield: number | null;
+  liabilityYield: number | null;
+  spread: number | null;
+  assetRow: ProductCategoryPnlRow | null;
+  liabilityRow: ProductCategoryPnlRow | null;
+} {
+  if (!snapshot) {
+    return { assetYield: null, liabilityYield: null, spread: null, assetRow: null, liabilityRow: null };
+  }
+  const assetRow = findProductCategoryRow(snapshot.rows, "interest_earning_assets") ?? null;
+  const liabilityRow = snapshot.liabilityTotal ?? null;
+  if (!assetRow || !liabilityRow) {
+    return { assetYield: null, liabilityYield: null, spread: null, assetRow, liabilityRow };
+  }
+  const assetYield =
+    basis === "cny"
+      ? annualizedProductCategoryYield(assetRow.cny_cash, assetRow.cny_scale, snapshot.reportDate, snapshot.view)
+      : percentNumber(assetRow.weighted_yield);
+  const liabilityYield =
+    basis === "cny"
+      ? annualizedProductCategoryYield(
+          liabilityRow.cny_cash,
+          liabilityRow.cny_scale,
+          snapshot.reportDate,
+          snapshot.view,
+        )
+      : percentNumber(liabilityRow.weighted_yield);
+  return {
+    assetYield,
+    liabilityYield,
+    spread: assetYield === null || liabilityYield === null ? null : Number((assetYield - liabilityYield).toFixed(2)),
+    assetRow,
+    liabilityRow,
+  };
+}
+
+function basisPointDelta(current: number | null, prior: number | null): number | null {
+  if (current === null || prior === null) {
+    return null;
+  }
+  return Number(((current - prior) * 100).toFixed(1));
+}
+
+function interestSpreadPercentLabel(value: number | null): string {
+  return value === null ? "-" : `${value.toFixed(2)}%`;
+}
+
+function signedBpLabelWithOneDecimal(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) {
+    return "-";
+  }
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${Math.abs(value).toFixed(1)}bp`;
+}
+
+function interestSpreadAttributionIncompleteReasons(input: {
+  current: ProductCategoryTrendSnapshot | null;
+  prior: ProductCategoryTrendSnapshot | null;
+  currentMetrics: { assetYield: number | null; liabilityYield: number | null };
+  priorMetrics: { assetYield: number | null; liabilityYield: number | null };
+  basis: ProductCategoryInterestSpreadBasis;
+}): string[] {
+  const prefix = input.basis === "cny" ? "\u4eba\u6c11\u5e01" : "\u5168\u53e3\u5f84";
+  const reasons: string[] = [];
+  if (!input.current) {
+    reasons.push("\u7f3a\u5c11\u5f53\u524d\u6708\u6570\u636e");
+  }
+  if (!input.prior) {
+    reasons.push("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
+  }
+  if (input.currentMetrics.assetYield === null) {
+    reasons.push(`${prefix}\u5f53\u524d\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`);
+  }
+  if (input.priorMetrics.assetYield === null) {
+    reasons.push(`${prefix}\u4e0a\u5e74\u540c\u6708\u751f\u606f\u8d44\u4ea7\u6536\u76ca\u7387\u4e0d\u53ef\u7528`);
+  }
+  if (input.currentMetrics.liabilityYield === null) {
+    reasons.push(`${prefix}\u5f53\u524d\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`);
+  }
+  if (input.priorMetrics.liabilityYield === null) {
+    reasons.push(`${prefix}\u4e0a\u5e74\u540c\u6708\u8d1f\u503a\u7aef\u6210\u672c\u4e0d\u53ef\u7528`);
+  }
+  return reasons;
+}
+
+function interestSpreadAttributionDetailPoint(
+  snapshot: ProductCategoryTrendSnapshot | null,
+  row: ProductCategoryPnlRow | null,
+  yieldValue: number | null,
+  basis: ProductCategoryInterestSpreadBasis,
+): ProductCategoryInterestSpreadAttributionDetailPoint {
+  const amountField = basis === "cny" ? "cny_scale" : "cnx_scale";
+  const cashField = basis === "cny" ? "cny_cash" : "cnx_cash";
+  return {
+    reportLabel: snapshot?.label ?? (snapshot ? formatProductCategoryReportMonthLabel(snapshot.reportDate) : "-"),
+    amountLabel: row ? `${formatProductCategoryRowDisplayValue(row, row[amountField])}\u4ebf\u5143` : "-",
+    cashLabel: row ? `${formatProductCategoryRowDisplayValue(row, row[cashField])}\u4ebf\u5143` : "-",
+    yieldLabel: yieldValue === null ? "-" : `${formatProductCategoryYieldValue(yieldValue)}%`,
+  };
+}
+
+function productCategoryInterestSpreadForBasis(
+  snapshot: ProductCategoryTrendSnapshot,
+  assetRow: ProductCategoryPnlRow,
+  liabilityRow: ProductCategoryPnlRow,
+  basis: ProductCategoryInterestSpreadBasis,
+): number | null {
+  const assetYield =
+    basis === "cny"
+      ? annualizedProductCategoryYield(assetRow.cny_cash, assetRow.cny_scale, snapshot.reportDate, snapshot.view)
+      : percentNumber(assetRow.weighted_yield);
+  const liabilityYield =
+    basis === "cny"
+      ? annualizedProductCategoryYield(
+          liabilityRow.cny_cash,
+          liabilityRow.cny_scale,
+          snapshot.reportDate,
+          snapshot.view,
+        )
+      : percentNumber(liabilityRow.weighted_yield);
+  if (assetYield === null || liabilityYield === null) {
+    return null;
+  }
+  return Number((assetYield - liabilityYield).toFixed(2));
+}
+
 export function selectProductCategoryLiabilitySideTrendChart(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilitySideTrendChart | null {
@@ -1002,6 +1528,312 @@ function liabilityComparisonLabel(input: {
   return amountLabel ?? rateLabel ?? "缺少可比上期";
 }
 
+function adjacentProductCategoryMonths(
+  previous: ProductCategoryTrendSnapshot | undefined,
+  latest: ProductCategoryTrendSnapshot | undefined,
+): boolean {
+  const previousDate = previous ? parseProductCategoryReportDate(previous.reportDate) : null;
+  const latestDate = latest ? parseProductCategoryReportDate(latest.reportDate) : null;
+  if (!previousDate || !latestDate) {
+    return false;
+  }
+  return latestDate.year * 12 + latestDate.month - (previousDate.year * 12 + previousDate.month) === 1;
+}
+
+type ProductCategoryLiabilityAmountField = "cnx_scale" | "cny_scale" | "foreign_scale";
+type ProductCategoryLiabilityCashField = "cnx_cash" | "cny_cash" | "foreign_cash";
+
+function daysForProductCategoryView(reportDate: string | undefined, view: string | undefined): number | null {
+  if (!reportDate) {
+    return null;
+  }
+  const parsed = parseProductCategoryReportDate(reportDate);
+  if (!parsed) {
+    return null;
+  }
+  const monthDays = new Date(parsed.year, parsed.month, 0).getDate();
+  if (view === "monthly") {
+    return monthDays;
+  }
+  if (view === "qtd") {
+    const quarterStartMonth = Math.floor((parsed.month - 1) / 3) * 3 + 1;
+    let days = 0;
+    for (let month = quarterStartMonth; month <= parsed.month; month += 1) {
+      days += new Date(parsed.year, month, 0).getDate();
+    }
+    return days;
+  }
+  let days = 0;
+  for (let month = 1; month <= parsed.month; month += 1) {
+    days += new Date(parsed.year, month, 0).getDate();
+  }
+  return days;
+}
+
+function annualizedProductCategoryYield(
+  cash: DecimalLike | null | undefined,
+  scale: DecimalLike | null | undefined,
+  reportDate: string | undefined,
+  view: string | undefined,
+): number | null {
+  const cashValue = decimalNumber(cash);
+  const scaleValue = decimalNumber(scale);
+  const days = daysForProductCategoryView(reportDate, view);
+  if (cashValue === null || scaleValue === null || scaleValue === 0 || days === null || days <= 0) {
+    return null;
+  }
+  return Number(((cashValue / days) * DAYS_IN_YEAR / scaleValue * 100).toFixed(2));
+}
+
+function liabilityDetailMetricLabels(
+  row: ProductCategoryPnlRow | undefined,
+  amountField: ProductCategoryLiabilityAmountField = "cnx_scale",
+): {
+  amountLabel: string;
+  amountValue: number | null;
+  rateLabel: string;
+  rateValue: number | null;
+} {
+  const amountValue = yiNumber(row?.[amountField]);
+  const rateValue = percentNumber(row?.weighted_yield);
+  return {
+    amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
+    amountValue,
+    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
+    rateValue,
+  };
+}
+
+function liabilityCurrencyMetricLabels(
+  row: ProductCategoryPnlRow | undefined,
+  amountField: ProductCategoryLiabilityAmountField,
+  cashField: ProductCategoryLiabilityCashField,
+): {
+  amountLabel: string;
+  amountValue: number | null;
+  rateLabel: string;
+  rateValue: number | null;
+} {
+  const amountValue = yiNumber(row?.[amountField]);
+  const rateValue = annualizedProductCategoryYield(
+    row?.[cashField],
+    row?.[amountField],
+    row?.report_date,
+    row?.view,
+  );
+  return {
+    amountLabel: amountValue !== null ? amountValue.toFixed(2) : "-",
+    amountValue,
+    rateLabel: rateValue !== null ? rateValue.toFixed(2) : "-",
+    rateValue,
+  };
+}
+
+function buildLiabilityDetailMatrixRow(input: {
+  categoryId: string;
+  categoryLabel: string;
+  isSummary?: boolean;
+  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
+  latestIndex: number;
+  previousIndex: number;
+  rowAt: (index: number) => ProductCategoryPnlRow | undefined;
+}): ProductCategoryLiabilityDetailMatrixRow {
+  const latestMetrics = liabilityDetailMetricLabels(input.rowAt(input.latestIndex));
+  const previousMetrics = liabilityDetailMetricLabels(input.rowAt(input.previousIndex));
+  const amountDelta =
+    latestMetrics.amountValue !== null && previousMetrics.amountValue !== null
+      ? Number((latestMetrics.amountValue - previousMetrics.amountValue).toFixed(2))
+      : null;
+  const rateDelta =
+    latestMetrics.rateValue !== null && previousMetrics.rateValue !== null
+      ? Number(((latestMetrics.rateValue - previousMetrics.rateValue) * 100).toFixed(1))
+      : null;
+
+  return {
+    categoryId: input.categoryId,
+    categoryLabel: input.categoryLabel,
+    isSummary: input.isSummary,
+    cells: input.periods.map((period, index) => {
+      const labels = liabilityDetailMetricLabels(input.rowAt(index));
+      return {
+        periodKey: period.key,
+        amountLabel: labels.amountLabel,
+        rateLabel: labels.rateLabel,
+      };
+    }),
+    movement: {
+      amountLabel: signedYiDeltaLabel(amountDelta),
+      rateLabel: signedBpLabel(rateDelta),
+    },
+  };
+}
+
+function buildLiabilityCurrencyMatrixRow(input: {
+  categoryId: string;
+  categoryLabel: string;
+  isSummary?: boolean;
+  amountField: ProductCategoryLiabilityAmountField;
+  cashField: ProductCategoryLiabilityCashField;
+  periods: ProductCategoryLiabilityDetailMatrixPeriod[];
+  latestIndex: number;
+  previousIndex: number;
+  rowAt: (index: number) => ProductCategoryPnlRow | undefined;
+}): ProductCategoryLiabilityCurrencyMatrixRow {
+  const latestMetrics = liabilityCurrencyMetricLabels(
+    input.rowAt(input.latestIndex),
+    input.amountField,
+    input.cashField,
+  );
+  const previousMetrics = liabilityCurrencyMetricLabels(
+    input.rowAt(input.previousIndex),
+    input.amountField,
+    input.cashField,
+  );
+  const amountDelta =
+    latestMetrics.amountValue !== null && previousMetrics.amountValue !== null
+      ? Number((latestMetrics.amountValue - previousMetrics.amountValue).toFixed(2))
+      : null;
+  const rateDelta =
+    latestMetrics.rateValue !== null && previousMetrics.rateValue !== null
+      ? Number(((latestMetrics.rateValue - previousMetrics.rateValue) * 100).toFixed(1))
+      : null;
+
+  return {
+    categoryId: input.categoryId,
+    categoryLabel: input.categoryLabel,
+    isSummary: input.isSummary,
+    cells: input.periods.map((period, index) => {
+      const labels = liabilityCurrencyMetricLabels(input.rowAt(index), input.amountField, input.cashField);
+      return {
+        periodKey: period.key,
+        amountLabel: labels.amountLabel,
+        rateLabel: labels.rateLabel,
+      };
+    }),
+    movement: {
+      amountLabel: signedYiDeltaLabel(amountDelta),
+      rateLabel: signedBpLabel(rateDelta),
+    },
+  };
+}
+
+export function selectProductCategoryLiabilityDetailMatrix(
+  snapshots: ProductCategoryTrendSnapshot[],
+): ProductCategoryLiabilityDetailMatrix {
+  const ordered = chronologicalProductCategorySnapshots(snapshots);
+  const periods = ordered.map((snapshot) => ({
+    key: `${snapshot.reportDate}:${snapshot.view ?? ""}`,
+    label: snapshot.label ?? formatProductCategoryReportMonthLabel(snapshot.reportDate),
+    reportDate: snapshot.reportDate,
+  }));
+  const rowsBySnapshot = ordered.map((snapshot) => liabilityDetailRowsFromSnapshot(snapshot));
+  const rowMaps = rowsBySnapshot.map((rows) => new Map(rows.map((row) => [row.category_id, row])));
+  const rowRefs = new Map<string, { first: ProductCategoryPnlRow; latest: ProductCategoryPnlRow }>();
+
+  rowsBySnapshot.forEach((rows) => {
+    rows.forEach((row) => {
+      const existing = rowRefs.get(row.category_id);
+      rowRefs.set(row.category_id, {
+        first: existing?.first ?? row,
+        latest: row,
+      });
+    });
+  });
+
+  const categoryIds = Array.from(rowRefs.keys()).sort((left, right) => {
+    const leftIndex = DISPLAY_ORDER_INDEX.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex = DISPLAY_ORDER_INDEX.get(right) ?? Number.MAX_SAFE_INTEGER;
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+    return left.localeCompare(right);
+  });
+  const latestIndex = ordered.length - 1;
+  const previousIndex = ordered.length - 2;
+  const latestTotal = ordered[latestIndex]?.liabilityTotal ?? undefined;
+  const firstTotal = ordered.find((snapshot) => snapshot.liabilityTotal)?.liabilityTotal ?? undefined;
+  const totalRow =
+    latestTotal || firstTotal
+      ? buildLiabilityDetailMatrixRow({
+          categoryId: "liability_total",
+          categoryLabel: latestTotal?.category_name || firstTotal?.category_name || "负债合计",
+          isSummary: true,
+          periods,
+          latestIndex,
+          previousIndex,
+          rowAt: (index) => ordered[index]?.liabilityTotal ?? undefined,
+        })
+      : null;
+  const detailRows = categoryIds.map((categoryId) => {
+    const refs = rowRefs.get(categoryId);
+    const latestRow = refs?.latest;
+    const firstRow = refs?.first;
+    return buildLiabilityDetailMatrixRow({
+      categoryId,
+      categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
+      periods,
+      latestIndex,
+      previousIndex,
+      rowAt: (index) => rowMaps[index]?.get(categoryId),
+    });
+  });
+  const movementGroupLabel = adjacentProductCategoryMonths(ordered[previousIndex], ordered[latestIndex])
+    ? "环比月度变动情况"
+    : "较上期变动";
+  const currencyMatrices: ProductCategoryLiabilityCurrencyMatrix[] = [
+    { currencyKey: "cny", currencyLabel: "人民币结构", amountField: "cny_scale", cashField: "cny_cash" },
+    {
+      currencyKey: "foreign",
+      currencyLabel: "外币结构",
+      amountField: "foreign_scale",
+      cashField: "foreign_cash",
+    },
+  ].map((currency) => {
+    const totalCurrencyRow =
+      latestTotal || firstTotal
+        ? buildLiabilityCurrencyMatrixRow({
+            categoryId: "liability_total",
+            categoryLabel: latestTotal?.category_name || firstTotal?.category_name || "负债合计",
+            isSummary: true,
+            amountField: currency.amountField as ProductCategoryLiabilityAmountField,
+            cashField: currency.cashField as ProductCategoryLiabilityCashField,
+            periods,
+            latestIndex,
+            previousIndex,
+            rowAt: (index) => ordered[index]?.liabilityTotal ?? undefined,
+          })
+        : null;
+    const currencyRows = categoryIds.map((categoryId) => {
+      const refs = rowRefs.get(categoryId);
+      const latestRow = refs?.latest;
+      const firstRow = refs?.first;
+      return buildLiabilityCurrencyMatrixRow({
+        categoryId,
+        categoryLabel: latestRow?.category_name || firstRow?.category_name || categoryId,
+        amountField: currency.amountField as ProductCategoryLiabilityAmountField,
+        cashField: currency.cashField as ProductCategoryLiabilityCashField,
+        periods,
+        latestIndex,
+        previousIndex,
+        rowAt: (index) => rowMaps[index]?.get(categoryId),
+      });
+    });
+    return {
+      currencyKey: currency.currencyKey as ProductCategoryLiabilityCurrencyKey,
+      currencyLabel: currency.currencyLabel,
+      movementGroupLabel,
+      rows: totalCurrencyRow ? [totalCurrencyRow, ...currencyRows] : currencyRows,
+    };
+  });
+
+  return {
+    periods,
+    movementGroupLabel,
+    rows: totalRow ? [totalRow, ...detailRows] : detailRows,
+    currencyMatrices,
+  };
+}
+
 export function selectProductCategoryLiabilityDetailTrendRows(
   snapshots: ProductCategoryTrendSnapshot[],
 ): ProductCategoryLiabilityDetailTrendRow[] {
@@ -1057,11 +1889,13 @@ export function buildProductCategoryLiabilitySideTrendSurface(
 ): ProductCategoryLiabilitySideTrendSurface {
   const chart = selectProductCategoryLiabilitySideTrendChart(snapshots);
   const detailRows = selectProductCategoryLiabilityDetailTrendRows(snapshots);
+  const detailMatrix = selectProductCategoryLiabilityDetailMatrix(snapshots);
   const incompleteReasons = chart?.incompleteReasons ?? [];
-  if (!chart && detailRows.length === 0) {
+  if (!chart && detailRows.length === 0 && detailMatrix.rows.length === 0) {
     return {
       chart: null,
       detailRows,
+      detailMatrix,
       emptyCopy: "当前 payload 未返回可展示的负债端趋势数据。",
       incompleteReasons,
     };
@@ -1069,6 +1903,7 @@ export function buildProductCategoryLiabilitySideTrendSurface(
   return {
     chart,
     detailRows,
+    detailMatrix,
     emptyCopy: chart ? null : "负债端趋势数据不完整，无法绘制完整走势。",
     incompleteReasons,
   };

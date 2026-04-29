@@ -30,6 +30,7 @@ import { BondTradeDetail } from "../components/BondTradeDetail";
 import { CreditBondTradesTable } from "../components/CreditBondTradesTable";
 import { LinkageSpreadTenorTable } from "../components/LinkageSpreadTenorTable";
 import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
+import { LivermoreStrategyPanel } from "../components/LivermoreStrategyPanel";
 import { MacroLatestReadinessBanner } from "../components/MacroLatestReadinessBanner";
 import { MoneyMarketTable } from "../components/MoneyMarketTable";
 import { NcdMatrix } from "../components/NcdMatrix";
@@ -41,6 +42,7 @@ import {
   marketSeriesRefreshTier,
   type MarketObservationPoint,
 } from "../lib/marketDataCategoryStore";
+import { buildLivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
@@ -72,9 +74,10 @@ const sectionGridStyle = {
 
 const detailPanelStyle = {
   ...pageSurfacePanelStyle,
-  borderRadius: designTokens.radius.md,
+  padding: s[3],
+  borderRadius: designTokens.radius.sm,
   background: "#ffffff",
-  boxShadow: "0 4px 12px rgba(0, 0, 0, 0.03)",
+  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.025)",
 } as const;
 
 const macroTabPanelStyle = {
@@ -82,13 +85,13 @@ const macroTabPanelStyle = {
 } as const;
 
 const rateTrendStateStyle = {
-  marginTop: s[4],
-  padding: s[5],
-  borderRadius: s[4],
+  marginTop: s[3],
+  padding: s[3],
+  borderRadius: s[2],
   background: "#ffffff",
-  fontSize: fs[14],
+  fontSize: fs[13],
   display: "grid",
-  gap: s[3],
+  gap: s[2],
 } as const;
 
 const rateTrendEmptyStateStyle = {
@@ -98,34 +101,34 @@ const rateTrendEmptyStateStyle = {
 } as const;
 
 const blockTitleStyle = {
-  margin: `${s[6]}px 0 0`,
-  fontSize: fs[16],
+  margin: `${s[3]}px 0 0`,
+  fontSize: fs[14],
   fontWeight: 600,
   color: c.neutral[900],
 } as const;
 
 const macroChartShellStyle = {
   ...detailPanelStyle,
-  marginTop: s[5],
+  marginTop: s[3],
   background: "#ffffff",
 } as const;
 
 const marketSectionBlockStyle = {
-  marginTop: s[5],
+  marginTop: s[3],
 } as const;
 
 const marketSectionInnerBlockStyle = {
-  marginTop: s[3],
+  marginTop: s[2],
 } as const;
 
 const marketSectionLeadStyle = {
   marginTop: 0,
-  marginBottom: s[3],
+  marginBottom: s[2],
 } as const;
 
 const marketSectionLeadFlushTopStyle = {
   marginTop: 0,
-  marginBottom: s[3],
+  marginBottom: s[2],
 } as const;
 
 function MarketSectionBlock({ children }: { children: ReactNode }) {
@@ -150,7 +153,7 @@ function MarketSectionLead({
 
 const filterLabelStyle = {
   display: "grid",
-  gap: s[2],
+  gap: s[1],
   fontSize: fs[12],
   fontWeight: 600,
   color: c.neutral[600],
@@ -158,20 +161,22 @@ const filterLabelStyle = {
 
 const filterControlStyle = {
   width: "100%",
-  height: 36,
+  height: 30,
   padding: `0 ${s[3]}px`,
-  borderRadius: designTokens.radius.md,
+  borderRadius: designTokens.radius.sm,
   border: `1px solid ${c.neutral[300]}`,
   background: "#ffffff",
-  fontSize: fs[13],
+  fontSize: fs[12],
   color: c.neutral[900],
   outline: "none",
   transition: "border-color 0.2s ease",
 } as const;
 
 const pageHeaderStyle = {
-  padding: `${s[5]}px ${s[5]}px`,
-  borderRadius: designTokens.radius.md,
+  gap: s[3],
+  marginBottom: 0,
+  padding: `${s[3]}px ${s[4]}px`,
+  borderRadius: designTokens.radius.sm,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
   background: "#ffffff",
 } as const;
@@ -682,6 +687,13 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
 
 export default function MarketDataPage() {
   const client = useApiClient();
+  const [watchDate, setWatchDate] = useState(() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  });
   const catalogQuery = useQuery({
     queryKey: ["market-data", "macro-foundation", client.mode],
     queryFn: () => client.getMacroFoundation(),
@@ -700,6 +712,11 @@ export default function MarketDataPage() {
   const ncdFundingProxyQuery = useQuery({
     queryKey: ["market-data", "ncd-funding-proxy", client.mode],
     queryFn: () => client.getNcdFundingProxy(),
+    retry: false,
+  });
+  const livermoreStrategyQuery = useQuery({
+    queryKey: ["market-data", "livermore-strategy", client.mode, watchDate],
+    queryFn: () => client.getLivermoreStrategy({ asOfDate: watchDate }),
     retry: false,
   });
 
@@ -752,6 +769,13 @@ export default function MarketDataPage() {
     () => buildRateTrendChartOption(latestSeries),
     [latestSeries],
   );
+  const livermoreStrategy = useMemo(
+    () =>
+      livermoreStrategyQuery.data
+        ? buildLivermoreStrategyModel({ envelope: livermoreStrategyQuery.data })
+        : null,
+    [livermoreStrategyQuery.data],
+  );
   const macroBondLinkage = useMemo(
     () => macroBondLinkageQuery.data?.result ?? ({} as Partial<MacroBondLinkagePayload>),
     [macroBondLinkageQuery.data?.result],
@@ -788,13 +812,6 @@ export default function MarketDataPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshStatus, setRefreshStatus] = useState("");
   const [refreshError, setRefreshError] = useState("");
-  const [watchDate, setWatchDate] = useState(() => {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-  });
   const [curveFilter, setCurveFilter] = useState<"treasury" | "cdb" | "both">("both");
   const [creditSegment, setCreditSegment] = useState<"mtn" | "urban" | "both">("both");
   const [sourceFilter, setSourceFilter] = useState<"all" | "choice" | "internal">("all");
@@ -827,6 +844,7 @@ export default function MarketDataPage() {
         latestQuery.refetch(),
         fxAnalyticalQuery.refetch(),
         macroBondLinkageQuery.refetch(),
+        livermoreStrategyQuery.refetch(),
       ]);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -835,7 +853,14 @@ export default function MarketDataPage() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [client, catalogQuery, latestQuery, fxAnalyticalQuery, macroBondLinkageQuery]);
+  }, [
+    client,
+    catalogQuery,
+    latestQuery,
+    fxAnalyticalQuery,
+    macroBondLinkageQuery,
+    livermoreStrategyQuery,
+  ]);
 
   const overviewMetrics: MarketOverviewMetric[] = [
     {
@@ -1079,7 +1104,7 @@ export default function MarketDataPage() {
                       />
                     ) : rateTrendChartOption ? (
                       <div data-testid="market-data-rate-trend-chart" style={{ marginTop: s[4] }}>
-                        <ReactECharts option={rateTrendChartOption} style={{ height: 360, width: "100%" }} />
+                        <ReactECharts option={rateTrendChartOption} style={{ height: 260, width: "100%" }} />
                       </div>
                     ) : (
                       <div
@@ -1179,6 +1204,20 @@ export default function MarketDataPage() {
           />
         </div>
       </div>
+      </MarketSectionBlock>
+
+      <MarketSectionBlock>
+        <MarketSectionLead
+          eyebrow="A 股防守策略"
+          title="Livermore 趋势门控"
+          description="后端返回门控、就绪度与诊断结果；前端只做类型化展示，不补算业务规则。"
+        />
+        <LivermoreStrategyPanel
+          model={livermoreStrategy}
+          isLoading={livermoreStrategyQuery.isLoading}
+          isError={livermoreStrategyQuery.isError}
+          onRetry={() => void livermoreStrategyQuery.refetch()}
+        />
       </MarketSectionBlock>
 
       <div style={observationGridStyle}>

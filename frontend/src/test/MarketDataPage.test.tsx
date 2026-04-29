@@ -187,19 +187,206 @@ describe("MarketDataPage", () => {
         ],
       },
     }));
+    const getLivermoreStrategy = vi.fn(async (options?: { asOfDate?: string }) => ({
+      result_meta: {
+        trace_id: "tr_livermore_page_test",
+        basis: "analytical" as const,
+        result_kind: "market_data.livermore",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_page_test",
+        vendor_version: "vv_livermore_page_test",
+        rule_version: "rv_livermore_page_test",
+        cache_version: "cv_livermore_page_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-29T09:00:00Z",
+      },
+      result: {
+        as_of_date: options?.asOfDate ?? "2026-04-29",
+        requested_as_of_date: options?.asOfDate ?? null,
+        strategy_name: "Livermore A股趋势门控",
+        basis: "analytical" as const,
+        market_gate: {
+          state: "WARM" as const,
+          exposure: 0.4,
+          passed_conditions: 2,
+          available_conditions: 2,
+          required_conditions: 4,
+          conditions: [
+            {
+              key: "csi300_close_gt_ma60",
+              label: "CSI300 close > MA60",
+              status: "pass" as const,
+              evidence: "收盘价高于 MA60。",
+              source_series_id: "CA.CSI300",
+            },
+            {
+              key: "csi300_ma20_gt_ma60",
+              label: "CSI300 MA20 > MA60",
+              status: "pass" as const,
+              evidence: "MA20 高于 MA60。",
+              source_series_id: "CA.CSI300",
+            },
+            {
+              key: "breadth_5d_positive",
+              label: "5-day breadth > 0",
+              status: "missing" as const,
+              evidence: "Breadth inputs are not landed for the Phase 1 slice.",
+              source_series_id: null,
+            },
+            {
+              key: "limit_up_quality_positive",
+              label: "Limit-up seal/break quality positive",
+              status: "missing" as const,
+              evidence: "Limit-up quality inputs are not landed for the Phase 1 slice.",
+              source_series_id: null,
+            },
+          ],
+        },
+        rule_readiness: [
+          {
+            key: "market_gate" as const,
+            title: "Market gate",
+            status: "partial" as const,
+            summary: "Trend-only market gate is available; breadth and limit-up quality remain missing.",
+            required_inputs: ["broad_index_history", "breadth", "limit_up_quality"],
+            missing_inputs: ["breadth", "limit_up_quality"],
+          },
+          {
+            key: "sector_rank" as const,
+            title: "Sector ranking",
+            status: "missing" as const,
+            summary: "Sector membership and sector-strength inputs are not landed yet.",
+            required_inputs: ["sector_membership", "sector_strength"],
+            missing_inputs: ["sector_membership", "sector_strength"],
+          },
+          {
+            key: "stock_pivot" as const,
+            title: "Stock pivot filters",
+            status: "blocked" as const,
+            summary: "Stock pivot output is blocked until sector rank and stock-universe inputs land.",
+            required_inputs: ["stock_ohlcv", "stock_status", "sector_rank"],
+            missing_inputs: ["stock_ohlcv", "stock_status", "sector_rank"],
+          },
+          {
+            key: "risk_exit" as const,
+            title: "Risk and exit rules",
+            status: "blocked" as const,
+            summary: "Risk and exit output is blocked until position and entry-cost inputs land.",
+            required_inputs: ["positions", "entry_cost", "bars_since_entry"],
+            missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
+          },
+        ],
+        diagnostics: [
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_BREADTH_MISSING",
+            message: "Breadth inputs are unavailable; the market gate is capped at the trend-only slice.",
+            input_family: "breadth",
+          },
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_LIMIT_UP_QUALITY_MISSING",
+            message: "Limit-up quality inputs are unavailable; the market gate is capped at the trend-only slice.",
+            input_family: "limit_up_quality",
+          },
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_SECTOR_INPUTS_MISSING",
+            message: "Sector membership and sector-strength inputs are unavailable.",
+            input_family: "sector_strength",
+          },
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_STOCK_INPUTS_MISSING",
+            message: "Stock-universe inputs are unavailable, so no candidates are produced.",
+            input_family: "stock_universe",
+          },
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_RISK_INPUTS_MISSING",
+            message: "Position and entry-cost inputs are unavailable, so risk/exit output is blocked.",
+            input_family: "position_risk",
+          },
+        ],
+        data_gaps: [
+          {
+            input_family: "breadth",
+            status: "missing" as const,
+            evidence: "5-day breadth input family is not landed in DuckDB for this slice.",
+          },
+          {
+            input_family: "limit_up_quality",
+            status: "missing" as const,
+            evidence: "Limit-up seal/break quality input family is not landed in DuckDB for this slice.",
+          },
+          {
+            input_family: "sector_strength",
+            status: "missing" as const,
+            evidence: "Sector membership and ranking inputs are not landed in DuckDB for this slice.",
+          },
+          {
+            input_family: "stock_universe",
+            status: "missing" as const,
+            evidence: "Stock OHLCV, status, and candidate-filter inputs are not landed in DuckDB for this slice.",
+          },
+          {
+            input_family: "position_risk",
+            status: "missing" as const,
+            evidence: "Position and entry-cost inputs are not landed in DuckDB for this slice.",
+          },
+        ],
+        supported_outputs: ["market_gate" as const],
+        unsupported_outputs: [
+          {
+            key: "sector_rank" as const,
+            reason: "Sector membership and sector-strength inputs are not landed yet.",
+          },
+          {
+            key: "stock_candidates" as const,
+            reason: "Stock-level OHLCV, status, and candidate filters are not landed yet.",
+          },
+          {
+            key: "risk_exit" as const,
+            reason: "Position and entry-cost inputs are not landed yet.",
+          },
+        ],
+      },
+    }));
 
     renderPage({
       ...base,
       getMacroFoundation,
       getChoiceMacroLatest,
+      getLivermoreStrategy,
     });
 
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
     expect(screen.getByText(/观察日期/)).toBeInTheDocument();
     expect(screen.getByText("市场概览")).toBeInTheDocument();
     expect(screen.getByText("利率、资金、宏观深度与成交观察")).toBeInTheDocument();
+    expect(screen.getByText("Livermore 趋势门控")).toBeInTheDocument();
     expect(screen.getByText("宏观序列与分析观察")).toBeInTheDocument();
     expect(screen.getByText("目录与结果元数据")).toBeInTheDocument();
+    expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("WARM");
+    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
+      "分析口径 · 不生成交易指令",
+    );
+    expect(screen.getByTestId("livermore-rule-readiness")).toHaveTextContent("Sector ranking");
+    expect(screen.getByTestId("livermore-rule-readiness")).toHaveTextContent("Stock pivot filters");
+    expect(screen.getByTestId("livermore-rule-readiness")).toHaveTextContent("Risk and exit rules");
+    expect(screen.getByTestId("livermore-diagnostics")).toHaveTextContent("LIVERMORE_STOCK_INPUTS_MISSING");
+    const dataGaps = screen.getByTestId("livermore-data-gaps");
+    expect(dataGaps).toHaveTextContent("sector_strength");
+    expect(dataGaps).toHaveTextContent("stock_universe");
+    expect(dataGaps).toHaveTextContent("position_risk");
+    expect(dataGaps).toHaveTextContent("Stock OHLCV, status, and candidate-filter inputs are not landed");
+    expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("板块排序");
+    expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("个股候选");
+    expect(screen.getByTestId("livermore-unsupported-outputs")).toHaveTextContent("风险退出");
+    expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("推荐标的");
     expect(await screen.findAllByText("Open Market 7D Reverse Repo")).toHaveLength(2);
     expect(screen.getAllByText("DR007")).toHaveLength(3);
     expect(screen.getByTestId("market-data-catalog-count")).toHaveTextContent("3");
@@ -248,6 +435,9 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+      expect(getLivermoreStrategy).toHaveBeenCalledWith({
+        asOfDate: expect.any(String),
+      });
     });
   });
 
@@ -631,17 +821,22 @@ describe("MarketDataPage", () => {
     const base = createApiClient({ mode: "mock" });
     const getMacroFoundation = vi.fn(() => base.getMacroFoundation());
     const getChoiceMacroLatest = vi.fn(() => base.getChoiceMacroLatest());
+    const getLivermoreStrategy = vi.fn((options?: { asOfDate?: string }) =>
+      base.getLivermoreStrategy(options),
+    );
 
     renderPage({
       ...base,
       getMacroFoundation,
       getChoiceMacroLatest,
+      getLivermoreStrategy,
     });
 
     expect(await screen.findByTestId("market-data-page-title")).toBeInTheDocument();
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+      expect(getLivermoreStrategy).toHaveBeenCalledTimes(1);
     });
 
     fireEvent.change(screen.getByLabelText("日期"), { target: { value: "2026-03-01" } });
@@ -682,7 +877,65 @@ describe("MarketDataPage", () => {
     await waitFor(() => {
       expect(getMacroFoundation).toHaveBeenCalledTimes(1);
       expect(getChoiceMacroLatest).toHaveBeenCalledTimes(1);
+      expect(getLivermoreStrategy).toHaveBeenLastCalledWith({ asOfDate: "2026-03-01" });
     });
+  });
+
+  it("renders stale Livermore diagnostics from the backend contract", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getLivermoreStrategy = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_livermore_stale_test",
+        basis: "analytical" as const,
+        result_kind: "market_data.livermore",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_stale_test",
+        vendor_version: "vv_livermore_stale_test",
+        rule_version: "rv_livermore_stale_test",
+        cache_version: "cv_livermore_stale_test",
+        quality_flag: "stale" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "latest_snapshot" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-29T09:00:00Z",
+      },
+      result: {
+        as_of_date: "2026-04-28",
+        requested_as_of_date: "2026-04-29",
+        strategy_name: "Livermore A股趋势门控",
+        basis: "analytical" as const,
+        market_gate: {
+          state: "STALE" as const,
+          exposure: 0.4,
+          passed_conditions: 2,
+          available_conditions: 2,
+          required_conditions: 4,
+          conditions: [],
+        },
+        rule_readiness: [],
+        diagnostics: [
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_BROAD_INDEX_STALE",
+            message: "Latest CA.CSI300 input is marked stale and cannot be treated as current.",
+            input_family: "broad_index_history",
+          },
+        ],
+        data_gaps: [],
+        supported_outputs: ["market_gate" as const],
+        unsupported_outputs: [],
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getLivermoreStrategy,
+    });
+
+    expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("STALE");
+    expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("请求日期 2026-04-29");
+    expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("最新快照降级");
+    expect(screen.getByTestId("livermore-diagnostics")).toHaveTextContent("LIVERMORE_BROAD_INDEX_STALE");
   });
 
   it("renders the sixth-page market-data cockpit sections from the mockup", async () => {

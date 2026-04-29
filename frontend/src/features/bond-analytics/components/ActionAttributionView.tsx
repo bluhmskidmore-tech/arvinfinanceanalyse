@@ -3,7 +3,7 @@ import { Card, Statistic, Row, Col, Table, Tag, Alert, Spin } from "antd";
 import { useApiClient } from "../../../api/client";
 import type { Numeric, ResultMeta } from "../../../api/contracts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
-import { bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
+import { bondNumericDisplay, bondNumericRaw } from "../adapters/bondAnalyticsAdapter";
 import type { PeriodType, ActionAttributionResponse } from "../types";
 import { ACTION_TYPE_NAMES } from "../types";
 import { formatWan } from "../utils/formatters";
@@ -240,27 +240,27 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
           data-testid="action-attribution-readiness"
         />
       ) : null}
-      <Row gutter={16}>
-        <Col span={6}>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic title="动作数量" value={data.total_actions} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic title="动作贡献损益" value={formatWan(data.total_pnl_from_actions)} />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic
               title="久期变化"
-              value={`${data.period_start_duration.display} → ${data.period_end_duration.display}`}
-              suffix={`Δ ${data.duration_change_from_actions.display}`}
+              value={`${bondNumericDisplay(data.period_start_duration)} → ${bondNumericDisplay(data.period_end_duration)}`}
+              suffix={`Δ ${bondNumericDisplay(data.duration_change_from_actions)}`}
             />
           </Card>
         </Col>
-        <Col span={6}>
+        <Col xs={24} sm={12} lg={6}>
           <Card size="small">
             <Statistic
               title="DV01变化"
@@ -341,7 +341,7 @@ export function ActionAttributionView({ reportDate, periodType }: Props) {
             rowKey="action_id"
             pagination={false}
             size="small"
-            scroll={{ y: 400 }}
+            scroll={{ x: 960, y: 400 }}
           />
         </Card>
       )}

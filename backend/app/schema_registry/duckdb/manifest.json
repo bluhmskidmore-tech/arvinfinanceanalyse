@@ -96,6 +96,11 @@
       "path": "19_ledger_import.sql",
       "ensure_module": "backend.app.repositories.ledger_import_repo",
       "ensure_symbol": "ensure_ledger_import_tables"
+    },
+    {
+      "path": "20_ledger_analytics.sql",
+      "ensure_module": "backend.app.repositories.ledger_analytics_repo",
+      "ensure_symbol": "ensure_ledger_analytics_tables"
     }
   ]
 }

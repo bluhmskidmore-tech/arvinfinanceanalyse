@@ -1,0 +1,134 @@
+.detailSection {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid #dfe5ee;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 251, 255, 0.98)),
+    #ffffff;
+  box-shadow: 0 14px 34px rgba(22, 35, 46, 0.07);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #e2e6ec;
+}
+
+.headingStack {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title {
+  margin: 0;
+  color: #1f2937;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.description {
+  max-width: 860px;
+  margin: 0;
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.activeModule {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid #cfe0f5;
+  border-radius: 8px;
+  background: #f3f8ff;
+  color: #1850a1;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.tabRail {
+  min-width: 0;
+}
+
+.tabRail :global(.ant-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.tabRail :global(.ant-tabs-nav::before) {
+  border-bottom-color: #dfe5ee;
+}
+
+.tabRail :global(.ant-tabs-tab) {
+  padding: 9px 0;
+  color: #4b5563;
+}
+
+.tabRail :global(.ant-tabs-tab + .ant-tabs-tab) {
+  margin-left: 20px;
+}
+
+.tabRail :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: #1850a1;
+  font-weight: 700;
+}
+
+.contentFrame {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e2e6ec;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+}
+
+.loadingState {
+  display: grid;
+  min-height: 96px;
+  place-items: center;
+  border: 1px dashed #cfe0f5;
+  border-radius: 8px;
+  background: #f8fbff;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+@media (max-width: 720px) {
+  .detailSection {
+    padding: 16px;
+  }
+
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .activeModule {
+    width: fit-content;
+    white-space: normal;
+  }
+
+  .tabRail :global(.ant-tabs-tab + .ant-tabs-tab) {
+    margin-left: 14px;
+  }
+
+  .contentFrame {
+    padding: 12px;
+  }
+
+  .contentFrame :global(.ant-table) {
+    min-width: 680px;
+  }
+}

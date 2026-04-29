@@ -154,6 +154,10 @@ describe("DashboardPage", () => {
     renderDashboard();
 
     expect(await screen.findByTestId("fixed-income-dashboard-page")).toBeInTheDocument();
+    expect(screen.getByTestId("dashboard-bank-ledger-header-link")).toHaveAttribute(
+      "href",
+      "/bank-ledger-dashboard",
+    );
     const pills = await screen.findByTestId("dashboard-governance-pills");
     expect(pills).toBeInTheDocument();
     expect(within(pills).getByTestId("governance-pill-report-date")).toBeInTheDocument();
@@ -168,7 +172,11 @@ describe("DashboardPage", () => {
     ).toBeInTheDocument();
     const moduleSnapshot = await screen.findByTestId("dashboard-module-snapshot");
     expect(moduleSnapshot).toBeInTheDocument();
-    expect(within(moduleSnapshot).getAllByRole("link")).toHaveLength(6);
+    const moduleSnapshotLinks = within(moduleSnapshot).getAllByRole("link");
+    expect(moduleSnapshotLinks).toHaveLength(7);
+    expect(
+      moduleSnapshotLinks.some((link) => link.getAttribute("href") === "/bank-ledger-dashboard"),
+    ).toBe(true);
     expect(
       within(moduleSnapshot).getByRole("link", { name: /产品损益/ }),
     ).toHaveAttribute("href", "/product-category-pnl");

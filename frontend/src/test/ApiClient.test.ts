@@ -452,6 +452,66 @@ describe("createApiClient", () => {
     );
   });
 
+  it("uses real mode to fetch bank ledger endpoints with canonical query names", async () => {
+    const ledgerResponse = {
+      data: {},
+      metadata: {
+        source_version: "sv_ledger",
+        rule_version: "position_key_contract_v1",
+        batch_id: 1,
+        stale: false,
+        fallback: false,
+        no_data: false,
+      },
+      trace: {
+        request_id: "req_ledger",
+        batch_id: 1,
+      },
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ledgerResponse,
+    });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLedgerDates();
+    await client.getLedgerDashboard("2026-03-17");
+    await client.getLedgerPositions({
+      asOfDate: "2026-03-17",
+      direction: "ASSET",
+      accountCategoryStd: "银行账户",
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/ledger/dates",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/ledger/dashboard?as_of_date=2026-03-17",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/ledger/positions?as_of_date=2026-03-17&direction=ASSET&account_category_std=%E9%93%B6%E8%A1%8C%E8%B4%A6%E6%88%B7&page=1&page_size=20",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
   it("uses real mode to fetch detailed Campisi drill-down endpoints", async () => {
     const fetchMock = vi
       .fn()
@@ -3242,6 +3302,125 @@ describe("createApiClient", () => {
     expect(envelope.result.is_actual_ncd_matrix).toBe(false);
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/ui/market-data/ncd-funding-proxy",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+  });
+
+  it("returns a governed Livermore analytical payload in mock mode", async () => {
+    const client = createApiClient({ mode: "mock" });
+
+    const envelope = await client.getLivermoreStrategy({ asOfDate: "2026-04-29" });
+
+    expect(envelope.result_meta.basis).toBe("analytical");
+    expect(envelope.result.basis).toBe("analytical");
+    expect(envelope.result.requested_as_of_date).toBe("2026-04-29");
+    expect(envelope.result.supported_outputs).toEqual(["market_gate"]);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(true);
+  });
+
+  it("uses real mode to fetch Livermore strategy with and without as_of_date", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_livermore_with_date",
+            basis: "analytical",
+            result_kind: "market_data.livermore",
+            formal_use_allowed: false,
+            source_version: "sv_livermore",
+            vendor_version: "vv_none",
+            rule_version: "rv_livermore",
+            cache_version: "cv_livermore",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-29T00:00:00Z",
+          },
+          result: {
+            as_of_date: "2026-04-29",
+            requested_as_of_date: "2026-04-29",
+            strategy_name: "Livermore A股趋势门控",
+            basis: "analytical",
+            market_gate: {
+              state: "WARM",
+              exposure: 0.4,
+              passed_conditions: 2,
+              available_conditions: 2,
+              required_conditions: 2,
+              conditions: [],
+            },
+            rule_readiness: [],
+            diagnostics: [],
+            data_gaps: [],
+            supported_outputs: ["market_gate"],
+            unsupported_outputs: [],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          result_meta: {
+            trace_id: "tr_livermore_latest",
+            basis: "analytical",
+            result_kind: "market_data.livermore",
+            formal_use_allowed: false,
+            source_version: "sv_livermore",
+            vendor_version: "vv_none",
+            rule_version: "rv_livermore",
+            cache_version: "cv_livermore",
+            quality_flag: "ok",
+            vendor_status: "ok",
+            fallback_mode: "none",
+            scenario_flag: false,
+            generated_at: "2026-04-29T00:00:00Z",
+          },
+          result: {
+            as_of_date: "2026-04-29",
+            requested_as_of_date: null,
+            strategy_name: "Livermore A股趋势门控",
+            basis: "analytical",
+            market_gate: {
+              state: "WARM",
+              exposure: 0.4,
+              passed_conditions: 2,
+              available_conditions: 2,
+              required_conditions: 2,
+              conditions: [],
+            },
+            rule_readiness: [],
+            diagnostics: [],
+            data_gaps: [],
+            supported_outputs: ["market_gate"],
+            unsupported_outputs: [],
+          },
+        }),
+      });
+
+    const client = createApiClient({
+      mode: "real",
+      baseUrl: "http://localhost:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    await client.getLivermoreStrategy({ asOfDate: "2026-04-29" });
+    await client.getLivermoreStrategy();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/ui/market-data/livermore?as_of_date=2026-04-29",
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: "application/json" }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/ui/market-data/livermore",
       expect.objectContaining({
         headers: expect.objectContaining({ Accept: "application/json" }),
       }),

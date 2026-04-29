@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type CSSProperties } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Card, Col, Row, Typography } from "antd";
 
@@ -17,6 +17,7 @@ import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { formatBp, formatPct, formatWan, formatYi, toneColor } from "../utils/formatters";
 import { FIELD, panelStyle } from "./bondAnalyticsCockpitTokens";
+import styles from "./BondAnalyticsInstitutionalCockpit.module.css";
 
 const { Text } = Typography;
 
@@ -31,16 +32,92 @@ const cnUp = dt.color.danger[500];
 const cnDown = dt.color.success[600];
 const infoAccent = dt.color.info[500];
 const gradBar = `linear-gradient(90deg, ${dt.color.info[300]} 0%, ${infoAccent} 100%)`;
-const cockpitHeroCardStyle = panelStyle(displayTokens.surface.section);
+const restrainedShadow = "0 8px 18px rgba(22, 35, 46, 0.05)";
+const dashboardCardStyle: CSSProperties = {
+  ...panelStyle(displayTokens.surface.section),
+  borderRadius: dt.radius.lg,
+  boxShadow: restrainedShadow,
+};
+const cockpitHeroCardStyle: CSSProperties = {
+  ...dashboardCardStyle,
+  background: `linear-gradient(180deg, ${displayTokens.surface.section} 0%, ${dt.color.neutral[50]} 100%)`,
+};
+const cardBodyStyle = { padding: 14 } as const;
+const kpiCardBodyStyle = { padding: 12 } as const;
+const sectionTitleWrapStyle = {
+  display: "grid",
+  gap: 2,
+} as const;
+const sectionTitleStyle = {
+  color: inkStrong,
+  fontSize: dt.fontSize[16],
+  fontWeight: 700,
+  lineHeight: dt.lineHeight.tight,
+} as const;
+const sectionNoteStyle = {
+  color: muted,
+  fontSize: dt.fontSize[13],
+  lineHeight: dt.lineHeight.relaxed,
+} as const;
+const helperTextStyle = {
+  color: sub,
+  fontSize: dt.fontSize[12],
+  lineHeight: dt.lineHeight.normal,
+} as const;
+const heroAsideGridStyle = {
+  display: "grid",
+  gap: dt.space[2],
+  alignContent: "start",
+} as const;
+const heroAnchorCardStyle = {
+  borderRadius: dt.radius.md,
+  border: `1px solid ${borderHair}`,
+  background: "rgba(255, 255, 255, 0.84)",
+  padding: `${dt.space[2] + 2}px ${dt.space[3]}px`,
+  display: "grid",
+  gap: 4,
+} as const;
+const progressTrackStyle = {
+  width: "100%",
+  height: 7,
+  borderRadius: 999,
+  background: trackBg,
+  overflow: "hidden",
+} as const;
+const dividedListItemStyle = {
+  display: "grid",
+  gap: dt.space[1],
+  paddingBottom: dt.space[2] + 2,
+  borderBottom: `1px solid ${borderHair}`,
+} as const;
+const focusListItemStyle = {
+  display: "flex",
+  gap: dt.space[2] + 2,
+  alignItems: "flex-start",
+  paddingBottom: dt.space[2] + 2,
+  borderBottom: `1px solid ${borderHair}`,
+} as const;
+const tokenPillRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: dt.space[2],
+} as const;
+const kpiRibbonSurfaceStyle = {
+  borderRadius: dt.radius.lg,
+  border: `1px solid ${borderHair}`,
+  background: dt.color.neutral[50],
+  padding: dt.space[2],
+} as const;
+const kpiMetaRowStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: dt.space[2],
+  alignItems: "center",
+} as const;
 
 const statusGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-  gap: dt.space[3],
-} as const;
-
-const compactListStyle = {
-  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
   gap: dt.space[3],
 } as const;
 
@@ -49,8 +126,6 @@ const moduleNoteStyle = {
   fontSize: dt.fontSize[12],
   lineHeight: dt.lineHeight.normal,
 } as const;
-
-const dashboardCardStyle = panelStyle(displayTokens.surface.section);
 
 const PORTFOLIO_HEADLINES_HOME_NOTE = "组合信用摘要暂未返回，首页先依据仪表盘指标判断方向。";
 const PORTFOLIO_HEADLINES_STRUCTURE_NOTE = "组合信用摘要暂未返回，资产结构稍后补齐。";
@@ -139,6 +214,95 @@ function buildCockpitConclusion(args: {
   };
 }
 
+function SectionCardTitle({
+  eyebrow,
+  title,
+}: {
+  eyebrow: string;
+  title: string;
+}) {
+  return (
+    <div style={sectionTitleWrapStyle}>
+      <div style={{ ...FIELD, marginBottom: 0 }}>{eyebrow}</div>
+      <div style={sectionTitleStyle}>{title}</div>
+    </div>
+  );
+}
+
+function SectionLead({
+  eyebrow,
+  title,
+  detail,
+}: {
+  eyebrow: string;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <div className={styles.evidenceSection}>
+      <SectionCardTitle eyebrow={eyebrow} title={title} />
+      <div style={sectionNoteStyle}>{detail}</div>
+    </div>
+  );
+}
+
+function MetricPill({
+  label,
+  value,
+  background,
+  color,
+}: {
+  label: string;
+  value: string;
+  background: string;
+  color: string;
+}) {
+  return (
+    <span
+      style={{
+        padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
+        borderRadius: 999,
+        background,
+        color,
+        fontSize: dt.fontSize[12],
+        fontWeight: 700,
+      }}
+    >
+      {label} {value}
+    </span>
+  );
+}
+
+function HeroAnchorStat({
+  label,
+  value,
+  detail,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: "default" | "positive" | "negative";
+}) {
+  return (
+    <div style={heroAnchorCardStyle}>
+      <div style={{ ...FIELD, marginBottom: 0 }}>{label}</div>
+      <div
+        style={{
+          color: tone === "positive" ? cnUp : tone === "negative" ? cnDown : inkStrong,
+          fontSize: dt.fontSize[18],
+          fontWeight: 800,
+          letterSpacing: "-0.03em",
+          ...tabularNumsStyle,
+        }}
+      >
+        {value}
+      </div>
+      <div style={helperTextStyle}>{detail}</div>
+    </div>
+  );
+}
+
 function DashboardMetric({
   label,
   value,
@@ -153,9 +317,9 @@ function DashboardMetric({
   return (
     <div
       style={{
-        borderRadius: dt.radius.lg,
+        borderRadius: dt.radius.md,
         border: `1px solid ${dt.color.neutral[200]}`,
-        background: displayTokens.surface.section,
+        background: "rgba(255, 255, 255, 0.84)",
         padding: `${dt.space[3]}px ${dt.space[3] + 2}px`,
         display: "grid",
         gap: dt.space[1] + 1,
@@ -196,9 +360,9 @@ function SignalCell({
   return (
     <div
       style={{
-        borderRadius: dt.radius.lg,
+        borderRadius: dt.radius.md,
         border: `1px solid ${dt.color.neutral[200]}`,
-        background: displayTokens.surface.section,
+        background: "rgba(255, 255, 255, 0.88)",
         padding: `${dt.space[3] + 2}px ${dt.space[3] + 2}px ${dt.space[3]}px`,
         display: "grid",
         gap: dt.space[2],
@@ -229,14 +393,14 @@ function scoreBarRows(
   const maxValue = Math.max(...items.map((item) => Math.abs(item.value)), 1);
 
   return (
-    <div style={compactListStyle}>
+    <div className={styles.stackCompact}>
       {items.map((item) => (
-        <div key={item.key} style={{ display: "grid", gap: 6 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div key={item.key} className={styles.progressRow}>
+          <div className={styles.progressHeader}>
             <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.label}</span>
             <span style={{ color: item.color, fontWeight: 700, fontSize: dt.fontSize[12] }}>{item.caption}</span>
           </div>
-          <div style={{ width: "100%", height: 7, borderRadius: 999, background: trackBg, overflow: "hidden" }}>
+          <div style={progressTrackStyle}>
             <div
               style={{
                 width: `${Math.max(14, (Math.abs(item.value) / maxValue) * 100)}%`,
@@ -443,9 +607,16 @@ export function BondAnalyticsInstitutionalCockpit({
   const totalActionPnl = bondNumericRaw(actionAttribution?.total_pnl_from_actions ?? null);
   const ytmDeltaBp = computeBpDelta(k?.weighted_ytm ?? null, p?.weighted_ytm ?? null);
   const spreadDeltaBp = computeBpDelta(k?.credit_spread_median ?? null, p?.credit_spread_median ?? null);
+  const durationDisplay = Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—";
+  const creditWeightDisplay = portfolioHl ? formatPct(portfolioHl.credit_weight) : "—";
+  const spreadDisplay = k ? formatCompactValue(k.credit_spread_median, "bp") : "—";
+  const marketValueDisplay = k ? formatYi(k.total_market_value) : "—";
+  const unrealizedPnlDisplay = k ? formatYi(k.unrealized_pnl) : "—";
+  const unrealizedPnlTone =
+    k && numOr(k.unrealized_pnl) !== 0 ? (numOr(k.unrealized_pnl) > 0 ? "positive" : "negative") : "default";
 
   return (
-    <section data-testid="bond-analysis-phase3-cockpit" style={{ display: "grid", gap: dt.space[3] }}>
+    <section data-testid="bond-analysis-phase3-cockpit" className={styles.phaseSection}>
       {err ? <Alert type="warning" showIcon message="部分驾驶舱指标未就绪" description={err} /> : null}
 
       <Row gutter={[dt.space[3], dt.space[3]]}>
@@ -456,21 +627,43 @@ export function BondAnalyticsInstitutionalCockpit({
             style={cockpitHeroCardStyle}
             styles={{ body: { padding: dt.space[4] } }}
           >
-            <div style={{ display: "grid", gap: dt.space[3] + 2 }}>
-              <div style={{ display: "grid", gap: dt.space[2] }}>
-                <div style={FIELD}>市场状态（一句话）</div>
-                <div
-                  style={{
-                    fontSize: dt.fontSize[30],
-                    fontWeight: 800,
-                    lineHeight: 1.18,
-                    letterSpacing: "-0.04em",
-                    color: inkStrong,
-                  }}
-                >
-                  {conclusion.body}
+            <div className={styles.heroBody}>
+              <div className={styles.heroTopGrid}>
+                <div className={styles.heroTitleStack}>
+                  <div style={FIELD}>{conclusion.title}</div>
+                  <div
+                    style={{
+                      fontSize: dt.fontSize[30],
+                      fontWeight: 800,
+                      lineHeight: 1.18,
+                      letterSpacing: "-0.04em",
+                      color: inkStrong,
+                      maxWidth: 560,
+                    }}
+                  >
+                    {conclusion.body}
+                  </div>
+                  <Text type="secondary">{conclusion.detail}</Text>
                 </div>
-                <Text type="secondary">{conclusion.detail}</Text>
+
+                <div style={heroAsideGridStyle}>
+                  <HeroAnchorStat
+                    label="久期锚点"
+                    value={durationDisplay}
+                    detail={leadMaturity ? `最重期限桶 ${leadMaturity.label}` : "等待期限结构确认。"}
+                  />
+                  <HeroAnchorStat
+                    label="信用锚点"
+                    value={creditWeightDisplay}
+                    detail={`利差中位数 ${spreadDisplay}`}
+                  />
+                  <HeroAnchorStat
+                    label="盈亏缓冲"
+                    value={unrealizedPnlDisplay}
+                    detail={`组合市值 ${marketValueDisplay}`}
+                    tone={unrealizedPnlTone}
+                  />
+                </div>
               </div>
 
               <div style={statusGridStyle}>
@@ -484,7 +677,7 @@ export function BondAnalyticsInstitutionalCockpit({
                 <SignalCell
                   label="曲线"
                   summary={leadMaturity ? `${leadMaturity.label} 最集中` : "期限待确认"}
-                  value={leadMaturity ? leadMaturity.caption : Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"}
+                  value={leadMaturity ? leadMaturity.caption : durationDisplay}
                   detail="先看最重期限桶，再决定是否切到 KRD 和收益率曲线下钻。"
                 />
                 <SignalCell
@@ -508,13 +701,13 @@ export function BondAnalyticsInstitutionalCockpit({
                 <SignalCell
                   label="资金"
                   summary={k && numOr(k.unrealized_pnl) >= 0 ? "收益垫仍在" : "收益垫转弱"}
-                  value={k ? `${formatYi(k.total_market_value)} · 浮盈 ${formatYi(k.unrealized_pnl)}` : "—"}
+                  value={k ? `${marketValueDisplay} · 浮盈 ${unrealizedPnlDisplay}` : "—"}
                   detail={
                     Number.isFinite(unrealizedPnlMomPct)
                       ? `浮盈较上期 ${formatSignedPct(unrealizedPnlMomPct)}，结合规模变化 ${formatSignedPct(marketValueMomPct)} 判断仓位防守空间。`
                       : "用组合规模和浮盈变化判断当前仓位的防守空间。"
                   }
-                  tone={k && numOr(k.unrealized_pnl) !== 0 ? (numOr(k.unrealized_pnl) > 0 ? "positive" : "negative") : "default"}
+                  tone={unrealizedPnlTone}
                 />
               </div>
             </div>
@@ -524,23 +717,14 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} xl={8}>
           <Card
             size="small"
-            title="今日关注"
+            title={<SectionCardTitle eyebrow="执行提示" title="今日关注" />}
             data-testid="bond-analysis-today-focus"
             style={dashboardCardStyle}
-            styles={{ body: { padding: 14 } }}
+            styles={{ body: cardBodyStyle }}
           >
-            <div style={compactListStyle}>
+            <div className={styles.stackCompact}>
               {focusItems.map((item, index) => (
-                <div
-                  key={`${item}-${index}`}
-                  style={{
-                    display: "flex",
-                    gap: dt.space[2] + 2,
-                    alignItems: "flex-start",
-                    paddingBottom: dt.space[2] + 2,
-                    borderBottom: `1px solid ${borderHair}`,
-                  }}
-                >
+                <div key={`${item}-${index}`} style={focusListItemStyle}>
                   <span style={{ color: infoAccent, fontSize: dt.fontSize[18], lineHeight: 1 }}>•</span>
                   <span style={{ color: ink, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>{item}</span>
                 </div>
@@ -553,22 +737,24 @@ export function BondAnalyticsInstitutionalCockpit({
       <Card
         size="small"
         data-testid="bond-analysis-asset-momentum"
-        title="资产变动与首屏 KPI"
+        title={<SectionCardTitle eyebrow="KPI Ribbon" title="资产变动与首屏 KPI" />}
         style={dashboardCardStyle}
-        styles={{ header: { minHeight: 44 }, body: { paddingBlock: 12 } }}
+        styles={{ header: { minHeight: 44 }, body: kpiCardBodyStyle }}
       >
-        <div data-testid="bond-analysis-kpi-ribbon">
-          <HeadlineKpis data={headline} loading={headlineQ.isPending} />
-        </div>
-        {isDashboardDateFallback ? (
-          <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
-            仪表盘快照使用 {dashboardReportDate}
+        <div className={styles.kpiBlock}>
+          <div data-testid="bond-analysis-kpi-ribbon" style={kpiRibbonSurfaceStyle}>
+            <HeadlineKpis data={headline} loading={headlineQ.isPending} />
           </div>
-        ) : null}
-        <div style={{ marginTop: dt.space[2] + 2, fontSize: dt.fontSize[11], color: sub, lineHeight: dt.lineHeight.normal }}>
-          指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
-{formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
-{isFiniteNumber(spreadDeltaBp) ? `${spreadDeltaBp.toFixed(1)}bp` : "—"}）均按 raw 数值计算。切换上方「报表日期」可更新全页对比基准。
+          <div style={kpiMetaRowStyle}>
+            {isDashboardDateFallback ? (
+              <span style={helperTextStyle}>仪表盘快照使用 {dashboardReportDate}</span>
+            ) : null}
+            <span style={helperTextStyle}>
+              指标与债券驾驶舱首屏一致；资产变动环比（规模 {formatSignedPct(marketValueMomPct)} / 浮盈{" "}
+              {formatSignedPct(unrealizedPnlMomPct)}）与利率/利差变化（{isFiniteNumber(ytmDeltaBp) ? `${ytmDeltaBp.toFixed(1)}bp` : "—"} /{" "}
+              {isFiniteNumber(spreadDeltaBp) ? `${spreadDeltaBp.toFixed(1)}bp` : "—"}）均按 raw 数值计算。切换上方「报表日期」可更新全页对比基准。
+            </span>
+          </div>
         </div>
       </Card>
 
@@ -576,57 +762,24 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} lg={14}>
           <Card
             size="small"
-            title="组合摘要"
+            title={<SectionCardTitle eyebrow="结论展开" title="组合摘要" />}
             data-testid="bond-analysis-summary-card"
             style={dashboardCardStyle}
-            styles={{ body: { padding: 14 } }}
+            styles={{ body: cardBodyStyle }}
           >
-            <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ color: ink, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
+            <div className={styles.summaryBody}>
+              <div className={styles.summaryNarrative}>
                 {buildSummaryNarrative({
                   duration: dur,
                   creditWeight,
                   spreadMedian,
-                  marketValueText: k ? formatYi(k.total_market_value) : "—",
+                  marketValueText: marketValueDisplay,
                 })}
               </div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: dt.space[2] }}>
-                <span
-                  style={{
-                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
-                    borderRadius: 999,
-                    background: dt.color.info[50],
-                    color: dt.color.info[700],
-                    fontSize: dt.fontSize[12],
-                    fontWeight: 700,
-                  }}
-                >
-                  久期 {Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"}
-                </span>
-                <span
-                  style={{
-                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
-                    borderRadius: 999,
-                    background: dt.color.success[50],
-                    color: dt.color.success[700],
-                    fontSize: dt.fontSize[12],
-                    fontWeight: 700,
-                  }}
-                >
-                  信用 {portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
-                </span>
-                <span
-                  style={{
-                    padding: `${dt.space[1]}px ${dt.space[2] + 2}px`,
-                    borderRadius: 999,
-                    background: dt.color.warning[50],
-                    color: dt.color.warning[700],
-                    fontSize: dt.fontSize[12],
-                    fontWeight: 700,
-                  }}
-                >
-                  利差 {k ? formatCompactValue(k.credit_spread_median, "bp") : "—"}
-                </span>
+              <div style={tokenPillRowStyle}>
+                <MetricPill label="久期" value={durationDisplay} background={dt.color.info[50]} color={dt.color.info[700]} />
+                <MetricPill label="信用" value={creditWeightDisplay} background={dt.color.success[50]} color={dt.color.success[700]} />
+                <MetricPill label="利差" value={spreadDisplay} background={dt.color.warning[50]} color={dt.color.warning[700]} />
               </div>
             </div>
           </Card>
@@ -635,7 +788,7 @@ export function BondAnalyticsInstitutionalCockpit({
         <Col xs={24} lg={10}>
           <Card
             size="small"
-            title="债券资产结构"
+            title={<SectionCardTitle eyebrow="配置证据" title="债券资产结构" />}
             extra={
               <Button
                 size="small"
@@ -648,17 +801,17 @@ export function BondAnalyticsInstitutionalCockpit({
             }
             data-testid="bond-analysis-asset-structure"
             style={dashboardCardStyle}
-            styles={{ body: { padding: 14 } }}
+            styles={{ body: cardBodyStyle }}
           >
             {assetClassItems.length > 0 ? (
-              <div style={compactListStyle}>
+              <div className={styles.stackCompact}>
                 {assetClassItems.map((item) => (
-                  <div key={item.asset_class} style={{ display: "grid", gap: 6 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                  <div key={item.asset_class} className={styles.progressRow}>
+                    <div className={styles.progressHeader}>
                       <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.asset_class}</span>
                       <span style={{ color: muted, fontSize: dt.fontSize[12] }}>{item.weight.display}</span>
                     </div>
-                    <div style={{ width: "100%", height: 7, borderRadius: 999, background: trackBg, overflow: "hidden" }}>
+                    <div style={progressTrackStyle}>
                       <div
                         style={{
                           width: `${Math.max(10, Math.min(100, bondNumericRaw(item.weight) * 100))}%`,
@@ -683,259 +836,277 @@ export function BondAnalyticsInstitutionalCockpit({
         </Col>
       </Row>
 
-      <Row gutter={[dt.space[3], dt.space[3]]}>
-        <Col xs={24} lg={8}>
-          <Card size="small" title="收益率与久期分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
-            <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权收益率</span>
-                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权久期</span>
-                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
-                  {Number.isFinite(dur) ? `${dur.toFixed(2)} 年` : "—"}
-                </span>
-              </div>
-              {maturityItems.length > 0 ? scoreBarRows(maturityItems) : <Text type="secondary">暂无期限结构</Text>}
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={8}>
-          <Card size="small" title="利差分析（中位数，bp）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
-            <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>信用权重</span>
-                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
-                  {portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
-                </span>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>利差中位数</span>
-                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>
-                  {k ? formatCompactValue(k.credit_spread_median, "bp") : "—"}
-                </span>
-              </div>
-              {spreadItems.length > 0 ? (
-                <div style={compactListStyle}>
-                  {spreadItems.map((item) => (
-                    <div
-                      key={item.bond_type}
-                      style={{ display: "grid", gap: dt.space[1], paddingBottom: dt.space[2] + 2, borderBottom: `1px solid ${borderHair}` }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.bond_type}</span>
-                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.total_market_value)}</span>
-                      </div>
-                      <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
-                        中位收益率 {item.median_yield ? formatPct(item.median_yield) : "—"} · 只数 {item.bond_count}
-                      </div>
-                    </div>
-                  ))}
+      <section className={styles.evidenceSection}>
+        <SectionLead
+          eyebrow="结论证据"
+          title="三列证据，先验证结论再下钻。"
+          detail="按久期、利差、持仓三列阅读，首页只保留足够判断方向的证据。"
+        />
+        <Row gutter={[dt.space[3], dt.space[3]]}>
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="久期证据" title="收益率与久期分布" />}
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权收益率</span>
+                  <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatPct(k.weighted_ytm) : "—"}</span>
                 </div>
-              ) : (
-                <Text type="secondary">暂无利差分布</Text>
-              )}
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={8}>
-          <Card
-            size="small"
-            title="持仓明细（前10）"
-            extra={
-              <Button
-                size="small"
-                type="text"
-                data-testid="bond-analysis-home-open-top-holdings"
-                onClick={() => onOpenModuleDetail?.("top-holdings")}
-              >
-                查看完整持仓
-              </Button>
-            }
-            style={dashboardCardStyle}
-            styles={{ body: { padding: 14 } }}
-          >
-            <div style={compactListStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>组合市值</span>
-                <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{k ? formatYi(k.total_market_value) : "—"}</span>
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>加权久期</span>
+                  <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{durationDisplay}</span>
+                </div>
+                {maturityItems.length > 0 ? scoreBarRows(maturityItems) : <Text type="secondary">暂无期限结构</Text>}
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                <span style={{ color: muted, fontSize: dt.fontSize[12] }}>浮动盈亏</span>
-                <span
-                  style={{
-                    color: k ? toneColor(numOr(k.unrealized_pnl)) : inkStrong,
-                    fontWeight: 700,
-                    ...tabularNumsStyle,
-                  }}
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="信用证据" title="利差分析（中位数，bp）" />}
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>信用权重</span>
+                  <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{creditWeightDisplay}</span>
+                </div>
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>利差中位数</span>
+                  <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{spreadDisplay}</span>
+                </div>
+                {spreadItems.length > 0 ? (
+                  <div className={styles.stackCompact}>
+                    {spreadItems.map((item) => (
+                      <div key={item.bond_type} style={dividedListItemStyle}>
+                        <div className={styles.statRow}>
+                          <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.bond_type}</span>
+                          <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.total_market_value)}</span>
+                        </div>
+                        <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
+                          中位收益率 {item.median_yield ? formatPct(item.median_yield) : "—"} · 只数 {item.bond_count}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Text type="secondary">暂无利差分布</Text>
+                )}
+              </div>
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="持仓证据" title="持仓明细（前10）" />}
+              extra={
+                <Button
+                  size="small"
+                  type="text"
+                  data-testid="bond-analysis-home-open-top-holdings"
+                  onClick={() => onOpenModuleDetail?.("top-holdings")}
                 >
-                  {k ? formatYi(k.unrealized_pnl) : "—"}
-                </span>
-              </div>
-              {topHoldings.length > 0 ? (
-                <div style={compactListStyle}>
-                  {topHoldings.map((item) => (
-                    <div
-                      key={item.instrument_code}
-                      style={{ display: "grid", gap: dt.space[1], paddingBottom: dt.space[2] + 2, borderBottom: `1px solid ${borderHair}` }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.instrument_name}</span>
-                        <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.face_value)}</span>
-                      </div>
-                      <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
-                        收益率 {formatPct(item.ytm)} · 久期 {item.modified_duration.display} · {item.rating}
-                      </div>
-                    </div>
-                  ))}
+                  查看完整持仓
+                </Button>
+              }
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>组合市值</span>
+                  <span style={{ color: inkStrong, fontWeight: 700, ...tabularNumsStyle }}>{marketValueDisplay}</span>
                 </div>
-              ) : (
-                <Text type="secondary">
-                  {topHoldingsUnavailable ? TOP_HOLDINGS_HOME_NOTE : "暂无持仓明细"}
-                </Text>
-              )}
-            </div>
-          </Card>
-        </Col>
-      </Row>
-
-      <Row gutter={[dt.space[3], dt.space[3]]}>
-        <Col xs={24} lg={8}>
-          <Card size="small" title="信用等级分布" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
-            <div style={compactListStyle}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: dt.space[2] + 2 }}>
-                <DashboardMetric
-                  label="债券只数"
-                  value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
-                  detail="组合头条"
-                />
-                <DashboardMetric
-                  label="前五集中度"
-                  value={portfolioHl ? formatPct(portfolioHl.issuer_top5_weight) : "—"}
-                  detail="发行人权重"
-                />
-                <DashboardMetric
-                  label="信用权重"
-                  value={portfolioHl ? formatPct(portfolioHl.credit_weight) : "—"}
-                  detail="信用债市值占比"
-                />
-                <DashboardMetric
-                  label="DV01"
-                  value={portfolioHl ? formatWan(portfolioHl.total_dv01) : "—"}
-                  detail="组合利率敏感度"
-                />
-              </div>
-              {portfolioHeadlinesUnavailable ? (
-                <div style={moduleNoteStyle}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div>
-              ) : null}
-              {topHoldingsUnavailable ? (
-                <div style={moduleNoteStyle}>{TOP_HOLDINGS_RATING_NOTE}</div>
-              ) : ratingDistribution.length > 0 ? (
-                <div style={compactListStyle}>
-                  {ratingDistribution.map((item) => (
-                    <div key={item.rating} style={{ display: "flex", justifyContent: "space-between", gap: dt.space[3] }}>
-                      <span style={{ color: sub, fontSize: dt.fontSize[12] }}>{item.rating}</span>
-                      <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
-                        {item.count} 只 · {formatYi(item.faceValue)}
-                      </span>
-                    </div>
-                  ))}
+                <div className={styles.statRow}>
+                  <span style={{ color: muted, fontSize: dt.fontSize[12] }}>浮动盈亏</span>
+                  <span
+                    style={{
+                      color: k ? toneColor(numOr(k.unrealized_pnl)) : inkStrong,
+                      fontWeight: 700,
+                      ...tabularNumsStyle,
+                    }}
+                  >
+                    {unrealizedPnlDisplay}
+                  </span>
                 </div>
-              ) : null}
-            </div>
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={8}>
-          <Card size="small" title="组合收益归因（本期）" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
-            <div style={compactListStyle}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: dt.space[2] + 2 }}>
-                <DashboardMetric
-                  label="动作数量"
-                  value={actionAttribution ? formatNumericString(actionAttribution.total_actions) : "—"}
-                  detail="动作归因"
-                />
-                <DashboardMetric
-                  label="动作贡献"
-                  value={actionAttribution ? formatWan(actionAttribution.total_pnl_from_actions) : "—"}
-                  detail="经济口径损益"
-                  tone={Number.isFinite(totalActionPnl) && totalActionPnl !== 0 ? (totalActionPnl > 0 ? "positive" : "negative") : "default"}
-                />
+                {topHoldings.length > 0 ? (
+                  <div className={styles.stackCompact}>
+                    {topHoldings.map((item) => (
+                      <div key={item.instrument_code} style={dividedListItemStyle}>
+                        <div className={styles.statRow}>
+                          <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.instrument_name}</span>
+                          <span style={{ color: muted, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>{formatYi(item.face_value)}</span>
+                        </div>
+                        <div style={{ color: sub, fontSize: dt.fontSize[12] }}>
+                          收益率 {formatPct(item.ytm)} · 久期 {item.modified_duration.display} · {item.rating}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <Text type="secondary">
+                    {topHoldingsUnavailable ? TOP_HOLDINGS_HOME_NOTE : "暂无持仓明细"}
+                  </Text>
+                )}
               </div>
-              {actionTypeRows.length > 0 ? (
-                <div style={compactListStyle}>
-                  {actionTypeRows.map((item) => {
-                    const pnl = bondNumericRaw(item.total_pnl_economic);
-                    return (
-                      <div
-                        key={item.action_type}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          gap: dt.space[3],
-                          paddingBottom: dt.space[2] + 2,
-                          borderBottom: `1px solid ${borderHair}`,
-                        }}
-                      >
-                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.action_type_name}</span>
-                        <span style={{ color: toneColor(pnl), fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
-                          {formatWan(item.total_pnl_economic)}
+            </Card>
+          </Col>
+        </Row>
+      </section>
+
+      <section className={styles.evidenceSection}>
+        <SectionLead
+          eyebrow="治理补充"
+          title="右侧补充治理和动作证据。"
+          detail="评级、动作和决策入口保持并列，避免首页把完整下钻内容提前展开。"
+        />
+        <Row gutter={[dt.space[3], dt.space[3]]}>
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="治理证据" title="信用等级分布" />}
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.evidenceMetricGrid}>
+                  <DashboardMetric
+                    label="债券只数"
+                    value={portfolioHl ? formatNumericString(portfolioHl.bond_count) : "—"}
+                    detail="组合头条"
+                  />
+                  <DashboardMetric
+                    label="前五集中度"
+                    value={portfolioHl ? formatPct(portfolioHl.issuer_top5_weight) : "—"}
+                    detail="发行人权重"
+                  />
+                  <DashboardMetric
+                    label="信用权重"
+                    value={creditWeightDisplay}
+                    detail="信用债市值占比"
+                  />
+                  <DashboardMetric
+                    label="DV01"
+                    value={portfolioHl ? formatWan(portfolioHl.total_dv01) : "—"}
+                    detail="组合利率敏感度"
+                  />
+                </div>
+                {portfolioHeadlinesUnavailable ? (
+                  <div style={moduleNoteStyle}>{PORTFOLIO_HEADLINES_CREDIT_NOTE}</div>
+                ) : null}
+                {topHoldingsUnavailable ? (
+                  <div style={moduleNoteStyle}>{TOP_HOLDINGS_RATING_NOTE}</div>
+                ) : ratingDistribution.length > 0 ? (
+                  <div className={styles.stackCompact}>
+                    {ratingDistribution.map((item) => (
+                      <div key={item.rating} className={styles.statRow}>
+                        <span style={{ color: sub, fontSize: dt.fontSize[12] }}>{item.rating}</span>
+                        <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
+                          {item.count} 只 · {formatYi(item.faceValue)}
                         </span>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <Text type="secondary">当前没有可展示的动作类型汇总。</Text>
-              )}
-            </div>
-          </Card>
-        </Col>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          </Col>
 
-        <Col xs={24} lg={8}>
-          <Card size="small" title="决策事项" style={dashboardCardStyle} styles={{ body: { padding: 14 } }}>
-            <div style={compactListStyle}>
-              <div style={{ color: muted, fontSize: dt.fontSize[13], lineHeight: dt.lineHeight.relaxed }}>
-                首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应下钻。
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="动作证据" title="组合收益归因（本期）" />}
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.evidenceMetricGrid}>
+                  <DashboardMetric
+                    label="动作数量"
+                    value={actionAttribution ? formatNumericString(actionAttribution.total_actions) : "—"}
+                    detail="动作归因"
+                  />
+                  <DashboardMetric
+                    label="动作贡献"
+                    value={actionAttribution ? formatWan(actionAttribution.total_pnl_from_actions) : "—"}
+                    detail="经济口径损益"
+                    tone={Number.isFinite(totalActionPnl) && totalActionPnl !== 0 ? (totalActionPnl > 0 ? "positive" : "negative") : "default"}
+                  />
+                </div>
+                {actionTypeRows.length > 0 ? (
+                  <div className={styles.stackCompact}>
+                    {actionTypeRows.map((item) => {
+                      const pnl = bondNumericRaw(item.total_pnl_economic);
+                      return (
+                        <div key={item.action_type} className={styles.statRowDivider}>
+                          <span style={{ color: inkStrong, fontWeight: 700, fontSize: dt.fontSize[13] }}>{item.action_type_name}</span>
+                          <span style={{ color: toneColor(pnl), fontWeight: 700, fontSize: dt.fontSize[12], ...tabularNumsStyle }}>
+                            {formatWan(item.total_pnl_economic)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <Text type="secondary">当前没有可展示的动作类型汇总。</Text>
+                )}
               </div>
-              <ul style={{ margin: 0, paddingLeft: 18, color: ink, lineHeight: dt.lineHeight.relaxed }}>
-                <li>{Number.isFinite(dur) && dur >= 3.8 ? "先看久期和期限结构，再决定是否做久期调整。" : "先看收益率分布和期限桶，确认久期是否仍在舒适区。"}</li>
-                <li>{Number.isFinite(creditWeight) && creditWeight >= 0.35 ? "信用权重偏高，优先复核利差和行业集中度。" : "信用权重可控，但仍需关注利差收窄后的回撤风险。"}</li>
-                <li>{actionAttribution ? `本期动作 ${actionAttribution.total_actions} 笔，可先看动作归因再下钻明细。` : "动作归因未返回时，不在首页补造操作建议。 "}</li>
-              </ul>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <Button
-                  size="small"
-                  type="text"
-                  data-testid="bond-analysis-home-open-action-attribution"
-                  onClick={() => onOpenModuleDetail?.("action-attribution")}
-                >
-                  打开动作归因
-                </Button>
-                <Button
-                  size="small"
-                  type="text"
-                  data-testid="bond-analysis-home-open-return-decomposition"
-                  onClick={() => onOpenModuleDetail?.("return-decomposition")}
-                >
-                  打开收益拆解
-                </Button>
-                <Button
-                  size="small"
-                  type="text"
-                  data-testid="bond-analysis-home-open-credit-spread"
-                  onClick={() => onOpenModuleDetail?.("credit-spread")}
-                >
-                  打开信用利差
-                </Button>
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={8}>
+            <Card
+              size="small"
+              title={<SectionCardTitle eyebrow="下钻入口" title="决策事项" />}
+              style={dashboardCardStyle}
+              styles={{ body: cardBodyStyle }}
+            >
+              <div className={styles.stackCompact}>
+                <div className={styles.summaryNarrative}>
+                  首页只给动作方向，不在这里塞完整模块。需要证据时，直接进入对应下钻。
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, color: ink, lineHeight: dt.lineHeight.relaxed }}>
+                  <li>{Number.isFinite(dur) && dur >= 3.8 ? "先看久期和期限结构，再决定是否做久期调整。" : "先看收益率分布和期限桶，确认久期是否仍在舒适区。"}</li>
+                  <li>{Number.isFinite(creditWeight) && creditWeight >= 0.35 ? "信用权重偏高，优先复核利差和行业集中度。" : "信用权重可控，但仍需关注利差收窄后的回撤风险。"}</li>
+                  <li>{actionAttribution ? `本期动作 ${actionAttribution.total_actions} 笔，可先看动作归因再下钻明细。` : "动作归因未返回时，不在首页补造操作建议。 "}</li>
+                </ul>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  <Button
+                    size="small"
+                    type="text"
+                    data-testid="bond-analysis-home-open-action-attribution"
+                    onClick={() => onOpenModuleDetail?.("action-attribution")}
+                  >
+                    打开动作归因
+                  </Button>
+                  <Button
+                    size="small"
+                    type="text"
+                    data-testid="bond-analysis-home-open-return-decomposition"
+                    onClick={() => onOpenModuleDetail?.("return-decomposition")}
+                  >
+                    打开收益拆解
+                  </Button>
+                  <Button
+                    size="small"
+                    type="text"
+                    data-testid="bond-analysis-home-open-credit-spread"
+                    onClick={() => onOpenModuleDetail?.("credit-spread")}
+                  >
+                    打开信用利差
+                  </Button>
+                </div>
               </div>
-            </div>
-          </Card>
-        </Col>
-      </Row>
+            </Card>
+          </Col>
+        </Row>
+      </section>
     </section>
   );
 }

@@ -47,6 +47,66 @@ class ProductCategoryPnlPayload(BaseModel):
     grand_total: ProductCategoryPnlRow
 
 
+class ProductCategoryAttributionPoint(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    days: int
+    scale: Decimal
+    yield_pct: Decimal | None = None
+    cash: Decimal
+    ftp: Decimal
+    business_net_income: Decimal
+
+
+class ProductCategoryAttributionEffects(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    day_effect: Decimal
+    scale_effect: Decimal
+    rate_effect: Decimal
+    ftp_effect: Decimal
+    direct_effect: Decimal
+    unexplained_effect: Decimal
+    explained_effect: Decimal
+    delta_business_net_income: Decimal
+    closure_error: Decimal
+
+
+class ProductCategoryAttributionRow(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    category_id: str
+    category_name: str
+    side: str
+    level: int
+    state: Literal["complete", "partial"]
+    current: ProductCategoryAttributionPoint | None = None
+    prior: ProductCategoryAttributionPoint | None = None
+    effects: ProductCategoryAttributionEffects
+
+
+class ProductCategoryAttributionTotals(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    asset_total: ProductCategoryAttributionRow
+    liability_total: ProductCategoryAttributionRow
+    grand_total: ProductCategoryAttributionRow
+
+
+class ProductCategoryAttributionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_date: str
+    compare: Literal["mom", "yoy"]
+    current_report_date: str
+    prior_report_date: str
+    state: Literal["complete", "incomplete"]
+    reason: str | None = None
+    rows: list[ProductCategoryAttributionRow]
+    totals: ProductCategoryAttributionTotals | None = None
+
+
 class ProductCategoryDatesPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

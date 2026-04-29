@@ -5,17 +5,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping
 
 from app.core_finance.safe_decimal import safe_decimal
-
-
-def _get_value(record: Any, *keys: str, default: Any = None) -> Any:
-    for key in keys:
-        if isinstance(record, Mapping) and key in record:
-            value = record[key]
-        else:
-            value = getattr(record, key, None)
-        if value is not None:
-            return value
-    return default
+from app.core_finance.macro.helpers import get_value as _get_value
 
 
 def _round(value: Decimal | None) -> float | None:

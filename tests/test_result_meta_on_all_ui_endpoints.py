@@ -85,6 +85,7 @@ def _seed_balance_analysis_dates_contract_surface(tmp_path: Path) -> None:
         ("/ui/macro/choice-series/latest", {}),
         ("/ui/market-data/fx/formal-status", {}),
         ("/ui/market-data/fx/analytical", {}),
+        ("/ui/market-data/livermore", {}),
         ("/ui/news/choice-events/latest", {}),
         ("/ui/preview/source-foundation", {}),
         ("/ui/preview/source-foundation/history", {}),

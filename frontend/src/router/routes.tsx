@@ -76,6 +76,9 @@ const AverageBalancePage = lazy(
 const LedgerPnlPage = lazy(
   () => import("../features/ledger-pnl/pages/LedgerPnlPage"),
 );
+const LedgerDashboardPage = lazy(
+  () => import("../features/ledger-dashboard/pages/LedgerDashboardPage"),
+);
 const KpiPerformancePage = lazy(
   () => import("../features/kpi-performance/pages/KpiPerformancePage"),
 );
@@ -281,6 +284,13 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<LedgerPnlPage />),
+      };
+    }
+
+    if (section.path === "/bank-ledger-dashboard") {
+      return {
+        path: section.path.slice(1),
+        element: routeElement(<LedgerDashboardPage />),
       };
     }
 

@@ -1043,6 +1043,55 @@ def test_zqtz_concentration_meta_is_conservative_for_unsupported_dimensions():
     assert low_coverage_dimensions["rating"]["status"] == "supported"
 
 
+def test_zqtz_rating_concentration_defaults_interest_rate_bonds_to_aaa():
+    payload = movement_service._build_zqtz_concentration_analysis(
+        report_date="2026-02-28",
+        prior_report_date=None,
+        currency_basis="CNX",
+        drilldown_result={
+            "zqtz_currency_basis": "CNY",
+            "missing_columns": [],
+            "rows": [
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("90"),
+                    "issuer_name": "政策性银行",
+                    "rating": None,
+                    "industry_name": "金融业",
+                    "bond_type": "政策性金融债",
+                    "business_type_primary": "政策性金融债",
+                    "instrument_name": "25国开清发02",
+                },
+                {
+                    "report_date": "2026-02-28",
+                    "amount": Decimal("10"),
+                    "issuer_name": "境外发行人",
+                    "rating": None,
+                    "industry_name": "境外",
+                    "bond_type": "外国债券",
+                    "business_type_primary": "外国债券",
+                    "instrument_name": "外国债券测试持仓",
+                },
+            ],
+        },
+    ).model_dump(mode="json")
+
+    dimensions = {
+        dimension["dimension"]: dimension
+        for dimension in payload["dimensions"]
+    }
+    rating = dimensions["rating"]
+    rating_items = {
+        item["dimension_value"]: item
+        for item in rating["items"]
+    }
+
+    assert rating["status"] == "supported"
+    assert Decimal(rating["coverage_pct"]) == Decimal("90.000000")
+    assert Decimal(rating_items["AAA"]["current_amount"]) == Decimal("90.00000000")
+    assert Decimal(rating_items["未映射"]["current_amount"]) == Decimal("10.00000000")
+
+
 def test_difference_attribution_inputs_tolerate_sparse_voucher_schema():
     duckdb_path = (
         Path("test_output")

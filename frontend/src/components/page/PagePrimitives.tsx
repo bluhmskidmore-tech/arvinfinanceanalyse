@@ -162,6 +162,19 @@ export type PageSurfacePanelProps = {
   style?: CSSProperties;
 };
 
+export type PageV2ShellProps = {
+  children: ReactNode;
+  testId?: string;
+  style?: CSSProperties;
+};
+
+export type PageV2SurfacePanelProps = {
+  as?: SurfaceElement;
+  children: ReactNode;
+  testId?: string;
+  style?: CSSProperties;
+};
+
 export function PageSectionLead({
   eyebrow,
   title,
@@ -242,6 +255,29 @@ export function PageSurfacePanel({
         ...style,
       }}
     >
+      {children}
+    </Component>
+  );
+}
+
+export function PageV2Shell({ children, testId, style }: PageV2ShellProps) {
+  return (
+    <div data-testid={testId} className="moss-page-v2-shell" style={style}>
+      {children}
+    </div>
+  );
+}
+
+export function PageV2SurfacePanel({
+  as = "section",
+  children,
+  testId,
+  style,
+}: PageV2SurfacePanelProps) {
+  const Component = as;
+
+  return (
+    <Component data-testid={testId} className="moss-page-v2-surface" style={style}>
       {children}
     </Component>
   );

@@ -89,12 +89,12 @@ function groupButtonStyle(active: boolean) {
     display: "flex",
     alignItems: "center",
     gap: 10,
-    padding: "9px 10px",
-    borderRadius: 12,
-    background: active ? designTokens.color.primary[50] : "transparent",
-    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
-    border: "1px solid transparent",
-    boxShadow: active ? `inset 2px 0 0 ${designTokens.color.primary[600]}` : "none",
+    padding: "10px 12px",
+    borderRadius: 14,
+    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.03)",
+    color: active ? "#f4f7fb" : "rgba(220,228,236,0.84)",
+    border: active ? "1px solid rgba(142, 177, 255, 0.28)" : "1px solid rgba(255,255,255,0.05)",
+    boxShadow: active ? `inset 2px 0 0 ${designTokens.color.primary[400]}` : "none",
     transition:
       "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
@@ -105,16 +105,18 @@ function groupSectionPillStyle(active: boolean) {
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
-    padding: "10px 14px",
-    borderRadius: 999,
-    background: active ? shellTokens.colorAccent : "#ffffff",
-    color: active ? "#ffffff" : shellTokens.colorTextSecondary,
+    padding: "8px 12px",
+    borderRadius: 14,
+    background: active ? shellTokens.colorAccentSoft : "rgba(245,247,250,0.82)",
+    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextSecondary,
     border: active
-      ? `1px solid ${shellTokens.colorAccent}`
+      ? `1px solid ${shellTokens.colorBorderStrong}`
       : `1px solid ${shellTokens.colorBorderSoft}`,
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 600,
-    transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
+    boxShadow: active ? "inset 0 1px 0 rgba(255,255,255,0.64)" : "none",
+    transition:
+      "background-color 160ms ease, color 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
   } as const;
 }
 
@@ -123,11 +125,11 @@ function supportLinkStyle(active: boolean) {
     display: "flex",
     alignItems: "center",
     gap: 8,
-    padding: "6px 8px",
+    padding: "7px 10px",
     borderRadius: 10,
-    background: active ? "rgba(233, 238, 235, 0.72)" : "transparent",
-    color: active ? shellTokens.colorTextPrimary : shellTokens.colorTextMuted,
-    border: "1px solid transparent",
+    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.02)",
+    color: active ? "#f4f7fb" : "rgba(184,197,210,0.78)",
+    border: active ? "1px solid rgba(142, 177, 255, 0.24)" : "1px solid rgba(255,255,255,0.05)",
     fontSize: 11,
     fontWeight: 600,
     transition: "background-color 160ms ease, color 160ms ease, border-color 160ms ease",
@@ -295,6 +297,11 @@ const portfolioFlow = [
     detail: "用正式余额与 basis 分解确认今天的组合状态和错配位置。",
   },
   {
+    key: "bank-ledger-dashboard",
+    title: "再看银行台账",
+    detail: "用 as_of_date 台账快照核对资产、发行负债、净敞口和明细 trace。",
+  },
+  {
     key: "ledger-pnl",
     title: "再看正式损益",
     detail: "优先判断科目口径结果、账户聚合异动和是否需要继续解释。",
@@ -315,7 +322,7 @@ const portfolioStages: PortfolioStage[] = [
   {
     title: "状态判断",
     description: "先确定规模、久期和正式结果，不把分析估算混成首结论。",
-    sectionKeys: ["balance-analysis", "bond-dashboard", "ledger-pnl"],
+    sectionKeys: ["balance-analysis", "bank-ledger-dashboard", "bond-dashboard", "ledger-pnl"],
   },
   {
     title: "仓位与结构",
@@ -411,14 +418,17 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
+  const railDividerColor = "rgba(255,255,255,0.08)";
+  const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
 
   return (
     <div
       className="workbench-shell-grid"
       style={{
         minHeight: "100vh",
-        padding: "18px clamp(16px, 1.8vw, 28px)",
-        background: shellTokens.colorBgApp,
+        padding: "14px clamp(14px, 1.6vw, 24px)",
+        background:
+          "radial-gradient(circle at top left, rgba(233,240,246,0.92) 0%, rgba(244,247,249,0.98) 38%, rgba(239,243,246,1) 100%)",
       }}
     >
       <aside
@@ -426,21 +436,20 @@ export function WorkbenchShell() {
         style={{
           display: "grid",
           alignContent: "start",
-          gap: 14,
-          padding: isMinimalMainChrome ? "8px 12px 14px 0" : "10px 14px 16px 0",
-          border: "none",
-          borderRight: `1px solid ${shellTokens.colorBorderSoft}`,
-          borderRadius: 0,
-          boxShadow: "none",
-          background: "transparent",
+          gap: 12,
+          padding: isMinimalMainChrome ? "12px" : "14px",
+          border: `1px solid ${railDividerColor}`,
+          borderRadius: 26,
+          boxShadow: "0 22px 48px rgba(10, 21, 33, 0.18)",
+          background: "linear-gradient(180deg, #11202d 0%, #0d1822 100%)",
         }}
       >
         <div
           style={{
             display: "grid",
-            gap: 8,
-            padding: "6px 4px 14px 8px",
-            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
+            gap: 6,
+            padding: "4px 2px 12px",
+            borderBottom: `1px solid ${railDividerColor}`,
           }}
         >
           <div
@@ -454,13 +463,13 @@ export function WorkbenchShell() {
               style={{
                 display: "grid",
                 placeItems: "center",
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 borderRadius: 12,
-                background: shellTokens.colorTextPrimary,
-                color: shellTokens.colorBgCanvas,
+                background: "linear-gradient(180deg, rgba(245,248,251,0.98) 0%, rgba(207,218,228,0.94) 100%)",
+                color: "#10202d",
                 fontWeight: 700,
-                boxShadow: "0 10px 22px rgba(22, 35, 46, 0.14)",
+                boxShadow: "0 10px 22px rgba(3, 8, 14, 0.22)",
               }}
             >
               M
@@ -468,10 +477,10 @@ export function WorkbenchShell() {
             <div style={{ display: "grid", gap: 0, minWidth: 0 }}>
               <span
                 style={{
-                  color: shellTokens.colorTextPrimary,
+                  color: "#f5f7fa",
                   fontWeight: 700,
-                  fontSize: 17,
-                  letterSpacing: "-0.03em",
+                  fontSize: 16,
+                  letterSpacing: "-0.02em",
                 }}
               >
                 MOSS
@@ -567,7 +576,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 6,
               paddingTop: 6,
-              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+              borderTop: `1px solid ${railDividerColor}`,
             }}
           >
             <span
@@ -601,7 +610,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 10,
               paddingTop: 4,
-              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+              borderTop: `1px solid ${railDividerColor}`,
             }}
           >
             <div
@@ -657,12 +666,14 @@ export function WorkbenchShell() {
           </section>
         )} */}
 
-        <section style={{ display: "grid", gap: 6 }}>
-          <span className="workbench-shell-section-label">工作台</span>
+        <section className="workbench-shell-nav-section">
+          <span className="workbench-shell-section-label workbench-shell-section-label--rail">
+            工作台
+          </span>
           <nav
             aria-label="主工作台"
             data-testid="workbench-group-nav"
-            style={{ display: "grid", gap: 2 }}
+            style={{ display: "grid", gap: 4 }}
           >
             {primaryWorkbenchNavigationGroups.map((group) => {
               const active = group.key === currentGroup.key;
@@ -681,10 +692,12 @@ export function WorkbenchShell() {
                       width: 18,
                       height: 18,
                       borderRadius: 999,
-                      border: `1px solid ${active ? shellTokens.colorAccent : shellTokens.colorBorderStrong}`,
-                      color: active ? shellTokens.colorAccent : shellTokens.colorTextMuted,
+                      border: active
+                        ? `1px solid ${designTokens.color.primary[300]}`
+                        : "1px solid rgba(255,255,255,0.14)",
+                      color: active ? "#ffffff" : "rgba(184,197,210,0.76)",
                       fontSize: 10,
-                      background: active ? "rgba(255,255,255,0.72)" : "transparent",
+                      background: active ? "rgba(86, 140, 255, 0.28)" : "rgba(255,255,255,0.02)",
                     }}
                   >
                     {iconMap[group.icon]}
@@ -695,13 +708,14 @@ export function WorkbenchShell() {
                       minWidth: 0,
                       fontWeight: active ? 700 : 600,
                       fontSize: 13,
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     {group.label}
                   </span>
                   <span
                     style={{
-                      color: active ? shellTokens.colorAccent : shellTokens.colorTextMuted,
+                      color: active ? "rgba(223,235,255,0.94)" : "rgba(184,197,210,0.62)",
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: "0.06em",
@@ -721,10 +735,12 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 6,
               paddingTop: 8,
-              borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+              borderTop: `1px solid ${railDividerColor}`,
             }}
           >
-            <span className="workbench-shell-section-label">保留模块</span>
+            <span className="workbench-shell-section-label workbench-shell-section-label--rail">
+              保留模块
+            </span>
             {secondaryWorkbenchNavigation.map((item) => {
               const active = pathMatchesWorkbenchSection(item.path, pathnameResolved);
 
@@ -735,6 +751,14 @@ export function WorkbenchShell() {
                     type="text"
                     className="workbench-agent-dialog-trigger"
                     onClick={() => setAgentDialogOpen(true)}
+                    style={{
+                      height: "auto",
+                      padding: "8px 10px",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.06)",
+                      background: "rgba(255,255,255,0.04)",
+                      color: "#f4f7fb",
+                    }}
                   >
                     <div className="workbench-agent-dialog-trigger__main">
                       <span style={{ fontSize: 12 }}>{iconMap[item.icon]}</span>
@@ -766,10 +790,12 @@ export function WorkbenchShell() {
                     display: "grid",
                     gap: 2,
                     padding: "8px 10px",
-                    borderRadius: 10,
-                    background: active ? "rgba(255,255,255,0.64)" : "transparent",
-                    color: shellTokens.colorTextSecondary,
-                    border: "1px solid transparent",
+                    borderRadius: 12,
+                    background: active ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.02)",
+                    color: active ? "#f4f7fb" : "rgba(205,215,224,0.8)",
+                    border: active
+                      ? "1px solid rgba(142, 177, 255, 0.24)"
+                      : "1px solid rgba(255,255,255,0.04)",
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -799,10 +825,12 @@ export function WorkbenchShell() {
             display: "grid",
             gap: 4,
             paddingTop: 8,
-            borderTop: `1px solid ${shellTokens.colorBorderSoft}`,
+            borderTop: `1px solid ${railDividerColor}`,
           }}
         >
-          <span className="workbench-shell-section-label">支持入口</span>
+          <span className="workbench-shell-section-label workbench-shell-section-label--rail">
+            支持入口
+          </span>
           {shellUtilityEntries.map((item) => {
             const active = item.to !== "/" && pathnameResolved === item.to;
 
@@ -821,19 +849,22 @@ export function WorkbenchShell() {
           data-testid="workbench-terminal-bar"
           style={{
             display: "grid",
-            gap: 8,
-            padding: "0 0 10px",
-            borderBottom: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "transparent",
+            gap: 10,
+            padding: "14px 18px",
+            border: `1px solid ${shellTokens.colorBorder}`,
+            borderRadius: 22,
+            background:
+              "linear-gradient(180deg, rgba(250,252,253,0.96) 0%, rgba(242,246,249,0.98) 100%)",
+            boxShadow: "0 10px 22px rgba(15, 23, 42, 0.06)",
           }}
         >
           <div
             style={{
               display: "flex",
               flexWrap: "wrap",
-              alignItems: "flex-end",
+              alignItems: "center",
               justifyContent: "space-between",
-              gap: 16,
+              gap: 12,
             }}
           >
             <section
@@ -841,18 +872,18 @@ export function WorkbenchShell() {
               style={{
                 display: "flex",
                 flexWrap: "wrap",
-                alignItems: "baseline",
-                gap: 8,
+                alignItems: "center",
+                gap: 10,
                 minWidth: 0,
               }}
             >
               <div
                 style={{
                   color: shellTokens.colorTextPrimary,
-                  fontSize: "clamp(36px, 4.4vw, 52px)",
-                  lineHeight: 0.96,
+                  fontSize: "clamp(28px, 3.2vw, 36px)",
+                  lineHeight: 1.02,
                   fontWeight: 700,
-                  letterSpacing: "-0.07em",
+                  letterSpacing: "-0.045em",
                 }}
               >
                 {currentSection.label}
@@ -860,7 +891,14 @@ export function WorkbenchShell() {
               <span
                 style={{
                   color: shellTokens.colorTextSecondary,
-                  fontSize: 14,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  background: "rgba(255,255,255,0.82)",
+                  fontSize: 12,
                   fontWeight: 600,
                 }}
               >
@@ -884,9 +922,10 @@ export function WorkbenchShell() {
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
-                  padding: "6px 10px",
+                  padding: "5px 9px",
                   borderRadius: 999,
-                  background: "rgba(221, 233, 241, 0.76)",
+                  border: `1px solid ${shellTokens.colorBorderSoft}`,
+                  background: "rgba(221, 233, 241, 0.62)",
                   color: shellTokens.colorAccent,
                   fontSize: 11,
                   fontWeight: 700,
@@ -905,7 +944,7 @@ export function WorkbenchShell() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 6,
-                      padding: "6px 2px",
+                      padding: "4px 2px",
                       color: shellTokens.colorTextPrimary,
                       fontSize: 12,
                       fontWeight: 700,
@@ -925,8 +964,9 @@ export function WorkbenchShell() {
               display: "flex",
               flexWrap: "wrap",
               alignItems: "center",
-              gap: 12,
+              gap: 10,
               minWidth: 0,
+              paddingTop: 2,
             }}
           >
             <span
@@ -940,13 +980,13 @@ export function WorkbenchShell() {
             >
               市场快讯
             </span>
-            {shellTickerItems.map((item) => (
+            {shellTickerItems.map((item, index) => (
               <div
                 key={item.key}
                 style={{
                   display: "inline-flex",
                   alignItems: "baseline",
-                  gap: 6,
+                  gap: 5,
                   minWidth: 0,
                 }}
               >
@@ -955,7 +995,7 @@ export function WorkbenchShell() {
                     color: shellTokens.colorTextMuted,
                     fontSize: 10,
                     fontWeight: 600,
-                    letterSpacing: "0.02em",
+                    letterSpacing: "0.03em",
                   }}
                 >
                   {item.label}
@@ -963,7 +1003,7 @@ export function WorkbenchShell() {
                 <strong
                   style={{
                     color: shellTokens.colorTextPrimary,
-                    fontSize: 16,
+                    fontSize: 15,
                     lineHeight: 1,
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
@@ -980,13 +1020,15 @@ export function WorkbenchShell() {
                 >
                   {item.delta}
                 </span>
-                <span
-                  style={{
-                    width: 1,
-                    height: 10,
-                    background: shellTokens.colorBorderSoft,
-                  }}
-                />
+                {index < shellTickerItems.length - 1 ? (
+                  <span
+                    style={{
+                      width: 1,
+                      height: 10,
+                      background: shellTokens.colorBorderSoft,
+                    }}
+                  />
+                ) : null}
               </div>
             ))}
           </section>
@@ -998,12 +1040,12 @@ export function WorkbenchShell() {
               flexWrap: isPortfolioGroup ? "wrap" : "nowrap",
               alignItems: isPortfolioGroup ? "stretch" : "flex-start",
               justifyContent: "space-between",
-              gap: 18,
-              padding: isBalanceAnalysisCompactChrome ? "14px 20px" : "22px 26px",
+              gap: 16,
+              padding: isBalanceAnalysisCompactChrome ? "12px 18px" : "18px 22px",
               border: `1px solid ${shellTokens.colorBorder}`,
-              borderRadius: isBalanceAnalysisCompactChrome ? 20 : 30,
-              boxShadow: shellTokens.shadowPanel,
-              background: `linear-gradient(145deg, ${shellTokens.colorBgCanvas} 0%, ${shellTokens.colorBgSurface} 88%)`,
+              borderRadius: isBalanceAnalysisCompactChrome ? 18 : 24,
+              boxShadow: contentSurfaceShadow,
+              background: `linear-gradient(180deg, rgba(255,255,255,0.96) 0%, ${shellTokens.colorBgSurface} 100%)`,
             }}
           >
             {isPortfolioGroup && isBalanceAnalysisCompactChrome ? (
@@ -1063,10 +1105,10 @@ export function WorkbenchShell() {
                     </span>
                     <div
                       style={{
-                        fontSize: "clamp(26px, 3vw, 34px)",
-                        lineHeight: 1.15,
+                        fontSize: "clamp(24px, 2.6vw, 30px)",
+                        lineHeight: 1.18,
                         fontWeight: 700,
-                        letterSpacing: "-0.04em",
+                        letterSpacing: "-0.03em",
                         color: shellTokens.colorTextPrimary,
                         maxWidth: 700,
                       }}
@@ -1089,7 +1131,7 @@ export function WorkbenchShell() {
                     style={{
                       display: "grid",
                       gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                      gap: 10,
+                      gap: 8,
                     }}
                   >
                     {[
@@ -1114,10 +1156,10 @@ export function WorkbenchShell() {
                         style={{
                           display: "grid",
                           gap: 4,
-                          padding: "14px 16px",
-                          borderRadius: 20,
+                          padding: "12px 14px",
+                          borderRadius: 16,
                           border: `1px solid ${shellTokens.colorBorderSoft}`,
-                          background: "rgba(255,255,255,0.72)",
+                          background: "rgba(255,255,255,0.84)",
                         }}
                       >
                         <span style={{ color: shellTokens.colorTextMuted, fontSize: 12 }}>
@@ -1146,11 +1188,11 @@ export function WorkbenchShell() {
                     flex: "0 0 min(360px, 100%)",
                     display: "grid",
                     gap: 10,
-                    padding: 18,
-                    borderRadius: 24,
+                    padding: 16,
+                    borderRadius: 20,
                     border: `1px solid ${shellTokens.colorBorderSoft}`,
                     background:
-                      "linear-gradient(180deg, rgba(225, 235, 242, 0.72) 0%, rgba(255,255,255,0.82) 100%)",
+                      "linear-gradient(180deg, rgba(235, 241, 246, 0.84) 0%, rgba(255,255,255,0.9) 100%)",
                     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.78)",
                   }}
                 >
@@ -1187,8 +1229,8 @@ export function WorkbenchShell() {
                           style={{
                             display: "grid",
                             gap: 6,
-                            padding: "14px 16px",
-                            borderRadius: 18,
+                            padding: "12px 14px",
+                            borderRadius: 16,
                             background: active ? shellTokens.colorAccentSoft : "rgba(255,255,255,0.76)",
                             border: active
                               ? `1px solid ${shellTokens.colorBorderStrong}`
@@ -1297,16 +1339,16 @@ export function WorkbenchShell() {
 
         <main
           style={{
-            padding: isMinimalMainChrome ? 0 : 24,
+            padding: isMinimalMainChrome ? 0 : 20,
             border: isMinimalMainChrome ? "none" : `1px solid ${shellTokens.colorBorder}`,
-            borderRadius: isMinimalMainChrome ? 0 : 30,
-            boxShadow: isMinimalMainChrome ? "none" : shellTokens.shadowPanel,
+            borderRadius: isMinimalMainChrome ? 0 : 24,
+            boxShadow: isMinimalMainChrome ? "none" : contentSurfaceShadow,
             background: isMinimalMainChrome
               ? "transparent"
-              : `linear-gradient(180deg, ${shellTokens.colorBgSurface} 0%, ${shellTokens.colorBgCanvas} 100%)`,
+              : `linear-gradient(180deg, rgba(255,255,255,0.98) 0%, ${shellTokens.colorBgSurface} 100%)`,
             display: "grid",
             alignContent: "start",
-            gap: 20,
+            gap: 18,
           }}
         >
           {isPortfolioGroup && !isBondAnalysisMinimalShell && !isPortfolioPageOwnedChrome ? (

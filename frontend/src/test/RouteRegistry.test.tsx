@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "../api/client";
@@ -321,6 +321,15 @@ describe("RouteRegistry", () => {
 
     expect(await screen.findByTestId("pnl-attribution-page")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "损益归因分析" })).toBeInTheDocument();
+  });
+
+  it("renders the bank-ledger-dashboard route", async () => {
+    renderWorkbenchApp(["/bank-ledger-dashboard"], { client: mockClient });
+
+    expect(await screen.findByTestId("ledger-dashboard-page")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId("ledger-dashboard-kpis")).toHaveTextContent("3289.07 亿元");
+    });
   });
 
   it("renders the risk-overview route as a real page", async () => {

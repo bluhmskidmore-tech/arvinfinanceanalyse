@@ -11,31 +11,7 @@ import math
 from datetime import date
 from typing import Any
 
-
-def _d(v: Any) -> float | None:
-    if v is None:
-        return None
-    try:
-        return float(v)
-    except (TypeError, ValueError):
-        return None
-
-
-def _pearson_corr(x: list[float], y: list[float]) -> float | None:
-    if len(x) != len(y) or len(x) < 5:
-        return None
-    n = len(x)
-    sum_x = sum(x)
-    sum_y = sum(y)
-    sum_xy = sum(xi * yi for xi, yi in zip(x, y))
-    sum_xx = sum(xi * xi for xi in x)
-    sum_yy = sum(yi * yi for yi in y)
-    num = n * sum_xy - sum_x * sum_y
-    den = (n * sum_xx - sum_x * sum_x) * (n * sum_yy - sum_y * sum_y)
-    if den <= 0:
-        return None
-    r = num / math.sqrt(den)
-    return max(-1.0, min(1.0, r))
+from app.core_finance.macro.helpers import to_float_safe as _d, pearson_corr as _pearson_corr
 
 
 def _align(bond: list[float | None], other: list[float | None]) -> tuple[list[float], list[float]]:

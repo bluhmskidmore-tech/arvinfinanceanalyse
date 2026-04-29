@@ -34,9 +34,9 @@ export function bondNumericDisplay(n: Numeric | string | null | undefined): stri
     return "—";
   }
   if (typeof n === "string") {
-    return n === "" ? "—" : n;
+    return n === "" || n === "undefined" ? "—" : n;
   }
-  return n.display || "—";
+  return !n.display || n.display === "undefined" ? "—" : n.display;
 }
 
 /** ECharts / table magnitude from risk tensor string or bond-analytics Numeric. */

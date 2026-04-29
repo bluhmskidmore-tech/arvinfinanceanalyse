@@ -71,6 +71,10 @@ def _v19_ledger_import(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "19_ledger_import.sql")
 
 
+def _v20_ledger_analytics(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "20_ledger_analytics.sql")
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -160,6 +164,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(17, "accounting asset movement monthly read model", _v17_accounting_asset_movement)
     registry.register(18, "ZQTZ business type 1 lineage for balance analysis", _v18_zqtz_business_type_primary)
     registry.register(19, "bank ledger import traceability tables", _v19_ledger_import)
+    registry.register(20, "bank ledger analytics read models", _v20_ledger_analytics)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

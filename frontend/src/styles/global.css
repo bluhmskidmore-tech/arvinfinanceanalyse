@@ -34,6 +34,7 @@ body,
 #root {
   margin: 0;
   min-height: 100%;
+  overflow-x: clip;
 }
 
 body {
@@ -57,6 +58,7 @@ select {
 
 .app-root {
   min-height: 100vh;
+  overflow-x: clip;
 }
 
 .workbench-shell-grid {
@@ -73,9 +75,44 @@ select {
 
 .workbench-main-column {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   gap: var(--moss-shell-gap);
   min-width: 0;
+}
+
+.workbench-main-column > * {
+  min-width: 0;
+}
+
+.workbench-main-column > main {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workbench-main-column > main > * {
+  min-width: 0;
+}
+
+.workbench-main-column .ant-table-wrapper {
+  contain: inline-size;
+  overflow-x: hidden;
+}
+
+.workbench-main-column .ant-table {
+  overflow-x: hidden;
+}
+
+.workbench-main-column .ant-table-container {
+  overflow-x: auto;
+}
+
+.workbench-main-column .ant-tabs-nav {
+  overflow: hidden;
+}
+
+.workbench-main-column .ant-tabs-nav-wrap {
+  contain: inline-size;
+  overflow: hidden;
 }
 
 .workbench-shell-section-label {
@@ -84,6 +121,17 @@ select {
   text-transform: uppercase;
   color: var(--moss-color-text-muted);
   font-weight: 700;
+}
+
+.workbench-shell-section-label--rail {
+  color: rgba(184, 197, 210, 0.72);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+}
+
+.workbench-shell-nav-section {
+  display: grid;
+  gap: 6px;
 }
 
 .portfolio-workbench-light-hint {
@@ -165,6 +213,21 @@ select {
   max-height: 78vh;
   overflow-y: auto;
   padding-top: 8px;
+}
+
+.moss-page-v2-shell {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.moss-page-v2-surface {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #dfe7ef;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
 }
 
 .agent-chat-composer {
@@ -485,6 +548,18 @@ select {
   .dashboard-overview-hero-strip,
   .dashboard-module-entry-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .workbench-main-column .ant-table table {
+    min-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .workbench-main-column .ant-table col {
+    min-width: 0 !important;
+    width: auto !important;
   }
 }
 

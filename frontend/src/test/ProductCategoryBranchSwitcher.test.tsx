@@ -4,6 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="product-category-branch-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient } from "../api/client";
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";

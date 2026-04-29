@@ -59,9 +59,9 @@ def _load_settings_for_token_fallback() -> Any | None:
 
 
 def _require_tushare_token() -> str:
-    token = os.getenv(TUSHARE_TOKEN_ENV, "").strip()
+    token = resolve_tushare_token_with_settings_fallback(_load_settings_for_token_fallback())
     if not token:
-        msg = f"{TUSHARE_TOKEN_ENV} is not set; export it or add to config before calling Tushare macro fetch."
+        msg = f"{TUSHARE_TOKEN_ENV} is not set; export it or add to config/.env before calling Tushare macro fetch."
         raise RuntimeError(msg)
     return token
 

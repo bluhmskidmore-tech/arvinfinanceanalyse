@@ -255,6 +255,8 @@ def campisi_attribution(
             "yield_to_maturity_start": row.get("yield_to_maturity_start"),
             "asset_class_start": row.get("asset_class_start"),
             "maturity_date_start": mat_d,
+            "accrued_interest_start": row.get("accrued_interest_start"),
+            "accrued_interest_end": row.get("accrued_interest_end"),
         }
         fx = compute_bond_four_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
         rec = {
@@ -320,6 +322,8 @@ def campisi_enhanced(
             "yield_to_maturity_start": row.get("yield_to_maturity_start"),
             "asset_class_start": row.get("asset_class_start"),
             "maturity_date_start": mat_d,
+            "accrued_interest_start": row.get("accrued_interest_start"),
+            "accrued_interest_end": row.get("accrued_interest_end"),
         }
         sx = compute_bond_six_effects(bond, num_days, bench_dec, spread_dec, start_date, coupon_frequency=cf)
         rec = {

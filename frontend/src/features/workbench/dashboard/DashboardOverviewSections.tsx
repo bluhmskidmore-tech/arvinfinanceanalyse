@@ -173,6 +173,15 @@ const moduleEntries = [
     spotlight: true,
   },
   {
+    id: "bank-ledger-dashboard",
+    to: "/bank-ledger-dashboard",
+    title: "银行台账",
+    eyebrow: "看资产、发行负债和净敞口",
+    question: "银行债券台账的资产面值、发行负债、净敞口和明细追踪是否与当前口径一致？",
+    output: "进入后先看 as_of_date 快照、方向拆分和台账明细 trace。",
+    spotlight: true,
+  },
+  {
     id: "product-category-pnl",
     to: "/product-category-pnl",
     title: "产品损益",

@@ -539,18 +539,26 @@ class AccountingAssetMovementRepository:
                     "zqtz_currency_basis": zqtz_currency_basis,
                     "rows": [],
                 }
+            concentration_columns = ("maturity_date", "issuer_name", "rating", "industry_name")
+            descriptor_columns = (
+                "bond_type",
+                "business_type_primary",
+                "business_type_final",
+                "sub_type",
+                "instrument_name",
+            )
             missing_columns = [
                 column
-                for column in ("maturity_date", "issuer_name", "rating", "industry_name")
+                for column in concentration_columns
                 if not self._column_exists(conn, table, column)
             ]
             select_exprs = {
                 column: (
                     f"cast({column} as varchar) as {column}"
-                    if column not in missing_columns
+                    if self._column_exists(conn, table, column)
                     else f"cast(null as varchar) as {column}"
                 )
-                for column in ("maturity_date", "issuer_name", "rating", "industry_name")
+                for column in (*concentration_columns, *descriptor_columns)
             }
             amount_expr = self._zqtz_amount_expression(conn)
             rows = conn.execute(
@@ -561,7 +569,12 @@ class AccountingAssetMovementRepository:
                   {select_exprs["maturity_date"]},
                   {select_exprs["issuer_name"]},
                   {select_exprs["rating"]},
-                  {select_exprs["industry_name"]}
+                  {select_exprs["industry_name"]},
+                  {select_exprs["bond_type"]},
+                  {select_exprs["business_type_primary"]},
+                  {select_exprs["business_type_final"]},
+                  {select_exprs["sub_type"]},
+                  {select_exprs["instrument_name"]}
                 from {table}
                 where cast(report_date as varchar) in (select unnest(?))
                   and currency_basis = ?
@@ -588,6 +601,11 @@ class AccountingAssetMovementRepository:
             "issuer_name",
             "rating",
             "industry_name",
+            "bond_type",
+            "business_type_primary",
+            "business_type_final",
+            "sub_type",
+            "instrument_name",
         ]
         return {
             "status": "supported",

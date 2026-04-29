@@ -9,8 +9,26 @@ import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl
 import { renderWorkbenchApp } from "./renderWorkbenchApp";
 
 vi.mock("../lib/echarts", () => ({
-  default: ({ option }: { option?: unknown }) => (
-    <div data-testid="product-category-echarts-stub">{JSON.stringify(option ?? null)}</div>
+  default: ({
+    option,
+    onEvents,
+  }: {
+    option?: unknown;
+    onEvents?: { click?: (params: { dataIndex: number; seriesIndex?: number }) => void };
+  }) => (
+    <div data-testid="product-category-echarts-stub">
+      <span data-testid="product-category-echarts-option">{JSON.stringify(option ?? null)}</span>
+      {Array.from({ length: 12 }, (_, index) => (
+        <button
+          key={index}
+          data-testid={`product-category-echarts-click-index-${index}`}
+          type="button"
+          onClick={() => onEvents?.click?.({ dataIndex: index, seriesIndex: 1 })}
+        >
+          click {index}
+        </button>
+      ))}
+    </div>
   ),
 }));
 
@@ -22,10 +40,14 @@ function yuan(yi: number): string {
   return String(yi * 100_000_000);
 }
 
+function annualizedCash(scaleYi: number, ratePct: number, days: number): string {
+  return String(scaleYi * 100_000_000 * (ratePct / 100) * (days / 365));
+}
+
 function readChartOption(panelTestId: string) {
   const panel = screen.getByTestId(panelTestId);
   return JSON.parse(
-    within(panel).getByTestId("product-category-echarts-stub").textContent ?? "null",
+    within(panel).getByTestId("product-category-echarts-option").textContent ?? "null",
   ) as {
     legend?: { data?: string[] };
     xAxis?: { data?: string[] } | Array<{ data?: string[] }>;
@@ -37,9 +59,79 @@ function readChartOption(panelTestId: string) {
       yAxisIndex?: number;
       symbolSize?: number;
       lineStyle?: { width?: number };
+      label?: { show?: boolean };
       endLabel?: { show?: boolean };
     }>;
   };
+}
+
+function buildMockAttributionEnvelope(reportDate: string, compare: "mom" | "yoy" = "mom") {
+  const priorReportDate = compare === "yoy" ? "2025-02-28" : "2026-01-31";
+  const effect = {
+    day_effect: yuan(-0.04),
+    scale_effect: yuan(0.3),
+    rate_effect: yuan(0.18),
+    ftp_effect: yuan(0.02),
+    direct_effect: yuan(0),
+    unexplained_effect: yuan(0),
+    explained_effect: yuan(0.46),
+    delta_business_net_income: yuan(0.46),
+    closure_error: yuan(0),
+  };
+  const point = {
+    report_date: reportDate,
+    days: 28,
+    scale: yuan(110),
+    yield_pct: "2.60",
+    cash: yuan(0.66),
+    ftp: yuan(0.2),
+    business_net_income: yuan(0.46),
+  };
+  const priorPoint = {
+    report_date: priorReportDate,
+    days: 31,
+    scale: yuan(100),
+    yield_pct: "2.40",
+    cash: yuan(0.4),
+    ftp: yuan(0.14),
+    business_net_income: yuan(0.26),
+  };
+  const total = {
+    category_id: "asset_total",
+    category_name: "资产端合计",
+    side: "asset",
+    level: 0,
+    state: "complete",
+    current: point,
+    prior: priorPoint,
+    effects: effect,
+  };
+
+  return buildMockApiEnvelope("product_category_pnl.attribution", {
+    report_date: reportDate,
+    compare,
+    current_report_date: reportDate,
+    prior_report_date: priorReportDate,
+    state: "complete",
+    reason: null,
+    rows: [
+      {
+        category_id: "interbank_lending_assets",
+        category_name: "拆放同业",
+        side: "asset",
+        level: 0,
+        state: "complete",
+        current: point,
+        prior: priorPoint,
+        effects: effect,
+      },
+    ],
+    totals: {
+      asset_total: total,
+      liability_total: { ...total, category_id: "liability_total", category_name: "负债端合计", side: "liability" },
+      grand_total: { ...total, category_id: "grand_total", category_name: "grand_total", side: "all" },
+    },
+  });
 }
 
 describe("ProductCategoryPnlPage", () => {
@@ -98,6 +190,131 @@ describe("ProductCategoryPnlPage", () => {
       "/ledger-pnl?report_date=2026-02-28",
     );
     expect(within(table).getAllByRole("row")).toHaveLength(20);
+  });
+
+  it("renders monthly MoM operating attribution from the formal baseline", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    await waitFor(() => {
+      expect(attributionSpy).toHaveBeenCalledWith({
+        reportDate: "2026-02-28",
+        compare: "mom",
+      });
+    });
+    const attribution = await screen.findByTestId("product-category-attribution");
+    await waitFor(() => {
+      expect(attribution).toHaveTextContent("拆放同业");
+    });
+    expect(attribution).toHaveTextContent("经营差异归因");
+    expect(attribution).toHaveTextContent("正式基线");
+    expect(attribution).toHaveTextContent("拆放同业");
+    expect(attribution).toHaveTextContent("规模因素");
+    expect(attribution).toHaveTextContent("本期净营收");
+    expect(attribution).toHaveTextContent("对比期净营收");
+    expect(attribution).toHaveTextContent("0.30");
+    expect(attribution).toHaveTextContent("0.18");
+    const comparison = screen.getByTestId("product-category-attribution-comparison-table");
+    expect(comparison).toHaveTextContent("规模因素");
+    expect(comparison).toHaveTextContent("利率因素");
+    const grandTotalRow = screen.getByTestId("product-category-attribution-comparison-row-grand_total");
+    expect(grandTotalRow).toHaveTextContent("全表合计");
+    const pointDetails = screen.getByTestId("product-category-attribution-detail-table");
+    expect(within(pointDetails).queryByText("grand_total")).not.toBeInTheDocument();
+    expect(pointDetails).toHaveTextContent("全表合计");
+    expect(pointDetails).toHaveTextContent("110.00");
+    expect(pointDetails).toHaveTextContent("100.00");
+    expect(pointDetails).toHaveTextContent("2.60%");
+    expect(pointDetails).toHaveTextContent("2.40%");
+    const detailRow = screen.getByTestId(
+      "product-category-attribution-comparison-row-interbank_lending_assets",
+    );
+    expect(detailRow).toHaveTextContent("0.30");
+    expect(detailRow).toHaveTextContent("0.18");
+    expect(pointDetails).toHaveTextContent("0.20");
+  });
+
+  it("switches product-category attribution to year-over-year comparison", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    const attribution = await screen.findByTestId("product-category-attribution");
+    await waitFor(() => {
+      expect(attribution).toHaveTextContent("拆放同业");
+    });
+    attributionSpy.mockClear();
+    await user.click(within(attribution).getByRole("button", { name: "同比" }));
+
+    await waitFor(() => {
+      expect(attributionSpy).toHaveBeenCalledWith({
+        reportDate: "2026-02-28",
+        compare: "yoy",
+      });
+    });
+    expect(attribution).toHaveTextContent("同比正式基线归因");
+    expect(attribution).toHaveTextContent("去年同期 2025年02月");
+    expect(screen.getByTestId("product-category-attribution-detail-table")).toHaveTextContent("2025年02月");
+  });
+
+  it("does not request product-category attribution outside the monthly view", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const attributionSpy = vi.fn(async (options: { reportDate: string; compare?: "mom" | "yoy" }) =>
+      buildMockAttributionEnvelope(options.reportDate, options.compare),
+    );
+    const client = {
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-02-28", "2026-01-31"],
+        }),
+      ),
+      getProductCategoryAttribution: attributionSpy,
+    } as ReturnType<typeof createApiClient> & {
+      getProductCategoryAttribution: typeof attributionSpy;
+    };
+    renderWorkbenchAppWithClient(client);
+
+    const attribution = await screen.findByTestId("product-category-attribution");
+    await waitFor(() => {
+      expect(attribution).toHaveTextContent("拆放同业");
+    });
+    attributionSpy.mockClear();
+    const viewButtons = within(screen.getByRole("group", { name: "视图模式" })).getAllByRole("button");
+    await user.click(viewButtons[1]!);
+
+    const ineligible = await screen.findByTestId("product-category-attribution-ineligible");
+    expect(ineligible).toHaveTextContent("仅支持月度视图");
+    expect(attributionSpy).not.toHaveBeenCalled();
   });
 
   it("Unit 1: first report_dates entry drives baseline PnL, manual adjustments list, and ledger link", async () => {
@@ -342,7 +559,7 @@ describe("ProductCategoryPnlPage", () => {
     expect(screen.getByTestId("product-category-liability-side-detail-credit_linked_notes")).toBeInTheDocument();
   });
 
-  it("renders the four requested derived chart panels with chart stubs", async () => {
+  it("renders the requested derived chart panels with chart stubs", async () => {
     renderWorkbenchAppWithClient(createApiClient({ mode: "mock" }));
 
     await screen.findByTestId("product-category-table");
@@ -352,7 +569,10 @@ describe("ProductCategoryPnlPage", () => {
       screen.getByTestId("product-category-derived-chart-interest-earning-income-scale"),
     ).toBeInTheDocument();
     expect(screen.getByTestId("product-category-derived-chart-interest-spread")).toBeInTheDocument();
-    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(5);
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-derived-chart-intermediate-business-income-yoy")).toBeInTheDocument();
+    expect(screen.getAllByTestId("product-category-echarts-stub")).toHaveLength(8);
   });
 
   it("builds chart series from bond_tpl, grand_total, interest_earning_assets, and liability_total fields", async () => {
@@ -485,7 +705,496 @@ describe("ProductCategoryPnlPage", () => {
       "负债端利率（%）",
     ]);
     expect(liabilityOption.xAxis).toMatchObject({ data: ["2026年01月", "2026年02月"] });
+    const liabilityMatrix = screen.getByTestId("product-category-liability-side-detail-matrix");
+    expect(within(liabilityMatrix).getByText("2026年01月")).toBeInTheDocument();
+    expect(within(liabilityMatrix).getByText("2026年02月")).toBeInTheDocument();
+    expect(within(liabilityMatrix).getByText("环比月度变动情况")).toBeInTheDocument();
+    expect(within(liabilityMatrix).getAllByText("日均额").length).toBeGreaterThanOrEqual(3);
+    expect(within(liabilityMatrix).getAllByText("收益率").length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByTestId("product-category-liability-side-detail-liability_total")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-liability-side-currency-matrix-cny")).toBeInTheDocument();
+    expect(screen.getByTestId("product-category-liability-side-currency-matrix-foreign")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("product-category-liability-side-currency-matrix-cny")).getAllByText("收益率").length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      within(screen.getByTestId("product-category-liability-side-currency-matrix-foreign")).getAllByText("收益率")
+        .length,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      screen.getByTestId("product-category-liability-side-currency-detail-cny-liability_total"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("product-category-liability-side-currency-detail-foreign-liability_total"),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("product-category-liability-side-detail-credit_linked_notes")).toBeInTheDocument();
+  });
+
+  it("renders a same-month two-year comparison chart for interest-earning asset spread", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const ratesByDate: Record<string, { asset: string; liability: string }> = {
+      "2025-01-31": { asset: "2.20", liability: "1.60" },
+      "2025-02-28": { asset: "2.28", liability: "1.63" },
+      "2025-03-31": { asset: "2.35", liability: "1.65" },
+      "2025-04-30": { asset: "2.28", liability: "1.60" },
+      "2025-05-31": { asset: "2.29", liability: "1.60" },
+      "2025-06-30": { asset: "2.32", liability: "1.60" },
+      "2025-07-31": { asset: "2.31", liability: "1.60" },
+      "2025-08-31": { asset: "2.33", liability: "1.60" },
+      "2025-09-30": { asset: "2.34", liability: "1.60" },
+      "2025-10-31": { asset: "2.36", liability: "1.60" },
+      "2025-11-30": { asset: "2.38", liability: "1.60" },
+      "2025-12-31": { asset: "2.40", liability: "1.60" },
+      "2026-01-31": { asset: "2.40", liability: "1.65" },
+      "2026-02-28": { asset: "2.48", liability: "1.68" },
+      "2026-03-31": { asset: "2.55", liability: "1.70" },
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+            "2025-09-30",
+            "2025-08-31",
+            "2025-07-31",
+            "2025-06-30",
+            "2025-05-31",
+            "2025-04-30",
+            "2025-03-31",
+            "2025-02-28",
+            "2025-01-31",
+          ],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const rates = ratesByDate[options.reportDate] ?? { asset: "2.00", liability: "1.50" };
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? { ...row, weighted_yield: rates.asset }
+                : row,
+            ),
+            liability_total: {
+              ...env.result.liability_total,
+              weighted_yield: rates.liability,
+            },
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy");
+    const comparisonOption = readChartOption("product-category-derived-chart-interest-spread-yoy");
+
+    expect(comparisonOption.xAxis).toMatchObject({
+      data: [
+        "\u0031\u6708",
+        "\u0032\u6708",
+        "\u0033\u6708",
+        "\u0034\u6708",
+        "\u0035\u6708",
+        "\u0036\u6708",
+        "\u0037\u6708",
+        "\u0038\u6708",
+        "\u0039\u6708",
+        "\u0031\u0030\u6708",
+        "\u0031\u0031\u6708",
+        "\u0031\u0032\u6708",
+      ],
+    });
+    expect(comparisonOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
+    expect(comparisonOption.series?.map((series) => series.data)).toEqual([
+      [0.6, 0.65, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
+      [0.75, 0.8, 0.85, null, null, null, null, null, null, null, null, null],
+    ]);
+    expect(comparisonOption.series?.every((series) => series.label?.show)).toBe(true);
+    expect(comparisonOption.series?.map((series) => series.endLabel?.show)).toEqual([false, false]);
+  });
+
+  it("renders a CNY-basis two-year comparison chart for interest-earning asset spread", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const dateInputs: Record<string, { days: number; assetCny: number; liabilityCny: number }> = {
+      "2025-01-31": { days: 31, assetCny: 2.2, liabilityCny: 1.5 },
+      "2025-02-28": { days: 28, assetCny: 2.3, liabilityCny: 1.6 },
+      "2025-03-31": { days: 31, assetCny: 2.35, liabilityCny: 1.65 },
+      "2025-04-30": { days: 30, assetCny: 2.28, liabilityCny: 1.6 },
+      "2025-05-31": { days: 31, assetCny: 2.29, liabilityCny: 1.6 },
+      "2025-06-30": { days: 30, assetCny: 2.32, liabilityCny: 1.6 },
+      "2025-07-31": { days: 31, assetCny: 2.31, liabilityCny: 1.6 },
+      "2025-08-31": { days: 31, assetCny: 2.33, liabilityCny: 1.6 },
+      "2025-09-30": { days: 30, assetCny: 2.34, liabilityCny: 1.6 },
+      "2025-10-31": { days: 31, assetCny: 2.36, liabilityCny: 1.6 },
+      "2025-11-30": { days: 30, assetCny: 2.38, liabilityCny: 1.6 },
+      "2025-12-31": { days: 31, assetCny: 2.4, liabilityCny: 1.6 },
+      "2026-01-31": { days: 31, assetCny: 2.4, liabilityCny: 1.55 },
+      "2026-02-28": { days: 28, assetCny: 2.5, liabilityCny: 1.65 },
+      "2026-03-31": { days: 31, assetCny: 2.55, liabilityCny: 1.7 },
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+            "2025-09-30",
+            "2025-08-31",
+            "2025-07-31",
+            "2025-06-30",
+            "2025-05-31",
+            "2025-04-30",
+            "2025-03-31",
+            "2025-02-28",
+            "2025-01-31",
+          ],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const rates = dateInputs[options.reportDate] ?? { days: 31, assetCny: 2, liabilityCny: 1.5 };
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? {
+                    ...row,
+                    cny_scale: yuan(100),
+                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    weighted_yield: "9.99",
+                  }
+                : row,
+            ),
+            liability_total: {
+              ...env.result.liability_total,
+              cny_scale: yuan(80),
+              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              weighted_yield: "1.00",
+            },
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
+    const cnyOption = readChartOption("product-category-derived-chart-interest-spread-yoy-cny");
+
+    expect(cnyOption.xAxis).toMatchObject({
+      data: [
+        "\u0031\u6708",
+        "\u0032\u6708",
+        "\u0033\u6708",
+        "\u0034\u6708",
+        "\u0035\u6708",
+        "\u0036\u6708",
+        "\u0037\u6708",
+        "\u0038\u6708",
+        "\u0039\u6708",
+        "\u0031\u0030\u6708",
+        "\u0031\u0031\u6708",
+        "\u0031\u0032\u6708",
+      ],
+    });
+    expect(cnyOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
+    expect(cnyOption.series?.map((series) => series.data)).toEqual([
+      [0.7, 0.7, 0.7, 0.68, 0.69, 0.72, 0.71, 0.73, 0.74, 0.76, 0.78, 0.8],
+      [0.85, 0.85, 0.85, null, null, null, null, null, null, null, null, null],
+    ]);
+  });
+
+  it("renders a two-year comparison chart for intermediate business income from the governed row only", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const incomeByDate: Record<string, number | null> = {
+      "2025-01-31": 1,
+      "2025-02-28": 2,
+      "2025-03-31": 3,
+      "2025-04-30": 4,
+      "2025-05-31": 5,
+      "2025-06-30": 6,
+      "2025-07-31": 7,
+      "2025-08-31": 8,
+      "2025-09-30": 9,
+      "2025-10-31": 10,
+      "2025-11-30": 11,
+      "2025-12-31": 12,
+      "2026-01-31": 21,
+      "2026-02-28": 22,
+      "2026-03-31": 23,
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-11-30",
+            "2025-10-31",
+            "2025-09-30",
+            "2025-08-31",
+            "2025-07-31",
+            "2025-06-30",
+            "2025-05-31",
+            "2025-04-30",
+            "2025-03-31",
+            "2025-02-28",
+            "2025-01-31",
+          ],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const income = incomeByDate[options.reportDate];
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "intermediate_business_income"
+                ? {
+                    ...row,
+                    business_net_income: income === null ? row.business_net_income : yuan(income ?? 0),
+                    cny_net: income === null ? row.cny_net : yuan(income ?? 0),
+                  }
+                : row,
+            ),
+            asset_total: {
+              ...env.result.asset_total,
+              business_net_income: yuan(999),
+            },
+            grand_total: {
+              ...env.result.grand_total,
+              business_net_income: yuan(-999),
+            },
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-derived-chart-intermediate-business-income-yoy");
+    const incomeOption = readChartOption("product-category-derived-chart-intermediate-business-income-yoy");
+
+    expect(incomeOption.legend?.data).toEqual(["\u0032\u0030\u0032\u0035\u5e74", "\u0032\u0030\u0032\u0036\u5e74"]);
+    expect(incomeOption.xAxis).toMatchObject({
+      data: [
+        "\u0031\u6708",
+        "\u0032\u6708",
+        "\u0033\u6708",
+        "\u0034\u6708",
+        "\u0035\u6708",
+        "\u0036\u6708",
+        "\u0037\u6708",
+        "\u0038\u6708",
+        "\u0039\u6708",
+        "\u0031\u0030\u6708",
+        "\u0031\u0031\u6708",
+        "\u0031\u0032\u6708",
+      ],
+    });
+    expect(incomeOption.series?.map((series) => series.data)).toEqual([
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+      [21, 22, 23, null, null, null, null, null, null, null, null, null],
+    ]);
+  });
+
+  it("links interest-spread attribution details to all-currency and RMB chart clicks", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const dateInputs: Record<
+      string,
+      {
+        days: number;
+        asset: string;
+        liability: string;
+        assetCny: number;
+        liabilityCny: number;
+      }
+    > = {
+      "2025-01-31": { days: 31, asset: "2.20", liability: "1.60", assetCny: 2.2, liabilityCny: 1.5 },
+      "2025-02-28": { days: 28, asset: "2.28", liability: "1.63", assetCny: 2.3, liabilityCny: 1.6 },
+      "2025-03-31": { days: 31, asset: "2.35", liability: "1.65", assetCny: 2.3, liabilityCny: 1.6 },
+      "2025-12-31": { days: 31, asset: "2.40", liability: "1.60", assetCny: 2.4, liabilityCny: 1.6 },
+      "2026-01-31": { days: 31, asset: "2.40", liability: "1.65", assetCny: 2.4, liabilityCny: 1.55 },
+      "2026-02-28": { days: 28, asset: "2.48", liability: "1.68", assetCny: 2.5, liabilityCny: 1.65 },
+      "2026-03-31": { days: 31, asset: "2.55", liability: "1.70", assetCny: 2.55, liabilityCny: 1.7 },
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: [
+            "2026-03-31",
+            "2026-02-28",
+            "2026-01-31",
+            "2025-12-31",
+            "2025-03-31",
+            "2025-02-28",
+            "2025-01-31",
+          ],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? {
+                    ...row,
+                    cny_scale: yuan(100),
+                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    weighted_yield: rates.asset,
+                  }
+                : row,
+            ),
+            liability_total: {
+              ...env.result.liability_total,
+              cny_scale: yuan(80),
+              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              weighted_yield: rates.liability,
+            },
+          },
+        };
+      }),
+    });
+
+    const attribution = await screen.findByTestId("product-category-interest-spread-attribution");
+    await waitFor(() => {
+      expect(attribution).toHaveTextContent("\u5168\u53e3\u5f84");
+      expect(attribution).toHaveTextContent("\u0033\u6708");
+      expect(attribution).toHaveTextContent("+15.0bp");
+    });
+
+    const allCurrencyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy");
+    await user.click(within(allCurrencyChart).getByTestId("product-category-echarts-click-index-1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u5168\u53e3\u5f84",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u0032\u6708",
+      );
+    });
+
+    const cnyChart = screen.getByTestId("product-category-derived-chart-interest-spread-yoy-cny");
+    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-2"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u4eba\u6c11\u5e01\u53e3\u5f84",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u0033\u6708",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent("+15.0bp");
+    });
+  });
+
+  it("re-anchors the linked attribution month when the selected report date changes", async () => {
+    const user = userEvent.setup();
+    const baseClient = createApiClient({ mode: "mock" });
+    const dateInputs: Record<
+      string,
+      { days: number; asset: string; liability: string; assetCny: number; liabilityCny: number }
+    > = {
+      "2025-02-28": { days: 28, asset: "2.28", liability: "1.63", assetCny: 2.3, liabilityCny: 1.6 },
+      "2025-03-31": { days: 31, asset: "2.35", liability: "1.65", assetCny: 2.3, liabilityCny: 1.6 },
+      "2026-02-28": { days: 28, asset: "2.48", liability: "1.68", assetCny: 2.5, liabilityCny: 1.65 },
+      "2026-03-31": { days: 31, asset: "2.55", liability: "1.70", assetCny: 2.55, liabilityCny: 1.7 },
+    };
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-03-31", "2026-02-28", "2025-03-31", "2025-02-28"],
+        }),
+      ),
+      getProductCategoryPnl: vi.fn(async (options) => {
+        const env = buildMockProductCategoryPnlEnvelope(options);
+        const rates = dateInputs[options.reportDate] ?? dateInputs["2026-03-31"]!;
+        return {
+          ...env,
+          result: {
+            ...env.result,
+            rows: env.result.rows.map((row) =>
+              row.category_id === "interest_earning_assets"
+                ? {
+                    ...row,
+                    cny_scale: yuan(100),
+                    cny_cash: annualizedCash(100, rates.assetCny, rates.days),
+                    weighted_yield: rates.asset,
+                  }
+                : row,
+            ),
+            liability_total: {
+              ...env.result.liability_total,
+              cny_scale: yuan(80),
+              cny_cash: annualizedCash(80, rates.liabilityCny, rates.days),
+              weighted_yield: rates.liability,
+            },
+          },
+        };
+      }),
+    });
+
+    await screen.findByTestId("product-category-interest-spread-attribution");
+    const cnyChart = await screen.findByTestId("product-category-derived-chart-interest-spread-yoy-cny");
+    await user.click(within(cnyChart).getByTestId("product-category-echarts-click-index-1"));
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u4eba\u6c11\u5e01\u53e3\u5f84",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u0033\u6708",
+      );
+    });
+
+    const monthSelect = screen.getAllByRole("combobox")[0] as HTMLSelectElement;
+    await user.selectOptions(monthSelect, "2026-02-28");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u4eba\u6c11\u5e01\u53e3\u5f84",
+      );
+      expect(screen.getByTestId("product-category-interest-spread-attribution")).toHaveTextContent(
+        "\u0032\u6708",
+      );
+    });
+  });
+
+  it("keeps the interest-spread attribution panel visible when comparable prior data is missing", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    renderWorkbenchAppWithClient({
+      ...baseClient,
+      getProductCategoryDates: vi.fn(async () =>
+        buildMockApiEnvelope("product_category_pnl.dates", {
+          report_dates: ["2026-03-31"],
+        }),
+      ),
+    });
+
+    const panel = await screen.findByTestId("product-category-interest-spread-attribution");
+    expect(panel).toHaveTextContent("\u5f85\u8865\u6570");
+    expect(panel).toHaveTextContent("\u7f3a\u5c11\u4e0a\u5e74\u540c\u6708\u6570\u636e");
   });
 
   it("makes the interest spread trend visually prominent without clipping out-of-band values", async () => {
@@ -588,7 +1297,7 @@ describe("ProductCategoryPnlPage", () => {
       });
     });
     await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledTimes(8);
+      expect(getProductCategoryPnl).toHaveBeenCalledTimes(9);
     });
     const trendHistoryCalls = getProductCategoryPnl.mock.calls
       .map((call) => call[0])
@@ -605,6 +1314,7 @@ describe("ProductCategoryPnlPage", () => {
       "2025-03-31:monthly",
       "2025-06-30:monthly",
       "2025-09-30:monthly",
+      "2025-10-31:monthly",
       "2025-11-30:monthly",
       "2025-12-31:monthly",
       "2026-01-31:monthly",
@@ -615,7 +1325,7 @@ describe("ProductCategoryPnlPage", () => {
     const viewButtons = within(screen.getByRole("group", { name: "视图模式" })).getAllByRole("button");
     await user.click(viewButtons[1]!);
     await waitFor(() => {
-      expect(getProductCategoryPnl).toHaveBeenCalledTimes(8);
+      expect(getProductCategoryPnl).toHaveBeenCalledTimes(9);
     });
     const ytdCalls = getProductCategoryPnl.mock.calls
       .map((call) => call[0])
@@ -625,6 +1335,7 @@ describe("ProductCategoryPnlPage", () => {
       "2025-03-31:ytd",
       "2025-06-30:ytd",
       "2025-09-30:ytd",
+      "2025-10-31:ytd",
       "2025-11-30:ytd",
       "2025-12-31:ytd",
       "2026-01-31:ytd",

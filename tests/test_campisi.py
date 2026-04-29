@@ -9,17 +9,18 @@ Covers:
 - Full Campisi attribution: income + treasury + spread + selection = total_return
 - Edge cases: flat curve, zero spread, missing curve data
 """
-import pytest
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
 from backend.app.core_finance.campisi import (
-    interpolate_treasury_yield_pct,
     _coerce_percent_curve,
     benchmark_yield_change_decimal,
-    credit_spread_change_decimal,
     campisi_attribution,
+    credit_spread_change_decimal,
     infer_credit_rating_from_asset_class,
+    interpolate_treasury_yield_pct,
 )
 
 
@@ -353,6 +354,28 @@ class TestFullCampisiAttribution:
             + totals["selection_effect"]
         )
         assert abs(sum_effects - totals["total_return"]) < 1.0  # Within 1 yuan
+
+    def test_full_price_total_return_uses_accrued_interest_when_available(self):
+        """Campisi total return should use full-price change when accrued interest is supplied."""
+        positions = [
+            {
+                "bond_code": "AI.IB",
+                "instrument_id": "AI.IB",
+                "market_value_start": 1000.0,
+                "market_value_end": 1010.0,
+                "face_value_start": 1000.0,
+                "coupon_rate_start": 0.03,
+                "yield_to_maturity_start": 0.03,
+                "asset_class_start": "credit AAA",
+                "maturity_date_start": date(2028, 12, 31),
+                "accrued_interest_start": 5.0,
+                "accrued_interest_end": 8.0,
+            }
+        ]
+
+        result = campisi_attribution(positions, {}, {}, date(2026, 1, 1), date(2026, 1, 31))
+
+        assert result.totals["total_return"] == pytest.approx(13.0)
 
     def test_ac_class_zeroes_market_effects(self):
         """AC class bonds should have zero treasury/spread/selection effects."""

@@ -71,10 +71,16 @@ describe("BondAnalyticsDetailSection", () => {
       );
 
       expect(screen.getByRole("heading", { name: "分析明细" })).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-section")).toHaveAttribute(
+        "data-module-key",
+        activeTab,
+      );
+      expect(screen.getByTestId("bond-analysis-detail-header")).toBeInTheDocument();
       expect(screen.getByText(`当前查看：${def.label}`, { exact: true })).toBeInTheDocument();
       expect(screen.getByText(def.description, { exact: true })).toBeInTheDocument();
 
       expect(await screen.findByTestId(mockTestId)).toBeInTheDocument();
+      expect(screen.getByTestId("bond-analysis-detail-content")).toBeInTheDocument();
     },
   );
 

@@ -6,37 +6,9 @@ from decimal import Decimal
 from typing import Any, Iterable, Mapping
 
 from app.core_finance.safe_decimal import safe_decimal
+from app.core_finance.macro.helpers import get_value as _get_value, coerce_date as _coerce_date
 
 _PREFERRED_TENORS = ("3Y", "5Y", "1Y")
-
-
-def _get_value(record: Any, *keys: str, default: Any = None) -> Any:
-    for key in keys:
-        if isinstance(record, Mapping) and key in record:
-            value = record[key]
-        else:
-            value = getattr(record, key, None)
-        if value is not None:
-            return value
-    return default
-
-
-def _coerce_date(value: Any) -> date | None:
-    if value is None:
-        return None
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str):
-        try:
-            return date.fromisoformat(value.strip()[:10])
-        except ValueError:
-            return None
-    if hasattr(value, "date"):
-        try:
-            return value.date()
-        except Exception:
-            return None
-    return None
 
 
 def _build_curves(

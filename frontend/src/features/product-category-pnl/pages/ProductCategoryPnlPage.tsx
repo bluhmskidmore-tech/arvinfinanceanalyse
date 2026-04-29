@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
+import type { EChartsReactProps } from "echarts-for-react/lib/types";
 
 import { runPollingTask } from "../../../app/jobs/polling";
 import { useApiClient } from "../../../api/client";
 import { FilterBar } from "../../../components/FilterBar";
-import type { ProductCategoryManualAdjustmentRequest } from "../../../api/contracts";
+import type {
+  ProductCategoryAttributionPayload,
+  ProductCategoryAttributionRow,
+  ProductCategoryManualAdjustmentRequest,
+} from "../../../api/contracts";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -14,12 +19,16 @@ import { ProductCategoryGovernanceStrip } from "./ProductCategoryGovernanceStrip
 import {
   PRODUCT_CATEGORY_AS_OF_DATE_GAP_COPY,
   PRODUCT_CATEGORY_FTP_SCENARIO_OPTIONS,
+  type ProductCategoryInterestSpreadAttributionSelection,
+  type ProductCategoryInterestSpreadAttributionSurface,
+  type ProductCategoryInterestSpreadBasis,
   buildProductCategoryDiagnosticsSurface,
   buildProductCategoryLiabilitySideTrendSurface,
   buildProductCategoryTrendSnapshot,
   buildLedgerPnlHrefForReportDate,
   collectProductCategoryGovernanceNotices,
   defaultProductCategoryScenarioRateForReportDate,
+  formatProductCategoryAttributionEffect,
   formatProductCategoryDualMetaDistinctLine,
   formatProductCategoryReportMonthLabel,
   formatProductCategoryRowDisplayValue,
@@ -29,9 +38,13 @@ import {
   selectProductCategoryCurrencyNetIncomeChart,
   selectDisplayedProductCategoryGrandTotal,
   selectProductCategoryDetailRows,
+  selectProductCategoryIntermediateBusinessIncomeYearComparisonChart,
   selectProductCategoryInterestEarningIncomeScaleChart,
+  selectProductCategoryInterestSpreadAttributionSurface,
   selectProductCategoryInterestSpreadChart,
+  selectProductCategoryInterestSpreadYearComparisonChart,
   selectProductCategoryTplScaleYieldChart,
+  selectProductCategoryTwoYearInterestSpreadReportPoints,
   selectProductCategoryTrendReportPoints,
   toneForProductCategoryValue,
 } from "./productCategoryPnlPageModel";
@@ -129,6 +142,30 @@ function SectionLead(props: {
   );
 }
 
+function reportDateYearMonth(reportDate: string): { year: number; month: number } | null {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(reportDate);
+  if (!match) {
+    return null;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+  return { year, month };
+}
+
+function monthAnchoredInterestSpreadSelection(
+  current: ProductCategoryInterestSpreadAttributionSelection,
+  reportDate: string,
+): ProductCategoryInterestSpreadAttributionSelection {
+  const parsed = reportDateYearMonth(reportDate);
+  if (!parsed || current.month === parsed.month) {
+    return current;
+  }
+  return { ...current, month: parsed.month };
+}
+
 function diagnosticsToneClassName(tone: "neutral" | "positive" | "negative"): string {
   if (tone === "positive") {
     return "product-category-diagnostics__value--positive";
@@ -144,6 +181,8 @@ type DerivedChartPanelProps = {
   title: string;
   description: string;
   option: EChartsOption | null;
+  wide?: boolean;
+  onEvents?: EChartsReactProps["onEvents"];
 };
 
 function buildDualAxisChartOption(input: {
@@ -242,14 +281,16 @@ function buildInterestSpreadChartOption(input: {
   labels: string[];
   series: Array<{
     name: string;
-    data: number[];
+    data: Array<number | null>;
     color: string;
   }>;
 }): EChartsOption | null {
-  if (!input.labels.length || input.series.every((series) => series.data.length === 0)) {
+  const values = input.series
+    .flatMap((series) => series.data)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!input.labels.length || values.length === 0) {
     return null;
   }
-  const values = input.series.flatMap((series) => series.data).filter(Number.isFinite);
   const minValue = values.length ? Math.min(...values) : 0;
   const maxValue = values.length ? Math.max(...values) : 0;
   const range = maxValue - minValue;
@@ -295,6 +336,130 @@ function buildInterestSpreadChartOption(input: {
         fontWeight: 700,
       },
       labelLayout: { moveOverlap: "shiftY" },
+      emphasis: { focus: "series" },
+    })),
+  };
+}
+
+function buildInterestSpreadYearComparisonChartOption(input: {
+  labels: string[];
+  series: Array<{
+    name: string;
+    data: Array<number | null>;
+    color: string;
+  }>;
+}): EChartsOption | null {
+  const values = input.series
+    .flatMap((series) => series.data)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!input.labels.length || values.length === 0) {
+    return null;
+  }
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue;
+  const padding = Math.max(range * 0.18, 0.05);
+  const yAxisMin = Number((minValue - padding).toFixed(2));
+  const yAxisMax = Number((maxValue + padding).toFixed(2));
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: input.series.map((series) => series.name) },
+    grid: { left: 56, right: 28, top: 20, bottom: 58 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLabel: { interval: 0 },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: {
+      type: "value",
+      name: "%",
+      min: yAxisMin,
+      max: yAxisMax,
+      scale: true,
+      axisLabel: { formatter: "{value}%" },
+      splitLine: { lineStyle: { type: "solid", color: designTokens.color.neutral[300] } },
+    },
+    series: input.series.map((series, index) => ({
+      name: series.name,
+      type: "line",
+      data: series.data,
+      smooth: false,
+      showSymbol: true,
+      symbol: index === 0 ? "diamond" : "rect",
+      symbolSize: 7,
+      itemStyle: { color: series.color },
+      lineStyle: { color: series.color, width: 2.6 },
+      label: {
+        show: true,
+        formatter: "{c}%",
+        color: designTokens.color.neutral[900],
+        position: index === 0 ? "top" : "bottom",
+        distance: 4,
+      },
+      endLabel: { show: false },
+      emphasis: { focus: "series" },
+    })),
+  };
+}
+
+function buildIncomeYearComparisonChartOption(input: {
+  labels: string[];
+  series: Array<{
+    name: string;
+    data: Array<number | null>;
+    color: string;
+  }>;
+}): EChartsOption | null {
+  const values = input.series
+    .flatMap((series) => series.data)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  if (!input.labels.length || values.length === 0) {
+    return null;
+  }
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue;
+  const padding = Math.max(range * 0.18, 0.5);
+  return {
+    tooltip: { trigger: "axis" },
+    legend: { bottom: 0, data: input.series.map((series) => series.name) },
+    grid: { left: 56, right: 28, top: 20, bottom: 58 },
+    xAxis: {
+      type: "category",
+      data: input.labels,
+      axisTick: { show: false },
+      axisLabel: { interval: 0 },
+      axisLine: { lineStyle: { color: designTokens.color.neutral[300] } },
+    },
+    yAxis: {
+      type: "value",
+      name: "亿元",
+      min: Number((minValue - padding).toFixed(2)),
+      max: Number((maxValue + padding).toFixed(2)),
+      scale: true,
+      axisLabel: { formatter: "{value}" },
+      splitLine: { lineStyle: { type: "solid", color: designTokens.color.neutral[300] } },
+    },
+    series: input.series.map((series, index) => ({
+      name: series.name,
+      type: "line",
+      data: series.data,
+      smooth: false,
+      showSymbol: true,
+      symbol: index === 0 ? "diamond" : "rect",
+      symbolSize: 7,
+      itemStyle: { color: series.color },
+      lineStyle: { color: series.color, width: 2.6 },
+      label: {
+        show: true,
+        formatter: "{c}",
+        color: designTokens.color.neutral[900],
+        position: index === 0 ? "top" : "bottom",
+        distance: 4,
+      },
+      endLabel: { show: false },
       emphasis: { focus: "series" },
     })),
   };
@@ -362,8 +527,11 @@ function DerivedChartPanel(props: DerivedChartPanelProps) {
   if (!props.option) {
     return null;
   }
+  const className = props.wide
+    ? "product-category-derived-chart product-category-derived-chart--wide"
+    : "product-category-derived-chart";
   return (
-    <article className="product-category-derived-chart" data-testid={props.testId}>
+    <article className={className} data-testid={props.testId}>
       <div className="product-category-derived-chart__header">
         <h3 className="product-category-derived-chart__title">{props.title}</h3>
         <p className="product-category-derived-chart__description">{props.description}</p>
@@ -373,9 +541,470 @@ function DerivedChartPanel(props: DerivedChartPanelProps) {
         className="product-category-derived-chart__canvas"
         notMerge
         lazyUpdate
+        onEvents={props.onEvents}
       />
     </article>
   );
+}
+
+const ATTRIBUTION_EFFECT_COLUMNS = [
+  ["scale_effect", "规模因素"],
+  ["rate_effect", "利率因素"],
+  ["day_effect", "天数因素"],
+  ["ftp_effect", "FTP因素"],
+  ["direct_effect", "直接因素"],
+  ["unexplained_effect", "未解释"],
+] as const;
+
+const ATTRIBUTION_POINT_COLUMNS = [
+  ["scale", "日均"],
+  ["cash", "收支"],
+  ["yield_pct", "利率"],
+  ["ftp", "FTP"],
+  ["business_net_income", "净营收"],
+] as const;
+
+type ProductCategoryAttributionCompare = ProductCategoryAttributionPayload["compare"];
+
+const ATTRIBUTION_COMPARE_OPTIONS: Array<{
+  value: ProductCategoryAttributionCompare;
+  label: string;
+}> = [
+  { value: "mom", label: "月环比" },
+  { value: "yoy", label: "同比" },
+];
+
+function productCategoryAttributionPriorLabel(compare: ProductCategoryAttributionCompare): string {
+  return compare === "yoy" ? "去年同期" : "上期";
+}
+
+function productCategoryAttributionLoadingCopy(compare: ProductCategoryAttributionCompare): string {
+  return compare === "yoy" ? "正在加载同比经营差异归因。" : "正在加载月环比经营差异归因。";
+}
+
+function productCategoryAttributionIncompleteCopy(compare: ProductCategoryAttributionCompare): string {
+  return compare === "yoy"
+    ? "缺少去年同期正式月度数据，暂不能做同比归因。"
+    : "缺少上月正式月度数据，暂不能做月环比归因。";
+}
+
+function ProductCategoryInterestSpreadAttributionPanel(props: {
+  surface: ProductCategoryInterestSpreadAttributionSurface | null;
+}) {
+  if (!props.surface) {
+    return null;
+  }
+  const basisLabel = props.surface.selected.basis === "cny" ? "人民币口径" : "全口径";
+  return (
+    <article
+      className="product-category-interest-spread-attribution"
+      data-testid="product-category-interest-spread-attribution"
+    >
+      <div className="product-category-interest-spread-attribution__header">
+        <div>
+          <h3 className="product-category-interest-spread-attribution__title">利差同比归因</h3>
+          <p className="product-category-interest-spread-attribution__description">
+            {basisLabel} · {props.surface.selected.month}月 · 生息资产收益率 - 负债端成本率
+          </p>
+        </div>
+        <span className="product-category-interest-spread-attribution__badge">
+          {props.surface.complete ? "闭合" : "待补数"}
+        </span>
+      </div>
+      <div className="product-category-interest-spread-attribution__summary">
+        {props.surface.rows.map((row) => (
+          <div className="product-category-interest-spread-attribution__metric" key={row.key}>
+            <span className="product-category-interest-spread-attribution__metric-label">{row.label}</span>
+            <strong>{row.contributionLabel}</strong>
+            <span>
+              {row.priorLabel} → {row.currentLabel}
+            </span>
+          </div>
+        ))}
+      </div>
+      {props.surface.incompleteReasons.length > 0 ? (
+        <div className="product-category-interest-spread-attribution__notice">
+          {props.surface.incompleteReasons.join(" ")}
+        </div>
+      ) : null}
+      <div className="product-category-interest-spread-attribution__table-wrap">
+        <table className="product-category-interest-spread-attribution__table">
+          <thead>
+            <tr>
+              <th>{"\u6307\u6807"}</th>
+              <th>{"\u4e0a\u5e74\u540c\u6708"}</th>
+              <th>{"\u5f53\u524d\u6708"}</th>
+              <th>{"\u53d8\u5316(bp)"}</th>
+              <th>{"\u5f52\u56e0\u8bf4\u660e"}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {props.surface.rows.map((row) => (
+              <tr key={row.key}>
+                <td>{row.label}</td>
+                <td>{row.priorLabel}</td>
+                <td>{row.currentLabel}</td>
+                <td>{row.contributionLabel}</td>
+                <td>{row.explanation}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="product-category-interest-spread-attribution__details">
+        {props.surface.details.map((detail) => (
+          <section className="product-category-interest-spread-attribution__detail" key={detail.key}>
+            <h4>{detail.label}</h4>
+            <div className="product-category-interest-spread-attribution__detail-grid">
+              {[detail.prior, detail.current].map((point, index) => (
+                <dl
+                  className="product-category-interest-spread-attribution__detail-list"
+                  key={`${detail.key}-${index}`}
+                >
+                  <dt>{point.reportLabel}</dt>
+                  <dd>{"\u65e5\u5747\u989d"} {point.amountLabel}</dd>
+                  <dd>{"\u5229\u606f\u6536\u652f"} {point.cashLabel}</dd>
+                  <dd>{"\u6536\u76ca\u7387/\u6210\u672c"} {point.yieldLabel}</dd>
+                </dl>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ProductCategoryAttributionPanel(props: {
+  selectedView: string;
+  compare: ProductCategoryAttributionCompare;
+  payload?: ProductCategoryAttributionPayload;
+  isLoading: boolean;
+  isError: boolean;
+  onCompareChange: (compare: ProductCategoryAttributionCompare) => void;
+  onRetry: () => void;
+}) {
+  if (props.selectedView !== "monthly") {
+    return (
+      <article
+        className="product-category-attribution product-category-attribution--ineligible"
+        data-testid="product-category-attribution-ineligible"
+      >
+        <div className="product-category-attribution__header">
+          <div>
+            <h3 className="product-category-attribution__title">经营差异归因</h3>
+            <p className="product-category-attribution__description">
+              仅支持月度视图，汇总视图保持原正式明细口径。
+            </p>
+          </div>
+          <span className="product-category-attribution__badge">正式基线</span>
+        </div>
+      </article>
+    );
+  }
+
+  if (props.isLoading) {
+    return (
+      <article className="product-category-attribution" data-testid="product-category-attribution">
+        <div className="product-category-attribution__empty">
+          {productCategoryAttributionLoadingCopy(props.compare)}
+        </div>
+      </article>
+    );
+  }
+
+  if (props.isError) {
+    return (
+      <article className="product-category-attribution" data-testid="product-category-attribution">
+        <div className="product-category-attribution__error">
+          <span>归因数据加载失败。</span>
+          <button type="button" onClick={props.onRetry}>
+            重试
+          </button>
+        </div>
+      </article>
+    );
+  }
+
+  if (!props.payload || props.payload.state === "incomplete") {
+    return (
+      <article className="product-category-attribution" data-testid="product-category-attribution">
+        <div className="product-category-attribution__header">
+          <div>
+            <h3 className="product-category-attribution__title">经营差异归因</h3>
+            <p className="product-category-attribution__description">
+              正式基线归因，不解释 FTP 场景差异。
+            </p>
+          </div>
+          <ProductCategoryAttributionCompareSwitch
+            compare={props.compare}
+            onCompareChange={props.onCompareChange}
+          />
+        </div>
+        <div
+          className="product-category-attribution__empty"
+          data-testid="product-category-attribution-incomplete"
+        >
+          {productCategoryAttributionIncompleteCopy(props.compare)}
+        </div>
+      </article>
+    );
+  }
+
+  const headlineRow = props.payload.totals?.grand_total;
+  const headline = headlineRow?.effects;
+  const grandTotalRow = props.payload.totals?.grand_total
+    ? { ...props.payload.totals.grand_total, category_name: "全表合计" }
+    : null;
+  const rows = props.payload.totals
+    ? [
+        ...props.payload.rows,
+        props.payload.totals.asset_total,
+        props.payload.totals.liability_total,
+        ...(grandTotalRow ? [grandTotalRow] : []),
+      ]
+    : props.payload.rows;
+  return (
+    <article className="product-category-attribution" data-testid="product-category-attribution">
+      <div className="product-category-attribution__header">
+        <div>
+          <h3 className="product-category-attribution__title">经营差异归因</h3>
+          <p className="product-category-attribution__description">
+            {props.compare === "yoy" ? "同比正式基线归因，不解释 FTP 场景差异。" : "月环比正式基线归因，不解释 FTP 场景差异。"}
+          </p>
+        </div>
+        <ProductCategoryAttributionCompareSwitch
+          compare={props.compare}
+          onCompareChange={props.onCompareChange}
+        />
+      </div>
+
+      {headline ? (
+        <div className="product-category-attribution__summary">
+          <AttributionMetric label="变动合计" value={headline.delta_business_net_income} />
+          <AttributionMetric label="本期净营收" value={headlineRow?.current?.business_net_income} />
+          <AttributionMetric label="对比期净营收" value={headlineRow?.prior?.business_net_income} />
+          <AttributionMetric label="已解释" value={headline.explained_effect} />
+          <AttributionMetric label="未解释" value={headline.unexplained_effect} />
+          <AttributionMetric label="闭合误差" value={headline.closure_error} />
+        </div>
+      ) : null}
+
+      <AttributionComparisonTable
+        compare={props.compare}
+        currentReportDate={props.payload.current_report_date}
+        priorReportDate={props.payload.prior_report_date}
+        rows={rows}
+      />
+    </article>
+  );
+}
+
+function ProductCategoryAttributionCompareSwitch(props: {
+  compare: ProductCategoryAttributionCompare;
+  onCompareChange: (compare: ProductCategoryAttributionCompare) => void;
+}) {
+  return (
+    <div className="product-category-attribution__actions">
+      <span className="product-category-attribution__badge">正式基线</span>
+      <div
+        aria-label="归因对比方式"
+        className="product-category-attribution__segmented"
+        role="group"
+      >
+        {ATTRIBUTION_COMPARE_OPTIONS.map((option) => (
+          <button
+            aria-pressed={props.compare === option.value}
+            className={[
+              "product-category-attribution__segmented-button",
+              props.compare === option.value ? "product-category-attribution__segmented-button--active" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            key={option.value}
+            onClick={() => props.onCompareChange(option.value)}
+            type="button"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AttributionMetric(props: {
+  label: string;
+  value: ProductCategoryAttributionRow["effects"]["scale_effect"] | null | undefined;
+}) {
+  return (
+    <div className="product-category-attribution__metric">
+      <span className="product-category-attribution__metric-label">{props.label}</span>
+      <span className="product-category-attribution__metric-value">
+        {formatProductCategoryAttributionEffect(props.value)}
+      </span>
+    </div>
+  );
+}
+
+function AttributionComparisonTable(props: {
+  compare: ProductCategoryAttributionCompare;
+  currentReportDate: string;
+  priorReportDate: string;
+  rows: ProductCategoryAttributionRow[];
+}) {
+  const priorLabel = productCategoryAttributionPriorLabel(props.compare);
+  return (
+    <div className="product-category-attribution__compare-wrap">
+      <div className="product-category-attribution__section-head">
+        <div>
+          <div className="product-category-attribution__section-title">归因拆分</div>
+          <p className="product-category-attribution__section-note">
+            先看变动闭合，再按需查看本期与{priorLabel}的日均、收支、利率和 FTP 明细。
+          </p>
+        </div>
+      </div>
+      <div className="product-category-attribution__table-wrap">
+        <table
+          className="product-category-attribution__table product-category-attribution__table--breakdown"
+          data-testid="product-category-attribution-comparison-table"
+        >
+          <thead>
+            <tr>
+              <th>项目</th>
+              <th>变动</th>
+              {ATTRIBUTION_EFFECT_COLUMNS.map(([, label]) => (
+                <th key={`effect-${label}`}>{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {props.rows.map((row) => (
+              <tr
+                className={attributionRowClassName(row)}
+                data-testid={`product-category-attribution-comparison-row-${row.category_id}`}
+                key={row.category_id}
+              >
+                <td className="product-category-attribution__item-cell">
+                  <span className="product-category-attribution__row-name">{row.category_name}</span>
+                  {row.state === "partial" ? (
+                    <span className="product-category-attribution__row-state">部分</span>
+                  ) : null}
+                </td>
+                <td className={attributionToneClass(row.effects.delta_business_net_income)}>
+                  {formatProductCategoryAttributionEffect(row.effects.delta_business_net_income)}
+                </td>
+                {ATTRIBUTION_EFFECT_COLUMNS.map(([key]) => (
+                  <td
+                    className={["product-category-attribution__effect-cell", attributionToneClass(row.effects[key])]
+                      .filter(Boolean)
+                      .join(" ")}
+                    key={`effect-${key}`}
+                  >
+                    {formatProductCategoryAttributionEffect(row.effects[key])}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="product-category-attribution__section-head product-category-attribution__section-head--detail">
+        <div>
+          <div className="product-category-attribution__section-title">
+            本期 / {priorLabel}明细
+          </div>
+          <p className="product-category-attribution__section-note">
+            本期 {formatProductCategoryReportMonthLabel(props.currentReportDate)} · {priorLabel}{" "}
+            {formatProductCategoryReportMonthLabel(props.priorReportDate)}
+          </p>
+        </div>
+      </div>
+      <div className="product-category-attribution__table-wrap">
+        <table
+          className="product-category-attribution__table product-category-attribution__table--detail"
+          data-testid="product-category-attribution-detail-table"
+        >
+          <thead>
+            <tr>
+              <th rowSpan={2}>项目</th>
+              <th className="product-category-attribution__group-head--current" colSpan={5}>
+                本期 {formatProductCategoryReportMonthLabel(props.currentReportDate)}
+              </th>
+              <th className="product-category-attribution__group-head--prior" colSpan={5}>
+                {priorLabel} {formatProductCategoryReportMonthLabel(props.priorReportDate)}
+              </th>
+            </tr>
+            <tr>
+              {ATTRIBUTION_POINT_COLUMNS.map(([, label]) => (
+                <th key={`detail-current-${label}`}>{label}</th>
+              ))}
+              {ATTRIBUTION_POINT_COLUMNS.map(([, label]) => (
+                <th key={`detail-prior-${label}`}>{label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {props.rows.map((row) => (
+              <tr className={attributionRowClassName(row)} key={`detail-${row.category_id}`}>
+                <td className="product-category-attribution__item-cell">
+                  <span className="product-category-attribution__row-name">{row.category_name}</span>
+                  {row.state === "partial" ? (
+                    <span className="product-category-attribution__row-state">部分</span>
+                  ) : null}
+                </td>
+                {ATTRIBUTION_POINT_COLUMNS.map(([key]) => (
+                  <td key={`detail-current-${key}`}>
+                    {formatAttributionPointValue(row, row.current, key)}
+                  </td>
+                ))}
+                {ATTRIBUTION_POINT_COLUMNS.map(([key]) => (
+                  <td className="product-category-attribution__prior-cell" key={`detail-prior-${key}`}>
+                    {formatAttributionPointValue(row, row.prior, key)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function formatAttributionPointValue(
+  row: Pick<ProductCategoryAttributionRow, "side">,
+  point: ProductCategoryAttributionRow["current"],
+  key: (typeof ATTRIBUTION_POINT_COLUMNS)[number][0],
+): string {
+  if (!point) {
+    return "-";
+  }
+  if (key === "yield_pct") {
+    const value = formatProductCategoryYieldValue(point.yield_pct);
+    return value === "-" ? "-" : `${value}%`;
+  }
+  if (key === "scale") {
+    return formatProductCategoryRowDisplayValue({ side: row.side }, point.scale);
+  }
+  return formatProductCategoryAttributionEffect(point[key]);
+}
+
+function attributionToneClass(value: ProductCategoryAttributionRow["effects"]["scale_effect"]): string {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric === 0) {
+    return "";
+  }
+  return numeric > 0
+    ? "product-category-attribution__number--positive"
+    : "product-category-attribution__number--negative";
+}
+
+function attributionRowClassName(row: ProductCategoryAttributionRow): string | undefined {
+  return row.category_id.endsWith("_total") || row.category_id === "grand_total"
+    ? "product-category-attribution__total-row"
+    : undefined;
 }
 
 export default function ProductCategoryPnlPage() {
@@ -386,6 +1015,8 @@ export default function ProductCategoryPnlPage() {
   const [scenarioRate, setScenarioRate] = useState("1.75");
   const [appliedScenarioRate, setAppliedScenarioRate] = useState("");
   const [scenarioRateTouched, setScenarioRateTouched] = useState(false);
+  const [attributionCompare, setAttributionCompare] =
+    useState<ProductCategoryAttributionCompare>("mom");
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshPollSnapshot, setRefreshPollSnapshot] = useState<{ status: string; run_id?: string } | null>(
     null,
@@ -397,6 +1028,8 @@ export default function ProductCategoryPnlPage() {
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false);
   const [adjustmentError, setAdjustmentError] = useState<string | null>(null);
   const [lastAdjustmentId, setLastAdjustmentId] = useState<string | null>(null);
+  const [interestSpreadAttributionSelection, setInterestSpreadAttributionSelection] =
+    useState<ProductCategoryInterestSpreadAttributionSelection>({ basis: "weighted", month: 1 });
   const [adjustmentDraft, setAdjustmentDraft] = useState<ProductCategoryManualAdjustmentRequest>(
     buildAdjustmentDraft(""),
   );
@@ -411,6 +1044,9 @@ export default function ProductCategoryPnlPage() {
     const next = nextDefaultReportDateIfUnset(selectedDate, datesQuery.data?.result.report_dates);
     if (next !== null) {
       setSelectedDate(next);
+      setInterestSpreadAttributionSelection((current) =>
+        monthAnchoredInterestSpreadSelection(current, next),
+      );
     }
   }, [datesQuery.data, selectedDate]);
 
@@ -433,6 +1069,9 @@ export default function ProductCategoryPnlPage() {
   const handleReportDateChange = (nextDate: string) => {
     const defaultRate = defaultProductCategoryScenarioRateForReportDate(nextDate);
     setSelectedDate(nextDate);
+    setInterestSpreadAttributionSelection((current) =>
+      monthAnchoredInterestSpreadSelection(current, nextDate),
+    );
     setScenarioRate(defaultRate);
     setScenarioRateTouched(false);
     setAppliedScenarioRate((current) => (current ? defaultRate : current));
@@ -475,6 +1114,17 @@ export default function ProductCategoryPnlPage() {
     retry: false,
   });
 
+  const attributionQuery = useQuery({
+    queryKey: ["product-category-pnl", "attribution", client.mode, selectedDate, attributionCompare],
+    queryFn: () =>
+      client.getProductCategoryAttribution({
+        reportDate: selectedDate,
+        compare: attributionCompare,
+      }),
+    enabled: Boolean(selectedDate && selectedView === "monthly"),
+    retry: false,
+  });
+
   const baseline = baselineQuery.data?.result;
   const scenario = scenarioQuery.data?.result;
   const displayedGrandTotal = selectDisplayedProductCategoryGrandTotal(
@@ -486,6 +1136,7 @@ export default function ProductCategoryPnlPage() {
   const displayedAssetTotal = scenario?.asset_total ?? baseline?.asset_total;
   const displayedLiabilityTotal = scenario?.liability_total ?? baseline?.liability_total;
   const currentSelectedPayload = scenario ?? baseline;
+  const selectedYearMonth = useMemo(() => reportDateYearMonth(selectedDate), [selectedDate]);
 
   const rowsToRender = useMemo(
     () => selectProductCategoryDetailRows(baseline?.rows, scenario?.rows),
@@ -523,6 +1174,43 @@ export default function ProductCategoryPnlPage() {
       retry: false,
     })),
   });
+  const interestSpreadComparisonReportPoints = useMemo(
+    () =>
+      selectProductCategoryTwoYearInterestSpreadReportPoints(
+        selectedDate,
+        datesQuery.data?.result.report_dates,
+        selectedView,
+      ),
+    [datesQuery.data?.result.report_dates, selectedDate, selectedView],
+  );
+  const interestSpreadComparisonCurrentPoint = useMemo(
+    () => interestSpreadComparisonReportPoints.find((point) => point.reportDate === selectedDate),
+    [interestSpreadComparisonReportPoints, selectedDate],
+  );
+  const interestSpreadComparisonHistoryPoints = useMemo(
+    () => interestSpreadComparisonReportPoints.filter((point) => point.reportDate !== selectedDate),
+    [interestSpreadComparisonReportPoints, selectedDate],
+  );
+  const interestSpreadComparisonQueries = useQueries({
+    queries: interestSpreadComparisonHistoryPoints.map((point) => ({
+      queryKey: [
+        "product-category-pnl",
+        "trend-history",
+        client.mode,
+        point.reportDate,
+        point.view,
+        appliedScenarioRate,
+      ],
+      queryFn: () =>
+        client.getProductCategoryPnl({
+          reportDate: point.reportDate,
+          view: point.view,
+          ...(appliedScenarioRate ? { scenarioRatePct: appliedScenarioRate } : {}),
+        }),
+      enabled: Boolean(point.reportDate && point.view),
+      retry: false,
+    })),
+  });
   const trendSnapshots = useMemo(
     () => [
       ...(currentSelectedPayload
@@ -533,6 +1221,34 @@ export default function ProductCategoryPnlPage() {
       ),
     ],
     [currentSelectedPayload, currentTrendPoint?.label, trendHistoryPoints, trendHistoryQueries],
+  );
+  const interestSpreadComparisonSnapshots = useMemo(
+    () => [
+      ...(currentSelectedPayload && interestSpreadComparisonCurrentPoint
+        ? [
+            buildProductCategoryTrendSnapshot(
+              currentSelectedPayload,
+              interestSpreadComparisonCurrentPoint.label,
+            ),
+          ]
+        : []),
+      ...interestSpreadComparisonQueries.flatMap((query, index) =>
+        query.data
+          ? [
+              buildProductCategoryTrendSnapshot(
+                query.data.result,
+                interestSpreadComparisonHistoryPoints[index]?.label,
+              ),
+            ]
+          : [],
+      ),
+    ],
+    [
+      currentSelectedPayload,
+      interestSpreadComparisonCurrentPoint,
+      interestSpreadComparisonHistoryPoints,
+      interestSpreadComparisonQueries,
+    ],
   );
   const diagnosticsSurface = useMemo(
     () =>
@@ -572,6 +1288,46 @@ export default function ProductCategoryPnlPage() {
   const interestSpreadChart = useMemo(
     () => selectProductCategoryInterestSpreadChart(trendSnapshots),
     [trendSnapshots],
+  );
+  const interestSpreadYearComparisonChart = useMemo(
+    () => selectProductCategoryInterestSpreadYearComparisonChart(interestSpreadComparisonSnapshots),
+    [interestSpreadComparisonSnapshots],
+  );
+  const cnyInterestSpreadYearComparisonChart = useMemo(
+    () => selectProductCategoryInterestSpreadYearComparisonChart(interestSpreadComparisonSnapshots, "cny"),
+    [interestSpreadComparisonSnapshots],
+  );
+  const intermediateBusinessIncomeYearComparisonChart = useMemo(
+    () => selectProductCategoryIntermediateBusinessIncomeYearComparisonChart(interestSpreadComparisonSnapshots),
+    [interestSpreadComparisonSnapshots],
+  );
+  const interestSpreadAttributionSurface = useMemo(
+    () =>
+      selectedYearMonth
+        ? selectProductCategoryInterestSpreadAttributionSurface(
+            interestSpreadComparisonSnapshots,
+            interestSpreadAttributionSelection,
+            selectedYearMonth.year,
+          )
+        : null,
+    [interestSpreadAttributionSelection, interestSpreadComparisonSnapshots, selectedYearMonth],
+  );
+  const handleInterestSpreadAttributionPointClick = useCallback(
+    (
+      basis: ProductCategoryInterestSpreadBasis,
+      monthKeys: number[] | undefined,
+      params: { dataIndex?: number },
+    ) => {
+      if (typeof params.dataIndex !== "number") {
+        return;
+      }
+      const month = monthKeys?.[params.dataIndex];
+      if (!month) {
+        return;
+      }
+      setInterestSpreadAttributionSelection({ basis, month });
+    },
+    [],
   );
   const tplScaleYieldOption = useMemo(
     () =>
@@ -683,6 +1439,57 @@ export default function ProductCategoryPnlPage() {
           })
         : null,
     [interestSpreadChart],
+  );
+  const interestSpreadYearComparisonOption = useMemo(
+    () =>
+      interestSpreadYearComparisonChart
+        ? buildInterestSpreadYearComparisonChartOption({
+            labels: interestSpreadYearComparisonChart.labels,
+            series: interestSpreadYearComparisonChart.series.map((series, index) => ({
+              name: series.year,
+              data: series.spread,
+              color:
+                index === interestSpreadYearComparisonChart.series.length - 1
+                  ? designTokens.color.danger[500]
+                  : designTokens.color.neutral[500],
+            })),
+          })
+        : null,
+    [interestSpreadYearComparisonChart],
+  );
+  const cnyInterestSpreadYearComparisonOption = useMemo(
+    () =>
+      cnyInterestSpreadYearComparisonChart
+        ? buildInterestSpreadYearComparisonChartOption({
+            labels: cnyInterestSpreadYearComparisonChart.labels,
+            series: cnyInterestSpreadYearComparisonChart.series.map((series, index) => ({
+              name: series.year,
+              data: series.spread,
+              color:
+                index === cnyInterestSpreadYearComparisonChart.series.length - 1
+                  ? designTokens.color.primary[600]
+                  : designTokens.color.neutral[500],
+            })),
+          })
+        : null,
+    [cnyInterestSpreadYearComparisonChart],
+  );
+  const intermediateBusinessIncomeYearComparisonOption = useMemo(
+    () =>
+      intermediateBusinessIncomeYearComparisonChart
+        ? buildIncomeYearComparisonChartOption({
+            labels: intermediateBusinessIncomeYearComparisonChart.labels,
+            series: intermediateBusinessIncomeYearComparisonChart.series.map((series, index) => ({
+              name: series.year,
+              data: series.income,
+              color:
+                index === intermediateBusinessIncomeYearComparisonChart.series.length - 1
+                  ? designTokens.color.success[600]
+                  : designTokens.color.neutral[500],
+            })),
+          })
+        : null,
+    [intermediateBusinessIncomeYearComparisonChart],
   );
   const liabilitySideTrendOption = useMemo(
     () =>
@@ -1453,6 +2260,16 @@ export default function ProductCategoryPnlPage() {
         </button>
       </div>
 
+      <ProductCategoryAttributionPanel
+        selectedView={selectedView}
+        compare={attributionCompare}
+        payload={attributionQuery.data?.result}
+        isLoading={attributionQuery.isLoading}
+        isError={attributionQuery.isError}
+        onCompareChange={setAttributionCompare}
+        onRetry={() => void attributionQuery.refetch()}
+      />
+
       <SectionLead
         eyebrow="正式口径"
         title="正式产品类别损益表"
@@ -1828,7 +2645,189 @@ export default function ProductCategoryPnlPage() {
                 {liabilitySideTrendSurface.incompleteReasons.join("；")}
               </div>
             ) : null}
-            {liabilitySideTrendSurface.detailRows.length > 0 ? (
+            {liabilitySideTrendSurface.detailMatrix.rows.length > 0 ? (
+              <>
+                <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
+                  <table
+                    className="product-category-diagnostics__table product-category-liability-matrix"
+                    data-testid="product-category-liability-side-detail-matrix"
+                    aria-label="负债端明细趋势矩阵"
+                  >
+                    <thead>
+                      <tr>
+                        <th
+                          className="product-category-diagnostics__table-head product-category-liability-matrix__item-head"
+                          rowSpan={2}
+                          scope="col"
+                        >
+                          负债明细
+                        </th>
+                        {liabilitySideTrendSurface.detailMatrix.periods.map((period) => (
+                          <th
+                            key={period.key}
+                            className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
+                            colSpan={2}
+                            scope="colgroup"
+                            data-testid={`product-category-liability-side-period-${period.key}`}
+                          >
+                            {period.label}
+                          </th>
+                        ))}
+                        <th
+                          className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
+                          colSpan={2}
+                          scope="colgroup"
+                        >
+                          {liabilitySideTrendSurface.detailMatrix.movementGroupLabel}
+                        </th>
+                      </tr>
+                      <tr>
+                        {liabilitySideTrendSurface.detailMatrix.periods.map((period) => (
+                          <Fragment key={period.key}>
+                            <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                              日均额
+                            </th>
+                            <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                              收益率
+                            </th>
+                          </Fragment>
+                        ))}
+                        <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                          日均额
+                        </th>
+                        <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                          收益率
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {liabilitySideTrendSurface.detailMatrix.rows.map((item) => (
+                        <tr
+                          key={item.categoryId}
+                          className={item.isSummary ? "product-category-liability-matrix__summary-row" : undefined}
+                          data-testid={`product-category-liability-side-detail-${item.categoryId}`}
+                        >
+                          <td className="product-category-diagnostics__table-cell product-category-liability-matrix__item-cell">
+                            {item.categoryLabel}
+                          </td>
+                          {item.cells.map((cell) => (
+                            <Fragment key={cell.periodKey}>
+                              <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                {cell.amountLabel}
+                              </td>
+                              <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                {cell.rateLabel}
+                              </td>
+                            </Fragment>
+                          ))}
+                          <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                            {item.movement.amountLabel}
+                          </td>
+                          <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                            {item.movement.rateLabel}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="product-category-liability-matrix__currency-grid">
+                  {liabilitySideTrendSurface.detailMatrix.currencyMatrices.map((currencyMatrix) => (
+                    <section
+                      key={currencyMatrix.currencyKey}
+                      className="product-category-liability-matrix__currency-section"
+                    >
+                      <h3 className="product-category-liability-matrix__currency-title">
+                        {currencyMatrix.currencyLabel}
+                      </h3>
+                      <div className="product-category-diagnostics__table-wrap product-category-liability-matrix__wrap">
+                        <table
+                          className="product-category-diagnostics__table product-category-liability-matrix product-category-liability-matrix--currency"
+                          data-testid={`product-category-liability-side-currency-matrix-${currencyMatrix.currencyKey}`}
+                          aria-label={`${currencyMatrix.currencyLabel}负债结构`}
+                        >
+                          <thead>
+                            <tr>
+                              <th
+                                className="product-category-diagnostics__table-head product-category-liability-matrix__item-head"
+                                rowSpan={2}
+                                scope="col"
+                              >
+                                负债明细
+                              </th>
+                              {liabilitySideTrendSurface.detailMatrix.periods.map((period) => (
+                                <th
+                                  key={period.key}
+                                  className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
+                                  colSpan={2}
+                                  scope="colgroup"
+                                >
+                                  {period.label}
+                                </th>
+                              ))}
+                              <th
+                                className="product-category-diagnostics__table-head product-category-liability-matrix__group-head"
+                                colSpan={2}
+                                scope="colgroup"
+                              >
+                                {currencyMatrix.movementGroupLabel}
+                              </th>
+                            </tr>
+                            <tr>
+                              {liabilitySideTrendSurface.detailMatrix.periods.map((period) => (
+                                <Fragment key={period.key}>
+                                  <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                                    日均额
+                                  </th>
+                                  <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                                    收益率
+                                  </th>
+                                </Fragment>
+                              ))}
+                              <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                                日均额
+                              </th>
+                              <th className="product-category-diagnostics__table-head product-category-liability-matrix__metric-head">
+                                收益率
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {currencyMatrix.rows.map((item) => (
+                              <tr
+                                key={item.categoryId}
+                                className={item.isSummary ? "product-category-liability-matrix__summary-row" : undefined}
+                                data-testid={`product-category-liability-side-currency-detail-${currencyMatrix.currencyKey}-${item.categoryId}`}
+                              >
+                                <td className="product-category-diagnostics__table-cell product-category-liability-matrix__item-cell">
+                                  {item.categoryLabel}
+                                </td>
+                                {item.cells.map((cell) => (
+                                  <Fragment key={cell.periodKey}>
+                                    <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                      {cell.amountLabel}
+                                    </td>
+                                    <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                      {cell.rateLabel}
+                                    </td>
+                                  </Fragment>
+                                ))}
+                                <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                  {item.movement.amountLabel}
+                                </td>
+                                <td className="product-category-diagnostics__table-cell product-category-liability-matrix__number-cell">
+                                  {item.movement.rateLabel}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              </>
+            ) : liabilitySideTrendSurface.detailRows.length > 0 ? (
               <div className="product-category-diagnostics__table-wrap">
                 <table
                   className="product-category-diagnostics__table"
@@ -1891,7 +2890,44 @@ export default function ProductCategoryPnlPage() {
               description="按生息资产收益率减负债端付息率展示利差变化。"
               option={interestSpreadOption}
             />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-spread-yoy"
+              title="2年生息资产利差变化对比图"
+              description="按同月口径对比上年与当年生息资产利差，当前年仅展示已发生月份。"
+              option={interestSpreadYearComparisonOption}
+              onEvents={{
+                click: (params: unknown) =>
+                  handleInterestSpreadAttributionPointClick(
+                    "weighted",
+                    interestSpreadYearComparisonChart?.monthKeys,
+                    params as { dataIndex?: number },
+                  ),
+              }}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-interest-spread-yoy-cny"
+              title="人民币口径2年生息资产利差变化对比图"
+              description="按人民币生息资产收益率减人民币负债端成本，对比上年全年与当年已发生月份。"
+              option={cnyInterestSpreadYearComparisonOption}
+              onEvents={{
+                click: (params: unknown) =>
+                  handleInterestSpreadAttributionPointClick(
+                    "cny",
+                    cnyInterestSpreadYearComparisonChart?.monthKeys,
+                    params as { dataIndex?: number },
+                  ),
+              }}
+            />
+            <DerivedChartPanel
+              testId="product-category-derived-chart-intermediate-business-income-yoy"
+              title="中间业务收入两年变动对比图"
+              description="按同月口径对比上一年全年与当前年已发生月份的中间业务收入，金额单位为亿元。"
+              option={intermediateBusinessIncomeYearComparisonOption}
+            />
           </div>
+          <ProductCategoryInterestSpreadAttributionPanel
+            surface={interestSpreadAttributionSurface}
+          />
         </>
       ) : null}
     </section>

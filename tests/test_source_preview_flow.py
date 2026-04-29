@@ -10,6 +10,8 @@ from backend.app.governance.settings import get_settings
 from backend.app.repositories.governance_repo import CACHE_BUILD_RUN_STREAM, GovernanceRepository
 from tests.helpers import ROOT, load_module
 
+REFRESH_SOURCE_FAMILIES = ["zqtz", "tyw", "pnl", "pnl_514", "pnl_516", "pnl_517"]
+
 
 def test_source_preview_service_summarizes_real_zqtz_and_tyw_files():
     preview_module = load_module(
@@ -64,7 +66,7 @@ def test_source_preview_api_registers_manual_refresh_routes():
     assert "/ui/preview/source-foundation/refresh-status" in paths
 
 
-def test_source_preview_refresh_status_idle_lists_zqtz_tyw_only(tmp_path, monkeypatch):
+def test_source_preview_refresh_status_idle_lists_all_refresh_families(tmp_path, monkeypatch):
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
@@ -75,7 +77,7 @@ def test_source_preview_refresh_status_idle_lists_zqtz_tyw_only(tmp_path, monkey
     assert body["status"] == "idle"
     assert body["job_name"] == "source_preview_refresh"
     assert body["cache_key"] == "source_preview.foundation"
-    assert body["preview_sources"] == ["zqtz", "tyw"]
+    assert body["preview_sources"] == REFRESH_SOURCE_FAMILIES
     get_settings.cache_clear()
 
 
@@ -211,7 +213,7 @@ def test_source_preview_refresh_queues_async_run_and_reports_latest_status(tmp_p
     assert refresh_payload["job_name"] == "source_preview_refresh"
     assert refresh_payload["trigger_mode"] == "async"
     assert refresh_payload["cache_key"] == "source_preview.foundation"
-    assert refresh_payload["preview_sources"] == ["zqtz", "tyw"]
+    assert refresh_payload["preview_sources"] == REFRESH_SOURCE_FAMILIES
     assert queued_messages[0]["run_id"] == refresh_payload["run_id"]
     assert queued_messages[0]["duckdb_path"] == str(tmp_path / "moss.duckdb")
     assert queued_messages[0]["governance_dir"] == str(tmp_path / "governance")
@@ -267,7 +269,7 @@ def test_source_preview_refresh_async_run_dual_writes_job_state_when_configured(
     get_settings.cache_clear()
 
 
-def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz_and_tyw(
+def test_source_preview_refresh_sync_fallback_ingests_and_materializes_refresh_families(
     tmp_path,
     monkeypatch,
 ):
@@ -293,7 +295,7 @@ def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz
     assert refresh_payload["job_name"] == "source_preview_refresh"
     assert refresh_payload["trigger_mode"] == "sync-fallback"
     assert refresh_payload["cache_key"] == "source_preview.foundation"
-    assert set(refresh_payload["preview_sources"]) == {"zqtz", "tyw"}
+    assert set(refresh_payload["preview_sources"]) == {"zqtz", "tyw", "pnl"}
     assert refresh_payload["source_version"].startswith("sv_")
     assert refresh_payload["ingest_batch_id"].startswith("ib_")
 
@@ -306,12 +308,12 @@ def test_source_preview_refresh_sync_fallback_ingests_and_materializes_only_zqtz
     assert status_payload["status"] == "completed"
     assert status_payload["run_id"] == refresh_payload["run_id"]
     assert status_payload["trigger_mode"] == "terminal"
-    assert set(status_payload["preview_sources"]) == {"zqtz", "tyw"}
+    assert set(status_payload["preview_sources"]) == {"zqtz", "tyw", "pnl"}
 
     foundation_response = client.get("/ui/preview/source-foundation")
     assert foundation_response.status_code == 200
     foundation_sources = foundation_response.json()["result"]["sources"]
-    assert {source["source_family"] for source in foundation_sources} == {"zqtz", "tyw"}
+    assert {source["source_family"] for source in foundation_sources} == {"zqtz", "tyw", "pnl"}
     get_settings.cache_clear()
 
 
@@ -357,6 +359,7 @@ def test_source_preview_refresh_sync_fallback_materializes_only_current_incremen
         conn.close()
 
     assert rows == [
+        ("pnl", "FI损益202512.xls", "2025-12-31"),
         ("tyw", "TYWLSHOW-20251230.xls", "2025-12-30"),
         ("tyw", "TYWLSHOW-20251231.xls", "2025-12-31"),
         ("zqtz", "ZQTZSHOW-20251230.xls", "2025-12-30"),
@@ -410,7 +413,7 @@ def test_source_preview_refresh_sync_fallback_reuses_latest_manifest_when_no_new
     get_settings.cache_clear()
 
 
-def test_source_preview_foundation_endpoint_hides_stale_non_refresh_families(
+def test_source_preview_foundation_endpoint_includes_refreshed_pnl_family(
     tmp_path,
     monkeypatch,
 ):
@@ -456,7 +459,7 @@ def test_source_preview_foundation_endpoint_hides_stale_non_refresh_families(
     assert {
         source["source_family"]
         for source in foundation_response.json()["result"]["sources"]
-    } == {"tyw", "zqtz"}
+    } == {"tyw", "zqtz", "pnl"}
     get_settings.cache_clear()
 
 

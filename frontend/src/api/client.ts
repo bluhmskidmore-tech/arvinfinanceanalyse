@@ -104,6 +104,7 @@ import type {
   PnlDatesPayload,
   PnlOverviewPayload,
   PositionDirection,
+  ProductCategoryAttributionPayload,
   ProductCategoryDatesPayload,
   QdbGlMonthlyAnalysisDatesPayload,
   QdbGlMonthlyAnalysisWorkbookPayload,
@@ -127,7 +128,6 @@ import type {
   RiskTensorPayload,
   SourcePreviewHistoryPayload,
   SourcePreviewRefreshPayload,
-  ChoiceMacroRefreshPayload,
   SourcePreviewRowsPayload,
   SourcePreviewTracesPayload,
   SourcePreviewColumn,
@@ -172,13 +172,25 @@ import type { MarketDataClientMethods } from "./marketDataClient";
 import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
 import { buildMockApiEnvelope, buildMockMeta } from "../mocks/mockApiEnvelope";
-import { buildMockProductCategoryPnlEnvelope } from "../mocks/productCategoryPnl";
+import {
+  buildMockProductCategoryAttributionEnvelope,
+  buildMockProductCategoryPnlEnvelope,
+} from "../mocks/productCategoryPnl";
 import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
 import {
   createMockBalanceMovementClient,
   createRealBalanceMovementClient,
   type BalanceMovementClientMethods,
 } from "./balanceMovementClient";
+import {
+  createMockLedgerClient,
+  createRealLedgerClient,
+  type LedgerClientMethods,
+} from "./ledgerClient";
+import {
+  createMockMarketDataClient,
+  createRealMarketDataClient,
+} from "./marketDataClient";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -189,6 +201,7 @@ export type { ExecutiveClientMethods } from "./executiveClient";
 export type { MarketDataClientMethods } from "./marketDataClient";
 export type { PnlClientMethods } from "./pnlClient";
 export type { PositionsClientMethods } from "./positionsClient";
+export type { LedgerClientMethods } from "./ledgerClient";
 
 export type ApiClient = {
   mode: DataSourceMode;
@@ -199,6 +212,7 @@ export type ApiClient = {
   & BalanceAnalysisClientMethods
   & PositionsClientMethods
   & MarketDataClientMethods
+  & LedgerClientMethods
   & {
   // --- KPI 绩效考核 ---
   getKpiOwners: (params?: {
@@ -689,7 +703,7 @@ function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarE
   ];
 }
 
-function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
+function _buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
   return {
     as_of_date: reportDate?.trim() || "2026-04-23",
     proxy_label: "Tushare Shibor funding proxy (not NCD issuance matrix)",
@@ -713,7 +727,7 @@ function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPa
   };
 }
 
-const MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
+const _MOCK_MACRO_FOUNDATION_PAYLOAD: MacroVendorPayload = {
   read_target: "duckdb",
   series: [
     {
@@ -785,7 +799,7 @@ function buildMockChoiceMacroRecentPoints(
   return out;
 }
 
-const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
+const _MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
   read_target: "duckdb",
   series: [
     {
@@ -1077,7 +1091,7 @@ const MOCK_CHOICE_MACRO_LATEST_PAYLOAD: ChoiceMacroLatestPayload = {
   ],
 };
 
-const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
+const _MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
   report_date: "2026-04-10",
   environment_score: {
     report_date: "2026-04-10",
@@ -1153,7 +1167,7 @@ const MOCK_MACRO_BOND_LINKAGE_PAYLOAD: MacroBondLinkagePayload = {
   computed_at: "2026-04-13T00:00:00Z",
 };
 
-const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
+const _MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
   read_target: "duckdb",
   vendor_priority: ["choice", "akshare", "fail_closed"],
   candidate_count: 3,
@@ -1218,7 +1232,7 @@ const MOCK_FX_FORMAL_STATUS_PAYLOAD: FxFormalStatusPayload = {
   ],
 };
 
-const MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
+const _MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
   read_target: "duckdb",
   groups: [
     {
@@ -2715,6 +2729,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const mockClient: ApiClient = {
     mode: "mock",
     ...createMockBalanceMovementClient(),
+    ...createMockLedgerClient(),
+    ...createMockMarketDataClient(),
     async getHealth() {
       await delay();
       return { status: "ok" };
@@ -3110,123 +3126,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         rows,
       });
     },
-    async getMacroFoundation() {
-      await delay();
-      return buildMockApiEnvelope(
-        "preview.macro-foundation",
-        MOCK_MACRO_FOUNDATION_PAYLOAD,
-        {
-          basis: "analytical",
-          formal_use_allowed: false,
-          source_version: "sv_macro_vendor_mock",
-          vendor_version: "vv_choice_catalog_v1",
-          rule_version: "rv_phase1_macro_vendor_v1",
-          cache_version: "cv_phase1_macro_vendor_v1",
-        },
-      );
-    },
-    async getChoiceMacroLatest() {
-      await delay();
-      return buildMockApiEnvelope(
-        "macro.choice.latest",
-        MOCK_CHOICE_MACRO_LATEST_PAYLOAD,
-        {
-          basis: "analytical",
-          formal_use_allowed: false,
-          source_version: "sv_choice_macro_mock",
-          vendor_version: "vv_choice_macro_20260410",
-          rule_version: "rv_choice_macro_thin_slice_v1",
-          cache_version: "cv_choice_macro_thin_slice_v1",
-        },
-      );
-    },
-    async refreshChoiceMacro(_backfillDays?: number) {
-      await delay();
-      return {
-        status: "completed",
-        run_id: "choice_macro_refresh:mock-run",
-      } as ChoiceMacroRefreshPayload;
-    },
-    async getChoiceMacroRefreshStatus(runId: string) {
-      await delay();
-      return {
-        status: "completed",
-        run_id: runId,
-      } as ChoiceMacroRefreshPayload;
-    },
-    async getMacroBondLinkageAnalysis({ reportDate }) {
-      await delay();
-      return buildMockApiEnvelope(
-        "macro_bond_linkage.analysis",
-        {
-          ...MOCK_MACRO_BOND_LINKAGE_PAYLOAD,
-          report_date: reportDate,
-        },
-        {
-          basis: "analytical",
-          formal_use_allowed: false,
-          source_version: "sv_macro_bond_linkage_mock",
-          vendor_version: "vv_choice_macro_mock",
-          rule_version: "rv_macro_bond_linkage_v1",
-          cache_version: "cv_macro_bond_linkage_v1",
-          quality_flag: "warning",
-        },
-      );
-    },
-    async getFxFormalStatus() {
-      await delay();
-      return buildMockApiEnvelope(
-        "fx.formal.status",
-        MOCK_FX_FORMAL_STATUS_PAYLOAD,
-        {
-          basis: "formal",
-          formal_use_allowed: true,
-          source_version: "sv_fx_formal_mock",
-          vendor_version: "vv_fx_formal_mock",
-          rule_version: "rv_fx_formal_mid_v1",
-          cache_version: "cv_fx_formal_mid_v1",
-          quality_flag: "warning",
-          vendor_status: "ok",
-          fallback_mode: "latest_snapshot",
-        },
-      );
-    },
-    async getFxAnalytical() {
-      await delay();
-      return buildMockApiEnvelope(
-        "fx.analytical.groups",
-        MOCK_FX_ANALYTICAL_PAYLOAD,
-        {
-          basis: "analytical",
-          formal_use_allowed: false,
-          source_version: "sv_fx_analytical_mock",
-          vendor_version: "vv_fx_analytical_mock",
-          rule_version: "rv_fx_analytical_v1",
-          cache_version: "cv_fx_analytical_v1",
-          quality_flag: "warning",
-          vendor_status: "ok",
-          fallback_mode: "latest_snapshot",
-        },
-      );
-    },
-    async getNcdFundingProxy() {
-      await delay();
-      return buildMockApiEnvelope(
-        "market_data.ncd_proxy",
-        buildMockNcdFundingProxyPayload(),
-        {
-          basis: "analytical",
-          formal_use_allowed: false,
-          source_version: "sv_ncd_proxy_mock",
-          vendor_version: "vv_tushare_shibor",
-          rule_version: "rv_ncd_proxy_v1",
-          cache_version: "cv_ncd_proxy_v1",
-          quality_flag: "warning",
-          vendor_status: "ok",
-          fallback_mode: "none",
-        },
-      );
-    },
     async getChoiceNewsEvents(options) {
       await delay();
       return buildMockChoiceNewsEnvelope(options);
@@ -3444,6 +3343,10 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async getProductCategoryPnl(options) {
       await delay();
       return buildMockProductCategoryPnlEnvelope(options);
+    },
+    async getProductCategoryAttribution(options) {
+      await delay();
+      return buildMockProductCategoryAttributionEnvelope(options);
     },
     async getQdbGlMonthlyAnalysisDates() {
       await delay();
@@ -4868,6 +4771,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   return {
     mode,
     ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
+    ...createRealLedgerClient({ fetchImpl, baseUrl }),
+    ...createRealMarketDataClient({ fetchImpl, baseUrl }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },
@@ -5645,30 +5550,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/traces?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
       ),
-    getMacroFoundation: () =>
-      requestJson<MacroVendorPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/preview/macro-foundation",
-      ),
-    getChoiceMacroLatest: () =>
-      requestJson<ChoiceMacroLatestPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/macro/choice-series/latest",
-      ),
-    getMacroBondLinkageAnalysis: ({ reportDate }) =>
-      requestJson<MacroBondLinkagePayload>(
-        fetchImpl,
-        baseUrl,
-        `/api/macro-bond-linkage/analysis?report_date=${encodeURIComponent(reportDate)}`,
-      ),
-    getNcdFundingProxy: () =>
-      requestJson<NcdFundingProxyPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/market-data/ncd-funding-proxy",
-      ),
     getResearchCalendarEvents: (options) => {
       const params = new URLSearchParams();
       if (options?.startDate?.trim()) {
@@ -5683,33 +5564,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/ui/calendar/supply-auctions${query ? `?${query}` : ""}`,
       ).then((payload) => payload.result.events.map(mapResearchCalendarApiEvent));
     },
-    getFxFormalStatus: () =>
-      requestJson<FxFormalStatusPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/market-data/fx/formal-status",
-      ),
-    getFxAnalytical: () =>
-      requestJson<FxAnalyticalPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/market-data/fx/analytical",
-      ),
-    refreshChoiceMacro: (backfillDays?: number) => {
-      const params = backfillDays ? `?backfill_days=${backfillDays}` : "";
-      return requestActionJson<ChoiceMacroRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/macro/choice-series/refresh${params}`,
-        { method: "POST" },
-      );
-    },
-    getChoiceMacroRefreshStatus: (runId: string) =>
-      requestActionJson<ChoiceMacroRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/macro/choice-series/refresh-status?run_id=${encodeURIComponent(runId)}`,
-      ),
     getChoiceNewsEvents: ({
       limit,
       offset,
@@ -5846,6 +5700,17 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         fetchImpl,
         baseUrl,
         `/ui/pnl/product-category?${params.toString()}`,
+      );
+    },
+    getProductCategoryAttribution: ({ reportDate, compare = "mom" }) => {
+      const params = new URLSearchParams({
+        report_date: reportDate,
+        compare,
+      });
+      return requestJson<ProductCategoryAttributionPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/pnl/product-category/attribution?${params.toString()}`,
       );
     },
     getQdbGlMonthlyAnalysisDates: () =>

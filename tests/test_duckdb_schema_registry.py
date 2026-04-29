@@ -10,7 +10,7 @@ import duckdb
 from backend.app.repositories.duckdb_migrations import register_all
 from backend.app.repositories.duckdb_schema_registry import DuckDBSchemaRegistry
 
-_BASELINE_VERSION_COUNT = 19
+_BASELINE_VERSION_COUNT = 20
 
 
 def test_apply_pending_on_fresh_db(tmp_path) -> None:
@@ -69,7 +69,7 @@ def test_migration_tracking(tmp_path) -> None:
     assert versions == list(range(1, _BASELINE_VERSION_COUNT + 1))
     assert len(rows) == _BASELINE_VERSION_COUNT
     assert any("snapshot" in str(row[1]).lower() for row in rows)
-    assert rows[-1] == (19, "bank ledger import traceability tables")
+    assert rows[-1] == (20, "bank ledger analytics read models")
 
 
 def test_duckdb_migration_registry_keeps_explicit_latest_version_contract() -> None:

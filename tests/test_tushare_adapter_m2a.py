@@ -16,6 +16,11 @@ _TOKEN_ENV = "MOSS_TUSHARE_TOKEN"
 _SERIES = "tushare.macro.cn_cpi.monthly"
 
 
+class _Cfg:
+    def __init__(self, tushare_token: str = "") -> None:
+        self.tushare_token = tushare_token
+
+
 def _install_fake_tushare(pro: _FakePro, monkeypatch) -> None:
     mod = types.ModuleType("tushare")
 
@@ -52,10 +57,26 @@ def test_fetch_macro_snapshot_normalizes_cpi_dataframe(monkeypatch):
 
 def test_fetch_macro_snapshot_no_token_raises(monkeypatch):
     monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr("backend.app.repositories.tushare_adapter._load_settings_for_token_fallback", lambda: _Cfg())
     adapter = VendorAdapter()
     with pytest.raises(RuntimeError) as exc:
         adapter.fetch_macro_snapshot(_SERIES)
     assert _TOKEN_ENV in str(exc.value)
+
+
+def test_fetch_macro_snapshot_uses_settings_token_fallback(monkeypatch):
+    monkeypatch.delenv(_TOKEN_ENV, raising=False)
+    monkeypatch.setattr(
+        "backend.app.repositories.tushare_adapter._load_settings_for_token_fallback",
+        lambda: _Cfg("settings-token"),
+    )
+    frame = pd.DataFrame([{"month": "202401", "nt_yoy": 1.2}])
+    pro = _FakePro(frame, kind="cn_cpi")
+    _install_fake_tushare(pro, monkeypatch)
+
+    out = VendorAdapter().fetch_macro_snapshot(_SERIES)
+
+    assert out["rows"][0]["trade_date"] == "2024-01-01"
 
 
 def test_fetch_macro_snapshot_tushare_import_failure_raises(monkeypatch):

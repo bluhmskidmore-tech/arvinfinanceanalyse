@@ -92,11 +92,12 @@ describe("BalanceMovementAnalysisPage", () => {
     const topMovesMom = screen.getByTestId("balance-movement-analysis-business-top-moves-mom");
     expect(topMovesMom).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("MoM Top 5");
-    expect(within(topMovesMom).queryAllByRole("listitem").length).toBeGreaterThan(0);
+    expect(within(topMovesMom).queryAllByRole("row").length).toBeGreaterThan(1);
     const interbankLendingTopMove = within(topMovesMom)
       .getByText("资产端-拆放同业")
-      .closest("li");
-    expect(interbankLendingTopMove).toHaveTextContent("ledger · 总账对账科目余额");
+      .closest("tr");
+    expect(interbankLendingTopMove).toHaveTextContent("Ledger");
+    expect(interbankLendingTopMove).toHaveTextContent("总账对账科目余额");
     const topMovesSix = screen.getByTestId("balance-movement-analysis-business-top-moves-sixmonth");
     expect(topMovesSix).toBeInTheDocument();
     expect(screen.getByTestId("balance-movement-analysis-business-top-moves")).toHaveTextContent("Top 5");
@@ -339,6 +340,40 @@ describe("BalanceMovementAnalysisPage", () => {
     const recon = screen.getByTestId("balance-movement-analysis-recon-summary");
     expect(recon).toHaveTextContent("不一致");
     expect(recon.querySelector("a")).toHaveAttribute("href", "#balance-movement-analysis-detail-anchor");
+  });
+
+  it("keeps optional drilldown modules visible when the backend omits them", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const getBalanceMovementAnalysis = baseClient.getBalanceMovementAnalysis;
+    const missingDrilldownClient: typeof baseClient = {
+      ...baseClient,
+      async getBalanceMovementAnalysis(options) {
+        const envelope = await getBalanceMovementAnalysis(options);
+        const result = { ...envelope.result };
+        delete result.basis_movement_decomposition;
+        delete result.zqtz_maturity_structure;
+        delete result.zqtz_concentration_analysis;
+
+        return {
+          ...envelope,
+          result,
+        };
+      },
+    };
+
+    renderWorkbenchApp(["/balance-movement-analysis"], {
+      client: missingDrilldownClient,
+    });
+
+    expect(await screen.findByTestId("balance-movement-analysis-basis-decomposition")).toHaveTextContent(
+      "当前接口未返回 basis_movement_decomposition",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-zqtz-maturity")).toHaveTextContent(
+      "当前接口未返回 zqtz_maturity_structure",
+    );
+    expect(screen.getByTestId("balance-movement-analysis-zqtz-concentration")).toHaveTextContent(
+      "当前接口未返回 zqtz_concentration_analysis",
+    );
   });
 
   it("surfaces date loading failures before the empty detail section", async () => {

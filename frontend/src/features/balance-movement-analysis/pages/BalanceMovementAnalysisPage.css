@@ -875,6 +875,40 @@
   line-height: 1.45;
 }
 
+.balance-movement-derived-panel--unavailable {
+  border-style: dashed;
+  background: #fbfcfe;
+}
+
+.balance-movement-derived-panel--unavailable .balance-movement-derived-panel__header strong {
+  color: #7a4b00;
+  background: #fff7e6;
+}
+
+.balance-movement-derived-empty {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #edf1f6;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.balance-movement-derived-empty span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.balance-movement-derived-empty p {
+  margin: 0;
+  color: #26364a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .balance-movement-derived-list {
   display: grid;
   gap: 6px;
@@ -1038,50 +1072,202 @@
   padding: 14px;
   border: 1px solid #edf1f6;
   border-radius: 8px;
-  background: #fbfcfe;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.92), #ffffff 46%),
+    #ffffff;
 }
 
-.balance-movement-business-summary__top-moves h2 {
-  margin: 0 0 10px;
+.balance-movement-business-summary__top-moves-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.balance-movement-business-summary__top-moves-header span {
+  display: block;
+  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.balance-movement-business-summary__top-moves-header h2 {
+  margin: 0;
   color: #26364a;
   font-size: 15px;
 }
 
-.balance-movement-business-summary__top-moves-list {
-  margin: 0;
-  padding-left: 22px;
+.balance-movement-business-summary__top-moves-header > strong {
+  padding: 4px 8px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  color: #475569;
+  background: #f8fafc;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+}
+
+.balance-movement-top-moves-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.balance-movement-top-moves-panel {
+  min-width: 0;
+  border: 1px solid #e6edf5;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.balance-movement-top-moves-panel__title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  color: #26364a;
+  align-items: center;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf1f6;
+  background: #fbfcfe;
+}
+
+.balance-movement-top-moves-panel__title h3 {
+  margin: 0;
+  color: #10284a;
   font-size: 13px;
 }
 
-.balance-movement-business-summary__top-moves-list li {
-  display: grid;
-  grid-template-columns: 28px 1fr auto auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.balance-movement-business-summary__top-moves-rank {
+.balance-movement-top-moves-panel__title span {
+  color: #64748b;
+  font-size: 10px;
   font-weight: 700;
-  color: #5c6b82;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.balance-movement-business-summary__top-moves-label {
-  min-width: 0;
+.balance-movement-top-moves-table {
+  width: 100%;
+  min-width: 620px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  color: #26364a;
+  font-size: 12px;
 }
 
-.balance-movement-business-summary__top-moves-delta {
-  justify-self: end;
+.balance-movement-top-moves-table th,
+.balance-movement-top-moves-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf1f6;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
-.balance-movement-business-summary__top-moves-side {
-  font-size: 11px;
-  font-weight: 600;
-  color: #5c6b82;
-  text-align: right;
+.balance-movement-top-moves-table tr:last-child th,
+.balance-movement-top-moves-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.balance-movement-top-moves-table thead th {
+  color: #64748b;
+  background: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.balance-movement-top-moves-table th:nth-child(1),
+.balance-movement-top-moves-table td:nth-child(1) {
+  width: 32px;
+  color: #64748b;
+  text-align: center;
+}
+
+.balance-movement-top-moves-table th:nth-child(2),
+.balance-movement-top-moves-table td:nth-child(2) {
+  width: 27%;
+  text-align: left;
+}
+
+.balance-movement-top-moves-table th:nth-child(3),
+.balance-movement-top-moves-table td:nth-child(3) {
+  width: 30%;
+  text-align: left;
+}
+
+.balance-movement-top-moves-table tbody th {
+  color: #10284a;
+  font-weight: 700;
+}
+
+.balance-movement-top-moves-table tbody th > span,
+.balance-movement-top-moves-table tbody th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-movement-top-moves-table tbody th em {
+  display: inline-flex;
+  margin-left: 6px;
+  color: #64748b;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.balance-movement-top-moves-table__source {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+}
+
+.balance-movement-top-moves-table__source strong,
+.balance-movement-top-moves-table__side {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  color: #334155;
+  background: #f8fafc;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.balance-movement-top-moves-table__source span {
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balance-movement-top-moves-table__delta {
+  display: inline-flex;
+  justify-content: flex-end;
+  min-width: 72px;
+  color: #475569;
+  font-variant-numeric: tabular-nums;
+}
+
+.balance-movement-top-moves-table__delta--up {
+  color: #166534;
+}
+
+.balance-movement-top-moves-table__delta--down {
+  color: #9f1239;
 }
 
 .balance-movement-pre-matrix-notes {
@@ -1145,6 +1331,7 @@
 
   .balance-movement-derived-grid,
   .balance-movement-concentration-grid,
+  .balance-movement-top-moves-grid,
   .balance-movement-waterfall__endpoint,
   .balance-movement-waterfall__component {
     grid-template-columns: 1fr;

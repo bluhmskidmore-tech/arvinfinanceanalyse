@@ -91,6 +91,7 @@ const workbenchSectionGroups: Record<string, WorkbenchGroupKey> = {
   "pnl-bridge": "portfolio",
   "pnl-attribution": "portfolio",
   "ledger-pnl": "portfolio",
+  "bank-ledger-dashboard": "portfolio",
   "average-balance": "portfolio",
   "market-data": "market",
   "cross-asset": "market",
@@ -304,6 +305,18 @@ export const workbenchNavigation: WorkbenchSection[] = [
     readinessLabel: "临时开放",
     governanceStatus: "temporary-exception",
     readinessNote: "直接消费后端总账损益读模型，不在前端补算科目口径汇总。",
+  },
+  {
+    key: "bank-ledger-dashboard",
+    label: "银行台账",
+    path: "/bank-ledger-dashboard",
+    icon: "analysis",
+    description: "银行债券台账资产、发行负债与净敞口驾驶舱",
+    readiness: "live",
+    readinessLabel: "临时开放",
+    governanceStatus: "temporary-exception",
+    readinessNote:
+      "接入 /api/ledger/* 新台账读链路，日期使用 as_of_date，金额 KPI 按亿元展示，明细保留原始元与 trace。",
   },
   {
     key: "risk-overview",

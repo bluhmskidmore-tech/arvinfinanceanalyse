@@ -24,6 +24,7 @@ import type {
   PnlDatesPayload,
   PnlOverviewPayload,
   ProductCategoryDatesPayload,
+  ProductCategoryAttributionPayload,
   ProductCategoryManualAdjustmentExportPayload,
   ProductCategoryManualAdjustmentListPayload,
   ProductCategoryManualAdjustmentPayload,
@@ -140,6 +141,10 @@ export type PnlClientMethods = {
     view: string;
     scenarioRatePct?: string;
   }) => Promise<ApiEnvelope<ProductCategoryPnlPayload>>;
+  getProductCategoryAttribution: (options: {
+    reportDate: string;
+    compare?: "mom" | "yoy";
+  }) => Promise<ApiEnvelope<ProductCategoryAttributionPayload>>;
   getQdbGlMonthlyAnalysisDates: () => Promise<ApiEnvelope<QdbGlMonthlyAnalysisDatesPayload>>;
   getQdbGlMonthlyAnalysisWorkbook: (options: {
     reportMonth: string;

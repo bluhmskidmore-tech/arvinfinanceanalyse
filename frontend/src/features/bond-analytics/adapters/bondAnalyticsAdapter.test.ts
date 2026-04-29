@@ -98,6 +98,11 @@ describe("bondNumericDisplay", () => {
   it("maps empty string to dash", () => {
     expect(bondNumericDisplay("")).toBe("—");
   });
+
+  it("maps undefined display strings to dash", () => {
+    expect(bondNumericDisplay("undefined")).toBe("—");
+    expect(bondNumericDisplay(num({ display: "undefined" }))).toBe("—");
+  });
 });
 
 describe("bondChartMagnitude", () => {
