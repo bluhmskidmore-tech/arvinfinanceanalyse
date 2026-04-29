@@ -85,6 +85,37 @@ def test_choice_stock_catalog_requires_confirmed_indicator_for_every_required_fa
     assert "stock_ohlcv" in readiness.missing_input_families
 
 
+def test_choice_stock_catalog_requires_confirmation_metadata(tmp_path: Path) -> None:
+    catalog_path = tmp_path / "choice_stock_catalog.json"
+    catalog_path.write_text(
+        json.dumps(
+            {
+                "catalog_version": "test_missing_confirmation_metadata",
+                "vendor_name": "choice",
+                "generated_from": "unit_test",
+                "fields": [
+                    {
+                        "input_family": family,
+                        "field_key": f"{family}_field",
+                        "vendor_indicator": f"{family}_indicator",
+                        "call": "csd" if family == "stock_ohlcv" else "css",
+                        "confirmed": True,
+                    }
+                    for family in CHOICE_STOCK_REQUIRED_INPUT_FAMILIES
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    readiness = load_choice_stock_readiness(catalog_path)
+
+    assert readiness.ready is False
+    assert readiness.status == "incomplete_catalog"
+    assert readiness.missing_input_families == list(CHOICE_STOCK_REQUIRED_INPUT_FAMILIES)
+    assert "stock_ohlcv:stock_ohlcv_field" in readiness.unconfirmed_fields
+
+
 def test_confirmed_choice_stock_catalog_is_ready(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     catalog_path.write_text(
@@ -100,6 +131,8 @@ def test_confirmed_choice_stock_catalog_is_ready(tmp_path: Path) -> None:
                         "vendor_indicator": f"{family}_indicator",
                         "call": "csd" if family == "stock_ohlcv" else "css",
                         "confirmed": True,
+                        "confirmation_source": "Choice terminal command generator fixture",
+                        "confirmed_at": "2026-04-29",
                     }
                     for family in CHOICE_STOCK_REQUIRED_INPUT_FAMILIES
                 ],

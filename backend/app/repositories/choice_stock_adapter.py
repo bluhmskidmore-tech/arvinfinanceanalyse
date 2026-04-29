@@ -35,6 +35,8 @@ class ChoiceStockCatalogEntry(BaseModel):
     vendor_indicator: str = ""
     call: ChoiceStockCall = "css"
     confirmed: bool = False
+    confirmation_source: str = ""
+    confirmed_at: str = ""
     required: bool = True
     unit: str | None = None
     description: str | None = None
@@ -90,7 +92,7 @@ def build_choice_stock_readiness(
     confirmed_families = {
         entry.input_family
         for entry in catalog.fields
-        if entry.required and entry.confirmed and entry.vendor_indicator.strip()
+        if entry.required and _entry_is_confirmed(entry)
     }
     missing_families = [
         family for family in CHOICE_STOCK_REQUIRED_INPUT_FAMILIES if family not in confirmed_families
@@ -98,7 +100,7 @@ def build_choice_stock_readiness(
     unconfirmed_fields = [
         f"{entry.input_family}:{entry.field_key}"
         for entry in catalog.fields
-        if entry.required and (not entry.confirmed or not entry.vendor_indicator.strip())
+        if entry.required and not _entry_is_confirmed(entry)
     ]
 
     if missing_families:
@@ -154,6 +156,15 @@ def _incomplete_readiness(
 
 def _format_families(families: tuple[ChoiceStockInputFamily, ...] | list[ChoiceStockInputFamily]) -> str:
     return ", ".join(families)
+
+
+def _entry_is_confirmed(entry: ChoiceStockCatalogEntry) -> bool:
+    return (
+        entry.confirmed
+        and bool(entry.vendor_indicator.strip())
+        and bool(entry.confirmation_source.strip())
+        and bool(entry.confirmed_at.strip())
+    )
 
 
 def _summarize_error(exc: Exception) -> str:
