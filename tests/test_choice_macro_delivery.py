@@ -1906,8 +1906,8 @@ def test_tushare_ncd_shibor_refresh_materializes_proxy_rows(tmp_path, monkeypatc
     assert all(row[1:] == ("tushare", "tushare_ncd_shibor_proxy", "stable") for row in catalog_rows)
 
     envelope = ncd_service.ncd_funding_proxy_envelope()
-    assert envelope["result_meta"]["source_version"] == "sv_ncd_proxy_landed"
-    assert envelope["result_meta"]["vendor_version"] == "vv_landed_shibor"
+    assert envelope["result_meta"]["source_version"] == "sv_tushare_shibor"
+    assert envelope["result_meta"]["vendor_version"] == "vv_tushare_shibor"
     assert envelope["result"]["rows"][0]["1M"] == 1.422
     assert envelope["result"]["rows"][0]["1Y"] == 1.4925
 

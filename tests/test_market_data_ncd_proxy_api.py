@@ -18,12 +18,15 @@ def _service_module():
 def _seed_landed_shibor_proxy(
     duckdb_path: str,
     tenors: tuple[str, ...] = ("1M", "3M", "6M", "9M", "1Y"),
+    *,
+    vendor_name: str = "tushare",
+    trade_date: str = "2026-04-23",
 ) -> None:
     conn = duckdb.connect(duckdb_path, read_only=False)
     try:
         conn.execute(
             """
-            create table choice_market_snapshot (
+            create table if not exists choice_market_snapshot (
               series_id varchar,
               series_name varchar,
               vendor_series_code varchar,
@@ -39,20 +42,33 @@ def _seed_landed_shibor_proxy(
             )
             """
         )
+        series_prefix = "CHOICE.SHIBOR" if vendor_name == "choice" else "NCD.SHIBOR"
         rows_by_tenor = {
-            "1M": ("NCD.SHIBOR.1M", "SHIBOR:1M", "NCD.SHIBOR.1M", 1.412),
-            "3M": ("NCD.SHIBOR.3M", "SHIBOR:3M", "NCD.SHIBOR.3M", 1.4345),
-            "6M": ("NCD.SHIBOR.6M", "SHIBOR:6M", "NCD.SHIBOR.6M", 1.4535),
-            "9M": ("NCD.SHIBOR.9M", "SHIBOR:9M", "NCD.SHIBOR.9M", 1.4695),
-            "1Y": ("NCD.SHIBOR.1Y", "SHIBOR:1Y", "NCD.SHIBOR.1Y", 1.4825),
+            "1M": (f"{series_prefix}.1M", "SHIBOR:1M", f"{vendor_name}:shibor:1m", 1.412),
+            "3M": (f"{series_prefix}.3M", "SHIBOR:3M", f"{vendor_name}:shibor:3m", 1.4345),
+            "6M": (f"{series_prefix}.6M", "SHIBOR:6M", f"{vendor_name}:shibor:6m", 1.4535),
+            "9M": (f"{series_prefix}.9M", "SHIBOR:9M", f"{vendor_name}:shibor:9m", 1.4695),
+            "1Y": (f"{series_prefix}.1Y", "SHIBOR:1Y", f"{vendor_name}:shibor:1y", 1.4825),
         }
         conn.executemany(
             """
             insert into choice_market_snapshot values (
-              ?, ?, ?, 'choice', '2026-04-23', ?, 'daily', 'pct', 'sv_landed_shibor', 'vv_landed_shibor', 'rv_landed_shibor', 'run_landed'
+              ?, ?, ?, ?, ?, ?, 'daily', 'pct', ?, ?, 'rv_landed_shibor', 'run_landed'
             )
             """,
-            [rows_by_tenor[tenor] for tenor in tenors],
+            [
+                (
+                    rows_by_tenor[tenor][0],
+                    rows_by_tenor[tenor][1],
+                    rows_by_tenor[tenor][2],
+                    vendor_name,
+                    trade_date,
+                    rows_by_tenor[tenor][3],
+                    f"sv_{vendor_name}_shibor",
+                    f"vv_{vendor_name}_shibor",
+                )
+                for tenor in tenors
+            ],
         )
     finally:
         conn.close()
@@ -73,9 +89,10 @@ def test_ncd_proxy_reads_landed_shibor_with_live_env_ignored(tmp_path, monkeypat
     assert payload.rows[0].tenor_1m == 1.412
     assert payload.rows[0].tenor_3m == 1.4345
     assert payload.rows[0].tenor_1y == 1.4825
+    assert payload.proxy_label == "Tushare Shibor funding proxy"
     assert payload.warnings == [
         "Proxy only; not actual NCD issuance matrix.",
-        "Using landed external warehouse Shibor; quote medians unavailable.",
+        "Using landed Tushare Shibor; quote medians unavailable.",
     ]
 
     get_settings.cache_clear()
@@ -91,7 +108,7 @@ def test_ncd_proxy_missing_landed_data_does_not_live_call_tushare(tmp_path, monk
     payload = service.load_ncd_funding_proxy_payload()
 
     assert payload.rows == []
-    assert any("Landed Shibor proxy data unavailable" in warning for warning in payload.warnings)
+    assert any("Landed Choice/Tushare Shibor proxy data unavailable" in warning for warning in payload.warnings)
 
     get_settings.cache_clear()
 
@@ -105,8 +122,8 @@ def test_ncd_proxy_envelope_uses_landed_lineage_when_rows_exist(tmp_path, monkey
     service = _service_module()
     envelope = service.ncd_funding_proxy_envelope()
 
-    assert envelope["result_meta"]["source_version"] == "sv_ncd_proxy_landed"
-    assert envelope["result_meta"]["vendor_version"] == "vv_landed_shibor"
+    assert envelope["result_meta"]["source_version"] == "sv_tushare_shibor"
+    assert envelope["result_meta"]["vendor_version"] == "vv_tushare_shibor"
     assert envelope["result_meta"]["vendor_status"] == "ok"
 
     get_settings.cache_clear()
@@ -143,7 +160,46 @@ def test_ncd_proxy_partial_landed_shibor_uses_empty_lineage(tmp_path, monkeypatc
     assert envelope["result_meta"]["vendor_version"] == "vv_none"
     assert envelope["result_meta"]["vendor_status"] == "vendor_unavailable"
     assert envelope["result"]["rows"] == []
-    assert any("Landed Shibor proxy data unavailable" in warning for warning in envelope["result"]["warnings"])
+    assert any("Landed Choice/Tushare Shibor proxy data unavailable" in warning for warning in envelope["result"]["warnings"])
+
+    get_settings.cache_clear()
+
+
+def test_ncd_proxy_uses_choice_when_choice_has_complete_landed_data(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "ncd-proxy-choice.duckdb"
+    _seed_landed_shibor_proxy(str(duckdb_path), vendor_name="choice")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    service = _service_module()
+    envelope = service.ncd_funding_proxy_envelope()
+
+    assert envelope["result"]["proxy_label"] == "Choice Shibor funding proxy"
+    assert envelope["result"]["rows"][0]["1M"] == 1.412
+    assert envelope["result"]["warnings"] == [
+        "Proxy only; not actual NCD issuance matrix.",
+        "Using landed Choice Shibor; quote medians unavailable.",
+    ]
+    assert envelope["result_meta"]["source_version"] == "sv_choice_shibor"
+    assert envelope["result_meta"]["vendor_version"] == "vv_choice_shibor"
+
+    get_settings.cache_clear()
+
+
+def test_ncd_proxy_falls_back_to_tushare_when_choice_landed_data_is_incomplete(tmp_path, monkeypatch) -> None:
+    duckdb_path = tmp_path / "ncd-proxy-choice-partial-tushare.duckdb"
+    _seed_landed_shibor_proxy(str(duckdb_path), tenors=("1M", "3M"), vendor_name="choice")
+    _seed_landed_shibor_proxy(str(duckdb_path), vendor_name="tushare")
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    service = _service_module()
+    envelope = service.ncd_funding_proxy_envelope()
+
+    assert envelope["result"]["proxy_label"] == "Tushare Shibor funding proxy"
+    assert envelope["result"]["rows"][0]["1Y"] == 1.4825
+    assert envelope["result_meta"]["source_version"] == "sv_tushare_shibor"
+    assert envelope["result_meta"]["vendor_version"] == "vv_tushare_shibor"
 
     get_settings.cache_clear()
 
@@ -162,8 +218,8 @@ def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypat
                 "basis": "analytical",
                 "result_kind": "market_data.ncd_proxy",
                 "formal_use_allowed": False,
-                "source_version": "sv_ncd_proxy_landed",
-                "vendor_version": "vv_landed_shibor",
+                "source_version": "sv_tushare_shibor",
+                "vendor_version": "vv_tushare_shibor",
                 "rule_version": "rv_ncd_proxy_v1",
                 "cache_version": "cv_ncd_proxy_v1",
                 "quality_flag": "ok",
@@ -190,7 +246,7 @@ def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypat
                 ],
                 "warnings": [
                     "Proxy only; not actual NCD issuance matrix.",
-                    "Using landed external warehouse Shibor; quote medians unavailable.",
+                    "Using landed Tushare Shibor; quote medians unavailable.",
                 ],
             },
         },
@@ -209,5 +265,5 @@ def test_market_data_ncd_proxy_endpoint_returns_explicit_proxy_payload(monkeypat
     assert payload["result"]["rows"][0]["label"] == "Shibor fixing"
     assert payload["result"]["warnings"] == [
         "Proxy only; not actual NCD issuance matrix.",
-        "Using landed external warehouse Shibor; quote medians unavailable.",
+        "Using landed Tushare Shibor; quote medians unavailable.",
     ]
