@@ -8,6 +8,7 @@ from typing import Any
 
 import duckdb
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.app.agent.schemas.agent_request import AgentQueryRequest
@@ -27,6 +28,60 @@ def _required_result_meta_keys() -> frozenset[str]:
 
 
 REQUIRED_RESULT_META_KEYS = _required_result_meta_keys()
+
+
+def _stub_result_meta(result_kind: str) -> dict[str, Any]:
+    meta = {key: None for key in REQUIRED_RESULT_META_KEYS}
+    meta.update(
+        {
+            "trace_id": f"tr_{result_kind.replace('.', '_')}",
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "result_kind": result_kind,
+            "quality_flag": "ok",
+            "source_version": "sv_result_meta_contract",
+            "vendor_version": "vv_none",
+            "rule_version": "rv_result_meta_contract",
+            "cache_version": "cv_result_meta_contract",
+            "vendor_status": "ok",
+            "fallback_mode": "none",
+            "evidence_rows": 0,
+            "tables_used": [],
+            "filters_applied": {},
+            "sql_executed": [],
+        }
+    )
+    return meta
+
+
+def _stub_executive_payload(result_kind: str) -> dict[str, Any]:
+    return {"result_meta": _stub_result_meta(result_kind), "result": {}}
+
+
+def _executive_contract_client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
+    module = load_module(
+        f"tests._result_meta_exec.executive_contract",
+        "backend/app/api/routes/executive.py",
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_overview",
+        lambda report_date=None: _stub_executive_payload("executive.overview"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_summary",
+        lambda report_date=None: _stub_executive_payload("executive.summary"),
+    )
+    monkeypatch.setattr(
+        module,
+        "executive_pnl_attribution",
+        lambda report_date=None: _stub_executive_payload("executive.pnl-attribution"),
+    )
+    app = FastAPI()
+    app.include_router(module.router)
+    return TestClient(app)
 
 
 def _assert_json_envelope(payload: dict[str, Any], *, path: str) -> dict[str, Any]:
@@ -96,13 +151,16 @@ def test_ui_get_json_envelopes_include_result_meta_and_result(path, params, tmp_
         _seed_balance_analysis_dates_contract_surface(tmp_path)
     get_settings.cache_clear()
 
-    for mod in (
-        "backend.app.main",
-        "backend.app.api",
-    ):
-        sys.modules.pop(mod, None)
+    if path in {"/ui/home/overview", "/ui/home/summary", "/ui/pnl/attribution"}:
+        client = _executive_contract_client(monkeypatch)
+    else:
+        for mod in (
+            "backend.app.main",
+            "backend.app.api",
+        ):
+            sys.modules.pop(mod, None)
 
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+        client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
     response = client.get(path, params=params or None)
     assert response.status_code == 200, f"{path} -> {response.status_code} {response.text}"
     meta = _assert_json_envelope(response.json(), path=path)
@@ -114,8 +172,7 @@ def test_executive_surfaces_are_analytical_placeholder_friendly(tmp_path, monkey
     monkeypatch.setenv("MOSS_DUCKDB_PATH", str(tmp_path / "moss.duckdb"))
     monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(tmp_path / "governance"))
     get_settings.cache_clear()
-    sys.modules.pop("backend.app.main", None)
-    client = TestClient(load_module("backend.app.main", "backend/app/main.py").app)
+    client = _executive_contract_client(monkeypatch)
 
     for path in (
         "/ui/home/overview",

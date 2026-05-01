@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from fastapi import FastAPI
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
@@ -13,6 +14,33 @@ def _load_executive_routes_module():
         f"tests._exec_routes.executive_{uuid.uuid4().hex}",
         "backend/app/api/routes/executive.py",
     )
+
+
+def _ok_payload(result_kind: str) -> dict[str, object]:
+    return {
+        "result_meta": {
+            "result_kind": result_kind,
+            "basis": "analytical",
+            "formal_use_allowed": False,
+            "scenario_flag": False,
+            "vendor_status": "ok",
+        },
+        "result": {},
+    }
+
+
+def _client_with_stubbed_executive_services(monkeypatch):
+    module = _load_executive_routes_module()
+    monkeypatch.setattr(module, "executive_overview", lambda report_date=None: _ok_payload("executive.overview"))
+    monkeypatch.setattr(module, "executive_summary", lambda report_date=None: _ok_payload("executive.summary"))
+    monkeypatch.setattr(
+        module,
+        "executive_pnl_attribution",
+        lambda report_date=None: _ok_payload("executive.pnl-attribution"),
+    )
+    app = FastAPI()
+    app.include_router(module.router)
+    return module, TestClient(app)
 
 
 def test_fastapi_application_exposes_executive_dashboard_routes():
@@ -28,8 +56,8 @@ def test_fastapi_application_exposes_executive_dashboard_routes():
     assert "/ui/home/alerts" in paths
 
 
-def test_executive_dashboard_endpoints_return_result_meta_envelopes():
-    module = _load_executive_routes_module()
+def test_executive_dashboard_endpoints_return_result_meta_envelopes(monkeypatch):
+    module, _client = _client_with_stubbed_executive_services(monkeypatch)
 
     for name in ("overview", "summary", "pnl_attribution"):
         payload = getattr(module, name)()
@@ -43,9 +71,8 @@ def test_executive_dashboard_endpoints_return_result_meta_envelopes():
         assert exc_info.value.status_code == 503
 
 
-def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200():
-    main = load_module("backend.app.main", "backend/app/main.py")
-    client = TestClient(main.app)
+def test_executive_dashboard_http_routes_expose_only_landed_executive_surfaces_as_200(monkeypatch):
+    _module, client = _client_with_stubbed_executive_services(monkeypatch)
     ok_paths = [
         "/ui/home/overview",
         "/ui/home/summary",
@@ -111,18 +138,6 @@ def test_partial_executive_routes_raise_503_when_service_marks_vendor_unavailabl
 
 def test_excluded_executive_routes_stay_503_even_when_service_returns_ok(monkeypatch):
     module = _load_executive_routes_module()
-
-    def _ok_payload(result_kind: str) -> dict[str, object]:
-        return {
-            "result_meta": {
-                "result_kind": result_kind,
-                "basis": "analytical",
-                "formal_use_allowed": False,
-                "scenario_flag": False,
-                "vendor_status": "ok",
-            },
-            "result": {},
-        }
 
     monkeypatch.setattr(
         module,
