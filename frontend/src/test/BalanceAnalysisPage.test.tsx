@@ -754,6 +754,10 @@ describe("BalanceAnalysisPage", () => {
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
     expect(screen.getByTestId("balance-workbench")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-kpi-bars-empty")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-kpi-bars-empty")).toHaveTextContent(
+      "暂无 KPI 条带数据",
+    );
     expect(screen.getByTestId("balance-analysis-workbench-grid")).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
