@@ -149,6 +149,39 @@ def test_confirmed_choice_stock_catalog_is_ready(tmp_path: Path) -> None:
     assert readiness.unconfirmed_fields == []
 
 
+def test_choice_stock_catalog_md_entry_shape_documents_sector_call() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    doc = (repo_root / "docs" / "choice_stock_catalog.md").read_text(encoding="utf-8")
+    start = doc.index("## Entry Shape")
+    end = doc.index("## Fail-Closed Behavior")
+    entry_shape = doc[start:end]
+    call_lines = [ln for ln in entry_shape.splitlines() if "`call`" in ln]
+    assert call_lines, "expected a `call` bullet in Entry Shape"
+    assert any("sector" in ln for ln in call_lines), "call enumeration must include sector (checked-in catalog uses call=sector)"
+
+
+def test_checked_in_choice_stock_catalog_json_documents_sector_strength_units_and_limit_policy() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    catalog = json.loads((repo_root / "config" / "choice_stock_catalog.json").read_text(encoding="utf-8"))
+    fields = {f["field_key"]: f for f in catalog["fields"]}
+    rta = fields["daily_return_turnover_amplitude"]
+    assert "unit" in rta
+    unit_text = rta["unit"]
+    assert "percentage point" in unit_text.lower()
+    assert "1.2%" in unit_text
+
+    limit_entry = fields["daily_limit_flags"]
+    desc = (limit_entry.get("description") or "").lower()
+    assert "highlimit" in desc or "limit" in desc
+    assert "flag" in desc
+    assert "price" in desc
+
+    policy = catalog.get("policy_note") or ""
+    policy_l = policy.lower()
+    assert "limit_ratio" in policy_l
+    assert "tushare" in policy_l
+
+
 def test_invalid_choice_stock_catalog_is_incomplete(tmp_path: Path) -> None:
     catalog_path = tmp_path / "choice_stock_catalog.json"
     catalog_path.write_text(

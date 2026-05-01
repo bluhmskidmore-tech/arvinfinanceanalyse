@@ -1,6 +1,8 @@
 # Choice Stock Catalog
 
-This asset is the explicit Choice-only gate for Livermore stock inputs. It records which Choice indicators are allowed to feed sector ranking, stock candidate filters, and limit-up quality once those fields have been confirmed.
+This asset is the explicit gate for Livermore stock inputs. It records the Choice indicators that are allowed to feed the stock universe, sector membership, sector ranking, stock candidate filters, and limit-up quality once those fields have been confirmed.
+
+The current runtime is evidence-driven but not Choice-only for daily bars: if Choice `csd` returns entitlement error `10001012`, `backend/app/tasks/choice_stock_materialize.py` can fill daily OHLCV, free-float turnover, trading status, and limit prices from the localized Tushare stock fallback. Those rows are auditable through `choice_stock_request_audit.status = 'completed_tushare_fallback'` and a `vv_choice_tushare_stock_*` vendor version.
 
 ## Location
 
@@ -25,8 +27,8 @@ Each `fields[]` entry uses:
 
 - `input_family`: one of the required families above.
 - `field_key`: internal stable name for the field.
-- `vendor_indicator`: Choice/EmQuant indicator sent to `css`, `csd`, or `ctr`.
-- `call`: Choice call family, currently `css`, `csd`, or `ctr`.
+- `vendor_indicator`: Choice/EmQuant indicator sent to `sector`, `css`, `csd`, or `ctr`.
+- `call`: Choice call family in this repo: `sector` (e.g. A-share universe), `css`, `csd`, or `ctr` when used.
 - `confirmed`: must be `true` only after the indicator and entitlement have been checked.
 - `confirmation_source`: non-empty evidence pointer for confirmed entries, such as the Choice terminal command generator export, entitlement ticket, or captured API smoke result.
 - `confirmed_at`: non-empty confirmation date or timestamp for confirmed entries.
@@ -45,11 +47,18 @@ The readiness loader reports the catalog as blocked when:
 - a required entry has `confirmed: false`; or
 - a required entry has an empty `vendor_indicator`, `confirmation_source`, or `confirmed_at`.
 
-Blocked readiness means Livermore must keep `stock_candidates` and `sector_rank` unsupported, emit explicit Choice dependency diagnostics, and avoid calling Choice `css` or `csd`.
+Blocked readiness means Livermore must keep `stock_candidates` and `sector_rank` unsupported, emit explicit dependency diagnostics, and avoid calling Choice `sector`, `css`, or `csd`.
 
 ## Current State
 
-The checked-in catalog is intentionally empty. It commits no unconfirmed Choice field codes. Populate it only after confirming field names and entitlement behavior through the Choice terminal/API command generator.
+The checked-in catalog is populated with live-probed fields from 2026-05-01:
+
+- Choice `sector('001004', as_of_date)` for the A-share universe.
+- Choice `css(..., 'SW2021,SW2021CODE', EndDate=..., ClassiFication=1)` for SW2021 level-1 sector membership.
+- Choice `csd` field definitions for return, turnover, amplitude, OHLCV, trading status, and limit flags.
+- Choice `css(..., 'ISSURGEDLIMIT,ISDECLINELIMIT,HLIMITEDAYS,LLIMITEDDAYS', TradeDate=...)` for point-in-time limit streak quality.
+
+Important evidence boundary: Choice `HIGHLIMIT` / `LOWLIMIT` are yes/no limit **flags**, not limit **prices**. The Tushare stock fallback maps `stk_limit.up_limit` / `down_limit` into the same `HIGHLIMIT` / `LOWLIMIT` observation slots as **numeric prices** so downstream `limit_ratio` can use actual limits; interpret those cells as prices only when the row is under `completed_tushare_fallback` (or when values are clearly price-like), not as Choice flag encodings.
 
 ## Confirmation Workflow
 
@@ -57,4 +66,5 @@ The checked-in catalog is intentionally empty. It commits no unconfirmed Choice 
 2. Run a one-symbol or one-date smoke query under the production entitlement.
 3. Record the stable internal `field_key`, the exact `vendor_indicator`, `call`, `unit`, and a short `description`.
 4. Set `confirmed: true`, fill `confirmation_source`, and fill `confirmed_at`.
-5. Run `python -m pytest -q tests/test_choice_stock_adapter.py tests/test_market_data_livermore_api.py`.
+5. If a `csd` entitlement blocks daily data, verify Tushare fallback with `python -m pytest -q tests/test_choice_stock_materialize.py`.
+6. Run `python -m pytest -q tests/test_choice_stock_adapter.py tests/test_market_data_livermore_api.py`.
