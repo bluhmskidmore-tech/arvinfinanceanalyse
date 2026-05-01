@@ -67,7 +67,6 @@ import type {
   GetHomeSnapshotOptions,
   HealthResponse,
   HealthStatusResponse,
-  HomeSnapshotPayload,
   IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,

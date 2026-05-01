@@ -27,6 +27,7 @@ import {
   resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   type WorkbenchSection,
+  visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
 import { designTokens } from "../theme/designSystem";
@@ -351,7 +352,11 @@ export function WorkbenchShell() {
     primaryWorkbenchNavigationGroups.find(
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
     ) ?? primaryWorkbenchNavigationGroups[0];
-  const currentGroupSections = currentGroup.sections;
+  const currentGroupVisibleSections = visibleWorkbenchNavigation.filter(
+    (section) => resolveWorkbenchGroupKey(section) === currentGroup.key,
+  );
+  const currentGroupSections =
+    currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */

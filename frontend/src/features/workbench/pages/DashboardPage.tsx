@@ -213,7 +213,7 @@ export default function DashboardPage() {
   const attributionMeta = adapterOutput.attribution.meta;
   const attentionItems = [
     describeAttention(overviewMeta, "总览"),
-    describeAttention(attributionMeta, "归因"),
+    describeAttention(attributionMeta, "贡献拆解"),
   ].filter((item): item is string => Boolean(item));
 
   const snapshotResult = snapshotQuery.data?.result;

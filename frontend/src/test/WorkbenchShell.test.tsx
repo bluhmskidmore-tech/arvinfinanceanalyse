@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
@@ -181,9 +180,12 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     const subnav = await screen.findByTestId("workbench-section-subnav");
     const sectionLinks = within(subnav).getAllByRole("link");
-    expect(sectionLinks.length).toBeGreaterThanOrEqual(1);
     const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/cross-asset");
+    expect(hrefs).toHaveLength(3);
+    expect(hrefs).toEqual(expect.arrayContaining(["/market-data", "/cross-asset", "/news-events"]));
+    expect(subnav).toHaveTextContent("市场数据");
+    expect(subnav).toHaveTextContent("跨资产驱动");
+    expect(subnav).toHaveTextContent("新闻事件");
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {
