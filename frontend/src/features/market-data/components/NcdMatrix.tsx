@@ -6,6 +6,7 @@ import type { NcdFundingProxyPayload, ResultMeta } from "../../../api/contracts"
 import { designTokens } from "../../../theme/designSystem";
 import { LiveResultMetaStrip } from "./LiveResultMetaStrip";
 import { marketDataBlockTitleStyle, marketDataPanelStyle } from "./marketDataPanelStyle";
+import "../pages/MarketDataPage.css";
 
 const TENORS = ["1M", "3M", "6M", "9M", "1Y"] as const;
 
@@ -13,6 +14,10 @@ type MatrixRow = Record<"rating" | (typeof TENORS)[number], string | number | nu
   key: string;
   quoteCount?: string | null;
 };
+
+function NcdNumericCell({ value }: { value: number | string | null | undefined }) {
+  return <span className="market-data-ncd-matrix__num">{formatProxyCell(value)}</span>;
+}
 
 function formatProxyCell(value: number | string | null | undefined) {
   if (value == null || value === "") {
@@ -46,7 +51,7 @@ export function NcdMatrix({
         key: t,
         align: "right" as const,
         width: 72,
-        render: (value: number | string | null | undefined) => formatProxyCell(value),
+        render: (value: number | string | null | undefined) => <NcdNumericCell value={value} />,
       })),
       {
         title: "样本数",
@@ -54,6 +59,7 @@ export function NcdMatrix({
         key: "quoteCount",
         align: "right" as const,
         width: 84,
+        render: (value: string | null | undefined) => <NcdNumericCell value={value} />,
       },
     ],
     [],
@@ -121,7 +127,7 @@ export function NcdMatrix({
           </div>
           {onRetry ? (
             <Button size="small" onClick={onRetry}>
-              Retry
+              重试
             </Button>
           ) : null}
         </div>
