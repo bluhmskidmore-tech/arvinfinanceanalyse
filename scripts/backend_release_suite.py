@@ -15,6 +15,11 @@ if str(ROOT) not in sys.path:
 from scripts.audit_governance_lineage import audit_governance_lineage
 
 RELEASE_SUITE_NAME = "governed-phase2-backend-release-suite"
+EXECUTIVE_RELEASE_SAMPLE_IDS = [
+    "GS-EXEC-OVERVIEW-A",
+    "GS-EXEC-PNL-ATTR-A",
+    "GS-EXEC-SUMMARY-A",
+]
 RELEASE_SUITE_TESTS = [
     "tests/test_settings_contract.py",
     "tests/test_health_endpoints.py",
@@ -30,6 +35,8 @@ RELEASE_SUITE_TESTS = [
     "tests/test_result_meta_on_all_ui_endpoints.py",
     "tests/test_governance_doc_contract.py",
     "tests/test_golden_samples_capture_ready.py",
+    "tests/test_executive_release_contract.py",
+    "tests/test_golden_sample_release_matrix.py",
 ]
 
 
@@ -64,6 +71,7 @@ def build_release_suite_plan(
         "suite_name": RELEASE_SUITE_NAME,
         "governance_dir": governance_dir,
         "governance_audit_output": governance_audit_output,
+        "executive_release_sample_ids": EXECUTIVE_RELEASE_SAMPLE_IDS,
         "pytest_args": _pytest_args(),
         "env": _release_suite_env(),
     }

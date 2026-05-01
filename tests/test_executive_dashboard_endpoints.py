@@ -178,9 +178,6 @@ def test_executive_dashboard_routes_forward_report_date_query(monkeypatch):
         ("overview", "2025-11-20"),
         ("summary", "2025-11-20"),
         ("pnl-attribution", "2025-11-20"),
-        ("risk-overview", "2025-11-20"),
-        ("contribution", "2025-11-20"),
-        ("alerts", "2025-11-20"),
     ]
 
 
@@ -191,9 +188,16 @@ def test_executive_dashboard_http_routes_reject_invalid_report_date():
         "/ui/home/overview",
         "/ui/home/summary",
         "/ui/pnl/attribution",
-        "/ui/risk/overview",
-        "/ui/home/contribution",
-        "/ui/home/alerts",
     ):
         response = client.get(path, params={"report_date": "2025-99-99"})
         assert response.status_code == 422, path
+
+    for path in (
+        "/ui/risk/overview",
+        "/ui/home/contribution",
+        "/ui/home/alerts",
+        "/ui/home/snapshot",
+    ):
+        response = client.get(path, params={"report_date": "2025-99-99"})
+        assert response.status_code == 503, path
+        assert "reserved" in response.text.lower()

@@ -1,8 +1,10 @@
 from importlib import import_module
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, get_auth_context
 
 
 router = APIRouter(prefix="/api")
@@ -79,7 +81,10 @@ def overview(
 
 
 @router.post("/data/refresh_pnl")
-def refresh_pnl(report_date: str | None = Query(None)) -> dict[str, object]:
+def refresh_pnl(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str | None = Query(None),
+) -> dict[str, object]:
     settings = get_settings()
     service = _pnl_service()
     try:

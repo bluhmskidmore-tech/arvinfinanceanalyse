@@ -321,7 +321,10 @@ def export_workbook(
 
 
 @router.post("/refresh")
-def refresh(report_date: str = Query(...)) -> dict[str, object]:
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+) -> dict[str, object]:
     settings = get_settings()
     try:
         return refresh_balance_analysis(settings, report_date=report_date)
