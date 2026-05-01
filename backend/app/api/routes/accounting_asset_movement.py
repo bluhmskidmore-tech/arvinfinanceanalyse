@@ -1,8 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.accounting_asset_movement_service import (
     AccountingAssetMovementReadModelNotFoundError,
     accounting_asset_movement_dates_envelope,
@@ -38,6 +41,7 @@ def detail(
 
 @router.post("/refresh")
 def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
     report_date: str = Query(...),
     currency_basis: str = Query("CNX"),
 ) -> dict[str, object]:

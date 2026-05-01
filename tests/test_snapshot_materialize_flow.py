@@ -134,6 +134,73 @@ def test_snapshot_materialize_respects_report_date_filter(tmp_path, monkeypatch)
     get_settings.cache_clear()
 
 
+def test_snapshot_materialize_locfs_tyw_missing_report_date(tmp_path, monkeypatch):
+    ingest_mod, snap_mod = _load_tasks()
+
+    duckdb_path = tmp_path / "moss.duckdb"
+    governance_dir = tmp_path / "governance"
+    archive_dir = tmp_path / "archive"
+    data_root = tmp_path / "data_input"
+    data_root.mkdir()
+    for file_name in ("TYWLSHOW-20260325.xls", "ZQTZSHOW-20260326.xls"):
+        (data_root / file_name).write_bytes((ROOT / "data_input" / file_name).read_bytes())
+
+    monkeypatch.setenv("MOSS_DATA_INPUT_ROOT", str(data_root))
+    monkeypatch.setenv("MOSS_OBJECT_STORE_MODE", "local")
+    monkeypatch.setenv("MOSS_LOCAL_ARCHIVE_PATH", str(archive_dir))
+    monkeypatch.setenv("MOSS_GOVERNANCE_PATH", str(governance_dir))
+    monkeypatch.setenv("MOSS_DUCKDB_PATH", str(duckdb_path))
+    get_settings.cache_clear()
+
+    ingest_mod.ingest_demo_manifest.fn()
+    prior = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        source_families=["tyw"],
+        report_date="2026-03-25",
+    )
+    assert prior["tyw_rows"] > 0
+
+    locf = snap_mod.materialize_standard_snapshots.fn(
+        duckdb_path=str(duckdb_path),
+        governance_dir=str(governance_dir),
+        source_families=["zqtz", "tyw"],
+        report_date="2026-03-26",
+    )
+
+    assert locf["zqtz_rows"] > 0
+    assert locf["tyw_rows"] == prior["tyw_rows"]
+
+    conn = duckdb.connect(str(duckdb_path), read_only=True)
+    try:
+        prior_sum, locf_sum = conn.execute(
+            """
+            select
+              sum(case when report_date = date '2026-03-25' then principal_native else 0 end),
+              sum(case when report_date = date '2026-03-26' then principal_native else 0 end)
+            from tyw_interbank_daily_snapshot
+            where report_date in (date '2026-03-25', date '2026-03-26')
+            """
+        ).fetchone()
+        rule_version, source_version, ingest_batch_id, trace_id = conn.execute(
+            """
+            select min(rule_version), min(source_version), min(ingest_batch_id), min(trace_id)
+            from tyw_interbank_daily_snapshot
+            where report_date = date '2026-03-26'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert locf_sum == prior_sum
+    assert rule_version == snap_mod.TYW_LOCF_RULE_VERSION
+    assert str(source_version).startswith("sv_tyw_locf_")
+    assert ingest_batch_id == "locf:2026-03-25"
+    assert str(trace_id).startswith("locf:2026-03-26:from:2026-03-25")
+
+    get_settings.cache_clear()
+
+
 def test_snapshot_materialize_normalizes_currency_labels_to_iso_codes(tmp_path, monkeypatch):
     ingest_mod, snap_mod = _load_tasks()
 
