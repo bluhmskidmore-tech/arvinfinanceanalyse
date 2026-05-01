@@ -7,7 +7,7 @@ import { vi } from "vitest";
 
 import { createApiClient, type ApiClient, ApiClientProvider } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
-import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
+import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
 import { routerFuture } from "../router/routerFuture";
 
 function buildMeta(resultKind: string, traceId: string): ResultMeta {
@@ -25,6 +25,15 @@ function buildMeta(resultKind: string, traceId: string): ResultMeta {
     fallback_mode: "none",
     scenario_flag: false,
     generated_at: "2026-04-17T08:00:00Z",
+  };
+}
+
+function moneyYi(value: string) {
+  const numeric = Number(value);
+  return {
+    yuan: Number.isFinite(numeric) ? (numeric * 100_000_000).toFixed(2) : "0.00",
+    yi: value,
+    wan: Number.isFinite(numeric) ? (numeric * 10_000).toFixed(2) : "0.00",
   };
 }
 
@@ -52,20 +61,20 @@ function buildLedgerClient(): ApiClient {
         result: {
           report_date: reportDate ?? "2025-12-31",
           source_version: "sv_ledger_data",
-          ledger_total_assets: { yuan: reportDate === "2025-11-30" ? "900.00" : "1200.00", yi: "0.00", wan: "0.12" },
-          ledger_total_liabilities: { yuan: reportDate === "2025-11-30" ? "700.00" : "800.00", yi: "0.00", wan: "0.08" },
-          ledger_net_assets: { yuan: reportDate === "2025-11-30" ? "200.00" : "400.00", yi: "0.00", wan: "0.04" },
-          ledger_monthly_pnl_core: { yuan: value, yi: "0.00", wan: "0.00" },
-          ledger_monthly_pnl_all: { yuan: value, yi: "0.00", wan: "0.01" },
+          ledger_total_assets: moneyYi(reportDate === "2025-11-30" ? "900.00" : "1200.00"),
+          ledger_total_liabilities: moneyYi(reportDate === "2025-11-30" ? "700.00" : "800.00"),
+          ledger_net_assets: moneyYi(reportDate === "2025-11-30" ? "200.00" : "400.00"),
+          ledger_monthly_pnl_core: moneyYi(value),
+          ledger_monthly_pnl_all: moneyYi(value),
           by_currency: [
-            { currency: "CNX", total_pnl: { yuan: reportDate === "2025-11-30" ? "15.00" : "35.00", yi: "0.00", wan: "0.00" } },
-            { currency: "CNY", total_pnl: { yuan: reportDate === "2025-11-30" ? "3.00" : "5.00", yi: "0.00", wan: "0.00" } },
+            { currency: "CNX", total_pnl: moneyYi(reportDate === "2025-11-30" ? "15.00" : "35.00") },
+            { currency: "CNY", total_pnl: moneyYi(reportDate === "2025-11-30" ? "3.00" : "5.00") },
           ],
           by_account: [
             {
               account_code: "514100",
               account_name: "利息收入",
-              total_pnl: { yuan: reportDate === "2025-11-30" ? "12.00" : "20.00", yi: "0.00", wan: "0.00" },
+              total_pnl: moneyYi(reportDate === "2025-11-30" ? "12.00" : "20.00"),
               count: 2,
             },
           ],
@@ -120,7 +129,7 @@ function renderLedgerWithRouter(initialEntry: string, client: ApiClient) {
 
 describe("ledger-pnl routed page smoke", () => {
   it("renders the live /ledger-pnl workbench route", async () => {
-    renderWorkbenchApp(["/ledger-pnl"], { client: buildLedgerClient() });
+    renderLedgerWithRouter("/ledger-pnl", buildLedgerClient());
 
     expect(await screen.findByTestId("ledger-pnl-page")).toBeInTheDocument();
     await waitFor(() => {
@@ -134,9 +143,10 @@ describe("ledger-pnl routed page smoke", () => {
   });
 
   it("prefers report_date and currency from the query string when provided", async () => {
-    renderWorkbenchApp(["/ledger-pnl?report_date=2025-11-30&currency=CNX"], {
-      client: buildLedgerClient(),
-    });
+    renderLedgerWithRouter(
+      "/ledger-pnl?report_date=2025-11-30&currency=CNX",
+      buildLedgerClient(),
+    );
 
     await waitFor(() => {
       expect(screen.getByLabelText("ledger-pnl-report-date")).toHaveValue("2025-11-30");
