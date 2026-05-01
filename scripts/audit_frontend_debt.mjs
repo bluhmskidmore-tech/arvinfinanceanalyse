@@ -6,7 +6,7 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 5677,
+  apiClientLines: 5205,
   apiClientMockOccurrences: 296,
   totalTsxStyleProps: 3293,
   maxPageStyleProps: {

@@ -7,6 +7,8 @@ import { createApiClient } from "../api/client";
 
 const clientSource = readFileSync(resolve(process.cwd(), "src/api/client.ts"), "utf8");
 const marketDataSource = readFileSync(resolve(process.cwd(), "src/api/marketDataClient.ts"), "utf8");
+const kpiSource = readFileSync(resolve(process.cwd(), "src/api/kpiClient.ts"), "utf8");
+const cubeSource = readFileSync(resolve(process.cwd(), "src/api/cubeClient.ts"), "utf8");
 
 describe("ApiClient composition boundary", () => {
   it("keeps the public market-data source preview surface available from createApiClient", () => {
@@ -21,13 +23,20 @@ describe("ApiClient composition boundary", () => {
     expect(typeof client.getChoiceNewsEvents).toBe("function");
     expect(typeof client.ingestTushareNprNews).toBe("function");
     expect(typeof client.getResearchCalendarEvents).toBe("function");
+    expect(typeof client.getKpiOwners).toBe("function");
+    expect(typeof client.fetchAndRecalcKpi).toBe("function");
+    expect(typeof client.getCubeDimensions).toBe("function");
+    expect(typeof client.executeCubeQuery).toBe("function");
   });
 
-  it("keeps source-preview, news, and research-calendar implementation out of client.ts", () => {
+  it("keeps extracted domain implementation out of client.ts", () => {
     expect(clientSource).not.toContain("MOCK_SOURCE_FOUNDATION_SUMMARIES");
     expect(clientSource).not.toContain("MOCK_CHOICE_NEWS_EVENTS");
     expect(clientSource).not.toContain("buildMockResearchCalendarEvents");
     expect(clientSource).not.toContain("buildMockChoiceNewsEnvelope");
+    expect(clientSource).not.toContain("requestKpiJson");
+    expect(clientSource).not.toContain("kpiQueryString");
+    expect(clientSource).not.toContain("dimensionMap");
     expect(clientSource).not.toMatch(/async getSourceFoundation\(/);
     expect(clientSource).not.toMatch(/async refreshSourcePreview\(/);
     expect(clientSource).not.toMatch(/async getSourcePreviewRefreshStatus\(/);
@@ -37,6 +46,10 @@ describe("ApiClient composition boundary", () => {
     expect(clientSource).not.toMatch(/async getChoiceNewsEvents\(/);
     expect(clientSource).not.toMatch(/async getResearchCalendarEvents\(/);
     expect(clientSource).not.toMatch(/async ingestTushareNprNews\(/);
+    expect(clientSource).not.toMatch(/async getKpiOwners\(/);
+    expect(clientSource).not.toMatch(/async fetchAndRecalcKpi\(/);
+    expect(clientSource).not.toMatch(/async getCubeDimensions\(/);
+    expect(clientSource).not.toMatch(/async executeCubeQuery\(/);
   });
 
   it("requires marketDataClient.ts to own the extracted market-data composition slice", () => {
@@ -49,5 +62,13 @@ describe("ApiClient composition boundary", () => {
     expect(marketDataSource).toMatch(/async getChoiceNewsEvents\(/);
     expect(marketDataSource).toMatch(/async getResearchCalendarEvents\(/);
     expect(marketDataSource).toMatch(/async ingestTushareNprNews\(/);
+  });
+
+  it("requires KPI and cube clients to own their extracted composition slices", () => {
+    expect(kpiSource).toContain("requestKpiJson");
+    expect(kpiSource).toMatch(/async getKpiOwners\(/);
+    expect(kpiSource).toMatch(/async fetchAndRecalcKpi\(/);
+    expect(cubeSource).toMatch(/async getCubeDimensions\(/);
+    expect(cubeSource).toMatch(/async executeCubeQuery\(/);
   });
 });
