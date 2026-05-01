@@ -1,4 +1,5 @@
 import type {
+  BalanceAnalysisBasisBreakdownRow,
   BalanceAnalysisDecisionItemRow,
   BalanceAnalysisDecisionItemStatusRow,
   BalanceAnalysisEventCalendarRow,
@@ -9,6 +10,8 @@ import type {
   BalanceAnalysisWorkbookTable,
   BalanceCurrencyBasis,
   BalancePositionScope,
+  BalanceMovementBucket,
+  BalanceMovementPayload,
 } from "../../../api/contracts";
 
 /** Minimum bar width (%) used by workbook distribution / gap panels (matches BalanceAnalysisPage). */
@@ -438,6 +441,331 @@ function sumFinite(values: readonly (number | null)[]): number | null {
     hasAny = true;
   }
   return hasAny ? total : null;
+}
+
+const BALANCE_RECONCILIATION_WAN_TOLERANCE = 0.01;
+const BALANCE_RECONCILIATION_YUAN_TOLERANCE = 100_000_000;
+const BALANCE_RECONCILIATION_RATIO_TOLERANCE = 0.0005;
+
+export type BalanceReconciliationLinkStatus = "pending" | "unavailable" | "aligned" | "watch";
+
+export type BalanceReconciliationInternalCheck = {
+  key: string;
+  label: string;
+  leftLabel: string;
+  rightLabel: string;
+  leftWan: number | null;
+  rightWan: number | null;
+  deltaWan: number | null;
+  aligned: boolean;
+};
+
+export type BalanceReconciliationBridgeComponent = {
+  bucket: BalanceMovementBucket;
+  label: string;
+  amountYuan: number | null;
+};
+
+export type BalanceReconciliationLinkModel = {
+  reportDate: string;
+  movementHref: string;
+  status: BalanceReconciliationLinkStatus;
+  statusLabel: string;
+  statusDetail: string;
+  workbookBondWan: number | null;
+  workbookAssetTotalWan: number | null;
+  workbookLiabilityTotalWan: number | null;
+  workbookGapWan: number | null;
+  workbookFullScopeGapWan: number | null;
+  allInternalChecksAligned: boolean;
+  internalChecks: BalanceReconciliationInternalCheck[];
+  bridgeComponents: BalanceReconciliationBridgeComponent[];
+  formalBridgeYuan: number | null;
+  movementControlYuan: number | null;
+  residualYuan: number | null;
+  residualRatio: number | null;
+};
+
+export type BalanceReconciliationLinkInput = {
+  reportDate: string;
+  workbook?: BalanceAnalysisWorkbookPayload | null;
+  basisRows?: readonly BalanceAnalysisBasisBreakdownRow[];
+  movement?: BalanceMovementPayload | null;
+  movementAvailableForDate?: boolean;
+  isPending?: boolean;
+};
+
+function sumWorkbookTableWan(
+  workbook: BalanceAnalysisWorkbookPayload | null | undefined,
+  tableKey: string,
+  valueKey: string,
+): number | null {
+  return sumFinite(
+    (tableByKey(workbook, tableKey)?.rows ?? []).map((row) => finiteWanValue(row[valueKey])),
+  );
+}
+
+function buildInternalCheck(
+  key: string,
+  label: string,
+  leftLabel: string,
+  rightLabel: string,
+  leftWan: number | null,
+  rightWan: number | null,
+): BalanceReconciliationInternalCheck {
+  const deltaWan = leftWan === null || rightWan === null ? null : rightWan - leftWan;
+  return {
+    key,
+    label,
+    leftLabel,
+    rightLabel,
+    leftWan,
+    rightWan,
+    deltaWan,
+    aligned: deltaWan !== null && Math.abs(deltaWan) <= BALANCE_RECONCILIATION_WAN_TOLERANCE,
+  };
+}
+
+function movementBucketForAccountingBasis(accountingBasis: string): BalanceMovementBucket | null {
+  const normalized = accountingBasis.trim().toUpperCase();
+  if (normalized === "AC") {
+    return "AC";
+  }
+  if (normalized === "FVOCI" || normalized === "OCI") {
+    return "OCI";
+  }
+  if (normalized === "FVTPL" || normalized === "TPL") {
+    return "TPL";
+  }
+  return null;
+}
+
+function movementLikeAmountForBasisRow(row: BalanceAnalysisBasisBreakdownRow): number | null {
+  const bucket = movementBucketForAccountingBasis(row.accounting_basis);
+  if (bucket === "AC") {
+    return finiteNumberFromUnknown(row.amortized_cost_amount);
+  }
+  if (bucket === "OCI" || bucket === "TPL") {
+    return finiteNumberFromUnknown(row.market_value_amount);
+  }
+  return null;
+}
+
+function buildBridgeComponents(
+  basisRows: readonly BalanceAnalysisBasisBreakdownRow[],
+): BalanceReconciliationBridgeComponent[] {
+  const totals: Record<BalanceMovementBucket, number | null> = {
+    AC: null,
+    OCI: null,
+    TPL: null,
+  };
+
+  for (const row of basisRows) {
+    if (row.source_family !== "zqtz" || row.position_scope !== "asset") {
+      continue;
+    }
+    const bucket = movementBucketForAccountingBasis(row.accounting_basis);
+    const amount = movementLikeAmountForBasisRow(row);
+    if (bucket === null || amount === null) {
+      continue;
+    }
+    totals[bucket] = (totals[bucket] ?? 0) + amount;
+  }
+
+  return [
+    { bucket: "AC", label: "AC 摊余", amountYuan: totals.AC },
+    { bucket: "OCI", label: "OCI 市值", amountYuan: totals.OCI },
+    { bucket: "TPL", label: "TPL 市值", amountYuan: totals.TPL },
+  ];
+}
+
+function statusForReconciliationLink({
+  isPending,
+  movementAvailableForDate,
+  formalBridgeYuan,
+  movementControlYuan,
+  residualYuan,
+  residualRatio,
+}: {
+  isPending: boolean;
+  movementAvailableForDate: boolean;
+  formalBridgeYuan: number | null;
+  movementControlYuan: number | null;
+  residualYuan: number | null;
+  residualRatio: number | null;
+}): Pick<BalanceReconciliationLinkModel, "status" | "statusLabel" | "statusDetail"> {
+  if (isPending || formalBridgeYuan === null) {
+    return {
+      status: "pending",
+      statusLabel: "待联动数据",
+      statusDetail: "正在等待 summary-by-basis 或工作簿数据返回。",
+    };
+  }
+  if (!movementAvailableForDate || movementControlYuan === null) {
+    return {
+      status: "unavailable",
+      statusLabel: "无余额变动日期",
+      statusDetail: "当前报告日未出现在余额变动 CNX 月末读模型中。",
+    };
+  }
+  if (residualYuan === null || residualRatio === null) {
+    return {
+      status: "pending",
+      statusLabel: "待联动数据",
+      statusDetail: "余额变动控制数尚未返回。",
+    };
+  }
+  if (
+    Math.abs(residualYuan) <= BALANCE_RECONCILIATION_YUAN_TOLERANCE ||
+    residualRatio <= BALANCE_RECONCILIATION_RATIO_TOLERANCE
+  ) {
+    return {
+      status: "aligned",
+      statusLabel: "可核对",
+      statusDetail: "AC 摊余 + OCI/TPL 市值与 CNX 控制数在容忍阈值内。",
+    };
+  }
+  return {
+    status: "watch",
+    statusLabel: "需复核",
+    statusDetail: "桥接口径与 CNX 控制数存在超阈值差异。",
+  };
+}
+
+export function buildBalanceReconciliationLinkModel({
+  reportDate,
+  workbook,
+  basisRows = [],
+  movement,
+  movementAvailableForDate = false,
+  isPending = false,
+}: BalanceReconciliationLinkInput): BalanceReconciliationLinkModel {
+  const bondWan = finiteWanValue(workbookCardValue(workbook, "bond_assets_excluding_issue"));
+  const interbankAssetWan = finiteWanValue(workbookCardValue(workbook, "interbank_assets"));
+  const interbankLiabilityWan = finiteWanValue(workbookCardValue(workbook, "interbank_liabilities"));
+  const issuanceWan = finiteWanValue(workbookCardValue(workbook, "issuance_liabilities"));
+  const netPositionWan = finiteWanValue(workbookCardValue(workbook, "net_position"));
+
+  const maturityBondWan = sumWorkbookTableWan(workbook, "maturity_gap", "bond_assets_amount");
+  const maturityInterbankAssetWan = sumWorkbookTableWan(workbook, "maturity_gap", "interbank_assets_amount");
+  const maturityIssuanceWan = sumWorkbookTableWan(workbook, "maturity_gap", "issuance_amount");
+  const maturityInterbankLiabilityWan = sumWorkbookTableWan(
+    workbook,
+    "maturity_gap",
+    "interbank_liabilities_amount",
+  );
+  const maturityGapWan = sumWorkbookTableWan(workbook, "maturity_gap", "gap_amount");
+  const maturityFullScopeGapWan = sumWorkbookTableWan(workbook, "maturity_gap", "full_scope_gap_amount");
+
+  const internalChecks = [
+    buildInternalCheck(
+      "bond-business",
+      "债券业务",
+      "卡片债券资产",
+      "业务种类合计",
+      bondWan,
+      sumWorkbookTableWan(workbook, "bond_business_types", "balance_amount"),
+    ),
+    buildInternalCheck(
+      "rating",
+      "信用评级",
+      "卡片债券资产",
+      "评级合计",
+      bondWan,
+      sumWorkbookTableWan(workbook, "rating_analysis", "balance_amount"),
+    ),
+    buildInternalCheck(
+      "maturity-bond",
+      "期限债券",
+      "卡片债券资产",
+      "期限债券合计",
+      bondWan,
+      maturityBondWan,
+    ),
+    buildInternalCheck(
+      "issuance",
+      "发行类",
+      "发行类卡片",
+      "发行类合计",
+      issuanceWan,
+      sumWorkbookTableWan(workbook, "issuance_business_types", "balance_amount"),
+    ),
+    buildInternalCheck(
+      "maturity-issuance",
+      "期限发行类",
+      "发行类卡片",
+      "期限发行类合计",
+      issuanceWan,
+      maturityIssuanceWan,
+    ),
+    buildInternalCheck(
+      "maturity-interbank-asset",
+      "期限同业资产",
+      "同业资产卡片",
+      "期限同业资产合计",
+      interbankAssetWan,
+      maturityInterbankAssetWan,
+    ),
+    buildInternalCheck(
+      "maturity-interbank-liability",
+      "期限同业负债",
+      "同业负债卡片",
+      "期限同业负债合计",
+      interbankLiabilityWan,
+      maturityInterbankLiabilityWan,
+    ),
+    buildInternalCheck(
+      "gap",
+      "期限缺口",
+      "净头寸卡片",
+      "期限缺口合计",
+      netPositionWan,
+      maturityGapWan,
+    ),
+  ];
+  const allInternalChecksAligned =
+    internalChecks.length > 0 && internalChecks.every((check) => check.aligned);
+
+  const bridgeComponents = buildBridgeComponents(basisRows);
+  const formalBridgeYuan = sumFinite(bridgeComponents.map((component) => component.amountYuan));
+  const movementControlYuan = finiteNumberFromUnknown(movement?.summary.current_balance_total);
+  const residualYuan =
+    formalBridgeYuan === null || movementControlYuan === null
+      ? null
+      : movementControlYuan - formalBridgeYuan;
+  const residualRatio =
+    residualYuan === null || movementControlYuan === null || movementControlYuan === 0
+      ? null
+      : Math.abs(residualYuan) / Math.abs(movementControlYuan);
+
+  const status = statusForReconciliationLink({
+    isPending,
+    movementAvailableForDate,
+    formalBridgeYuan,
+    movementControlYuan,
+    residualYuan,
+    residualRatio,
+  });
+
+  return {
+    reportDate,
+    movementHref: reportDate
+      ? `/balance-movement-analysis?report_date=${encodeURIComponent(reportDate)}&currency_basis=CNX`
+      : "/balance-movement-analysis",
+    ...status,
+    workbookBondWan: bondWan,
+    workbookAssetTotalWan: sumFinite([bondWan, interbankAssetWan]),
+    workbookLiabilityTotalWan: sumFinite([issuanceWan, interbankLiabilityWan]),
+    workbookGapWan: maturityGapWan,
+    workbookFullScopeGapWan: maturityFullScopeGapWan,
+    allInternalChecksAligned,
+    internalChecks,
+    bridgeComponents,
+    formalBridgeYuan,
+    movementControlYuan,
+    residualYuan,
+    residualRatio,
+  };
 }
 
 function formatWanAsYiPlain(value: unknown): string {

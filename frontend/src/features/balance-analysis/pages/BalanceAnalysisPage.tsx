@@ -74,6 +74,7 @@ import {
   formatBalanceWorkbookCellDisplay,
   formatBalanceWorkbookWanAmountDisplay,
   formatBalanceWorkbookWanTextDisplay,
+  buildBalanceReconciliationLinkModel,
   buildBalanceStageRealDataModel,
   gapChartBarWidthPercent,
   maxAbsFiniteChartScale,
@@ -125,7 +126,7 @@ const amountMetricDefinitions = [
 
 const workbookPanelNotes: Record<(typeof primaryWorkbookTableKeys)[number], string> = {
   bond_business_types: "对应 Excel 的债券业务种类页，先看资产端主分布和规模占比。",
-  rating_analysis: "按评级拆开当前债券资产的规模，保留驾驶舱式强弱对比。",
+  rating_analysis: "按评级拆开 Workbook 原币面值，合计对齐债券资产卡片；CNY/CNX 控制数看上方联动核对。",
   maturity_gap: "用期限桶直接看资产负债缺口，不再只给纯表格。",
   issuance_business_types: "发行类单独成块，避免和资产端视图混在一起。",
 };
@@ -560,40 +561,49 @@ function renderRatingPanel(table: BalanceAnalysisWorkbookTable) {
     return renderWorkbookContractMismatch(table, "Workbook contract mismatch：评级分布字段不完整。");
   }
   const maxValue = maxFiniteChartScale(rows.map((row) => row.balance_amount));
+  let hasFiniteTotal = false;
+  let totalWan = 0;
+  for (const row of table.rows) {
+    const mag = parseBalanceChartMagnitude(row.balance_amount);
+    if (mag.kind === "finite") {
+      hasFiniteTotal = true;
+      totalWan += mag.value;
+    }
+  }
   return (
     <div
       data-testid={`balance-analysis-workbook-table-${table.key}`}
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-        gap: 10,
-      }}
+      className="balance-analysis-rating-panel"
     >
-      {rows.map((row, index) => {
-        const mag = parseBalanceChartMagnitude(row.balance_amount);
-        const ratio = mag.kind === "finite" ? Math.max(0.35, mag.value / maxValue) : 0.35;
-        return (
-          <article
-            key={`${table.key}-${index}`}
-            style={{
-              borderRadius: 16,
-              padding: 14,
-              background: ratingBlockPalette[index % ratingBlockPalette.length],
-              color: designTokens.color.primary[50],
-              minHeight: 88,
-              opacity: 0.55 + ratio * 0.45,
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 700 }}>{formatBalanceWorkbookCellDisplay(row.rating)}</div>
-            <div style={{ fontSize: 13, opacity: 0.92 }}>
-              {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
-            </div>
-          </article>
-        );
-      })}
+      <div className="balance-analysis-rating-panel__grid">
+        {rows.map((row, index) => {
+          const mag = parseBalanceChartMagnitude(row.balance_amount);
+          const ratio = mag.kind === "finite" ? Math.max(0.35, mag.value / maxValue) : 0.35;
+          return (
+            <article
+              key={`${table.key}-${index}`}
+              className="balance-analysis-rating-card"
+              style={{
+                background: ratingBlockPalette[index % ratingBlockPalette.length],
+                opacity: 0.55 + ratio * 0.45,
+              }}
+            >
+              <div className="balance-analysis-rating-card__label">{formatBalanceWorkbookCellDisplay(row.rating)}</div>
+              <div className="balance-analysis-rating-card__value">
+                {formatBalanceWorkbookWanAmountDisplay(row.balance_amount)}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      <div className="balance-analysis-rating-reconciliation">
+        <span className="balance-analysis-rating-reconciliation__total">
+          评级合计 {hasFiniteTotal ? formatBalanceWorkbookWanAmountDisplay(totalWan) : "未取到"}
+        </span>
+        <span className="balance-analysis-rating-reconciliation__note">
+          Workbook 原币面值口径，合计对齐债券资产卡片；不等同于页面 CNY 市值或 CNX 总账控制数。
+        </span>
+      </div>
     </div>
   );
 }
@@ -697,6 +707,95 @@ function renderIssuancePanel(table: BalanceAnalysisWorkbookTable) {
         </article>
       ))}
     </div>
+  );
+}
+
+function withYiUnit(value: string): string {
+  return value === "—" ? value : `${value} 亿`;
+}
+
+function formatSignedBalanceYuanToYi(value: number | null): string {
+  if (value === null) {
+    return "—";
+  }
+  const formatted = formatBalanceAmountToYiFromYuan(value);
+  return value > 0 ? `+${formatted}` : formatted;
+}
+
+function renderReconciliationMetricTile({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="balance-analysis-reconciliation__tile">
+      <span className="balance-analysis-reconciliation__tile-label">{label}</span>
+      <strong className="balance-analysis-reconciliation__tile-value">
+        {value}
+      </strong>
+      <span className="balance-analysis-reconciliation__tile-detail">{detail}</span>
+    </div>
+  );
+}
+
+function renderBalanceReconciliationLinkPanel(
+  model: ReturnType<typeof buildBalanceReconciliationLinkModel>,
+) {
+  const failedInternalCheck = model.internalChecks.find((check) => !check.aligned);
+  const bridgeDetail = model.bridgeComponents
+    .map((component) => `${component.label} ${withYiUnit(formatBalanceAmountToYiFromYuan(component.amountYuan))}`)
+    .join(" · ");
+
+  return (
+    <section data-testid="balance-analysis-reconciliation-link" className="balance-analysis-reconciliation">
+      <div className="balance-analysis-reconciliation__header">
+        <div>
+          <h3 className="balance-analysis-reconciliation__title">口径联动核对</h3>
+          <p className="balance-analysis-reconciliation__copy">
+            从 workbook 原币面值出发，桥接到 Formal CNY 的 AC/OCI/TPL，再落到余额变动 CNX 控制数。
+          </p>
+        </div>
+        <span className={`balance-analysis-reconciliation__status balance-analysis-reconciliation__status--${model.status}`}>
+          {model.statusLabel}
+        </span>
+      </div>
+      <div className="balance-analysis-reconciliation__grid">
+        {renderReconciliationMetricTile({
+          label: "工作簿自校验",
+          value: model.allInternalChecksAligned ? "已对齐" : "待复核",
+          detail: failedInternalCheck
+            ? `${failedInternalCheck.label}：${failedInternalCheck.leftLabel} 与 ${failedInternalCheck.rightLabel} 不一致`
+            : "债券业务、评级、期限债券和发行类切片已回到同一组卡片值。",
+        })}
+        {renderReconciliationMetricTile({
+          label: "Workbook 原币资产",
+          value: withYiUnit(formatBalanceAmountToYiFromWan(model.workbookAssetTotalWan)),
+          detail: `债券资产 ${withYiUnit(formatBalanceAmountToYiFromWan(model.workbookBondWan))}，期限缺口 ${withYiUnit(formatBalanceAmountToYiFromWan(model.workbookGapWan))}`,
+        })}
+        {renderReconciliationMetricTile({
+          label: "Formal CNY 桥",
+          value: withYiUnit(formatBalanceAmountToYiFromYuan(model.formalBridgeYuan)),
+          detail: bridgeDetail || "等待 summary-by-basis 返回 AC/OCI/TPL 分桶。",
+        })}
+        {renderReconciliationMetricTile({
+          label: "余额变动 CNX",
+          value: withYiUnit(formatBalanceAmountToYiFromYuan(model.movementControlYuan)),
+          detail: `残差 ${withYiUnit(formatSignedBalanceYuanToYi(model.residualYuan))}；${model.statusDetail}`,
+        })}
+      </div>
+      <div className="balance-analysis-reconciliation__footer">
+        <a href={model.movementHref} className="balance-analysis-reconciliation__link">
+          打开余额变动核对
+        </a>
+        <span className="balance-analysis-reconciliation__footnote">
+          全口径缺口 {withYiUnit(formatBalanceAmountToYiFromWan(model.workbookFullScopeGapWan))}
+        </span>
+      </div>
+    </section>
   );
 }
 
@@ -1340,6 +1439,27 @@ export default function BalanceAnalysisPage() {
         reportDate: selectedReportDate,
         positionScope,
         currencyBasis,
+    }),
+    retry: false,
+  });
+
+  const movementDatesQuery = useQuery({
+    queryKey: ["balance-analysis", "movement-dates", client.mode, "CNX"],
+    enabled: Boolean(selectedReportDate),
+    queryFn: () => client.getBalanceMovementDates("CNX"),
+    retry: false,
+  });
+  const movementReportDates = movementDatesQuery.data?.result.report_dates ?? [];
+  const movementDateAvailable = Boolean(
+    selectedReportDate && movementReportDates.includes(selectedReportDate),
+  );
+  const movementLinkQuery = useQuery({
+    queryKey: ["balance-analysis", "movement-link", client.mode, selectedReportDate, "CNX"],
+    enabled: deferredAnalysisQueriesEnabled && movementDateAvailable,
+    queryFn: () =>
+      client.getBalanceMovementAnalysis({
+        reportDate: selectedReportDate,
+        currencyBasis: "CNX",
       }),
     retry: false,
   });
@@ -1583,6 +1703,18 @@ export default function BalanceAnalysisPage() {
     ): section is { key: string; title: string; meta: NonNullable<typeof overviewMeta> } =>
       section !== null,
   );
+  const reconciliationLinkModel = buildBalanceReconciliationLinkModel({
+    reportDate: selectedReportDate,
+    workbook,
+    basisRows: basisBreakdownQuery.data?.result.rows ?? [],
+    movement: movementLinkQuery.data?.result ?? null,
+    movementAvailableForDate: movementDateAvailable,
+    isPending:
+      deferredAnalysisQueriesPending ||
+      basisBreakdownQuery.isLoading ||
+      movementDatesQuery.isLoading ||
+      (movementDateAvailable && movementLinkQuery.isLoading),
+  });
 
   async function handleRefresh() {
     if (!selectedReportDate) {
@@ -1613,6 +1745,8 @@ export default function BalanceAnalysisPage() {
         detailQuery.refetch(),
         summaryQuery.refetch(),
         basisBreakdownQuery.refetch(),
+        movementDatesQuery.refetch(),
+        movementDateAvailable ? movementLinkQuery.refetch() : Promise.resolve(),
         adbComparisonQuery.refetch(),
         advancedAttributionQuery.refetch(),
       ]);
@@ -2286,6 +2420,7 @@ export default function BalanceAnalysisPage() {
         >
           <div data-testid="balance-analysis-workbook-cockpit" className="balance-analysis-workbook-cockpit">
             <div className="balance-analysis-workbook-main">
+              {renderBalanceReconciliationLinkPanel(reconciliationLinkModel)}
               <div
                 data-testid="balance-analysis-workbook-primary-grid"
                 className="balance-analysis-workbook-primary-grid"

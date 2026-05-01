@@ -19,6 +19,7 @@ import type {
   BalanceAnalysisWorkbookOperationalSection,
   BalanceAnalysisWorkbookPayload,
   BalanceAnalysisWorkbookTable,
+  BalanceMovementPayload,
   ResultMeta,
 } from "../api/contracts";
 import { createWorkbenchMemoryRouter } from "./renderWorkbenchApp";
@@ -466,6 +467,36 @@ function buildCurrentUserResponse(): BalanceAnalysisCurrentUserPayload {
   };
 }
 
+function buildBalanceMovementResponse(): ApiEnvelope<BalanceMovementPayload> {
+  return {
+    result_meta: buildMeta("balance-analysis.movement.detail", "tr_balance_movement"),
+    result: {
+      report_date: "2025-12-31",
+      currency_basis: "CNX",
+      rows: [],
+      summary: {
+        previous_balance_total: "90000000000.00",
+        current_balance_total: "100030000000.00",
+        balance_change_total: "10030000000.00",
+        zqtz_amount_total: "100030000000.00",
+        reconciliation_diff_total: "0",
+        matched_bucket_count: 3,
+        bucket_count: 3,
+      },
+      trend_months: [],
+      business_trend_months: [],
+      zqtz_calibration_analysis: null,
+      structure_migration_analysis: null,
+      difference_attribution_waterfall: null,
+      basis_movement_decomposition: null,
+      zqtz_maturity_structure: null,
+      zqtz_concentration_analysis: null,
+      accounting_controls: ["141%", "142%", "143%", "1440101%"],
+      excluded_controls: ["144020%"],
+    },
+  };
+}
+
 describe("BalanceAnalysisPage", () => {
   it("defers below-fold analytical queries until first-screen balance signals settle", async () => {
     const baseClient = createApiClient({ mode: "mock" });
@@ -810,6 +841,15 @@ describe("BalanceAnalysisPage", () => {
         screen.getByTestId("balance-analysis-workbook-panel-rating_analysis"),
       ).toHaveTextContent("1,696.09 亿元");
       expect(
+        screen.getByTestId("balance-analysis-workbook-panel-rating_analysis"),
+      ).toHaveTextContent("评级合计 1,696.09 亿元");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-rating_analysis"),
+      ).toHaveTextContent("Workbook 原币面值口径");
+      expect(
+        screen.getByTestId("balance-analysis-workbook-panel-rating_analysis"),
+      ).toHaveTextContent("不等同于页面 CNY 市值或 CNX 总账控制数");
+      expect(
         screen.getByTestId("balance-analysis-workbook-panel-maturity_gap"),
       ).toHaveTextContent("1-2年");
       expect(
@@ -969,6 +1009,126 @@ describe("BalanceAnalysisPage", () => {
       "/average-balance?report_date=2025-12-31",
     );
     expect(getAdbComparisonSpy).toHaveBeenCalledWith("2025-01-01", "2025-12-31");
+  });
+
+  it("renders a reconciliation link from workbook metrics to balance movement controls", async () => {
+    const baseClient = createApiClient({ mode: "mock" });
+    const workbook = buildWorkbookResponse();
+    workbook.result.cards = [
+      { key: "bond_assets_excluding_issue", label: "债券资产(剔除发行类)", value: "10000000" },
+      { key: "interbank_assets", label: "同业资产", value: "1000000" },
+      { key: "interbank_liabilities", label: "同业负债", value: "3000000" },
+      { key: "issuance_liabilities", label: "发行类负债", value: "2000000" },
+      { key: "net_position", label: "净头寸", value: "8000000" },
+    ];
+    workbook.result.tables = workbook.result.tables.map((table) => {
+      if (table.key === "bond_business_types" || table.key === "rating_analysis") {
+        return { ...table, rows: [{ ...table.rows[0], balance_amount: "10000000" }] };
+      }
+      if (table.key === "issuance_business_types") {
+        return { ...table, rows: [{ ...table.rows[0], balance_amount: "2000000" }] };
+      }
+      if (table.key === "maturity_gap") {
+        return {
+          ...table,
+          rows: [
+            {
+              bucket: "1-2年",
+              bond_assets_amount: "10000000",
+              interbank_assets_amount: "1000000",
+              issuance_amount: "2000000",
+              interbank_liabilities_amount: "3000000",
+              gap_amount: "8000000",
+              full_scope_gap_amount: "6000000",
+            },
+          ],
+        };
+      }
+      return table;
+    });
+    const getBasisBreakdownSpy = vi.fn(
+      async (): Promise<ApiEnvelope<BalanceAnalysisBasisBreakdownPayload>> => ({
+        result_meta: buildMeta("balance-analysis.basis-breakdown", "tr_balance_basis_link"),
+        result: {
+          report_date: "2025-12-31",
+          position_scope: "all",
+          currency_basis: "CNY",
+          rows: [
+            {
+              source_family: "zqtz",
+              invest_type_std: "H",
+              accounting_basis: "AC",
+              position_scope: "asset",
+              currency_basis: "CNY",
+              detail_row_count: 1,
+              market_value_amount: "41000000000",
+              amortized_cost_amount: "40000000000",
+              accrued_interest_amount: "0",
+            },
+            {
+              source_family: "zqtz",
+              invest_type_std: "A",
+              accounting_basis: "FVOCI",
+              position_scope: "asset",
+              currency_basis: "CNY",
+              detail_row_count: 1,
+              market_value_amount: "35000000000",
+              amortized_cost_amount: "34000000000",
+              accrued_interest_amount: "0",
+            },
+            {
+              source_family: "zqtz",
+              invest_type_std: "T",
+              accounting_basis: "FVTPL",
+              position_scope: "asset",
+              currency_basis: "CNY",
+              detail_row_count: 1,
+              market_value_amount: "25000000000",
+              amortized_cost_amount: "24000000000",
+              accrued_interest_amount: "0",
+            },
+          ],
+        },
+      }),
+    );
+    const getMovementDatesSpy = vi.fn(async () => ({
+      result_meta: buildMeta("balance-analysis.movement.dates", "tr_balance_movement_dates"),
+      result: {
+        report_dates: ["2025-12-31"],
+        currency_basis: "CNX",
+      },
+    }));
+    const getMovementSpy = vi.fn(async () => buildBalanceMovementResponse());
+
+    renderBalanceAnalysisWithClient({
+      ...baseClient,
+      getBalanceAnalysisDates: vi.fn(async () => ({
+        result_meta: buildMeta("balance-analysis.dates", "tr_balance_dates_link"),
+        result: { report_dates: ["2025-12-31"] },
+      })),
+      getBalanceAnalysisWorkbook: vi.fn(async () => workbook),
+      getBalanceAnalysisDecisionItems: vi.fn(async () => buildDecisionItemsResponse()),
+      getBalanceAnalysisSummaryByBasis: getBasisBreakdownSpy,
+      getBalanceMovementDates: getMovementDatesSpy,
+      getBalanceMovementAnalysis: getMovementSpy,
+    });
+
+    const panel = await screen.findByTestId("balance-analysis-reconciliation-link");
+    await waitFor(() => {
+      expect(getMovementSpy).toHaveBeenCalledWith({
+        reportDate: "2025-12-31",
+        currencyBasis: "CNX",
+      });
+      expect(panel).toHaveTextContent("可核对");
+      expect(panel).toHaveTextContent("Formal CNY 桥");
+      expect(panel).toHaveTextContent("1,000.00 亿");
+      expect(panel).toHaveTextContent("1,000.30 亿");
+      expect(panel).toHaveTextContent("残差 +0.30 亿");
+    });
+    expect(within(panel).getByRole("link", { name: "打开余额变动核对" })).toHaveAttribute(
+      "href",
+      "/balance-movement-analysis?report_date=2025-12-31&currency_basis=CNX",
+    );
   });
 
   it("hydrates report filters from query parameters", async () => {

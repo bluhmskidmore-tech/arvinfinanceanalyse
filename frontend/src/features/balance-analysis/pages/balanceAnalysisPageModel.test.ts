@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
+import type {
+  BalanceAnalysisBasisBreakdownPayload,
+  BalanceAnalysisWorkbookPayload,
+  BalanceMovementPayload,
+} from "../../../api/contracts";
 import {
   BALANCE_ANALYSIS_MIN_CHART_BAR_WIDTH_PCT,
   buildBalanceStageRealDataModel,
+  buildBalanceReconciliationLinkModel,
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,
@@ -168,6 +174,150 @@ describe("balanceAnalysisPageModel", () => {
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "marketValueAmount")).toBe("1,845.73");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "amortizedCostAmount")).toBe("1,852.22");
       expect(formatBalanceScopeTotalAmountToYi(totals.liability, "accruedInterestAmount")).toBe("0.14");
+    });
+  });
+
+  describe("balance movement reconciliation link", () => {
+    it("bridges workbook native face amounts to formal CNY and CNX movement controls", () => {
+      const workbook: BalanceAnalysisWorkbookPayload = {
+        report_date: "2026-03-31",
+        position_scope: "all",
+        currency_basis: "CNY",
+        cards: [
+          { key: "bond_assets_excluding_issue", label: "bond", value: "32921581.72765400" },
+          { key: "interbank_assets", label: "interbank asset", value: "2286754.246962000002" },
+          { key: "interbank_liabilities", label: "interbank liability", value: "6606592.074561000014" },
+          { key: "issuance_liabilities", label: "issuance", value: "11883875.481356000002" },
+          { key: "net_position", label: "net", value: "28601743.900054999988" },
+        ],
+        tables: [
+          {
+            key: "bond_business_types",
+            title: "bond business",
+            section_kind: "table",
+            columns: [],
+            rows: [{ balance_amount: "32921581.72765400" }],
+          },
+          {
+            key: "rating_analysis",
+            title: "rating",
+            section_kind: "table",
+            columns: [],
+            rows: [{ balance_amount: "32921581.72765400" }],
+          },
+          {
+            key: "issuance_business_types",
+            title: "issuance",
+            section_kind: "table",
+            columns: [],
+            rows: [{ balance_amount: "11883875.481356000002" }],
+          },
+          {
+            key: "maturity_gap",
+            title: "maturity",
+            section_kind: "table",
+            columns: [],
+            rows: [
+              {
+                bond_assets_amount: "32921581.72765400",
+                interbank_assets_amount: "2286754.246962000002",
+                issuance_amount: "11883875.481356000002",
+                interbank_liabilities_amount: "6606592.074561000014",
+                gap_amount: "28601743.900054999988",
+                full_scope_gap_amount: "16717868.418698999986",
+              },
+            ],
+          },
+        ],
+        operational_sections: [],
+      };
+      const basisRows: BalanceAnalysisBasisBreakdownPayload["rows"] = [
+        {
+          source_family: "zqtz",
+          invest_type_std: "H",
+          accounting_basis: "AC",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          detail_row_count: 1,
+          market_value_amount: "152878755323.21811202",
+          amortized_cost_amount: "147935903140.93000022",
+          accrued_interest_amount: "0",
+        },
+        {
+          source_family: "zqtz",
+          invest_type_std: "A",
+          accounting_basis: "FVOCI",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          detail_row_count: 1,
+          market_value_amount: "106049923449.13635599",
+          amortized_cost_amount: "104665308199.93595803",
+          accrued_interest_amount: "0",
+        },
+        {
+          source_family: "zqtz",
+          invest_type_std: "T",
+          accounting_basis: "FVTPL",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          detail_row_count: 1,
+          market_value_amount: "82408563948.74196775",
+          amortized_cost_amount: "81803368995.27989207",
+          accrued_interest_amount: "0",
+        },
+        {
+          source_family: "tyw",
+          invest_type_std: "H",
+          accounting_basis: "AC",
+          position_scope: "asset",
+          currency_basis: "CNY",
+          detail_row_count: 1,
+          market_value_amount: "22867542469.62000002",
+          amortized_cost_amount: "22867542469.62000002",
+          accrued_interest_amount: "0",
+        },
+      ];
+      const movement: BalanceMovementPayload = {
+        report_date: "2026-03-31",
+        currency_basis: "CNX",
+        rows: [],
+        summary: {
+          previous_balance_total: "335870399552.02000000",
+          current_balance_total: "336469417748.23000000",
+          balance_change_total: "599018196.21000000",
+          zqtz_amount_total: "336469417748.23000000",
+          reconciliation_diff_total: "0E-8",
+          matched_bucket_count: 3,
+          bucket_count: 3,
+        },
+        trend_months: [],
+        business_trend_months: [],
+        zqtz_calibration_analysis: null,
+        structure_migration_analysis: null,
+        difference_attribution_waterfall: null,
+        basis_movement_decomposition: null,
+        zqtz_maturity_structure: null,
+        zqtz_concentration_analysis: null,
+        accounting_controls: ["141%", "142%", "143%", "1440101%"],
+        excluded_controls: ["144020%"],
+      };
+
+      const model = buildBalanceReconciliationLinkModel({
+        reportDate: "2026-03-31",
+        workbook,
+        basisRows,
+        movement,
+        movementAvailableForDate: true,
+      });
+
+      expect(model.allInternalChecksAligned).toBe(true);
+      expect(model.formalBridgeYuan).toBeCloseTo(336_394_390_538.81, 2);
+      expect(model.movementControlYuan).toBeCloseTo(336_469_417_748.23, 2);
+      expect(model.residualYuan).toBeCloseTo(75_027_209.42, 2);
+      expect(model.status).toBe("aligned");
+      expect(model.movementHref).toBe(
+        "/balance-movement-analysis?report_date=2026-03-31&currency_basis=CNX",
+      );
     });
   });
 
