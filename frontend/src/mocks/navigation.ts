@@ -51,7 +51,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
     label: "市场工作台",
     description: "承接市场观察、跨资产传导和新闻事件。",
     icon: "market",
-    defaultPath: "/market-data",
+    defaultPath: "/cross-asset",
   },
   {
     key: "risk",
@@ -236,10 +236,22 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/market-data",
     icon: "market",
     description: "市场观察入口",
-    readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接宏观、外汇分析与正式外汇状态读链路。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Reserved by the current boundary. Market-data preview/vendor/analytical surfaces remain hidden behind placeholder behavior.",
+  },
+  {
+    key: "source-preview",
+    label: "Source Preview",
+    path: "/source-preview",
+    icon: "market",
+    description: "Source preview reserved route",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Hidden reserved route. Source preview remains outside the current cutover boundary.",
+    navigationVisibility: "hidden",
   },
   {
     key: "platform-config",
@@ -378,10 +390,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/news-events",
     icon: "decision",
     description: "Choice 新闻事件与回调异常入口",
-    readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接真实 Choice 新闻只读链路。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Reserved by the current boundary. Choice news direct workbench access stays placeholder until promoted.",
   },
   {
     key: "product-category-pnl",

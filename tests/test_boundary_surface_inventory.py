@@ -88,7 +88,14 @@ BACKEND_BOUNDARY_CASES: tuple[SurfaceCase, ...] = (
     SurfaceCase("executive.home.snapshot", "/ui/home/snapshot", "GET"),
 )
 
-FRONTEND_RESERVED_KEYS = ("cube-query", "risk-overview", "agent")
+FRONTEND_RESERVED_KEYS = (
+    "cube-query",
+    "risk-overview",
+    "agent",
+    "market-data",
+    "news-events",
+    "source-preview",
+)
 
 
 def _build_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
@@ -150,7 +157,14 @@ def test_authority_inventory_lists_required_backend_and_frontend_surfaces() -> N
     assert "executive.home.alerts" in backend_slugs
     assert "executive.home.contribution" in backend_slugs
     assert "executive.home.snapshot" in backend_slugs
-    assert set(FRONTEND_RESERVED_KEYS) == {"cube-query", "risk-overview", "agent"}
+    assert set(FRONTEND_RESERVED_KEYS) == {
+        "cube-query",
+        "risk-overview",
+        "agent",
+        "market-data",
+        "news-events",
+        "source-preview",
+    }
 
 
 @pytest.mark.parametrize("case", BACKEND_BOUNDARY_CASES, ids=lambda case: case.slug)

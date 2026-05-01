@@ -16,12 +16,6 @@ const DashboardPage = lazy(
 const OperationsAnalysisPage = lazy(
   () => import("../features/workbench/pages/OperationsAnalysisPage"),
 );
-const SourcePreviewPage = lazy(
-  () => import("../features/source-preview/pages/SourcePreviewPage"),
-);
-const MarketDataPage = lazy(
-  () => import("../features/market-data/pages/MarketDataPage"),
-);
 const PnlPage = lazy(() => import("../features/pnl/PnlPage"));
 const PnlBridgePage = lazy(() => import("../features/pnl/PnlBridgePage"));
 const PnlAttributionPage = lazy(
@@ -44,9 +38,6 @@ const ProductCategoryPnlPage = lazy(
 );
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
-);
-const NewsEventsPage = lazy(
-  () => import("../features/news-events/NewsEventsPage"),
 );
 const RiskTensorPage = lazy(
   () => import("../features/risk-tensor/RiskTensorPage"),
@@ -119,13 +110,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<OperationsAnalysisPage />),
-      };
-    }
-
-    if (section.path === "/news-events") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<NewsEventsPage />),
       };
     }
 
@@ -203,13 +187,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<CashflowProjectionPage />),
-      };
-    }
-
-    if (section.path === "/market-data") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<MarketDataPage />),
       };
     }
 
@@ -337,10 +314,6 @@ export const workbenchRoutes: RouteObject[] = [
       {
         path: "dashboard",
         element: routeElement(<DashboardPage />),
-      },
-      {
-        path: "source-preview",
-        element: routeElement(<SourcePreviewPage />),
       },
       {
         path: "product-category-pnl/audit",

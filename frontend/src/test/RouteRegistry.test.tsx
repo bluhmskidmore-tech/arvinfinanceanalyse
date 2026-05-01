@@ -181,18 +181,19 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("workbench-governance-banner")).toBeInTheDocument();
   });
 
-  it("renders the source-preview route", async () => {
+  it("renders the source-preview route as a hidden reserved placeholder", async () => {
     renderWorkbenchApp(["/source-preview"], { client: mockClient });
 
-    expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-preview-page-title")).not.toBeInTheDocument();
   });
 
-  it("renders the news-events route", async () => {
+  it("renders the news-events route as a reserved placeholder", async () => {
     renderWorkbenchApp(["/news-events"], { client: mockClient });
 
-    expect(await screen.findByTestId("news-events-table")).toBeInTheDocument();
-    expect(await screen.findByLabelText("news-events-topic-code")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("news-events-table")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("news-events-topic-code")).not.toBeInTheDocument();
   });
 
   it("renders the bond-dashboard route", async () => {
@@ -261,17 +262,18 @@ describe("RouteRegistry", () => {
     expect(await screen.findByLabelText("审计-报表月份")).toBeInTheDocument();
   });
 
-  it("renders the market-data route", async () => {
+  it("renders the market-data route as a reserved placeholder", async () => {
     renderWorkbenchApp(["/market-data"], { client: mockClient });
 
-    expect(await screen.findByText("MOSS")).toBeInTheDocument();
-    expect(await screen.findByRole("navigation")).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
   });
 
-  it("redirects V1 bookmark /market to market-data", async () => {
+  it("redirects V1 bookmark /market to the reserved market-data placeholder", async () => {
     renderWorkbenchApp(["/market"], { client: mockClient });
 
-    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
   });
 
   it("redirects V1 bookmark /assets to bond-dashboard", async () => {
@@ -286,10 +288,11 @@ describe("RouteRegistry", () => {
     expect(await screen.findByTestId("average-balance-page")).toBeInTheDocument();
   });
 
-  it("redirects legacy /macro-analysis to the market-data page", async () => {
+  it("redirects legacy /macro-analysis to the reserved market-data placeholder", async () => {
     renderWorkbenchApp(["/macro-analysis"], { client: mockClient });
 
-    expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("market-data-page-title")).not.toBeInTheDocument();
   });
 
   it("renders the balance-analysis route", async () => {
