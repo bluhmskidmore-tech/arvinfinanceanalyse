@@ -104,7 +104,7 @@ function headerButtonStyle(kind: "primary" | "secondary") {
     border: isPrimary
       ? `1px solid ${shellTokens.colorAccent}`
       : `1px solid ${shellTokens.colorBorderSoft}`,
-    background: isPrimary ? shellTokens.colorAccentSoft : "#ffffff",
+    background: isPrimary ? shellTokens.colorAccentSoft : shellTokens.colorBgSurface,
     color: isPrimary ? shellTokens.colorAccent : shellTokens.colorTextSecondary,
     fontSize: 12,
     fontWeight: 700,
@@ -458,7 +458,7 @@ export default function DashboardPage() {
           padding: `${designTokens.space[5]}px ${designTokens.space[5]}px`,
           borderRadius: designTokens.radius.md,
           border: `1px solid ${shellTokens.colorBorderSoft}`,
-          background: "#ffffff",
+          background: shellTokens.colorBgSurface,
         }}
         actions={
           <div
@@ -491,7 +491,7 @@ export default function DashboardPage() {
                   padding: "0 8px",
                   borderRadius: 4,
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "#ffffff",
+                  background: shellTokens.colorBgSurface,
                   color: shellTokens.colorTextPrimary,
                   fontSize: 12,
                   ...tabularNumsStyle,
@@ -618,7 +618,7 @@ export default function DashboardPage() {
             padding: designTokens.space[4],
             borderRadius: designTokens.radius.md,
             border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "#ffffff",
+            background: shellTokens.colorBgSurface,
           }}
         >
           <PageSectionLead

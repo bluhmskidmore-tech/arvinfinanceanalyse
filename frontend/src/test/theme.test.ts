@@ -40,6 +40,19 @@ describe("shellTokens", () => {
     expect(shellTokens.colorBorder).toMatch(/^#/);
     expect(shellTokens.colorBgApp).toMatch(/^#/);
   });
+
+  it("defines dark workbench rail tokens for WorkbenchShell aside", () => {
+    expect(shellTokens.railBg).toMatch(/^#[0-9a-f]{6}$/i);
+    expect(shellTokens.railBg.toLowerCase()).toBe("#121d2a");
+    expect(shellTokens.railBorder).toMatch(/^rgba\(/i);
+    expect(shellTokens.railNavActiveBg).toMatch(/^rgba\(/i);
+  });
+
+  it("defines placeholder readiness badge colors for shell badges", () => {
+    expect(shellTokens.readinessBadgePlaceholderBg).toMatch(/^#/);
+    expect(shellTokens.readinessBadgePlaceholderFg).toMatch(/^#/);
+    expect(shellTokens.readinessBadgePlaceholderBorder).toMatch(/^#/);
+  });
 });
 
 describe("workbenchTheme", () => {
