@@ -48,10 +48,7 @@ import type {
   KRDAttributionPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
-  ChoiceNewsEventsPayload,
   NcdFundingProxyPayload,
-  ResearchCalendarEvent,
-  ResearchCalendarResultPayload,
   ContributionPayload,
   CounterpartyStatsResponse,
   CubeDimensionsPayload,
@@ -126,13 +123,6 @@ import type {
   RiskOverviewPayload,
   RiskTensorDatesPayload,
   RiskTensorPayload,
-  SourcePreviewHistoryPayload,
-  SourcePreviewRefreshPayload,
-  SourcePreviewRowsPayload,
-  SourcePreviewTracesPayload,
-  SourcePreviewColumn,
-  SourcePreviewSummary,
-  SourcePreviewPayload,
   SpreadAnalysisPayload,
   SpreadAttributionPayload,
   SubTypesResponse,
@@ -167,7 +157,7 @@ import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import type { ExecutiveClientMethods } from "./executiveClient";
-import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
+import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
@@ -286,11 +276,6 @@ export type ApiClient = {
   }) => Promise<void>;
   getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
   executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
-  getResearchCalendarEvents: (options?: {
-    reportDate?: string;
-    startDate?: string;
-    endDate?: string;
-  }) => Promise<ResearchCalendarEvent[]>;
   getHealthLive: () => Promise<HealthStatusResponse>;
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
@@ -520,188 +505,6 @@ const mockCampisiMaturityBuckets: CampisiMaturityBucketsPayload = {
     },
   },
 };
-
-/** Inline mock for `getSourceFoundation` in mock mode only (mirrors backend preview shape). */
-const MOCK_SOURCE_FOUNDATION_SUMMARIES: SourcePreviewSummary[] = [
-  {
-    source_family: "tyw",
-    report_date: "2025-12-31",
-    source_file: "TYWLSHOW-20251231.xls",
-    total_rows: 2395,
-    manual_review_count: 18,
-    source_version: "sv_mock_tyw_preview",
-    rule_version: "rv_phase1_source_preview_v1",
-    group_counts: {
-      "回购类": 1060,
-      "拆借类": 97,
-      "存放类": 1238,
-    },
-  },
-  {
-    source_family: "zqtz",
-    report_date: "2025-12-31",
-    source_file: "ZQTZSHOW-20251231.xls",
-    total_rows: 1724,
-    manual_review_count: 0,
-    source_version: "sv_mock_zqtz_preview",
-    rule_version: "rv_phase1_source_preview_v1",
-    group_counts: {
-      "债券类": 1571,
-      "基金类": 127,
-      "特定目的载体及其他非标类": 26,
-    },
-  },
-];
-
-const MOCK_CHOICE_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
-  {
-    event_key: "ce_mock_001",
-    received_at: "2026-04-10T09:01:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1001,
-    request_id: 501,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "S888010007API",
-    item_index: 0,
-    payload_text: "Macro data release calendar updated for CPI and industrial production.",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_002",
-    received_at: "2026-04-10T08:58:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1001,
-    request_id: 501,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "C000003006",
-    item_index: 0,
-    payload_text: null,
-    payload_json:
-      "{\"headline\":\"Policy follow-up\",\"summary\":\"PBOC open-market operation commentary stream.\"}",
-  },
-  {
-    event_key: "ce_mock_003",
-    received_at: "2026-04-10T08:50:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1002,
-    request_id: 502,
-    error_code: 101,
-    error_msg: "vendor callback timeout",
-    topic_code: "__callback__",
-    item_index: -1,
-    payload_text: null,
-    payload_json: null,
-  },
-  // Dashboard News Digest tabs filter by `group_id` (Tushare lanes). Without these, mock mode shows an empty state on every tab except「全部」.
-  {
-    event_key: "ce_mock_ts_policy",
-    received_at: "2026-04-21T15:00:00Z",
-    group_id: "tushare_policy",
-    content_type: "npr",
-    serial_id: 2001,
-    request_id: 601,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.npr",
-    item_index: 0,
-    payload_text: "【政策 mock】示例：宏观与监管要闻占位（本地 mock，非实时）。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_news",
-    received_at: "2026-04-21T14:30:00Z",
-    group_id: "tushare_news",
-    content_type: "news",
-    serial_id: 2002,
-    request_id: 602,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.news",
-    item_index: 0,
-    payload_text: "【快讯 mock】示例：市场快讯占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_cctv",
-    received_at: "2026-04-21T14:00:00Z",
-    group_id: "tushare_cctv",
-    content_type: "cctv_news",
-    serial_id: 2003,
-    request_id: 603,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.cctv",
-    item_index: 0,
-    payload_text: "【联播 mock】示例：新闻联播摘要占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_major",
-    received_at: "2026-04-21T13:30:00Z",
-    group_id: "tushare_major",
-    content_type: "major_news",
-    serial_id: 2004,
-    request_id: 604,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.major",
-    item_index: 0,
-    payload_text: "【长篇 mock】示例：长篇报道占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_research",
-    received_at: "2026-04-21T13:00:00Z",
-    group_id: "tushare_research",
-    content_type: "research_report",
-    serial_id: 2005,
-    request_id: 605,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.research",
-    item_index: 0,
-    payload_text: "【研报 mock】示例：研报标题与摘要占位。",
-    payload_json: '{"title":"Mock 研报","abstr":"占位摘要","_url":"https://example.com/mock-report"}',
-  },
-];
-
-function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
-  const baseDate = reportDate?.trim() || "2026-04-18";
-  return [
-    {
-      id: "rc_supply_001",
-      date: baseDate,
-      title: "国债净融资节奏",
-      kind: "supply",
-      severity: "low",
-      amount_label: "净融资 180 亿元",
-      note: "供给节奏",
-    },
-    {
-      id: "rc_auction_002",
-      date: baseDate,
-      title: "政策性金融债招标",
-      kind: "auction",
-      severity: "high",
-      amount_label: "420 亿元",
-      issuer: "国开行",
-    },
-    {
-      id: "rc_macro_003",
-      date: baseDate,
-      title: "CPI 数据公布",
-      kind: "macro",
-      severity: "medium",
-      amount_label: "同比观察",
-      note: "宏观数据",
-    },
-  ];
-}
 
 function _buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
   return {
@@ -1339,47 +1142,6 @@ const _MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
   ],
 };
 
-function buildMockSourcePreviewColumns(rows: Array<Record<string, unknown>>): SourcePreviewColumn[] {
-  const firstRow = rows[0];
-  if (!firstRow) {
-    return [];
-  }
-  return Object.keys(firstRow).map((key) => ({
-    key,
-    label: buildMockSourcePreviewLabel(key),
-    type: key === "row_locator" || key === "trace_step"
-      ? "number"
-      : key === "manual_review_needed"
-        ? "boolean"
-        : "string",
-  }));
-}
-
-function buildMockSourcePreviewLabel(key: string) {
-  const labels: Record<string, string> = {
-    ingest_batch_id: "批次ID",
-    row_locator: "行号",
-    report_date: "报告日期",
-    business_type_primary: "业务种类1",
-    business_type_final: "业务种类2归类",
-    asset_group: "资产分组",
-    instrument_code: "债券代码",
-    instrument_name: "债券名称",
-    account_category: "账户类别",
-    product_group: "产品分组",
-    institution_category: "机构类型",
-    special_nature: "特殊性质",
-    counterparty_name: "对手方名称",
-    investment_portfolio: "投资组合",
-    manual_review_needed: "需人工复核",
-    trace_step: "轨迹步骤",
-    field_name: "字段名",
-    field_value: "字段值",
-    derived_label: "归类标签",
-  };
-  return labels[key] ?? key;
-}
-
 function reduceLatestManualAdjustments<
   T extends { adjustment_id: string; created_at: string }
 >(records: T[]): T[] {
@@ -1522,42 +1284,6 @@ function buildManualAdjustmentSearchParams(
     params.set("offset", String(options.offset));
   }
   return params;
-}
-
-function buildMockChoiceNewsEnvelope(options: {
-  limit: number;
-  offset: number;
-  groupId?: string;
-  topicCode?: string;
-  errorOnly?: boolean;
-  receivedFrom?: string;
-  receivedTo?: string;
-}): ApiEnvelope<ChoiceNewsEventsPayload> {
-  const filtered = MOCK_CHOICE_NEWS_EVENTS.filter((event) => {
-    if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) {
-      return false;
-    }
-    if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) {
-      return false;
-    }
-    if (options.errorOnly && event.error_code === 0) {
-      return false;
-    }
-    if (options.receivedFrom?.trim() && event.received_at < options.receivedFrom.trim()) {
-      return false;
-    }
-    if (options.receivedTo?.trim() && event.received_at > options.receivedTo.trim()) {
-      return false;
-    }
-    return true;
-  });
-
-  return buildMockApiEnvelope("news.choice.latest", {
-    total_rows: filtered.length,
-    limit: options.limit,
-    offset: options.offset,
-    events: filtered.slice(options.offset, options.offset + options.limit),
-  });
 }
 
 const normalizeBaseUrl = (value?: string) =>
@@ -3016,134 +2742,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `workbench.${key}`,
         placeholderSnapshots[key] ?? placeholderSnapshots.dashboard,
       );
-    },
-    async getSourceFoundation() {
-      await delay();
-      return buildMockApiEnvelope("preview.source-foundation", {
-        sources: MOCK_SOURCE_FOUNDATION_SUMMARIES,
-      });
-    },
-    async refreshSourcePreview() {
-      await delay();
-      return {
-        status: "queued",
-        run_id: "source_preview_refresh:mock-run",
-        job_name: "source_preview_refresh",
-        trigger_mode: "async",
-        cache_key: "source_preview.foundation",
-        preview_sources: ["zqtz", "tyw"],
-      };
-    },
-    async getSourcePreviewRefreshStatus(runId: string) {
-      await delay();
-      return {
-        status: "completed",
-        run_id: runId,
-        job_name: "source_preview_refresh",
-        trigger_mode: "terminal",
-        cache_key: "source_preview.foundation",
-        preview_sources: ["zqtz", "tyw"],
-        ingest_batch_id: "ib_mock_preview",
-        source_version: "sv_mock_preview_refresh",
-      };
-    },
-    async getSourceFoundationHistory({ sourceFamily, limit, offset }) {
-      await delay();
-      const rows = sourceFamily
-        ? MOCK_SOURCE_FOUNDATION_SUMMARIES.filter(
-            (summary) => summary.source_family === sourceFamily,
-          )
-        : MOCK_SOURCE_FOUNDATION_SUMMARIES;
-      return buildMockApiEnvelope("preview.source-foundation.history", {
-        limit,
-        offset,
-        total_rows: rows.length,
-        rows: rows.slice(offset, offset + limit),
-      });
-    },
-    async getSourceFoundationRows({ sourceFamily, ingestBatchId, limit, offset }) {
-      await delay();
-      const rows =
-        sourceFamily === "zqtz"
-          ? [
-              {
-                ingest_batch_id: ingestBatchId,
-                row_locator: 1,
-                report_date: "2025-12-31",
-                business_type_primary: "其他债券",
-                business_type_final: "公募基金",
-                asset_group: "基金类",
-                instrument_code: "SA0001",
-                instrument_name: "MOCK-ZQTZ",
-                account_category: "银行账户",
-                manual_review_needed: false,
-              },
-            ]
-          : [
-              {
-                ingest_batch_id: ingestBatchId,
-                row_locator: 1,
-                report_date: "2025-12-31",
-                business_type_primary: "同业拆入",
-                product_group: "拆借类",
-                institution_category: "bank",
-                special_nature: "普通",
-                counterparty_name: "MOCK-TYW",
-                investment_portfolio: "拆借自营",
-                manual_review_needed: false,
-              },
-            ];
-      return buildMockApiEnvelope(`preview.${sourceFamily}.rows`, {
-        source_family: sourceFamily,
-        ingest_batch_id: ingestBatchId,
-        limit,
-        offset,
-        total_rows: rows.length,
-        columns: buildMockSourcePreviewColumns(rows),
-        rows,
-      });
-    },
-    async getSourceFoundationTraces({ sourceFamily, ingestBatchId, limit, offset }) {
-      await delay();
-      const rows = [
-        {
-          ingest_batch_id: ingestBatchId,
-          row_locator: 1,
-          trace_step: 1,
-          field_name: sourceFamily === "zqtz" ? "业务种类1" : "产品类型",
-          field_value: sourceFamily === "zqtz" ? "其他债券" : "同业拆入",
-          derived_label: sourceFamily === "zqtz" ? "公募基金" : "拆借类",
-          manual_review_needed: false,
-        },
-      ];
-      return buildMockApiEnvelope(`preview.${sourceFamily}.traces`, {
-        source_family: sourceFamily,
-        ingest_batch_id: ingestBatchId,
-        limit,
-        offset,
-        total_rows: rows.length,
-        columns: buildMockSourcePreviewColumns(rows),
-        rows,
-      });
-    },
-    async getChoiceNewsEvents(options) {
-      await delay();
-      return buildMockChoiceNewsEnvelope(options);
-    },
-    async getResearchCalendarEvents(options) {
-      await delay();
-      return buildMockResearchCalendarEvents(options?.startDate ?? options?.reportDate ?? options?.endDate);
-    },
-    async ingestTushareNprNews(_options?: { limit?: number }) {
-      await delay();
-      return {
-        status: "completed",
-        inserted: 0,
-        skipped_duplicates: 0,
-        fetched: 0,
-        npr: { inserted: 0, skipped_duplicates: 0, fetched: 0 },
-        news: { inserted: 0, skipped_duplicates: 0, fetched: 0, src: "mock" },
-      };
     },
     async getProductCategoryDates() {
       await delay();
@@ -4812,20 +4410,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/ui/home/overview${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
       ),
-    getHomeSnapshot: async (options?: GetHomeSnapshotOptions) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate) params.set("report_date", options.reportDate);
-      if (options?.allowPartial) params.set("allow_partial", "true");
-      const qs = params.toString();
-      const response = await fetchImpl(
-        `${baseUrl}/ui/home/snapshot${qs ? `?${qs}` : ""}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!response.ok) {
-        throw new Error(`Request failed: /ui/home/snapshot (${response.status})`);
-      }
-      return (await response.json()) as ApiEnvelope<HomeSnapshotPayload>;
-    },
+    getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
+      fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: (basis = "formal") =>
@@ -5504,114 +5090,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     getAlerts: () =>
       requestJson<AlertsPayload>(fetchImpl, baseUrl, "/ui/home/alerts"),
     getPlaceholderSnapshot: mockClient.getPlaceholderSnapshot,
-    getSourceFoundation: () =>
-      requestJson<SourcePreviewPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/preview/source-foundation",
-      ),
-    refreshSourcePreview: () =>
-      requestActionJson<SourcePreviewRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/preview/source-foundation/refresh",
-        {
-          method: "POST",
-        },
-      ),
-    getSourcePreviewRefreshStatus: (runId: string) =>
-      requestActionJson<SourcePreviewRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/refresh-status?run_id=${encodeURIComponent(runId)}`,
-      ),
-    getSourceFoundationHistory: ({ sourceFamily, limit, offset }) => {
-      const params = new URLSearchParams();
-      if (sourceFamily?.trim()) {
-        params.set("source_family", sourceFamily);
-      }
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      return requestJson<SourcePreviewHistoryPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/history?${params.toString()}`,
-      );
-    },
-    getSourceFoundationRows: ({ sourceFamily, ingestBatchId, limit, offset }) =>
-      requestJson<SourcePreviewRowsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/rows?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
-      ),
-    getSourceFoundationTraces: ({ sourceFamily, ingestBatchId, limit, offset }) =>
-      requestJson<SourcePreviewTracesPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/traces?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
-      ),
-    getResearchCalendarEvents: (options) => {
-      const params = new URLSearchParams();
-      if (options?.startDate?.trim()) {
-        params.set("start_date", options.startDate.trim());
-      }
-      if (options?.endDate?.trim()) params.set("end_date", options.endDate.trim());
-      else if (options?.reportDate?.trim()) params.set("end_date", options.reportDate.trim());
-      const query = params.toString();
-      return requestJson<ResearchCalendarResultPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/calendar/supply-auctions${query ? `?${query}` : ""}`,
-      ).then((payload) => payload.result.events.map(mapResearchCalendarApiEvent));
-    },
-    getChoiceNewsEvents: ({
-      limit,
-      offset,
-      groupId,
-      topicCode,
-      errorOnly,
-      receivedFrom,
-      receivedTo,
-    }) => {
-      const params = new URLSearchParams();
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      if (groupId?.trim()) {
-        params.set("group_id", groupId.trim());
-      }
-      if (topicCode?.trim()) {
-        params.set("topic_code", topicCode.trim());
-      }
-      if (errorOnly) {
-        params.set("error_only", "true");
-      }
-      if (receivedFrom?.trim()) {
-        params.set("received_from", receivedFrom.trim());
-      }
-      if (receivedTo?.trim()) {
-        params.set("received_to", receivedTo.trim());
-      }
-      return requestJson<ChoiceNewsEventsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/news/choice-events/latest?${params.toString()}`,
-      );
-    },
-    ingestTushareNprNews: (options?: { limit?: number }) => {
-      const params = new URLSearchParams();
-      if (options?.limit != null) {
-        params.set("limit", String(options.limit));
-      }
-      const q = params.toString();
-      return requestActionJson<{
-        status: string;
-        inserted: number;
-        skipped_duplicates: number;
-        fetched: number;
-        npr: { inserted: number; skipped_duplicates: number; fetched: number };
-        news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
-      }>(fetchImpl, baseUrl, `/api/news/tushare-npr/ingest${q ? `?${q}` : ""}`, { method: "POST" });
-    },
     getProductCategoryDates: () =>
       requestJson<ProductCategoryDatesPayload>(
         fetchImpl,

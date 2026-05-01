@@ -1216,6 +1216,11 @@ export default function MarketDataPage() {
           model={livermoreStrategy}
           isLoading={livermoreStrategyQuery.isLoading}
           isError={livermoreStrategyQuery.isError}
+          fetchErrorDetail={
+            livermoreStrategyQuery.error instanceof Error
+              ? livermoreStrategyQuery.error.message
+              : null
+          }
           onRetry={() => void livermoreStrategyQuery.refetch()}
         />
       </MarketSectionBlock>

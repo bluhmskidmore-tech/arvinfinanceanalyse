@@ -1,3 +1,4 @@
+import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { LivermoreStrategyModel } from "../lib/livermoreStrategyModel";
 import "./LivermoreStrategyPanel.css";
 
@@ -5,6 +6,7 @@ type Props = {
   model: LivermoreStrategyModel | null;
   isLoading: boolean;
   isError: boolean;
+  fetchErrorDetail?: string | null;
   onRetry: () => void;
 };
 
@@ -16,6 +18,7 @@ export function LivermoreStrategyPanel({
   model,
   isLoading,
   isError,
+  fetchErrorDetail,
   onRetry,
 }: Props) {
   if (isLoading) {
@@ -27,10 +30,17 @@ export function LivermoreStrategyPanel({
   }
 
   if (isError) {
+    const reserved =
+      Boolean(fetchErrorDetail?.trim()) &&
+      isReservedBoundaryHttpMessage(fetchErrorDetail ?? "");
     return (
       <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
         <div className="livermore-strategy-panel__state livermore-strategy-panel__state--error">
-          <div>Livermore 分析结果加载失败。</div>
+          {reserved ? (
+            <div>Livermore 分析本轮不可用（接口保留）。</div>
+          ) : (
+            <div>Livermore 分析结果加载失败。</div>
+          )}
           <button
             className="livermore-strategy-panel__retry"
             onClick={onRetry}
@@ -52,6 +62,9 @@ export function LivermoreStrategyPanel({
   }
 
   const noData = model.marketGate.state === "NO_DATA";
+  const sectorRank = model.sectorRank;
+  const stockCandidates = model.stockCandidates;
+  const riskExit = model.riskExit;
 
   return (
     <section className="livermore-strategy-panel" data-testid="market-data-livermore-panel">
@@ -181,6 +194,87 @@ export function LivermoreStrategyPanel({
             ))}
           </ul>
         </div>
+
+        {sectorRank ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-sector-rank">
+            <h3 className="livermore-strategy-panel__block-title">板块排序</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {sectorRank.formulaVersion}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {sectorRank.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.sectorCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.sectorName} · {item.sectorCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      分数 {item.score} · 成分股 {item.constituentCount}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>可用</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {stockCandidates ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-stock-candidates">
+            <h3 className="livermore-strategy-panel__block-title">个股候选</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {stockCandidates.formulaVersion}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {stockCandidates.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.rank}:${item.stockCode}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      #{item.rank} {item.stockName} · {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.sectorName} · 板块第 {item.sectorRank} 名 · 突破位 {item.breakoutLevel}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      CLV {item.closeStrength} · gap {item.gapNorm} · 异常换手 {item.abnormalTurnover}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>{stockCandidates.marketState}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {riskExit ? (
+          <div className="livermore-strategy-panel__block" data-testid="livermore-risk-exit">
+            <h3 className="livermore-strategy-panel__block-title">Risk exit</h3>
+            <div className="livermore-strategy-panel__row-detail">
+              {riskExit.formulaVersion}
+            </div>
+            <div className="livermore-strategy-panel__row-detail">
+              Positions {riskExit.positionCount} | Signals {riskExit.signalCount}
+            </div>
+            <ul className="livermore-strategy-panel__list">
+              {riskExit.items.map((item) => (
+                <li className="livermore-strategy-panel__row" key={`${item.stockCode}:${item.reason}`}>
+                  <span className="livermore-strategy-panel__row-main">
+                    <span className="livermore-strategy-panel__row-title">
+                      {item.stockName} | {item.stockCode}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      {item.reason} | entry {item.entryCost} | bars {item.barsSinceEntry}
+                    </span>
+                    <span className="livermore-strategy-panel__row-detail">
+                      close {item.latestClose} | ema10 {item.latestEma10}
+                    </span>
+                  </span>
+                  <span className={statusClass("ready")}>Ready</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
 
         <div
           className="livermore-strategy-panel__block"

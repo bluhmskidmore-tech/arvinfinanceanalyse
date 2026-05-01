@@ -45,9 +45,6 @@ const ProductCategoryPnlPage = lazy(
 const WorkbenchPlaceholderPage = lazy(
   () => import("../features/workbench/pages/WorkbenchPlaceholderPage"),
 );
-const AgentWorkbenchPage = lazy(
-  () => import("../features/agent/AgentWorkbenchPage"),
-);
 const NewsEventsPage = lazy(
   () => import("../features/news-events/NewsEventsPage"),
 );
@@ -59,9 +56,6 @@ const ConcentrationMonitorPage = lazy(
 );
 const CashflowProjectionPage = lazy(
   () => import("../features/cashflow-projection/pages/CashflowProjectionPage"),
-);
-const RiskOverviewPage = lazy(
-  () => import("../features/risk-overview/RiskOverviewPage"),
 );
 const BondAnalyticsView = lazy(
   () => import("../features/bond-analytics/components/BondAnalyticsView"),
@@ -88,7 +82,6 @@ const TeamPerformancePage = lazy(
 const PlatformConfigPage = lazy(
   () => import("../features/platform-config/PlatformConfigPage"),
 );
-const CubeQueryPage = lazy(() => import("../features/cube-query/pages/CubeQueryPage"));
 const CrossAssetPage = lazy(() => import("../features/cross-asset/pages/CrossAssetPage"));
 const DecisionItemsPage = lazy(
   () => import("../features/decision-items/pages/DecisionItemsPage"),
@@ -109,14 +102,6 @@ function placeholderRoute(section: WorkbenchSection): RouteObject {
   };
 }
 
-/**
- * Workbench paths whose React pages are implemented while navigation readiness is still "placeholder".
- * The readiness gate would otherwise render WorkbenchPlaceholderPage for those paths; listing them here
- * bypasses that until the route is promoted to `live` in navigation metadata (then the entry is redundant
- * and should be removed). Currently only routes that remain placeholder in `navigation.ts` need to appear.
- */
-const READINESS_IMPLEMENTED_PATHS = new Set<string>(["/cube-query"]);
-
 function buildWorkbenchChildRoutes(): RouteObject[] {
   return workbenchNavigation.map((section) => {
     if (section.path === "/") {
@@ -126,10 +111,7 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    const bypassReadiness =
-      section.path === "/agent" || READINESS_IMPLEMENTED_PATHS.has(section.path);
-
-    if (!bypassReadiness && section.readiness !== "live") {
+    if (section.readiness !== "live") {
       return placeholderRoute(section);
     }
 
@@ -137,13 +119,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<OperationsAnalysisPage />),
-      };
-    }
-
-    if (section.path === "/agent") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<AgentWorkbenchPage />),
       };
     }
 
@@ -231,13 +206,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       };
     }
 
-    if (section.path === "/risk-overview") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<RiskOverviewPage />),
-      };
-    }
-
     if (section.path === "/market-data") {
       return {
         path: section.path.slice(1),
@@ -305,13 +273,6 @@ function buildWorkbenchChildRoutes(): RouteObject[] {
       return {
         path: section.path.slice(1),
         element: routeElement(<TeamPerformancePage />),
-      };
-    }
-
-    if (section.path === "/cube-query") {
-      return {
-        path: section.path.slice(1),
-        element: routeElement(<CubeQueryPage />),
       };
     }
 

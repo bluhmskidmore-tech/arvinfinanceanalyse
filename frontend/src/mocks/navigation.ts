@@ -324,10 +324,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/risk-overview",
     icon: "risk",
     description: "风险总览与风险下钻入口",
-    readiness: "live",
-    readinessLabel: "已开放",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
     readinessNote:
-      "已接 risk tensor 主链与 bond analytics 物化下钻视图（KRD 曲线 / 信用利差迁移）。",
+      "Reserved by the current boundary. Direct access stays on placeholder behavior until this surface is explicitly promoted.",
   },
   {
     key: "risk-tensor",
@@ -442,7 +442,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "智能体分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面助手。",
     readiness: "placeholder",
     readinessLabel: "智能体试用",
-    readinessNote: "已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。",
+    readinessNote:
+      "Hidden reserved route. Keep the placeholder shell only; the real Agent workbench is outside the current boundary.",
+    navigationVisibility: "hidden",
   },
 ];
 

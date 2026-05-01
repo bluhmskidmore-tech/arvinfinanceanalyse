@@ -1022,6 +1022,77 @@ export type LivermoreUnsupportedOutput = {
   reason: string;
 };
 
+export type LivermoreSectorRankItem = {
+  rank: number;
+  sector_code: string;
+  sector_name: string;
+  score: number;
+  avg_pctchange: number;
+  avg_turn: number;
+  avg_amplitude: number;
+  constituent_count: number;
+};
+
+export type LivermoreSectorRankPayload = {
+  as_of_date: string;
+  formula_version: string;
+  is_provisional: boolean;
+  sector_count: number;
+  excluded_constituent_count: number;
+  excluded_sector_count: number;
+  items: LivermoreSectorRankItem[];
+};
+
+export type LivermoreStockCandidateItem = {
+  rank: number;
+  stock_code: string;
+  stock_name: string;
+  sector_code: string;
+  sector_name: string;
+  sector_rank: number;
+  close: number;
+  breakout_level: number;
+  ma20: number;
+  ma60: number;
+  ma120: number;
+  close_strength: number;
+  gap_norm: number;
+  abnormal_turnover: number;
+};
+
+export type LivermoreStockCandidatesPayload = {
+  as_of_date: string;
+  formula_version: string;
+  market_state: LivermoreMarketGateState;
+  input_stock_count: number;
+  candidate_count: number;
+  excluded_stock_count: number;
+  insufficient_history_count: number;
+  items: LivermoreStockCandidateItem[];
+};
+
+export type LivermoreRiskExitItem = {
+  stock_code: string;
+  stock_name: string;
+  reason: string;
+  entry_cost: number;
+  bars_since_entry: number;
+  latest_close: number;
+  latest_ema10: number;
+  prior_close: number;
+  prior_ema10: number;
+};
+
+export type LivermoreRiskExitPayload = {
+  as_of_date: string;
+  formula_version: string;
+  position_count: number;
+  signal_count: number;
+  excluded_position_count: number;
+  insufficient_history_count: number;
+  items: LivermoreRiskExitItem[];
+};
+
 export type LivermoreStrategyPayload = {
   as_of_date: string | null;
   requested_as_of_date: string | null;
@@ -1033,6 +1104,9 @@ export type LivermoreStrategyPayload = {
   data_gaps: LivermoreDataGap[];
   supported_outputs: LivermoreOutputKey[];
   unsupported_outputs: LivermoreUnsupportedOutput[];
+  sector_rank?: LivermoreSectorRankPayload;
+  stock_candidates?: LivermoreStockCandidatesPayload;
+  risk_exit?: LivermoreRiskExitPayload;
 };
 
 export type ResearchCalendarEventKind = "macro" | "supply" | "auction" | "internal";

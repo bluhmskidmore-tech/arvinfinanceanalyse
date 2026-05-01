@@ -196,12 +196,15 @@ export default function DashboardPage() {
         attributionLoading: snapshotQuery.isLoading,
         attributionError: snapshotQuery.isError,
         verdictPayload: snapshotQuery.data?.result.verdict ?? null,
+        snapshotFetchErrorDetail:
+          snapshotQuery.error instanceof Error ? snapshotQuery.error.message : undefined,
       }),
     [
       overviewEnv,
       attributionEnv,
       snapshotQuery.isLoading,
       snapshotQuery.isError,
+      snapshotQuery.error,
       snapshotQuery.data?.result.verdict,
     ],
   );

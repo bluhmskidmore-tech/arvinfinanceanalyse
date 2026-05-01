@@ -31,22 +31,19 @@ import { FormalResultMetaPanel } from "../../../components/page/FormalResultMeta
 import { PageFilterTray, PageHeader, PageSectionLead } from "../../../components/page/PagePrimitives";
 import { SectionCard } from "../../../components/SectionCard";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../../workbench/components/KpiCard";
 import AdbAnalyticalPreview from "../components/AdbAnalyticalPreview";
+import BalanceAnalysisWorkbenchLayout from "../components/BalanceAnalysisWorkbenchLayout";
 import { BalanceBottomRow } from "../components/BalanceBottomRow";
 import { BalanceContributionRow } from "../components/BalanceContributionRow";
 import { BalanceSummaryRow } from "../components/BalanceSummaryRow";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
 import { shellTokens } from "../../../theme/tokens";
 import {
-  summaryGridStyle,
   firstScreenGridStyle,
   formalHeroStyle,
   heroMetaRowStyle,
   heroDetailGridStyle,
   heroDetailCardStyle,
-  priorityBoardStyle,
-  priorityCardStyle,
   stagedScenarioShellStyle,
   controlBarStyle,
   controlStyle,
@@ -64,7 +61,7 @@ import {
   currentUserCardStyle,
   barTrackStyle,
 } from "./BalanceAnalysisPage.styles";
-import { heroMetaChipStyle, signalAccentStyle, severityTone } from "./BalanceAnalysisPage.helpers";
+import { heroMetaChipStyle } from "./BalanceAnalysisPage.helpers";
 import {
   distributionChartBarWidthPercent,
   formatBalanceAmountToYiFromWan,
@@ -1574,9 +1571,6 @@ export default function BalanceAnalysisPage() {
     )
     .flatMap((table) => table.rows)
     .find((row) => `${row.severity}:${row.title}` === selectedRiskAlertKey);
-  const topDecision = decisionRows[0] ?? workbookDecisionRows[0];
-  const topEventCalendar = eventCalendarRows[0];
-  const topRiskAlert = riskAlertRows[0];
   const scopeAmountTotals = summarizeBalanceAmountsByPositionScope(detailQuery.data?.result.summary ?? []);
   const canSplitAllPositionScope =
     positionScope === "all" &&
@@ -1639,42 +1633,13 @@ export default function BalanceAnalysisPage() {
       valueVariant: "text" as const,
     })),
   ];
-  const prioritySignals = [
-    {
-      key: "decision",
-      title: "决策事项",
-      eyebrow: `${decisionRows.length || workbookDecisionRows.length} 项待处理`,
-      highlight: topDecision?.title ?? "当前报告日没有返回待处理决策事项",
-      detail: topDecision
-        ? `${topDecision.action_label} · 来源 ${topDecision.source_section}${
-            "latest_status" in topDecision && topDecision.latest_status
-              ? ` · 状态 ${topDecision.latest_status.status}`
-              : ""
-          }`
-        : "决策事项为空时，右侧治理栏保持空状态，不在首屏补造结论。",
-      tone: severityTone(topDecision?.severity),
-    },
-    {
-      key: "risk",
-      title: "风险预警",
-      eyebrow: `${riskAlertRows.length} 条信号`,
-      highlight: topRiskAlert?.title ?? "当前 workbook 未返回风险预警",
-      detail: topRiskAlert
-        ? `${topRiskAlert.severity} · 来源 ${topRiskAlert.source_section}`
-        : "风险阈值未返回时，页面只保留正式总览和工作簿主栏。",
-      tone: severityTone(topRiskAlert?.severity),
-    },
-    {
-      key: "event",
-      title: "关键事件",
-      eyebrow: `${eventCalendarRows.length} 个日历节点`,
-      highlight: topEventCalendar?.title ?? "当前 workbook 未返回事件日历",
-      detail: topEventCalendar
-        ? `${topEventCalendar.event_date} · ${topEventCalendar.impact_hint}`
-        : "事件缺失时不在前端生成占位计划。",
-      tone: "info" as const,
-    },
-  ];
+  const balanceWorkbenchMetrics = overviewCards.map(({ key, label, value, unit, detail }) => ({
+    key,
+    label,
+    value,
+    unit,
+    detail,
+  }));
   const stageDecisionRows = decisionRows.length > 0 ? decisionRows : workbookDecisionRows;
   const stageModel = buildBalanceStageRealDataModel({
     overview,
@@ -2085,97 +2050,33 @@ export default function BalanceAnalysisPage() {
             </div>
           </div>
         </section>
-
-        <section data-testid="balance-analysis-priority-board" style={priorityBoardStyle}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <span
-              style={{
-                color: shellTokens.colorTextMuted,
-                fontSize: 12,
-                fontWeight: 700,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-              }}
-            >
-              治理信号
-            </span>
-            <h2
-              style={{
-                margin: 0,
-                fontSize: 20,
-                fontWeight: 700,
-                color: shellTokens.colorTextPrimary,
-              }}
-            >
-              当前行动信号
-            </h2>
-            <p
-              style={{
-                margin: 0,
-                color: shellTokens.colorTextSecondary,
-                fontSize: 13,
-                lineHeight: 1.7,
-              }}
-            >
-              这里不重算风险和利差，只把决策事项、风险预警、事件日历的现有治理信号提到前面。
-            </p>
-          </div>
-
-          <div style={{ display: "grid", gap: 10 }}>
-            {prioritySignals.map((signal) => (
-              <article key={signal.key} style={priorityCardStyle}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ color: shellTokens.colorTextMuted, fontSize: 12, fontWeight: 700 }}>
-                    {signal.title}
-                  </span>
-                  <span
-                    style={{
-                      ...signalAccentStyle(signal.tone),
-                      display: "inline-flex",
-                      alignItems: "center",
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 700,
-                    }}
-                  >
-                    {signal.eyebrow}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    color: shellTokens.colorTextPrimary,
-                    fontSize: 16,
-                    fontWeight: 700,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {signal.highlight}
-                </div>
-                <div style={{ color: shellTokens.colorTextSecondary, fontSize: 12, lineHeight: 1.6 }}>
-                  {signal.detail}
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
       </div>
 
-      <div
-        data-testid="balance-analysis-overview-cards"
-        style={{ ...summaryGridStyle, marginTop: 18 }}
-      >
-        {overviewCards.map((card) => (
-          <KpiCard
-            key={card.key}
-            label={card.label}
-            value={card.value}
-            unit={card.unit}
-            detail={card.detail}
-            valueVariant={card.valueVariant}
-          />
-        ))}
-      </div>
+      <BalanceAnalysisWorkbenchLayout
+        overview={overview}
+        summary={summaryTable}
+        workbook={workbook}
+        detail={detailQuery.data?.result}
+        formalStatus={overviewMeta}
+        decisionItems={decisionItems}
+        riskAlerts={riskAlertRows}
+        calendarEvents={eventCalendarRows}
+        tableRows={summaryTable?.rows ?? []}
+        metrics={balanceWorkbenchMetrics}
+        kpiBars={[]}
+        compactFilters={
+          <p
+            style={{
+              margin: 0,
+              color: designTokens.color.neutral[600],
+              fontSize: 12,
+              lineHeight: 1.55,
+            }}
+          >
+            报告日、头寸范围与币种口径请使用页眉筛选。
+          </p>
+        }
+      />
 
       <div data-testid="balance-analysis-summary" style={{ display: "none" }}>
         {String(overview?.detail_row_count ?? 0)} {String(overview?.summary_row_count ?? 0)}{" "}

@@ -332,11 +332,11 @@ describe("RouteRegistry", () => {
     });
   });
 
-  it("renders the risk-overview route as a real page", async () => {
+  it("renders the risk-overview route as a reserved placeholder page", async () => {
     renderWorkbenchApp(["/risk-overview"], { client: mockClient });
 
-    expect(await screen.findByTestId("risk-overview-kpi-grid")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "风险总览" })).toBeInTheDocument();
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByTestId("risk-overview-kpi-grid")).not.toBeInTheDocument();
   });
 
   it("renders the risk-tensor route", async () => {
@@ -371,10 +371,17 @@ describe("RouteRegistry", () => {
     renderWorkbenchApp(["/cube-query"], { client: mockClient });
 
     expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "多维查询" })).toBeInTheDocument();
+    expect(screen.queryByTestId("cube-query-page")).not.toBeInTheDocument();
     const banner = screen.getByTestId("workbench-readiness-banner");
     expect(
       within(banner).getByText(/入口保留；自由聚合查询尚未作为二期主消费面晋升/),
     ).toBeInTheDocument();
+  });
+
+  it("renders the hidden /agent route as a placeholder instead of the live workbench", async () => {
+    renderWorkbenchApp(["/agent"], { client: mockClient });
+
+    expect(await screen.findByTestId("workbench-readiness-banner")).toBeInTheDocument();
+    expect(screen.queryByLabelText("agent-question-input")).not.toBeInTheDocument();
   });
 });

@@ -4,12 +4,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "react-router-dom";
 import { vi } from "vitest";
 
+vi.mock("../lib/echarts", () => ({
+  default: () => <div data-testid="dashboard-echarts-stub" />,
+}));
+
 import { ApiClientProvider, createApiClient, type ApiClient } from "../api/client";
 import { formatRawAsNumeric } from "../utils/format";
 
-vi.mock("../features/executive-dashboard/components/PnlAttributionSection", () => ({
-  default: () => null,
-}));
 import { routerFuture } from "../router/routerFuture";
 import { createWorkbenchMemoryRouter, renderWorkbenchApp } from "./renderWorkbenchApp";
 
@@ -756,5 +757,27 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(calendar).toHaveTextContent("关键日历外部事件加载失败。");
     });
+  });
+
+  it("shows reserved-surface guidance when home snapshot fails with executive reserved detail", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const reservedDetail =
+      "Executive route home_snapshot is reserved by the current boundary.";
+    const client: ApiClient = {
+      ...base,
+      getHomeSnapshot: vi.fn(async () => {
+        throw new Error(reservedDetail);
+      }),
+    };
+
+    renderDashboard(client);
+
+    await screen.findByTestId("fixed-income-dashboard-page");
+    await screen.findByTestId("dashboard-governed-surface");
+    const errorSection = await screen.findByTestId("data-section-error");
+    expect(errorSection).toHaveTextContent("保留面");
+    expect(errorSection).not.toHaveTextContent(
+      "当前页面保留重试入口，不在浏览器端自行拼接正式口径。",
+    );
   });
 });

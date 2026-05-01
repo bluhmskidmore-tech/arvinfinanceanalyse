@@ -20,6 +20,7 @@ import type {
   VerdictReason,
   VerdictSuggestion,
 } from "../../../api/contracts";
+import { isReservedBoundaryHttpMessage } from "../../../api/httpResponseError";
 import type { DataSectionState } from "../../../components/DataSection.types";
 import type { Tone } from "../../../utils/tone";
 import { sanitizeMetricDetail, sanitizeMetricLabel } from "../lib/sanitizeMetricCopy";
@@ -63,6 +64,7 @@ export type DashboardAdapterInput = {
   attributionLoading: boolean;
   attributionError: boolean;
   verdictPayload?: VerdictPayload | null;
+  snapshotFetchErrorDetail?: string;
 };
 
 export type DashboardAdapterOutput = {
@@ -84,6 +86,7 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
     env: input.overviewEnv,
     isLoading: input.overviewLoading,
     isError: input.overviewError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
     emptyIf: (result) => !result || !Array.isArray(result.metrics) || result.metrics.length === 0,
   });
 
@@ -91,6 +94,7 @@ export function adaptDashboard(input: DashboardAdapterInput): DashboardAdapterOu
     env: input.attributionEnv,
     isLoading: input.attributionLoading,
     isError: input.attributionError,
+    fetchErrorDetail: input.snapshotFetchErrorDetail,
     emptyIf: (result) => !result || !Array.isArray(result.segments) || result.segments.length === 0,
   });
 
@@ -235,14 +239,28 @@ function coerceTone(raw: string): Tone {
   return "neutral";
 }
 
+function reservedFetchSecondaryMessage(raw?: string): string | undefined {
+  if (!raw?.trim()) {
+    return undefined;
+  }
+  if (!isReservedBoundaryHttpMessage(raw)) {
+    return undefined;
+  }
+  return "该接口在当前发布边界中为保留面，本轮不可用；并非通用网络错误。";
+}
+
 function deriveStateFromEnvelope<T extends { metrics?: unknown; segments?: unknown }>(opts: {
   env: { result_meta: ResultMeta; result: T } | undefined;
   isLoading: boolean;
   isError: boolean;
+  fetchErrorDetail?: string;
   emptyIf: (result: T | undefined) => boolean;
 }): DataSectionState {
   if (opts.isLoading) return { kind: "loading" };
-  if (opts.isError) return { kind: "error" };
+  if (opts.isError) {
+    const secondary = reservedFetchSecondaryMessage(opts.fetchErrorDetail);
+    return secondary ? { kind: "error", message: secondary } : { kind: "error" };
+  }
   if (!opts.env) return { kind: "loading" };
 
   const meta = opts.env.result_meta;

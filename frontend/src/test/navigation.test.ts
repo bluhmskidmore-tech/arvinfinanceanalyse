@@ -23,9 +23,10 @@ describe("workbench navigation mocks", () => {
     expect(agent).toBeDefined();
     expect(agent?.readiness).toBe("placeholder");
     expect(agent?.readinessLabel).toBe("智能体试用");
+    expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
@@ -79,11 +80,11 @@ describe("workbench navigation mocks", () => {
     }
   });
 
-  it("keeps risk-overview in the live primary navigation", () => {
+  it("keeps risk-overview outside the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
-    expect(riskOverview?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(riskOverview?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
   });
 
   it("promotes bond-dashboard into the live primary navigation", () => {

@@ -753,12 +753,14 @@ describe("BalanceAnalysisPage", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "资产负债分析" })).toBeInTheDocument();
+    expect(screen.getByTestId("balance-workbench")).toBeInTheDocument();
+    expect(screen.getByTestId("balance-analysis-workbench-grid")).toBeInTheDocument();
     expect(screen.getByTestId("balance-analysis-page-title")).toHaveTextContent("资产负债分析");
     expect(screen.getByTestId("balance-analysis-page-subtitle")).toHaveTextContent(
       "正式/分析口径",
     );
     expect(screen.getByRole("heading", { name: "正式状态摘要" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "当前行动信号" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "本日判断横幅" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "正式汇总驾驶舱" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "工作簿与治理侧栏" })).toBeInTheDocument();
     const pageText = screen.getByTestId("balance-analysis-page").textContent ?? "";
