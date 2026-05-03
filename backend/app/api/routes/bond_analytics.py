@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, get_auth_context
 from backend.app.services.bond_analytics_service import (
     BondAnalyticsRefreshConflictError,
     BondAnalyticsRefreshServiceError,
@@ -112,7 +114,10 @@ def accounting_class_audit(
 
 
 @router.post("/refresh")
-def refresh(report_date: str = Query(...)):
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    report_date: str = Query(...),
+):
     settings = get_settings()
     try:
         return refresh_bond_analytics(settings, report_date=report_date)

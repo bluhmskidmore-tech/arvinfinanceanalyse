@@ -104,7 +104,7 @@ function headerButtonStyle(kind: "primary" | "secondary") {
     border: isPrimary
       ? `1px solid ${shellTokens.colorAccent}`
       : `1px solid ${shellTokens.colorBorderSoft}`,
-    background: isPrimary ? shellTokens.colorAccentSoft : "#ffffff",
+    background: isPrimary ? shellTokens.colorAccentSoft : shellTokens.colorBgSurface,
     color: isPrimary ? shellTokens.colorAccent : shellTokens.colorTextSecondary,
     fontSize: 12,
     fontWeight: 700,
@@ -196,12 +196,15 @@ export default function DashboardPage() {
         attributionLoading: snapshotQuery.isLoading,
         attributionError: snapshotQuery.isError,
         verdictPayload: snapshotQuery.data?.result.verdict ?? null,
+        snapshotFetchErrorDetail:
+          snapshotQuery.error instanceof Error ? snapshotQuery.error.message : undefined,
       }),
     [
       overviewEnv,
       attributionEnv,
       snapshotQuery.isLoading,
       snapshotQuery.isError,
+      snapshotQuery.error,
       snapshotQuery.data?.result.verdict,
     ],
   );
@@ -210,7 +213,7 @@ export default function DashboardPage() {
   const attributionMeta = adapterOutput.attribution.meta;
   const attentionItems = [
     describeAttention(overviewMeta, "总览"),
-    describeAttention(attributionMeta, "归因"),
+    describeAttention(attributionMeta, "贡献拆解"),
   ].filter((item): item is string => Boolean(item));
 
   const snapshotResult = snapshotQuery.data?.result;
@@ -455,7 +458,7 @@ export default function DashboardPage() {
           padding: `${designTokens.space[5]}px ${designTokens.space[5]}px`,
           borderRadius: designTokens.radius.md,
           border: `1px solid ${shellTokens.colorBorderSoft}`,
-          background: "#ffffff",
+          background: shellTokens.colorBgSurface,
         }}
         actions={
           <div
@@ -488,7 +491,7 @@ export default function DashboardPage() {
                   padding: "0 8px",
                   borderRadius: 4,
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "#ffffff",
+                  background: shellTokens.colorBgSurface,
                   color: shellTokens.colorTextPrimary,
                   fontSize: 12,
                   ...tabularNumsStyle,
@@ -615,7 +618,7 @@ export default function DashboardPage() {
             padding: designTokens.space[4],
             borderRadius: designTokens.radius.md,
             border: `1px solid ${shellTokens.colorBorderSoft}`,
-            background: "#ffffff",
+            background: shellTokens.colorBgSurface,
           }}
         >
           <PageSectionLead

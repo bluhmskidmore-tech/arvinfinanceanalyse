@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 
 import { createApiClient, type ApiClient } from "../api/client";
 import type { ResultMeta } from "../api/contracts";
@@ -77,23 +76,10 @@ describe("WorkbenchShell", () => {
     );
   });
 
-  it("shows Agent Workbench as a reserved module entry", async () => {
+  it("keeps Agent Workbench hidden from visible shell navigation", async () => {
     renderShellAt("/");
 
-    expect(
-      await screen.findByRole("button", { name: /智能体对话/ }),
-    ).toBeInTheDocument();
-  });
-
-  it("opens Agent Workbench in a dialog from the system shell", async () => {
-    renderShellAt("/");
-
-    const [agentTrigger] = await screen.findAllByRole("button", { name: /智能体对话/ });
-    await userEvent.click(agentTrigger);
-
-    expect(await screen.findByRole("dialog", { name: "智能体对话" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "智能体对话" })).toBeInTheDocument();
-    expect(screen.getAllByText("基于当前页面提问").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("shows current-group section links separately from the workspace groups", async () => {
@@ -194,9 +180,12 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByTestId("portfolio-workbench-lead")).not.toBeInTheDocument();
     const subnav = await screen.findByTestId("workbench-section-subnav");
     const sectionLinks = within(subnav).getAllByRole("link");
-    expect(sectionLinks.length).toBeGreaterThanOrEqual(1);
     const hrefs = sectionLinks.map((link) => link.getAttribute("href"));
-    expect(hrefs).toContain("/cross-asset");
+    expect(hrefs).toHaveLength(3);
+    expect(hrefs).toEqual(expect.arrayContaining(["/market-data", "/cross-asset", "/news-events"]));
+    expect(subnav).toHaveTextContent("市场数据");
+    expect(subnav).toHaveTextContent("跨资产驱动");
+    expect(subnav).toHaveTextContent("新闻事件");
   });
 
   it("renders a global terminal bar that separates page context from shell market ticker", async () => {
@@ -561,16 +550,6 @@ describe("WorkbenchShell", () => {
 
     expect(await screen.findByText("保留模块")).toBeInTheDocument();
     for (const section of secondaryWorkbenchNavigation) {
-      if (section.key === "agent") {
-        const expectedLabel = "智能体对话";
-        const button = screen
-          .getAllByRole("button")
-          .find((candidate) => candidate.textContent?.includes(expectedLabel));
-        expect(button).toBeDefined();
-        expect(button).toHaveTextContent(expectedLabel);
-        continue;
-      }
-
       const link = screen
         .getAllByRole("link")
         .find((candidate) => candidate.getAttribute("href") === section.path);
@@ -578,6 +557,7 @@ describe("WorkbenchShell", () => {
       expect(link).toBeDefined();
       expect(link).toHaveTextContent(section.label);
     }
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("does not render the overview hero card on the root dashboard route", async () => {
@@ -588,14 +568,11 @@ describe("WorkbenchShell", () => {
     expect(screen.queryByText("当前只突出可验证的真实读链路")).not.toBeInTheDocument();
   });
 
-  it("shows the Agent MVP route with its specific readiness note", async () => {
+  it("keeps the hidden /agent route outside the visible shell shortcuts", async () => {
     renderShellAt("/agent");
 
     expect(await screen.findByText("agent body")).toBeInTheDocument();
-    const banner = screen.getByTestId("workbench-readiness-banner");
-    expect(banner).toHaveTextContent("当前页面仍是占位壳层");
-    expect(banner).toHaveTextContent("已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。");
-    expect(screen.queryByText("当前页面尚未物化真实数据链路")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /智能体对话/ })).not.toBeInTheDocument();
   });
 
   it("treats /dashboard as the dashboard section inside the current group subnav", async () => {

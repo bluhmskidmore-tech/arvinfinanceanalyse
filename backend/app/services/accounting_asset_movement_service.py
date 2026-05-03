@@ -43,7 +43,7 @@ from backend.app.services.formal_result_runtime import (
 from backend.app.tasks.accounting_asset_movement import (
     CACHE_KEY,
     RULE_VERSION,
-    materialize_accounting_asset_movement_on_connection,
+    refresh_accounting_asset_movement_window,
 )
 from backend.app.tasks.formal_balance_pipeline import run_formal_balance_pipeline
 from backend.app.tasks.product_category_pnl import materialize_product_category_pnl
@@ -277,8 +277,11 @@ def refresh_accounting_asset_movement(
 
     payloads_by_date = _materialize_accounting_asset_movement_window(
         duckdb_path=duckdb_path,
+        governance_dir=str(settings.governance_path),
         report_dates=report_dates,
         currency_basis=currency_basis,
+        product_category_refreshed_dates=product_category_refreshed_dates,
+        formal_balance_refreshed_dates=formal_balance_refreshed_dates,
     )
     payload = payloads_by_date[report_date]
     payload["product_category_refreshed_dates"] = product_category_refreshed_dates
@@ -308,62 +311,33 @@ def _recent_report_dates_for_refresh(
 def _materialize_accounting_asset_movement_window(
     *,
     duckdb_path: str,
+    governance_dir: str | None,
     report_dates: list[str],
     currency_basis: str,
+    product_category_refreshed_dates: list[str] | None = None,
+    formal_balance_refreshed_dates: list[str] | None = None,
 ) -> dict[str, dict[str, object]]:
-    duckdb_file = Path(duckdb_path)
-    duckdb_file.parent.mkdir(parents=True, exist_ok=True)
-    payloads_by_date: dict[str, dict[str, object]] = {}
-    conn = duckdb.connect(str(duckdb_file), read_only=False)
-    try:
-        conn.execute("begin transaction")
-        for current_report_date in report_dates:
-            rows = materialize_accounting_asset_movement_on_connection(
-                conn,
-                report_date=current_report_date,
-                currency_basis=currency_basis,
-            )
-            source_versions = sorted(
-                {
-                    token
-                    for row in rows
-                    for token in row.source_version.split("__")
-                    if token
-                }
-            )
-            payloads_by_date[current_report_date] = {
-                "status": "completed",
-                "cache_key": CACHE_KEY,
-                "report_date": current_report_date,
-                "currency_basis": currency_basis,
-                "row_count": len(rows),
-                "source_version": "__".join(source_versions),
-                "rule_version": RULE_VERSION,
-            }
-        conn.execute("commit")
-        _checkpoint_if_possible(conn)
-    except Exception:
-        conn.execute("rollback")
-        raise
-    finally:
-        conn.close()
-    return payloads_by_date
-
-
-def _checkpoint_if_possible(conn: duckdb.DuckDBPyConnection) -> None:
-    try:
-        conn.execute("checkpoint")
-    except duckdb.Error:
-        pass
+    task_payload = refresh_accounting_asset_movement_window.fn(
+        duckdb_path=duckdb_path,
+        governance_dir=governance_dir,
+        report_dates=report_dates,
+        anchor_report_date=report_dates[-1],
+        currency_basis=currency_basis,
+        product_category_refreshed_dates=product_category_refreshed_dates or [],
+        formal_balance_refreshed_dates=formal_balance_refreshed_dates or [],
+    )
+    payloads_by_date = task_payload.get("payloads_by_date", {})
+    if not isinstance(payloads_by_date, dict):
+        raise RuntimeError("Accounting asset movement refresh task returned no per-date payloads.")
+    return {
+        str(report_date): dict(payload)
+        for report_date, payload in payloads_by_date.items()
+        if isinstance(payload, dict)
+    }
 
 
 def _connect_for_read_after_refresh(duckdb_path: str) -> duckdb.DuckDBPyConnection:
-    try:
-        return duckdb.connect(duckdb_path, read_only=True)
-    except duckdb.Error as exc:
-        if "different configuration" not in str(exc).lower():
-            raise
-        return duckdb.connect(duckdb_path, read_only=False)
+    return duckdb.connect(duckdb_path, read_only=True)
 
 
 def _refresh_missing_product_category_dates(

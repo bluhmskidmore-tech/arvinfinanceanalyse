@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "debt:audit": "node ../scripts/audit_frontend_debt.mjs",
+    "style:audit": "node ../scripts/audit_frontend_style_diff.mjs",
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -53,7 +53,7 @@ const panelStyle: CSSProperties = {
   padding: `${designTokens.space[4]}px ${designTokens.space[4]}px`,
   borderRadius: designTokens.radius.md,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
 };
 
 const sectionLabelStyle: CSSProperties = {
@@ -296,7 +296,7 @@ export function DashboardOverviewHeroStrip({
               minHeight: 116,
               borderRadius: designTokens.radius.md,
               border: `1px solid ${shellTokens.colorBorderSoft}`,
-              background: "#ffffff",
+              background: shellTokens.colorBgSurface,
             }}
           >
             <span
@@ -588,7 +588,7 @@ export function DashboardModuleSnapshotPanel() {
                   padding: designTokens.space[3] + 2,
                   borderRadius: designTokens.radius.md,
                   border: `1px solid ${shellTokens.colorBorderSoft}`,
-                  background: "#ffffff",
+                  background: shellTokens.colorBgSurface,
                   overflow: "hidden",
                   textDecoration: "none",
                 }}
@@ -927,7 +927,7 @@ export function DashboardModuleEntryGrid() {
                 padding: designTokens.space[4],
                 borderRadius: designTokens.radius.md,
                 border: `1px solid ${shellTokens.colorBorderSoft}`,
-                background: "#ffffff",
+                background: shellTokens.colorBgSurface,
                 overflow: "hidden",
                 textDecoration: "none",
               }}

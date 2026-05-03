@@ -48,15 +48,9 @@ import type {
   KRDAttributionPayload,
   ChoiceMacroLatestPayload,
   ChoiceMacroRecentPoint,
-  ChoiceNewsEventsPayload,
   NcdFundingProxyPayload,
-  ResearchCalendarEvent,
-  ResearchCalendarResultPayload,
   ContributionPayload,
   CounterpartyStatsResponse,
-  CubeDimensionsPayload,
-  CubeQueryRequest,
-  CubeQueryResult,
   CustomerBalanceTrendResponse,
   AdbComparisonResponse,
   AdbAccountingBasisDailyAvgTrendItem,
@@ -74,22 +68,10 @@ import type {
   GetHomeSnapshotOptions,
   HealthResponse,
   HealthStatusResponse,
-  HomeSnapshotPayload,
   IndustryDistPayload,
   IndustryStatsResponse,
   InterbankCounterpartySplitResponse,
   InterbankPositionItem,
-  KpiBatchUpdateResponse,
-  KpiFetchAndRecalcRequest,
-  KpiFetchAndRecalcResponse,
-  KpiMetric,
-  KpiMetricListResponse,
-  KpiMetricUpsertRequest,
-  KpiMetricValue,
-  KpiOwnerListResponse,
-  KpiPeriodSummaryResponse,
-  KpiReportResponse,
-  KpiValuesResponse,
   LedgerPnlDataPayload,
   LedgerPnlDatesPayload,
   LedgerPnlSummaryPayload,
@@ -127,13 +109,6 @@ import type {
   RiskOverviewPayload,
   RiskTensorDatesPayload,
   RiskTensorPayload,
-  SourcePreviewHistoryPayload,
-  SourcePreviewRefreshPayload,
-  SourcePreviewRowsPayload,
-  SourcePreviewTracesPayload,
-  SourcePreviewColumn,
-  SourcePreviewSummary,
-  SourcePreviewPayload,
   SpreadAnalysisPayload,
   SpreadAttributionPayload,
   SubTypesResponse,
@@ -168,11 +143,11 @@ import type { BalanceAnalysisClientMethods } from "./balanceAnalysisClient";
 import type { BondAnalyticsClientMethods } from "./bondAnalyticsClient";
 import { mockBondAnalyticsYieldCurveTermStructure } from "./bondAnalyticsYieldCurveTermStructureMock";
 import type { ExecutiveClientMethods } from "./executiveClient";
-import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
+import { fetchHomeSnapshotEnvelope } from "./executiveHomeSnapshotFetch";
 import type { MarketDataClientMethods } from "./marketDataClient";
 import type { PnlClientMethods } from "./pnlClient";
 import type { PositionsClientMethods } from "./positionsClient";
-import { buildMockApiEnvelope, buildMockMeta } from "../mocks/mockApiEnvelope";
+import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
 import {
   buildMockProductCategoryAttributionEnvelope,
   buildMockProductCategoryPnlEnvelope,
@@ -192,6 +167,16 @@ import {
   createMockMarketDataClient,
   createRealMarketDataClient,
 } from "./marketDataClient";
+import {
+  createMockKpiClient,
+  createRealKpiClient,
+  type KpiClientMethods,
+} from "./kpiClient";
+import {
+  createMockCubeClient,
+  createRealCubeClient,
+  type CubeClientMethods,
+} from "./cubeClient";
 
 export type DataSourceMode = "mock" | "real";
 
@@ -203,6 +188,8 @@ export type { MarketDataClientMethods } from "./marketDataClient";
 export type { PnlClientMethods } from "./pnlClient";
 export type { PositionsClientMethods } from "./positionsClient";
 export type { LedgerClientMethods } from "./ledgerClient";
+export type { KpiClientMethods } from "./kpiClient";
+export type { CubeClientMethods } from "./cubeClient";
 
 export type ApiClient = {
   mode: DataSourceMode;
@@ -214,84 +201,9 @@ export type ApiClient = {
   & PositionsClientMethods
   & MarketDataClientMethods
   & LedgerClientMethods
+  & KpiClientMethods
+  & CubeClientMethods
   & {
-  // --- KPI 绩效考核 ---
-  getKpiOwners: (params?: {
-    year?: number;
-    is_active?: boolean;
-  }) => Promise<KpiOwnerListResponse>;
-  getKpiMetrics: (params?: {
-    owner_id?: number;
-    year?: number;
-    is_active?: boolean;
-  }) => Promise<KpiMetricListResponse>;
-  getKpiMetricById: (metricId: number) => Promise<KpiMetric>;
-  createKpiMetric: (data: KpiMetricUpsertRequest) => Promise<KpiMetric>;
-  updateKpiMetric: (metricId: number, data: KpiMetricUpsertRequest) => Promise<KpiMetric>;
-  deleteKpiMetric: (metricId: number) => Promise<void>;
-  getKpiValues: (params: {
-    owner_id: number;
-    as_of_date: string;
-    include_trace?: boolean;
-  }) => Promise<KpiValuesResponse>;
-  getKpiValuesSummary: (params: {
-    owner_id: number;
-    year: number;
-    period_type: "MONTH" | "QUARTER" | "YEAR";
-    period_value?: number;
-  }) => Promise<KpiPeriodSummaryResponse>;
-  createKpiValue: (data: {
-    metric_id: number;
-    as_of_date: string;
-    actual_value?: string;
-    actual_text?: string;
-    progress_pct?: string;
-    source?: string;
-  }) => Promise<KpiMetricValue>;
-  updateKpiValue: (
-    valueId: number,
-    metricId: number,
-    asOfDate: string,
-    data: {
-      target_value?: string;
-      actual_value?: string;
-      actual_text?: string;
-      progress_pct?: string;
-      score_value?: string;
-      source?: string;
-    },
-  ) => Promise<KpiMetricValue>;
-  batchUpdateKpiValues: (
-    asOfDate: string,
-    items: Array<{
-      metric_id: number;
-      actual_value?: string;
-      progress_pct?: string;
-    }>,
-  ) => Promise<KpiBatchUpdateResponse>;
-  fetchAndRecalcKpi: (
-    ownerId: number,
-    asOfDate: string,
-    request?: KpiFetchAndRecalcRequest,
-  ) => Promise<KpiFetchAndRecalcResponse>;
-  getKpiReport: (params: {
-    year: number;
-    owner_id?: number;
-    as_of_date?: string;
-    format?: "json" | "csv";
-  }) => Promise<KpiReportResponse>;
-  downloadKpiReportCSV: (params: {
-    year: number;
-    owner_id?: number;
-    as_of_date?: string;
-  }) => Promise<void>;
-  getCubeDimensions: (factTable: string) => Promise<CubeDimensionsPayload>;
-  executeCubeQuery: (request: CubeQueryRequest) => Promise<CubeQueryResult>;
-  getResearchCalendarEvents: (options?: {
-    reportDate?: string;
-    startDate?: string;
-    endDate?: string;
-  }) => Promise<ResearchCalendarEvent[]>;
   getHealthLive: () => Promise<HealthStatusResponse>;
   getHealthSummary: () => Promise<HealthStatusResponse>;
 };
@@ -521,188 +433,6 @@ const mockCampisiMaturityBuckets: CampisiMaturityBucketsPayload = {
     },
   },
 };
-
-/** Inline mock for `getSourceFoundation` in mock mode only (mirrors backend preview shape). */
-const MOCK_SOURCE_FOUNDATION_SUMMARIES: SourcePreviewSummary[] = [
-  {
-    source_family: "tyw",
-    report_date: "2025-12-31",
-    source_file: "TYWLSHOW-20251231.xls",
-    total_rows: 2395,
-    manual_review_count: 18,
-    source_version: "sv_mock_tyw_preview",
-    rule_version: "rv_phase1_source_preview_v1",
-    group_counts: {
-      "回购类": 1060,
-      "拆借类": 97,
-      "存放类": 1238,
-    },
-  },
-  {
-    source_family: "zqtz",
-    report_date: "2025-12-31",
-    source_file: "ZQTZSHOW-20251231.xls",
-    total_rows: 1724,
-    manual_review_count: 0,
-    source_version: "sv_mock_zqtz_preview",
-    rule_version: "rv_phase1_source_preview_v1",
-    group_counts: {
-      "债券类": 1571,
-      "基金类": 127,
-      "特定目的载体及其他非标类": 26,
-    },
-  },
-];
-
-const MOCK_CHOICE_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
-  {
-    event_key: "ce_mock_001",
-    received_at: "2026-04-10T09:01:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1001,
-    request_id: 501,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "S888010007API",
-    item_index: 0,
-    payload_text: "Macro data release calendar updated for CPI and industrial production.",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_002",
-    received_at: "2026-04-10T08:58:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1001,
-    request_id: 501,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "C000003006",
-    item_index: 0,
-    payload_text: null,
-    payload_json:
-      "{\"headline\":\"Policy follow-up\",\"summary\":\"PBOC open-market operation commentary stream.\"}",
-  },
-  {
-    event_key: "ce_mock_003",
-    received_at: "2026-04-10T08:50:00Z",
-    group_id: "news_cmd1",
-    content_type: "sectornews",
-    serial_id: 1002,
-    request_id: 502,
-    error_code: 101,
-    error_msg: "vendor callback timeout",
-    topic_code: "__callback__",
-    item_index: -1,
-    payload_text: null,
-    payload_json: null,
-  },
-  // Dashboard News Digest tabs filter by `group_id` (Tushare lanes). Without these, mock mode shows an empty state on every tab except「全部」.
-  {
-    event_key: "ce_mock_ts_policy",
-    received_at: "2026-04-21T15:00:00Z",
-    group_id: "tushare_policy",
-    content_type: "npr",
-    serial_id: 2001,
-    request_id: 601,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.npr",
-    item_index: 0,
-    payload_text: "【政策 mock】示例：宏观与监管要闻占位（本地 mock，非实时）。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_news",
-    received_at: "2026-04-21T14:30:00Z",
-    group_id: "tushare_news",
-    content_type: "news",
-    serial_id: 2002,
-    request_id: 602,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.news",
-    item_index: 0,
-    payload_text: "【快讯 mock】示例：市场快讯占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_cctv",
-    received_at: "2026-04-21T14:00:00Z",
-    group_id: "tushare_cctv",
-    content_type: "cctv_news",
-    serial_id: 2003,
-    request_id: 603,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.cctv",
-    item_index: 0,
-    payload_text: "【联播 mock】示例：新闻联播摘要占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_major",
-    received_at: "2026-04-21T13:30:00Z",
-    group_id: "tushare_major",
-    content_type: "major_news",
-    serial_id: 2004,
-    request_id: 604,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.major",
-    item_index: 0,
-    payload_text: "【长篇 mock】示例：长篇报道占位。",
-    payload_json: null,
-  },
-  {
-    event_key: "ce_mock_ts_research",
-    received_at: "2026-04-21T13:00:00Z",
-    group_id: "tushare_research",
-    content_type: "research_report",
-    serial_id: 2005,
-    request_id: 605,
-    error_code: 0,
-    error_msg: "",
-    topic_code: "tushare.research",
-    item_index: 0,
-    payload_text: "【研报 mock】示例：研报标题与摘要占位。",
-    payload_json: '{"title":"Mock 研报","abstr":"占位摘要","_url":"https://example.com/mock-report"}',
-  },
-];
-
-function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
-  const baseDate = reportDate?.trim() || "2026-04-18";
-  return [
-    {
-      id: "rc_supply_001",
-      date: baseDate,
-      title: "国债净融资节奏",
-      kind: "supply",
-      severity: "low",
-      amount_label: "净融资 180 亿元",
-      note: "供给节奏",
-    },
-    {
-      id: "rc_auction_002",
-      date: baseDate,
-      title: "政策性金融债招标",
-      kind: "auction",
-      severity: "high",
-      amount_label: "420 亿元",
-      issuer: "国开行",
-    },
-    {
-      id: "rc_macro_003",
-      date: baseDate,
-      title: "CPI 数据公布",
-      kind: "macro",
-      severity: "medium",
-      amount_label: "同比观察",
-      note: "宏观数据",
-    },
-  ];
-}
 
 function _buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
   return {
@@ -1340,47 +1070,6 @@ const _MOCK_FX_ANALYTICAL_PAYLOAD: FxAnalyticalPayload = {
   ],
 };
 
-function buildMockSourcePreviewColumns(rows: Array<Record<string, unknown>>): SourcePreviewColumn[] {
-  const firstRow = rows[0];
-  if (!firstRow) {
-    return [];
-  }
-  return Object.keys(firstRow).map((key) => ({
-    key,
-    label: buildMockSourcePreviewLabel(key),
-    type: key === "row_locator" || key === "trace_step"
-      ? "number"
-      : key === "manual_review_needed"
-        ? "boolean"
-        : "string",
-  }));
-}
-
-function buildMockSourcePreviewLabel(key: string) {
-  const labels: Record<string, string> = {
-    ingest_batch_id: "批次ID",
-    row_locator: "行号",
-    report_date: "报告日期",
-    business_type_primary: "业务种类1",
-    business_type_final: "业务种类2归类",
-    asset_group: "资产分组",
-    instrument_code: "债券代码",
-    instrument_name: "债券名称",
-    account_category: "账户类别",
-    product_group: "产品分组",
-    institution_category: "机构类型",
-    special_nature: "特殊性质",
-    counterparty_name: "对手方名称",
-    investment_portfolio: "投资组合",
-    manual_review_needed: "需人工复核",
-    trace_step: "轨迹步骤",
-    field_name: "字段名",
-    field_value: "字段值",
-    derived_label: "归类标签",
-  };
-  return labels[key] ?? key;
-}
-
 function reduceLatestManualAdjustments<
   T extends { adjustment_id: string; created_at: string }
 >(records: T[]): T[] {
@@ -1523,42 +1212,6 @@ function buildManualAdjustmentSearchParams(
     params.set("offset", String(options.offset));
   }
   return params;
-}
-
-function buildMockChoiceNewsEnvelope(options: {
-  limit: number;
-  offset: number;
-  groupId?: string;
-  topicCode?: string;
-  errorOnly?: boolean;
-  receivedFrom?: string;
-  receivedTo?: string;
-}): ApiEnvelope<ChoiceNewsEventsPayload> {
-  const filtered = MOCK_CHOICE_NEWS_EVENTS.filter((event) => {
-    if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) {
-      return false;
-    }
-    if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) {
-      return false;
-    }
-    if (options.errorOnly && event.error_code === 0) {
-      return false;
-    }
-    if (options.receivedFrom?.trim() && event.received_at < options.receivedFrom.trim()) {
-      return false;
-    }
-    if (options.receivedTo?.trim() && event.received_at > options.receivedTo.trim()) {
-      return false;
-    }
-    return true;
-  });
-
-  return buildMockApiEnvelope("news.choice.latest", {
-    total_rows: filtered.length,
-    limit: options.limit,
-    offset: options.offset,
-    events: filtered.slice(options.offset, options.offset + options.limit),
-  });
 }
 
 const normalizeBaseUrl = (value?: string) =>
@@ -2611,37 +2264,6 @@ const requestActionJson = async <T>(
   return (await response.json()) as T;
 };
 
-function kpiQueryString(params: Record<string, string | number | boolean | undefined>): string {
-  const q = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
-    if (v === undefined || v === "") continue;
-    q.set(k, String(v));
-  }
-  const s = q.toString();
-  return s ? `?${s}` : "";
-}
-
-async function requestKpiJson<T>(
-  fetchImpl: typeof fetch,
-  baseUrl: string,
-  path: string,
-  init?: RequestInit,
-): Promise<T> {
-  const response = await fetchImpl(`${baseUrl}/api/kpi${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-    ...init,
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `KPI API ${response.status}`);
-  }
-  return response.json() as Promise<T>;
-}
-
 const requestText = async (
   fetchImpl: typeof fetch,
   baseUrl: string,
@@ -2736,6 +2358,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createMockBalanceMovementClient(),
     ...createMockLedgerClient(),
     ...createMockMarketDataClient(),
+    ...createMockKpiClient(),
+    ...createMockCubeClient(),
     async getHealth() {
       await delay();
       return { status: "ok" };
@@ -3021,134 +2645,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `workbench.${key}`,
         placeholderSnapshots[key] ?? placeholderSnapshots.dashboard,
       );
-    },
-    async getSourceFoundation() {
-      await delay();
-      return buildMockApiEnvelope("preview.source-foundation", {
-        sources: MOCK_SOURCE_FOUNDATION_SUMMARIES,
-      });
-    },
-    async refreshSourcePreview() {
-      await delay();
-      return {
-        status: "queued",
-        run_id: "source_preview_refresh:mock-run",
-        job_name: "source_preview_refresh",
-        trigger_mode: "async",
-        cache_key: "source_preview.foundation",
-        preview_sources: ["zqtz", "tyw"],
-      };
-    },
-    async getSourcePreviewRefreshStatus(runId: string) {
-      await delay();
-      return {
-        status: "completed",
-        run_id: runId,
-        job_name: "source_preview_refresh",
-        trigger_mode: "terminal",
-        cache_key: "source_preview.foundation",
-        preview_sources: ["zqtz", "tyw"],
-        ingest_batch_id: "ib_mock_preview",
-        source_version: "sv_mock_preview_refresh",
-      };
-    },
-    async getSourceFoundationHistory({ sourceFamily, limit, offset }) {
-      await delay();
-      const rows = sourceFamily
-        ? MOCK_SOURCE_FOUNDATION_SUMMARIES.filter(
-            (summary) => summary.source_family === sourceFamily,
-          )
-        : MOCK_SOURCE_FOUNDATION_SUMMARIES;
-      return buildMockApiEnvelope("preview.source-foundation.history", {
-        limit,
-        offset,
-        total_rows: rows.length,
-        rows: rows.slice(offset, offset + limit),
-      });
-    },
-    async getSourceFoundationRows({ sourceFamily, ingestBatchId, limit, offset }) {
-      await delay();
-      const rows =
-        sourceFamily === "zqtz"
-          ? [
-              {
-                ingest_batch_id: ingestBatchId,
-                row_locator: 1,
-                report_date: "2025-12-31",
-                business_type_primary: "其他债券",
-                business_type_final: "公募基金",
-                asset_group: "基金类",
-                instrument_code: "SA0001",
-                instrument_name: "MOCK-ZQTZ",
-                account_category: "银行账户",
-                manual_review_needed: false,
-              },
-            ]
-          : [
-              {
-                ingest_batch_id: ingestBatchId,
-                row_locator: 1,
-                report_date: "2025-12-31",
-                business_type_primary: "同业拆入",
-                product_group: "拆借类",
-                institution_category: "bank",
-                special_nature: "普通",
-                counterparty_name: "MOCK-TYW",
-                investment_portfolio: "拆借自营",
-                manual_review_needed: false,
-              },
-            ];
-      return buildMockApiEnvelope(`preview.${sourceFamily}.rows`, {
-        source_family: sourceFamily,
-        ingest_batch_id: ingestBatchId,
-        limit,
-        offset,
-        total_rows: rows.length,
-        columns: buildMockSourcePreviewColumns(rows),
-        rows,
-      });
-    },
-    async getSourceFoundationTraces({ sourceFamily, ingestBatchId, limit, offset }) {
-      await delay();
-      const rows = [
-        {
-          ingest_batch_id: ingestBatchId,
-          row_locator: 1,
-          trace_step: 1,
-          field_name: sourceFamily === "zqtz" ? "业务种类1" : "产品类型",
-          field_value: sourceFamily === "zqtz" ? "其他债券" : "同业拆入",
-          derived_label: sourceFamily === "zqtz" ? "公募基金" : "拆借类",
-          manual_review_needed: false,
-        },
-      ];
-      return buildMockApiEnvelope(`preview.${sourceFamily}.traces`, {
-        source_family: sourceFamily,
-        ingest_batch_id: ingestBatchId,
-        limit,
-        offset,
-        total_rows: rows.length,
-        columns: buildMockSourcePreviewColumns(rows),
-        rows,
-      });
-    },
-    async getChoiceNewsEvents(options) {
-      await delay();
-      return buildMockChoiceNewsEnvelope(options);
-    },
-    async getResearchCalendarEvents(options) {
-      await delay();
-      return buildMockResearchCalendarEvents(options?.startDate ?? options?.reportDate ?? options?.endDate);
-    },
-    async ingestTushareNprNews(_options?: { limit?: number }) {
-      await delay();
-      return {
-        status: "completed",
-        inserted: 0,
-        skipped_duplicates: 0,
-        fetched: 0,
-        npr: { inserted: 0, skipped_duplicates: 0, fetched: 0 },
-        news: { inserted: 0, skipped_duplicates: 0, fetched: 0, src: "mock" },
-      };
     },
     async getProductCategoryDates() {
       await delay();
@@ -4543,230 +4039,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       };
     },
 
-    // --- KPI mock ---
-    async getKpiOwners(params) {
-      await delay();
-      return {
-        owners: [
-          {
-            owner_id: 1,
-            owner_name: "固定收益部",
-            org_unit: "金融市场部",
-            year: params?.year ?? new Date().getFullYear(),
-            scope_type: "department" as const,
-            is_active: true,
-            created_at: "2026-01-01T00:00:00Z",
-            updated_at: "2026-01-01T00:00:00Z",
-          },
-          {
-            owner_id: 2,
-            owner_name: "同业业务部",
-            org_unit: "金融市场部",
-            year: params?.year ?? new Date().getFullYear(),
-            scope_type: "department" as const,
-            is_active: true,
-            created_at: "2026-01-01T00:00:00Z",
-            updated_at: "2026-01-01T00:00:00Z",
-          },
-        ],
-        total: 2,
-      };
-    },
-    async getKpiMetrics() {
-      await delay();
-      return { metrics: [], total: 0 };
-    },
-    async getKpiMetricById() {
-      await delay();
-      return {
-        metric_id: 1,
-        metric_code: "MOCK_001",
-        owner_id: 1,
-        year: new Date().getFullYear(),
-        major_category: "收益类",
-        metric_name: "债券投资收益率",
-        target_value: "4.50",
-        score_weight: "15.00",
-        scoring_rule_type: "LINEAR_RATIO" as const,
-        data_source_type: "AUTO" as const,
-        is_active: true,
-      };
-    },
-    async createKpiMetric(_data) {
-      await delay();
-      return {
-        metric_id: Date.now(),
-        metric_code: _data.metric_code,
-        owner_id: _data.owner_id,
-        year: _data.year,
-        major_category: _data.major_category,
-        metric_name: _data.metric_name,
-        target_value: _data.target_value ?? null,
-        score_weight: _data.score_weight,
-        scoring_rule_type: _data.scoring_rule_type,
-        data_source_type: _data.data_source_type,
-        is_active: true,
-      };
-    },
-    async updateKpiMetric(metricId, data) {
-      await delay();
-      return {
-        metric_id: metricId,
-        metric_code: data.metric_code,
-        owner_id: data.owner_id,
-        year: data.year,
-        major_category: data.major_category,
-        metric_name: data.metric_name,
-        target_value: data.target_value ?? null,
-        score_weight: data.score_weight,
-        scoring_rule_type: data.scoring_rule_type,
-        data_source_type: data.data_source_type,
-        is_active: true,
-      };
-    },
-    async deleteKpiMetric() {
-      await delay();
-    },
-    async getKpiValues(params) {
-      await delay();
-      return {
-        owner_id: params.owner_id,
-        owner_name: "固定收益部",
-        as_of_date: params.as_of_date,
-        metrics: [],
-        total: 0,
-      };
-    },
-    async getKpiValuesSummary(params) {
-      await delay();
-      return {
-        owner_id: params.owner_id,
-        owner_name: "固定收益部",
-        year: params.year,
-        period_type: params.period_type,
-        period_value: params.period_value,
-        period_label: `${params.year}年${params.period_value ?? ""}${params.period_type === "MONTH" ? "月" : params.period_type === "QUARTER" ? "季度" : "年度"}`,
-        period_start_date: `${params.year}-01-01`,
-        period_end_date: `${params.year}-12-31`,
-        metrics: [],
-        total: 0,
-        total_weight: "100.00",
-        total_score: "0.00",
-      };
-    },
-    async createKpiValue(data) {
-      await delay();
-      return {
-        value_id: Date.now(),
-        metric_id: data.metric_id,
-        as_of_date: data.as_of_date,
-        actual_value: data.actual_value ?? null,
-        completion_ratio: null,
-        progress_pct: data.progress_pct ?? null,
-        score_value: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-    },
-    async updateKpiValue(valueId, metricId, asOfDate, data) {
-      await delay();
-      return {
-        value_id: valueId || Date.now(),
-        metric_id: metricId,
-        as_of_date: asOfDate,
-        actual_value: data.actual_value ?? null,
-        completion_ratio: null,
-        progress_pct: data.progress_pct ?? null,
-        score_value: data.score_value ?? null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-    },
-    async batchUpdateKpiValues() {
-      await delay();
-      return { success_count: 0, failed_count: 0, errors: [] };
-    },
-    async fetchAndRecalcKpi(ownerId, asOfDate) {
-      await delay();
-      return {
-        owner_id: ownerId,
-        owner_name: "固定收益部",
-        as_of_date: asOfDate,
-        total_metrics: 0,
-        fetched_count: 0,
-        scored_count: 0,
-        failed_count: 0,
-        skipped_count: 0,
-        results: [],
-      };
-    },
-    async getKpiReport(params) {
-      await delay();
-      return {
-        year: params.year,
-        generated_at: new Date().toISOString(),
-        rows: [],
-        total: 0,
-      };
-    },
-    async downloadKpiReportCSV() {
-      await delay();
-    },
-    async getCubeDimensions(factTable: string) {
-      await delay();
-      const dimensionMap: Record<string, string[]> = {
-        bond_analytics: [
-          "asset_class_std",
-          "accounting_class",
-          "tenor_bucket",
-          "rating",
-          "bond_type",
-          "issuer_name",
-          "industry_name",
-          "portfolio_name",
-          "cost_center",
-        ],
-        pnl: ["invest_type_std", "accounting_basis", "portfolio_name", "cost_center"],
-        balance: [
-          "asset_class",
-          "invest_type_std",
-          "accounting_basis",
-          "position_scope",
-          "bond_type",
-          "rating",
-        ],
-        product_category: ["category_id", "category_name", "side", "view"],
-      };
-      const fieldMap: Record<string, string[]> = {
-        bond_analytics: ["market_value", "duration"],
-        pnl: ["total_pnl"],
-        balance: ["market_value", "amortized_cost", "accrued_interest"],
-        product_category: ["business_net_income"],
-      };
-      return {
-        fact_table: factTable,
-        dimensions: dimensionMap[factTable] ?? [],
-        measures: ["sum", "avg", "count", "min", "max"],
-        measure_fields: fieldMap[factTable] ?? [],
-      };
-    },
-    async executeCubeQuery(request: CubeQueryRequest) {
-      await delay();
-      return {
-        report_date: request.report_date,
-        fact_table: request.fact_table,
-        measures: request.measures,
-        dimensions: request.dimensions ?? [],
-        rows: [],
-        total_rows: 0,
-        drill_paths: [],
-        result_meta: {
-          ...buildMockMeta("cube.query"),
-          basis: "formal",
-          formal_use_allowed: true,
-        },
-      };
-    },
   };
 
   if (mode === "mock") {
@@ -4778,6 +4050,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     ...createRealBalanceMovementClient({ fetchImpl, baseUrl }),
     ...createRealLedgerClient({ fetchImpl, baseUrl }),
     ...createRealMarketDataClient({ fetchImpl, baseUrl }),
+    ...createRealKpiClient({ fetchImpl, baseUrl }),
+    ...createRealCubeClient({ fetchImpl, baseUrl }),
     async getHealth() {
       const response = await fetchImpl(`${baseUrl}/health/ready`, {
         headers: { Accept: "application/json" },
@@ -4817,20 +4091,8 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         baseUrl,
         `/ui/home/overview${reportDate?.trim() ? `?report_date=${encodeURIComponent(reportDate.trim())}` : ""}`,
       ),
-    getHomeSnapshot: async (options?: GetHomeSnapshotOptions) => {
-      const params = new URLSearchParams();
-      if (options?.reportDate) params.set("report_date", options.reportDate);
-      if (options?.allowPartial) params.set("allow_partial", "true");
-      const qs = params.toString();
-      const response = await fetchImpl(
-        `${baseUrl}/ui/home/snapshot${qs ? `?${qs}` : ""}`,
-        { headers: { Accept: "application/json" } },
-      );
-      if (!response.ok) {
-        throw new Error(`Request failed: /ui/home/snapshot (${response.status})`);
-      }
-      return (await response.json()) as ApiEnvelope<HomeSnapshotPayload>;
-    },
+    getHomeSnapshot: (options?: GetHomeSnapshotOptions) =>
+      fetchHomeSnapshotEnvelope(fetchImpl, baseUrl, options),
     getSummary: () =>
       requestJson<SummaryPayload>(fetchImpl, baseUrl, "/ui/home/summary"),
     getFormalPnlDates: (basis = "formal") =>
@@ -5509,114 +4771,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     getAlerts: () =>
       requestJson<AlertsPayload>(fetchImpl, baseUrl, "/ui/home/alerts"),
     getPlaceholderSnapshot: mockClient.getPlaceholderSnapshot,
-    getSourceFoundation: () =>
-      requestJson<SourcePreviewPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/preview/source-foundation",
-      ),
-    refreshSourcePreview: () =>
-      requestActionJson<SourcePreviewRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        "/ui/preview/source-foundation/refresh",
-        {
-          method: "POST",
-        },
-      ),
-    getSourcePreviewRefreshStatus: (runId: string) =>
-      requestActionJson<SourcePreviewRefreshPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/refresh-status?run_id=${encodeURIComponent(runId)}`,
-      ),
-    getSourceFoundationHistory: ({ sourceFamily, limit, offset }) => {
-      const params = new URLSearchParams();
-      if (sourceFamily?.trim()) {
-        params.set("source_family", sourceFamily);
-      }
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      return requestJson<SourcePreviewHistoryPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/history?${params.toString()}`,
-      );
-    },
-    getSourceFoundationRows: ({ sourceFamily, ingestBatchId, limit, offset }) =>
-      requestJson<SourcePreviewRowsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/rows?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
-      ),
-    getSourceFoundationTraces: ({ sourceFamily, ingestBatchId, limit, offset }) =>
-      requestJson<SourcePreviewTracesPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/traces?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
-      ),
-    getResearchCalendarEvents: (options) => {
-      const params = new URLSearchParams();
-      if (options?.startDate?.trim()) {
-        params.set("start_date", options.startDate.trim());
-      }
-      if (options?.endDate?.trim()) params.set("end_date", options.endDate.trim());
-      else if (options?.reportDate?.trim()) params.set("end_date", options.reportDate.trim());
-      const query = params.toString();
-      return requestJson<ResearchCalendarResultPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/calendar/supply-auctions${query ? `?${query}` : ""}`,
-      ).then((payload) => payload.result.events.map(mapResearchCalendarApiEvent));
-    },
-    getChoiceNewsEvents: ({
-      limit,
-      offset,
-      groupId,
-      topicCode,
-      errorOnly,
-      receivedFrom,
-      receivedTo,
-    }) => {
-      const params = new URLSearchParams();
-      params.set("limit", String(limit));
-      params.set("offset", String(offset));
-      if (groupId?.trim()) {
-        params.set("group_id", groupId.trim());
-      }
-      if (topicCode?.trim()) {
-        params.set("topic_code", topicCode.trim());
-      }
-      if (errorOnly) {
-        params.set("error_only", "true");
-      }
-      if (receivedFrom?.trim()) {
-        params.set("received_from", receivedFrom.trim());
-      }
-      if (receivedTo?.trim()) {
-        params.set("received_to", receivedTo.trim());
-      }
-      return requestJson<ChoiceNewsEventsPayload>(
-        fetchImpl,
-        baseUrl,
-        `/ui/news/choice-events/latest?${params.toString()}`,
-      );
-    },
-    ingestTushareNprNews: (options?: { limit?: number }) => {
-      const params = new URLSearchParams();
-      if (options?.limit != null) {
-        params.set("limit", String(options.limit));
-      }
-      const q = params.toString();
-      return requestActionJson<{
-        status: string;
-        inserted: number;
-        skipped_duplicates: number;
-        fetched: number;
-        npr: { inserted: number; skipped_duplicates: number; fetched: number };
-        news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
-      }>(fetchImpl, baseUrl, `/api/news/tushare-npr/ingest${q ? `?${q}` : ""}`, { method: "POST" });
-    },
     getProductCategoryDates: () =>
       requestJson<ProductCategoryDatesPayload>(
         fetchImpl,
@@ -6023,144 +5177,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         `/api/bond-analytics/refresh-status?run_id=${encodeURIComponent(runId)}`,
       ),
 
-    // --- KPI real ---
-    getKpiOwners: (params) =>
-      requestKpiJson<KpiOwnerListResponse>(
-        fetchImpl,
-        baseUrl,
-        `/owners${kpiQueryString(params ?? {})}`,
-      ),
-    getKpiMetrics: (params) =>
-      requestKpiJson<KpiMetricListResponse>(
-        fetchImpl,
-        baseUrl,
-        `/metrics${kpiQueryString(params ?? {})}`,
-      ),
-    getKpiMetricById: (metricId) =>
-      requestKpiJson<KpiMetric>(fetchImpl, baseUrl, `/metrics/${metricId}`),
-    createKpiMetric: (data) =>
-      requestKpiJson<KpiMetric>(
-        fetchImpl,
-        baseUrl,
-        "/metrics",
-        { method: "POST", body: JSON.stringify(data) },
-      ),
-    updateKpiMetric: (metricId, data) =>
-      requestKpiJson<KpiMetric>(
-        fetchImpl,
-        baseUrl,
-        `/metrics/${metricId}`,
-        { method: "PUT", body: JSON.stringify(data) },
-      ),
-    deleteKpiMetric: async (metricId) => {
-      const response = await fetchImpl(`${baseUrl}/api/kpi/metrics/${metricId}`, {
-        method: "DELETE",
-      });
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(text || `KPI API ${response.status}`);
-      }
-    },
-    getKpiValues: (params) =>
-      requestKpiJson<KpiValuesResponse>(
-        fetchImpl,
-        baseUrl,
-        `/values${kpiQueryString(params)}`,
-      ),
-    getKpiValuesSummary: (params) =>
-      requestKpiJson<KpiPeriodSummaryResponse>(
-        fetchImpl,
-        baseUrl,
-        `/values/summary${kpiQueryString(params)}`,
-      ),
-    createKpiValue: (data) =>
-      requestKpiJson<KpiMetricValue>(
-        fetchImpl,
-        baseUrl,
-        "/values",
-        { method: "POST", body: JSON.stringify(data) },
-      ),
-    updateKpiValue: async (valueId, metricId, asOfDate, data) => {
-      if (valueId && valueId > 0) {
-        return requestKpiJson<KpiMetricValue>(
-          fetchImpl,
-          baseUrl,
-          `/values/${valueId}`,
-          { method: "PUT", body: JSON.stringify(data) },
-        );
-      }
-      return requestKpiJson<KpiMetricValue>(
-        fetchImpl,
-        baseUrl,
-        "/values",
-        {
-          method: "POST",
-          body: JSON.stringify({ metric_id: metricId, as_of_date: asOfDate, ...data }),
-        },
-      );
-    },
-    batchUpdateKpiValues: (asOfDate, items) =>
-      requestKpiJson<KpiBatchUpdateResponse>(
-        fetchImpl,
-        baseUrl,
-        "/values/batch",
-        { method: "POST", body: JSON.stringify({ as_of_date: asOfDate, items }) },
-      ),
-    fetchAndRecalcKpi: (ownerId, asOfDate, request) =>
-      requestKpiJson<KpiFetchAndRecalcResponse>(
-        fetchImpl,
-        baseUrl,
-        `/fetch_and_recalc${kpiQueryString({ owner_id: ownerId, as_of_date: asOfDate })}`,
-        { method: "POST", body: JSON.stringify(request ?? {}) },
-      ),
-    getKpiReport: (params) =>
-      requestKpiJson<KpiReportResponse>(
-        fetchImpl,
-        baseUrl,
-        `/report${kpiQueryString(params)}`,
-      ),
-    downloadKpiReportCSV: async (params) => {
-      const response = await fetchImpl(
-        `${baseUrl}/api/kpi/report${kpiQueryString({ ...params, format: "csv" })}`,
-      );
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(text || `KPI API ${response.status}`);
-      }
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `kpi_report_${params.year}_${params.as_of_date || "latest"}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    },
-    getCubeDimensions: async (factTable: string) => {
-      const response = await fetchImpl(
-        `${baseUrl}/api/cube/dimensions/${encodeURIComponent(factTable)}`,
-        {
-          headers: { Accept: "application/json" },
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`Request failed: /api/cube/dimensions/${factTable} (${response.status})`);
-      }
-      return response.json() as Promise<CubeDimensionsPayload>;
-    },
-    executeCubeQuery: async (request: CubeQueryRequest) => {
-      const response = await fetchImpl(`${baseUrl}/api/cube/query`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(request),
-      });
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new Error(text || `Cube query failed (${response.status})`);
-      }
-      return response.json() as Promise<CubeQueryResult>;
-    },
   };
 }
 

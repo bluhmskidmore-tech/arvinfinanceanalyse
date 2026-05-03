@@ -117,6 +117,17 @@ amortized_cost_cny_daily = amortized_cost_native * fx_mid_rate
 accrued_interest_cny_daily = accrued_interest_native * fx_mid_rate
 ```
 
+## TYW Missing Source LOCF
+
+- If a TYW report date has no source manifest but the same report date has a ZQTZ
+  materialization run, the formal snapshot materializer may carry forward the
+  previous available TYW snapshot.
+- LOCF rows must be explicit:
+  - `rule_version = rv_snapshot_zqtz_tyw_v1__locf`
+  - `source_version` starts with `sv_tyw_locf_`
+  - `ingest_batch_id = locf:<prior_report_date>`
+  - `trace_id` starts with `locf:<report_date>:from:<prior_report_date>`
+
 ### 7.3 月均人民币值
 
 ```text
@@ -240,7 +251,14 @@ PnL Bridge 结构：
 - 当前仓库已落地 governed formal compute / materialize、service / API 与首个 workbench consumer；已落地面以 `backend/app/core_finance/balance_analysis.py`、`backend/app/tasks/balance_analysis_materialize.py`、`backend/app/services/balance_analysis_service.py`、`backend/app/api/routes/balance_analysis.py` 与 `frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx` 为准。
 - 本节不宣称超出上述已落地面的更多分析能力；后续扩展仍必须遵守 `backend/app/core_finance/` 唯一正式计算入口原则。
 
-## 13. 禁止事项
+## 13. Livermore 股票输入（观测层）
+
+本节只约束 Choice/Tushare 落地到 DuckDB 的股票**观测**字段如何读，不扩展正式损益口径；字段清单与探针证据以 `config/choice_stock_catalog.json` 与 `docs/choice_stock_catalog.md` 为准。
+
+- **涨跌幅、换手率、振幅（`daily_return_turnover_amplitude`）**：`PCTCHANGE`、`TURN`、`AMPLITUDE` 统一按**百分点**（percentage points）解释，例如 1.2 表示 1.2%；Tushare 回退路径与 `pct_chg`、换手率及由高低价与昨收计算的振幅标度一致。
+- **涨跌停列（`daily_limit_flags`）**：Choice 的 `HIGHLIMIT` / `LOWLIMIT` 为涨跌停**标志**，不是限价价格。Tushare `stk_limit` 回退将限价**价格**写入同名观测列时，用途是支撑 `limit_ratio` 等由价格派生的指标，不得与 Choice 标志语义混读。
+
+## 14. 禁止事项
 
 - 不允许在 endpoint 或前端实现任何正式公式
 - 不允许 Scenario 结果写入 Formal 事实表

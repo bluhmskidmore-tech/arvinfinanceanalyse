@@ -6,8 +6,8 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "..");
 
 const baseline = {
-  apiClientLines: 6824,
-  apiClientMockOccurrences: 365,
+  apiClientLines: 5205,
+  apiClientMockOccurrences: 296,
   totalTsxStyleProps: 3293,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,

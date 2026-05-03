@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 from importlib import import_module
+from typing import Annotated
 from uuid import uuid4
 
 from backend.app.governance.settings import get_settings
-from fastapi import APIRouter, Query, Request
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 router = APIRouter(prefix="/api")
@@ -20,8 +22,20 @@ def _analytics_svc():
 
 
 @router.post("/ledger/import")
-async def import_ledger(request: Request):
+async def import_ledger(
+    request: Request,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+):
     settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="ledger.data", action="import")
+    except PermissionError as exc:
+        return _error_response(
+            status_code=403,
+            code="LEDGER_IMPORT_FORBIDDEN",
+            message=str(exc),
+            retryable=False,
+        )
     service = _svc().LedgerImportService(str(settings.duckdb_path))
     try:
         _reject_unknown_query_params(request, set())

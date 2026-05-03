@@ -45,6 +45,13 @@ def _require_landed_executive_surface(
     return payload
 
 
+def _raise_executive_reserved_surface(route_name: str) -> None:
+    raise HTTPException(
+        status_code=503,
+        detail=f"Executive route {route_name} is reserved by the current boundary.",
+    )
+
+
 @router.get("/home/overview")
 def overview(report_date: str | None = None) -> dict[str, object]:
     return executive_overview(report_date=_normalize_report_date(report_date))
@@ -62,29 +69,17 @@ def pnl_attribution(report_date: str | None = None) -> dict[str, object]:
 
 @router.get("/risk/overview")
 def risk_overview(report_date: str | None = None) -> dict[str, object]:
-    return _require_landed_executive_surface(
-        executive_risk_overview(report_date=_normalize_report_date(report_date)),
-        route_name="risk_overview",
-        promoted=False,
-    )
+    _raise_executive_reserved_surface("risk_overview")
 
 
 @router.get("/home/contribution")
 def contribution(report_date: str | None = None) -> dict[str, object]:
-    return _require_landed_executive_surface(
-        executive_contribution(report_date=_normalize_report_date(report_date)),
-        route_name="contribution",
-        promoted=False,
-    )
+    _raise_executive_reserved_surface("contribution")
 
 
 @router.get("/home/alerts")
 def alerts(report_date: str | None = None) -> dict[str, object]:
-    return _require_landed_executive_surface(
-        executive_alerts(report_date=_normalize_report_date(report_date)),
-        route_name="alerts",
-        promoted=False,
-    )
+    _raise_executive_reserved_surface("alerts")
 
 
 @router.get("/home/snapshot")
@@ -92,7 +87,4 @@ def home_snapshot(
     report_date: str | None = None,
     allow_partial: bool = False,
 ) -> dict[str, object]:
-    return home_snapshot_envelope(
-        report_date=_normalize_report_date(report_date),
-        allow_partial=allow_partial,
-    )
+    _raise_executive_reserved_surface("home_snapshot")

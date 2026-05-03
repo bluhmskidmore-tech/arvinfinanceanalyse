@@ -41,8 +41,8 @@
 
 .market-data-filter-tray {
   padding: 8px;
-  border: 1px solid #e2e6ec;
-  border-radius: 8px;
+  border: 1px solid var(--moss-color-border-default);
+  border-radius: var(--moss-radius-sm);
   background: #ffffff;
 }
 
@@ -60,33 +60,33 @@
   gap: 4px;
   min-height: 82px;
   padding: 10px 12px 9px;
-  border: 1px solid #e2e6ec;
-  border-radius: 8px;
+  border: 1px solid var(--moss-color-neutral-200);
+  border-radius: var(--moss-radius-sm);
   background: #ffffff;
   min-width: 0;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 
 .market-data-overview-card--default {
-  --market-overview-tone: #1850a1;
+  --market-overview-tone: var(--moss-color-primary-600);
 }
 
 .market-data-overview-card--positive {
-  --market-overview-tone: #2d8a5e;
+  --market-overview-tone: var(--moss-color-success-500);
 }
 
 .market-data-overview-card--negative,
 .market-data-overview-card--error {
-  --market-overview-tone: #ef4444;
+  --market-overview-tone: var(--moss-color-danger-500);
 }
 
 .market-data-overview-card--warning {
-  --market-overview-tone: #d97706;
+  --market-overview-tone: var(--moss-color-warning-500);
 }
 
 .market-data-overview-card:hover {
   border-color: var(--moss-border-hover);
-  box-shadow: 0 4px 12px rgba(22, 35, 46, 0.06);
+  box-shadow: var(--moss-shadow-card);
   transform: translateY(-1px);
 }
 
@@ -107,6 +107,8 @@
 
 .market-data-overview-card__value {
   color: var(--market-overview-tone);
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
   font-size: 20px;
   font-weight: 800;
   line-height: 1.1;
@@ -116,6 +118,8 @@
 }
 
 .market-data-overview-card--text .market-data-overview-card__value {
+  font-family: inherit;
+  font-variant-numeric: normal;
   font-size: 14px;
   line-height: 1.25;
 }
@@ -161,7 +165,7 @@
 .market-data-filter-tray .ant-select .ant-select-selector {
   min-height: 30px !important;
   height: 30px !important;
-  border-radius: 6px;
+  border-radius: var(--moss-radius-sm);
   font-size: 12px;
 }
 
@@ -179,4 +183,10 @@
   .market-data-overview-strip {
     grid-template-columns: 1fr;
   }
+}
+
+/* NcdMatrix numeric cells — keep tabular alignment (imported by NcdMatrix.tsx) */
+.market-data-ncd-matrix__num {
+  font-family: var(--moss-font-mono);
+  font-variant-numeric: tabular-nums;
 }

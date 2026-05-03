@@ -256,8 +256,18 @@ export const placeholderSnapshots: Record<string, PlaceholderSnapshot> = {
   },
   "market-data": {
     title: "市场数据",
-    summary: placeholderSummary,
-    highlights: ["规划要点一", "规划要点二", "规划要点三"],
+    summary: "Market-data preview/vendor/analytical surfaces are reserved in the current cutover boundary.",
+    highlights: ["Route shell retained", "Live market-data page not promoted", "Backend reserved responses stay explicit"],
+  },
+  "news-events": {
+    title: "新闻事件",
+    summary: "Choice news direct workbench access is reserved in the current cutover boundary.",
+    highlights: ["Route shell retained", "Live news table not promoted", "Backend reserved responses stay explicit"],
+  },
+  "source-preview": {
+    title: "Source Preview",
+    summary: "Source preview is a hidden reserved route in the current cutover boundary.",
+    highlights: ["Hidden route retained", "Live source tables not promoted", "Backend reserved responses stay explicit"],
   },
   "cube-query": {
     title: "多维查询",

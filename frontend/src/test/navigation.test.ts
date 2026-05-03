@@ -23,9 +23,10 @@ describe("workbench navigation mocks", () => {
     expect(agent).toBeDefined();
     expect(agent?.readiness).toBe("placeholder");
     expect(agent?.readinessLabel).toBe("智能体试用");
+    expect(agent?.navigationVisibility).toBe("hidden");
     expect(agent?.path).toBe("/agent");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "agent")).toBe(false);
   });
 
   it("excludes hidden entries from primaryWorkbenchNavigation", () => {
@@ -57,7 +58,6 @@ describe("workbench navigation mocks", () => {
       "cross-asset",
       "decision-items",
       "team-performance",
-      "market-data",
       "platform-config",
       "bond-dashboard",
       "positions",
@@ -67,7 +67,6 @@ describe("workbench navigation mocks", () => {
       "concentration-monitor",
       "cashflow-projection",
       "kpi-performance",
-      "news-events",
       "product-category-pnl",
     ];
 
@@ -79,11 +78,11 @@ describe("workbench navigation mocks", () => {
     }
   });
 
-  it("keeps risk-overview in the live primary navigation", () => {
+  it("keeps risk-overview outside the live primary navigation", () => {
     const riskOverview = workbenchNavigation.find((s) => s.key === "risk-overview");
-    expect(riskOverview?.readiness).toBe("live");
-    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
-    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(riskOverview?.readiness).toBe("placeholder");
+    expect(primaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(false);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "risk-overview")).toBe(true);
   });
 
   it("promotes bond-dashboard into the live primary navigation", () => {
@@ -155,6 +154,18 @@ describe("workbench navigation mocks", () => {
     expect(cube?.readiness).toBe("placeholder");
     expect(primaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(false);
     expect(secondaryWorkbenchNavigation.some((s) => s.key === "cube-query")).toBe(true);
+  });
+
+  it("keeps market-data, news-events, and source-preview outside live navigation", () => {
+    for (const key of ["market-data", "news-events", "source-preview"]) {
+      const section = workbenchNavigation.find((s) => s.key === key);
+      expect(section?.readiness).toBe("placeholder");
+      expect(section?.readinessLabel).toBe("Reserved");
+      expect(primaryWorkbenchNavigation.some((s) => s.key === key)).toBe(false);
+    }
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "market-data")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "news-events")).toBe(true);
+    expect(secondaryWorkbenchNavigation.some((s) => s.key === "source-preview")).toBe(false);
   });
 
   it("promotes decision-items into the live primary navigation as a temporary exception", () => {

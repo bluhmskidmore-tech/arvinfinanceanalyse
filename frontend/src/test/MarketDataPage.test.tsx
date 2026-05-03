@@ -273,10 +273,10 @@ describe("MarketDataPage", () => {
           {
             key: "risk_exit" as const,
             title: "Risk and exit rules",
-            status: "blocked" as const,
-            summary: "Risk and exit output is blocked until position and entry-cost inputs land.",
-            required_inputs: ["positions", "entry_cost", "bars_since_entry"],
-            missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
+            status: "ready" as const,
+            summary: "Risk and exit output is available from landed position snapshots and close history.",
+            required_inputs: ["positions", "entry_cost", "bars_since_entry", "close_history"],
+            missing_inputs: [],
           },
         ],
         diagnostics: [
@@ -307,7 +307,8 @@ describe("MarketDataPage", () => {
           {
             severity: "warning" as const,
             code: "LIVERMORE_RISK_INPUTS_MISSING",
-            message: "Position and entry-cost inputs are unavailable, so risk/exit output is blocked.",
+            message:
+              "The defended-bundle 10EMA invalidation MVP is implemented, but position, entry-cost, bars-since-entry, and close-history inputs are unavailable, so risk/exit output remains blocked.",
             input_family: "position_risk",
           },
         ],
@@ -335,7 +336,8 @@ describe("MarketDataPage", () => {
           {
             input_family: "position_risk",
             status: "missing" as const,
-            evidence: "Position and entry-cost inputs are not landed in DuckDB for this slice.",
+            evidence:
+              "Position, entry-cost, bars-since-entry, and close-history inputs are not landed in DuckDB for the defended-bundle 10EMA invalidation MVP.",
           },
         ],
         supported_outputs: ["market_gate" as const],
@@ -350,7 +352,8 @@ describe("MarketDataPage", () => {
           },
           {
             key: "risk_exit" as const,
-            reason: "Position and entry-cost inputs are not landed yet.",
+            reason:
+              "The defended-bundle 10EMA invalidation MVP remains blocked until position, entry-cost, bars-since-entry, and close-history inputs land.",
           },
         ],
       },
@@ -439,6 +442,202 @@ describe("MarketDataPage", () => {
         asOfDate: expect.any(String),
       });
     });
+  });
+
+  it("renders emitted Livermore sector rank and stock candidates from the backend contract", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const getMacroFoundation = vi.fn(async () => base.getMacroFoundation());
+    const getChoiceMacroLatest = vi.fn(async () => base.getChoiceMacroLatest());
+    const getLivermoreStrategy = vi.fn(async () => ({
+      result_meta: {
+        trace_id: "tr_livermore_supported_test",
+        basis: "analytical" as const,
+        result_kind: "market_data.livermore",
+        formal_use_allowed: false,
+        source_version: "sv_livermore_supported_test",
+        vendor_version: "vv_livermore_supported_test",
+        rule_version: "rv_livermore_supported_test",
+        cache_version: "cv_livermore_supported_test",
+        quality_flag: "ok" as const,
+        vendor_status: "ok" as const,
+        fallback_mode: "none" as const,
+        scenario_flag: false,
+        generated_at: "2026-04-29T09:00:00Z",
+      },
+      result: {
+        as_of_date: "2026-04-29",
+        requested_as_of_date: "2026-04-29",
+        strategy_name: "Livermore A股趋势门控",
+        basis: "analytical" as const,
+        market_gate: {
+          state: "WARM" as const,
+          exposure: 0.4,
+          passed_conditions: 2,
+          available_conditions: 2,
+          required_conditions: 4,
+          conditions: [
+            {
+              key: "csi300_close_gt_ma60",
+              label: "CSI300 close > MA60",
+              status: "pass" as const,
+              evidence: "收盘价高于 MA60。",
+              source_series_id: "CA.CSI300",
+            },
+          ],
+        },
+        rule_readiness: [
+          {
+            key: "market_gate" as const,
+            title: "Market gate",
+            status: "partial" as const,
+            summary: "Trend-only market gate is available; breadth and limit-up quality remain missing.",
+            required_inputs: ["broad_index_history", "breadth", "limit_up_quality"],
+            missing_inputs: ["breadth", "limit_up_quality"],
+          },
+          {
+            key: "sector_rank" as const,
+            title: "Sector ranking",
+            status: "ready" as const,
+            summary: "Sector ranking is available from landed Choice sector inputs.",
+            required_inputs: ["sector_membership", "sector_strength"],
+            missing_inputs: [],
+          },
+          {
+            key: "stock_pivot" as const,
+            title: "Stock pivot filters",
+            status: "ready" as const,
+            summary: "Stock pivot candidate screening is available for landed Choice stock inputs.",
+            required_inputs: [
+              "stock_universe",
+              "stock_ohlcv",
+              "stock_status",
+              "limit_up_quality",
+              "sector_rank",
+              "market_gate",
+            ],
+            missing_inputs: [],
+          },
+          {
+            key: "risk_exit" as const,
+            title: "Risk and exit rules",
+            status: "blocked" as const,
+            summary:
+              "The defended-bundle 10EMA invalidation exit kernel is implemented, but output stays blocked until position, entry-cost, bars-since-entry, and close-history inputs land.",
+            required_inputs: ["positions", "entry_cost", "bars_since_entry"],
+            missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
+          },
+        ],
+        diagnostics: [
+          {
+            severity: "warning" as const,
+            code: "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
+            message: "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
+            input_family: "sector_strength",
+          },
+        ],
+        data_gaps: [
+          {
+            input_family: "breadth",
+            status: "missing" as const,
+            evidence: "5-day breadth input family is not landed in DuckDB for this slice.",
+          },
+          {
+            input_family: "limit_up_quality",
+            status: "missing" as const,
+            evidence: "Choice limit-up quality catalog is confirmed, but landed inputs are unavailable; the market gate is capped at the trend-only slice.",
+          },
+        ],
+        supported_outputs: ["market_gate" as const, "sector_rank" as const, "stock_candidates" as const, "risk_exit" as const],
+        unsupported_outputs: [],
+        sector_rank: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_sector_rank_provisional_v1",
+          is_provisional: true,
+          sector_count: 3,
+          excluded_constituent_count: 0,
+          excluded_sector_count: 0,
+          items: [
+            {
+              rank: 1,
+              sector_code: "801001",
+              sector_name: "AI",
+              score: 1,
+              avg_pctchange: 4.8,
+              avg_turn: 3,
+              avg_amplitude: 3.5,
+              constituent_count: 12,
+            },
+          ],
+        },
+        stock_candidates: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_stock_candidates_bundle_v1",
+          market_state: "WARM" as const,
+          input_stock_count: 4,
+          candidate_count: 2,
+          excluded_stock_count: 2,
+          insufficient_history_count: 0,
+          items: [
+            {
+              rank: 1,
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              sector_code: "801001",
+              sector_name: "AI",
+              sector_rank: 1,
+              close: 21.9,
+              breakout_level: 21.8,
+              ma20: 21.05,
+              ma60: 19.05,
+              ma120: 16.05,
+              close_strength: 0.833333,
+              gap_norm: -0.114679,
+              abnormal_turnover: 1.386294,
+            },
+          ],
+        },
+        risk_exit: {
+          as_of_date: "2026-04-29",
+          formula_version: "rv_livermore_risk_exit_ema10_mvp_v1",
+          position_count: 2,
+          signal_count: 1,
+          excluded_position_count: 0,
+          insufficient_history_count: 0,
+          items: [
+            {
+              stock_code: "000001.SZ",
+              stock_name: "Alpha",
+              reason: "2d_below_ema10",
+              entry_cost: 10.5,
+              bars_since_entry: 6,
+              latest_close: 9.1,
+              latest_ema10: 10.2,
+              prior_close: 9.8,
+              prior_ema10: 10.4,
+            },
+          ],
+        },
+      },
+    }));
+
+    renderPage({
+      ...base,
+      getMacroFoundation,
+      getChoiceMacroLatest,
+      getLivermoreStrategy,
+    });
+
+    expect(await screen.findByTestId("livermore-market-state")).toHaveTextContent("WARM");
+    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("801001");
+    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent("000001.SZ");
+    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
+      "rv_livermore_stock_candidates_bundle_v1",
+    );
+    expect(screen.getByTestId("market-data-livermore-panel")).toHaveTextContent(
+      "rv_livermore_risk_exit_ema10_mvp_v1",
+    );
+    expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("个股候选");
+    expect(screen.getByTestId("livermore-unsupported-outputs")).not.toHaveTextContent("风险退出");
   });
 
   it("renders rate trend ECharts when Choice macro includes configured yield series", async () => {
@@ -936,6 +1135,27 @@ describe("MarketDataPage", () => {
     expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("请求日期 2026-04-29");
     expect(screen.getByTestId("livermore-status-notes")).toHaveTextContent("最新快照降级");
     expect(screen.getByTestId("livermore-diagnostics")).toHaveTextContent("LIVERMORE_BROAD_INDEX_STALE");
+  });
+
+  it("shows reserved-surface copy when Livermore fetch fails with backend reserved detail", async () => {
+    const base = createApiClient({ mode: "mock" });
+    const reservedDetail =
+      "Livermore analytical surface is reserved by the current boundary and is not available in this wave.";
+    const getLivermoreStrategy = vi.fn(async () => {
+      throw new Error(reservedDetail);
+    });
+
+    renderPage({
+      ...base,
+      getLivermoreStrategy,
+    });
+
+    const panel = screen.getByTestId("market-data-livermore-panel");
+    await waitFor(() => {
+      expect(panel).toHaveTextContent("本轮不可用");
+    });
+    expect(panel).toHaveTextContent("接口保留");
+    expect(panel).not.toHaveTextContent("Livermore 分析结果加载失败。");
   });
 
   it("renders the sixth-page market-data cockpit sections from the mockup", async () => {

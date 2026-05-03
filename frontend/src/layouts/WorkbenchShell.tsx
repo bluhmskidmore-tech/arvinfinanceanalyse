@@ -27,15 +27,13 @@ import {
   resolveWorkbenchPathAlias,
   secondaryWorkbenchNavigation,
   type WorkbenchSection,
+  visibleWorkbenchNavigation,
   workbenchNavigation,
 } from "../mocks/navigation";
 import { designTokens } from "../theme/designSystem";
 import { shellTokens } from "../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../utils/choiceMacroFormat";
 import AgentWorkbenchPage from "../features/agent/AgentWorkbenchPage";
-
-/** 左侧主导航整块统一底色（无渐变、不在侧栏内再铺明显第二色层） */
-const WORKBENCH_RAIL_SOLID_BACKGROUND = "#121d2a";
 
 const iconMap: Record<string, ReactNode> = {
   dashboard: <AppstoreOutlined />,
@@ -62,9 +60,9 @@ function readinessBadgeStyle(kind: "live" | "placeholder" | "gated") {
 
   if (kind === "placeholder") {
     return {
-      background: "#f2edf8",
-      color: "#654594",
-      border: "1px solid #ddd2ee",
+      background: shellTokens.readinessBadgePlaceholderBg,
+      color: shellTokens.readinessBadgePlaceholderFg,
+      border: `1px solid ${shellTokens.readinessBadgePlaceholderBorder}`,
     } as const;
   }
 
@@ -94,8 +92,8 @@ function groupButtonStyle(active: boolean) {
     gap: 10,
     padding: "10px 12px",
     borderRadius: 12,
-    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-    color: active ? "#f4f7fb" : "rgba(220,228,236,0.88)",
+    background: active ? shellTokens.railNavActiveBg : "transparent",
+    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextNavIdle,
     border: "none",
     boxShadow: active ? `inset 4px 0 0 ${designTokens.color.primary[400]}` : "none",
     transition:
@@ -130,8 +128,8 @@ function supportLinkStyle(active: boolean) {
     gap: 8,
     padding: "7px 10px",
     borderRadius: 10,
-    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-    color: active ? "#f4f7fb" : "rgba(184,197,210,0.82)",
+    background: active ? shellTokens.railNavActiveBg : "transparent",
+    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSupportIdle,
     border: "none",
     fontSize: 11,
     fontWeight: 600,
@@ -354,7 +352,11 @@ export function WorkbenchShell() {
     primaryWorkbenchNavigationGroups.find(
       (group) => group.key === resolveWorkbenchGroupKey(currentSection),
     ) ?? primaryWorkbenchNavigationGroups[0];
-  const currentGroupSections = currentGroup.sections;
+  const currentGroupVisibleSections = visibleWorkbenchNavigation.filter(
+    (section) => resolveWorkbenchGroupKey(section) === currentGroup.key,
+  );
+  const currentGroupSections =
+    currentGroup.key === "market" ? currentGroupVisibleSections : currentGroup.sections;
   const isPortfolioGroup = currentGroup.key === "portfolio";
   const isBondAnalysisMinimalShell = currentSection.key === "bond-analysis";
   /** 资产负债页以正式内容为主：壳层只保留一句阅读提示，不再占满首屏导读卡片与阶段看板。 */
@@ -421,8 +423,6 @@ export function WorkbenchShell() {
         .filter((section): section is WorkbenchSection => Boolean(section)),
     }))
     .filter((stage) => stage.sections.length > 0);
-  /** 深色主导航轨分割线（与参照图侧栏一致） */
-  const railDividerColor = "rgba(255,255,255,0.08)";
   const contentSurfaceShadow = "0 16px 34px rgba(15, 23, 42, 0.08)";
 
   return (
@@ -442,10 +442,10 @@ export function WorkbenchShell() {
           alignContent: "start",
           gap: 12,
           padding: isMinimalMainChrome ? "12px" : "14px",
-          border: `1px solid ${railDividerColor}`,
+          border: `1px solid ${shellTokens.railBorder}`,
           borderRadius: 20,
           boxShadow: "0 22px 48px rgba(10, 21, 33, 0.16)",
-          background: WORKBENCH_RAIL_SOLID_BACKGROUND,
+          background: shellTokens.railBg,
         }}
       >
         <div
@@ -453,7 +453,7 @@ export function WorkbenchShell() {
             display: "grid",
             gap: 6,
             padding: "4px 2px 12px",
-            borderBottom: `1px solid ${railDividerColor}`,
+            borderBottom: `1px solid ${shellTokens.railBorder}`,
           }}
         >
           <div
@@ -470,8 +470,8 @@ export function WorkbenchShell() {
                 width: 36,
                 height: 36,
                 borderRadius: 12,
-                background: "rgba(255,255,255,0.1)",
-                color: "#f5f7fa",
+                background: shellTokens.railSurfaceTint,
+                color: shellTokens.railBrandText,
                 fontWeight: 700,
                 boxShadow: "none",
               }}
@@ -481,7 +481,7 @@ export function WorkbenchShell() {
             <div style={{ display: "grid", gap: 0, minWidth: 0 }}>
               <span
                 style={{
-                  color: "#f5f7fa",
+                  color: shellTokens.railBrandText,
                   fontWeight: 700,
                   fontSize: 16,
                   letterSpacing: "-0.02em",
@@ -580,7 +580,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 6,
               paddingTop: 6,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <span
@@ -614,7 +614,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 10,
               paddingTop: 4,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <div
@@ -696,10 +696,10 @@ export function WorkbenchShell() {
                       width: 18,
                       height: 18,
                       borderRadius: 999,
-                      border: active ? `1px solid rgba(255,255,255,0.22)` : "none",
-                      color: active ? "#ffffff" : "rgba(184,197,210,0.76)",
+                      border: active ? `1px solid ${shellTokens.railIconBorderActive}` : "none",
+                      color: active ? shellTokens.railIconFgActive : shellTokens.railIconFgIdle,
                       fontSize: 10,
-                      background: active ? "rgba(255,255,255,0.1)" : "transparent",
+                      background: active ? shellTokens.railSurfaceTint : "transparent",
                     }}
                   >
                     {iconMap[group.icon]}
@@ -717,7 +717,7 @@ export function WorkbenchShell() {
                   </span>
                   <span
                     style={{
-                      color: active ? "rgba(223,235,255,0.94)" : "rgba(184,197,210,0.62)",
+                      color: active ? shellTokens.railCountFgActive : shellTokens.railCountFgIdle,
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: "0.06em",
@@ -737,7 +737,7 @@ export function WorkbenchShell() {
               display: "grid",
               gap: 6,
               paddingTop: 8,
-              borderTop: `1px solid ${railDividerColor}`,
+              borderTop: `1px solid ${shellTokens.railBorder}`,
             }}
           >
             <span className="workbench-shell-section-label workbench-shell-section-label--rail">
@@ -757,9 +757,9 @@ export function WorkbenchShell() {
                       height: "auto",
                       padding: "8px 10px",
                       borderRadius: 12,
-                      border: `1px solid ${railDividerColor}`,
+                      border: `1px solid ${shellTokens.railBorder}`,
                       background: "transparent",
-                      color: "#f4f7fb",
+                      color: shellTokens.railTextOnNavActive,
                     }}
                   >
                     <div className="workbench-agent-dialog-trigger__main">
@@ -793,8 +793,8 @@ export function WorkbenchShell() {
                     gap: 2,
                     padding: "8px 10px",
                     borderRadius: 12,
-                    background: active ? "rgba(255,255,255,0.06)" : "transparent",
-                    color: active ? "#f4f7fb" : "rgba(205,215,224,0.88)",
+                    background: active ? shellTokens.railNavActiveBg : "transparent",
+                    color: active ? shellTokens.railTextOnNavActive : shellTokens.railTextSectionIdle,
                     border: "none",
                   }}
                 >
@@ -825,7 +825,7 @@ export function WorkbenchShell() {
             display: "grid",
             gap: 4,
             paddingTop: 8,
-            borderTop: `1px solid ${railDividerColor}`,
+            borderTop: `1px solid ${shellTokens.railBorder}`,
           }}
         >
           <span className="workbench-shell-section-label workbench-shell-section-label--rail">

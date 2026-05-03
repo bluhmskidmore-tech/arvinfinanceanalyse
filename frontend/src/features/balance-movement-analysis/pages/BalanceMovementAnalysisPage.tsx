@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
 import type {
@@ -81,6 +82,10 @@ const bucketColors: Record<BalanceMovementRow["basis_bucket"], string> = {
   TPL: "#d2a03f",
 };
 const balanceMovementBuckets: BalanceMovementRow["basis_bucket"][] = ["AC", "OCI", "TPL"];
+
+function normalizeMovementCurrencyBasis(value: string | null): string {
+  return value === "CNY" || value === "CNX" ? value : "CNX";
+}
 
 function formatPct(value: string | number | null | undefined) {
   if (value === null || value === undefined || value === "") {
@@ -1175,8 +1180,11 @@ function ZqtzConcentrationAnalysisPanel({
 
 export default function BalanceMovementAnalysisPage() {
   const client = useApiClient();
+  const [searchParams] = useSearchParams();
+  const queryReportDate = searchParams.get("report_date")?.trim() || "";
+  const queryCurrencyBasis = normalizeMovementCurrencyBasis(searchParams.get("currency_basis"));
   const [selectedDate, setSelectedDate] = useState("");
-  const [currencyBasis, setCurrencyBasis] = useState("CNX");
+  const [currencyBasis, setCurrencyBasis] = useState(queryCurrencyBasis);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
@@ -1204,10 +1212,26 @@ export default function BalanceMovementAnalysisPage() {
       : null;
 
   useEffect(() => {
-    if (!selectedDate && reportDates.length) {
+    if (currencyBasis !== queryCurrencyBasis) {
+      setCurrencyBasis(queryCurrencyBasis);
+      setSelectedDate("");
+    }
+  }, [currencyBasis, queryCurrencyBasis]);
+
+  useEffect(() => {
+    if (!reportDates.length) {
+      return;
+    }
+    if (queryReportDate && reportDates.includes(queryReportDate)) {
+      if (selectedDate !== queryReportDate) {
+        setSelectedDate(queryReportDate);
+      }
+      return;
+    }
+    if (!selectedDate || !reportDates.includes(selectedDate)) {
       setSelectedDate(reportDates[0] ?? "");
     }
-  }, [reportDates, selectedDate]);
+  }, [queryReportDate, reportDates, selectedDate]);
 
   const detailQuery = useQuery({
     queryKey: ["balance-movement-analysis", "detail", client.mode, selectedDate, currencyBasis],

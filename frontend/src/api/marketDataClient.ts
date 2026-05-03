@@ -1,3 +1,4 @@
+import { readHttpJsonDetail } from "./httpResponseError";
 import type {
   ApiEnvelope,
   ChoiceMacroLatestPayload,
@@ -10,13 +11,18 @@ import type {
   MacroBondLinkagePayload,
   MacroVendorPayload,
   NcdFundingProxyPayload,
+  ResearchCalendarEvent,
+  ResearchCalendarResultPayload,
+  SourcePreviewColumn,
   SourcePreviewHistoryPayload,
   SourcePreviewPayload,
   SourcePreviewRefreshPayload,
   SourcePreviewRowsPayload,
+  SourcePreviewSummary,
   SourcePreviewTracesPayload,
 } from "./contracts";
 import { buildMockApiEnvelope } from "../mocks/mockApiEnvelope";
+import { mapResearchCalendarApiEvent } from "../lib/researchCalendarApiEvent";
 import { MOCK_CHOICE_MACRO_TUSHARE_EQUITY_SERIES } from "./marketDataMocks";
 
 type FetchLike = typeof fetch;
@@ -27,9 +33,7 @@ type MarketDataClientFactoryOptions = {
 };
 
 /**
- * Market Data domain methods. `client.ts` still owns source-preview, news, and
- * research-calendar composition, while this module owns the concrete market-data
- * analytical read endpoints and their mock/real factories.
+ * Market Data domain methods and their mock/real factories.
  */
 export type MarketDataClientMethods = {
   getSourceFoundation: () => Promise<ApiEnvelope<SourcePreviewPayload>>;
@@ -82,20 +86,14 @@ export type MarketDataClientMethods = {
     npr: { inserted: number; skipped_duplicates: number; fetched: number };
     news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
   }>;
+  getResearchCalendarEvents: (options?: {
+    reportDate?: string;
+    startDate?: string;
+    endDate?: string;
+  }) => Promise<ResearchCalendarEvent[]>;
 };
 
-export type MarketDataDomainClientMethods = Pick<
-  MarketDataClientMethods,
-  | "getMacroFoundation"
-  | "getChoiceMacroLatest"
-  | "getMacroBondLinkageAnalysis"
-  | "getNcdFundingProxy"
-  | "getFxFormalStatus"
-  | "getFxAnalytical"
-  | "refreshChoiceMacro"
-  | "getChoiceMacroRefreshStatus"
-  | "getLivermoreStrategy"
->;
+export type MarketDataDomainClientMethods = MarketDataClientMethods;
 
 const delay = async () => new Promise((resolve) => setTimeout(resolve, 40));
 
@@ -129,6 +127,263 @@ function buildMockChoiceMacroRecentPoints(
     };
   }
   return out;
+}
+
+const MOCK_SOURCE_FOUNDATION_SUMMARIES: SourcePreviewSummary[] = [
+  {
+    source_family: "tyw",
+    report_date: "2025-12-31",
+    source_file: "TYWLSHOW-20251231.xls",
+    total_rows: 2395,
+    manual_review_count: 18,
+    source_version: "sv_mock_tyw_preview",
+    rule_version: "rv_phase1_source_preview_v1",
+    group_counts: {
+      "回购类": 1060,
+      "拆借类": 97,
+      "存放类": 1238,
+    },
+  },
+  {
+    source_family: "zqtz",
+    report_date: "2025-12-31",
+    source_file: "ZQTZSHOW-20251231.xls",
+    total_rows: 1724,
+    manual_review_count: 0,
+    source_version: "sv_mock_zqtz_preview",
+    rule_version: "rv_phase1_source_preview_v1",
+    group_counts: {
+      "债券类": 1571,
+      "基金类": 127,
+      "特定目的载体及其他非标类": 26,
+    },
+  },
+];
+
+const MOCK_CHOICE_NEWS_EVENTS: ChoiceNewsEventsPayload["events"] = [
+  {
+    event_key: "ce_mock_001",
+    received_at: "2026-04-10T09:01:00Z",
+    group_id: "news_cmd1",
+    content_type: "sectornews",
+    serial_id: 1001,
+    request_id: 501,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "S888010007API",
+    item_index: 0,
+    payload_text: "Macro data release calendar updated for CPI and industrial production.",
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_002",
+    received_at: "2026-04-10T08:58:00Z",
+    group_id: "news_cmd1",
+    content_type: "sectornews",
+    serial_id: 1001,
+    request_id: 501,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "C000003006",
+    item_index: 0,
+    payload_text: null,
+    payload_json:
+      "{\"headline\":\"Policy follow-up\",\"summary\":\"PBOC open-market operation commentary stream.\"}",
+  },
+  {
+    event_key: "ce_mock_003",
+    received_at: "2026-04-10T08:50:00Z",
+    group_id: "news_cmd1",
+    content_type: "sectornews",
+    serial_id: 1002,
+    request_id: 502,
+    error_code: 101,
+    error_msg: "vendor callback timeout",
+    topic_code: "__callback__",
+    item_index: -1,
+    payload_text: null,
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_ts_policy",
+    received_at: "2026-04-21T15:00:00Z",
+    group_id: "tushare_policy",
+    content_type: "npr",
+    serial_id: 2001,
+    request_id: 601,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "tushare.npr",
+    item_index: 0,
+    payload_text: "【政策 mock】示例：宏观与监管要闻占位（本地 mock，非实时）。",
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_ts_news",
+    received_at: "2026-04-21T14:30:00Z",
+    group_id: "tushare_news",
+    content_type: "news",
+    serial_id: 2002,
+    request_id: 602,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "tushare.news",
+    item_index: 0,
+    payload_text: "【快讯 mock】示例：市场快讯占位。",
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_ts_cctv",
+    received_at: "2026-04-21T14:00:00Z",
+    group_id: "tushare_cctv",
+    content_type: "cctv_news",
+    serial_id: 2003,
+    request_id: 603,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "tushare.cctv",
+    item_index: 0,
+    payload_text: "【联播 mock】示例：新闻联播摘要占位。",
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_ts_major",
+    received_at: "2026-04-21T13:30:00Z",
+    group_id: "tushare_major",
+    content_type: "major_news",
+    serial_id: 2004,
+    request_id: 604,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "tushare.major",
+    item_index: 0,
+    payload_text: "【长篇 mock】示例：长篇报道占位。",
+    payload_json: null,
+  },
+  {
+    event_key: "ce_mock_ts_research",
+    received_at: "2026-04-21T13:00:00Z",
+    group_id: "tushare_research",
+    content_type: "research_report",
+    serial_id: 2005,
+    request_id: 605,
+    error_code: 0,
+    error_msg: "",
+    topic_code: "tushare.research",
+    item_index: 0,
+    payload_text: "【研报 mock】示例：研报标题与摘要占位。",
+    payload_json: '{"title":"Mock 研报","abstr":"占位摘要","_url":"https://example.com/mock-report"}',
+  },
+];
+
+function buildMockResearchCalendarEvents(reportDate?: string): ResearchCalendarEvent[] {
+  const baseDate = reportDate?.trim() || "2026-04-18";
+  return [
+    {
+      id: "rc_supply_001",
+      date: baseDate,
+      title: "国债净融资节奏",
+      kind: "supply",
+      severity: "low",
+      amount_label: "净融资 180 亿元",
+      note: "供给节奏",
+    },
+    {
+      id: "rc_auction_002",
+      date: baseDate,
+      title: "政策性金融债招标",
+      kind: "auction",
+      severity: "high",
+      amount_label: "420 亿元",
+      issuer: "国开行",
+    },
+    {
+      id: "rc_macro_003",
+      date: baseDate,
+      title: "CPI 数据公布",
+      kind: "macro",
+      severity: "medium",
+      amount_label: "同比观察",
+      note: "宏观数据",
+    },
+  ];
+}
+
+function buildMockSourcePreviewColumns(rows: Array<Record<string, unknown>>): SourcePreviewColumn[] {
+  const firstRow = rows[0];
+  if (!firstRow) {
+    return [];
+  }
+  return Object.keys(firstRow).map((key) => ({
+    key,
+    label: buildMockSourcePreviewLabel(key),
+    type: key === "row_locator" || key === "trace_step"
+      ? "number"
+      : key === "manual_review_needed"
+        ? "boolean"
+        : "string",
+  }));
+}
+
+function buildMockSourcePreviewLabel(key: string) {
+  const labels: Record<string, string> = {
+    ingest_batch_id: "批次ID",
+    row_locator: "行号",
+    report_date: "报告日期",
+    business_type_primary: "业务种类1",
+    business_type_final: "业务种类2归类",
+    asset_group: "资产分组",
+    instrument_code: "债券代码",
+    instrument_name: "债券名称",
+    account_category: "账户类别",
+    product_group: "产品分组",
+    institution_category: "机构类型",
+    special_nature: "特殊性质",
+    counterparty_name: "对手方名称",
+    investment_portfolio: "投资组合",
+    manual_review_needed: "需人工复核",
+    trace_step: "轨迹步骤",
+    field_name: "字段名",
+    field_value: "字段值",
+    derived_label: "归类标签",
+  };
+  return labels[key] ?? key;
+}
+
+function buildMockChoiceNewsEnvelope(options: {
+  limit: number;
+  offset: number;
+  groupId?: string;
+  topicCode?: string;
+  errorOnly?: boolean;
+  receivedFrom?: string;
+  receivedTo?: string;
+}): ApiEnvelope<ChoiceNewsEventsPayload> {
+  const filtered = MOCK_CHOICE_NEWS_EVENTS.filter((event) => {
+    if (options.groupId?.trim() && event.group_id !== options.groupId.trim()) {
+      return false;
+    }
+    if (options.topicCode?.trim() && event.topic_code !== options.topicCode.trim()) {
+      return false;
+    }
+    if (options.errorOnly && event.error_code === 0) {
+      return false;
+    }
+    if (options.receivedFrom?.trim() && event.received_at < options.receivedFrom.trim()) {
+      return false;
+    }
+    if (options.receivedTo?.trim() && event.received_at > options.receivedTo.trim()) {
+      return false;
+    }
+    return true;
+  });
+
+  return buildMockApiEnvelope("news.choice.latest", {
+    total_rows: filtered.length,
+    limit: options.limit,
+    offset: options.offset,
+    events: filtered.slice(options.offset, options.offset + options.limit),
+  });
 }
 
 function buildMockNcdFundingProxyPayload(reportDate?: string): NcdFundingProxyPayload {
@@ -211,26 +466,33 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       {
         key: "sector_rank",
         title: "Sector ranking",
-        status: "missing",
-        summary: "Sector membership and sector-strength inputs are not landed yet.",
+        status: "ready",
+        summary: "Sector ranking is available from landed Choice sector inputs.",
         required_inputs: ["sector_membership", "sector_strength"],
-        missing_inputs: ["sector_membership", "sector_strength"],
+        missing_inputs: [],
       },
       {
         key: "stock_pivot",
         title: "Stock pivot filters",
-        status: "blocked",
-        summary: "Stock pivot output is blocked until sector rank and stock-universe inputs land.",
-        required_inputs: ["stock_ohlcv", "stock_status", "sector_rank"],
-        missing_inputs: ["stock_ohlcv", "stock_status", "sector_rank"],
+        status: "ready",
+        summary: "Stock pivot candidate screening is available for landed Choice stock inputs.",
+        required_inputs: [
+          "stock_universe",
+          "stock_ohlcv",
+          "stock_status",
+          "limit_up_quality",
+          "sector_rank",
+          "market_gate",
+        ],
+        missing_inputs: [],
       },
       {
         key: "risk_exit",
         title: "Risk and exit rules",
-        status: "blocked",
-        summary: "Risk and exit output is blocked until position and entry-cost inputs land.",
-        required_inputs: ["positions", "entry_cost", "bars_since_entry"],
-        missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
+        status: "ready",
+        summary: "Risk and exit output is available from landed position snapshots and close history.",
+        required_inputs: ["positions", "entry_cost", "bars_since_entry", "close_history"],
+        missing_inputs: [],
       },
     ],
     diagnostics: [
@@ -248,21 +510,9 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
       },
       {
         severity: "warning",
-        code: "LIVERMORE_SECTOR_INPUTS_MISSING",
-        message: "Sector membership and sector-strength inputs are unavailable.",
+        code: "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
+        message: "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
         input_family: "sector_strength",
-      },
-      {
-        severity: "warning",
-        code: "LIVERMORE_STOCK_INPUTS_MISSING",
-        message: "Stock-universe inputs are unavailable, so no candidates are produced.",
-        input_family: "stock_universe",
-      },
-      {
-        severity: "warning",
-        code: "LIVERMORE_RISK_INPUTS_MISSING",
-        message: "Position and entry-cost inputs are unavailable, so risk/exit output is blocked.",
-        input_family: "position_risk",
       },
     ],
     data_gaps: [
@@ -276,37 +526,103 @@ function buildMockLivermoreStrategyPayload(asOfDate?: string): LivermoreStrategy
         status: "missing",
         evidence: "Limit-up seal/break quality input family is not landed in DuckDB for this slice.",
       },
-      {
-        input_family: "sector_strength",
-        status: "missing",
-        evidence: "Sector membership and ranking inputs are not landed in DuckDB for this slice.",
-      },
-      {
-        input_family: "stock_universe",
-        status: "missing",
-        evidence: "Stock OHLCV, status, and candidate-filter inputs are not landed in DuckDB for this slice.",
-      },
-      {
-        input_family: "position_risk",
-        status: "missing",
-        evidence: "Position and entry-cost inputs are not landed in DuckDB for this slice.",
-      },
     ],
-    supported_outputs: ["market_gate"],
-    unsupported_outputs: [
-      {
-        key: "sector_rank",
-        reason: "Sector membership and sector-strength inputs are not landed yet.",
-      },
-      {
-        key: "stock_candidates",
-        reason: "Stock-level OHLCV, status, and candidate filters are not landed yet.",
-      },
-      {
-        key: "risk_exit",
-        reason: "Position and entry-cost inputs are not landed yet.",
-      },
-    ],
+    supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
+    unsupported_outputs: [],
+    sector_rank: {
+      as_of_date: resolvedDate,
+      formula_version: "rv_livermore_sector_rank_provisional_v1",
+      is_provisional: true,
+      sector_count: 3,
+      excluded_constituent_count: 0,
+      excluded_sector_count: 0,
+      items: [
+        {
+          rank: 1,
+          sector_code: "801001",
+          sector_name: "AI",
+          score: 1,
+          avg_pctchange: 4.8,
+          avg_turn: 3,
+          avg_amplitude: 3.5,
+          constituent_count: 12,
+        },
+        {
+          rank: 2,
+          sector_code: "801002",
+          sector_name: "Bank",
+          score: 0.74,
+          avg_pctchange: 3.1,
+          avg_turn: 2.2,
+          avg_amplitude: 2.4,
+          constituent_count: 10,
+        },
+      ],
+    },
+    stock_candidates: {
+      as_of_date: resolvedDate,
+      formula_version: "rv_livermore_stock_candidates_bundle_v1",
+      market_state: "WARM",
+      input_stock_count: 4,
+      candidate_count: 2,
+      excluded_stock_count: 2,
+      insufficient_history_count: 0,
+      items: [
+        {
+          rank: 1,
+          stock_code: "000001.SZ",
+          stock_name: "Alpha",
+          sector_code: "801001",
+          sector_name: "AI",
+          sector_rank: 1,
+          close: 21.9,
+          breakout_level: 21.8,
+          ma20: 21.05,
+          ma60: 19.05,
+          ma120: 16.05,
+          close_strength: 0.833333,
+          gap_norm: -0.114679,
+          abnormal_turnover: 1.386294,
+        },
+        {
+          rank: 2,
+          stock_code: "000002.SZ",
+          stock_name: "Beta",
+          sector_code: "801002",
+          sector_name: "Bank",
+          sector_rank: 2,
+          close: 19.52,
+          breakout_level: 19.44,
+          ma20: 18.76,
+          ma60: 17.16,
+          ma120: 14.76,
+          close_strength: 0.78125,
+          gap_norm: -0.098,
+          abnormal_turnover: 1.417067,
+        },
+      ],
+    },
+    risk_exit: {
+      as_of_date: resolvedDate,
+      formula_version: "rv_livermore_risk_exit_ema10_mvp_v1",
+      position_count: 2,
+      signal_count: 1,
+      excluded_position_count: 0,
+      insufficient_history_count: 0,
+      items: [
+        {
+          stock_code: "000001.SZ",
+          stock_name: "Alpha",
+          reason: "2d_below_ema10",
+          entry_cost: 10.5,
+          bars_since_entry: 6,
+          latest_close: 9.1,
+          latest_ema10: 10.2,
+          prior_close: 9.8,
+          prior_ema10: 10.4,
+        },
+      ],
+    },
   };
 }
 
@@ -675,8 +991,225 @@ function buildLivermoreQuery(options?: { asOfDate?: string }) {
   return `?as_of_date=${encodeURIComponent(asOfDate)}`;
 }
 
+class ActionRequestError extends Error {
+  readonly status: number;
+  readonly runId?: string;
+  readonly errorMessage?: string;
+  readonly detail?: unknown;
+
+  constructor(
+    message: string,
+    opts: {
+      status: number;
+      runId?: string;
+      errorMessage?: string;
+      detail?: unknown;
+    },
+  ) {
+    super(message);
+    this.name = "ActionRequestError";
+    this.status = opts.status;
+    this.runId = opts.runId;
+    this.errorMessage = opts.errorMessage;
+    this.detail = opts.detail;
+  }
+}
+
+function extractApiRunId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const body = payload as Record<string, unknown>;
+  const top = body.run_id;
+  if (typeof top === "string" && top.trim()) {
+    return top;
+  }
+  const detail = body.detail;
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const nested = (detail as Record<string, unknown>).run_id;
+    if (typeof nested === "string" && nested.trim()) {
+      return nested;
+    }
+  }
+  return undefined;
+}
+
+function extractTopLevelErrorMessage(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const errMsg = (payload as Record<string, unknown>).error_message;
+  if (typeof errMsg === "string" && errMsg.trim()) {
+    return errMsg;
+  }
+  return undefined;
+}
+
+function extractApiErrorDetail(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const body = payload as Record<string, unknown>;
+  const errMsg = body.error_message;
+  if (typeof errMsg === "string" && errMsg.trim()) {
+    return errMsg;
+  }
+  const detail = body.detail;
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const nested = detail as Record<string, unknown>;
+    const nestedMsg = nested.error_message;
+    if (typeof nestedMsg === "string" && nestedMsg.trim()) {
+      return nestedMsg;
+    }
+    const nestedDetail = nested.detail;
+    if (typeof nestedDetail === "string" && nestedDetail.trim()) {
+      return nestedDetail;
+    }
+  }
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      if (typeof item === "string") {
+        return item;
+      }
+      if (item && typeof item === "object" && "msg" in item) {
+        return String((item as { msg: unknown }).msg);
+      }
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return String(item);
+      }
+    });
+    const joined = parts.filter((part) => part.trim()).join("; ");
+    return joined || undefined;
+  }
+  return undefined;
+}
+
+function extractRawDetail(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  if (!("detail" in (payload as Record<string, unknown>))) {
+    return undefined;
+  }
+  return (payload as Record<string, unknown>).detail;
+}
+
 export function createMockMarketDataClient(): MarketDataDomainClientMethods {
   return {
+    async getSourceFoundation() {
+      await delay();
+      return buildMockApiEnvelope("preview.source-foundation", {
+        sources: MOCK_SOURCE_FOUNDATION_SUMMARIES,
+      });
+    },
+    async refreshSourcePreview() {
+      await delay();
+      return {
+        status: "queued",
+        run_id: "source_preview_refresh:mock-run",
+        job_name: "source_preview_refresh",
+        trigger_mode: "async",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+      };
+    },
+    async getSourcePreviewRefreshStatus(runId: string) {
+      await delay();
+      return {
+        status: "completed",
+        run_id: runId,
+        job_name: "source_preview_refresh",
+        trigger_mode: "terminal",
+        cache_key: "source_preview.foundation",
+        preview_sources: ["zqtz", "tyw"],
+        ingest_batch_id: "ib_mock_preview",
+        source_version: "sv_mock_preview_refresh",
+      };
+    },
+    async getSourceFoundationHistory({ sourceFamily, limit, offset }) {
+      await delay();
+      const rows = sourceFamily
+        ? MOCK_SOURCE_FOUNDATION_SUMMARIES.filter(
+            (summary) => summary.source_family === sourceFamily,
+          )
+        : MOCK_SOURCE_FOUNDATION_SUMMARIES;
+      return buildMockApiEnvelope("preview.source-foundation.history", {
+        limit,
+        offset,
+        total_rows: rows.length,
+        rows: rows.slice(offset, offset + limit),
+      });
+    },
+    async getSourceFoundationRows({ sourceFamily, ingestBatchId, limit, offset }) {
+      await delay();
+      const rows =
+        sourceFamily === "zqtz"
+          ? [
+              {
+                ingest_batch_id: ingestBatchId,
+                row_locator: 1,
+                report_date: "2025-12-31",
+                business_type_primary: "其他债券",
+                business_type_final: "公募基金",
+                asset_group: "基金类",
+                instrument_code: "SA0001",
+                instrument_name: "MOCK-ZQTZ",
+                account_category: "银行账户",
+                manual_review_needed: false,
+              },
+            ]
+          : [
+              {
+                ingest_batch_id: ingestBatchId,
+                row_locator: 1,
+                report_date: "2025-12-31",
+                business_type_primary: "同业拆入",
+                product_group: "拆借类",
+                institution_category: "bank",
+                special_nature: "普通",
+                counterparty_name: "MOCK-TYW",
+                investment_portfolio: "拆借自营",
+                manual_review_needed: false,
+              },
+            ];
+      return buildMockApiEnvelope(`preview.${sourceFamily}.rows`, {
+        source_family: sourceFamily,
+        ingest_batch_id: ingestBatchId,
+        limit,
+        offset,
+        total_rows: rows.length,
+        columns: buildMockSourcePreviewColumns(rows),
+        rows,
+      });
+    },
+    async getSourceFoundationTraces({ sourceFamily, ingestBatchId, limit, offset }) {
+      await delay();
+      const rows = [
+        {
+          ingest_batch_id: ingestBatchId,
+          row_locator: 1,
+          trace_step: 1,
+          field_name: sourceFamily === "zqtz" ? "业务种类1" : "产品类型",
+          field_value: sourceFamily === "zqtz" ? "其他债券" : "同业拆入",
+          derived_label: sourceFamily === "zqtz" ? "公募基金" : "拆借类",
+          manual_review_needed: false,
+        },
+      ];
+      return buildMockApiEnvelope(`preview.${sourceFamily}.traces`, {
+        source_family: sourceFamily,
+        ingest_batch_id: ingestBatchId,
+        limit,
+        offset,
+        total_rows: rows.length,
+        columns: buildMockSourcePreviewColumns(rows),
+        rows,
+      });
+    },
     async getMacroFoundation() {
       await delay();
       return buildMockApiEnvelope("preview.macro-foundation", MOCK_MACRO_FOUNDATION_PAYLOAD, {
@@ -793,6 +1326,27 @@ export function createMockMarketDataClient(): MarketDataDomainClientMethods {
         },
       );
     },
+    async getChoiceNewsEvents(options) {
+      await delay();
+      return buildMockChoiceNewsEnvelope(options);
+    },
+    async getResearchCalendarEvents(options) {
+      await delay();
+      return buildMockResearchCalendarEvents(
+        options?.startDate ?? options?.reportDate ?? options?.endDate,
+      );
+    },
+    async ingestTushareNprNews(_options?: { limit?: number }) {
+      await delay();
+      return {
+        status: "completed",
+        inserted: 0,
+        skipped_duplicates: 0,
+        fetched: 0,
+        npr: { inserted: 0, skipped_duplicates: 0, fetched: 0 },
+        news: { inserted: 0, skipped_duplicates: 0, fetched: 0, src: "mock" },
+      };
+    },
   };
 }
 
@@ -801,6 +1355,52 @@ export function createRealMarketDataClient({
   baseUrl,
 }: MarketDataClientFactoryOptions): MarketDataDomainClientMethods {
   return {
+    getSourceFoundation: () =>
+      requestJson<SourcePreviewPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/preview/source-foundation",
+      ),
+    refreshSourcePreview: () =>
+      requestActionJson<SourcePreviewRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        "/ui/preview/source-foundation/refresh",
+        {
+          method: "POST",
+        },
+      ),
+    getSourcePreviewRefreshStatus: (runId: string) =>
+      requestActionJson<SourcePreviewRefreshPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/preview/source-foundation/refresh-status?run_id=${encodeURIComponent(runId)}`,
+      ),
+    getSourceFoundationHistory: ({ sourceFamily, limit, offset }) => {
+      const params = new URLSearchParams();
+      if (sourceFamily?.trim()) {
+        params.set("source_family", sourceFamily);
+      }
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      return requestJson<SourcePreviewHistoryPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/preview/source-foundation/history?${params.toString()}`,
+      );
+    },
+    getSourceFoundationRows: ({ sourceFamily, ingestBatchId, limit, offset }) =>
+      requestJson<SourcePreviewRowsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/rows?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
+      ),
+    getSourceFoundationTraces: ({ sourceFamily, ingestBatchId, limit, offset }) =>
+      requestJson<SourcePreviewTracesPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/preview/source-foundation/${encodeURIComponent(sourceFamily)}/traces?ingest_batch_id=${encodeURIComponent(ingestBatchId)}&limit=${limit}&offset=${offset}`,
+      ),
     getMacroFoundation: () =>
       requestJson<MacroVendorPayload>(fetchImpl, baseUrl, "/ui/preview/macro-foundation"),
     getChoiceMacroLatest: () =>
@@ -850,6 +1450,76 @@ export function createRealMarketDataClient({
         baseUrl,
         `/ui/market-data/livermore${buildLivermoreQuery(options)}`,
       ),
+    getChoiceNewsEvents: ({
+      limit,
+      offset,
+      groupId,
+      topicCode,
+      errorOnly,
+      receivedFrom,
+      receivedTo,
+    }) => {
+      const params = new URLSearchParams();
+      params.set("limit", String(limit));
+      params.set("offset", String(offset));
+      if (groupId?.trim()) {
+        params.set("group_id", groupId.trim());
+      }
+      if (topicCode?.trim()) {
+        params.set("topic_code", topicCode.trim());
+      }
+      if (errorOnly) {
+        params.set("error_only", "true");
+      }
+      if (receivedFrom?.trim()) {
+        params.set("received_from", receivedFrom.trim());
+      }
+      if (receivedTo?.trim()) {
+        params.set("received_to", receivedTo.trim());
+      }
+      return requestJson<ChoiceNewsEventsPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/news/choice-events/latest?${params.toString()}`,
+      );
+    },
+    getResearchCalendarEvents: (options) => {
+      const params = new URLSearchParams();
+      if (options?.startDate?.trim()) {
+        params.set("start_date", options.startDate.trim());
+      }
+      if (options?.endDate?.trim()) {
+        params.set("end_date", options.endDate.trim());
+      } else if (options?.reportDate?.trim()) {
+        params.set("end_date", options.reportDate.trim());
+      }
+      const query = params.toString();
+      return requestJson<ResearchCalendarResultPayload>(
+        fetchImpl,
+        baseUrl,
+        `/ui/calendar/supply-auctions${query ? `?${query}` : ""}`,
+      ).then((payload) => payload.result.events.map(mapResearchCalendarApiEvent));
+    },
+    ingestTushareNprNews: (options?: { limit?: number }) => {
+      const params = new URLSearchParams();
+      if (options?.limit != null) {
+        params.set("limit", String(options.limit));
+      }
+      const query = params.toString();
+      return requestActionJson<{
+        status: string;
+        inserted: number;
+        skipped_duplicates: number;
+        fetched: number;
+        npr: { inserted: number; skipped_duplicates: number; fetched: number };
+        news: { inserted: number; skipped_duplicates: number; fetched: number; src: string; error?: string };
+      }>(
+        fetchImpl,
+        baseUrl,
+        `/api/news/tushare-npr/ingest${query ? `?${query}` : ""}`,
+        { method: "POST" },
+      );
+    },
   };
 }
 
@@ -862,7 +1532,8 @@ async function requestJson<TData>(
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
-    throw new Error(`Request failed: ${path} (${response.status})`);
+    const detail = await readHttpJsonDetail(response);
+    throw new Error(detail ?? `Request failed: ${path} (${response.status})`);
   }
   return (await response.json()) as ApiEnvelope<TData>;
 }
@@ -881,7 +1552,30 @@ async function requestActionJson<TResponse>(
     },
   });
   if (!response.ok) {
-    throw new Error(`Request failed: ${path} (${response.status})`);
+    let body: unknown;
+    try {
+      body = await response.json();
+    } catch {
+      body = undefined;
+    }
+    const detailText =
+      extractApiErrorDetail(body) ?? `Request failed: ${path} (${response.status})`;
+    const runId = extractApiRunId(body);
+    const rawDetail = extractRawDetail(body);
+    const topErrorMessage = extractTopLevelErrorMessage(body);
+    const nestedDetail =
+      rawDetail && typeof rawDetail === "object" && !Array.isArray(rawDetail)
+        ? (rawDetail as Record<string, unknown>).error_message
+        : undefined;
+    const errorMessage =
+      topErrorMessage ??
+      (typeof nestedDetail === "string" && nestedDetail.trim() ? nestedDetail : undefined);
+    throw new ActionRequestError(detailText, {
+      status: response.status,
+      runId,
+      errorMessage,
+      detail: rawDetail,
+    });
   }
   return (await response.json()) as TResponse;
 }

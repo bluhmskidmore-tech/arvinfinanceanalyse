@@ -51,7 +51,7 @@ const workbenchGroupDefinitions: Array<Omit<WorkbenchNavigationGroup, "sections"
     label: "市场工作台",
     description: "承接市场观察、跨资产传导和新闻事件。",
     icon: "market",
-    defaultPath: "/market-data",
+    defaultPath: "/cross-asset",
   },
   {
     key: "risk",
@@ -236,10 +236,22 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/market-data",
     icon: "market",
     description: "市场观察入口",
-    readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接宏观、外汇分析与正式外汇状态读链路。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Reserved by the current boundary. Market-data preview/vendor/analytical surfaces remain hidden behind placeholder behavior.",
+  },
+  {
+    key: "source-preview",
+    label: "Source Preview",
+    path: "/source-preview",
+    icon: "market",
+    description: "Source preview reserved route",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Hidden reserved route. Source preview remains outside the current cutover boundary.",
+    navigationVisibility: "hidden",
   },
   {
     key: "platform-config",
@@ -324,10 +336,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/risk-overview",
     icon: "risk",
     description: "风险总览与风险下钻入口",
-    readiness: "live",
-    readinessLabel: "已开放",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
     readinessNote:
-      "已接 risk tensor 主链与 bond analytics 物化下钻视图（KRD 曲线 / 信用利差迁移）。",
+      "Reserved by the current boundary. Direct access stays on placeholder behavior until this surface is explicitly promoted.",
   },
   {
     key: "risk-tensor",
@@ -378,10 +390,10 @@ export const workbenchNavigation: WorkbenchSection[] = [
     path: "/news-events",
     icon: "decision",
     description: "Choice 新闻事件与回调异常入口",
-    readiness: "live",
-    readinessLabel: "临时开放",
-    governanceStatus: "temporary-exception",
-    readinessNote: "已接真实 Choice 新闻只读链路。",
+    readiness: "placeholder",
+    readinessLabel: "Reserved",
+    readinessNote:
+      "Reserved by the current boundary. Choice news direct workbench access stays placeholder until promoted.",
   },
   {
     key: "product-category-pnl",
@@ -442,7 +454,9 @@ export const workbenchNavigation: WorkbenchSection[] = [
     description: "智能体分析工作台：面向证据问答、GitNexus 仓库图谱和后续页面助手。",
     readiness: "placeholder",
     readinessLabel: "智能体试用",
-    readinessNote: "已开放前端入口；/api/agent/query 仍按后端开关与只读证据边界执行。",
+    readinessNote:
+      "Hidden reserved route. Keep the placeholder shell only; the real Agent workbench is outside the current boundary.",
+    navigationVisibility: "hidden",
   },
 ];
 

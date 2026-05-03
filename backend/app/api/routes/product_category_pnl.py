@@ -4,6 +4,7 @@ import importlib
 from typing import Annotated
 
 from backend.app.governance.settings import get_settings
+from backend.app.security.auth_context import AuthContext, ensure_user_allowed, get_auth_context
 from backend.app.schemas.product_category_pnl import (
     ProductCategoryManualAdjustmentCreateRequest,
     ProductCategoryManualAdjustmentQuery,
@@ -87,7 +88,9 @@ def attribution(
 
 
 @router.post("/refresh")
-def refresh() -> dict[str, object]:
+def refresh(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
     try:
         return refresh_product_category_pnl(get_settings())
     except ProductCategoryRefreshConflictError as exc:
@@ -113,8 +116,14 @@ def refresh_status(run_id: str = Query(...)) -> dict[str, object]:
 @router.post("/manual-adjustments")
 def create_manual_adjustment(
     payload: ProductCategoryManualAdjustmentCreateRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
-    return create_product_category_manual_adjustment(get_settings(), payload)
+    settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    return create_product_category_manual_adjustment(settings, payload)
 
 
 @router.get("/manual-adjustments")
@@ -169,9 +178,17 @@ def export_manual_adjustments(
 
 
 @router.post("/manual-adjustments/{adjustment_id}/revoke")
-def revoke_manual_adjustment(adjustment_id: str) -> dict[str, object]:
+def revoke_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return revoke_product_category_manual_adjustment(get_settings(), adjustment_id=adjustment_id)
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
+        return revoke_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -180,10 +197,16 @@ def revoke_manual_adjustment(adjustment_id: str) -> dict[str, object]:
 def edit_manual_adjustment(
     adjustment_id: str,
     payload: ProductCategoryManualAdjustmentUpdateRequest,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
 ) -> dict[str, object]:
+    settings = get_settings()
+    try:
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     try:
         return update_product_category_manual_adjustment(
-            get_settings(),
+            settings,
             adjustment_id=adjustment_id,
             payload=payload,
         )
@@ -192,8 +215,16 @@ def edit_manual_adjustment(
 
 
 @router.post("/manual-adjustments/{adjustment_id}/restore")
-def restore_manual_adjustment(adjustment_id: str) -> dict[str, object]:
+def restore_manual_adjustment(
+    adjustment_id: str,
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+) -> dict[str, object]:
+    settings = get_settings()
     try:
-        return restore_product_category_manual_adjustment(get_settings(), adjustment_id=adjustment_id)
+        ensure_user_allowed(auth=auth, settings=settings, resource="product_category_pnl.adjustment", action="write")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    try:
+        return restore_product_category_manual_adjustment(settings, adjustment_id=adjustment_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

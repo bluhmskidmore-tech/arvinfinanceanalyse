@@ -75,6 +75,14 @@ def _v20_ledger_analytics(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "20_ledger_analytics.sql")
 
 
+def _v21_choice_stock(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "21_choice_stock.sql")
+
+
+def _v22_livermore_position_snapshot(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "22_livermore_position_snapshot.sql")
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -165,6 +173,8 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(18, "ZQTZ business type 1 lineage for balance analysis", _v18_zqtz_business_type_primary)
     registry.register(19, "bank ledger import traceability tables", _v19_ledger_import)
     registry.register(20, "bank ledger analytics read models", _v20_ledger_analytics)
+    registry.register(21, "Choice stock materialization front layer", _v21_choice_stock)
+    registry.register(22, "Livermore position snapshot read model", _v22_livermore_position_snapshot)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

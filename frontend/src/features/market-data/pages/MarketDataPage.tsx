@@ -76,7 +76,7 @@ const detailPanelStyle = {
   ...pageSurfacePanelStyle,
   padding: s[3],
   borderRadius: designTokens.radius.sm,
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
   boxShadow: "0 2px 8px rgba(0, 0, 0, 0.025)",
 } as const;
 
@@ -88,7 +88,7 @@ const rateTrendStateStyle = {
   marginTop: s[3],
   padding: s[3],
   borderRadius: s[2],
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
   fontSize: fs[13],
   display: "grid",
   gap: s[2],
@@ -110,7 +110,7 @@ const blockTitleStyle = {
 const macroChartShellStyle = {
   ...detailPanelStyle,
   marginTop: s[3],
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
 } as const;
 
 const marketSectionBlockStyle = {
@@ -165,7 +165,7 @@ const filterControlStyle = {
   padding: `0 ${s[3]}px`,
   borderRadius: designTokens.radius.sm,
   border: `1px solid ${shellTokens.colorBorder}`,
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
   fontSize: fs[12],
   color: c.neutral[900],
   outline: "none",
@@ -178,7 +178,7 @@ const pageHeaderStyle = {
   padding: `${s[3]}px ${s[4]}px`,
   borderRadius: designTokens.radius.sm,
   border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: "#ffffff",
+  background: shellTokens.colorBgSurface,
 } as const;
 
 const headerActionsStyle = {
@@ -382,7 +382,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         display: "grid",
         gap: s[3],
         ...pageInsetCardStyle,
-        background: "#ffffff",
+        background: shellTokens.colorBgSurface,
       }}
     >
       <div
@@ -474,7 +474,7 @@ function renderSeriesCards(
             display: "grid",
             gap: s[3],
             ...pageInsetCardStyle,
-            background: "#ffffff",
+            background: shellTokens.colorBgSurface,
           }}
         >
           <div
@@ -671,10 +671,7 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
           >
             <span aria-hidden className="market-data-overview-card__bar" />
             <div className="market-data-overview-card__label">{metric.title}</div>
-            <div
-              className="market-data-overview-card__value"
-              style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
-            >
+            <div className="market-data-overview-card__value">
               {metric.value}
             </div>
             <p className="market-data-overview-card__detail">{metric.detail}</p>
@@ -1216,6 +1213,11 @@ export default function MarketDataPage() {
           model={livermoreStrategy}
           isLoading={livermoreStrategyQuery.isLoading}
           isError={livermoreStrategyQuery.isError}
+          fetchErrorDetail={
+            livermoreStrategyQuery.error instanceof Error
+              ? livermoreStrategyQuery.error.message
+              : null
+          }
           onRetry={() => void livermoreStrategyQuery.refetch()}
         />
       </MarketSectionBlock>
@@ -1295,7 +1297,7 @@ export default function MarketDataPage() {
                         padding: s[4],
                         borderRadius: s[4],
                         border: `1px solid ${c.primary[200]}`,
-                        background: "#ffffff",
+                        background: shellTokens.colorBgSurface,
                       }}
                     >
                       <strong>{series.series_name}</strong>
@@ -1314,7 +1316,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: s[4],
                     border: `1px solid ${c.primary[200]}`,
-                    background: "#ffffff",
+                    background: shellTokens.colorBgSurface,
                     color: c.neutral[600],
                     fontSize: fs[14],
                   }}
@@ -1339,7 +1341,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: s[4],
                     border: `1px solid ${c.primary[200]}`,
-                    background: "#ffffff",
+                    background: shellTokens.colorBgSurface,
                     color: c.neutral[600],
                     fontSize: fs[14],
                   }}
@@ -1634,7 +1636,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: designTokens.radius.md + s[1],
                     border: `1px dashed ${c.primary[300]}`,
-                    background: "#ffffff",
+                    background: shellTokens.colorBgSurface,
                     color: c.neutral[500],
                     fontSize: fs[14],
                   }}
@@ -1666,7 +1668,7 @@ export default function MarketDataPage() {
                       padding: s[4],
                       borderRadius: s[4],
                       border: `1px solid ${c.primary[200]}`,
-                      background: "#ffffff",
+                      background: shellTokens.colorBgSurface,
                       display: "grid",
                       gap: s[2],
                     }}
@@ -1705,7 +1707,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: designTokens.radius.md + s[1],
                     border: `1px dashed ${c.primary[300]}`,
-                    background: "#ffffff",
+                    background: shellTokens.colorBgSurface,
                     color: c.neutral[500],
                     fontSize: fs[14],
                   }}
@@ -1746,7 +1748,7 @@ export default function MarketDataPage() {
                   padding: s[4],
                   borderRadius: s[4],
                   border: `1px solid ${c.primary[200]}`,
-                  background: "#ffffff",
+                  background: shellTokens.colorBgSurface,
                 }}
               >
                 <strong>{series.series_name}</strong>

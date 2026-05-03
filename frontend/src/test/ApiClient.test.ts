@@ -3316,8 +3316,16 @@ describe("createApiClient", () => {
     expect(envelope.result_meta.basis).toBe("analytical");
     expect(envelope.result.basis).toBe("analytical");
     expect(envelope.result.requested_as_of_date).toBe("2026-04-29");
-    expect(envelope.result.supported_outputs).toEqual(["market_gate"]);
-    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(true);
+    expect(envelope.result.supported_outputs).toEqual([
+      "market_gate",
+      "sector_rank",
+      "stock_candidates",
+      "risk_exit",
+    ]);
+    expect(envelope.result.stock_candidates?.candidate_count).toBe(2);
+    expect(envelope.result.risk_exit?.signal_count).toBe(1);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "stock_candidates")).toBe(false);
+    expect(envelope.result.unsupported_outputs.some((item) => item.key === "risk_exit")).toBe(false);
   });
 
   it("uses real mode to fetch Livermore strategy with and without as_of_date", async () => {
