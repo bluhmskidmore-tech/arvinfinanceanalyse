@@ -351,7 +351,8 @@ def _empty_accounting_basis_daily_average_payload(
 
 def _load_accounting_basis_daily_average_trend(
     duckdb_path: str,
-    year: int,
+    start_date: date,
+    end_date: date,
     currency_basis: str = ACCOUNTING_BASIS_CURRENCY,
 ) -> tuple[list[dict[str, Any]], list[str], list[str], int]:
     if not Path(duckdb_path).exists():
@@ -382,7 +383,7 @@ def _load_accounting_basis_daily_average_trend(
               )
             order by report_date, account_code
             """,
-            [f"{year}-01-01", f"{year}-12-31", currency_basis],
+            [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), currency_basis],
         )
         rows = [_dict_from_row(list(cursor.description or []), row) for row in cursor.fetchall()]
     finally:
@@ -1318,22 +1319,29 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
     settings = get_settings()
+    parsed_start_date = _parse_date(start_date)
     parsed_end_date = _parse_date(end_date)
     payload, source_versions, rule_versions = get_adb_comparison(
         str(settings.duckdb_path),
-        _parse_date(start_date),
+        parsed_start_date,
         parsed_end_date,
         top_n=top_n,
     )
     accounting_basis, basis_source_versions, basis_rule_versions, _basis_evidence_rows = (
         _load_accounting_basis_daily_average(str(settings.duckdb_path), parsed_end_date)
     )
+    basis_trend, trend_source_versions, trend_rule_versions, _trend_evidence_rows = (
+        _load_accounting_basis_daily_average_trend(
+            str(settings.duckdb_path), parsed_start_date, parsed_end_date
+        )
+    )
     payload["accounting_basis_daily_avg"] = accounting_basis
+    payload["accounting_basis_daily_avg_trend"] = basis_trend
     return _build_analytical_envelope(
         result_kind="adb.comparison",
         result_payload=payload,
-        source_versions=source_versions + basis_source_versions,
-        rule_versions=rule_versions + basis_rule_versions,
+        source_versions=source_versions + basis_source_versions + trend_source_versions,
+        rule_versions=rule_versions + basis_rule_versions + trend_rule_versions,
         filters_applied={
             "start_date": start_date,
             "end_date": end_date,
@@ -1354,7 +1362,9 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         year,
     )
     accounting_basis_trend, basis_source_versions, basis_rule_versions, basis_evidence_rows = (
-        _load_accounting_basis_daily_average_trend(str(settings.duckdb_path), year)
+        _load_accounting_basis_daily_average_trend(
+            str(settings.duckdb_path), date(year, 1, 1), date(year, 12, 31)
+        )
     )
     payload["accounting_basis_daily_avg_trend"] = accounting_basis_trend
     return _build_analytical_envelope(

@@ -59,6 +59,7 @@ import type {
   CubeQueryResult,
   CustomerBalanceTrendResponse,
   AdbComparisonResponse,
+  AdbAccountingBasisDailyAvgTrendItem,
   AdbMonthlyResponse,
   AdbPayload,
   LiabilitiesMonthlyPayload,
@@ -2358,6 +2359,37 @@ const requestEnvelopeOrPlainJsonWithMeta = async <T>(
   return { result: payload as T };
 };
 
+function normalizeAccountingBasisTrendItem(item: unknown): AdbAccountingBasisDailyAvgTrendItem {
+  const basis = item as Record<string, unknown>;
+  const rows = Array.isArray(basis.rows) ? basis.rows : [];
+  return {
+    report_date: String(basis.report_date ?? ""),
+    report_month: String(basis.report_month ?? String(basis.report_date ?? "").slice(0, 7)),
+    currency_basis: String(basis.currency_basis ?? ""),
+    daily_avg_total: Number(basis.daily_avg_total ?? 0),
+    rows: rows.map((entry) => {
+      const row = entry as Record<string, unknown>;
+      return {
+        basis_bucket: String(row.basis_bucket ?? ""),
+        daily_avg_balance: Number(row.daily_avg_balance ?? 0),
+        daily_avg_pct:
+          row.daily_avg_pct === null || row.daily_avg_pct === undefined
+            ? null
+            : Number(row.daily_avg_pct),
+        source_account_patterns: Array.isArray(row.source_account_patterns)
+          ? row.source_account_patterns.map(String)
+          : [],
+      };
+    }),
+    accounting_controls: Array.isArray(basis.accounting_controls)
+      ? basis.accounting_controls.map(String)
+      : [],
+    excluded_controls: Array.isArray(basis.excluded_controls)
+      ? basis.excluded_controls.map(String)
+      : [],
+  };
+}
+
 function normalizeAdbComparisonResponse(
   raw: Record<string, unknown>,
   resultMeta?: ResultMeta,
@@ -2439,6 +2471,9 @@ function normalizeAdbComparisonResponse(
             : [],
         }
       : undefined,
+    accounting_basis_daily_avg_trend: Array.isArray(raw.accounting_basis_daily_avg_trend)
+      ? raw.accounting_basis_daily_avg_trend.map(normalizeAccountingBasisTrendItem)
+      : undefined,
     detail: raw.detail ? String(raw.detail) : undefined,
   };
 }
@@ -2451,36 +2486,6 @@ function normalizeAdbMonthlyResponse(
   const accountingBasisTrend = Array.isArray(raw.accounting_basis_daily_avg_trend)
     ? raw.accounting_basis_daily_avg_trend
     : [];
-  const normalizeAccountingBasisTrendItem = (item: unknown) => {
-    const basis = item as Record<string, unknown>;
-    const rows = Array.isArray(basis.rows) ? basis.rows : [];
-    return {
-      report_date: String(basis.report_date ?? ""),
-      report_month: String(basis.report_month ?? String(basis.report_date ?? "").slice(0, 7)),
-      currency_basis: String(basis.currency_basis ?? ""),
-      daily_avg_total: Number(basis.daily_avg_total ?? 0),
-      rows: rows.map((entry) => {
-        const row = entry as Record<string, unknown>;
-        return {
-          basis_bucket: String(row.basis_bucket ?? ""),
-          daily_avg_balance: Number(row.daily_avg_balance ?? 0),
-          daily_avg_pct:
-            row.daily_avg_pct === null || row.daily_avg_pct === undefined
-              ? null
-              : Number(row.daily_avg_pct),
-          source_account_patterns: Array.isArray(row.source_account_patterns)
-            ? row.source_account_patterns.map(String)
-            : [],
-        };
-      }),
-      accounting_controls: Array.isArray(basis.accounting_controls)
-        ? basis.accounting_controls.map(String)
-        : [],
-      excluded_controls: Array.isArray(basis.excluded_controls)
-        ? basis.excluded_controls.map(String)
-        : [],
-    };
-  };
   return {
     result_meta: resultMeta,
     year: Number(raw.year ?? 0),

@@ -325,13 +325,20 @@ function formatAccountingBasisTrendMonth(reportMonth: string) {
   return `${year.slice(2)}-${String(monthNumber).padStart(2, "0")}`;
 }
 
+/** 按日序列图横轴标签（yy-mm-dd），避免同月多日使用 report_month 撞键 */
+function formatAccountingBasisTrendDayLabel(reportDate: string) {
+  const [y, m, d] = reportDate.split("-");
+  if (!y || !m || !d) return reportDate;
+  return `${y.slice(2)}-${m}-${d}`;
+}
+
 function buildAccountingBasisSharePoint(
-  reportMonth: string,
+  axisLabel: string,
   dailyAvgTotal: number,
   rows: AdbAccountingBasisDailyAvgItem[],
 ): AccountingBasisStackedSharePoint {
   const point: AccountingBasisStackedSharePoint = {
-    monthLabel: formatAccountingBasisTrendMonth(reportMonth),
+    monthLabel: axisLabel,
     AC: 0,
     OCI: 0,
     TPL: 0,
@@ -357,7 +364,27 @@ function buildAccountingBasisTrendRows(
     .slice()
     .sort((left, right) => left.report_month.localeCompare(right.report_month))
     .map((item) =>
-      buildAccountingBasisSharePoint(item.report_month, item.daily_avg_total, item.rows),
+      buildAccountingBasisSharePoint(
+        formatAccountingBasisTrendMonth(item.report_month),
+        item.daily_avg_total,
+        item.rows,
+      ),
+    );
+}
+
+/** 日均分析页「区间」AC/OCI/TPL 堆叠图：按自然日排序 */
+function buildAccountingBasisComparisonTrendRows(
+  trend: AdbAccountingBasisDailyAvgTrendItem[] | undefined,
+): AccountingBasisStackedSharePoint[] {
+  return (trend ?? [])
+    .slice()
+    .sort((left, right) => left.report_date.localeCompare(right.report_date))
+    .map((item) =>
+      buildAccountingBasisSharePoint(
+        formatAccountingBasisTrendDayLabel(item.report_date),
+        item.daily_avg_total,
+        item.rows,
+      ),
     );
 }
 
@@ -555,16 +582,18 @@ export default function AverageBalanceView() {
     [monthlyMatrixMonths],
   );
   const dailyAccountingBasisRows = useMemo<AccountingBasisStackedSharePoint[]>(() => {
+    const trendPoints = buildAccountingBasisComparisonTrendRows(dailyData?.accounting_basis_daily_avg_trend);
+    if (trendPoints.length > 0) return trendPoints;
     const basis = dailyData?.accounting_basis_daily_avg;
     if (!basis) return [];
     return [
       buildAccountingBasisSharePoint(
-        basis.report_month ?? basis.report_date.slice(0, 7),
+        formatAccountingBasisTrendMonth(basis.report_month ?? basis.report_date.slice(0, 7)),
         basis.daily_avg_total,
         basis.rows,
       ),
     ];
-  }, [dailyData?.accounting_basis_daily_avg]);
+  }, [dailyData?.accounting_basis_daily_avg_trend, dailyData?.accounting_basis_daily_avg]);
   const monthlyAccountingBasisTrendRows = useMemo(
     () => buildAccountingBasisTrendRows(monthlyData?.accounting_basis_daily_avg_trend),
     [monthlyData?.accounting_basis_daily_avg_trend],

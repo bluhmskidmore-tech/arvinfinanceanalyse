@@ -226,6 +226,36 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
         )
         _insert_daily_average_account(
             conn,
+            report_date="2025-06-02",
+            account_code="14101010001",
+            daily_avg_balance=Decimal("100000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14201010001",
+            daily_avg_balance=Decimal("180000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14301010001",
+            daily_avg_balance=Decimal("40000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14401010001",
+            daily_avg_balance=Decimal("130000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-02",
+            account_code="14402010001",
+            daily_avg_balance=Decimal("888888888"),
+        )
+        _insert_daily_average_account(
+            conn,
             report_date="2025-06-03",
             account_code="14101010001",
             daily_avg_balance=Decimal("130000000"),
@@ -308,6 +338,14 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert basis_rows["OCI"]["daily_avg_balance"] == 150000000
     assert basis_rows["TPL"]["daily_avg_balance"] == 130000000
     assert payload["accounting_basis_daily_avg"]["excluded_controls"] == ["144020%"]
+    assert "accounting_basis_daily_avg_trend" in payload
+    assert len(payload["accounting_basis_daily_avg_trend"]) == 2
+    assert payload["accounting_basis_daily_avg_trend"][0]["report_date"] == "2025-06-02"
+    assert payload["accounting_basis_daily_avg_trend"][1]["report_date"] == "2025-06-03"
+    t0 = {row["basis_bucket"]: row for row in payload["accounting_basis_daily_avg_trend"][0]["rows"]}
+    assert t0["TPL"]["daily_avg_balance"] == 100000000
+    assert t0["AC"]["daily_avg_balance"] == 220000000
+    assert t0["OCI"]["daily_avg_balance"] == 130000000
 
     alias = client.get(
         "/api/analysis/adb/comparison",
@@ -334,7 +372,7 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     monthly_payload = monthly_json["result"]
     assert "accounting_basis_daily_avg_trend" in monthly_payload
     assert len(monthly_payload["months"]) == 1
-    assert len(monthly_payload["accounting_basis_daily_avg_trend"]) == 1
+    assert len(monthly_payload["accounting_basis_daily_avg_trend"]) == 2
     assert monthly_payload["year"] == 2025
     assert "months" in monthly_payload and "ytd_avg_assets" in monthly_payload
     assert "ytd_nim" in monthly_payload
@@ -345,10 +383,14 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "mom_change_pct_liabilities" in monthly_payload["months"][0]
     assert "assets_mom_change" not in monthly_payload["months"][0]
     assert "liabilities_mom_change" not in monthly_payload["months"][0]
-    assert monthly_payload["accounting_basis_daily_avg_trend"][0]["report_month"] == "2025-06"
+    basis_trend_by_date = {
+        item["report_date"]: item for item in monthly_payload["accounting_basis_daily_avg_trend"]
+    }
+    assert basis_trend_by_date["2025-06-02"]["report_month"] == "2025-06"
+    assert basis_trend_by_date["2025-06-03"]["report_month"] == "2025-06"
     monthly_basis_rows = {
         row["basis_bucket"]: row
-        for row in monthly_payload["accounting_basis_daily_avg_trend"][0]["rows"]
+        for row in basis_trend_by_date["2025-06-03"]["rows"]
     }
     assert monthly_basis_rows["AC"]["daily_avg_balance"] == 220000000
     assert monthly_basis_rows["OCI"]["daily_avg_balance"] == 150000000
