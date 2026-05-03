@@ -40,6 +40,9 @@ ADB_CACHE_VERSION = "cv_adb_analysis_v1"
 ADB_EMPTY_SOURCE_VERSION = "sv_adb_empty"
 ADB_RULE_VERSION = "rv_adb_analysis_v1"
 ACCOUNTING_BASIS_CURRENCY = "CNX"
+ADB_LEDGER_CURRENCY = "CNX"
+ADB_LEDGER_ASSET_PREFIX = "1"
+ADB_LEDGER_LIABILITY_PREFIX = "2"
 ACCOUNTING_BASIS_BUCKETS = (
     ("AC", ("142%", "143%")),
     ("OCI", ("1440101%",)),
@@ -534,8 +537,16 @@ def _load_adb_raw_data(
         concrete = scope.isin({"asset", "liability"})
         scoped = tyw_df.loc[concrete].copy() if concrete.any() else tyw_df.copy()
         scoped_scope = scoped["position_scope"].fillna("").astype(str).str.lower()
-        side = scoped["position_side"].fillna("").astype(str).str.lower()
-        is_asset = scoped_scope.eq("asset") | (~scoped_scope.isin({"asset", "liability"}) & side.str.contains("asset"))
+        raw_side = scoped["position_side"].fillna("").astype(str).str.strip()
+        side = raw_side.str.lower()
+        is_asset = scoped_scope.eq("asset") | (
+            ~scoped_scope.isin({"asset", "liability"})
+            & (
+                raw_side.eq("资产")
+                | side.eq("asset")
+                | (side.str.contains("asset", na=False) & ~raw_side.eq("负债"))
+            )
+        )
         ib_df = pd.DataFrame(
             {
                 "report_date": scoped["report_date"],
@@ -560,6 +571,257 @@ def _dict_from_row(description: list[tuple], row: tuple) -> dict[str, object]:
 
 def _decimal_or_zero(value: object) -> Decimal:
     return Decimal(str(value or 0))
+
+
+def _ledger_adb_side(account_code: object) -> str | None:
+    code = str(account_code or "").strip()
+    if code.startswith(ADB_LEDGER_ASSET_PREFIX):
+        return "asset"
+    if code.startswith(ADB_LEDGER_LIABILITY_PREFIX):
+        return "liability"
+    return None
+
+
+def _ledger_category(row: dict[str, object]) -> str:
+    code = str(row.get("account_code") or "").strip()
+    name = str(row.get("account_name") or "").strip()
+    prefix = code[:3] if len(code) >= 3 else code
+    return f"{prefix} {name}".strip() if name else (prefix or "Other")
+
+
+def _signed_ledger_amount(row: dict[str, object], field: str) -> Decimal:
+    value = _decimal_or_zero(row.get(field))
+    return abs(value) if _ledger_adb_side(row.get("account_code")) == "liability" else value
+
+
+def _load_ledger_adb_rows(
+    duckdb_path: str,
+    start_date: date,
+    end_date: date,
+    currency_basis: str = ADB_LEDGER_CURRENCY,
+) -> tuple[list[dict[str, object]], list[str], list[str], int]:
+    if not Path(duckdb_path).exists():
+        return [], [], [], 0
+
+    conn = _conn_ro(duckdb_path)
+    try:
+        if not _table_exists(conn, "product_category_pnl_canonical_fact"):
+            return [], [], [], 0
+        cursor = conn.execute(
+            """
+            select
+              report_date,
+              account_code,
+              account_name,
+              ending_balance,
+              daily_avg_balance,
+              days_in_period,
+              source_version,
+              rule_version
+            from product_category_pnl_canonical_fact
+            where report_date >= ?
+              and report_date <= ?
+              and currency = ?
+              and (account_code like '1%' or account_code like '2%')
+            order by report_date, account_code
+            """,
+            [start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"), currency_basis],
+        )
+        rows = [_dict_from_row(list(cursor.description or []), row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+    filtered = [row for row in rows if _ledger_adb_side(row.get("account_code")) is not None]
+    source_versions = [str(row.get("source_version") or "") for row in filtered]
+    rule_versions = [str(row.get("rule_version") or "") for row in filtered]
+    return filtered, source_versions, rule_versions, len(filtered)
+
+
+def _ledger_adb_weighted_days(rows: list[dict[str, object]]) -> Decimal:
+    days_by_month: dict[str, Decimal] = {}
+    for row in rows:
+        report_date = str(row.get("report_date") or "").strip()
+        days = _decimal_or_zero(row.get("days_in_period"))
+        if days <= Decimal("0"):
+            days = Decimal("1")
+        current = days_by_month.get(report_date)
+        if current is None or days > current:
+            days_by_month[report_date] = days
+    return sum(days_by_month.values(), Decimal("0"))
+
+
+def _ledger_adb_row_weight(row: dict[str, object], start_date: date, end_date: date) -> Decimal:
+    raw_report_date = str(row.get("report_date") or "").strip()
+    try:
+        report_date = _parse_date(raw_report_date)
+    except ValueError:
+        return Decimal("0")
+    days_in_period = int(_decimal_or_zero(row.get("days_in_period")) or Decimal("1"))
+    if start_date == end_date and start_date == report_date:
+        return Decimal(str(max(days_in_period, 1)))
+    month_start = report_date.replace(day=1)
+    period_start = month_start if start_date == report_date else max(start_date, month_start)
+    period_end = min(end_date, report_date)
+    if period_start > period_end:
+        return Decimal("0")
+    observed_days = Decimal(str((period_end - period_start).days + 1))
+    return min(observed_days, Decimal(str(max(days_in_period, 1))))
+
+
+def _build_ledger_adb_comparison_payload(
+    rows: list[dict[str, object]],
+    start_date: date,
+    end_date: date,
+    top_n: int,
+) -> dict[str, Any] | None:
+    if not rows:
+        return None
+
+    uses_monthly_reports = any(
+        str(row.get("report_date") or "").strip().endswith(("-28", "-29", "-30", "-31"))
+        for row in rows
+    )
+    row_weights = (
+        [_ledger_adb_row_weight(row, start_date, end_date) for row in rows]
+        if uses_monthly_reports
+        else [Decimal("1") for _row in rows]
+    )
+    weighted_days_by_month: dict[str, Decimal] = {}
+    for row, weight in zip(rows, row_weights, strict=True):
+        report_date = str(row.get("report_date") or "").strip()
+        current = weighted_days_by_month.get(report_date)
+        if current is None or weight > current:
+            weighted_days_by_month[report_date] = weight
+    weighted_days = sum(weighted_days_by_month.values(), Decimal("0"))
+    if weighted_days <= Decimal("0"):
+        return None
+
+    latest_report_date = max(str(row.get("report_date") or "") for row in rows)
+    totals = {"asset": Decimal("0"), "liability": Decimal("0")}
+    weighted_by_category: dict[str, dict[str, Decimal]] = {"asset": {}, "liability": {}}
+    spot_by_category: dict[str, dict[str, Decimal]] = {"asset": {}, "liability": {}}
+
+    for row, days in zip(rows, row_weights, strict=True):
+        side = _ledger_adb_side(row.get("account_code"))
+        if side is None or days <= Decimal("0"):
+            continue
+        avg_amount = _signed_ledger_amount(row, "daily_avg_balance")
+        weighted_amount = avg_amount * days
+        totals[side] += weighted_amount
+        category = _ledger_category(row)
+        weighted_by_category[side][category] = weighted_by_category[side].get(category, Decimal("0")) + weighted_amount
+        if str(row.get("report_date") or "") == latest_report_date:
+            spot_by_category[side][category] = (
+                spot_by_category[side].get(category, Decimal("0"))
+                + _signed_ledger_amount(row, "ending_balance")
+            )
+
+    def _breakdown(side: str, total_avg: Decimal) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for category, weighted_amount in weighted_by_category[side].items():
+            avg_balance = weighted_amount / weighted_days
+            if avg_balance == Decimal("0") and spot_by_category[side].get(category, Decimal("0")) == Decimal("0"):
+                continue
+            out.append(
+                {
+                    "category": category,
+                    "spot_balance": float(spot_by_category[side].get(category, Decimal("0"))),
+                    "avg_balance": float(avg_balance),
+                    "proportion": float(avg_balance / total_avg * Decimal("100")) if total_avg else 0.0,
+                    "weighted_rate": None,
+                }
+            )
+        out.sort(key=lambda item: item["avg_balance"], reverse=True)
+        return out[: max(int(top_n), 0)]
+
+    total_avg_assets = totals["asset"] / weighted_days
+    total_avg_liabilities = totals["liability"] / weighted_days
+    return {
+        "report_date": end_date.strftime("%Y-%m-%d"),
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+        "num_days": int(weighted_days),
+        "simulated": False,
+        "total_spot_assets": float(sum(spot_by_category["asset"].values(), Decimal("0"))),
+        "total_avg_assets": float(total_avg_assets),
+        "total_spot_liabilities": float(sum(spot_by_category["liability"].values(), Decimal("0"))),
+        "total_avg_liabilities": float(total_avg_liabilities),
+        "assets_breakdown": _breakdown("asset", total_avg_assets),
+        "liabilities_breakdown": _breakdown("liability", total_avg_liabilities),
+    }
+
+
+def _build_ledger_adb_monthly_overrides(
+    rows: list[dict[str, object]],
+    year: int,
+) -> tuple[dict[str, dict[str, Any]], float, float]:
+    by_month: dict[str, list[dict[str, object]]] = {}
+    for row in rows:
+        raw_report_date = str(row.get("report_date") or "").strip()
+        try:
+            report_date = _parse_date(raw_report_date)
+        except ValueError:
+            continue
+        if report_date.year != year:
+            continue
+        by_month.setdefault(report_date.strftime("%Y-%m"), []).append(row)
+
+    overrides: dict[str, dict[str, Any]] = {}
+    ytd_asset_weighted = Decimal("0")
+    ytd_liability_weighted = Decimal("0")
+    ytd_days = Decimal("0")
+    for month, month_rows in sorted(by_month.items()):
+        weighted_days = _ledger_adb_weighted_days(month_rows)
+        if weighted_days <= Decimal("0"):
+            continue
+        totals = {"asset": Decimal("0"), "liability": Decimal("0")}
+        by_side_category: dict[str, dict[str, Decimal]] = {"asset": {}, "liability": {}}
+        for row in month_rows:
+            side = _ledger_adb_side(row.get("account_code"))
+            if side is None:
+                continue
+            days = _decimal_or_zero(row.get("days_in_period"))
+            if days <= Decimal("0"):
+                days = Decimal("1")
+            weighted_amount = _signed_ledger_amount(row, "daily_avg_balance") * days
+            totals[side] += weighted_amount
+            category = _ledger_category(row)
+            by_side_category[side][category] = by_side_category[side].get(category, Decimal("0")) + weighted_amount
+
+        avg_assets = totals["asset"] / weighted_days
+        avg_liabilities = totals["liability"] / weighted_days
+        ytd_asset_weighted += totals["asset"]
+        ytd_liability_weighted += totals["liability"]
+        ytd_days += weighted_days
+
+        def _rows(side: str, denominator: Decimal) -> list[dict[str, Any]]:
+            out = []
+            for category, weighted_amount in by_side_category[side].items():
+                avg_balance = weighted_amount / weighted_days
+                out.append(
+                    {
+                        "category": category,
+                        "avg_balance": float(avg_balance),
+                        "proportion": float(avg_balance / denominator * Decimal("100")) if denominator else 0.0,
+                        "weighted_rate": None,
+                    }
+                )
+            out.sort(key=lambda item: item["avg_balance"], reverse=True)
+            return out
+
+        overrides[month] = {
+            "avg_assets": float(avg_assets),
+            "avg_liabilities": float(avg_liabilities),
+            "breakdown_assets": _rows("asset", avg_assets),
+            "breakdown_liabilities": _rows("liability", avg_liabilities),
+            "num_days": int(weighted_days),
+        }
+
+    return (
+        overrides,
+        float(ytd_asset_weighted / ytd_days) if ytd_days > 0 else 0.0,
+        float(ytd_liability_weighted / ytd_days) if ytd_days > 0 else 0.0,
+    )
 
 
 def _frame_unique_dates(frame: pd.DataFrame) -> set[date]:
@@ -638,6 +900,20 @@ def _frame_breakdown_rows(
             }
         )
     return rows
+
+
+def _tyw_interval_avg_balances(interbank_df: pd.DataFrame, num_days: int) -> tuple[float, float]:
+    """同业（TYW）区间日均资产 / 负债：区间内含金额求和 ÷ 日历天数（与 total_avg_* 分母一致）。"""
+    if interbank_df.empty or num_days <= 0:
+        return 0.0, 0.0
+    if "amount" not in interbank_df.columns or "direction" not in interbank_df.columns:
+        return 0.0, 0.0
+    amounts = pd.to_numeric(interbank_df["amount"], errors="coerce").fillna(0.0)
+    direction = interbank_df["direction"].astype(str).str.upper()
+    sum_assets = float(amounts[direction == "ASSET"].sum())
+    sum_liabilities = float(amounts[direction == "LIABILITY"].sum())
+    nd = float(max(num_days, 1))
+    return sum_assets / nd, sum_liabilities / nd
 
 
 def _accumulate_spot_and_sum_maps(
@@ -1013,6 +1289,8 @@ def _empty_comparison_response(
         "total_avg_assets": 0.0,
         "total_spot_liabilities": 0.0,
         "total_avg_liabilities": 0.0,
+        "total_avg_interbank_assets": 0.0,
+        "total_avg_interbank_liabilities": 0.0,
         "asset_yield": None,
         "liability_cost": None,
         "net_interest_margin": None,
@@ -1046,21 +1324,37 @@ def get_adb_comparison(
     )
 
     simulated = bool(simulate_if_single_snapshot and num_days <= 1)
-    assets = build_comparison_rows(
-        "Asset", spot_assets, sum_assets, num_days_dec, top_n, simulated, end_date, _stable_factor
+    assets_all = build_comparison_rows(
+        "Asset", spot_assets, sum_assets, num_days_dec, None, simulated, end_date, _stable_factor
     )
-    liabilities = build_comparison_rows(
-        "Liability", spot_liabilities, sum_liabilities, num_days_dec, top_n, simulated, end_date, _stable_factor
+    liabilities_all = build_comparison_rows(
+        "Liability", spot_liabilities, sum_liabilities, num_days_dec, None, simulated, end_date, _stable_factor
     )
+    assets = assets_all[: max(int(top_n), 0)]
+    liabilities = liabilities_all[: max(int(top_n), 0)]
 
-    total_spot_assets = float(sum(item["spot"] for item in assets))
-    total_avg_assets = float(sum(item["avg"] for item in assets))
-    total_spot_liabilities = float(sum(item["spot"] for item in liabilities))
-    total_avg_liabilities = float(sum(item["avg"] for item in liabilities))
+    if simulated:
+        total_spot_assets = float(sum(item["spot"] for item in assets_all))
+        total_avg_assets = float(sum(item["avg"] for item in assets_all))
+        total_spot_liabilities = float(sum(item["spot"] for item in liabilities_all))
+        total_avg_liabilities = float(sum(item["avg"] for item in liabilities_all))
+    else:
+        total_spot_assets = float(sum(spot_assets.values(), start=Decimal("0")))
+        total_avg_assets = float(sum(sum_assets.values(), start=Decimal("0")) / num_days_dec)
+        total_spot_liabilities = float(sum(spot_liabilities.values(), start=Decimal("0")))
+        total_avg_liabilities = float(sum(sum_liabilities.values(), start=Decimal("0")) / num_days_dec)
 
     asset_frames, liability_frames, *_ = _split_rate_frames(bonds_df, interbank_df)
     asset_rate_map, asset_yield = build_rate_map(asset_frames)
     liability_rate_map, liability_cost = build_rate_map(liability_frames)
+
+    tyw_avg_assets, tyw_avg_liabilities = _tyw_interval_avg_balances(interbank_df, num_days)
+    ledger_rows, ledger_source_versions, ledger_rule_versions, _ledger_evidence_rows = _load_ledger_adb_rows(
+        duckdb_path,
+        start_date,
+        end_date,
+    )
+    ledger_payload = _build_ledger_adb_comparison_payload(ledger_rows, start_date, end_date, top_n)
 
     payload = {
         "report_date": end_date.strftime("%Y-%m-%d"),
@@ -1072,13 +1366,22 @@ def get_adb_comparison(
         "total_avg_assets": total_avg_assets,
         "total_spot_liabilities": total_spot_liabilities,
         "total_avg_liabilities": total_avg_liabilities,
+        "total_avg_interbank_assets": tyw_avg_assets,
+        "total_avg_interbank_liabilities": tyw_avg_liabilities,
         "asset_yield": asset_yield,
         "liability_cost": liability_cost,
         "net_interest_margin": compute_nim(asset_yield, liability_cost),
         "assets_breakdown": enrich_breakdown(assets, total_avg_assets, asset_rate_map),
         "liabilities_breakdown": enrich_breakdown(liabilities, total_avg_liabilities, liability_rate_map),
     }
-    return payload, source_versions, rule_versions
+    if ledger_payload is not None:
+        payload.update(ledger_payload)
+        payload["total_avg_interbank_assets"] = tyw_avg_assets
+        payload["total_avg_interbank_liabilities"] = tyw_avg_liabilities
+        payload["asset_yield"] = asset_yield
+        payload["liability_cost"] = liability_cost
+        payload["net_interest_margin"] = compute_nim(asset_yield, liability_cost)
+    return payload, source_versions + ledger_source_versions, rule_versions + ledger_rule_versions
 
 
 def _build_month_breakdowns(
@@ -1224,6 +1527,15 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     bonds_df, interbank_df, source_versions, rule_versions = _load_adb_raw_data(duckdb_path, start_date, end_date)
     if bonds_df.empty and interbank_df.empty:
         return empty, source_versions, rule_versions
+    ledger_rows, ledger_source_versions, ledger_rule_versions, _ledger_evidence_rows = _load_ledger_adb_rows(
+        duckdb_path,
+        start_date,
+        end_date,
+    )
+    ledger_monthly_overrides, ledger_ytd_avg_assets, ledger_ytd_avg_liabilities = _build_ledger_adb_monthly_overrides(
+        ledger_rows,
+        year,
+    )
 
     asset_frames, liability_frames, bonds_assets_df, bonds_liab_df, ib_assets_df, ib_liab_df = _split_rate_frames(
         bonds_df, interbank_df
@@ -1269,6 +1581,10 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
         if month_result is None:
             continue
 
+        ledger_override = ledger_monthly_overrides.get(month_result["month"])
+        if ledger_override is not None:
+            month_result.update(ledger_override)
+
         ytd_total_assets += Decimal(str(month_result["total_assets"]))
         ytd_total_liabilities += Decimal(str(month_result["total_liabilities"]))
         ytd_assets_weighted += Decimal(str(month_result["total_assets_weighted"]))
@@ -1290,14 +1606,14 @@ def calculate_monthly_adb(duckdb_path: str, year: int) -> tuple[dict[str, Any], 
     payload = {
         "year": year,
         "months": months_data,
-        "ytd_avg_assets": float(ytd_total_assets / ytd_days) if ytd_days > 0 else 0.0,
-        "ytd_avg_liabilities": float(ytd_total_liabilities / ytd_days) if ytd_days > 0 else 0.0,
+        "ytd_avg_assets": ledger_ytd_avg_assets if ledger_monthly_overrides else (float(ytd_total_assets / ytd_days) if ytd_days > 0 else 0.0),
+        "ytd_avg_liabilities": ledger_ytd_avg_liabilities if ledger_monthly_overrides else (float(ytd_total_liabilities / ytd_days) if ytd_days > 0 else 0.0),
         "ytd_asset_yield": ytd_asset_yield,
         "ytd_liability_cost": ytd_liability_cost,
         "ytd_nim": compute_nim(ytd_asset_yield, ytd_liability_cost),
         "unit": "percent",
     }
-    return payload, source_versions, rule_versions
+    return payload, source_versions + ledger_source_versions, rule_versions + ledger_rule_versions
 
 
 def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:

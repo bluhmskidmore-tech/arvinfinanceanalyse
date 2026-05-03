@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 import duckdb
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.helpers import load_module
@@ -57,11 +58,12 @@ def _insert_daily_average_account(
     report_date: str,
     account_code: str,
     daily_avg_balance: Decimal,
+    days_in_period: int = 30,
 ) -> None:
     conn.execute(
         """
         insert into product_category_pnl_canonical_fact values
-        (?, ?, 'CNX', ?, 0, 0, 0, ?, ?, 30, 'sv-daily-avg', 'rv-daily-avg')
+        (?, ?, 'CNX', ?, 0, 0, 0, ?, ?, ?, 'sv-daily-avg', 'rv-daily-avg')
         """,
         [
             report_date,
@@ -69,6 +71,7 @@ def _insert_daily_average_account(
             f"Account {account_code}",
             daily_avg_balance,
             daily_avg_balance,
+            days_in_period,
         ],
     )
 
@@ -324,6 +327,8 @@ def test_adb_endpoints_return_structure(tmp_path: Path, monkeypatch) -> None:
     assert "deviation" not in payload["assets_breakdown"][0]
     assert "total_spot_assets" in payload
     assert "total_avg_assets" in payload
+    assert payload["total_avg_interbank_assets"] == pytest.approx(25_000_000.0)
+    assert payload["total_avg_interbank_liabilities"] == pytest.approx(0.0)
     assert "asset_yield" in payload
     assert "liability_cost" in payload
     assert "net_interest_margin" in payload
@@ -623,3 +628,115 @@ def test_adb_comparison_reads_formal_facts_without_snapshot_tables(tmp_path: Pat
     assert payload["result_meta"]["basis"] == "analytical"
     assert payload["result"]["report_date"] == "2025-12-31"
     assert payload["result"]["total_avg_assets"] > 0
+
+
+def test_adb_comparison_uses_ledger_daily_average_for_page_totals(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "adb-ledger-caliber.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-06-30",
+            instrument_code="B-SPOT-ONLY",
+            bond_type=BOND_GOV,
+            market_value=Decimal("999000000"),
+            is_issuance_like=False,
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-30",
+            account_code="10100000000",
+            daily_avg_balance=Decimal("300000000"),
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-06-30",
+            account_code="20100000000",
+            daily_avg_balance=Decimal("-120000000"),
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-06-30"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-06-30", "end_date": "2025-06-30", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["simulated"] is False
+    assert payload["num_days"] == 30
+    assert payload["total_avg_assets"] == 300000000
+    assert payload["total_avg_liabilities"] == 120000000
+    assert payload["assets_breakdown"][0]["category"] == "101 Account 10100000000"
+    assert payload["liabilities_breakdown"][0]["avg_balance"] == 120000000
+
+
+def test_adb_comparison_weights_multi_month_daily_average_by_days(tmp_path: Path, monkeypatch) -> None:
+    db_path = tmp_path / "adb-ledger-weighted.duckdb"
+    governance_dir = tmp_path / "governance"
+    conn = duckdb.connect(str(db_path))
+    try:
+        _ensure_tables(conn)
+        _insert_zqtz(
+            conn,
+            report_date="2025-01-31",
+            instrument_code="B-JAN",
+            bond_type=BOND_GOV,
+            market_value=Decimal("1"),
+            is_issuance_like=False,
+        )
+        _insert_zqtz(
+            conn,
+            report_date="2025-02-28",
+            instrument_code="B-FEB",
+            bond_type=BOND_GOV,
+            market_value=Decimal("1"),
+            is_issuance_like=False,
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-01-31",
+            account_code="10100000000",
+            daily_avg_balance=Decimal("310000000"),
+            days_in_period=31,
+        )
+        _insert_daily_average_account(
+            conn,
+            report_date="2025-02-28",
+            account_code="10100000000",
+            daily_avg_balance=Decimal("280000000"),
+            days_in_period=28,
+        )
+    finally:
+        conn.close()
+
+    _materialize_balance_analysis(
+        db_path,
+        governance_dir,
+        monkeypatch,
+        report_dates=["2025-01-31", "2025-02-28"],
+    )
+    main_mod = load_module("backend.app.main", "backend/app/main.py")
+    client = TestClient(main_mod.app)
+
+    response = client.get(
+        "/api/analysis/adb/comparison",
+        params={"start_date": "2025-01-31", "end_date": "2025-02-28", "top_n": 5},
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()["result"]
+    assert payload["num_days"] == 59
+    assert payload["total_avg_assets"] == pytest.approx((310000000 * 31 + 280000000 * 28) / 59)
