@@ -83,6 +83,10 @@ def _v22_livermore_position_snapshot(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "22_livermore_position_snapshot.sql")
 
 
+def _v23_livermore_gate_supplement(conn: duckdb.DuckDBPyConnection) -> None:
+    _run_sql_slice(conn, "23_livermore_gate_supplement.sql")
+
+
 def _v1_snapshot_tables(conn: duckdb.DuckDBPyConnection) -> None:
     _run_sql_slice(conn, "01_snapshot.sql")
 
@@ -175,6 +179,7 @@ def register_all(registry: DuckDBSchemaRegistry) -> None:
     registry.register(20, "bank ledger analytics read models", _v20_ledger_analytics)
     registry.register(21, "Choice stock materialization front layer", _v21_choice_stock)
     registry.register(22, "Livermore position snapshot read model", _v22_livermore_position_snapshot)
+    registry.register(23, "Livermore gate supplement daily (breadth/limit-up)", _v23_livermore_gate_supplement)
 
 
 def apply_pending_migrations_on_connection(conn: duckdb.DuckDBPyConnection) -> None:

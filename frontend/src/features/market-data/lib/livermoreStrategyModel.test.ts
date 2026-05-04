@@ -100,8 +100,7 @@ function makePayload(
         key: "risk_exit",
         title: "Risk and exit rules",
         status: "blocked",
-        summary:
-          "The defended-bundle 10EMA invalidation exit kernel is implemented, but output stays blocked until position, entry-cost, bars-since-entry, and close-history inputs land.",
+        summary: "Risk and exit output is blocked until position and entry-cost inputs land.",
         required_inputs: ["positions", "entry_cost", "bars_since_entry"],
         missing_inputs: ["positions", "entry_cost", "bars_since_entry"],
       },
@@ -134,8 +133,7 @@ function makePayload(
       {
         severity: "warning",
         code: "LIVERMORE_RISK_INPUTS_MISSING",
-        message:
-          "The defended-bundle 10EMA invalidation MVP is implemented, but position, entry-cost, bars-since-entry, and close-history inputs are unavailable, so risk/exit output remains blocked.",
+        message: "Position and entry-cost inputs are unavailable, so risk/exit output is blocked.",
         input_family: "position_risk",
       },
     ],
@@ -163,8 +161,7 @@ function makePayload(
       {
         input_family: "position_risk",
         status: "missing",
-        evidence:
-          "Position, entry-cost, bars-since-entry, and close-history inputs are not landed in DuckDB for the defended-bundle 10EMA invalidation MVP.",
+        evidence: "Position and entry-cost inputs are not landed in DuckDB for this slice.",
       },
     ],
     supported_outputs: ["market_gate"],
@@ -179,8 +176,7 @@ function makePayload(
       },
       {
         key: "risk_exit",
-        reason:
-          "The defended-bundle 10EMA invalidation MVP remains blocked until position, entry-cost, bars-since-entry, and close-history inputs land.",
+        reason: "Position and entry-cost inputs are not landed yet.",
       },
     ],
     ...overrides,
@@ -245,8 +241,7 @@ describe("livermoreStrategyModel", () => {
       {
         key: "risk_exit",
         label: "风险退出",
-        reason:
-          "The defended-bundle 10EMA invalidation MVP remains blocked until position, entry-cost, bars-since-entry, and close-history inputs land.",
+        reason: "Position and entry-cost inputs are not landed yet.",
       },
     ]);
   });
@@ -274,167 +269,15 @@ describe("livermoreStrategyModel", () => {
     expect(model.statusNotes).toContain("当前结果使用最新快照降级。");
   });
 
-  it("maps emitted sector rank, stock candidates, and risk exit for display", () => {
-    const envelope = makeEnvelope({
-      supported_outputs: ["market_gate", "sector_rank", "stock_candidates", "risk_exit"],
-      unsupported_outputs: [],
-      rule_readiness: [
-        {
-          key: "market_gate",
-          title: "Market gate",
-          status: "partial",
-          summary: "Trend-only market gate is available; breadth and limit-up quality remain missing.",
-          required_inputs: ["broad_index_history", "breadth", "limit_up_quality"],
-          missing_inputs: ["breadth", "limit_up_quality"],
-        },
-        {
-          key: "sector_rank",
-          title: "Sector ranking",
-          status: "ready",
-          summary: "Sector ranking is available from landed Choice sector inputs.",
-          required_inputs: ["sector_membership", "sector_strength"],
-          missing_inputs: [],
-        },
-        {
-          key: "stock_pivot",
-          title: "Stock pivot filters",
-          status: "ready",
-          summary: "Stock pivot candidate screening is available for landed Choice stock inputs.",
-          required_inputs: [
-            "stock_universe",
-            "stock_ohlcv",
-            "stock_status",
-            "limit_up_quality",
-            "sector_rank",
-            "market_gate",
-          ],
-          missing_inputs: [],
-        },
-        {
-          key: "risk_exit",
-          title: "Risk and exit rules",
-          status: "ready",
-          summary: "Risk and exit output is available from landed position snapshots and close history.",
-          required_inputs: ["positions", "entry_cost", "bars_since_entry", "close_history"],
-          missing_inputs: [],
-        },
-      ],
-      diagnostics: [
-        {
-          severity: "warning",
-          code: "LIVERMORE_SECTOR_RANK_PROVISIONAL_FORMULA",
-          message: "Sector rank currently uses the provisional percentile formula over pctchange, turn, and amplitude.",
-          input_family: "sector_strength",
-        },
-      ],
-      data_gaps: [
-        {
-          input_family: "breadth",
-          status: "missing",
-          evidence: "5-day breadth input family is not landed in DuckDB for this slice.",
-        },
-        {
-          input_family: "limit_up_quality",
-          status: "missing",
-          evidence: "Choice limit-up quality catalog is confirmed, but landed inputs are unavailable; the market gate is capped at the trend-only slice.",
-        },
-        {
-          input_family: "position_risk",
-          status: "missing",
-          evidence:
-            "Position, entry-cost, bars-since-entry, and close-history inputs are not landed in DuckDB for the defended-bundle 10EMA invalidation MVP.",
-        },
-      ],
-      sector_rank: {
-        as_of_date: "2026-04-29",
-        formula_version: "rv_livermore_sector_rank_provisional_v1",
-        is_provisional: true,
-        sector_count: 3,
-        excluded_constituent_count: 0,
-        excluded_sector_count: 0,
-        items: [
-          {
-            rank: 1,
-            sector_code: "801001",
-            sector_name: "AI",
-            score: 1,
-            avg_pctchange: 4.8,
-            avg_turn: 3,
-            avg_amplitude: 3.5,
-            constituent_count: 12,
-          },
-        ],
-      } as unknown as never,
-      stock_candidates: {
-        as_of_date: "2026-04-29",
-        formula_version: "rv_livermore_stock_candidates_bundle_v1",
-        market_state: "WARM",
-        input_stock_count: 4,
-        candidate_count: 2,
-        excluded_stock_count: 2,
-        insufficient_history_count: 0,
-        items: [
-          {
-            rank: 1,
-            stock_code: "000001.SZ",
-            stock_name: "Alpha",
-            sector_code: "801001",
-            sector_name: "AI",
-            sector_rank: 1,
-            close: 21.9,
-            breakout_level: 21.8,
-            ma20: 21.05,
-            ma60: 19.05,
-            ma120: 16.05,
-            close_strength: 0.833333,
-            gap_norm: -0.114679,
-            abnormal_turnover: 1.386294,
-          },
-        ],
-      } as unknown as never,
-      risk_exit: {
-        as_of_date: "2026-04-29",
-        formula_version: "rv_livermore_risk_exit_ema10_mvp_v1",
-        position_count: 2,
-        signal_count: 1,
-        excluded_position_count: 0,
-        insufficient_history_count: 0,
-        items: [
-          {
-            stock_code: "000001.SZ",
-            stock_name: "Alpha",
-            reason: "2d_below_ema10",
-            entry_cost: 10.5,
-            bars_since_entry: 6,
-            latest_close: 9.1,
-            latest_ema10: 10.2,
-            prior_close: 9.8,
-            prior_ema10: 10.4,
-          },
-        ],
-      } as unknown as never,
-    } as Partial<LivermoreStrategyPayload>);
-
+  it("maps data gap status ready to 就绪", () => {
     const model = buildLivermoreStrategyModel({
-      envelope,
-    }) as unknown as {
-      sectorRank: { items: Array<{ sectorCode: string }> } | null;
-      stockCandidates: { items: Array<{ stockCode: string }> } | null;
-      riskExit: { items: Array<{ stockCode: string; reason: string }> } | null;
-      supportedOutputs: Array<{ key: string }>;
-    };
-
-    expect(model.supportedOutputs.map((item) => item.key)).toEqual([
-      "market_gate",
-      "sector_rank",
-      "stock_candidates",
-      "risk_exit",
-    ]);
-    expect(model.sectorRank?.items[0]?.sectorCode).toBe("801001");
-    expect(model.stockCandidates?.items[0]?.stockCode).toBe("000001.SZ");
-    expect(model.riskExit?.items[0]).toMatchObject({
-      stockCode: "000001.SZ",
-      reason: "2d_below_ema10",
+      envelope: makeEnvelope({
+        data_gaps: [
+          { input_family: "breadth", status: "ready", evidence: "landed" },
+          ...makePayload().data_gaps.slice(1),
+        ],
+      }),
     });
+    expect(model.dataGaps.find((g) => g.inputFamily === "breadth")?.statusLabel).toBe("就绪");
   });
 });

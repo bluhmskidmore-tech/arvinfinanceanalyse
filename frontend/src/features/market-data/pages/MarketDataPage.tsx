@@ -6,7 +6,9 @@ import { useApiClient } from "../../../api/client";
 import { runPollingTask } from "../../../app/jobs/polling";
 import { FilterBar } from "../../../components/FilterBar";
 import {
-  PageHeader,
+  DataStatusStrip,
+  KpiBand,
+  PageDecisionHero,
   PageSectionLead,
   type PageSectionLeadProps,
 } from "../../../components/page/PagePrimitives";
@@ -48,6 +50,15 @@ import { shellTokens } from "../../../theme/tokens";
 import { formatChoiceMacroDelta, formatChoiceMacroValue } from "../../../utils/choiceMacroFormat";
 import "./MarketDataPage.css";
 
+/** 产品默认：不显式铺开 Choice 宏观序列读面大卡与页尾目录/追踪版本证据面板（仍为分析读面保留接口拉取与市场概览 KPI）。 */
+const MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE = false;
+
+/** 外汇分析观察区块顶部元数据蓝条（本区块·外汇分析）；默认隐藏。 */
+const MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP = false;
+
+/** 默认不渲染「外汇分析观察」整块 UI（分组与序列卡）；接口仍照常拉取以供概览 KPI。 */
+const MARKET_DATA_SHOW_FX_ANALYSIS_SECTION = false;
+
 const s = designTokens.space;
 const fs = designTokens.fontSize;
 const c = designTokens.color;
@@ -76,7 +87,7 @@ const detailPanelStyle = {
   ...pageSurfacePanelStyle,
   padding: s[3],
   borderRadius: designTokens.radius.sm,
-  background: shellTokens.colorBgSurface,
+  background: "#ffffff",
   boxShadow: "0 2px 8px rgba(0, 0, 0, 0.025)",
 } as const;
 
@@ -88,7 +99,7 @@ const rateTrendStateStyle = {
   marginTop: s[3],
   padding: s[3],
   borderRadius: s[2],
-  background: shellTokens.colorBgSurface,
+  background: "#ffffff",
   fontSize: fs[13],
   display: "grid",
   gap: s[2],
@@ -110,7 +121,7 @@ const blockTitleStyle = {
 const macroChartShellStyle = {
   ...detailPanelStyle,
   marginTop: s[3],
-  background: shellTokens.colorBgSurface,
+  background: "#ffffff",
 } as const;
 
 const marketSectionBlockStyle = {
@@ -165,20 +176,11 @@ const filterControlStyle = {
   padding: `0 ${s[3]}px`,
   borderRadius: designTokens.radius.sm,
   border: `1px solid ${shellTokens.colorBorder}`,
-  background: shellTokens.colorBgSurface,
+  background: "#ffffff",
   fontSize: fs[12],
   color: c.neutral[900],
   outline: "none",
   transition: "border-color 0.2s ease",
-} as const;
-
-const pageHeaderStyle = {
-  gap: s[3],
-  marginBottom: 0,
-  padding: `${s[3]}px ${s[4]}px`,
-  borderRadius: designTokens.radius.sm,
-  border: `1px solid ${shellTokens.colorBorderSoft}`,
-  background: shellTokens.colorBgSurface,
 } as const;
 
 const headerActionsStyle = {
@@ -382,7 +384,7 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
         display: "grid",
         gap: s[3],
         ...pageInsetCardStyle,
-        background: shellTokens.colorBgSurface,
+        background: "#ffffff",
       }}
     >
       <div
@@ -460,9 +462,10 @@ function renderCorrelationCard(point: MacroBondLinkageTopCorrelation) {
 
 function renderSeriesCards(
   series: MarketObservationPoint[],
-  options?: { testIdPrefix?: string },
+  options?: { testIdPrefix?: string; hideSeriesProvenance?: boolean },
 ) {
   const testIdPrefix = options?.testIdPrefix ?? "market-data-series";
+  const hideSeriesProvenance = options?.hideSeriesProvenance ?? false;
 
   return (
     <div style={{ display: "grid", gap: s[3] }}>
@@ -474,7 +477,7 @@ function renderSeriesCards(
             display: "grid",
             gap: s[3],
             ...pageInsetCardStyle,
-            background: shellTokens.colorBgSurface,
+            background: "#ffffff",
           }}
         >
           <div
@@ -488,7 +491,9 @@ function renderSeriesCards(
           >
             <div>
               <div style={{ fontWeight: 600 }}>{point.series_name}</div>
-              <div style={{ color: c.neutral[500], fontSize: fs[12] }}>{point.series_id}</div>
+              {!hideSeriesProvenance ? (
+                <div style={{ color: c.neutral[500], fontSize: fs[12] }}>{point.series_id}</div>
+              ) : null}
             </div>
             <div
               style={{
@@ -536,12 +541,16 @@ function renderSeriesCards(
             </div>
           </div>
 
-          <div style={{ color: c.neutral[600], fontSize: fs[12], lineHeight: designTokens.lineHeight.relaxed }}>
-            来源 {point.source_version} 路供应商 {point.vendor_version}
-          </div>
-          <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
-            {seriesPolicyNote(point)}
-          </div>
+          {!hideSeriesProvenance ? (
+            <>
+              <div style={{ color: c.neutral[600], fontSize: fs[12], lineHeight: designTokens.lineHeight.relaxed }}>
+                来源 {point.source_version} 路供应商 {point.vendor_version}
+              </div>
+              <div style={{ color: c.neutral[800], fontSize: fs[13], lineHeight: designTokens.lineHeight.relaxed }}>
+                {seriesPolicyNote(point)}
+              </div>
+            </>
+          ) : null}
 
           <div style={{ display: "flex", gap: s[2], flexWrap: "wrap" }}>
             {seriesRecentPoints(point).map((recentPoint) => (
@@ -651,8 +660,8 @@ type MarketOverviewMetric = {
 
 function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] }) {
   return (
-    <div
-      data-testid="market-data-overview-hero-strip"
+    <KpiBand
+      testId="market-data-overview-hero-strip"
       className="dashboard-overview-hero-strip market-data-overview-strip"
     >
       {metrics.map((metric) => {
@@ -671,14 +680,17 @@ function MarketOverviewHeroStrip({ metrics }: { metrics: MarketOverviewMetric[] 
           >
             <span aria-hidden className="market-data-overview-card__bar" />
             <div className="market-data-overview-card__label">{metric.title}</div>
-            <div className="market-data-overview-card__value">
+            <div
+              className="market-data-overview-card__value"
+              style={metric.valueVariant === "text" ? undefined : tabularNumsStyle}
+            >
               {metric.value}
             </div>
             <p className="market-data-overview-card__detail">{metric.detail}</p>
           </article>
         );
       })}
-    </div>
+    </KpiBand>
   );
 }
 
@@ -924,16 +936,33 @@ export default function MarketDataPage() {
 
   return (
     <section className="market-data-page">
-      <PageHeader
+      <PageDecisionHero
+        testId="market-data-contract-hero"
         title="市场数据"
         titleTestId="market-data-page-title"
+        questionTestId="market-data-page-subtitle"
         eyebrow="市场概览"
-        description="先确认行情读面、稳定回收和分析口径边界，再进入利率、资金、成交与证据区。"
-        badgeLabel={client.mode === "real" ? "真实 DuckDB 读路径" : "本地离线契约回放"}
-        badgeTone={client.mode === "real" ? "positive" : "accent"}
-        style={pageHeaderStyle}
+        businessQuestion="先确认行情读面、稳定回收和分析口径边界，再进入利率、资金、成交与证据区。"
+        reportDateSlot={<span data-testid="market-data-watch-date-slot">观察日期 {watchDate}</span>}
+        className="market-data-page__decision-hero-shell"
         actions={
           <div style={headerActionsStyle}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 14px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                ...(client.mode === "real"
+                  ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
+                  : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+              }}
+            >
+              {client.mode === "real" ? "真实 DuckDB 读路径" : "本地离线契约回放"}
+            </span>
             <button
               type="button"
               data-testid="market-data-refresh-button"
@@ -946,86 +975,95 @@ export default function MarketDataPage() {
           </div>
         }
       >
-        <div className="market-data-header-body">
-          <div className="market-data-header-meta">
-            <span>观察日期 {watchDate}</span>
-            <span>目录 {catalog.length}</span>
-            <span>稳定回收 {stableSeries.length} / {stableCatalogSeries.length}</span>
-            <span>联动报告日 {linkageReportDate || "待定"}</span>
-          </div>
-
-          <div data-testid="market-data-filter-strip">
-            <div className="market-data-filter-tray">
-              <FilterBar>
-                <label style={filterLabelStyle}>
-                  日期
-                  <input
-                    type="date"
-                    value={watchDate}
-                    onChange={(e) => setWatchDate(e.target.value)}
-                    style={filterControlStyle}
-                  />
-                </label>
-                <label style={filterLabelStyle}>
-                  国债 / 国开
-                  <Select
-                    value={curveFilter}
-                    onChange={(v) => setCurveFilter(v)}
-                    options={[
-                      { value: "treasury", label: "国债" },
-                      { value: "cdb", label: "国开" },
-                      { value: "both", label: "全部" },
-                    ]}
-                    style={{ width: 200 }}
-                  />
-                </label>
-                <label style={filterLabelStyle}>
-                  中票 / 城投
-                  <Select
-                    value={creditSegment}
-                    onChange={(v) => setCreditSegment(v)}
-                    options={[
-                      { value: "mtn", label: "中票" },
-                      { value: "urban", label: "城投" },
-                      { value: "both", label: "全部" },
-                    ]}
-                    style={{ width: 200 }}
-                  />
-                </label>
-                <label style={filterLabelStyle}>
-                  来源
-                  <Select
-                    value={sourceFilter}
-                    onChange={(v) => setSourceFilter(v)}
-                    options={[
-                      { value: "all", label: "全部" },
-                      { value: "choice", label: "Choice" },
-                      { value: "internal", label: "内部" },
-                    ]}
-                    style={{ width: 200 }}
-                  />
-                </label>
-              </FilterBar>
+        <div style={{ marginTop: s[3], display: "grid", gap: s[3] }}>
+          <DataStatusStrip testId="market-data-data-status-strip">
+            <div className="market-data-header-meta">
+              <span>
+                目录 {catalog.length}
+              </span>
+              <span>
+                稳定回收 {stableSeries.length} / {stableCatalogSeries.length}
+              </span>
+              <span>
+                联动报告日 {linkageReportDate || "待定"}
+              </span>
             </div>
-          </div>
+          </DataStatusStrip>
 
-          {(refreshStatus || refreshError) && (
-            <div
-              style={{
-                padding: `${s[2] + s[1]}px ${s[4]}px`,
-                borderRadius: s[3],
-                fontSize: fs[13],
-                background: refreshError ? c.warning[50] : c.info[50],
-                color: refreshError ? c.warning[600] : c.info[500],
-              }}
-            >
-              {refreshError || refreshStatus}
+          <div className="market-data-header-body">
+            <div data-testid="market-data-filter-strip">
+              <div className="market-data-filter-tray">
+                <FilterBar>
+                  <label style={filterLabelStyle}>
+                    日期
+                    <input
+                      type="date"
+                      value={watchDate}
+                      onChange={(e) => setWatchDate(e.target.value)}
+                      style={filterControlStyle}
+                    />
+                  </label>
+                  <label style={filterLabelStyle}>
+                    国债 / 国开
+                    <Select
+                      value={curveFilter}
+                      onChange={(v) => setCurveFilter(v)}
+                      options={[
+                        { value: "treasury", label: "国债" },
+                        { value: "cdb", label: "国开" },
+                        { value: "both", label: "全部" },
+                      ]}
+                      style={{ width: 200 }}
+                    />
+                  </label>
+                  <label style={filterLabelStyle}>
+                    中票 / 城投
+                    <Select
+                      value={creditSegment}
+                      onChange={(v) => setCreditSegment(v)}
+                      options={[
+                        { value: "mtn", label: "中票" },
+                        { value: "urban", label: "城投" },
+                        { value: "both", label: "全部" },
+                      ]}
+                      style={{ width: 200 }}
+                    />
+                  </label>
+                  <label style={filterLabelStyle}>
+                    来源
+                    <Select
+                      value={sourceFilter}
+                      onChange={(v) => setSourceFilter(v)}
+                      options={[
+                        { value: "all", label: "全部" },
+                        { value: "choice", label: "Choice" },
+                        { value: "internal", label: "内部" },
+                      ]}
+                      style={{ width: 200 }}
+                    />
+                  </label>
+                </FilterBar>
+              </div>
             </div>
-          )}
 
-          <MarketOverviewHeroStrip metrics={overviewMetrics} />
+            {(refreshStatus || refreshError) && (
+              <div
+                style={{
+                  padding: `${s[2] + s[1]}px ${s[4]}px`,
+                  borderRadius: s[3],
+                  fontSize: fs[13],
+                  background: refreshError ? c.warning[50] : c.info[50],
+                  color: refreshError ? c.warning[600] : c.info[500],
+                }}
+              >
+                {refreshError || refreshStatus}
+              </div>
+            )}
+
+            <MarketOverviewHeroStrip metrics={overviewMetrics} />
+          </div>
         </div>
-      </PageHeader>
+      </PageDecisionHero>
 
       {macroMeta ? (
         <div className="market-data-meta-strip">
@@ -1240,120 +1278,151 @@ export default function MarketDataPage() {
         <NewsAndCalendar />
       </div>
 
+      {(MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ||
+        MARKET_DATA_SHOW_FX_ANALYSIS_SECTION) && (
       <MarketSectionBlock>
-        <MarketSectionLead
-          eyebrow="观察"
-          title="宏观序列与分析观察"
-          description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与外汇分析观察，避免和正式读面混用。"
-        />
-        <MacroLatestReadinessBanner
-          testId="market-data-macro-readiness"
-          isLoading={latestQuery.isLoading}
-          isError={latestQuery.isError}
-          hasSeries={visibleLatestSeries.length > 0}
-          meta={latestQuery.data?.result_meta}
-        />
-        <MarketSectionInnerBlock>
-          <AsyncSection
-          title="宏观序列观察"
-          isLoading={latestQuery.isLoading}
-          isError={latestQuery.isError}
-          isEmpty={!latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0}
-          onRetry={() => void latestQuery.refetch()}
-        >
-          <div style={{ display: "grid", gap: s[6] }}>
-            {!latestQuery.isLoading && !latestQuery.isError ? (
-              <LiveResultMetaStrip
-                lead="本区块·宏观最新"
-                meta={latestQuery.data?.result_meta}
-                testId="market-data-macro-section-meta"
-              />
-            ) : null}
-            <section data-testid="market-data-stable-section">
-              <div style={{ marginBottom: s[3] }}>
-                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
-                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
-                  面向日常分析的主刷新读面，只显示稳定可取的序列。
-                </p>
-              </div>
-              {renderSeriesCards(stableSeries)}
-            </section>
-
-            <section data-testid="market-data-missing-stable-section">
-              <div style={{ marginBottom: s[3] }}>
-                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐稳定链路</h2>
-                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
-                  目录中归属稳定链路，但当前刷新尚未回收的序列。
-                </p>
-              </div>
-              {missingStableSeries.length > 0 ? (
-                <div style={{ display: "grid", gap: s[3] }}>
-                  {missingStableSeries.map((series) => (
-                    <div
-                      key={series.series_id}
-                      style={{
-                        display: "grid",
-                        gap: s[2],
-                        padding: s[4],
-                        borderRadius: s[4],
-                        border: `1px solid ${c.primary[200]}`,
-                        background: shellTokens.colorBgSurface,
-                      }}
-                    >
-                      <strong>{series.series_name}</strong>
-                      <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
-                        {series.series_id} 路 {refreshTierLabel(marketCatalogRefreshTier(series))} 路 {seriesFetchModeLabel(series)}
-                      </div>
-                      <div style={{ color: c.neutral[800], fontSize: fs[13] }}>
-                        {series.policy_note ?? "主刷新日期切片链路"}
-                      </div>
+        {MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ? (
+          <>
+            <MarketSectionLead
+              eyebrow="观察"
+              title="宏观序列与分析观察"
+              description="在市场主观察之后，单独查看 Choice 宏观序列的稳定链路、缺口与外汇分析观察，避免和正式读面混用。"
+            />
+            <MacroLatestReadinessBanner
+              testId="market-data-macro-readiness"
+              isLoading={latestQuery.isLoading}
+              isError={latestQuery.isError}
+              hasSeries={visibleLatestSeries.length > 0}
+              meta={latestQuery.data?.result_meta}
+            />
+            <MarketSectionInnerBlock>
+              <AsyncSection
+                title="宏观序列观察"
+                isLoading={latestQuery.isLoading}
+                isError={latestQuery.isError}
+                isEmpty={
+                  !latestQuery.isLoading && !latestQuery.isError && visibleLatestSeries.length === 0
+                }
+                onRetry={() => void latestQuery.refetch()}
+              >
+                <div style={{ display: "grid", gap: s[6] }}>
+                  {!latestQuery.isLoading && !latestQuery.isError ? (
+                    <LiveResultMetaStrip
+                      lead="本区块·宏观最新"
+                      meta={latestQuery.data?.result_meta}
+                      testId="market-data-macro-section-meta"
+                    />
+                  ) : null}
+                  <section data-testid="market-data-stable-section">
+                    <div style={{ marginBottom: s[3] }}>
+                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>稳定主链路</h2>
+                      <p
+                        style={{
+                          marginTop: s[2],
+                          marginBottom: 0,
+                          color: c.neutral[600],
+                          fontSize: fs[14],
+                        }}
+                      >
+                        面向日常分析的主刷新读面，只显示稳定可取的序列。
+                      </p>
                     </div>
-                  ))}
-                </div>
-              ) : (
-                <div
-                  style={{
-                    padding: s[4],
-                    borderRadius: s[4],
-                    border: `1px solid ${c.primary[200]}`,
-                    background: shellTokens.colorBgSurface,
-                    color: c.neutral[600],
-                    fontSize: fs[14],
-                  }}
-                >
-                  当前稳定目录已全部回收。
-                </div>
-              )}
-            </section>
+                    {renderSeriesCards(stableSeries)}
+                  </section>
 
-            <section data-testid="market-data-fallback-section">
-              <div style={{ marginBottom: s[3] }}>
-                <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>仅取最新降级</h2>
-                <p style={{ marginTop: s[2], marginBottom: 0, color: c.neutral[600], fontSize: fs[14] }}>
-                  低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
-                </p>
-              </div>
-              {fallbackSeries.length > 0 ? (
-                renderSeriesCards(fallbackSeries)
-              ) : (
-                <div
-                  style={{
-                    padding: s[4],
-                    borderRadius: s[4],
-                    border: `1px solid ${c.primary[200]}`,
-                    background: shellTokens.colorBgSurface,
-                    color: c.neutral[600],
-                    fontSize: fs[14],
-                  }}
-                >
-                  当前无仅取最新降级序列。
-                </div>
-              )}
-            </section>
-          </div>
-          </AsyncSection>
-        </MarketSectionInnerBlock>
+                  <section data-testid="market-data-missing-stable-section">
+                    <div style={{ marginBottom: s[3] }}>
+                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>待补齐稳定链路</h2>
+                      <p
+                        style={{
+                          marginTop: s[2],
+                          marginBottom: 0,
+                          color: c.neutral[600],
+                          fontSize: fs[14],
+                        }}
+                      >
+                        目录中归属稳定链路，但当前刷新尚未回收的序列。
+                      </p>
+                    </div>
+                    {missingStableSeries.length > 0 ? (
+                      <div style={{ display: "grid", gap: s[3] }}>
+                        {missingStableSeries.map((series) => (
+                          <div
+                            key={series.series_id}
+                            style={{
+                              display: "grid",
+                              gap: s[2],
+                              padding: s[4],
+                              borderRadius: s[4],
+                              border: `1px solid ${c.primary[200]}`,
+                              background: "#ffffff",
+                            }}
+                          >
+                            <strong>{series.series_name}</strong>
+                            <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
+                              {series.series_id} 路 {refreshTierLabel(marketCatalogRefreshTier(series))} 路{" "}
+                              {seriesFetchModeLabel(series)}
+                            </div>
+                            <div style={{ color: c.neutral[800], fontSize: fs[13] }}>
+                              {series.policy_note ?? "主刷新日期切片链路"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          padding: s[4],
+                          borderRadius: s[4],
+                          border: `1px solid ${c.primary[200]}`,
+                          background: "#ffffff",
+                          color: c.neutral[600],
+                          fontSize: fs[14],
+                        }}
+                      >
+                        当前稳定目录已全部回收。
+                      </div>
+                    )}
+                  </section>
 
+                  <section data-testid="market-data-fallback-section">
+                    <div style={{ marginBottom: s[3] }}>
+                      <h2 style={{ margin: 0, fontSize: fs[20], fontWeight: 600 }}>仅取最新降级</h2>
+                      <p
+                        style={{
+                          marginTop: s[2],
+                          marginBottom: 0,
+                          color: c.neutral[600],
+                          fontSize: fs[14],
+                        }}
+                      >
+                        低频或稀疏序列保留为降级链路展示，不混入稳定主链路。
+                      </p>
+                    </div>
+                    {fallbackSeries.length > 0 ? (
+                      renderSeriesCards(fallbackSeries)
+                    ) : (
+                      <div
+                        style={{
+                          padding: s[4],
+                          borderRadius: s[4],
+                          border: `1px solid ${c.primary[200]}`,
+                          background: "#ffffff",
+                          color: c.neutral[600],
+                          fontSize: fs[14],
+                        }}
+                      >
+                        当前无仅取最新降级序列。
+                      </div>
+                    )}
+                  </section>
+                </div>
+              </AsyncSection>
+            </MarketSectionInnerBlock>
+          </>
+        ) : null}
+
+        {MARKET_DATA_SHOW_FX_ANALYSIS_SECTION ? (
         <MarketSectionInnerBlock>
           <AsyncSection
           title="外汇分析观察"
@@ -1367,7 +1436,7 @@ export default function MarketDataPage() {
           onRetry={() => void fxAnalyticalQuery.refetch()}
         >
           <div style={{ display: "grid", gap: s[6] }}>
-            {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError ? (
+            {!fxAnalyticalQuery.isLoading && !fxAnalyticalQuery.isError && MARKET_DATA_SHOW_FX_ANALYSIS_META_STRIP ? (
               <LiveResultMetaStrip
                 lead="本区块·外汇分析"
                 meta={fxAnalyticalQuery.data?.result_meta}
@@ -1395,13 +1464,16 @@ export default function MarketDataPage() {
                 </div>
                 {renderSeriesCards(group.series, {
                   testIdPrefix: `market-data-fx-series-${group.group_key}`,
+                  hideSeriesProvenance: true,
                 })}
               </section>
             ))}
           </div>
           </AsyncSection>
         </MarketSectionInnerBlock>
+        ) : null}
       </MarketSectionBlock>
+      )}
 
       <MarketSectionBlock>
         <MarketSectionLead
@@ -1636,7 +1708,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: designTokens.radius.md + s[1],
                     border: `1px dashed ${c.primary[300]}`,
-                    background: shellTokens.colorBgSurface,
+                    background: "#ffffff",
                     color: c.neutral[500],
                     fontSize: fs[14],
                   }}
@@ -1668,7 +1740,7 @@ export default function MarketDataPage() {
                       padding: s[4],
                       borderRadius: s[4],
                       border: `1px solid ${c.primary[200]}`,
-                      background: shellTokens.colorBgSurface,
+                      background: "#ffffff",
                       display: "grid",
                       gap: s[2],
                     }}
@@ -1707,7 +1779,7 @@ export default function MarketDataPage() {
                     padding: s[4],
                     borderRadius: designTokens.radius.md + s[1],
                     border: `1px dashed ${c.primary[300]}`,
-                    background: shellTokens.colorBgSurface,
+                    background: "#ffffff",
                     color: c.neutral[500],
                     fontSize: fs[14],
                   }}
@@ -1724,66 +1796,68 @@ export default function MarketDataPage() {
       />
       </MarketSectionBlock>
 
-      <MarketSectionBlock>
-        <MarketSectionLead
-          eyebrow="证据"
-          title="目录与结果元数据"
-          description="页尾集中展示目录补充信息与结果元数据，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
-        />
-        <div style={{ ...sectionGridStyle, marginTop: 0 }}>
-        <AsyncSection
-          title="宏观序列目录"
-          isLoading={catalogQuery.isLoading}
-          isError={catalogQuery.isError}
-          isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
-          onRetry={() => void catalogQuery.refetch()}
-        >
-          <div style={{ display: "grid", gap: s[3] }}>
-            {catalog.map((series) => (
-              <div
-                key={series.series_id}
-                style={{
-                  display: "grid",
-                  gap: s[2],
-                  padding: s[4],
-                  borderRadius: s[4],
-                  border: `1px solid ${c.primary[200]}`,
-                  background: shellTokens.colorBgSurface,
-                }}
-              >
-                <strong>{series.series_name}</strong>
-                <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
-                  {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
-                </div>
-                <div style={{ color: c.neutral[500], fontSize: fs[12] }}>
-                  供应商版本 {series.vendor_version}
-                </div>
+      {MARKET_DATA_SHOW_MACRO_OBSERVATION_AND_CATALOG_EVIDENCE ? (
+        <MarketSectionBlock>
+          <MarketSectionLead
+            eyebrow="证据"
+            title="目录与结果元数据"
+            description="页尾集中展示目录补充信息与结果元数据，保证分析观察之后仍能顺着阅读路径回到数据来源与版本证据。"
+          />
+          <div style={{ ...sectionGridStyle, marginTop: 0 }}>
+            <AsyncSection
+              title="宏观序列目录"
+              isLoading={catalogQuery.isLoading}
+              isError={catalogQuery.isError}
+              isEmpty={!catalogQuery.isLoading && !catalogQuery.isError && catalog.length === 0}
+              onRetry={() => void catalogQuery.refetch()}
+            >
+              <div style={{ display: "grid", gap: s[3] }}>
+                {catalog.map((series) => (
+                  <div
+                    key={series.series_id}
+                    style={{
+                      display: "grid",
+                      gap: s[2],
+                      padding: s[4],
+                      borderRadius: s[4],
+                      border: `1px solid ${c.primary[200]}`,
+                      background: "#ffffff",
+                    }}
+                  >
+                    <strong>{series.series_name}</strong>
+                    <div style={{ color: c.neutral[600], fontSize: fs[13] }}>
+                      {series.series_id} 路 {series.vendor_name} 路 {series.frequency} 路 {series.unit}
+                    </div>
+                    <div style={{ color: c.neutral[500], fontSize: fs[12] }}>
+                      供应商版本 {series.vendor_version}
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </AsyncSection>
+
+            <MetadataPanel
+              title="结果元数据"
+              meta={macroMeta}
+              extraLine={`可见供应商版本：${vendorVersions.join(", ") || "—"}`}
+              testId="market-data-result-meta"
+            />
+
+            <MetadataPanel
+              title="外汇观察元数据"
+              meta={fxAnalyticalMeta}
+              testId="market-data-fx-analytical-meta"
+            />
+
+            <MetadataPanel
+              title="联动元数据"
+              meta={macroBondLinkageMeta}
+              extraLine={`报告日：${linkageReportDate || "待定"}`}
+              testId="market-data-linkage-meta"
+            />
           </div>
-        </AsyncSection>
-
-        <MetadataPanel
-          title="结果元数据"
-          meta={macroMeta}
-          extraLine={`可见供应商版本：${vendorVersions.join(", ") || "—"}`}
-          testId="market-data-result-meta"
-        />
-
-        <MetadataPanel
-          title="外汇观察元数据"
-          meta={fxAnalyticalMeta}
-          testId="market-data-fx-analytical-meta"
-        />
-
-        <MetadataPanel
-          title="联动元数据"
-          meta={macroBondLinkageMeta}
-          extraLine={`报告日：${linkageReportDate || "待定"}`}
-          testId="market-data-linkage-meta"
-        />
-      </div>
-      </MarketSectionBlock>
+        </MarketSectionBlock>
+      ) : null}
     </section>
   );
 }

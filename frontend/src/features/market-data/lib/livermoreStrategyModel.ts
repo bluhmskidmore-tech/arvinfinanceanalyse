@@ -135,6 +135,7 @@ const gapStatusLabels: Record<LivermoreStrategyPayload["data_gaps"][number]["sta
   missing: "缺失",
   partial: "部分",
   stale: "陈旧",
+  ready: "就绪",
 };
 
 function fallbackLabel(value: ResultMeta["fallback_mode"]) {

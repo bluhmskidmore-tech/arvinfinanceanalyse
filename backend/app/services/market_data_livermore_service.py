@@ -23,11 +23,16 @@ from backend.app.core_finance.livermore_stock_candidates import (
     StockCandidateSnapshot,
     compute_stock_candidates,
 )
-from backend.app.core_finance.livermore_strategy import BroadIndexObservation, evaluate_market_gate
+from backend.app.core_finance.livermore_strategy import (
+    BroadIndexObservation,
+    MarketGateSupplement,
+    evaluate_market_gate,
+)
 from backend.app.repositories.choice_stock_adapter import (
     ChoiceStockReadiness,
     choice_stock_readiness_missing,
 )
+from backend.app.repositories.livermore_gate_supplement_repo import fetch_market_gate_supplement
 from backend.app.services.formal_result_runtime import (
     FallbackMode,
     QualityFlag,
@@ -102,7 +107,12 @@ def load_livermore_strategy_payload(
         duckdb_path=duckdb_path,
         as_of_date=as_of_date,
     )
-    market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows))
+    latest_trade_date: date | None = history_rows[-1].trade_date if history_rows else None
+    supplement: MarketGateSupplement | None = None
+    if latest_trade_date is not None:
+        supplement = fetch_market_gate_supplement(duckdb_path=duckdb_path, trade_date=latest_trade_date)
+
+    market_gate = evaluate_market_gate(cast(list[BroadIndexObservation], history_rows), supplement=supplement)
     requested_text = None if as_of_date is None else as_of_date.isoformat()
     resolved_as_of_date = history_rows[-1].trade_date.isoformat() if history_rows else None
     effective_as_of_date = resolved_as_of_date or requested_text
@@ -119,6 +129,8 @@ def load_livermore_strategy_payload(
         history_count=len(history_rows),
         stock_readiness=resolved_stock_readiness,
         stock_outputs=stock_outputs,
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
     )
     data_gaps = _build_data_gaps(
         market_gate=market_gate,
@@ -126,12 +138,16 @@ def load_livermore_strategy_payload(
         resolved_as_of_date=resolved_as_of_date,
         stock_readiness=resolved_stock_readiness,
         stock_outputs=stock_outputs,
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
     )
     rule_readiness = _build_rule_readiness(
         market_gate=market_gate,
         history_count=len(history_rows),
         stock_readiness=resolved_stock_readiness,
         stock_outputs=stock_outputs,
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
     )
     supported_outputs, unsupported_outputs = _build_supported_outputs(
         str(market_gate["state"]),
@@ -159,13 +175,16 @@ def load_livermore_strategy_payload(
         payload["risk_exit"] = stock_outputs.risk_exit_payload
     source_versions = [row.source_version for row in history_rows if row.source_version] + stock_outputs.source_versions
     vendor_versions = [row.vendor_version for row in history_rows if row.vendor_version] + stock_outputs.vendor_versions
+    tables_used = [*broad_index_tables, *stock_outputs.tables_used]
+    if supplement is not None:
+        tables_used.append("fact_livermore_gate_supplement_daily")
     meta: dict[str, object] = {
         "quality_flag": quality_flag,
         "vendor_status": _vendor_status_for_state(str(market_gate["state"])),
         "fallback_mode": "latest_snapshot" if quality_flag == "stale" else "none",
         "source_version": _aggregate_lineage(source_versions, empty_value=EMPTY_SOURCE_VERSION),
         "vendor_version": _aggregate_lineage(vendor_versions, empty_value=EMPTY_VENDOR_VERSION),
-        "tables_used": _unique_preserving_order([*broad_index_tables, *stock_outputs.tables_used]),
+        "tables_used": _unique_preserving_order(tables_used),
         "evidence_rows": len(history_rows) + stock_outputs.evidence_rows,
     }
     return payload, meta
@@ -857,13 +876,32 @@ def _build_supported_outputs(
     return supported, unsupported
 
 
+def _gate_supplement_breadth_limit(
+    *,
+    supplement: MarketGateSupplement | None,
+    latest_trade_date: date | None,
+) -> tuple[bool, bool]:
+    if supplement is None or latest_trade_date is None or supplement.trade_date != latest_trade_date:
+        return False, False
+    return (
+        supplement.breadth_5d is not None,
+        supplement.limit_up_quality_ok is not None,
+    )
+
+
 def _build_rule_readiness(
     *,
     market_gate: dict[str, object],
     history_count: int,
     stock_readiness: ChoiceStockReadiness,
     stock_outputs: _ChoiceStockOutputs,
+    supplement: MarketGateSupplement | None = None,
+    latest_trade_date: date | None = None,
 ) -> list[dict[str, object]]:
+    breadth_landed, limit_up_landed = _gate_supplement_breadth_limit(
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
+    )
     gate_state = str(market_gate["state"])
     if gate_state == "NO_DATA":
         gate_status = "missing"
@@ -873,13 +911,22 @@ def _build_rule_readiness(
         gate_status = "stale"
         gate_summary = "Broad-index history resolved, but the latest landed point is stale."
         gate_missing_inputs = ["breadth", "limit_up_quality"]
-    else:
+    elif gate_state == "PENDING_DATA":
         gate_status = "partial"
-        if gate_state == "PENDING_DATA":
-            gate_summary = f"Broad-index history is present but only {history_count} observations are landed."
-        else:
-            gate_summary = "Trend-only market gate is available; breadth and limit-up quality remain missing."
+        gate_summary = f"Broad-index history is present but only {history_count} observations are landed."
         gate_missing_inputs = ["breadth", "limit_up_quality"]
+    else:
+        gate_missing_inputs = []
+        if not breadth_landed:
+            gate_missing_inputs.append("breadth")
+        if not limit_up_landed:
+            gate_missing_inputs.append("limit_up_quality")
+        if gate_missing_inputs:
+            gate_status = "partial"
+            gate_summary = "Trend market gate is available; supplement breadth and/or limit-up inputs remain missing."
+        else:
+            gate_status = "ready"
+            gate_summary = "All broad-index and supplement gate inputs are landed for the resolved trade date."
     sector_missing_inputs = _sector_missing_inputs(stock_readiness=stock_readiness, stock_outputs=stock_outputs)
     stock_missing_inputs = _stock_missing_inputs(
         market_state=gate_state,
@@ -963,14 +1010,38 @@ def _build_data_gaps(
     resolved_as_of_date: str | None,
     stock_readiness: ChoiceStockReadiness,
     stock_outputs: _ChoiceStockOutputs,
+    supplement: MarketGateSupplement | None = None,
+    latest_trade_date: date | None = None,
 ) -> list[dict[str, str]]:
-    gaps = [
-        {
-            "input_family": "breadth",
-            "status": "missing",
-            "evidence": "5-day breadth input family is not landed in DuckDB for this slice.",
-        },
-        {
+    breadth_landed, limit_up_landed = _gate_supplement_breadth_limit(
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
+    )
+    date_label = resolved_as_of_date or (latest_trade_date.isoformat() if latest_trade_date else "resolved date")
+    gaps = []
+    if not breadth_landed:
+        gaps.append(
+            {
+                "input_family": "breadth",
+                "status": "missing",
+                "evidence": "5-day breadth input family is not landed in DuckDB for this slice.",
+            }
+        )
+    elif supplement is not None and supplement.breadth_5d is not None:
+        gaps.append(
+            {
+                "input_family": "breadth",
+                "status": "ready",
+                "evidence": (
+                    f"5-day breadth {supplement.breadth_5d:.4f} landed in "
+                    f"fact_livermore_gate_supplement_daily for {date_label}."
+                ),
+            }
+        )
+
+    if not limit_up_landed:
+        gaps.append(
+            {
             "input_family": "limit_up_quality",
             "status": "missing",
             "evidence": _choice_stock_dependency_summary(
@@ -978,8 +1049,19 @@ def _build_data_gaps(
                 families=["limit_up_quality"],
                 ready_summary="Choice limit-up quality catalog is confirmed, but DuckDB materialization is not landed.",
             ),
-        },
-    ]
+            }
+        )
+    elif supplement is not None and supplement.limit_up_quality_ok is not None:
+        gaps.append(
+            {
+                "input_family": "limit_up_quality",
+                "status": "ready",
+                "evidence": (
+                    f"Market gate limit-up quality flag ({supplement.limit_up_quality_ok}) landed in "
+                    f"fact_livermore_gate_supplement_daily for {date_label}."
+                ),
+            }
+        )
     if stock_outputs.risk_exit_payload is None:
         gaps.append(
             {
@@ -1047,8 +1129,14 @@ def _build_diagnostics(
     history_count: int,
     stock_readiness: ChoiceStockReadiness,
     stock_outputs: _ChoiceStockOutputs,
+    supplement: MarketGateSupplement | None = None,
+    latest_trade_date: date | None = None,
 ) -> list[dict[str, str | None]]:
     diagnostics: list[dict[str, str | None]] = []
+    breadth_landed, limit_up_landed = _gate_supplement_breadth_limit(
+        supplement=supplement,
+        latest_trade_date=latest_trade_date,
+    )
     state = str(market_gate["state"])
     if requested_as_of_date is not None and resolved_as_of_date != requested_as_of_date:
         diagnostics.append(
@@ -1089,14 +1177,17 @@ def _build_diagnostics(
                 "input_family": "broad_index_history",
             }
         )
-    diagnostics.extend(
-        [
+    if not breadth_landed:
+        diagnostics.append(
             {
                 "severity": "warning",
                 "code": "LIVERMORE_BREADTH_MISSING",
                 "message": "Breadth inputs are unavailable; the market gate is capped at the trend-only slice.",
                 "input_family": "breadth",
-            },
+            }
+        )
+    if not limit_up_landed:
+        diagnostics.append(
             {
                 "severity": "warning",
                 "code": "LIVERMORE_LIMIT_UP_QUALITY_MISSING",
@@ -1109,9 +1200,8 @@ def _build_diagnostics(
                     ),
                 ),
                 "input_family": "limit_up_quality",
-            },
-        ]
-    )
+            }
+        )
     if stock_outputs.risk_exit_payload is None:
         diagnostics.append(
             {
