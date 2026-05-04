@@ -3,9 +3,12 @@ Decimal 工具（自 MOSS-V2 core_finance 迁入）。
 """
 from __future__ import annotations
 
+import logging
 import math
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 YI = Decimal("100000000")
 
@@ -19,11 +22,12 @@ def to_decimal(x: Any) -> Decimal:
     try:
         if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
             return Decimal("0")
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         pass
     try:
         return Decimal(str(x))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("to_decimal: failed to convert %r", type(x).__name__)
         return Decimal("0")
 
 
@@ -58,5 +62,6 @@ def safe_float(x: Any) -> float:
         if math.isnan(f) or math.isinf(f):
             return 0.0
         return f
-    except Exception:
+    except (TypeError, ValueError, OverflowError) as exc:
+        logger.exception("safe_float: failed to convert %r", type(x).__name__)
         return 0.0

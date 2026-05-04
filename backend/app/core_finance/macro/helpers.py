@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import math
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Any, Iterable, Mapping, MutableMapping
+
+logger = logging.getLogger(__name__)
 
 from app.core_finance.safe_decimal import safe_decimal
 
@@ -33,7 +36,8 @@ def coerce_date(value: Any) -> date | None:
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -174,7 +178,8 @@ def to_decimal_safe(v: Any) -> Decimal:
         return v
     try:
         return Decimal(str(v))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("to_decimal_safe: failed to convert %r", type(v).__name__)
         return Decimal("0")
 
 

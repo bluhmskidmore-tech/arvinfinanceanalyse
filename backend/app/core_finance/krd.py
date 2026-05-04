@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Iterable, Mapping
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -133,12 +136,14 @@ def _coerce_date(value: Any) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -150,7 +155,8 @@ def _optional_decimal(value: Any) -> Decimal | None:
         return None
     try:
         return value if isinstance(value, Decimal) else Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_optional_decimal: failed to convert %r", type(value).__name__)
         return None
 
 

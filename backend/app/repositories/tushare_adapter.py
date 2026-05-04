@@ -181,7 +181,7 @@ class VendorAdapter(VendorAdapterBase):
             )
         try:
             __import__("tushare")
-        except Exception:
+        except ImportError:
             return VendorPreflightResult(
                 vendor_name=self.vendor_name,
                 ok=False,

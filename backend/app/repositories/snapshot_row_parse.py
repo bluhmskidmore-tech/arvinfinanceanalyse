@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 import xlrd
 
@@ -95,7 +98,8 @@ def _decimal(value: object) -> Decimal | None:
         return None
     try:
         return Decimal(text)
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("_decimal: failed to convert %r", type(value).__name__)
         return None
 
 

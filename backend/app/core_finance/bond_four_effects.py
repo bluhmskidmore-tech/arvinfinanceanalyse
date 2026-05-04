@@ -5,9 +5,12 @@
 """
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.field_normalization import ACCOUNTING_BASIS_AC
 from backend.app.core_finance.rate_units import normalize_annual_rate_to_decimal
@@ -34,7 +37,8 @@ def _get_bond_field(bond: Any, *keys: str, default: Any = 0):
 
             if pd.isna(v):
                 continue
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            logger.exception("_get_bond_field: pd.isna check failed for key=%r", k)
             pass
         return v
     return default
@@ -91,7 +95,8 @@ def compute_bond_four_effects(
                 mat_date = date(mat.year, mat.month, mat.day) if hasattr(mat, "day") else date(mat.year, mat.month, 1)
             else:
                 mat_date = date.today()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("compute_bond_four_effects: date coercion failed for maturity_date")
             mat_date = None
     else:
         mat_date = None
@@ -202,7 +207,8 @@ def compute_bond_six_effects(
                 mat_date = date(mat.year, mat.month, mat.day) if hasattr(mat, "day") else date(mat.year, mat.month, 1)
             else:
                 mat_date = None
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("compute_bond_convexity_standalone: date coercion failed for maturity_date")
             mat_date = None
     else:
         mat_date = None

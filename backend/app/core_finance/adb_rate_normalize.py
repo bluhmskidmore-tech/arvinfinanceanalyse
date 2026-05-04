@@ -53,7 +53,7 @@ def _coerce_rate_number(value: object) -> float | None:
     if hasattr(candidate, "item"):
         try:
             candidate = candidate.item()
-        except Exception:
+        except (TypeError, ValueError, AttributeError):
             pass
 
     if isinstance(candidate, str):

@@ -32,12 +32,14 @@ def _coerce_date_like(value: object | None) -> date | None:
     if hasattr(value, "to_pydatetime"):
         try:
             return value.to_pydatetime().date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date_like: to_pydatetime() failed for %r", type(value).__name__)
             return None
     if hasattr(value, "date"):
         try:
             return value.date()
-        except Exception:
+        except (ValueError, TypeError, AttributeError) as exc:
+            logger.exception("_coerce_date_like: .date() failed for %r", type(value).__name__)
             return None
     return None
 
@@ -58,7 +60,8 @@ def _estimate_duration_proxy_years(
 
     try:
         return max(0.0, (maturity - report).days / 365.0)
-    except Exception:
+    except (TypeError, OverflowError) as exc:
+        logger.exception("_estimate_duration_proxy_years: date subtraction failed for bond %s", bond_code)
         return 3.0
 
 

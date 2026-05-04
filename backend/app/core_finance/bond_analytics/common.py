@@ -1,8 +1,11 @@
 """Shared utilities for bond analytics calculations."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 from backend.app.core_finance.config.classification_rules import infer_invest_type
 from backend.app.core_finance.field_normalization import (
@@ -20,7 +23,8 @@ def safe_decimal(value) -> Decimal:
         return value
     try:
         return Decimal(str(value))
-    except Exception:
+    except (TypeError, ValueError, ArithmeticError) as exc:
+        logger.exception("safe_decimal: failed to convert %r", type(value).__name__)
         return Decimal("0")
 
 
@@ -258,22 +262,30 @@ def build_curve_points(curve: dict[str, Decimal]) -> list[tuple[float, Decimal]]
 
 
 def interpolate_rate(points: list[tuple[float, Decimal]], target_years: float) -> Decimal:
+    """Interpolate a rate from sorted (years, rate) points.
+
+    Delegates to ``curve_engine`` cubic spline when ≥ 3 points are available;
+    falls back to piecewise linear otherwise.  Signature unchanged.
+    """
+    from backend.app.core_finance.curve_engine.interpolation import (
+        interpolate as _engine_interpolate,
+        build_cubic_spline as _build_spline,
+    )
+    from backend.app.core_finance.curve_engine.curve_types import (
+        CurvePoint,
+        FittedCurve,
+        InterpolationMethod,
+    )
+
     if not points:
         return Decimal("0")
-    if target_years <= points[0][0]:
-        return points[0][1]
-    if target_years >= points[-1][0]:
-        return points[-1][1]
-    for i in range(len(points) - 1):
-        y0, r0 = points[i]
-        y1, r1 = points[i + 1]
-        if y0 <= target_years <= y1:
-            span = y1 - y0
-            if span <= 0:
-                return r0
-            frac = Decimal(str((target_years - y0) / span))
-            return r0 + frac * (r1 - r0)
-    return points[-1][1]
+
+    curve_points = tuple(CurvePoint(years=y, rate=r) for y, r in sorted(points, key=lambda p: p[0]))
+    if len(curve_points) >= 3:
+        fitted = _build_spline(list(curve_points))
+    else:
+        fitted = FittedCurve(method=InterpolationMethod.LINEAR, points=curve_points)
+    return _engine_interpolate(fitted, target_years)
 
 
 def build_full_curve(raw_curve: dict[str, Decimal]) -> dict[str, Decimal]:
