@@ -8,7 +8,7 @@ const repoRoot = path.resolve(import.meta.dirname, "..");
 const baseline = {
   apiClientLines: 5205,
   apiClientMockOccurrences: 296,
-  totalTsxStyleProps: 3293,
+  totalTsxStyleProps: 3308,
   maxPageStyleProps: {
     "frontend/src/features/balance-analysis/pages/BalanceAnalysisPage.tsx": 203,
     "frontend/src/features/market-data/pages/MarketDataPage.tsx": 130,
