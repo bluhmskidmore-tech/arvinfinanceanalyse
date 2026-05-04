@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import json
 import uuid
 from dataclasses import dataclass
@@ -9,6 +10,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import duckdb
+
+logger = logging.getLogger(__name__)
+
 from backend.app.config.choice_runtime import _get_em_c
 from backend.app.governance.settings import get_settings
 from backend.app.repositories.choice_client import ChoiceClient
@@ -759,6 +763,7 @@ def _persist_failed_materialization(
         )
         conn.execute("commit")
     except Exception:
+        logger.exception("Failed to persist failed-materialization audit record for run_id=%s", run_id)
         if conn is not None:
             _rollback_quietly(conn)
     finally:

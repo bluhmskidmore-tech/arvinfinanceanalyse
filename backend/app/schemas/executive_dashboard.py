@@ -217,14 +217,19 @@ class VerdictPayload(BaseModel):
 class HomeSnapshotPayload(BaseModel):
     """Authoritative unified home snapshot payload.
 
-    `mode="strict"`: `report_date` is the most recent day where **all four**
-    governed business domains (balance / pnl / liability / bond) are
-    available. `domains_missing=[]` and all four entries in
-    `domains_effective_date` equal `report_date`.
+    `mode="strict"`: `report_date` is the most recent day where **both**
+    business calibers (balance_sheet / pnl) are available.
+    `domains_missing=[]` and both entries in `domains_effective_date`
+    equal `report_date`.
 
     `mode="partial"`: user-requested or latest historical day; missing
-    business domains listed in `domains_missing`; per-domain effective_date
-    in `domains_effective_date` may diverge.
+    calibers listed in `domains_missing`; per-caliber effective_date in
+    `domains_effective_date` may diverge.
+
+    Calibers:
+      - ``balance_sheet``: AUM + NIM + DV01 — intersection of balance,
+        liability, and bond sub-source dates (same T+1 pipeline).
+      - ``pnl``: YTD P&L — independent formal build cycle.
 
     Design reference: docs/superpowers/specs/2026-04-18-frontend-numeric-correctness-design.md § 4.
     """
