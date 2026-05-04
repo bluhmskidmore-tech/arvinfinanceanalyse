@@ -5,7 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiClientProvider, createApiClient } from "../api/client";
-import AverageBalanceView from "../features/average-balance/components/AverageBalanceView";
+import AverageBalanceView, { shiftIsoDateByYears } from "../features/average-balance/components/AverageBalanceView";
 
 vi.mock("../lib/echarts", () => ({
   default: () => <div data-testid="average-balance-echarts-stub" />,
@@ -37,7 +37,27 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         },
       };
     },
-    async getAdbComparison() {
+    async getAdbComparison(startDate: string, endDate: string) {
+      if (startDate.startsWith("2025")) {
+        return {
+          report_date: "2025-04-14",
+          start_date: startDate,
+          end_date: endDate,
+          num_days: 104,
+          simulated: true,
+          total_spot_assets: 520000000,
+          total_avg_assets: 450000000,
+          total_spot_liabilities: 220000000,
+          total_avg_liabilities: 180000000,
+          total_avg_interbank_assets: 200000000,
+          total_avg_interbank_liabilities: 88000000,
+          asset_yield: 2.4,
+          liability_cost: 1.68,
+          net_interest_margin: 0.72,
+          assets_breakdown: [],
+          liabilities_breakdown: [],
+        };
+      }
       return {
         report_date: "2026-04-14",
         start_date: "2026-01-01",
@@ -48,6 +68,8 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         total_avg_assets: 500000000,
         total_spot_liabilities: 230000000,
         total_avg_liabilities: 200000000,
+        total_avg_interbank_assets: 240000000,
+        total_avg_interbank_liabilities: 110000000,
         asset_yield: 2.55,
         liability_cost: 1.75,
         net_interest_margin: 0.8,
@@ -83,33 +105,6 @@ function renderView(clientOverrides?: Record<string, unknown>) {
             weighted_rate: 1.61,
           },
         ],
-        accounting_basis_daily_avg: {
-          report_date: "2026-04-14",
-          currency_basis: "CNX",
-          daily_avg_total: 500000000,
-          accounting_controls: ["142%", "143%", "1440101%", "141%"],
-          excluded_controls: ["144020%"],
-          rows: [
-            {
-              basis_bucket: "AC",
-              daily_avg_balance: 220000000,
-              daily_avg_pct: 44,
-              source_account_patterns: ["142%", "143%"],
-            },
-            {
-              basis_bucket: "OCI",
-              daily_avg_balance: 150000000,
-              daily_avg_pct: 30,
-              source_account_patterns: ["1440101%"],
-            },
-            {
-              basis_bucket: "TPL",
-              daily_avg_balance: 130000000,
-              daily_avg_pct: 26,
-              source_account_patterns: ["141%"],
-            },
-          ],
-        },
       };
     },
     async getAdbMonthly() {
@@ -120,64 +115,6 @@ function renderView(clientOverrides?: Record<string, unknown>) {
         ytd_asset_yield: 2.41,
         ytd_liability_cost: 1.62,
         ytd_nim: 0.79,
-        accounting_basis_daily_avg_trend: [
-          {
-            report_date: "2026-02-28",
-            report_month: "2026-02",
-            currency_basis: "CNX",
-            daily_avg_total: 481800000,
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: 190000000,
-                daily_avg_pct: 39.44,
-                source_account_patterns: ["142%", "143%"],
-              },
-              {
-                basis_bucket: "OCI",
-                daily_avg_balance: 160000000,
-                daily_avg_pct: 33.21,
-                source_account_patterns: ["1440101%"],
-              },
-              {
-                basis_bucket: "TPL",
-                daily_avg_balance: 131800000,
-                daily_avg_pct: 27.36,
-                source_account_patterns: ["141%"],
-              },
-            ],
-          },
-          {
-            report_date: "2026-03-31",
-            report_month: "2026-03",
-            currency_basis: "CNX",
-            daily_avg_total: 500000000,
-            accounting_controls: ["142%", "143%", "1440101%", "141%"],
-            excluded_controls: ["144020%"],
-            rows: [
-              {
-                basis_bucket: "AC",
-                daily_avg_balance: 220000000,
-                daily_avg_pct: 44,
-                source_account_patterns: ["142%", "143%"],
-              },
-              {
-                basis_bucket: "OCI",
-                daily_avg_balance: 150000000,
-                daily_avg_pct: 30,
-                source_account_patterns: ["1440101%"],
-              },
-              {
-                basis_bucket: "TPL",
-                daily_avg_balance: 130000000,
-                daily_avg_pct: 26,
-                source_account_patterns: ["141%"],
-              },
-            ],
-          },
-        ],
         months: [
           {
             month: "2026-03",
@@ -293,7 +230,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getByRole("button", { name: "年初至今" })).toBeInTheDocument();
     expect(screen.getByLabelText("adb-start-date")).toBeInTheDocument();
     expect(screen.getByLabelText("adb-end-date")).toBeInTheDocument();
-    expect(await screen.findByText("有效天数：104 天")).toBeInTheDocument();
+    expect(await screen.findByText("区间天数：104 天")).toBeInTheDocument();
     expect(
       screen.getByText("当前区间仅 1 天时，日均为稳态模拟，便于演示图表逻辑"),
     ).toBeInTheDocument();
@@ -304,16 +241,21 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("期末时点总负债")).toBeInTheDocument();
     expect(screen.getByText("日均总负债")).toBeInTheDocument();
     expect(screen.getByText("偏离度（负债）")).toBeInTheDocument();
-    expect(screen.getByText("资产收益率（年化）")).toBeInTheDocument();
-    expect(screen.getByText("负债付息率（年化）")).toBeInTheDocument();
-    expect(screen.getByText("NIM（年化）")).toBeInTheDocument();
-    const accountingBasis = screen.getByTestId("adb-accounting-basis-daily-avg");
-    expect(accountingBasis).toHaveTextContent("AC");
-    expect(accountingBasis).toHaveTextContent("OCI");
-    expect(accountingBasis).toHaveTextContent("TPL");
-    expect(accountingBasis).toHaveTextContent("44.00");
-    expect(accountingBasis).toHaveTextContent("144020%");
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
+    expect(screen.getByText("同业日均资产")).toBeInTheDocument();
+    expect(screen.getByText("同业日均负债")).toBeInTheDocument();
+    expect(screen.getAllByText("TYW 正式余额·区间日均").length).toBe(2);
+    expect(screen.getByText("资产加权平均YTM")).toBeInTheDocument();
+    expect(screen.getByText("负债加权平均票息")).toBeInTheDocument();
+    expect(screen.getByText("利差（YTM−票息）")).toBeInTheDocument();
+    const yoyCard = await screen.findByTestId("adb-daily-yoy-summary");
+    expect(yoyCard).toHaveTextContent("去年同期对齐");
+    expect(yoyCard).toHaveTextContent("不可加总");
+    expect(yoyCard).toHaveTextContent("债券与同业");
+    expect(yoyCard).toHaveTextContent("2025-01-01");
+    expect(yoyCard).toHaveTextContent("2025-04-14");
+    expect(yoyCard).toHaveTextContent("区间日均总资产");
+    expect(yoyCard).toHaveTextContent("+11.11%");
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(1);
 
     expect(screen.getByText("期末时点与日均偏离对比")).toBeInTheDocument();
     expect(screen.getByText("资产端分类明细")).toBeInTheDocument();
@@ -322,7 +264,7 @@ describe("AverageBalanceView", () => {
     expect(screen.getAllByText("日均(亿元)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("收益率(%)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("付息率(%)").length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(2);
+    expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "打开正式资产负债分析" })).toHaveAttribute(
       "href",
       "/balance-analysis?report_date=2026-04-14&position_scope=all&currency_basis=CNY",
@@ -338,9 +280,9 @@ describe("AverageBalanceView", () => {
     expect(await screen.findByRole("heading", { name: "月度日均统计" })).toBeInTheDocument();
     expect(await screen.findByText("年初至今日均资产")).toBeInTheDocument();
     expect(screen.getByText("年初至今日均负债")).toBeInTheDocument();
-    expect(screen.getByText("年初至今资产收益率")).toBeInTheDocument();
-    expect(screen.getByText("年初至今负债付息率")).toBeInTheDocument();
-    expect(screen.getByText("年初至今净息差")).toBeInTheDocument();
+    expect(screen.getByText("年初至今加权YTM")).toBeInTheDocument();
+    expect(screen.getByText("年初至今加权票息")).toBeInTheDocument();
+    expect(screen.getByText("年初至今利差")).toBeInTheDocument();
 
     expect(screen.getByText("月度汇总表")).toBeInTheDocument();
     expect(screen.getAllByText("2026年3月").length).toBeGreaterThan(0);
@@ -349,9 +291,6 @@ describe("AverageBalanceView", () => {
     expect(screen.getByText("负债端分类明细")).toBeInTheDocument();
     expect(screen.getByText("月份")).toBeInTheDocument();
     expect(screen.getByText("天数")).toBeInTheDocument();
-    expect(screen.getByTestId("adb-accounting-basis-monthly-trend")).toHaveTextContent(
-      "AC / OCI / TPL",
-    );
     const matrix = screen.getByTestId("adb-monthly-analysis-matrix");
     expect(matrix).toHaveTextContent("分类");
     expect(matrix).toHaveTextContent("项目");
@@ -363,8 +302,8 @@ describe("AverageBalanceView", () => {
     expect(matrix).toHaveTextContent("负债：同业负债");
     expect(matrix).toHaveTextContent("日均资产");
     expect(matrix).toHaveTextContent("日均负债");
-    expect(matrix).toHaveTextContent("资产收益率");
-    expect(matrix).toHaveTextContent("NIM");
+    expect(matrix).toHaveTextContent("加权YTM");
+    expect(matrix).toHaveTextContent("利差");
     expect(screen.getAllByTestId("adb-monthly-breakdown-table")).toHaveLength(2);
     expect(screen.getAllByTestId("average-balance-echarts-stub")).toHaveLength(3);
   });
@@ -404,6 +343,8 @@ describe("AverageBalanceView", () => {
           total_avg_assets: 500000000,
           total_spot_liabilities: 230000000,
           total_avg_liabilities: 200000000,
+          total_avg_interbank_assets: 0,
+          total_avg_interbank_liabilities: 0,
           asset_yield: 2.55,
           liability_cost: 1.75,
           net_interest_margin: 0.8,
@@ -432,5 +373,13 @@ describe("AverageBalanceView", () => {
     expect(meta).toHaveTextContent("adb.comparison");
     expect(meta).toHaveTextContent("来源=sv_live_adb");
     expect(meta).toHaveTextContent("降级=最新快照降级");
+  });
+});
+
+describe("shiftIsoDateByYears", () => {
+  it("shifts calendar years and clamps invalid leap dates", () => {
+    expect(shiftIsoDateByYears("2025-04-14", -1)).toBe("2024-04-14");
+    expect(shiftIsoDateByYears("2024-02-29", -1)).toBe("2023-02-28");
+    expect(shiftIsoDateByYears("2023-04-12", 1)).toBe("2024-04-12");
   });
 });

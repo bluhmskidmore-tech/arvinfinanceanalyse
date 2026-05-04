@@ -444,6 +444,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                         for row in tyw_rows
                     ],
                 )
+            sync_zqtz_snapshot_market_value_cny_from_formal(conn, report_date)
             conn.execute("commit")
         except Exception:
             conn.execute("rollback")
@@ -1080,3 +1081,50 @@ def ensure_balance_analysis_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """Baseline DDL is versioned in `duckdb_migrations` (also run at API/worker startup)."""
     apply_pending_migrations_on_connection(conn)
     ensure_balance_zqtz_legacy_columns(conn)
+
+
+def _zqtz_snapshot_table_exists(conn: duckdb.DuckDBPyConnection) -> bool:
+    row = conn.execute(
+        "select 1 from information_schema.tables where table_name = 'zqtz_bond_daily_snapshot' limit 1",
+    ).fetchone()
+    return row is not None
+
+
+def sync_zqtz_snapshot_market_value_cny_from_formal(conn: duckdb.DuckDBPyConnection, report_date: str) -> None:
+    """Balance 物化写入 formal 后：将同键 CNY 市值写回 snapshot（不改原币 market_value_native）。
+
+    便于只读 snapshot 的报表/对账与 formal CNY 对照；ADB 等分析应以 ``fact_formal_*`` 的
+    ``currency_basis = 'CNY'`` 为准，不依赖本列。
+    """
+    if not _zqtz_snapshot_table_exists(conn):
+        return
+    conn.execute(
+        "alter table zqtz_bond_daily_snapshot add column if not exists market_value_cny decimal(24, 8)"
+    )
+    conn.execute(
+        "update zqtz_bond_daily_snapshot set market_value_cny = null where cast(report_date as varchar) = ?",
+        [report_date],
+    )
+    conn.execute(
+        """
+        update zqtz_bond_daily_snapshot s
+        set market_value_cny = f.market_value_amount
+        from fact_formal_zqtz_balance_daily f
+        where cast(s.report_date as varchar) = f.report_date
+          and f.report_date = ?
+          and f.currency_basis = 'CNY'
+          and trim(coalesce(s.instrument_code, '')) = trim(coalesce(f.instrument_code, ''))
+          and trim(coalesce(s.portfolio_name, '')) = trim(coalesce(f.portfolio_name, ''))
+          and trim(coalesce(s.cost_center, '')) = trim(coalesce(f.cost_center, ''))
+          and trim(coalesce(s.account_category, '')) = trim(coalesce(f.account_category, ''))
+          and trim(coalesce(s.asset_class, '')) = trim(coalesce(f.asset_class, ''))
+          and trim(coalesce(s.bond_type, '')) = trim(coalesce(f.bond_type, ''))
+          and trim(coalesce(s.business_type_primary, '')) = trim(coalesce(f.business_type_primary, ''))
+          and trim(coalesce(s.issuer_name, '')) = trim(coalesce(f.issuer_name, ''))
+          and trim(coalesce(s.industry_name, '')) = trim(coalesce(f.industry_name, ''))
+          and trim(coalesce(s.rating, '')) = trim(coalesce(f.rating, ''))
+          and coalesce(s.is_issuance_like, false) = coalesce(f.is_issuance_like, false)
+          and upper(trim(coalesce(s.currency_code, ''))) = upper(trim(coalesce(f.currency_code, '')))
+        """,
+        [report_date],
+    )

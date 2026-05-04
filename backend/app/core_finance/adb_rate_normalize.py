@@ -7,8 +7,8 @@ import math
 import pandas as pd
 
 RATE_INPUT_OVERRIDES: dict[str, str] = {
-    "yield_to_maturity": "auto",
-    "coupon_rate": "auto",
+    "yield_to_maturity": "percent",
+    "coupon_rate": "percent",
     "interest_rate": "auto",
     "interbank_interest_rate": "percent",
 }

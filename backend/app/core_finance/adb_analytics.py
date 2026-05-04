@@ -157,12 +157,15 @@ def build_comparison_rows(
     spot_map: dict[str, Decimal],
     sum_map: dict[str, Decimal],
     num_days_dec: Decimal,
-    top_n: int,
+    top_n: int | None,
     simulated: bool,
     end_date: date,
     stable_factor_fn: Any,
 ) -> list[dict[str, float]]:
-    """Rank categories by deviation magnitude for the spot-vs-avg comparison view."""
+    """Build per-category spot/period-avg rows; sort by average balance (desc) for classification tables.
+
+    When ``top_n`` is None, returns all categories (caller trims for display and totals).
+    """
     categories = set(spot_map.keys()) | set(sum_map.keys())
     rows: list[dict[str, float]] = []
     for category in categories:
@@ -183,7 +186,9 @@ def build_comparison_rows(
                 "deviation": float(deviation),
             }
         )
-    rows.sort(key=lambda r: (abs(r.get("deviation") or 0.0), r.get("spot") or 0.0), reverse=True)
+    rows.sort(key=lambda r: (r.get("avg") or 0.0, r.get("spot") or 0.0), reverse=True)
+    if top_n is None:
+        return rows
     return rows[: max(int(top_n), 0)]
 
 
