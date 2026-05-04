@@ -34,6 +34,10 @@ from backend.app.core_finance.adb_analytics import (
     enrich_breakdown,
     month_date_range,
 )
+from backend.app.core_finance.balance_calibration import (
+    balance_calibration_meta_to_dict,
+    build_adb_daily_balance_calibration_meta,
+)
 from backend.app.core_finance.adb_interbank_labels import map_ib_category
 from backend.app.core_finance.adb_rate_normalize import normalize_rate_values
 from backend.app.core_finance.zqtz_asset_bond_category import classify_zqtz_asset_bond_label
@@ -435,17 +439,21 @@ def _load_adb_raw_data(
                 "ADB snapshot fallback: %d dates missing from formal tables, supplementing from snapshots",
                 len(missing_dates),
             )
+            snapshot_date_in_list = ",".join(f"'{d}'" for d in missing_dates)
 
             # Supplement ZQTZ from snapshot
             if has_zqtz_snap:
-                zqtz_snap = conn.execute(
+                zqtz_snap_sql = (
                     f"""
                     select
                       {_select_list_zqtz_snapshot(conn)}
                     from zqtz_bond_daily_snapshot
                     where cast(report_date as date) between ? and ?
-                      and cast(report_date as varchar) in ({})
-                    """.format(",".join(f"'{d}'" for d in missing_dates)),
+                      and cast(report_date as varchar) in ({snapshot_date_in_list})
+                    """
+                )
+                zqtz_snap = conn.execute(
+                    zqtz_snap_sql,
                     [start_date, end_date],
                 ).fetchdf()
                 if not zqtz_snap.empty:
@@ -457,8 +465,7 @@ def _load_adb_raw_data(
 
             # Supplement TYW from snapshot
             if has_tyw_snap:
-                tyw_snap = conn.execute(
-                    """
+                tyw_snap_sql = f"""
                     select
                       report_date,
                       coalesce(position_side, 'all') as position_scope,
@@ -470,8 +477,10 @@ def _load_adb_raw_data(
                       rule_version
                     from tyw_interbank_daily_snapshot
                     where cast(report_date as date) between ? and ?
-                      and cast(report_date as varchar) in ({})
-                    """.format(",".join(f"'{d}'" for d in missing_dates)),
+                      and cast(report_date as varchar) in ({snapshot_date_in_list})
+                    """
+                tyw_snap = conn.execute(
+                    tyw_snap_sql,
                     [start_date, end_date],
                 ).fetchdf()
                 if not tyw_snap.empty:
@@ -1440,15 +1449,23 @@ def adb_envelope_for_dates(start_date: str, end_date: str) -> dict[str, Any]:
         _parse_date(start_date),
         _parse_date(end_date),
     )
-    return _build_analytical_envelope(
+    tables_for_calibration = adb_tables_used or [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    envelope = _build_analytical_envelope(
         result_kind="adb.daily",
         result_payload=payload,
         source_versions=source_versions,
         rule_versions=rule_versions,
         filters_applied={"start_date": start_date, "end_date": end_date},
-        tables_used=adb_tables_used
-        or ["fact_formal_zqtz_balance_daily", "fact_formal_tyw_balance_daily"],
+        tables_used=tables_for_calibration,
     )
+    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    return {
+        **envelope,
+        "calibration": balance_calibration_meta_to_dict(calibration_meta),
+    }
 
 
 def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> dict[str, Any]:
