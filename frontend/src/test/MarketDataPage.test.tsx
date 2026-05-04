@@ -874,6 +874,10 @@ describe("MarketDataPage", () => {
 
     renderPage(client);
 
+    fireEvent.click(await screen.findByRole("tab", { name: "信用利差" }));
+    expect(await screen.findByTestId("market-data-spreads-live-meta")).toHaveTextContent("联动读面");
+
+    fireEvent.click(screen.getByText("宏观-债市联动（分析口径，点击展开）"));
     expect(await screen.findByTestId("market-data-linkage-caveat")).toBeInTheDocument();
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("分析口径");
     expect(screen.getByTestId("market-data-linkage-caveat")).toHaveTextContent("非正式口径");
@@ -1132,8 +1136,9 @@ describe("MarketDataPage", () => {
     expect(await screen.findByTestId("market-data-page-title")).toHaveTextContent("市场数据");
     expect(screen.getByText("利率行情")).toBeInTheDocument();
     expect(screen.getByText("收益率曲线")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "信用利差" }));
     expect(
-      within(screen.getByTestId("market-data-linkage-spread-table")).getByText("信用利差"),
+      within(await screen.findByTestId("market-data-linkage-spread-table")).getByText("信用利差"),
     ).toBeInTheDocument();
     expect(screen.getByText("资金市场")).toBeInTheDocument();
     expect(screen.getByText("国债期货")).toBeInTheDocument();
