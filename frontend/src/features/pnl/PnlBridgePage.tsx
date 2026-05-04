@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Card } from "antd";
+import { Card, Tooltip } from "antd";
 import "../../lib/agGridSetup";
 import { AgGridReact } from "ag-grid-react";
-import type { CellClassParams, ColDef } from "ag-grid-community";
+import type { CellClassParams, ColDef, IHeaderParams } from "ag-grid-community";
 import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-alpine.css";
 import ReactECharts, { type EChartsOption } from "../../lib/echarts";
@@ -14,12 +14,14 @@ import { DataSection } from "../../components/DataSection";
 import type { DataSectionState } from "../../components/DataSection.types";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { SectionLead } from "../../components/page/SectionLead";
+import { controlBarStyle, modeBadgeStyle, summaryGridStyle } from "../../components/page/pageStyles";
 import type { Numeric, PnlBridgeQuality, PnlBridgeRow, PnlBridgeSummary } from "../../api/contracts";
 import { designTokens } from "../../theme/designSystem";
 import { displayTokens } from "../../theme/displayTokens";
 import { shellTokens } from "../../theme/tokens";
 import { toneFromNumeric } from "../../utils/tone";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 import { pnlSurfaceQualityToTone } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import { adaptPnlBridge } from "./adapters/pnlBridgeAdapter";
@@ -31,12 +33,6 @@ function kpiToneFromNumeric(n: Numeric): "default" | "positive" | "negative" {
   if (tone === "negative") return "negative";
   return "default";
 }
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  gap: 16,
-} as const;
 
 const pageHeaderStyle = {
   display: "flex",
@@ -53,54 +49,6 @@ const pageSubtitleStyle = {
   color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 16,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[500],
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
 } as const;
 
 const controlStyle = {
@@ -260,20 +208,6 @@ function qualityLabel(value: PnlBridgeQuality | null | undefined) {
   return "—";
 }
 
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
-}
-
 function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
   if (!summary) {
     return {
@@ -312,6 +246,14 @@ function buildBridgeConclusion(summary: PnlBridgeSummary | undefined) {
   };
 }
 
+function PnlBridgeBalanceScopeHeader(props: IHeaderParams) {
+  return (
+    <Tooltip title="仅资产端，人民币口径">
+      <span style={{ cursor: "help" }}>{props.displayName}</span>
+    </Tooltip>
+  );
+}
+
 function numericNumericCol(
   field: keyof PnlBridgeRow,
   headerName: string,
@@ -339,8 +281,12 @@ const bridgeColumnDefsBase: ColDef<PnlBridgeRow>[] = [
   { field: "instrument_code", headerName: "债券代码", width: 140, pinned: "left" },
   { field: "portfolio_name", headerName: "组合", width: 120 },
   { field: "accounting_basis", headerName: "会计分类", width: 100 },
-  numericNumericCol("beginning_dirty_mv", "期初脏价市值", 140),
-  numericNumericCol("ending_dirty_mv", "期末脏价市值", 140),
+  numericNumericCol("beginning_dirty_mv", "期初脏价市值", 140, {
+    headerComponent: PnlBridgeBalanceScopeHeader,
+  }),
+  numericNumericCol("ending_dirty_mv", "期末脏价市值", 140, {
+    headerComponent: PnlBridgeBalanceScopeHeader,
+  }),
   numericNumericCol("carry", "持有收益", 110),
   numericNumericCol("roll_down", "骑乘", 110),
   numericNumericCol("treasury_curve", "国债曲线", 110),
@@ -629,7 +575,13 @@ export default function PnlBridgePage() {
                 </div>
               </Card>
 
-              <div data-testid="pnl-bridge-summary-cards" style={summaryGridStyle}>
+              <div
+                data-testid="pnl-bridge-summary-cards"
+                style={{
+                  ...summaryGridStyle,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                }}
+              >
                 <KpiCard title="行数" value={cellText(summary.row_count)} detail="汇总行数" unit="行" />
                 <KpiCard title="质量正常" value={cellText(summary.ok_count)} detail="正常行数" tone="default" />
                 <KpiCard

@@ -10,7 +10,7 @@ import type {
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { LinkageSpreadTenorTable } from "../components/LinkageSpreadTenorTable";
 import { LiveResultMetaStrip } from "../components/LiveResultMetaStrip";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedDisplayString, toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { formatSignedNumber } from "../lib/marketDataFormat";
 import { RATE_TREND_DEFINITIONS } from "./marketDataMacroConstants";

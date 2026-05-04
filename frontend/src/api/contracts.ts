@@ -58,6 +58,8 @@ export type ResultMeta = {
 export type ApiEnvelope<T> = {
   result_meta: ResultMeta;
   result: T;
+  /** 可选：标识本响应依赖的正式事实表族（如 bond_analytics vs balance_analysis）。 */
+  data_source?: string;
 };
 
 /** `/ui/home/*`, `/ui/pnl/attribution`, `/ui/risk/overview`, `/ui/home/alerts` payloads. */
@@ -1624,6 +1626,16 @@ export type BalanceZqtzConcentrationAnalysis = {
   dimensions: BalanceZqtzConcentrationDimension[];
 };
 
+/** 余额类页面可选返回的口径说明快照（后端未部署时字段可缺失）。 */
+export type BalancePageCalibration = {
+  position_scope: string;
+  currency_basis: string;
+  source_families: string[];
+  tyw_amount_semantics?: string;
+  data_basis: string;
+  calibration_note: string;
+};
+
 export type BalanceMovementPayload = {
   report_date: string;
   currency_basis: string;
@@ -1639,6 +1651,7 @@ export type BalanceMovementPayload = {
   zqtz_concentration_analysis?: BalanceZqtzConcentrationAnalysis | null;
   accounting_controls: string[];
   excluded_controls: string[];
+  calibration?: BalancePageCalibration | null;
 };
 
 export type BalanceMovementDatesPayload = {
@@ -1709,6 +1722,7 @@ export type BalanceAnalysisOverviewPayload = {
   liability_total_amortized_cost_amount: DecimalLike;
   asset_total_accrued_interest_amount: DecimalLike;
   liability_total_accrued_interest_amount: DecimalLike;
+  calibration?: BalancePageCalibration | null;
 };
 
 export type BalanceAnalysisTableRow = {
@@ -3388,6 +3402,7 @@ export type AdbComparisonResponse = {
   /** 区间内每个 report_date 的 AC/OCI/TPL 日均结构（与月度接口中 trend 项结构一致） */
   accounting_basis_daily_avg_trend?: AdbAccountingBasisDailyAvgTrendItem[];
   detail?: string;
+  calibration?: BalancePageCalibration | null;
 };
 
 export type AdbMonthlyBreakdownItem = {

@@ -5,84 +5,32 @@ import { useApiClient } from "../../api/client";
 import { designTokens } from "../../theme/designSystem";
 import { displayTokens } from "../../theme/displayTokens";
 import { FilterBar } from "../../components/FilterBar";
+import { KpiCard } from "../../components/KpiCard";
+import { SectionLead } from "../../components/page/SectionLead";
+import {
+  modeBadgeStyle,
+  summaryGridStyle,
+  tableShellStyle,
+  tableStyle,
+  tdStyle,
+  thStyle,
+} from "../../components/page/pageStyles";
 import type { DecimalLike, ProductCategoryPnlRow } from "../../api/contracts";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 28,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: shellTokens.colorTextPrimary,
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 860,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const tableShellStyle = {
-  overflowX: "auto" as const,
-  borderRadius: 16,
-  border: `1px solid ${shellTokens.colorBorder}`,
-  background: shellTokens.colorBgSurface,
-  marginTop: 18,
-};
-
-const tableStyle = {
-  width: "100%",
-  borderCollapse: "collapse" as const,
-  fontSize: 13,
-};
-
-const thStyle = {
-  textAlign: "left" as const,
-  padding: "10px 12px",
-  borderBottom: `1px solid ${shellTokens.colorBorder}`,
-  color: shellTokens.colorTextSecondary,
-  fontSize: 13,
-};
 
 const thNumericStyle = {
   ...thStyle,
   textAlign: "right" as const,
 };
 
-const tdStyle = {
-  padding: "12px",
-  borderBottom: `1px solid ${shellTokens.colorBgMuted}`,
-  color: shellTokens.colorTextPrimary,
-};
-
 const tdNumericStyle = {
   ...tdStyle,
   textAlign: "right" as const,
 };
+
+const tableShellStyleWithTop = { ...tableShellStyle, marginTop: 18 } as const;
 
 const selectStyle = {
   padding: "10px 14px",
@@ -92,20 +40,6 @@ const selectStyle = {
   color: shellTokens.colorTextPrimary,
   fontSize: 14,
 } as const;
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
-}
 
 function cellText(value: DecimalLike | null | undefined) {
   if (value === null || value === undefined) {
@@ -198,20 +132,13 @@ export default function TeamPerformancePage() {
         </div>
         <span
           style={{
-            display: "inline-flex",
-            alignItems: "center",
-            padding: "8px 12px",
-            borderRadius: 999,
+            ...modeBadgeStyle,
             background:
               client.mode === "real" ? designTokens.color.success[50] : designTokens.color.primary[50],
             color:
               client.mode === "real"
                 ? displayTokens.apiMode.realForeground
                 : displayTokens.apiMode.mockForeground,
-            fontSize: 12,
-            fontWeight: 600,
-            letterSpacing: "0.04em",
-            textTransform: "uppercase",
           }}
         >
           {client.mode === "real" ? "真实只读链路" : "本地演示数据"}
@@ -298,7 +225,7 @@ export default function TeamPerformancePage() {
         }}
       >
         <div style={{ display: "grid", gap: 20 }}>
-          <div style={tableShellStyle}>
+          <div style={tableShellStyleWithTop}>
             <table data-testid="team-performance-table" style={tableStyle}>
               <thead>
                 <tr>

@@ -12,23 +12,19 @@ import { formatNumeric } from "../../utils/format";
 import { runPollingTask } from "../../app/jobs/polling";
 import { FilterBar } from "../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPanel";
+import { SectionLead } from "../../components/page/SectionLead";
+import { controlBarStyle, modeBadgeStyle, summaryGridStyle } from "../../components/page/pageStyles";
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 import { displayTokens } from "../../theme/displayTokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 import { toneFromSignedDisplayString } from "../workbench/components/kpiFormat";
 import { PnlRefreshStatus } from "./PnlRuntimePanels";
 import {
   pnlActionButtonStyle,
   resolvePnlSectionState,
 } from "./PnlRuntimeSupport";
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-} as const;
 
 const pageHeaderStyle = {
   display: "flex",
@@ -45,54 +41,6 @@ const pageSubtitleStyle = {
   color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
-} as const;
-
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginBottom: 16,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: designTokens.color.neutral[500],
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: designTokens.color.neutral[900],
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: designTokens.color.neutral[600],
-  fontSize: 13,
-  lineHeight: 1.7,
-} as const;
-
-const controlBarStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  alignItems: "center",
-  marginBottom: 20,
 } as const;
 
 const controlStyle = {
@@ -139,20 +87,6 @@ function cellText(value: string | number | null | undefined) {
     return "—";
   }
   return String(value);
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 function thousandsValueFormatter(params: ValueFormatterParams) {

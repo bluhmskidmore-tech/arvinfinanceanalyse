@@ -7,7 +7,7 @@ import { displayTokens } from "../../theme/displayTokens";
 import { FilterBar } from "../../components/FilterBar";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
 import { listChoiceNewsTopicFilterOptions } from "../agent/lib/choiceNewsTopicDictionary";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 
 const NEWS_EVENTS_PAGE_SIZE = 50;
 

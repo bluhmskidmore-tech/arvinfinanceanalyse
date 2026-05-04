@@ -8,7 +8,7 @@ import { FormalResultMetaPanel } from "../../components/page/FormalResultMetaPan
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens as t } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 import {
   formatRatioAsPercent,
   parseDisplayNumber,

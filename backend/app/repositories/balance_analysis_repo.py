@@ -656,6 +656,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   where {' and '.join(zqtz_where_parts)}
                 ),
                 tyw as (
+                  -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
                   select
                     count(*) as detail_row_count,
                     count(
@@ -770,6 +771,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
                   where {' and '.join(zqtz_where_parts)}
                 ),
                 tyw as (
+                  -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
                   select
                     count(*) as detail_row_count,
                     count(
@@ -969,6 +971,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
 
               union all
 
+              -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
               select
                 'tyw' as source_family,
                 invest_type_std,
@@ -1041,6 +1044,7 @@ class BalanceAnalysisRepository(DuckDBRepository):
 
               union all
 
+              -- 同业业务：本金 = 市值 = 摊余成本（业务决策，非遗漏）
               select
                 'tyw:' || position_id || ':' || currency_basis || ':' || position_scope || ':' || invest_type_std || ':' || accounting_basis as row_key,
                 'tyw' as source_family,

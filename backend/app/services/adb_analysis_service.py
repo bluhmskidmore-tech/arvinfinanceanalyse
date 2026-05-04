@@ -1478,7 +1478,11 @@ def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> 
         parsed_end_date,
         top_n=top_n,
     )
-    return _build_analytical_envelope(
+    tables_for_calibration = adb_tables_used or [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    envelope = _build_analytical_envelope(
         result_kind="adb.comparison",
         result_payload=payload,
         source_versions=source_versions,
@@ -1487,12 +1491,13 @@ def adb_comparison_envelope(start_date: str, end_date: str, top_n: int = 20) -> 
             "start_date": start_date,
             "end_date": end_date,
         },
-        tables_used=adb_tables_used
-        or [
-            "fact_formal_zqtz_balance_daily",
-            "fact_formal_tyw_balance_daily",
-        ],
+        tables_used=tables_for_calibration,
     )
+    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    return {
+        **envelope,
+        "calibration": balance_calibration_meta_to_dict(calibration_meta),
+    }
 
 
 def adb_monthly_envelope(year: int) -> dict[str, Any]:
@@ -1501,15 +1506,20 @@ def adb_monthly_envelope(year: int) -> dict[str, Any]:
         str(settings.duckdb_path),
         year,
     )
-    return _build_analytical_envelope(
+    tables_for_calibration = adb_tables_used or [
+        "fact_formal_zqtz_balance_daily",
+        "fact_formal_tyw_balance_daily",
+    ]
+    envelope = _build_analytical_envelope(
         result_kind="adb.monthly",
         result_payload=payload,
         source_versions=source_versions,
         rule_versions=rule_versions,
         filters_applied={"year": year},
-        tables_used=adb_tables_used
-        or [
-            "fact_formal_zqtz_balance_daily",
-            "fact_formal_tyw_balance_daily",
-        ],
+        tables_used=tables_for_calibration,
     )
+    calibration_meta = build_adb_daily_balance_calibration_meta(tables_for_calibration)
+    return {
+        **envelope,
+        "calibration": balance_calibration_meta_to_dict(calibration_meta),
+    }

@@ -29,6 +29,7 @@ _BOND_DASHBOARD_CASES: list[tuple[str, dict[str, str | int]]] = [
 def _assert_formal_envelope(payload: dict[str, Any]) -> None:
     assert "result_meta" in payload
     assert "result" in payload
+    assert payload.get("data_source") == "bond_analytics_facts"
     meta = payload["result_meta"]
     assert meta.get("basis") == "formal"
     assert meta.get("formal_use_allowed") is True
@@ -151,6 +152,7 @@ def test_bond_dashboard_dates_falls_back_to_facts_lineage_when_manifest_missing(
     assert payload["result_meta"]["rule_version"] == "rv_bond_analytics_formal_materialize_v1"
     assert payload["result_meta"]["cache_version"] == "cv_bond_analytics_formal__rv_bond_analytics_formal_materialize_v1"
     assert payload["result"]["report_dates"] == [REPORT_DATE]
+    assert payload["data_source"] == "bond_analytics_facts"
     get_settings.cache_clear()
 
 

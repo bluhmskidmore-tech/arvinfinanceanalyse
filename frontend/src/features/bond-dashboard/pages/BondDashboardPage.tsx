@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Alert, Card, Col, Row, Select, Space, Typography } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Alert, Card, Col, Row, Select, Space, Tooltip, Typography } from "antd";
 
 import { useApiClient } from "../../../api/client";
 import type { BondDashboardHeadlinePayload, RiskIndicatorsPayload } from "../../../api/contracts";
@@ -129,9 +130,19 @@ export default function BondDashboardPage() {
     <div data-testid="bond-dashboard-page" style={{ background: "#f5f7fa", minHeight: "100%", padding: 16 }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-          <Typography.Title level={3} style={{ margin: 0 }}>
-            债券总览
-          </Typography.Title>
+          <Space align="center" size={8}>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              债券总览
+            </Typography.Title>
+            {datesQuery.data?.data_source === "bond_analytics_facts" ? (
+              <Tooltip title="数据来源：债券分析事实表（与余额分析页可能存在口径差异）">
+                <InfoCircleOutlined
+                  aria-label="债券驾驶舱数据来源说明"
+                  style={{ color: "rgba(0,0,0,0.45)", fontSize: 16, cursor: "help" }}
+                />
+              </Tooltip>
+            ) : null}
+          </Space>
           <Space>
             <span style={{ color: "rgba(0,0,0,0.55)" }}>报告日</span>
             <Select

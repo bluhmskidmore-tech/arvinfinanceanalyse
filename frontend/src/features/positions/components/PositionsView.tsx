@@ -21,7 +21,7 @@ import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
 import { FilterBar } from "../../../components/FilterBar";
 import type { PositionDirection } from "../../../api/contracts";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import CustomerDetailModal from "./CustomerDetailModal";
 import IndustryDistributionCard from "./IndustryDistributionCard";
 import RatingDistributionCard from "./RatingDistributionCard";

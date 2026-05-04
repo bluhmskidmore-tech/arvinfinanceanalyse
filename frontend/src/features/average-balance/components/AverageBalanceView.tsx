@@ -19,6 +19,8 @@ import type { ColumnsType } from "antd/es/table";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
+import { SectionLead } from "../../../components/page/SectionLead";
 import { FilterBar } from "../../../components/FilterBar";
 import type {
   AdbCategoryItem,
@@ -75,35 +77,6 @@ const pageSubtitleStyle = {
 const analysisBriefStyle = {
   marginTop: 14,
   maxWidth: 920,
-} as const;
-
-const sectionLeadWrapStyle = {
-  display: "grid",
-  gap: 6,
-  marginTop: 4,
-} as const;
-
-const sectionEyebrowStyle = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#8090a8",
-} as const;
-
-const sectionTitleStyle = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  color: "#162033",
-} as const;
-
-const sectionDescriptionStyle = {
-  margin: 0,
-  maxWidth: 900,
-  color: "#5c6b82",
-  fontSize: 13,
-  lineHeight: 1.7,
 } as const;
 
 function formatYi(value: number | null | undefined): string {
@@ -382,20 +355,6 @@ function buildMonthlyProjectMatrixRows(months: AdbMonthlyDataItem[]): MonthlyMat
     rows[4].values[month.month] = month.net_interest_margin;
   }
   return rows;
-}
-
-function SectionLead(props: {
-  eyebrow: string;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div style={sectionLeadWrapStyle}>
-      <span style={sectionEyebrowStyle}>{props.eyebrow}</span>
-      <h2 style={sectionTitleStyle}>{props.title}</h2>
-      <p style={sectionDescriptionStyle}>{props.description}</p>
-    </div>
-  );
 }
 
 function ResultMetaNotice(props: {
@@ -733,9 +692,12 @@ export default function AverageBalanceView() {
     <section data-testid="average-balance-page">
       <div style={pageHeaderStyle}>
         <div>
-          <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
-            日均分析
-          </Title>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Title level={2} data-testid="average-balance-page-title" style={{ margin: 0 }}>
+              日均分析
+            </Title>
+            <CalibrationBadge calibration={comparisonQuery.data?.calibration} />
+          </div>
           <Paragraph data-testid="average-balance-page-subtitle" style={pageSubtitleStyle}>
             围绕期末是否偏离日均、偏离主因、区间日均结构与月度 NIM 变化展开。页面只消费后端返回结果，
             不在前端补算正式金融口径，正式资产负债分析仍从专用正式页面进入。

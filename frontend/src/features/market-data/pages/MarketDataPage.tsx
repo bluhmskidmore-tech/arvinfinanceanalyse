@@ -14,7 +14,7 @@ import type {
 } from "../../../api/contracts";
 import { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { BondFuturesTable } from "../components/BondFuturesTable";
 import { BondTradeDetail } from "../components/BondTradeDetail";

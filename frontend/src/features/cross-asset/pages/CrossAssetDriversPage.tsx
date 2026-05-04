@@ -10,7 +10,7 @@ import { PageHeader, PageSectionLead } from "../../../components/page/PagePrimit
 import { StatusPill } from "../../../components/StatusPill";
 import ReactECharts from "../../../lib/echarts";
 import { designTokens, tabularNumsStyle } from "../../../theme/designSystem";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import { toneFromSignedNumber } from "../../workbench/components/kpiFormat";
 import { CrossAssetEventCalendar } from "../components/CrossAssetEventCalendar";
 import { CrossAssetSparkline } from "../components/CrossAssetSparkline";

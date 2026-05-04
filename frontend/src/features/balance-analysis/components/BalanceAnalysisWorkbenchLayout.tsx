@@ -13,7 +13,7 @@ import type {
   ResultMeta,
 } from "../../../api/contracts";
 import { primaryWorkbenchNavigationGroups } from "../../../mocks/navigation";
-import { KpiCard } from "../../workbench/components/KpiCard";
+import { KpiCard } from "../../../components/KpiCard";
 import {
   formatBalanceAmountToYiFromWan,
   formatBalanceAmountToYiFromYuan,

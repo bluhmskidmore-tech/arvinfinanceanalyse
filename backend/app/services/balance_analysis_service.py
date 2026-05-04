@@ -10,6 +10,10 @@ import importlib
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Literal
+from backend.app.core_finance.balance_calibration import (
+    balance_calibration_meta_to_dict,
+    build_calibration_meta,
+)
 from backend.app.core_finance.module_registry import get_formal_module_by_fact_table
 from backend.app.governance.formal_compute_lineage import (
     resolve_completed_formal_build_lineage,
@@ -71,6 +75,7 @@ RULE_VERSION = BALANCE_ANALYSIS_MODULE.rule_version
 BALANCE_ANALYSIS_LOCK = BALANCE_ANALYSIS_MODULE.lock_definition
 
 BALANCE_ANALYSIS_JOB_NAME = "balance_analysis_materialize"
+BALANCE_ANALYSIS_DATA_SOURCE = "balance_analysis_facts"
 PENDING_SOURCE_VERSION = "sv_balance_analysis_pending"
 ALLOWED_BALANCE_POSITION_SCOPES = frozenset({"asset", "liability", "all"})
 ALLOWED_BALANCE_CURRENCY_BASES = frozenset({"native", "CNY"})
@@ -211,7 +216,7 @@ def balance_analysis_overview_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_overview_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.overview",
         lineage=build_lineage,
@@ -239,6 +244,14 @@ def balance_analysis_overview_envelope(
             "liability_total_accrued_interest_amount": _as_decimal(overview["liability_total_accrued_interest_amount"]),
         },
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_summary_envelope(
@@ -270,7 +283,7 @@ def balance_analysis_summary_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_summary_{report_date}_{position_scope}_{currency_basis}_{offset}_{limit}",
         result_kind="balance-analysis.summary",
         lineage=build_lineage,
@@ -293,6 +306,14 @@ def balance_analysis_summary_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_basis_breakdown_envelope(
@@ -320,7 +341,7 @@ def balance_analysis_basis_breakdown_envelope(
         governance_dir=governance_dir,
         report_date=report_date,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_basis_breakdown_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.basis-breakdown",
         lineage=build_lineage,
@@ -337,6 +358,14 @@ def balance_analysis_basis_breakdown_envelope(
             rows=[_to_basis_breakdown_row(row) for row in breakdown_rows],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def export_balance_analysis_summary_csv(
@@ -414,7 +443,7 @@ def balance_analysis_detail_envelope(
         report_date=report_date,
     )
 
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_detail_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.detail",
         lineage=build_lineage,
@@ -434,6 +463,14 @@ def balance_analysis_detail_envelope(
             summary=summary,
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_workbook_envelope(
@@ -455,7 +492,7 @@ def balance_analysis_workbook_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_workbook_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.workbook",
         lineage=build_lineage,
@@ -521,6 +558,14 @@ def balance_analysis_workbook_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def balance_analysis_decision_items_envelope(
@@ -548,7 +593,7 @@ def balance_analysis_decision_items_envelope(
         position_scope=position_scope,
         currency_basis=currency_basis,
     )
-    return build_formal_result_envelope_from_lineage(
+    env = build_formal_result_envelope_from_lineage(
         trace_id=f"tr_balance_analysis_decision_items_{report_date}_{position_scope}_{currency_basis}",
         result_kind="balance-analysis.decision-items",
         lineage=build_lineage,
@@ -572,6 +617,14 @@ def balance_analysis_decision_items_envelope(
             ],
         ).model_dump(mode="json"),
     )
+    return {
+        **env,
+        "data_source": BALANCE_ANALYSIS_DATA_SOURCE,
+        "calibration": _formal_balance_calibration_dict(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+        ),
+    }
 
 
 def update_balance_analysis_decision_status(
@@ -975,6 +1028,21 @@ def _mark_stale_inflight_run(
 
 def _build_run_id() -> str:
     return f"{BALANCE_ANALYSIS_JOB_NAME}:{datetime.now(timezone.utc).isoformat()}"
+
+
+def _formal_balance_calibration_dict(
+    *,
+    position_scope: Literal["asset", "liability", "all"],
+    currency_basis: Literal["native", "CNY"],
+) -> dict[str, object]:
+    return balance_calibration_meta_to_dict(
+        build_calibration_meta(
+            position_scope=position_scope,
+            currency_basis=currency_basis,
+            source_families=["zqtz", "tyw"],
+            data_basis="formal_facts",
+        )
+    )
 
 
 def _as_decimal(value: object) -> Decimal:

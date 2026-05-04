@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 
 import { useApiClient } from "../../../api/client";
+import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
+import { modeBadgeStyle, summaryGridStyle, tableStyle } from "../../../components/page/pageStyles";
 import { designTokens } from "../../../theme/designSystem";
 import { displayTokens } from "../../../theme/displayTokens";
+import { shellTokens } from "../../../theme/tokens";
 import { FilterBar } from "../../../components/FilterBar";
-import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import type { LedgerMoneyValue } from "../../../api/contracts";
 
 const pageHeaderStyle = {
@@ -21,40 +23,24 @@ const pageSubtitleStyle = {
   marginTop: 10,
   marginBottom: 0,
   maxWidth: 860,
-  color: "#5c6b82",
+  color: designTokens.color.neutral[600],
   fontSize: 15,
   lineHeight: 1.75,
 } as const;
 
-const modeBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "8px 12px",
-  borderRadius: 999,
-  fontSize: 12,
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
-} as const;
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 16,
-  marginBottom: 20,
-} as const;
+const summaryGridStyleWithBottom = { ...summaryGridStyle, marginBottom: designTokens.space[5] } as const;
 
 const summaryCardStyle = {
-  border: "1px solid #d7dfea",
-  borderRadius: 16,
-  padding: 16,
-  background: "#ffffff",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  borderRadius: designTokens.radius.lg,
+  padding: designTokens.space[4],
+  background: shellTokens.colorBgSurface,
 } as const;
 
 const tableWrapStyle = {
-  border: "1px solid #d7dfea",
-  borderRadius: 16,
-  background: "#ffffff",
+  border: `1px solid ${designTokens.color.neutral[200]}`,
+  borderRadius: designTokens.radius.lg,
+  background: shellTokens.colorBgSurface,
   overflow: "auto",
 } as const;
 
@@ -195,13 +181,18 @@ export default function LedgerPnlPage() {
 
       <FilterBar style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>报告日</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>报告日</span>
           <select
             aria-label="ledger-pnl-report-date"
             value={selectedReportDate}
             onChange={(event) => setSelectedReportDate(event.target.value)}
             disabled={reportDates.length === 0}
-            style={{ minWidth: 180, padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{
+              minWidth: 180,
+              padding: "10px 12px",
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+            }}
           >
             {reportDates.length === 0 ? <option value="">暂无可选报告日</option> : null}
             {reportDates.map((reportDate) => (
@@ -212,12 +203,17 @@ export default function LedgerPnlPage() {
           </select>
         </label>
         <label>
-          <span style={{ display: "block", marginBottom: 6, color: "#5c6b82" }}>币种</span>
+          <span style={{ display: "block", marginBottom: 6, color: designTokens.color.neutral[600] }}>币种</span>
           <select
             aria-label="ledger-pnl-currency"
             value={currency}
             onChange={(event) => setCurrency(event.target.value)}
-            style={{ minWidth: 140, padding: "10px 12px", borderRadius: 12, border: "1px solid #d7dfea" }}
+            style={{
+              minWidth: 140,
+              padding: "10px 12px",
+              borderRadius: designTokens.radius.md,
+              border: `1px solid ${designTokens.color.neutral[200]}`,
+            }}
           >
             {currencyOptions.map((option) => (
               <option key={option} value={option}>
@@ -228,7 +224,7 @@ export default function LedgerPnlPage() {
         </label>
       </FilterBar>
 
-      <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyle}>
+      <div data-testid="ledger-pnl-summary-cards" style={summaryGridStyleWithBottom}>
         {[
           ["核心损益", formatMoney(summary?.ledger_monthly_pnl_core)],
           ["全量损益", formatMoney(summary?.ledger_monthly_pnl_all)],
@@ -237,27 +233,44 @@ export default function LedgerPnlPage() {
           ["净资产", formatMoney(summary?.ledger_net_assets)],
         ].map(([title, value]) => (
           <div key={title} style={summaryCardStyle}>
-            <div style={{ fontSize: 12, color: "#5c6b82" }}>{title}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: "#162033", marginTop: 10 }}>{value}</div>
+            <div style={{ fontSize: designTokens.fontSize[12], color: designTokens.color.neutral[600] }}>{title}</div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: designTokens.color.neutral[900],
+                marginTop: 10,
+              }}
+            >
+              {value}
+            </div>
           </div>
         ))}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div style={tableWrapStyle}>
-          <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>币种汇总</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div
+            style={{
+              padding: designTokens.space[4],
+              fontWeight: 600,
+              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+            }}
+          >
+            币种汇总
+          </div>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: "#f7f9fc" }}>
-                <th style={{ textAlign: "left", padding: 12 }}>币种</th>
-                <th style={{ textAlign: "right", padding: 12 }}>损益</th>
+              <tr style={{ background: designTokens.color.neutral[50] }}>
+                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
               </tr>
             </thead>
             <tbody>
               {(summary?.by_currency ?? []).map((item) => (
-                <tr key={item.currency} style={{ borderTop: "1px solid #eef2f7" }}>
-                  <td style={{ padding: 12 }}>{item.currency}</td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                <tr key={item.currency} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                  <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
                 </tr>
               ))}
             </tbody>
@@ -265,24 +278,34 @@ export default function LedgerPnlPage() {
         </div>
 
         <div style={tableWrapStyle}>
-          <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>科目汇总</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <div
+            style={{
+              padding: designTokens.space[4],
+              fontWeight: 600,
+              borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+            }}
+          >
+            科目汇总
+          </div>
+          <table style={tableStyle}>
             <thead>
-              <tr style={{ background: "#f7f9fc" }}>
-                <th style={{ textAlign: "left", padding: 12 }}>科目</th>
-                <th style={{ textAlign: "right", padding: 12 }}>损益</th>
-                <th style={{ textAlign: "right", padding: 12 }}>笔数</th>
+              <tr style={{ background: designTokens.color.neutral[50] }}>
+                <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>损益</th>
+                <th style={{ textAlign: "right", padding: designTokens.space[3] }}>笔数</th>
               </tr>
             </thead>
             <tbody>
               {(summary?.by_account ?? []).map((item) => (
-                <tr key={item.account_code} style={{ borderTop: "1px solid #eef2f7" }}>
-                  <td style={{ padding: 12 }}>
+                <tr key={item.account_code} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                  <td style={{ padding: designTokens.space[3] }}>
                     <div>{item.account_code}</div>
-                    <div style={{ color: "#5c6b82", fontSize: 12 }}>{item.account_name}</div>
+                    <div style={{ color: designTokens.color.neutral[600], fontSize: designTokens.fontSize[12] }}>
+                      {item.account_name}
+                    </div>
                   </td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
-                  <td style={{ padding: 12, textAlign: "right" }}>{item.count}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.total_pnl)}</td>
+                  <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.count}</td>
                 </tr>
               ))}
             </tbody>
@@ -291,31 +314,39 @@ export default function LedgerPnlPage() {
       </div>
 
       <div data-testid="ledger-pnl-detail-table" style={tableWrapStyle}>
-        <div style={{ padding: 16, fontWeight: 600, borderBottom: "1px solid #eef2f7" }}>科目明细</div>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div
+          style={{
+            padding: designTokens.space[4],
+            fontWeight: 600,
+            borderBottom: `1px solid ${designTokens.color.neutral[100]}`,
+          }}
+        >
+          科目明细
+        </div>
+        <table style={tableStyle}>
           <thead>
-            <tr style={{ background: "#f7f9fc" }}>
-              <th style={{ textAlign: "left", padding: 12 }}>科目代码</th>
-              <th style={{ textAlign: "left", padding: 12 }}>科目名称</th>
-              <th style={{ textAlign: "left", padding: 12 }}>币种</th>
-              <th style={{ textAlign: "right", padding: 12 }}>期初</th>
-              <th style={{ textAlign: "right", padding: 12 }}>期末</th>
-              <th style={{ textAlign: "right", padding: 12 }}>月损益</th>
-              <th style={{ textAlign: "right", padding: 12 }}>月日均</th>
-              <th style={{ textAlign: "right", padding: 12 }}>天数</th>
+            <tr style={{ background: designTokens.color.neutral[50] }}>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目代码</th>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>科目名称</th>
+              <th style={{ textAlign: "left", padding: designTokens.space[3] }}>币种</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期初</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>期末</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月损益</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>月日均</th>
+              <th style={{ textAlign: "right", padding: designTokens.space[3] }}>天数</th>
             </tr>
           </thead>
           <tbody>
             {(data?.items ?? []).map((item) => (
-              <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: "1px solid #eef2f7" }}>
-                <td style={{ padding: 12 }}>{item.account_code}</td>
-                <td style={{ padding: 12 }}>{item.account_name}</td>
-                <td style={{ padding: 12 }}>{item.currency}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
-                <td style={{ padding: 12, textAlign: "right" }}>{item.days_in_period}</td>
+              <tr key={`${item.account_code}-${item.currency}`} style={{ borderTop: `1px solid ${designTokens.color.neutral[100]}` }}>
+                <td style={{ padding: designTokens.space[3] }}>{item.account_code}</td>
+                <td style={{ padding: designTokens.space[3] }}>{item.account_name}</td>
+                <td style={{ padding: designTokens.space[3] }}>{item.currency}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.beginning_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.ending_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.monthly_pnl)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{formatMoney(item.daily_avg_balance)}</td>
+                <td style={{ padding: designTokens.space[3], textAlign: "right" }}>{item.days_in_period}</td>
               </tr>
             ))}
           </tbody>

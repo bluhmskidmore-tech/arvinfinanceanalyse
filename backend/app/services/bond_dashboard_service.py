@@ -25,9 +25,19 @@ BOND_ANALYTICS_RULE_VERSION = "rv_bond_analytics_formal_materialize_v1"
 BOND_ANALYTICS_CACHE_VERSION = f"cv_bond_analytics_formal__{BOND_ANALYTICS_RULE_VERSION}"
 EMPTY_SOURCE_VERSION = "sv_bond_analytics_empty"
 
+# 口径：本服务读 `fact_formal_bond_analytics_daily`（zqtz 快照 → `compute_bond_analytics_rows` 物化）。
+# 余额分析读 `fact_formal_zqtz_balance_daily` / `fact_formal_tyw_balance_daily`（`project_zqtz_formal_balance_row` 等），
+# 且页面汇总可含同业(TYW)。两链路不同；同日 ZQTZ CNY 合计请用
+# `python -m backend.scripts.diagnose_balance_calibration` 对比，勿在未实证前假设与余额分析总额一致。
+BOND_DASHBOARD_DATA_SOURCE = "bond_analytics_facts"
+
 Q8 = Decimal("0.00000001")
 
 _GROUP_BY_LITERAL = Literal["bond_type", "rating", "portfolio_name", "tenor_bucket"]
+
+
+def _with_bond_dashboard_data_source(envelope: dict[str, object]) -> dict[str, object]:
+    return {**envelope, "data_source": BOND_DASHBOARD_DATA_SOURCE}
 
 
 def _trace_id() -> str:
@@ -118,13 +128,15 @@ def _kpi_block_from_row(row: dict[str, Any]) -> dict[str, object]:
 
 def get_bond_dashboard_dates() -> dict[str, object]:
     report_dates = _repo().list_report_dates()
-    return build_formal_result_envelope_from_lineage(
-        trace_id=_trace_id(),
-        result_kind="bond_dashboard.dates",
-        lineage=_dates_lineage(),
-        default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
-        source_surface="bond_analytics",
-        result_payload={"report_dates": report_dates},
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope_from_lineage(
+            trace_id=_trace_id(),
+            result_kind="bond_dashboard.dates",
+            lineage=_dates_lineage(),
+            default_cache_version=BOND_ANALYTICS_CACHE_VERSION,
+            source_surface="bond_analytics",
+            result_payload={"report_dates": report_dates},
+        )
     )
 
 
@@ -156,9 +168,11 @@ def get_bond_dashboard_headline_kpis(report_date: date) -> dict[str, object]:
         "kpis": _kpi_block_from_row(cur_row),
         "prev_kpis": _kpi_block_from_row(prev_row) if prev_row is not None else None,
     }
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.headline_kpis", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.headline_kpis", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -186,9 +200,11 @@ def get_bond_dashboard_asset_structure(
         "items": items,
         "total_market_value": _amt(tot),
     }
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.asset_structure", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.asset_structure", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -206,9 +222,11 @@ def get_bond_dashboard_yield_distribution(report_date: date) -> dict[str, object
         for r in rows
     ]
     payload = {"report_date": rd, "items": items, "weighted_ytm": weighted_ytm}
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.yield_distribution", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.yield_distribution", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -227,9 +245,11 @@ def get_bond_dashboard_portfolio_comparison(report_date: date) -> dict[str, obje
         for r in rows
     ]
     payload = {"report_date": rd, "items": items}
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.portfolio_comparison", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.portfolio_comparison", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -246,9 +266,11 @@ def get_bond_dashboard_spread_analysis(report_date: date) -> dict[str, object]:
         for r in rows
     ]
     payload = {"report_date": rd, "items": items}
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.spread_analysis", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.spread_analysis", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -268,9 +290,11 @@ def get_bond_dashboard_maturity_structure(report_date: date) -> dict[str, object
             }
         )
     payload = {"report_date": rd, "items": items, "total_market_value": _amt(tot)}
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.maturity_structure", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.maturity_structure", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -290,9 +314,11 @@ def get_bond_dashboard_industry_distribution(report_date: date, top_n: int) -> d
             }
         )
     payload = {"report_date": rd, "items": items}
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.industry_distribution", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.industry_distribution", report_date=rd),
+            result_payload=payload,
+        )
     )
 
 
@@ -309,7 +335,9 @@ def get_bond_dashboard_risk_indicators(report_date: date) -> dict[str, object]:
         "total_spread_dv01": _amt(row["total_spread_dv01"]),
         "reinvestment_ratio_1y": _rate(row["reinvestment_ratio_1y"]),
     }
-    return build_formal_result_envelope(
-        result_meta=_meta(result_kind="bond_dashboard.risk_indicators", report_date=rd),
-        result_payload=payload,
+    return _with_bond_dashboard_data_source(
+        build_formal_result_envelope(
+            result_meta=_meta(result_kind="bond_dashboard.risk_indicators", report_date=rd),
+            result_payload=payload,
+        )
     )

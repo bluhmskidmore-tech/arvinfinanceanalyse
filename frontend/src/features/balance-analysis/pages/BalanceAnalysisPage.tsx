@@ -26,6 +26,7 @@ import type {
   BalancePositionScope,
 } from "../../../api/contracts";
 import { runPollingTask } from "../../../app/jobs/polling";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import { FilterBar } from "../../../components/FilterBar";
 import { FormalResultMetaPanel } from "../../../components/page/FormalResultMetaPanel";
 import { PageDecisionHero, PageFilterTray, PageSectionLead } from "../../../components/page/PagePrimitives";
@@ -1811,22 +1812,33 @@ export default function BalanceAnalysisPage() {
         }
         conclusion={<span style={{ fontSize: 13, color: designTokens.color.neutral[700] }}>口径与头寸变更后请先确认汇总驾驶舱，再向下钻取工作簿与治理侧栏。</span>}
         actions={
-          <span
+          <div
             style={{
-              display: "inline-flex",
+              display: "flex",
               alignItems: "center",
-              padding: "8px 14px",
-              borderRadius: 999,
-              fontSize: 12,
-              fontWeight: 700,
-              letterSpacing: "0.04em",
-              ...(client.mode === "real"
-                ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
-                : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+              justifyContent: "flex-end",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
-            {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
-          </span>
+            <CalibrationBadge calibration={overview?.calibration} />
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "8px 14px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                ...(client.mode === "real"
+                  ? { background: shellTokens.colorBgSuccessSoft, color: shellTokens.colorSuccess }
+                  : { background: shellTokens.colorAccentSoft, color: shellTokens.colorAccent }),
+              }}
+            >
+              {client.mode === "real" ? "正式只读链路" : "本地演示数据"}
+            </span>
+          </div>
         }
       >
         <PageFilterTray>

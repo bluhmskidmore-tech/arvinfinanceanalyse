@@ -124,6 +124,12 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
                 "total_market_value_amount": "100.00000000",
                 "total_amortized_cost_amount": "90.00000000",
                 "total_accrued_interest_amount": "5.00000000",
+                "asset_total_market_value_amount": "60.00000000",
+                "liability_total_market_value_amount": "40.00000000",
+                "asset_total_amortized_cost_amount": "55.00000000",
+                "liability_total_amortized_cost_amount": "35.00000000",
+                "asset_total_accrued_interest_amount": "3.00000000",
+                "liability_total_accrued_interest_amount": "2.00000000",
                 "rule_version": "rv_repo_fallback",
             }
 
@@ -163,6 +169,10 @@ def test_balance_analysis_overview_envelope_uses_shared_completed_build_lineage_
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
     assert payload["result"]["detail_row_count"] == 2
+    assert isinstance(payload["calibration"], dict)
+    assert payload["data_source"] == "balance_analysis_facts"
+    assert payload["calibration"]["data_basis"] == "formal_facts"
+    assert "zqtz" in payload["calibration"]["source_families"]
 
 
 def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_helper(monkeypatch):
@@ -238,6 +248,9 @@ def test_balance_analysis_summary_envelope_uses_shared_completed_build_lineage_h
     assert payload["result_meta"]["source_version"] == "sv_balance_analysis_test"
     assert payload["result_meta"]["rule_version"] == "rv_balance_analysis_test"
     assert payload["result"]["total_rows"] == 1
+    assert isinstance(payload["calibration"], dict)
+    assert payload["data_source"] == "balance_analysis_facts"
+    assert payload["calibration"]["currency_basis"] == "CNY"
 
 
 def test_balance_analysis_basis_breakdown_envelope_uses_shared_completed_build_lineage_helper(monkeypatch):
@@ -768,6 +781,12 @@ def test_balance_analysis_overview_envelope_resolves_lineage_per_historical_repo
                 "total_market_value_amount": "10.00000000",
                 "total_amortized_cost_amount": "9.00000000",
                 "total_accrued_interest_amount": "0.10000000",
+                "asset_total_market_value_amount": "6.00000000",
+                "liability_total_market_value_amount": "4.00000000",
+                "asset_total_amortized_cost_amount": "5.40000000",
+                "liability_total_amortized_cost_amount": "3.60000000",
+                "asset_total_accrued_interest_amount": "0.06000000",
+                "liability_total_accrued_interest_amount": "0.04000000",
                 "rule_version": "rv_repo_fallback",
             }
 

@@ -17,7 +17,7 @@ import type {
 import { designTokens } from "../../theme/designSystem";
 import { shellTokens } from "../../theme/tokens";
 import { AsyncSection } from "../executive-dashboard/components/AsyncSection";
-import { KpiCard } from "../workbench/components/KpiCard";
+import { KpiCard } from "../../components/KpiCard";
 import {
   formatRatioAsPercent,
   parseDisplayNumber,

@@ -18,6 +18,7 @@ import type {
 import AccountingBasisStackedShareChart, {
   type AccountingBasisStackedSharePoint,
 } from "../../../components/charts/AccountingBasisStackedShareChart";
+import { CalibrationBadge } from "../../../components/CalibrationBadge";
 import { FilterBar } from "../../../components/FilterBar";
 import ReactECharts, { type EChartsOption } from "../../../lib/echarts";
 import { AsyncSection } from "../../executive-dashboard/components/AsyncSection";
@@ -1550,12 +1551,15 @@ export default function BalanceMovementAnalysisPage() {
     <section data-testid="balance-movement-analysis-page">
       <div style={pageHeaderStyle}>
         <div>
-          <h1
-            data-testid="balance-movement-analysis-title"
-            style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
-          >
-            余额变动分析
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <h1
+              data-testid="balance-movement-analysis-title"
+              style={{ margin: 0, fontSize: 28, fontWeight: 700 }}
+            >
+              余额变动分析
+            </h1>
+            <CalibrationBadge calibration={detailQuery.data?.result.calibration} />
+          </div>
           <p
             data-testid="balance-movement-analysis-subtitle"
             style={{ marginTop: 8, marginBottom: 0, color: designTokens.color.neutral[600], fontSize: 14 }}
